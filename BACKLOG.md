@@ -356,6 +356,11 @@ gates, traps).
   `OSError(EIO)` on 32+ byte rp2 SPI reads (SPECIFICATION.md Part F.5.2) is absorbed by the FRAM
   layer's dual copy: `_read_chunk()` logs errno 23 (`UNEXPECTED`) and `_read()` falls back to block 1
   and repairs block 0, so a retry inside the chunk loop would buy little.
+- **The MQTT client against the full-system heap limit, after the audit** (branch
+  `claude/whole-project-audit-plan-followup` only, until it merges; owner, 2026-10-08: "The heap limit should
+  definitely be obeyed in the final version, but that's a topic becoming relevant when the audit is done."). The
+  `dev` image's flash step read 114,768 B against `test_real_gc_heap_headroom_survives_a_full_system_build`'s
+  100,000 B, the client's 11,360 B part of it (`mqtt_poc/DESIGN.md` §5); the bound stays where it is.
 - **`arduino/` and the C reconciliation are post-audit only** (owner, 2026-09-25: 'the C port stays
   out of scope, anything there is post-audit only'). That covers the UART protocol's C
   implementation (its reconciliation against `UART_C_PORT_CHANGELOG.md` included) and the

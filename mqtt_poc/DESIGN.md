@@ -21,7 +21,7 @@ session on the Pi4 with the owner's go-ahead given in that session (CLAUDE.md), 
 | Piece | File | Role |
 |---|---|---|
 | Codec | `src/mqtt_codec.py` | Pure MQTT 3.1.1 packet encode/decode into caller buffers, topic matching, the string-shape checks. No async, no logging, never raises on wire input. |
-| Client | `src/asy_mqtt_client.py` → `MQTTClient(SensorReaderConfig)` | Config, the connection keeper, the per-connection reader, the outbound ring, inbound dispatch, the measurement publisher, status, logging. |
+| Client | `src/asy_mqtt_client.py` → `MQTTClient(SensorReaderConfig)` | Config, the connection keeper, the per-connection reader, the outbound slots, inbound dispatch, the measurement publisher, status, logging. |
 | Wiring | `buildgen/*`, `devices/dev.toml` | An optional singleton `[[instance]] driver = "mqtt"`, on `dev` only (owner, 8.2). |
 | L1 | `tests/test_mqtt_codec.py`, `tests/test_asy_mqtt_client.py` | Codec against the specification's bytes; the client against an in-process scripted broker over real loopback sockets. |
 | L2 | `scripts/_digital_twin_ci_suite.py` Run 12 | The generated `dev` twin against a real mosquitto, both GC stages, host-side driver (E.9). |
@@ -148,7 +148,7 @@ disabled keeper.
 
 | Member | Shape |
 |---|---|
-| `publish(topic, payload, *, qos=0, retain=False) -> bool` | Never blocks, never raises on load. Copies the payload into a free ring slot; `False` (counted `TxDropped`) when disabled, disconnected for QoS 0, the payload too long, or the ring full. The topic object is referenced, not copied — callers pass long-lived strings or bytes. |
+| `publish(topic, payload, *, qos=0, retain=False) -> bool` | Never blocks, never raises on load. Copies the payload into a free slot; `False` (counted `TxDropped`) when disabled, disconnected for QoS 0, the payload too long, or every slot taken. The topic object is referenced, not copied — callers pass long-lived strings or bytes. |
 | `reconnect() -> None` | §3.5. |
 | `get_link_status() -> dict` | The `MQTT*` status fields (§6.3), built with no await. |
 | `get_data()` / `get_dict_data()` / `get_dict_cfg()` | C.4.2's contract; `MQTT(Connected, TS)`; `MQTTPW` masked. |
@@ -169,14 +169,15 @@ consumer. The device's own `cmd/#` messages are counted and their last topic sho
 ## 5. Memory
 
 All long-lived buffers are allocated once in `__init__` (construction runs once per boot, A.7), in one
-pass, each a single `bytearray` with `memoryview` regions; an allocation failure there is the shared
-`ALLOC` errno and leaves the client permanently disabled (status `State: "no memory"`), never a crash.
+pass: receive and transmit a `bytearray` with a `memoryview` each, every outbound slot its own
+`io.BytesIO(alloc_size)`; an allocation failure there is the shared `ALLOC` errno and leaves the client
+permanently disabled (status `State: "no memory"`), never a crash.
 
 | Buffer | Bytes | Tunable |
 |---|---|---|
 | receive | 1,024 | `mqtt.rx_buf_bytes` |
 | transmit | 640 | `mqtt.tx_buf_bytes` |
-| outbound ring | 8 × 384 | `mqtt.out_slots`, `mqtt.out_payload_max` |
+| outbound slots | 8 × 384, one stream each | `mqtt.out_slots`, `mqtt.out_payload_max` |
 | last inbound topic | 64 | `mqtt.last_topic_bytes` |
 
 The buffers are about 5 KB, against the ~7.5–8 KB one HTTP connection holds at peak, which the
@@ -186,10 +187,42 @@ every `SensorReaderConfig` module holds (its config manager, log, locks and inst
 imports add 2,928 B, so the client costs 11,360 B in all. Allocating the buffers only at the first enable
 would spare a board that never enables the client about 5 KB, but it would place long-lived buffers late
 into a fragmented heap, which HEAP_FRAGMENTATION_MEASUREMENTS.md's placement law shows splitting the large
-free run; they stay allocated at boot (agent, 2026-10-08). Steady-state per-message allocation: the `readinto`
-generator per inbound read, one `memoryview` slice per write, the measurement JSON text per module per
-interval. Counters saturate at `COUNTER_CAP`. Nothing grows with uptime or traffic; the twin and bench
-tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
+free run; they stay allocated at boot (agent, 2026-10-08).
+
+Contiguous chunk splitting, survivor placement and conservative allocation (owner, 2026-10-08, §14) shape the rest:
+
+- **No long-lived block outgrows the receive buffer.** The eight slots are eight streams, not one 3 KB
+  ring.
+- **A measurement is never one string.** It is written into its slot one key or scalar at a time by
+  `json.dump()`, which writes into a preallocated stream without allocating: a float prints from a 36 B
+  stack buffer, a small int in 11 characters, a string escapes a character in at most 6, so a fragment
+  that provably fits goes straight in. One that could pass the slot's end, or a long int, is dumped apart
+  first; an object outgrowing its slot is dropped and counted, as an oversize `publish()` is.
+- **Settings and topics are born at boot.** `setup()` reads the settings and builds the measurement
+  topics inside the boot list's placement reset (SPECIFICATION.md I.4(f.1)); a reconnect keeps every
+  object whose value did not change, so a reconnect re-births no long-lived copy.
+
+Measured with the need sieve (HEAP_FRAGMENTATION_MEASUREMENTS.md §M6.1) on the Unix port, 64-bit with
+32 B blocks, so about twice the board's figures, against the bench's largest object, ISL29125's (agent,
+2026-10-08):
+
+| | Before | After |
+|---|---|---|
+| One message: the largest block it needs | 320 B | 128 B |
+| One message: bytes allocated | 2,176 B | 832 B |
+| One round of four modules: largest block, bytes allocated | 320 B, 5,728 B | 256 B, 2,816 B |
+| Construction | 12,064 B | 12,608 B |
+
+The round's 256 B is the publisher coroutine's own frame. The split costs 544 B there, about 270 B on the
+board: eight streams carry their own headers where one ring carried one. The instance dict stays at its
+97-entry table (83 attributes); its 73-entry step would take ten attributes out for about 190 B on the
+board.
+
+Steady-state allocation: the `readinto` generator per inbound read; two `memoryview` slices per
+written PUBLISH; per measurement message, an iterator and a frame per object in it, plus the dumped text
+of a long int (the timestamp on the board, beyond its small-int range). Counters saturate at
+`COUNTER_CAP`. Nothing grows with uptime or traffic; the twin and bench tiers check it at
+`gc.threshold(-1)` and `32768` with zero memory markers.
 
 ## 6. Configuration, REST and website
 
@@ -374,8 +407,21 @@ Each the more conservative, more easily reversible choice, for review:
     its due time, and the next interval counted from that late start, so the board's loop stalls (a
     `GET /status` held it about 0.8 s every 5 s) moved the whole cadence. `MQTTPubInterval` now holds on
     average; one late wake delays its own round only.
+14. The owner's memory techniques (§14) are applied with MicroPython's own preallocated stream,
+    `io.BytesIO(alloc_size)`, whose documentation names it the way to write without reallocation or
+    fragmentation (`docs/library/io.rst` at `v1.29.0`), and with `json.dump()`, which prints into such a
+    stream from stack buffers. The other way to split the publish path, a PUBLISH head from the transmit
+    buffer and its payload straight from the slot in a second write, is not taken: two writes per packet
+    would double the segments lwIP queues against `TCP_SND_QUEUELEN`, the budget the 2,000 B cap (§3.3)
+    protects. The slot is copied into the transmit buffer after its head, one packet in one write.
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
+
+- Memory, told after the bench's flash step read 114,768 B against its 100,000 B bound: "The heap limit
+  should definitely be obeyed in the final version, but that's a topic becoming relevant when the audit is
+  done. Anyway, as in other places in this project: Contiguous chunk splitting, long term allocation
+  survivor placement and conservative memory management are techniques to be applied in any case here."
+  §5 has how; BACKLOG.md's deferred list holds the bound for after the audit.
 
 - No TLS: 'TLS is not needed as it all runs in a local network.' A plain IP address is always accepted
   and nothing may block: 'It should accept plain IP addresses anyway. But it must not block, ever.'

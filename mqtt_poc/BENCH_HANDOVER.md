@@ -82,8 +82,11 @@ And on 2026-10-08:
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
-  100,000 B tripwire. The publish cadence and the `online` timing changed after them (`43b5373`, section 8), so the next
-  run is the first to see those on the board.
+  100,000 B tripwire. That bound holds for the final version and is a topic for after the audit (owner,
+  2026-10-08, DESIGN.md §14). Changed after both runs, so the next run is the first to see them on the board:
+  the publish cadence and the `online` timing (`43b5373`, section 8), and the memory layout (DESIGN.md §5:
+  one stream per outbound slot, each measurement written into its slot a key or scalar at a time, the
+  settings and topics born at boot).
 
 ### 1.4 The client in brief
 

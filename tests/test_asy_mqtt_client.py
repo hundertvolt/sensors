@@ -1,4 +1,5 @@
 import asyncio
+import io
 import json
 import time
 
@@ -875,6 +876,114 @@ def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
             assert first == 0x30  # QoS 0, not retained
             assert json.loads(payload) == {"CO2": 612, "Temp": None, "Hum": None, "TS": None, "RGB": {"R": None, "G": 0.5}}
             assert b"nan" not in payload and b"inf" not in payload
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+class _DumpsRecorder:
+    # Shadows asy_mqtt_client's module-global `json` for one round, recording every value it is handed to write.
+    def __init__(self) -> None:
+        self.values: list[object] = []
+
+    def dump(self, value: object, stream: "io.BytesIO") -> None:
+        self.values.append(value)
+        json.dump(value, stream)
+
+    def dumps(self, value: object) -> str:
+        self.values.append(value)
+        return json.dumps(value)
+
+
+def _round_on_a_connected_client(*sources: "_Source") -> MQTTClient:
+    # One publisher round with no socket: the measurements stay queued in their slots for the test to read.
+    client = make_client(sources=sources)
+    client._state = _ST_CONNECTED
+    client._base = b"sensors/t1"
+    run(client._publish_measurements())
+    return client
+
+
+def _queued(client: MQTTClient) -> "dict[bytes, bytes]":
+    return {bytes(client._slot_topic[i] or b""): client._slots[i].getvalue()[: client._slot_len[i]] for i in range(8) if client._slot_state[i] == 1}
+
+
+def test_a_measurement_is_written_into_its_slot_one_key_or_scalar_at_a_time() -> None:
+    # Part I.3's bound on the publisher: no measurement object is built as one string, and its slot still holds
+    # exactly json.dumps()'s text, nesting, quoting and every scalar kind included.
+    fields = {
+        "Lux": 245.3125, "RGB": {"R": 0.1843137254901961, "G": 0.5}, "HSB": [217.4, 0.55], "CCT": 5200, "Overrange": False, "GainMeas": None,
+        "Note": 'a "q"', "Ctl": "a\x01", "Keys": {7: "a", True: 1}, "Empty": {}, "NoItems": [], "Big": 2**40, "TS": 1755000000,
+    }
+
+    class Source:
+        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
+            return {"ISL29125": fields}
+
+    recorder = _DumpsRecorder()
+    asy_mqtt_client.json = recorder  # type: ignore[assignment]
+    try:
+        client = _round_on_a_connected_client(Source())
+    finally:
+        asy_mqtt_client.json = json
+    assert recorder.values, "nothing was dumped"
+    assert not [v for v in recorder.values if isinstance(v, (dict, list, tuple))], recorder.values
+    assert _queued(client) == {b"sensors/t1/measurements/ISL29125": json.dumps(fields).encode()}
+
+
+def test_a_measurement_outgrowing_its_slot_is_dropped_and_counted() -> None:
+    # {"T": "<n x>"} is 9 + n bytes: 375 fills the 384 B slot exactly, one more is dropped like an oversize publish().
+    class Source:
+        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
+            return {"FITS": {"T": "x" * 375}, "BIG": {"T": "x" * 376}}
+
+    client = _round_on_a_connected_client(Source())
+    assert _queued(client) == {b"sensors/t1/measurements/FITS": json.dumps({"T": "x" * 375}).encode()}
+    assert count(client, "MQTTTxDropped") == 1
+    assert sum(1 for i in range(8) if client._slot_state[i] == 0) == 7  # the dropped one's slot is free again
+
+
+def test_no_client_buffer_needs_more_contiguous_heap_than_the_receive_buffer() -> None:
+    # Contiguous chunk splitting: the outbound ring is one preallocated stream per slot, never one 3 KB block.
+    client = make_client()
+    sizes = [len(v) for v in client.__dict__.values() if isinstance(v, (bytearray, memoryview))]
+    assert max(sizes) == 1024, sizes
+    assert len(client._slots) == 8, client._slots
+    assert all(isinstance(slot, io.BytesIO) for slot in client._slots)
+
+
+def test_settings_and_topics_are_born_at_setup_and_kept_while_unchanged() -> None:
+    # Survivor placement: an enabled client's encoded settings and topics are built inside the boot list, and a
+    # reconnect with the same settings keeps those objects rather than re-birthing them in the run phase.
+    class Source:
+        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
+            return {"BMP3XX": {"Pres": 1005.3}}
+
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        cfg_dir = _scratch.dir()
+        writer = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=cfg_dir)
+        assert await writer.setup()
+        await configure(writer, broker.port)
+        await writer.cfgmgr.flush_pending()  # on disk before the next client's setup() reads it
+        client = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, sources=(Source(),), cfg_path=cfg_dir)
+        assert await client.setup()  # a boot with the client enabled
+        born = (client._base, client._status_topic, client._client_id, client._host, client._meas_topics["BMP3XX"])
+        assert born[:2] == (b"sensors/t1", b"sensors/t1/status"), born
+        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        try:
+            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
+            client.reconnect()  # unchanged settings: a new connection, the same long-lived objects
+            assert await until(lambda: count(client, "MQTTConnects") == 2 and client.is_connected())
+            kept = (client._base, client._status_topic, client._client_id, client._host, client._meas_topics["BMP3XX"])
+            assert all(kept[i] is born[i] for i in range(len(born))), kept
+            await configure(client, broker.port, MQTTPrefix="other")
+            client.reconnect()
+            assert await until(lambda: count(client, "MQTTConnects") == 3 and client.is_connected())
+            assert (client._base, client._status_topic) == (b"other/t1", b"other/t1/status")
+            assert await until(lambda: len(broker.published(b"other/t1/measurements/BMP3XX")) == 1)
         finally:
             await stop(client, tasks, broker)
 

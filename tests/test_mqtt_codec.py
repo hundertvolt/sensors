@@ -108,6 +108,16 @@ def test_publish_that_does_not_fit_is_refused() -> None:
     assert mc.encode_publish(bytearray(10), b"topic", b"payload", 0, 0, retain=False, dup=False) == -1
 
 
+def test_a_publish_head_is_the_packet_up_to_a_payload_its_caller_writes() -> None:
+    # The client writes a slot's payload after the head itself; head plus payload is the whole packet, byte for byte.
+    payload = b"p" * 130
+    buf = bytearray(160)
+    i = mc.encode_publish_head(buf, b"a/b", len(payload), 1, 0x1234, retain=True, dup=True)
+    buf[i : i + len(payload)] = payload
+    assert bytes(buf[: i + len(payload)]) == _publish_bytes(b"a/b", payload, 1, 0x1234, retain=True, dup=True)
+    assert mc.encode_publish_head(bytearray(139), b"a/b", len(payload), 1, 0x1234, retain=False, dup=False) == -1  # 3 + 137 > 139
+
+
 def test_puback_is_four_bytes() -> None:
     buf = bytearray(4)
     assert mc.encode_puback(buf, 0xBEEF) == 4

@@ -1095,13 +1095,21 @@ the PoC publishes: 'Also measurements JSON'), with `<base>` = `<MQTTPrefix>/<MQT
 Measurements are QoS 0 and not retained (agent, 2026-10-08); one message per module keeps every
 packet small.
 
-**Memory.** Every long-lived buffer is allocated once at construction: receive `mqtt.rx_buf_bytes`,
-transmit `mqtt.tx_buf_bytes`, an outbound ring of `mqtt.out_slots` × `mqtt.out_payload_max`, the
-PUBACK queue and the last-topic buffer, about 5 KB. A failed allocation leaves the client off
-(`MQTTState` `no memory`, shared `ALLOC` logged by `setup()`), never a crash. Nothing grows with
-uptime or traffic, and counters saturate at `COUNTER_CAP`. `publish()` never blocks and never
-raises on load: it copies the payload into a free slot, a queued QoS 0 message giving way first, or
-answers `False`, counted in `MQTTTxDropped`.
+**Memory.** Contiguous chunk splitting, long-lived survivor placement and conservative allocation
+apply here as everywhere (owner, 2026-10-08: "Contiguous chunk splitting, long term allocation survivor
+placement and conservative memory management are techniques to be applied in any case here."). Every
+long-lived buffer is allocated once at construction: receive `mqtt.rx_buf_bytes`, transmit
+`mqtt.tx_buf_bytes`, `mqtt.out_slots` outbound slots of `mqtt.out_payload_max` each, the PUBACK queue
+and the last-topic buffer, about 5 KB. Each slot is its own `io.BytesIO(alloc_size)`, never one ring,
+so no long-lived block outgrows the receive buffer. A measurement is written into its slot one key or
+scalar at a time by `json.dump()`, which allocates nothing there; a fragment whose text could pass the
+slot's end (or has no known bound, a long int) is dumped apart first, and an object outgrowing its slot
+is dropped like an oversize payload. The encoded settings and topics are born in `setup()`, inside the
+boot list's placement reset (I.4(f.1)), and a reconnect with an unchanged value keeps its object. A
+failed allocation leaves the client off (`MQTTState` `no memory`, shared `ALLOC` logged by
+`setup()`), never a crash. Nothing grows with uptime or traffic, and counters saturate at
+`COUNTER_CAP`. `publish()` never blocks and never raises on load: it copies the payload into a free
+slot, a queued QoS 0 message giving way first, or answers `False`, counted in `MQTTTxDropped`.
 
 **Configuration** (`config_MQTT.cfg`, every field persist-only and read at each connect, all on
 `/networking`; credentials optional and masked, owner, 2026-10-07: 'Optional, masked

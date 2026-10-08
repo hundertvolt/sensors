@@ -4,6 +4,7 @@ The radio stays WifiService's alone; the contract is SPECIFICATION.md Part A.11.
 
 import asyncio
 import errno
+import io
 import json
 import math
 import socket
@@ -30,6 +31,7 @@ from mqtt_codec import (
     encode_connect,
     encode_puback,
     encode_publish,
+    encode_publish_head,
     encode_subscribe,
     prefix_ok,
     remaining_length_bytes,
@@ -45,7 +47,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
-    from typing import NamedTuple, Protocol
+    from typing import NamedTuple, Protocol, TypeVar
 
     # A ticks_ms() value: the stubs type it opaque, so it only ever reaches time.ticks_diff()/ticks_add().
     from _mpy_shed.time_mp import _TicksMs
@@ -53,6 +55,8 @@ if TYPE_CHECKING:
     from asy_base_classes import JsonMapping, TaskStarter, TimerStarter
     from asy_config_manager import ConfigSchema, WriteValidity
     from asy_print_log import ErrorLog
+
+    _T = TypeVar("_T")
 
     class _Stream(Protocol):
         # MicroPython's one asyncio Stream class, which the stubs split into StreamReader and StreamWriter.
@@ -146,6 +150,9 @@ _PUB_STEP_MS = const(1000)  # the longest the publisher sleeps toward a due roun
 # @tunable mqtt.unconfirmed_max_bytes = 2000
 _UNCONFIRMED_MAX = const(2000)  # bytes written but not yet proven received: the connection's lwIP MEM_SIZE share
 _MAX_TEXT_BYTES = const(64)  # MQTTUser/MQTTPW
+_FLOAT_TEXT_MAX = const(36)  # mp_print_float()'s stack buffer (py/mpprint.c), the longest float json.dump() writes
+_SMALL_INT_MAX = const(0x3FFFFFFF)  # the RP2040's small-int range: printed from a stack buffer, in 11 characters
+_SMALL_INT_TEXT_MAX = const(11)
 _ID_BYTES = const(2)  # a packet id, and a string's length prefix (MQTT 3.1.1 section 1.5.3)
 _SUBACK_MIN = const(3)  # a packet id and at least one return code
 _CONNACK_LEN = const(4)
@@ -225,15 +232,9 @@ _VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 60, 10, 3600, None),)
 # @wiring fram_target FRAMManager log optional kwarg
 
 
-def _json_ready(value: object) -> object:
-    # A /measurements value as JSON can carry it: non-finite floats become None, as the REST stream writes them.
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    if isinstance(value, dict):
-        return {k: _json_ready(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_ready(v) for v in value]
-    return value
+def _kept(old: "_T", new: "_T") -> "_T":
+    # The object already held when equal: a setting read again at each connect re-births no long-lived copy.
+    return old if old == new else new
 
 
 class MQTTClient(SensorReaderConfig):
@@ -282,17 +283,17 @@ class MQTTClient(SensorReaderConfig):
         self._get_dns_server = get_dns_server
         self._cfg = config
         self._sources = sources
-        self._consumers = consumers
         self._alloc_error: Exception | None = None
         try:
             self._rx = bytearray(_RX_BYTES)
             self._tx = bytearray(_TX_BYTES)
-            self._ring = bytearray(_OUT_SLOTS * _OUT_PAYLOAD)
             self._acks = bytearray(2 * _ACK_SLOTS)
             self._last_topic = bytearray(_LAST_TOPIC_BYTES)
             self._rxmv = memoryview(self._rx)
             self._txmv = memoryview(self._tx)
-            self._ringmv = memoryview(self._ring)
+            # One preallocated stream per slot, never one ring: no long-lived block here needs more contiguous heap
+            # than _rx does, and json.dump() writes into a slot without allocating (io.BytesIO(alloc_size)).
+            self._slots = [io.BytesIO(_OUT_PAYLOAD) for _ in range(_OUT_SLOTS)]
             self._slot_len = [0] * _OUT_SLOTS
             self._slot_topic: list[bytes | None] = [None] * _OUT_SLOTS
             self._slot_qos = bytearray(_OUT_SLOTS)
@@ -310,8 +311,8 @@ class MQTTClient(SensorReaderConfig):
         self._pub_due = False  # set at each CONNACK: the first round follows it instead of a whole interval
         self._uptime = TickSeconds()
         self._meas_topics: dict[str, bytes] = {}
-        self._consumer_filters = tuple(c.topic_filter.encode() for c in consumers)
         self._consumer_pairs = tuple((c.topic_filter.encode(), c.callback) for c in consumers)  # zip() has no strict= on MicroPython
+        self._consumer_filters = tuple(flt for flt, _callback in self._consumer_pairs)  # the same bytes, encoded once
         self._consumer_errors_logged = 0
         self._last_topic_len = 0
         self._seq = 0
@@ -332,6 +333,7 @@ class MQTTClient(SensorReaderConfig):
         self._password = b""
         self._client_id = b""
         self._base = b""
+        self._status_topic = b""  # <base>/status: the will, online and offline
         self._push_callbacks.clear()  # every field is persist-only: the next connect reads it
 
     async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
@@ -398,7 +400,7 @@ class MQTTClient(SensorReaderConfig):
         stream: _Stream = asyncio.StreamReader(sock)  # type: ignore[assignment]  # MicroPython's one Stream class
         self._stream = stream  # owned from here: _close() ends it on every path
         sock.setblocking(False)
-        n = encode_connect(self._txmv, self._client_id, self._cfg.keepalive_s, self._base + b"/status", _OFFLINE, self._user, self._password)
+        n = encode_connect(self._txmv, self._client_id, self._cfg.keepalive_s, self._status_topic, _OFFLINE, self._user, self._password)
         if n < 0:  # unreachable within the schema's bounds, which _TX_BYTES is sized for
             await self.pr.err_s("CONNECT does not fit the transmit buffer", errno=_ERR_MQTT_CONNECT)
             return _R_CONNECT
@@ -544,6 +546,14 @@ class MQTTClient(SensorReaderConfig):
     async def _mask_pw(self) -> dict[str, int | float | str | bool | None]:
         return {name_cfg(_VAL_MQTT_PW): _PW_MASK}
 
+    def _meas_topic(self, name: str) -> bytes:
+        # <base>/measurements/<module>, built once per base and kept: setup() builds them inside the boot list.
+        topic = self._meas_topics.get(name)
+        if topic is None:
+            topic = self._base + b"/measurements/" + name.encode()
+            self._meas_topics[name] = topic
+        return topic
+
     def _new_connection(self) -> None:
         # Per-connection state, reset before each connect; the outbound ring survives (a clean session re-sends).
         self._reset_connection_state()
@@ -631,21 +641,84 @@ class MQTTClient(SensorReaderConfig):
             except Exception as e:  # a producer's get_dict_data() never raises by contract; guarded all the same
                 await self.pr.err_s("Measurement source failed:", e, errno=_ERR_SOURCE)
                 continue
-            for name, fields in data.items():
-                topic = self._meas_topics.get(name)
-                if topic is None:
-                    topic = self._base + b"/measurements/" + name.encode()
-                    self._meas_topics[name] = topic
-                self.publish(topic, json.dumps(_json_ready(fields)))
+            for name in data:  # keys, then a lookup: iterating items() would allocate a tuple per module
+                self._queue_json(self._meas_topic(name), data[name])
+
+    def _put_json(self, slot: "io.BytesIO", value: object) -> bool:
+        # json.dumps(value)'s exact text with non-finite floats as null, written into a slot and never built as one
+        # string: only keys and scalars are written, each by json.dump(), so writing one allocates nothing.
+        if isinstance(value, dict):
+            first = True
+            for key in value:
+                # json.dumps() quotes a non-str key's own JSON text (True -> "true"), never str(key).
+                if not (self._put_raw(slot, b"{" if first else b", ") and self._put_scalar(slot, key if isinstance(key, str) else json.dumps(key)) and self._put_raw(slot, b": ") and self._put_json(slot, value[key])):
+                    return False
+                first = False
+            return self._put_raw(slot, b"{}" if first else b"}")
+        if isinstance(value, (list, tuple)):
+            first = True
+            for item in value:
+                if not (self._put_raw(slot, b"[" if first else b", ") and self._put_json(slot, item)):
+                    return False
+                first = False
+            return self._put_raw(slot, b"[]" if first else b"]")
+        return self._put_scalar(slot, value)
+
+    def _put_raw(self, slot: "io.BytesIO", data: bytes) -> bool:
+        # False when data would take the slot past its preallocated size, which a write would then grow.
+        if slot.tell() + len(data) > _OUT_PAYLOAD:
+            return False
+        slot.write(data)
+        return True
+
+    def _put_scalar(self, slot: "io.BytesIO", value: object) -> bool:
+        # Dumped straight into the slot when its text provably fits: MicroPython prints a float from a 36 B stack buffer
+        # and a small int in 11 characters, and escapes a character in at most 6. Anything else is dumped apart first.
+        if value is None or (isinstance(value, float) and not math.isfinite(value)):
+            return self._put_raw(slot, b"null")  # json.dumps() writes bare nan/inf, which JSON rejects (Part G.2)
+        if isinstance(value, bool):
+            return self._put_raw(slot, b"true" if value else b"false")
+        if isinstance(value, float):
+            bound = _FLOAT_TEXT_MAX
+        elif isinstance(value, int) and -_SMALL_INT_MAX <= value <= _SMALL_INT_MAX:
+            bound = _SMALL_INT_TEXT_MAX
+        elif isinstance(value, str):
+            bound = 6 * len(value) + 2
+        else:
+            return self._put_raw(slot, json.dumps(value).encode())  # a long int or another type: no bound known
+        if slot.tell() + bound > _OUT_PAYLOAD:
+            return self._put_raw(slot, json.dumps(value).encode())  # near the slot's end: its exact length decides
+        json.dump(value, slot)
+        return True
 
     def _queue(self, topic: bytes, payload: bytes | bytearray | memoryview, qos: int, *, retain: bool) -> bool:
         i = self._free_slot()
         if i < 0:
             self._bump(_C_TX_DROP)
             return False
-        n = len(payload)
-        start = i * _OUT_PAYLOAD
-        self._ringmv[start : start + n] = payload
+        slot = self._slots[i]
+        slot.seek(0)
+        slot.write(payload)  # within the slot: publish() refuses a payload above _OUT_PAYLOAD
+        self._queued(i, len(payload), topic, qos, retain=retain)
+        return True
+
+    def _queue_json(self, topic: bytes, value: object) -> None:
+        # publish()'s QoS 0 path for one measurement object, its JSON written straight into the slot (Part A.11).
+        if self._alloc_error is not None or self._state != _ST_CONNECTED or not topic_name_ok(topic):
+            self._bump(_C_TX_DROP)
+            return
+        i = self._free_slot()
+        if i >= 0:
+            slot = self._slots[i]
+            slot.seek(0)
+            if self._put_json(slot, value):
+                self._queued(i, slot.tell(), topic, 0, retain=False)
+                return
+            self._free(i)  # the object outgrew the slot: dropped, as publish() drops an oversize payload
+        self._bump(_C_TX_DROP)
+
+    def _queued(self, i: int, n: int, topic: bytes, qos: int, *, retain: bool) -> None:
+        # Slot i, its n payload bytes already in place, joins the queue as its newest message.
         self._slot_len[i] = n
         self._slot_topic[i] = topic
         self._slot_qos[i] = qos
@@ -654,7 +727,6 @@ class MQTTClient(SensorReaderConfig):
         self._seq = self._seq + 1 if self._seq < COUNTER_CAP else 0
         self._slot_seq[i] = self._seq
         self._slot_state[i] = _SLOT_QUEUED
-        return True
 
     async def _read_connack(self, stream: "_Stream") -> int:
         # CONNACK (section 3.2) within the response timeout; anything after its four bytes stays for the reader.
@@ -690,7 +762,8 @@ class MQTTClient(SensorReaderConfig):
         host, user, password, client_id, prefix = texts
         if not enable[0] or not host:
             return False
-        if not (host_name_ok(host) and client_id_ok(client_id) and prefix_ok(prefix) and text_ok(user.encode(), _MAX_TEXT_BYTES) and text_ok(password.encode(), _MAX_TEXT_BYTES)):
+        user_b, password_b = user.encode(), password.encode()
+        if not (host_name_ok(host) and client_id_ok(client_id) and prefix_ok(prefix) and text_ok(user_b, _MAX_TEXT_BYTES) and text_ok(password_b, _MAX_TEXT_BYTES)):
             if not self._cfg_warned:
                 self._cfg_warned = True
                 await self.pr.wrn_s("Stored MQTT settings out of shape, client off:", host, client_id, prefix, wrnno=_WRN_STORED_DEFAULT)
@@ -698,9 +771,13 @@ class MQTTClient(SensorReaderConfig):
         base = (prefix + "/" + client_id).encode()
         if base != self._base:
             self._meas_topics.clear()
-        self._host, self._port, self._base = host, ints[0], base
+            self._base = base
+            self._status_topic = base + b"/status"
+        # Read anew at each connect, but an unchanged value keeps the object already held, born at setup().
+        self._host, self._port = _kept(self._host, host), ints[0]
         self._pub_interval_ms = ints[1] * 1000
-        self._user, self._password, self._client_id = user.encode(), password.encode(), client_id.encode()
+        self._user, self._password = _kept(self._user, user_b), _kept(self._password, password_b)
+        self._client_id = _kept(self._client_id, client_id.encode())
         return True
 
     async def _reader_loop(self, stream: "_Stream") -> None:
@@ -775,14 +852,17 @@ class MQTTClient(SensorReaderConfig):
         if not dup and self._slot_qos[i]:
             self._pid = self._pid % 65535 + 1
             self._slot_pid[i] = self._pid
-        start = i * _OUT_PAYLOAD
         topic = self._slot_topic[i] or b""
-        payload = self._ringmv[start : start + self._slot_len[i]]
-        n = encode_publish(self._txmv, topic, payload, self._slot_qos[i], self._slot_pid[i], retain=bool(self._slot_retain[i]), dup=dup)
-        if n > 0:
+        length = self._slot_len[i]
+        head = encode_publish_head(self._txmv, topic, length, self._slot_qos[i], self._slot_pid[i], retain=bool(self._slot_retain[i]), dup=dup)
+        if head > 0:
+            n = head + length
             if self._unconfirmed and self._unconfirmed + n > _UNCONFIRMED_MAX:
                 self._ping_early = not self._ping_out
                 return False
+            slot = self._slots[i]
+            slot.seek(0)
+            slot.readinto(self._txmv[head:n])  # the payload after its head: one packet, one write
             self._write(stream, self._txmv[:n])
         self._slot_tries[i] += 1
         return True
@@ -793,7 +873,7 @@ class MQTTClient(SensorReaderConfig):
         subscribe = encode_subscribe(self._txmv, self._next_pid(), self._subscriptions())
         if subscribe > 0:
             self._write(stream, self._txmv[:subscribe])
-        self._queue(self._base + b"/status", _ONLINE, 1, retain=True)
+        self._queue(self._status_topic, _ONLINE, 1, retain=True)
         self._flush_outbound(stream, time.ticks_ms())  # online in this step: a stalled loop cannot hold it past a tick
         while True:
             await asyncio.sleep_ms(cfg.tick_ms)  # sleep_ms() allocates nothing
@@ -866,7 +946,7 @@ class MQTTClient(SensorReaderConfig):
                 reason = _R_IO
             if reason == _R_RECONFIGURE:
                 # A DISCONNECT makes the broker drop the will, so the retained status is set to offline first.
-                n = encode_publish(self._txmv, self._base + b"/status", _OFFLINE, 0, 0, retain=True, dup=False)
+                n = encode_publish(self._txmv, self._status_topic, _OFFLINE, 0, 0, retain=True, dup=False)
                 try:
                     stream.write(self._txmv[:n])
                     stream.write(_DISCONNECT_PKT)
@@ -999,4 +1079,14 @@ class MQTTClient(SensorReaderConfig):
         ok = await super().setup()  # the logger first, so the failure below persists
         if self._alloc_error is not None:
             await self.pr.err_s("MQTT buffers could not be allocated, client off:", self._alloc_error, errno=_ERR_ALLOC)
+        elif ok and await self._read_params():
+            # The settings' encoded forms and the measurement topics live as long as the settings do: born here,
+            # inside the boot list's placement reset (Part I.4(f.1)), not in the first round after it.
+            for source in self._sources:
+                try:
+                    data = await source.get_dict_data()
+                except Exception:  # never raises by contract; the publisher logs a fault at its own call
+                    data = {}
+                for name in data:
+                    self._meas_topic(name)
         return ok

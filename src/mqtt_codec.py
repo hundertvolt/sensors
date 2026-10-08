@@ -148,10 +148,19 @@ def encode_puback(buf: "Buf", pid: int) -> int:
 
 
 def encode_publish(buf: "Buf", topic: "Bytes", payload: "Bytes", qos: int, pid: int, *, retain: bool, dup: bool) -> int:
-    # A PUBLISH (section 3.3); the packet id is written only at QoS 1. Returns the length, or -1.
+    # A PUBLISH (section 3.3) with its payload. Returns the length, or -1.
+    i = encode_publish_head(buf, topic, len(payload), qos, pid, retain=retain, dup=dup)
+    if i < 0:
+        return -1
+    buf[i : i + len(payload)] = payload
+    return i + len(payload)
+
+
+def encode_publish_head(buf: "Buf", topic: "Bytes", length: int, qos: int, pid: int, *, retain: bool, dup: bool) -> int:
+    # A PUBLISH (section 3.3) up to its payload of `length` bytes, which the caller writes from the index returned;
+    # -1 when the whole packet cannot fit. The packet id is written only at QoS 1.
     first = PUBLISH | (qos << 1) | (_PUBLISH_RETAIN if retain else 0) | (_PUBLISH_DUP if dup and qos else 0)
-    remaining = 2 + len(topic) + (2 if qos else 0) + len(payload)
-    i = _put_fixed(buf, first, remaining)
+    i = _put_fixed(buf, first, 2 + len(topic) + (2 if qos else 0) + length)
     if i < 0:
         return -1
     i = _put_str(buf, i, topic)
@@ -159,8 +168,7 @@ def encode_publish(buf: "Buf", topic: "Bytes", payload: "Bytes", qos: int, pid: 
         buf[i] = pid >> 8
         buf[i + 1] = pid & 0xFF
         i += 2
-    buf[i : i + len(payload)] = payload
-    return i + len(payload)
+    return i
 
 
 def encode_subscribe(buf: "Buf", pid: int, filters: tuple[bytes, ...]) -> int:
