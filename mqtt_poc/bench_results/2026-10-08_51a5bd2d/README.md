@@ -225,3 +225,42 @@ started after the test's teardown, so this is not a time from the unblock. From 
 the twin: NTP's check tick fires every 10.0 s (9.79 → 19.79 → 29.79 s), the resync is triggered on a tick
 (`NTP resync triggered.` → `NTP sync starting.` 10 ms later), and the NTP exchange takes **105 ms**
 (`sync starting` → `Received NTP time`); the WiFi service logs its established link every 5.0 s.
+
+### Observation: the client's steady state (`observations/mqtt_steady_state/`)
+
+A 1,060 s run with only `networking/mqtt` written: MQTT off for 120 s, on at the 60 s interval for 600 s, at
+the 10 s minimum for 300 s, then off; `GET /status` every 5 s throughout, the console read passively with host
+timestamps (`console.txt`), mosquitto 2.0.21 on the bench Pi4 (`broker/`), and an observer subscribed to
+`sensors/SensorStationDev/#`. For the twin:
+
+- **Enable**: from the PUT's `Writing config via cfgmgr.` line, `Connected` on the console in 108 ms and
+  `online` at the observer in 220 ms; the first round 1.05 s after `online` (the publisher's 1 s step);
+  `MQTTConnected` seen by REST 1.72 s after the PUT returned (0.5 s polling).
+- **A round**: SCD30, SGP40, BMP3XX, ISL29125 in that order, all four within 46 ms (max 52 ms). Payloads:
+  SCD30 143–151 B, SGP40 58–59 B, BMP3XX 77–79 B, ISL29125 239–247 B (largest of the 384 B slot); status 6/7 B.
+- **Interval**: measured between rounds at the observer, **60.49 s mean (60.00–61.08) at 60 s** and **10.56 s
+  mean (10.05–11.00) at 10 s**. A round fires at the first 1 s publisher step at or after the interval, measured
+  from the last round's start, so the expected overshoot is about half a step.
+- **Interval change**: reconnects, as designed (`MQTTLastReason` `reconfigured`, one teardown): `offline`
+  published, `Reconnecting with new settings.` → `Connected` in 150 ms, `online` at the observer 1.03 s after
+  `offline`, the first 10 s round 0.16 s after that.
+- **Disable**: `offline` published and a clean DISCONNECT (broker: `disconnected`, no will); the retained
+  `offline` is what a later subscriber gets.
+- **While disabled**: the keeper rereads its three settings groups every 60.0 s (`mqtt.idle_recheck_ms`;
+  console 11.4 → 71.4 s, then 1089.8 → 1149.8 s).
+- **Counters**: 158 messages sent over 2 connects (1 status + 10 rounds × 4 in the 60 s phase; 1 status +
+  29 rounds × 4 in the 10 s phase), 0 ping timeouts, 0 short sessions, 0 dropped either way; the broker kept
+  the board's 60 s keepalive session for its whole 605 s and 301 s.
+- **REST cost**: none measurable. `GET /status` median/p90/max: off 1.561/1.606/1.652 s, on at 60 s
+  1.561/1.637/1.730 s, on at 10 s 1.526/1.608/1.664 s, off again 1.537/1.575/1.658 s; 0 failures in 210.
+- **Console and logs**: no error, warning or memory line in 1,170 s. The FRAM logs show nonzero counters only
+  for NTP (3, last entry `E` 71) and SGP40 (2, `W` 33 and `W` 35). The run did not snapshot them beforehand,
+  so this sets no baseline; the attempt 4/5 NTP tests are where NTP's come from. MQTT and CFGMGR_MQTT: 0.
+
+**A bench-helper defect this run found, not a board one.** The observer was dropped by mosquitto 16 times
+("exceeded timeout", every 30–60 s), and each reconnect replayed the retained `online`. Two rounds of three
+sensors were lost to it (SCD30's message of each arrived before the drop). The board's own counters show every
+round was sent. Cause: `Probe._read_exact()` kept waiting through the 1 s read timeout, so `_run()` sent its
+PINGREQ only after some packet arrived, and a probe idle for 1.5 × its 20 s keepalive was dropped. Fixed with
+`tests_scripts/test_mqtt_probe.py`, whose idle-ping test failed before the fix. The bench tests passed
+regardless, and their observers are mostly busy, but a quiet wait longer than 30 s could have lost messages.
