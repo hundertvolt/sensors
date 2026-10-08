@@ -644,7 +644,7 @@ class MQTTClient(SensorReaderConfig):
             for name in data:  # keys, then a lookup: iterating items() would allocate a tuple per module
                 self._queue_json(self._meas_topic(name), data[name])
 
-    def _put_json(self, slot: "io.BytesIO", value: object) -> bool:
+    def _put_json(self, slot: io.BytesIO, value: object) -> bool:
         # json.dumps(value)'s exact text with non-finite floats as null, written into a slot and never built as one
         # string: only keys and scalars are written, each by json.dump(), so writing one allocates nothing.
         if isinstance(value, dict):
@@ -664,14 +664,14 @@ class MQTTClient(SensorReaderConfig):
             return self._put_raw(slot, b"[]" if first else b"]")
         return self._put_scalar(slot, value)
 
-    def _put_raw(self, slot: "io.BytesIO", data: bytes) -> bool:
+    def _put_raw(self, slot: io.BytesIO, data: bytes) -> bool:
         # False when data would take the slot past its preallocated size, which a write would then grow.
         if slot.tell() + len(data) > _OUT_PAYLOAD:
             return False
         slot.write(data)
         return True
 
-    def _put_scalar(self, slot: "io.BytesIO", value: object) -> bool:
+    def _put_scalar(self, slot: io.BytesIO, value: object) -> bool:
         # Dumped straight into the slot when its text provably fits: MicroPython prints a float from a 36 B stack buffer
         # and a small int in 11 characters, and escapes a character in at most 6. Anything else is dumped apart first.
         if value is None or (isinstance(value, float) and not math.isfinite(value)):
