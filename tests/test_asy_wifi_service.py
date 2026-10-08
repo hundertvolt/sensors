@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
+import machine
 import network
 from _error_codes import code
 from _tmp_scratch import TmpScratch
@@ -745,15 +746,12 @@ def test_get_dict_cfg_returns_schema_defaults_wrapped_in_wifi_key() -> None:
     assert result == {"WIFI": expected}
 
 
-def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -> None:
-    # PW is still "********", not None - _cfg_overlay()'s masks hold whether or not the underlying
-    # ConfigManager is valid; with no values to read, nothing else is overlaid.
+def test_get_dict_cfg_is_the_unavailable_marker_when_config_manager_is_invalid() -> None:
+    # With no values to read the GET answers the marker, never a map of nulls; it carries no value, so
+    # neither password needs _cfg_overlay()'s mask.
     client = make_invalid_cfg_client()
     result = run(client.get_dict_cfg())
-    expected: dict[str, str | None] = dict.fromkeys(_WIFI_KEYS)
-    expected["PW"] = "********"
-    expected["HotspotPW"] = "********"
-    assert result == {"WIFI": expected}
+    assert result == {"WIFI": {"error": "unavailable"}}
 
 
 def test_get_error_counter_starts_empty_and_records_a_real_error() -> None:
@@ -3258,6 +3256,132 @@ def test_integration_repeated_wrong_password_falls_back_to_hotspot_mode() -> Non
 
     with _FastAsyncSleep():  # _connect_loop() sleeps its 5 s refresh between cycles
         assert run(scenario())
+
+
+_PHONE = (b"\x02\x00\x00\x00\x00\x01",)  # one status("stations") entry: the station's MAC first
+
+
+class _HotspotRadio:
+    # network.WLAN for the block: a STA finds no access point until `router_up`, then joins on connect(); an AP reports
+    # STAT_GOT_IP as an active cyw43 AP does (SPECIFICATION.md A.4) and lists `stations`, which the test edits in place.
+    def __init__(self) -> None:
+        self.stations: list[tuple[bytes, ...]] = []
+        self.station_checks = 0  # the stations queries the AP has answered
+        self.router_up = False
+        self.built: list[Any] = []  # every interface constructed, in order
+
+    def __enter__(self) -> "Self":
+        self._real = network.WLAN
+        network.WLAN = self._build  # type: ignore[misc, assignment]  # a module attribute swap, restored on exit
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        network.WLAN = self._real  # type: ignore[misc]
+
+    def _build(self, if_id: int) -> "Any":
+        wlan: Any = self._real(if_id)
+        self.built.append(wlan)
+        if if_id == network.AP_IF:
+            wlan._status, wlan._stations = network.STAT_GOT_IP, self.stations
+            answer = wlan.status
+
+            def status(param: "str | None" = None) -> "Any":
+                if param == "stations":
+                    self.station_checks += 1
+                return answer(param)
+
+            wlan.status = status
+            return wlan
+        wlan._status = network.STAT_NO_AP_FOUND
+        record = wlan.connect
+
+        def connect(ssid: str, pw: str) -> None:
+            record(ssid, pw)
+            if self.router_up:
+                wlan._status, wlan._connected = network.STAT_GOT_IP, True
+
+        wlan.connect = connect
+        return wlan
+
+
+class _ParkedFlag:
+    # The hotspot watcher's flag, self-clearing like asyncio.ThreadSafeFlag, but its waiter parks on an asyncio.Event,
+    # so no wait goes through select.poll() over a non-fd object (CLAUDE.md's poller rule).
+    def __init__(self) -> None:
+        self._event = asyncio.Event()
+
+    def set(self) -> None:
+        self._event.set()
+
+    async def wait(self) -> None:
+        await self._event.wait()
+        self._event.clear()
+
+
+async def _no_captive_dns(server_ip: str, netmask: str) -> None:
+    await asyncio.Event().wait()  # parked until the hotspot is left: the captive DNS server's socket is not under test
+
+
+def test_integration_a_hotspot_client_holds_the_unit_until_it_leaves_then_the_window_end_retries_sta() -> None:
+    # The owner's rule (SPECIFICATION.md A.4): a client keeps the hotspot for as long as it stays; once none is left the
+    # window runs and its end retries the stored network, inside the running tasks - no task restart and no reboot.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1, hotspot_time_min=1)
+        client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+        client._dns_server.run = _no_captive_dns  # type: ignore[method-assign]  # its socket is not under test
+        timer = client._hotspot_timer
+
+        async def until(done: "Callable[[], bool]") -> bool:
+            for _ in range(200):  # bounded: every sleep is one yield here
+                if done():
+                    return True
+                await asyncio.sleep(0)
+            return False
+
+        async def next_stations_check() -> bool:
+            target = radio.station_checks + 1
+            return await until(lambda: radio.station_checks >= target)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            loop = asyncio.create_task(client._connect_loop())
+            watcher = client.start_asy_hotspot_timeout()
+            try:
+                # The router is down: the failed attempt brings the hotspot up, whose timer runs while no client is there.
+                assert await until(lambda: client._hotspot_timer_running), "the hotspot never came up with its timer"
+                assert (client._conn_phase, client._ap_selected) == (_PHASE_HOTSPOT, True)
+                radio.stations.append(_PHONE)
+                assert await next_stations_check()
+                assert (client._hotspot_timer_running, timer.callback) == (False, None), "a client must stop the timer"
+                for window in range(3):  # three would-be window ends while the phone stays: nothing is armed to fire
+                    timer.trigger()
+                    assert await next_stations_check(), window
+                held = (client._conn_phase, client._ap_selected, client._reconn_wifi, len(radio.built))
+                assert held == (_PHASE_HOTSPOT, True, False, 2), "the unit must stay in its hotspot while the client stays"
+                arms = len(timer.arms)
+                radio.stations.clear()
+                assert await next_stations_check()
+                assert client._hotspot_timer_running and len(timer.arms) == arms + 1, "the client's leaving must arm the timer"
+                assert (timer.mode, timer.period, client._conn_phase) == (Timer.PERIODIC, 60000, _PHASE_HOTSPOT)
+                radio.router_up = True
+                timer.trigger()  # the window ends with no client: the soft callback sets the watcher's flag
+                assert await until(lambda: len(radio.built) == 3), "the window's end must leave the hotspot"
+                sta = radio.built[2]
+                left = (sta.if_id, client._conn_phase, client._ap_selected, client._dns_server_task, sta.connect_calls)
+                assert left == (network.STA_IF, _PHASE_STA_SEEKING, False, None, []), left
+                assert await until(lambda: client._conn_phase == _PHASE_STA_ESTABLISHED), "STA must be retried"
+                assert sta.connect_calls == [("MyNetwork", "supersecret")]  # the stored settings
+                assert not loop.done() and client._hotspot_started_once, "no task restart: the same loop carried it"
+                kept = _used_slots(await client.get_error_counter())
+                assert code("E", "WLAN_GIVE_UP") not in kept and code("W", "WLAN_DEACTIVATED") not in kept, kept
+            finally:
+                for task in (loop, watcher, client._ledflash, client._dns_server_task):
+                    if task is not None:
+                        await _cancel(task)
+
+        reboots = machine.reset_count
+        run(scenario())
+    assert machine.reset_count == reboots
 
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:

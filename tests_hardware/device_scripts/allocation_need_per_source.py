@@ -8,6 +8,7 @@ import sys
 
 import micropython
 import sensortask_dev
+from microdot import Microdot
 
 try:
     from typing import TYPE_CHECKING
@@ -30,8 +31,19 @@ _BLOCK = 32 if sys.maxsize > 2**32 else 16  # GC block: 16 B on the RP2040, 32 B
 # The real WDT.feed() is C and allocates nothing, so on the board it runs before every probe; the
 # twin's fake allocates, so there it runs once per rung, off the sieve (a rung is well under 8 s).
 _FEED_PER_PROBE = sys.platform == "rp2"
-_NO_REQUEST: "Any" = None  # every probed route ignores its request argument
 _sieve: "list[Any]" = [None, None]  # the two chains' heads: holes, blockers
+
+
+class _NoopHolder:  # a request's sock half: the static route hands its opened file to hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
+class _ProbeRequest:  # every probed route ignores its request but the static one, which reads only this pair
+    sock = (_NoopHolder(), _NoopHolder())
+
+
+_PROBE_REQUEST = _ProbeRequest()
 
 
 def _feed() -> None:
@@ -89,8 +101,11 @@ def _sources(ws: "WebserverService") -> "list[tuple[str, Callable[[], Awaitable[
         ("/notification", ws._get_notification),
     ):
         probes.append((f"route:{path}", _whole_route(handler)))
-    if ws._static_mount is not None:  # the page the 2026-09-23 sitting saw cut off, 1 KB per read
-        probes.append(("route:/", _whole_route(ws._get_static_index)))
+    app: object = ws._app  # typed by the service's own Protocol, which declares no route table
+    assert isinstance(app, Microdot)
+    for methods, pattern, handler, _prefix, _subapp in app.url_map:
+        if pattern.url_pattern == "/" and "GET" in methods:  # the page the 2026-09-23 sitting saw cut off, 1 KB per read
+            probes.append(("route:/", _whole_route(handler)))
     return probes
 
 
@@ -98,7 +113,7 @@ def _whole_route(handler: "Callable[[Any], Awaitable[Any]]") -> "Callable[[], Aw
     # The handler AND microdot's own body loop (Response.body_iter(), a file's chunked reads
     # included) - everything but the socket write and microdot's own request parsing.
     async def run() -> int:
-        response = await handler(_NO_REQUEST)
+        response = await handler(_PROBE_REQUEST)
         total = 0
         async for piece in response.body_iter():
             total += len(piece)

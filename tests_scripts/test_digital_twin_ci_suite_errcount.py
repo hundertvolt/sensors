@@ -318,9 +318,8 @@ def test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry(ci_suite: Modu
 
 
 # ---------------------------------------------------------------------------
-# _put_reset_errors_timed() - the elapsed-time budget (BACKLOG item 24). A timeout only catches a
-# call that never finished; without this the suite was blind to the whole band between "normal" and
-# the server's own cap.
+# _put_reset_errors_timed() - the elapsed-time budget (SPECIFICATION.md C.7). A timeout only catches
+# a call that never finished; the budget covers the band between a normal reset and the server's own cap.
 # ---------------------------------------------------------------------------
 
 

@@ -5,6 +5,8 @@
 
 from micropython import const
 
+from asy_config_manager import FAILED, VALID
+
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
@@ -19,26 +21,33 @@ if TYPE_CHECKING:
 
     ResponseEnvelope = dict[str, "str | int | JsonMapping"]
 
+    class _Holder(Protocol):
+        def hold(self, closable: object) -> None: ...
+
     class _RequestLike(Protocol):
         # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
         # which leaves get/put/route unannotated (v2.7.0); shared with asy_webserver_service.py.
         @property
         def json(self) -> object: ...
 
+        @property
+        def sock(self) -> "tuple[_Holder, _Holder]": ...  # read-only, so any holder pair satisfies it
+
 # Global catalog numbers, valid on any logger.
 _ERR_CALLBACK = const(14)
 
-# Standard code -> default message catalog. A caller can override any standard code's text (pass
-# descr=...) or use an entirely different code with its own text (any code not listed here) -
-# generalizes the legacy special_err closed Literal enum into an open set, same envelope shape.
+# The one envelope code catalog (SPECIFICATION.md C.5.3): every code listed has a producer; a shaped HTTP
+# error uses its status as its code.
 _STANDARD_CODES: dict[int, str] = {
     0: "Command executed",
     1: "Invalid JSON request",
     2: "Command specifier missing",
     3: "Invalid command",
-    4: "Internal config read error",
-    5: "Internal config write error",
-    100: "Generic command error",
+    400: "Bad request",
+    404: "Not found",
+    405: "Method not allowed",
+    413: "Payload too large",
+    500: "Internal server error",
 }
 
 
@@ -53,7 +62,7 @@ async def handle_set_cmd(
     # The post-write hook runs once per call, only after a changed field: one hook per endpoint, not one
     # per field, as legacy's post_fct/post_asy_fct (agent, 2026-08-03).
     results = await reader._set_dict_cfg(data, cfg_vals)
-    if any(status == "Valid" for status in results.values()):
+    if any(status == VALID for status in results.values()):
         try:
             if post_fct is not None:
                 post_fct()
@@ -61,13 +70,13 @@ async def handle_set_cmd(
                 await post_asy_fct()
         except Exception as e:
             await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)
-            results = dict.fromkeys(results, "Failed")
+            results = dict.fromkeys(results, FAILED)
     return results
 
 
 def make_response(code: int, descr: str | None = None, result: "JsonMapping | None" = None) -> "ResponseEnvelope":
-    # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every
-    # existing endpoint's convention); everything else is "ERR", standard or caller-defined alike.
+    # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every existing
+    # endpoint's convention), every other code "ERR"; an uncatalogued code without descr reads "Unknown error".
     if descr is None:
         descr = _STANDARD_CODES.get(code, "Unknown error")
     return {

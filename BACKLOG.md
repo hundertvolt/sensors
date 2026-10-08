@@ -183,76 +183,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     `tests_hardware/flash/test_bus_electrical_timing.py` cites this number. **Do not re-investigate
     the soft-reset semantics**; what remains is designing a measurement method that leaves the board
     running, which is G6 under "Real-hardware work still owed", not this item.
-24. **`PUT /status {"ResetErrors": true}` costs a large, slowly-growing fraction of the product's
-    own request ceiling. Now measured on real hardware; one question left.**
-    `asy_webserver_service.py`'s `_put_status()` resets every registered error source, concurrently
-    since the owner chose it (owner, 2026-09-26; every figure below was measured while it still reset
-    them one after another), and each FRAM-backed one pays a real FRAM write; WP1/WP2/WP3 grew that set to 21 on `dev`. Two
-    real ceilings bound it, both confirmed directly: the server aborts any request at
-    `outer_cap_s = 15.0` (`asy_webserver_service.py:275`, via `asyncio.wait_for()` at `:667`), and
-    the real web UI gives up at `DEFAULT_TIMEOUT_MS = 15000` (`js/poll-manager.js:8`). A device whose
-    sweep crosses 15s is broken for its own operators, not merely slow in CI.
-
-    **Real hardware, `dev` bench board, 2026-09-17, 21 FRAM-backed chunks** — the numbers that
-    supersede every twin estimate below:
-
-    | condition | wall clock | % of the 15s ceiling |
-    | --- | --- | --- |
-    | idle, real accumulated history | **6.32s** | 42% |
-    | idle, repeated on already-empty logs | 6.40-6.62s | 43-44% |
-    | via `reset_all_error_logs()` | 6.89-6.98s | 46% |
-    | **3 concurrent `GET /status` workers** | **11.58s** | **77%** |
-
-    Correctness confirmed alongside: HTTP 200, all 21 counters (`UART_init`/`UART_resp` included)
-    read back 0 with every history ring cleared.
-
-    **Three things this settles, two of which contradict what this item previously said.**
-    **(1) The twin is not a floor.** Real idle (6.32s) is *faster* than the twin's own `dev` figure
-    (8.151s) — the Unix-port interpreter plus the fake chip's Python-level work cost more than real
-    SPI wire time saves. The "real hardware pays real clocking on top of it" claim here was wrong,
-    and so was the ~10-12s extrapolation drawn from the boot-latency branch's delta calibration
-    (`358c08f`); a staggered boot `setup()` genuinely does not predict a back-to-back write burst.
-    **(2) The cost is fixed PER CHUNK (~305ms), not per history entry** — clearing 21 chunks holding
-    real history costs the same as clearing 21 empty ones, consistent with the ~170ms-per-FRAM-logger
-    `setup()` figure being paid roughly twice (a read+write pair). So the "~0.6s marginal per source"
-    figure previously derived from the 4-source `dev`/`wozi` twin delta overstated it; that delta
-    was never purely 4 chunks. **(3) The event loop is not blocked**: concurrent `GET /status` stayed
-    0.56-0.76s throughout a `PUT` lasting 8.1s, so the 8388ms watchdog cap is not threatened — the
-    time is yielded, not held.
-
-    **The reader-count curve, real hardware 2026-09-25** (image `2026-09-25T05:21:43Z`, same 21
-    chunks, three sweeps per point, readers re-requesting `/status` with zero think time — queue R2):
-
-    | concurrent `GET /status` readers | wall clock (3 sweeps) | % of the 15s ceiling |
-    | --- | --- | --- |
-    | 0 | 2.31 / 2.43 / 2.43s | 16% |
-    | 1 | 5.53 / 5.61 / 5.76s | 37% |
-    | 2 | 8.80 / 10.57 / 11.03s | 59-74% |
-    | 3 | 13.16 / 13.24 / 14.69s | 88-98% |
-    | 4 | no result: refused 20x at the connection ceiling, then no answer within 30s | over |
-
-    **What is still open — and it is the load case, not the idle one.** Idle is now far below the
-    2026-09-17 figures, but the curve **does not flatten**: it climbs ~3.5s per reader, so three
-    readers already reach 88-98% of the ceiling and four exceed it. The "~6 more chunks under load"
-    headroom derived from the single 3-reader point no longer holds — under load there is none.
-    At four readers the board is saturated outright (F18; the owner's decision on such clients is in
-    SPECIFICATION.md H.7: ceiling starvation of the `PUT`, WEBSERVER `W49`/`W50` reclaims
-    (`HTTP_CALL_TIMEOUT`/`HTTP_REQUEST_CAP`), UART link `E81`/`E22` (`UART_NO_ACK`/`TIMEOUT`) and
-    resyncs). Nothing asserts elapsed time anywhere: both client timeouts
-    are backstops placed against the cap (the CI suite derives `_RESET_ERRORS_TIMEOUT_S` from a
-    mirrored `_SERVER_OUTER_CAP_S`; `tests_hardware/error_log_helpers.py` carries a measured 30.0s),
-    and `tests_scripts/test_request_timeout_ceiling.py` enforces every copy against `outer_cap_s`
-    itself — but a backstop is not a budget. **Where to fix**: an explicit elapsed-time budget, sized
-    against the load case rather than the idle one, from the curve re-measured on silicon with the
-    concurrent reset (its design fix, done); and if a future device's chunk count approaches ~27, a
-    further design-level fix at the source (one shared chunk) rather than a larger client timeout,
-    per CLAUDE.md's root-cause-don't-raise-the-limit rule.
-
-    Twin figures kept only as the harness baseline they are (5 reps, idle host, loopback): `dev`
-    8.151s (7.901-8.259) / `wozi` 5.592s (5.534-5.746) at the shipped `gc.threshold(32768)`, and
-    7.396s / 5.207s at `gc.threshold(-1)`. Useful for spotting a twin-side regression; not a
-    predictor of real-hardware cost in either direction.
-
 29. **The spurious `WLAN_AUTH_FAILED` (`W36`, "WLAN wrong password") on a correct password -
     answered from source (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and
     `tests/test_asy_wifi_service.py` cite this number. cyw43-driver reports BADAUTH, which
@@ -282,8 +212,24 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     cannot fire before the server's own abort. Both halves of the owner's standing requirement for
     this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
     "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
-    **The curve is taken (item 24's 2026-09-25 table), and it says no budget can meet both halves
-    at the current design**: three readers already land at 13.2-14.7s against a 15s server abort, so
+
+    **The reader-count curve, real hardware 2026-09-25** (`dev` bench board, image
+    `2026-09-25T05:21:43Z`, 21 FRAM-backed chunks, three sweeps per point, readers re-requesting
+    `/status` with zero think time — queue R2; measured while `ResetErrors` still reset the sources
+    one after another):
+
+    | concurrent `GET /status` readers | wall clock (3 sweeps) | % of the 15s ceiling |
+    | --- | --- | --- |
+    | 0 | 2.31 / 2.43 / 2.43s | 16% |
+    | 1 | 5.53 / 5.61 / 5.76s | 37% |
+    | 2 | 8.80 / 10.57 / 11.03s | 59-74% |
+    | 3 | 13.16 / 13.24 / 14.69s | 88-98% |
+    | 4 | no result: refused 20x at the connection ceiling, then no answer within 30s | over |
+
+    Idle sits far below the 6.32s measured idle on 2026-09-17, but the curve does not flatten: it
+    climbs ~3.5s per reader, so three readers reach 88-98% of the ceiling and four exceed it.
+    **The curve is taken, and at the one-after-another reset it was measured on, it says no budget
+    can meet both halves**: three readers already land at 13.2-14.7s against a 15s server abort, so
     any budget that never false-positives sits at or above the point where the server gives up
     first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
     abort). The owner chose the concurrent reset (owner, 2026-09-26), and it has landed; the bench
@@ -391,10 +337,11 @@ gates, traps).
   PUT (one SCD30 NVM write, `--allow-persistence-writes`), a power cycle, then 0x0010 read back:
   the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
   measurement status as persisted). Twin row: `digital_twin/README.md`'s "SCD30 persistence".
-- **Still owed elsewhere in this file**: R2's `ResetErrors` curve feeds item 24's design fix and
-  item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the segfault fix" below);
-  G6, a rollover method that leaves the board running (item 12, adapt now, measure later by
-  decision); H1, the owner's two-chroot run (the chroot entry below); F17, item 44's anomalies.
+- **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
+  reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
+  segfault fix" below); G6, a rollover method that leaves the board running (item 12, adapt now,
+  measure later by decision); H1, the owner's two-chroot run (the chroot entry below); F17, item
+  44's anomalies.
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
   the two unbought bench-rig capabilities (item 8).
 
@@ -595,6 +542,18 @@ gates, traps).
   7 and 8 count the WIFI fallback's persisted `WLAN_TO_HOTSPOT` warning (two history slots, six
   counted events). Stdlib only, no new dependency: the chroot legs, which share the host's network,
   are unaffected.
+  **2026-10-08, lint and mypy config, the generated REST API reference and comments**:
+  `pyproject.toml`'s `src/asy_webserver_service.py` entry narrows to `SLF001` (its `S101` and
+  `ANN401` are gone, and the category-2 `ANN401` comment names `digital_twin/_http_client.py`
+  alone), and `asy_webserver_service` leaves the explicit-`Any` baseline.
+  `scripts/_generate_sensortask_modules.py` also writes each device's REST API reference to
+  `build/generated_src/api/<device>.json` (from the new `buildgen/api_reference.py`; gitignored with
+  `build/`, never frozen), and builds every output of a device before writing any, so a definitions
+  or reference `BuildError` is a one-line `error:` and exit 1. Three new pytest-tier files
+  (`tests_scripts/test_api_reference.py`, `test_vendored_microdot.py`, `test_result_words.py`) join
+  the host typecheck pass. Comments only in `scripts/_digital_twin_ci_suite.py` and
+  `toolchain/micropython_overrides.py` (its check and message unchanged). No new dependency and no
+  firmware input changed; the next chroot run covers lint, typecheck and `scripts/test.sh` over them.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -855,15 +814,3 @@ gates, traps).
 
 Questions for the project owner, each dated, in the owner's format; nothing else in the repo parks a
 question.
-
-- **1. Bound how long a hotspot client holds the unit?** (entered 2026-10-08, agent) A phone joined
-  to the fallback hotspot keeps the unit off its home network for as long as it stays associated,
-  as the legacy firmware did; the LED now shows it. (a) keep it unbounded: on every device the unit
-  stays reachable only through its hotspot until the phone leaves; (b) bound it to a number of
-  hotspot windows, then retry the home network with the client still joined: the phone loses the
-  setup page mid-use after the bound, on every device.
-- **2. Leave the hotspot after a non-credential PUT?** (entered 2026-10-08, agent) A `Hostname`,
-  `Country` or `HotspotPW` PUT made from the hotspot page triggers a reconnect, which tries the
-  stored network; with the router down, two failed streaks switch Wi-Fi off until a power cycle.
-  (a) keep it: any Wi-Fi field reconnects, on every device; (b) from hotspot mode only `SSID` or
-  `PW` reconnect, and the other fields apply at the next hotspot start, on every device.

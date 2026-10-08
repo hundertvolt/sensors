@@ -1,4 +1,4 @@
-"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue, HourlyWindowCounter: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks bounding size and piece_bytes.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
@@ -10,7 +10,7 @@ from collections import namedtuple
 
 from micropython import const
 
-from asy_config_manager import ConfigManager, check_cfg_get_default, config_filename, instance_name, schema_dict, schema_names, type_or_range_error
+from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, check_cfg_get_default, config_filename, instance_name, schema_dict, schema_names, type_or_range_error
 from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
 
 try:
@@ -68,6 +68,9 @@ else:
 
 # 2**30 - 1: rp2's largest small int (object repr A), 34 years in seconds; no counter or cap may exceed it
 COUNTER_CAP = const(0x3FFFFFFF)
+# HourlyWindowCounter's window: 24 bins of one hour each
+_WINDOW_HOURS = const(24)
+_HOUR_S = const(3600)
 
 # Codes from the global catalog (buildgen/error_catalog.json): the base band every SensorReader inherits.
 _ERR_STREAK = const(1)
@@ -280,6 +283,48 @@ class LockedValue:
         self.value = value
 
 
+class HourlyWindowCounter:
+    # Events in the last 24 hours at hourly resolution: 24 fixed bins advanced lazily from the uptime
+    # seconds (monotonic, untouched by NTP steps), so no event, read or hour change allocates; an event
+    # leaves the window 23-24 hours after it happened (owner, 2026-10-01).
+    def __init__(self) -> None:
+        self._bins = [0] * _WINDOW_HOURS  # the one allocation, at construction
+        self._hour = 0  # the uptime hour the bins were last advanced to
+
+    # Plain methods: nothing here awaits, so no other task can interleave and no lock is needed.
+    def _advance(self, now_s: int) -> None:
+        hour = now_s // _HOUR_S
+        gap = hour - self._hour
+        if gap <= 0:
+            return
+        if gap >= _WINDOW_HOURS:
+            for i in range(_WINDOW_HOURS):
+                self._bins[i] = 0
+        else:
+            for h in range(self._hour + 1, hour + 1):
+                self._bins[h % _WINDOW_HOURS] = 0
+        self._hour = hour
+
+    def add(self, now_s: int) -> None:
+        self._advance(now_s)
+        i = self._hour % _WINDOW_HOURS
+        if self._bins[i] < COUNTER_CAP:
+            self._bins[i] += 1
+
+    def reset(self) -> None:
+        for i in range(_WINDOW_HOURS):
+            self._bins[i] = 0
+
+    def total(self, now_s: int) -> int:
+        self._advance(now_s)
+        s = 0
+        for b in self._bins:
+            if b >= COUNTER_CAP - s:  # checked before the step: no intermediate leaves the small-int range
+                return COUNTER_CAP
+            s += b
+        return s
+
+
 class TickSeconds:
     # Elapsed whole seconds from ticks_ms() deltas plus a millisecond remainder, up or down, saturating at
     # COUNTER_CAP; a caller reads it at least once per 2**29 ms (6.2 days, ticks_diff()'s horizon); a
@@ -365,7 +410,7 @@ class SensorReader:
         self._data_lock = asyncio.Lock()  # guards the last sample across a reader's read and a GET
         self._max_module_error = max_module_error
         self._err_cnt_internal = 0
-        self._set_lock = asyncio.Lock()  # serialises one module's config PUT (Part C.5.2)
+        self._set_lock = asyncio.Lock()  # serialises one module's config PUT and GET (Part C.5.2)
         # Per-field live-push callbacks: a subclass registers {field_name: async_push_fn} entries
         # after super().__init__(); a field with no entry is persist-only (see SPECIFICATION.md C.5.2).
         self._push_callbacks: dict[str, PushFct] = {}
@@ -381,30 +426,39 @@ class SensorReader:
         self,
         name: str,
         cfg_vals: "ConfigSchema",
-        callback: "Callable[[], Awaitable[dict[str, CfgValue]]] | None" = None,
+        callback: "Callable[[], Awaitable[dict[str, CfgValue] | None]] | None" = None,
     ) -> dict[str, dict[str, int | float | str | bool | None]]:
-        cfg = schema_names(cfg_vals)
-        ret: dict[str, dict[str, int | float | str | bool | None]] = {name: dict.fromkeys(cfg)}
+        # Under the PUT's lock (Part C.5.2), so a GET reads a module before or after a PUT, never between. A failed
+        # read goes out as the {"error": "unavailable"} marker in place of the field map, never as nulls
+        # a reader would take for unset values (the /status sources' shape).
+        async with self._set_lock:
+            cfg = schema_names(cfg_vals)
+            values: dict[str, int | float | str | bool | None] = dict.fromkeys(cfg)
+            try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
+                sensor_conf = await self._get_mgr_cfg(cfg)
+                if sensor_conf is not None:
+                    if not all(k in values for k in sensor_conf):
+                        await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
+                    values.update(sensor_conf)
+            except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
+                await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
+                return {name: {"error": "unavailable"}}
+            if sensor_conf is None:
+                return {name: {"error": "unavailable"}}  # the store persisted its own entry; the callback is not read
 
-        try:  # _get_mgr_cfg is an overridable extension point - the call itself, not just its result, could misbehave
-            sensor_conf = await self._get_mgr_cfg(cfg)
-            if sensor_conf is not None:
-                if not all(k in ret[name] for k in sensor_conf):
-                    await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
-                ret[name].update(sensor_conf)
-        except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
-            await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
+            if callback is not None:
+                try:
+                    sensor_callback = await callback()
+                    if sensor_callback is None:
+                        return {name: {"error": "unavailable"}}  # the driver persisted its own entry
+                    if not all(k in values for k in sensor_callback):
+                        await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
+                    values.update(sensor_callback)
+                except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                    await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
+                    return {name: {"error": "unavailable"}}
 
-        if callback is not None:
-            try:
-                sensor_callback = await callback()
-                if not all(k in ret[name] for k in sensor_callback):
-                    await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
-                ret[name].update(sensor_callback)
-            except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
-                await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
-
-        return ret
+            return {name: values}
 
     async def _get_meas_data(self) -> "NamedTuple":
         async with self._data_lock:
@@ -446,15 +500,15 @@ class SensorReader:
                 # Whole-operation failure (invalid ConfigManager, or an internal write error) - nothing
                 # was stored, so every requested key is "Failed", not "Invalid" (which would misleadingly
                 # suggest the values themselves were the problem) and nothing is pushed live either.
-                return dict.fromkeys(data, "Failed")
+                return dict.fromkeys(data, FAILED)
 
             try:
                 for key in data:
                     # Defense-in-depth: a misbehaving _set_mgr_cfg override could report persisted=True but
                     # omit a key from results (the real ConfigManager-backed path never does).
-                    results.setdefault(key, "Failed")
+                    results.setdefault(key, FAILED)
                 for key, value in data.items():
-                    if results.get(key) != "Valid":
+                    if results.get(key) != VALID:
                         continue  # only an actual, successfully-persisted change gets pushed live
                     callback = self._push_callbacks.get(key)
                     field = fields.get(key)
@@ -469,7 +523,7 @@ class SensorReader:
                         await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
                         pushed = False
                     if not pushed:
-                        results[key] = "Failed"
+                        results[key] = FAILED
                         await self._recover_failed_push(key, old_values, cfg_vals, fields=fields)
             finally:  # a cancelled PUT still releases its staged write
                 self._commit_mgr_cfg()
@@ -609,7 +663,7 @@ class SensorReader:
         except Exception as e:
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
             return
-        if not persisted or res.get(key) not in ("Valid", "Unchanged"):
+        if not persisted or res.get(key) not in (VALID, UNCHANGED):
             # Console only: the store that refused the recovery persisted its own entry.
             self.pr.err("Recovery of", key, "after a failed push was not stored:", res.get(key))
 

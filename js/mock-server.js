@@ -16,6 +16,9 @@ const REST_PATHS = /** @type {const} */ ([
 ]);
 
 const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
+// Each flat endpoint's dispatched actions (src/asy_webserver_service.py's dispatch_keys); sent anywhere else, "Invalid".
+/** @type {Record<"networking" | "system" | "notification", string[]>} */
+const DISPATCH_KEYS = { networking: [], system: ["SystemCmd"], notification: ["PauseTime", "LightCmdLED"] };
 const PAUSE_TIME_MAX = 3600; // matches src/asy_webserver_service.py's own _PAUSE_TIME_MAX
 const DNS_LABEL_MAX = 63; // matches src/asy_dns_client.py's own DNS_LABEL_MAX
 const IPV4_OCTET_MAX = 255;
@@ -186,7 +189,8 @@ function applySparsePut(body, fieldDefs, storedConfig) {
     for (const [key, rawValue] of Object.entries(body)) {
         const field = fieldDefs.get(key);
         if (field === undefined) {
-            continue; // unknown field - silently ignored, matches ConfigManager's own convention
+            results[key] = "Invalid"; // a key the definitions do not list here, as the server answers it
+            continue;
         }
         if (field.kind === "composite") {
             let allValid = true;
@@ -233,18 +237,18 @@ function dispatchRangedAction(rawValue, min, max, dest, destKey) {
     return "Valid";
 }
 
-// Legacy's own led_cmd() bounds (the legacy firmware's sensortask module, legacy/firmware/modules/),
-// now enforced server-side too (src/sensortask_wozi.py's _notification_led_callback(), synthetic
-// FieldSchema records) instead of silently clamping/flooring - see this function's docstring below.
+// src/asy_webserver_service.py's _LIGHT_CMD_FIELDS: legacy's own led_cmd() bounds, refused, never clamped.
+const LIGHT_CMD_LED_MEMBERS = ["R", "G", "B", "T"];
 const LIGHT_CMD_LED_RGB_MIN = 0;
 const LIGHT_CMD_LED_RGB_MAX = 255;
 const LIGHT_CMD_LED_T_MIN = 0.5;
 const LIGHT_CMD_LED_T_MAX = 60.0;
+const LED_BUSY_DESCR = "LED busy - retry later"; // src/asy_webserver_service.py's _LED_BUSY_DESCR
 
 /**
- * Dispatches LightCmdLED (SPECIFICATION.md Part A.8), never persisted: "Invalid" for a non-object;
- * "Failed" for a bad R/G/B (int, 0-255) or T (float, 0.5-60.0), and for a well-formed flash arriving
- * before the last started one's T has passed (the device refuses it while a signal runs); else "Valid".
+ * Dispatches LightCmdLED (SPECIFICATION.md Part A.8), never persisted: "Invalid" for a non-object, a missing or
+ * extra member, or an R/G/B (int, 0-255) or T (float, 0.5-60.0) out of its type or range; "Failed" for a
+ * well-formed flash before the last started one's T has passed (the device refuses it while a signal runs).
  * @param {unknown} rawValue
  * @param {{busyUntil: number}} led
  * @returns {string}
@@ -254,6 +258,10 @@ function dispatchLightCmdLed(rawValue, led) {
         return "Invalid";
     }
     const payload = /** @type {Record<string, unknown>} */ (rawValue);
+    const members = Object.keys(payload);
+    if (members.length !== LIGHT_CMD_LED_MEMBERS.length || !members.every((key) => LIGHT_CMD_LED_MEMBERS.includes(key))) {
+        return "Invalid";
+    }
     for (const key of ["R", "G", "B"]) {
         const num = payload[key];
         if (
@@ -263,12 +271,12 @@ function dispatchLightCmdLed(rawValue, led) {
             num < LIGHT_CMD_LED_RGB_MIN ||
             num > LIGHT_CMD_LED_RGB_MAX
         ) {
-            return "Failed";
+            return "Invalid";
         }
     }
     const { T: t } = payload;
     if (typeof t !== "number" || !Number.isFinite(t) || t < LIGHT_CMD_LED_T_MIN || t > LIGHT_CMD_LED_T_MAX) {
-        return "Failed";
+        return "Invalid";
     }
     if (Date.now() < led.busyUntil) {
         return "Failed";
@@ -316,12 +324,12 @@ function applySensorQuirksForGet(sensorsConfig) {
 /**
  * Simulates the backend's known gap (Part H.6): a settings group's post-write hook raising
  * drops that group's fields from `result` while the response still says `res:"OK"`. Deletes one
- * key in place, once, on `controls.nextFailure === "partial-result"`, consumed either way.
- * @param {Record<string, string>} results
+ * key in place, once, on `controls.nextFailure === "partial-result"`; a one-word answer has no key.
+ * @param {Record<string, string> | string} results
  * @param {MockFetchControls} [controls]
  */
 function dropOneResultForPartialFailure(results, controls) {
-    if (controls?.nextFailure !== "partial-result") {
+    if (typeof results !== "object" || controls?.nextFailure !== "partial-result") {
         return;
     }
     controls.nextFailure = undefined;
@@ -333,10 +341,33 @@ function dropOneResultForPartialFailure(results, controls) {
 
 /**
  * @param {Record<string, unknown>} result
+ * @param {string} [descr]
  * @returns {{res: string, code: number, descr: string, result: Record<string, unknown>}}
  */
-function envelope(result) {
-    return { res: "OK", code: 0, descr: "OK", result };
+function envelope(result, descr = "OK") {
+    return { res: "OK", code: 0, descr, result };
+}
+
+/**
+ * A flat PUT's envelope: its descr carries the server's retry hint when the LED refused a command as busy
+ * (the mock's only "Failed" LED answer).
+ * @param {Record<string, string>} results
+ * @returns {{res: string, code: number, descr: string, result: Record<string, unknown>}}
+ */
+function flatPutEnvelope(results) {
+    return envelope(results, results.LightCmdLED === "Failed" ? LED_BUSY_DESCR : "OK");
+}
+
+/**
+ * One /sensors PUT entry's field definitions; undefined for an unknown sensor or an entry that is not an object.
+ * @param {Map<string, Map<string, import("./definitions.js").FieldDef>>} sensorFieldDefs
+ * @param {string} sensorKey
+ * @param {unknown} entry
+ * @returns {Map<string, import("./definitions.js").FieldDef> | undefined}
+ */
+function sensorDefsForEntry(sensorFieldDefs, sensorKey, entry) {
+    const isObject = typeof entry === "object" && entry !== null && !Array.isArray(entry);
+    return isObject ? sensorFieldDefs.get(sensorKey) : undefined;
 }
 
 /**
@@ -567,11 +598,13 @@ export function installMockFetch(defs, initialData, controls) {
             return jsonResponse(handleGet(path));
         }
         if (method === "PUT" && path === "/sensors") {
-            /** @type {Record<string, Record<string, string>>} */
+            /** @type {Record<string, Record<string, string> | string>} */
             const results = {};
             for (const [sensorKey, fields] of Object.entries(body())) {
-                const sensorDefs = sensorFieldDefs.get(sensorKey);
+                const sensorDefs = sensorDefsForEntry(sensorFieldDefs, sensorKey, fields);
                 if (sensorDefs === undefined) {
+                    // An unknown sensor, or an entry that is not an object, answers "Invalid" in place of its field map.
+                    results[sensorKey] = "Invalid";
                     continue;
                 }
                 state.sensorsConfig[sensorKey] ??= {};
@@ -602,11 +635,12 @@ export function installMockFetch(defs, initialData, controls) {
             const endpointKey = /** @type {"networking" | "system" | "notification"} */ (path.slice(1));
             const configKey = /** @type {"networkingConfig" | "systemConfig" | "notificationConfig"} */ (`${endpointKey}Config`);
             const rawBody = body();
-            // SystemCmd/PauseTime/LightCmdLED are dispatched actions, never persisted settings
-            // (Part A.8). Excluded before the generic sparse-PUT path so none reaches
-            // state[configKey], which is what keeps a later GET matching _get_settings_flat().
-            const { SystemCmd, PauseTime, LightCmdLED, ...persistableBody } = rawBody;
+            // The endpoint's dispatched actions are never persisted settings (Part A.8): excluded before the generic
+            // sparse-PUT path so none reaches state[configKey], which keeps a later GET matching _get_settings_flat().
+            const dispatchKeys = DISPATCH_KEYS[endpointKey];
+            const persistableBody = Object.fromEntries(Object.entries(rawBody).filter(([key]) => !dispatchKeys.includes(key)));
             const results = applySparsePut(persistableBody, flatDefsByEndpoint[endpointKey], state[configKey]);
+            const { SystemCmd, PauseTime, LightCmdLED } = rawBody;
             if (path === "/system" && "SystemCmd" in rawBody) {
                 results.SystemCmd = typeof SystemCmd === "string" && SYSTEM_CMDS.includes(SystemCmd) ? "Valid" : "Invalid";
             }
@@ -616,8 +650,9 @@ export function installMockFetch(defs, initialData, controls) {
             if (path === "/notification" && "LightCmdLED" in rawBody) {
                 results.LightCmdLED = dispatchLightCmdLed(LightCmdLED, led);
             }
+            const answer = flatPutEnvelope(results); // read before a partial-result drop can take the LED's word
             dropOneResultForPartialFailure(results, controls);
-            return jsonResponse(envelope(results));
+            return jsonResponse(answer);
         }
         if (method === "PUT" && path === "/status") {
             if (body().ResetErrors === true) {
@@ -630,7 +665,7 @@ export function installMockFetch(defs, initialData, controls) {
             }
             return jsonResponse({ res: "OK", code: 0, descr: "OK" });
         }
-        return jsonResponse({ res: "ERR", code: 4, descr: "Method not allowed" }, 405);
+        return jsonResponse({ res: "ERR", code: 405, descr: "Method not allowed" }, 405);
     };
 
     /**

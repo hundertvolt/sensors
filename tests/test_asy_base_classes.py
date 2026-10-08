@@ -7,6 +7,7 @@ import time
 from collections import namedtuple
 
 import machine
+import micropython
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
@@ -19,6 +20,7 @@ import asy_spi_driver
 from asy_base_classes import (
     COUNTER_CAP,
     DeviceSession,
+    HourlyWindowCounter,
     Lockable,
     LockedCounter,
     LockedFlag,
@@ -48,7 +50,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine
     from typing import Any, TypeVar
 
     import asy_config_manager as cm
@@ -666,6 +668,134 @@ def test_lockedvalue_round_trips_none_and_a_32_bit_value() -> None:
     assert run(value.get_value()) == 0xFFFFFFFF
     run(value.set_value(None))
     assert run(value.get_value()) is None
+
+
+# ---------------------------------------------------------------------------
+# HourlyWindowCounter (SPECIFICATION.md Part G): 24 fixed bins advanced lazily from the uptime seconds; a count
+# leaves the window 23-24 hours after it happened. The uptime seconds are the test's own, passed to plain calls.
+# ---------------------------------------------------------------------------
+
+
+_H = 3600  # one hour of uptime seconds
+_DAY = 24 * _H
+_T0 = 5 * _H  # the uptime the window cases start at: hour 5, past the counter's construction hour
+
+
+def test_counts_in_one_hour_sum() -> None:
+    counter = HourlyWindowCounter()
+    for t in (_T0, _T0 + 10, _T0 + _H - 1):
+        counter.add(t)
+    assert counter.total(_T0 + _H - 1) == 3
+
+
+def test_the_bins_shift_hour_by_hour() -> None:
+    counter = HourlyWindowCounter()
+    totals = []
+    for h in range(30):
+        counter.add(_T0 + h * _H)
+        totals.append(counter.total(_T0 + h * _H))
+    assert totals == list(range(1, 25)) + [24] * 6, totals  # the oldest six have left
+    counter = HourlyWindowCounter()
+    counter.add(_T0)
+    assert counter.total(_T0 + 23 * _H + _H - 1) == 1  # the last second of hour h + 23 still holds hour h
+    assert counter.total(_T0 + 24 * _H) == 0  # the start of hour h + 24 no longer does
+
+
+def test_a_count_leaves_the_window_between_23_and_24_hours() -> None:
+    late = HourlyWindowCounter()
+    late.add(_T0 + _H - 1)  # the end of an hour
+    assert late.total(_T0 + _H - 1 + 23 * _H) == 1  # 23 h later: still counted
+    assert late.total(_T0 + 24 * _H) == 0  # 23 h and 1 s later the hour's bin is reused: gone
+    early = HourlyWindowCounter()
+    early.add(_T0)  # the start of an hour
+    assert early.total(_T0 + 24 * _H - 1) == 1  # counted until the full 24 h
+    assert early.total(_T0 + 24 * _H) == 0
+
+
+def test_a_gap_of_a_day_or_more_clears_every_bin() -> None:
+    for gap in (_DAY, 10 * _DAY):
+        counter = HourlyWindowCounter()
+        for h in range(5):
+            counter.add(_T0 + h * _H)
+        assert counter.total(_T0 + 4 * _H) == 5
+        later = _T0 + 4 * _H + gap
+        assert counter.total(later) == 0, gap
+        counter.add(later)
+        assert counter.total(later) == 1, gap
+
+
+def test_a_bin_and_the_sum_saturate_at_the_cap() -> None:
+    # Structural, never by a brute-force loop: the bins are set from the test, then one more count is added.
+    counter = HourlyWindowCounter()
+    counter.add(_T0)
+    counter._bins[_T0 // _H % 24] = COUNTER_CAP
+    counter.add(_T0)
+    assert counter._bins[_T0 // _H % 24] == COUNTER_CAP  # one bin stays at the cap
+    assert counter.total(_T0) == COUNTER_CAP
+    counter = HourlyWindowCounter()
+    counter.add(_T0)
+    for i in range(24):
+        counter._bins[i] = COUNTER_CAP // 3  # every bin small-int, their sum eight times the cap
+    assert counter.total(_T0) == COUNTER_CAP
+    counter._bins[:] = [0] * 24
+    counter._bins[0], counter._bins[1] = COUNTER_CAP - 1, 1  # exactly the cap
+    assert counter.total(_T0) == COUNTER_CAP
+    counter._bins[1] = 0
+    assert counter.total(_T0) == COUNTER_CAP - 1
+
+
+def test_reset_clears_every_bin() -> None:
+    counter = HourlyWindowCounter()
+    for h in range(3):
+        counter.add(_T0 + h * _H)
+    counter.reset()
+    assert counter.total(_T0 + 2 * _H) == 0
+    assert counter._bins == [0] * 24
+    counter.add(_T0 + 2 * _H + 5)  # counting resumes in the current hour
+    assert counter.total(_T0 + 2 * _H + 5) == 1
+    assert counter.total(_T0 + 2 * _H + 23 * _H) == 1  # still within its hour's window
+
+
+# 1,000 plain calls per window at 10-minute steps: each window crosses 83 hour changes and wraps the bins three times.
+_WINDOW_CALLS = 1000
+_WINDOW_STEP_S = 600
+
+
+def test_no_add_or_read_allocates() -> None:
+    # The calls run with the heap locked, so any allocation raises (py/gc.c); the settrace build's per-call frame
+    # is skipped while it is locked (py/profile.c), so the zero is exact on both binaries, transients included.
+    counter = HourlyWindowCounter()
+    counter.add(_T0)  # the warm-up add
+    nets = [0, 0, 0]
+    raised = [False, False, False]
+    for k in range(3):
+        start = _T0 + k * _WINDOW_CALLS * _WINDOW_STEP_S
+        before = gc.mem_alloc()
+        micropython.heap_lock()
+        try:
+            for i in range(_WINDOW_CALLS // 2):
+                counter.add(start + i * _WINDOW_STEP_S)
+                counter.total(start + i * _WINDOW_STEP_S)
+        except MemoryError:
+            raised[k] = True
+        finally:
+            micropython.heap_unlock()
+        nets[k] = gc.mem_alloc() - before
+    assert raised == [False, False, False], ("the window counter allocated with the heap locked", raised)
+    assert min(nets) <= 0, nets
+    assert counter.total(_T0 + 3 * _WINDOW_CALLS * _WINDOW_STEP_S) == 0  # a day past the last count
+
+
+def test_the_bins_are_allocated_once_at_construction() -> None:
+    counter = HourlyWindowCounter()
+    bins = counter._bins
+    assert len(bins) == 24
+    counter.add(_T0)
+    counter.total(_T0 + 3 * _H)  # an hour change
+    counter.add(_T0 + 30 * _H)  # a gap past the whole window
+    counter.reset()
+    counter.total(_T0 + 31 * _H)
+    assert counter._bins is bins
 
 
 # ---------------------------------------------------------------------------
@@ -1388,14 +1518,15 @@ def test_get_dict_cfg_merges_callback_result() -> None:
     assert result == {"Sensor": {"SampleInterval": 5}}
 
 
-def test_get_dict_cfg_callback_exception_is_caught() -> None:
+def test_get_dict_cfg_a_raising_callback_sends_the_unavailable_marker() -> None:
     reader = SensorReader(Meas(20.0, 50), "", max_module_error=3)
 
     async def bad_callback() -> "dict[str, int | float | str | None]":
         raise RuntimeError("sensor read failed")
 
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI, callback=bad_callback))
-    assert result == {"Sensor": {"SampleInterval": None}}  # falls back to defaults, doesn't raise
+    assert result == {"Sensor": {"error": "unavailable"}}  # in place of the map: never nulls that read as unset
+    assert _entries(reader, "E", "CFG_CALLBACK_RAISED") == 1
 
 
 def test_get_dict_cfg_callback_extra_key_is_still_merged() -> None:
@@ -1434,17 +1565,101 @@ def test_get_dict_cfg_mgr_cfg_expected_keys_only_do_not_warn() -> None:
     assert reader.pr._err_count == 0
 
 
-def test_get_dict_cfg_mgr_cfg_update_exception_is_caught() -> None:
-    # _get_mgr_cfg is an override point (dict[...] | None per its type contract, but that's not
-    # statically enforced on a runtime-misbehaving subclass) - a value that isn't actually
-    # dict-like must not let ret[name].update(sensor_conf) raise out of _get_dict_cfg.
+def test_get_dict_cfg_an_unmergeable_mgr_cfg_result_sends_the_unavailable_marker() -> None:
+    # _get_mgr_cfg is an override point whose return type is not enforced at runtime: a value that cannot be
+    # merged raises inside _get_dict_cfg, which logs it and sends the marker, never raising out.
     class BadMgrCfgReader(SensorReader):
         async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | None] | None":
             return 42  # type: ignore[return-value]
 
     reader = BadMgrCfgReader(Meas(20.0, 50), "", max_module_error=3)
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI))
-    assert result == {"Sensor": {"SampleInterval": None}}  # update(42) raised TypeError - falls back to all-None
+    assert result == {"Sensor": {"error": "unavailable"}}
+    assert _entries(reader, "E", "CFG_GET_RAISED") == 1
+
+
+class _CountingMgrCfgReader(SensorReader):
+    # Counts its store reads, so a test sees whether a GET reached the store at all.
+    def __init__(self) -> None:
+        super().__init__(Meas(20.0, 50), "", max_module_error=3)
+        self.mgr_reads = 0
+
+    async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        self.mgr_reads += 1
+        return {"SampleInterval": 7}
+
+
+def test_a_config_get_waits_for_the_modules_write_lock() -> None:
+    # The GET takes the lock a PUT holds end to end (Part C.5.2), so it reads the module before or after
+    # a PUT, never between: while the lock is held the store is not read at all.
+    reader = _CountingMgrCfgReader()
+
+    async def scenario() -> "tuple[int, bool, dict[str, dict[str, int | float | str | bool | None]]]":
+        await reader._set_lock.acquire()
+        task = asyncio.create_task(reader._get_dict_cfg("Sensor", _VAL_SI))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        reads_held, done_held = reader.mgr_reads, task.done()
+        reader._set_lock.release()
+        return reads_held, done_held, await task
+
+    reads_held, done_held, result = run(scenario())
+    assert (reads_held, done_held) == (0, False)
+    assert result == {"Sensor": {"SampleInterval": 7}}
+    assert reader.mgr_reads == 1
+    assert not reader._set_lock.locked()
+
+
+class _FailingReadReader(SensorReader):
+    # A store whose read raises, answers None after persisting its own entry (as a store or driver does), or reads.
+    def __init__(self, store: str) -> None:
+        super().__init__(Meas(20.0, 50), "READ", max_module_error=3)
+        self._store = store
+
+    async def _get_mgr_cfg(self, _cfg: "list[str]") -> "dict[str, int | float | str | bool | None] | None":
+        if self._store == "raise":
+            raise OSError(errno.EIO, "store read failed")
+        if self._store == "none":
+            await self.pr.err_s("store read failed", errno=code("E", "CHIP_GET"))
+            return None
+        return {"SampleInterval": 7}
+
+
+def test_a_failed_config_read_sends_the_unavailable_marker_in_place_of_the_map() -> None:
+    # One case per path: the store raising or answering None (the callback then never read), the callback
+    # raising or answering None. Each sends exactly the marker and keeps exactly its own one entry.
+    calls: list[str] = []
+
+    def reading(outcome: str) -> "Callable[[], Awaitable[dict[str, int | float | str | bool | None] | None]]":
+        async def callback() -> "dict[str, int | float | str | bool | None] | None":
+            calls.append(outcome)
+            if outcome == "raise":
+                raise OSError(errno.EIO, "chip read failed")
+            if outcome == "none":
+                await reader.pr.err_s("chip read failed", errno=code("E", "CHIP_GET"))
+                return None
+            return {"SampleInterval": 9}
+
+        return callback
+
+    cases: tuple[tuple[str, str, str, list[str]], ...] = (
+        ("raise", "read", "CFG_GET_RAISED", []),
+        ("none", "read", "CHIP_GET", []),
+        ("read", "raise", "CFG_CALLBACK_RAISED", ["raise"]),
+        ("read", "none", "CHIP_GET", ["none"]),
+    )
+    for store, outcome, entry, called in cases:
+        calls.clear()
+        reader = _FailingReadReader(store)
+        assert run(reader.setup()) is True
+        result = run(reader._get_dict_cfg("READ", _VAL_SI, callback=reading(outcome)))
+        assert result == {"READ": {"error": "unavailable"}}, (store, outcome, result)
+        assert calls == called, (store, outcome, calls)
+        assert reader.pr._err_count == 1 and _entries(reader, "E", entry) == 1, (store, outcome, entry)
+    reader = _FailingReadReader("read")
+    assert run(reader._get_dict_cfg("READ", _VAL_SI)) == {"READ": {"SampleInterval": 7}}
+    assert run(reader._get_dict_cfg("READ", _VAL_SI, callback=reading("read"))) == {"READ": {"SampleInterval": 9}}
+    assert reader.pr._err_count == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1795,10 +2010,9 @@ def test_sensorreaderconfig_get_dict_cfg_reads_real_config_file() -> None:
         _remove(path_prefix + "config_temp2.cfg")
 
 
-def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cfg() -> None:
-    # An empty default_vals schema makes ConfigManager itself invalid (see asy_config_manager.py's
-    # own "Defaults are empty" check) - confirms that invalidity propagates cleanly all the way up
-    # through SensorReaderConfig's own public surface, not just when calling ConfigManager directly.
+def test_sensorreaderconfig_an_invalid_store_sends_the_unavailable_marker_through_get_dict_cfg() -> None:
+    # An empty schema makes the ConfigManager invalid ("Defaults are empty"); its None read reaches the GET as
+    # the marker, and the entry is the store's own (CFG_NOT_VALID), none added by the reader.
     path_prefix = _SHARED_CFG_DIR
     _remove(path_prefix + "config_badschema.cfg")
     try:
@@ -1806,7 +2020,10 @@ def test_sensorreaderconfig_malformed_schema_propagates_none_through_get_dict_cf
         run(reader.cfgmgr.setup())
         assert reader.cfgmgr.valid is False
         result = run(reader._get_dict_cfg("Sensor", ()))
-        assert result == {"Sensor": {}}
+        assert result == {"Sensor": {"error": "unavailable"}}
+        assert reader.pr._err_count == 0
+        log = run(reader.cfgmgr.pr.get_log())[reader.cfgmgr.pr.name]
+        assert log["ErrNum"][-1] == code("E", "CFG_NOT_VALID") and log["ErrType"][-1] == "E", log
     finally:
         _remove(path_prefix + "config_badschema.cfg")
 

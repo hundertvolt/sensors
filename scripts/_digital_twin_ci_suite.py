@@ -116,8 +116,8 @@ _WIFI_PERSISTED_WARNINGS = 2
 _WIFI_PERSISTED_EVENTS = _WIFI_SCRIPTED_FAILURES + 1  # the counter: five failures, then the fallback
 
 # ResetErrors resets every source at once, each FRAM-backed one still paying its own chunk write, so it
-# far exceeds _http()'s 5s default. The value below is DERIVED from the server's own _DEFAULT_OUTER_CAP_S;
-# README.md has the derivation and BACKLOG item 24 the real-hardware measurements.
+# far exceeds _http()'s 5s default. The value below is derived from the server's own _DEFAULT_OUTER_CAP_S;
+# README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
 # @tunable web.outer_cap_s = 15.0
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
 # @tunable l2.reset_errors_timeout_margin_s = 2.0

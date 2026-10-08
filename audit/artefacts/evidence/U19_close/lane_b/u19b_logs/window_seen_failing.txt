@@ -1,0 +1,3 @@
+Traceback (most recent call last):
+  File "../u19b_logs/window_tests.py", line 5, in <module>
+ImportError: can't import name HourlyWindowCounter

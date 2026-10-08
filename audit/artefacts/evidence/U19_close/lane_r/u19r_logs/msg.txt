@@ -1,0 +1,26 @@
+U19 lane R: the generated per-device REST reference and the Microdot hash pin
+
+- buildgen/api_reference.py (new): generate_api_reference(model, src_dir) reads
+  asy_webserver_service.ROUTES, the four result words and _STANDARD_CODES by AST and
+  lists each route's fields from the device's definitions (GET: no dispatch-only or
+  defaultValue field; PUT: no readonly field; every errcount module under GET /status);
+  an unreadable table, an unregistered route, a malformed definitions shape or a field
+  key classified neither as an API fact nor as the page's own is a BuildError.
+  api_reference_json() is its one serialisation (sorted keys).
+- scripts/_generate_sensortask_modules.py writes build/generated_src/api/<device>.json
+  beside the definitions; every output of a device is built before the first is
+  written, so a definitions or reference BuildError is the one-line report, exit 1,
+  with none of that device's files behind (it was a traceback after two writes).
+- tests_scripts/test_api_reference.py (new): per device, byte-identical over two
+  generations under different hash seeds; exactly ROUTES, no legacy path; every @web
+  field under its route and none where the route never carries it; result words and
+  envelope codes as the source spells them; the fail-loud cases.
+- tests_scripts/test_vendored_microdot.py (new): ext/microdot.py, ext/LICENSE-microdot
+  and the three ext/typings/microdot stubs pinned by sha256 to v2.7.0, the table
+  complete, its tag the one THIRD_PARTY_LICENSES.md records.
+- tests_scripts/test_generate_sensortask_modules.py: the api/ output and the
+  later-stage failure path.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+

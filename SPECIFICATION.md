@@ -380,8 +380,14 @@ features as today's deployed units, not a feature change.
   window; a selected AP not reporting `STAT_GOT_IP` is re-activated only if inactive and counts as
   having no client (`lib/cyw43-driver/src/cyw43_lwip.c:300-323`). A station joined to the hotspot
   shows its own pattern, an even 1.5 s on, 1.5 s off, so a phone holding the access point never
-  looks like a working home link (agent, 2026-10-06); how long such a client may hold it is not
-  bounded, as in the legacy firmware. A second failed STA streak after a hotspot phase deactivates
+  looks like a working home link (agent, 2026-10-06). How long such a client may hold it is
+  not bounded, as in the legacy firmware, and its leaving needs no reboot: the next stations
+  check starts the hotspot window, whose end retries STA with the stored settings (owner,
+  2026-10-08, to 'Bound how long a hotspot client holds the unit?': 'a, because the user may
+  want to do other settings after setting the wifi, still using the same coupled device. it
+  only must be sure that once no clients are connected to the hotspot anymore, the device
+  will try to connect to the actual wifi settings without a reboot required.'). A second
+  failed STA streak after a hotspot phase deactivates
   Wi-Fi permanently, a terminal state that task restarts keep and only a power cycle clears (owner,
   2026-08-11, `acc4993`); it shows its own LED pattern, as "Missing WLAN configuration" does (owner,
   2026-09-29) — 0.1 s on, 2.9 s off — and like every Wi-Fi pattern it follows the Wi-Fi LED setting:
@@ -433,45 +439,105 @@ source), a `QUERY` route decorator and a `Vary` header merge that only the sessi
 (this repo uses neither): the same 1,024 B `send_file` reads, per-header writes and `Request` attribute table,
 so the move shifted none of Part H.7's serving walls.
 
+**When the Microdot pin moves** (a recorded decision, `THIRD_PARTY_LICENSES.md`), re-check against
+the new source, then update the hash test (`tests_scripts/test_vendored_microdot.py`): the stand-ins
+`_RequestLike`/`_Holder` (`asy_api_response.py`) and `_MicrodotApp`/`_StreamLike`
+(`asy_webserver_service.py`) against `Request`, `Microdot` and the stream calls `handle_request()`
+makes (`ext/microdot.py:288`, `:942`, `:1415-1440`, `:400-434`); `MUTED_SOCKET_ERRORS` still holding
+errno 32 (`:56-61`), which the head guard's quiet refusal relies on; `Request.max_readline`,
+`max_content_length` and `max_body_length` still class attributes, the body read before dispatch
+(`:297`, `:308`, `:317`, `:425-426`); `Response.send_file_buffer_size`, `is_head` and
+`send_file(stream=…)` unchanged (`:567`, `:596`, `:774`); `Request.sock` still the reader/writer
+pair (`:434`); the order `Request.create()` → `dispatch_request()` (`:1418`, `:1428`; I.6); the
+module-level `print_exception` still the name all three print sites read (`:49`, `:1426`, `:1536`,
+`:1561`), which `WebserverService` rebinds; and whether the vendored stub (`ext/typings/microdot/`)
+annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decorator exemption goes).
+
 - **Every exception raised by our own code inside a route handler — including a before/after-request
   hook, and `MemoryError` — is already caught by Microdot itself, per request, and can never crash
   the server.** `dispatch_request()` wraps the whole handler chain in `except HTTPException` /
   `except Exception`. `HTTPException` (from `abort()`) resolves by numeric status code; any other
   exception resolves by exact class then MRO walk, so one `@app.errorhandler(Exception)` is a
-  catch-all for any subtype. Deployed `legacy/firmware/python/CommonDrivers/microdot.py` registers
+  catch-all for any subtype. The legacy `legacy/firmware/python/CommonDrivers/microdot.py` registers
   no handler at all (Microdot's bare default response, safe but not our shape).
   `src/asy_webserver_service.py` registers shaped-JSON handlers for 400/404/405/413/500 plus a
   catch-all persisting the exception into `pr.err_s()`/FRAM history.
 - **The one gap: exceptions raised while writing the response itself.** `Response.write()` only
   catches `OSError`, muting a short allow-list of expected socket errors — anything else propagates
-  uncaught out of the per-connection handler. By then the response is already in flight, so there's
-  no hook left to convert the failure into a reply — the client hits a timeout, as expected.
-- Microdot's own exception logging (`print_exception`) is **not** wired into this project's
-  `PrintLog`/FRAM logging — anything caught by the blanket catch needs an `@app.errorhandler` calling
-  `pr.err_s(...)` to leave a trace.
+  out of `handle_request()`. By then the response is already in flight, so there's no hook left to
+  convert the failure into a reply — the client hits a timeout, or a short read where the response
+  carries its `Content-Length`. `_serve()` catches what propagates and never raises out of its task:
+  an `OSError` Microdot does not mute is traced as `wrnno` 51, anything else as `errno` 23.
+  `Response.write()` also mutes a reset (ECONNRESET, EPIPE) from a response write; the stream proxy
+  marks the peer gone when a write raises `OSError`, so such a client counts in `HTTPDropped` and no
+  further write is tried.
+- Microdot prints an exception with its module-level `print_exception()` before it dispatches to our
+  handler (the read phase, a handler, a failing handler; `ext/microdot.py` at the pinned tag).
+  `WebserverService` rebinds that module name to its level-gated logger at construction, the file
+  itself untouched (CLAUDE.md's vendoring rule), so `DebugLevel` 0 keeps it off the console, and the
+  catch-all `errorhandler(Exception)` persists the entry (agent, 2026-10-06). A `MemoryError` alone
+  bypasses the gate: its text goes through the ungated `console()` line (G.2), so the memory gates
+  see it (I.4(e); agent, 2026-10-08). The rebind is process-wide: the last service constructed owns
+  it.
+- Microdot's request read phase passes a muted socket `OSError`, re-raises any other `OSError` and
+  only prints any other exception before dispatching with no request (`ext/microdot.py:1415-1428`),
+  answered 400, so a read timeout (`asyncio.TimeoutError`, not an `OSError`) is observable only in
+  this project's stream proxy, which traces it as `wrnno` 49.
 - `Request.json` has no internal guarding (raises straight out on malformed body) — already
   contained by the blanket catch; guarding it ourselves is about a precise reply, not crash
   prevention.
-- Request size is bounded before any handler runs: `max_content_length` (16KB default, 413 if
-  exceeded) → tightened to **2048** bytes in `asy_webserver_service.py`, with `max_body_length`
-  bound to the same value so an oversized body is never buffered (Part I.6); `max_readline` (2KB
-  default).
+- Request size is bounded before any handler runs: `max_content_length` (16 KB default, 413 if
+  exceeded) → tightened to **2048** bytes (Part N `web.max_content_length`), with `max_body_length`
+  bound to the same value so an oversized body is never buffered (Part I.6); `max_readline` (2 KB
+  default) — and the request head is bounded before Microdot parses it. The reader proxy reads a head
+  line in pieces of at most `chunk_bytes` and never more than `max_readline` + 1 bytes, then refuses:
+  a line over `max_readline`; more than 32 headers (`web.max_header_lines`); a head over 2,048 B,
+  request line, headers and blank line together (`web.max_head_bytes`), without which 33 lines of
+  `max_readline` could hold about 67 KB; a line that is not UTF-8; a request line not of three tokens,
+  or whose version has no `/`; a header without `:`; a `Content-Length` that is empty, not ASCII
+  digits, or sent twice; any `Transfer-Encoding` (Microdot would read a chunked body as empty); and a
+  body cut short by EOF. A refused head raises errno 32, which is in Microdot's muted list, so it is
+  answered 400 without a console traceback and traced as `wrnno` 61. With every size bounded,
+  `readexactly(n)` only ever sees `0 <= n <= max_body_length`.
 - The Microdot server task is wired into `start_and_check_tasks()` like every other module — a dead
   server task restarts automatically with the same decaying-failure/reboot fallback, no
   Microdot-specific code needed, since **each accepted connection runs in its own independent
   `asyncio.Task`** (confirmed against `extmod/asyncio/stream.py`) — the one confirmed
   `Response.write()` gap only ever takes down that one client's connection, never the accept loop.
+- **Recovery for the webserver's own connection faults** (owner, 2026-09-30: smallest blast radius
+  first): a client fault — a refusal, a bad head, a reset, a per-call or outer-cap timeout, a stream
+  error — ends that one connection and releases its slot (the smallest rung), traced once; it never
+  restarts the server task. A send that finds no room in the lwIP send buffer answers `EAGAIN`, and
+  its task waits for room without holding the loop until the connection's per-call timeout ends it;
+  a write that meets `ERR_MEM` while room is reported still waits inside the pinned
+  `extmod/modlwip.c` for up to 10 s with the whole VM held (B.14.2.1). A failed `start_server()` is
+  tried three times in all, five seconds apart, so the last attempt comes one full lwIP close linger
+  (10 s) after the first (`web.start_retries`, `web.start_retry_s`); each failure prints at the
+  configured level, the last persists `wrnno` 62 and ends the task. A `socket()` failure holds
+  nothing; a `bind()`/`listen()` failure holds its pcb until a collection
+  (`extmod/asyncio/stream.py:184-188` never closes it), up to two across the attempts. The task
+  supervisor, reboot and watchdog stay above it unchanged. `_serve()` never raises out of its task.
+- **Client traffic, a task that ends with an exception and an exception Microdot reports print
+  nothing at the shipped `DebugLevel` 0**: the last two go through level-gated loggers (F.1, above);
+  the CYW43 driver's own warnings still reach the console (F.1). At a raised level every console write
+  waits up to 500 ms while a USB host program holds the port open without reading
+  (`MICROPY_HW_USB_CDC_TX_TIMEOUT`, `ports/rp2/mphalport.h:36`, `shared/tinyusb/mp_usbd_cdc.c:129`;
+  never when the host merely enumerated the device or no host is attached), so one printed line of
+  several writes can stall the loop about 2 s — an accepted debug-mode limitation (owner,
+  2026-09-30). A raised `DebugLevel` persists across reboots, so with such a host attached a crash or
+  a busy log can starve the watchdog at every boot; the exits are closing the host program,
+  unplugging, or `PUT /system {"DebugLevel": 0}` inside the window (agent, 2026-10-06).
 - `errorhandler()`'s two lookup keys are independent: numeric status code (what `abort()` resolves
   through, by `exc.status_code`, never class) vs. exception class (exact then MRO). Registering
   `@app.errorhandler(HTTPException)` never fires for `abort()`.
-- **Captive-portal hotspot redirect fallback**: `_serve_static()`'s `except OSError` branch (no
-  matching file) redirects to `/` (302) instead of 404 whenever `is_hotspot_active: Callable[[],
-  bool] | None` is provided and returns `True` (default `None` = old always-404 behavior).
-  The generated `sensortask_wozi.py` wires this to `WifiService.is_hotspot_active()`. This is what makes phones'
-  captive-portal probes (`generate_204`, `hotspot-detect.html`) trigger the OS "Sign in to network"
-  popup instead of a silent 404, while `asy_captive_dns.py` answers every A/ANY query with the AP's
-  IP and every other type with an empty NOERROR reply (C.7.5).
-- Deployed `legacy/firmware/python/CommonDrivers/microdot.py` already implements essentially the
+- **Captive-portal hotspot redirect fallback**: `_StaticRoutes.serve()`'s `except OSError` branch (no
+  matching file) redirects to `/` (302) instead of 404 whenever `StaticSite.is_hotspot_active` is
+  provided and returns `True` (`None` = always 404). Every generated `sensortask_<device>.py` wires it
+  to `WifiService.is_hotspot_active()`. This is what makes phones' captive-portal probes
+  (`generate_204`, `hotspot-detect.html`) trigger the OS "Sign in to network" popup instead of a
+  silent 404, while `asy_captive_dns.py` answers every A/ANY query with the AP's IP and every other
+  type with an empty NOERROR reply (C.7.5).
+- The legacy `legacy/firmware/python/CommonDrivers/microdot.py` already implements essentially the
   same protective architecture, predating `ext/microdot.py`'s vendoring — one drift: its
   `HTTPException` branch invokes a status-code handler directly rather than through the pinned tag's
   async-safe `invoke_handler()` wrapper — irrelevant today since neither app registers handlers
@@ -626,11 +692,11 @@ under CLAUDE.md's implicit-FRAM-wiring rule):
     wrapper module's exact shape and generated variable names.
 14. `app = Microdot()`, then `webserver = WebserverService(app, routes=RouteSources(sensors=(...),
     ..., error_sources=_collect_error_sources()), serving=ServingLimits(..., host=web_host,
-    port=web_port), static=StaticSite(mount="/html", index_file="index.html",
-    is_hotspot_active=conn.is_hotspot_active), log=log_fram)` — **chunk 16** (as of WP1, under the
-    same implicit-if-FRAM-present rule as every other mandatory-infra module); no on-flash config,
-    no `cfgmgr`. `static=` registers the static route pair last, so an exact-match API route always
-    wins.
+    port=web_port), uptime_s=sysfunct.get_uptime, static=StaticSite(mount="/html",
+    index_file="index.html", is_hotspot_active=conn.is_hotspot_active), log=log_fram)`
+    — **chunk 16** (as of WP1, under the same implicit-if-FRAM-present rule as every other
+    mandatory-infra module); no on-flash config, no `cfgmgr`. `static=` registers the static route
+    pair last, so an exact-match API route always wins.
 15. **`await x.setup()` batch**: `fram → sysfunct → conn → ntp → neopixel → scd30 → sgp40 →
     bmp3xx → notification → webserver` (`dev` adds `isl29125` after `bmp3xx` and
     `uart_link_init → uart_link_resp` after `notification`). `fram.setup()` comes first because
@@ -733,17 +799,29 @@ Full coverage: `tests/_sensortask_scenarios.py` (imported by the six `tests/test
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
+The normative REST reference is generated per device: `buildgen/api_reference.py` writes
+`build/generated_src/api/<device>.json` (gitignored with `build/`, never frozen) from the one route
+table (`ROUTES` in `asy_webserver_service.py`), the device's generated definitions, the result words
+and the envelope code catalog (L.4). It holds `device`, `envelopeCodes`, `resultWords` and `routes`
+in `ROUTES` order, each route with its fields' facts: a GET lists every field except the
+dispatch-only ones and those with a `defaultValue`, a PUT every field except the readonly ones, and
+`GET /status` every errcount module. `tests_scripts/test_api_reference.py` pins it; this section is
+its prose summary.
+
 `WebserverService` is **registration-based**: the generated module hands it one `RouteSources`
 object (`sensors`, `settings`, `build_info`, `system_cmd`, `notification_led`, `notification_pause`,
-`status_sources`, `maintenance_sensors`, `error_sources`), a `ServingLimits` and a `StaticSite`, and
-it registers the REST surface from them.
+`status_sources`, `maintenance_sensors`, `error_sources`), a `ServingLimits`, the device's uptime
+reader (`uptime_s`, which advances `HTTPDropped`'s window) and a `StaticSite`, and it registers the
+routes of `ROUTES` in order, then its hooks, error handlers and the static routes.
 
 **Six endpoints**: `/measurements`, `/sensors`, `/networking`, `/system`, `/status`,
 `/notification`. `/measurements`/`/status` are the only live-data endpoints; the rest are pure
 settings.
 
 - **GET shapes**: `/measurements` → `{"SCD30": {...}, "SGP40": {...}, "BMP3XX": {...}}` (each
-  `get_dict_data()`); `/sensors` → same, each `get_dict_cfg()`; `/networking` → `SSID, PW(masked),
+  `get_dict_data()`); `/sensors` → same, each `get_dict_cfg()`, a module whose config cannot be read
+  sending the unavailable marker in place of its field map, and the flat routes the marker in place
+  of each field of such a module's settings group (C.6); `/networking` → `SSID, PW(masked),
   Country, Hostname, HotspotPW(masked), LEDWifiOn, NTPHost, NTPOffset, NTPInterval, DNSFallback`;
   `/system` → `DebugLevel,
   GMTOffset, DSTOffset` plus one nested, never-flattened `build` sub-entry (SPECIFICATION.md Part L
@@ -763,26 +841,52 @@ settings.
   resolved once per boot, unchanged by a restart of the uptime task. `UTCTime` — `null` until the
   first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `networking`'s link
   fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot, refreshed
-  each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8).
+  each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8). `WifiTS` —
+  that snapshot's UTC time (the Wi-Fi task's `TS`), `null` until the first NTP sync, so a stale
+  value shows the Wi-Fi task stalled, judged against `UTCTime` (owner, 2026-09-29). `HTTPDropped` —
+  the web connections dropped in the last 24 hours, at hourly resolution: a refusal at the ceiling,
+  a refused head, or a peer reset before or during its response, which the error history alone shows
+  only as entries spending one slot per run of identical codes; held in 24 hourly bins allocated
+  once and advanced from the uptime seconds (the hourly window counter, G.2), each bin and the sum
+  capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it happened; no drop, read
+  or hour change allocates; `ResetErrors` clears it; each drop is also traced once (A.5; owner,
+  2026-10-01). A 413 is answered, so it is not a drop.
   `SGP40_BackupTS`/`SGP40_RestoreTS` — `null` = none since boot,
   `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
   `ConfigManager` (`CFGMGR_<name>`).
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
   already `{name: {...}}`, so indexing doubled it into `{"SCD30": {"SCD30": {...}}}`.
-- **PUT shapes** — sparse JSON, no `cmd` envelope: present fields apply, omitted stay untouched,
-  unknown fields ignored. `/measurements` — no PUT. `/sensors` — per-sensor field subsets; SCD30
+- **PUT shapes** — sparse JSON, no `cmd` envelope: present fields apply, omitted stay untouched, an
+  unknown field (or unknown sensor) answers `"Invalid"`; the server answers every submitted key.
+  `/measurements` — no PUT. `/sensors` — per-sensor field subsets, an unknown sensor or a sensor
+  entry that is not an object answering `"Invalid"` in place of its field map; SCD30
   compares against a fresh chip snapshot and writes only what changed (compare-before-write, G.2),
-  its store being the chip's own NVM (no `cfgmgr`, C.4.3). `/networking` — WiFi
-  fields fire `reconnect_wifi()`, NTP fields fire `ntp_force_sync()`, `LEDWifiOn` and `DNSFallback`
-  fire nothing — one `SettingsGroup` per subset keeps these independent. `/system` — settings +
-  `"SystemCmd": "reboot"|"bootloader"|"mempause"` (enum-validated; `mempause` duration fixed 300s).
-  `/status` — `{"ResetErrors": true}` only: every registered error source resets concurrently, and
-  `result.ResetErrors` answers `"Valid"`, or `"Failed"` when a store's write failed; any other value
-  answers `"Invalid"`; a body without the key resets nothing. `/notification` — settings + `LightCmdLED` (R/G/B/T,
-  refused with "Failed" while a signal runs) + `PauseTime` (range-checked 0-3600, rejected not clamped,
-  before reaching
-  `NotificationService.set_override_led()`).
+  its six chip keys stored in the chip's own NVM and its three FRC keys in its config file (C.4.3).
+  `/networking` — every WiFi field (`SSID`, `PW`, `Country`, `Hostname`, `HotspotPW`) fires
+  `reconnect_wifi()`, also when sent from the hotspot page: the reconnect leaves the hotspot and
+  tries the stored network (owner, 2026-10-08: '2. a.' to 'Leave the hotspot after a
+  non-credential PUT?', whose (a) reads 'keep it: any Wi-Fi field reconnects, on every device'),
+  about 5 s after the PUT even with a client still joined (owner, 2026-10-08: 'If Wifi is changed,
+  connect to it in reasonable time. Further settings can be done within the Wifi, no need to keep
+  it on the hotspot. Otherwise, it might be stuck with stale clients which connected.'); NTP
+  fields fire `ntp_force_sync()`, `LEDWifiOn` and `DNSFallback` fire nothing — one
+  `SettingsGroup` per subset keeps these independent. `/system` — settings +
+  `"SystemCmd": "reboot"|"bootloader"|"mempause"`: a command runs only on its exact word, matched as
+  a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
+  300 s lives in the command callback. `/status` — `{"ResetErrors": true}` only: every registered
+  error source resets concurrently, `HTTPDropped`'s window included, and `result.ResetErrors` answers
+  `"Valid"`, or `"Failed"` when a store's write failed; any other value, and every other key, answers
+  `"Invalid"`; a body without the key resets nothing. `/notification` — settings + `LightCmdLED`
+  (exactly `R`/`G`/`B`, ints 0-255, and `T`, a float 0.5-60.0 s, validated in the webserver through
+  synthetic schemas like every schema-backed field; answered `"Failed"` while a signal is queued or
+  running (owner, 2026-09-29), and the refusal tells the caller to try again later, the envelope's
+  `descr` reading "LED busy - retry later" (owner, 2026-10-02)) + `PauseTime` (range-checked 0-3600,
+  refused not clamped, validated the same way, before reaching
+  `NotificationService.set_override_led()`). A key sent to the wrong flat route (`SystemCmd` to
+  `/networking`) is unknown there.
+- **Envelope**: `res`/`code`/`descr`/`result` per C.5.3: `res` is `"OK"` when the request was
+  processed; a per-field outcome is detail in `result`.
 
 **Numeric coercion policy** (`asy_config_manager.py`'s per-kind validators `checked_int()`/
 `checked_float()`/`checked_numeric()`, behind `type_or_range_error()`): an int is allowed for a
@@ -794,22 +898,28 @@ float bounds are checked against 2**24 statically (`tests_scripts/test_config_sc
 is stored, cached and compared in the single-precision form the file reloads as. `js/mock-server.js`
 mirrors the policy; the browser has doubles only — a known mock gap (H.4).
 
-**GET copy-safety**: `get_dict_data()`/`ConfigManager.get_dict()`/`PrintLogHistory.get_log()` all
-build a fresh dict/list per call with no `await` mid-construction, so cooperative scheduling makes
-each snapshot atomic. SCD30's six chip fields come from one locked `get_config_snapshot()` batch. **One open exception**:
-three of `BMP3XX_Reader.get_dict_cfg()`'s fields are live hardware-readback fields whose callback
-awaits mid-construction, so a concurrent write can mix pre/post-write values across fields (BACKLOG.md).
+**GET copy-safety**: `get_dict_data()`/`ConfigManager.get_dict()`/`PrintLogHistory.get_log()` build
+a fresh dict or list per call with no `await` mid-construction; a config GET and a PUT on one module
+are serialised by the module's write lock (`SensorReader._set_lock`, C.8), and `SCD30_Reader`/
+`BMP3XX_Reader`/`ISL29125_Reader` read their live hardware fields through one locked
+`get_config_snapshot()` call, so a GET never mixes pre- and post-write values (owner, 2026-09-26). A
+config GET on a chip-backed module costs one chip snapshot per request, taken under the device
+session like any read (SCD30: its six chip settings; BMP3XX: its oversampling and filter fields;
+ISL29125: its register snapshot, plus a re-apply and `wrnno` 31 when the chip diverged from its
+shadow), and waits behind a PUT, a chip-reset re-apply or a recovery rung on its module, bounded by
+it (C.8).
 
 Connection hardening (owner, 2026-08-12, `ed48887`: 'reject when full, drop stale connections, never
 wedge indefinitely'): per-call and outer-cap timeouts are fixed at construction, not REST-exposed
 (owner, 2026-08-12, `ee5310c`); a connection over the ceiling is closed silently, no 503 (owner,
-2026-08-12); no bespoke whole-server restart — the generic supervisor covers the webserver task
-(owner, 2026-08-12); duplicate registration is last-wins by construction (owner, 2026-08-12; the
-no-guard reason is the agent's); every response carries `Connection: close` (owner, 2026-08-12: 'do
-whatever is in accordance with the official protocol spec'); a connection reclaimed by a timeout
-logs a warning, not an error (owner, 2026-08-12: 'would be good to see when a connection ran into a
-timeout even without a full restart, warning in that case, no error'). Implementation:
-`WebserverService`/`_TimeoutStreamProxy` and `tests/test_asy_webserver_service.py`.
+2026-08-12), silent to the client while the device traces and counts it, so a repeat leaves evidence
+(`HTTPDropped`, A.5; owner, 2026-09-29); no bespoke whole-server restart — the generic supervisor
+covers the webserver task (owner, 2026-08-12); duplicate registration is last-wins by construction
+(owner, 2026-08-12; the no-guard reason is the agent's); every response carries `Connection: close`
+(owner, 2026-08-12: 'do whatever is in accordance with the official protocol spec'); a connection
+reclaimed by a timeout logs a warning, not an error (owner, 2026-08-12: 'would be good to see when a
+connection ran into a timeout even without a full restart, warning in that case, no error').
+Implementation: `WebserverService`/`_TimeoutStreamProxy` and `tests/test_asy_webserver_service.py`.
 
 ## A.9 The frozen-HTML pipeline
 
@@ -817,8 +927,10 @@ timeout even without a full restart, warning in that case, no error'). Implement
 (required; `scripts/build_website.sh` stages the real website and sets it), then runs `python -m freezefs
 <tmp> frozen_modules/frozen_html.py --on-import mount --target /html --overwrite always` (never
 `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
-compressed=True)` over a stream `_serve_static()` opens itself, in 256 B reads and with
-`Content-Length` — Part I.3, "Static files"). Output goes to `frozen_modules/` (gitignored), not
+compressed=True)` over a stream `_StaticRoutes.serve()` opens itself and its connection closes at
+the end, in 256 B reads, with `Content-Length` and `Cache-Control: no-cache`, so a browser revalidates
+before reusing a page and a reflashed site is never served stale (agent, 2026-09-30; owner-reviewed,
+2026-10-02) — Part I.3, "Static files"). Output goes to `frozen_modules/` (gitignored), not
 `.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
 table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
@@ -1502,16 +1614,25 @@ at once (and a `max_connections` below 1 is refused by name, since every share d
 - **`MEMP_NUM_TCP_SEG` is a global pool; `TCP_SND_QUEUELEN` is per connection.** One connection can
   drain the pool, leaving the rest holding data the stack has accepted but cannot push. The
   override therefore requires `MEMP_NUM_TCP_SEG >= max_connections x (TCP_SND_BUF / TCP_MSS)` —
-  a full window of full-MSS segments per admitted connection, so segments are never the pool that
-  binds: the `MEM_SIZE` share below runs out long before a connection could fill that window.
+  a full window of full-MSS segments per admitted connection. It does not stop the pool running
+  out: a connection queues up to `TCP_SND_QUEUELEN` (32) segments, one per short write, and a
+  closing pcb keeps its queue, so the pool is one of the three `ERR_MEM` sources below.
 - **`MEM_SIZE` is the arena every outbound byte passes through.** `extmod/modlwip.c:802` calls
   `tcp_write()` with `TCP_WRITE_FLAG_COPY` unconditionally, so the payload is copied into a
   `PBUF_RAM` pbuf, which `pbuf_alloc()` takes from `mem_malloc()` — that heap. The override
   requires its per-connection share to stay at or above **2,000 B**, which is what the
-  4-connection design gave (8000 / 4). A relationship, not a tuning target. When the arena is
-  empty, `modlwip.c`'s write retries `tcp_write()` up to 200 x 50 ms, blocking the whole VM for up to
-  10 s even on a non-blocking socket, and no asyncio timeout can interrupt it. Never observed on
-  silicon (H.7: lwIP is never the constraint).
+  4-connection design gave (8000 / 4). A relationship, not a tuning target. A floor, not a bound on
+  demand: a page-load connection queues up to `TCP_SND_BUF` (6,400 B) plus pbuf overhead, about
+  7.2 KB, and a closing pcb keeps its queue until it is acknowledged or aborted 10 s after close
+  (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`), so two clients that stop reading mid page load fill the
+  12,000 B arena. `tcp_write()` then answers `ERR_MEM` while the socket still reports room — from
+  the arena, the global segment pool, or the connection's `TCP_SND_QUEUELEN` pbuf limit — and the
+  pinned `extmod/modlwip.c` retries it up to 200 x 50 ms inside one call (`:793-813`), even on a
+  non-blocking socket: up to 10 s with the whole VM frozen, past the 8,388 ms watchdog, and no
+  asyncio timeout can interrupt it (a live peer's ACK ends the wait sooner, still in 50 ms steps).
+  A non-blocking write that finds no room at all answers `EAGAIN` instead (`:758-769`), which the
+  webserver's per-call write timeout bounds cooperatively (A.5). Not yet reproduced on silicon: no
+  bench test holds a connection open without reading (agent, 2026-09-30).
 
 `buildgen/validate.py` runs the N-connection half per device, where N is known, and refuses a
 device whose `max_connections` the firmware's own pools cannot serve.
@@ -2023,8 +2144,9 @@ composite store: the SCD30 keeps six keys in its NVM, read back from a fresh chi
 written through `compare_before_write()` (G.2), so only a changed value is written,
 `AmbPres`/`ForceCalRef` always (A.4's `AmbPres` note), and three FRC keys in its file
 (`SensorReaderConfig`, A.4). A body whose chip snapshot fails is refused whole, its FRC keys
-included; a body with no chip key reads no snapshot; a GET whose snapshot fails answers the chip keys
-`None`. A field with a live chip readback is read through `get_dict_cfg()`'s `callback`.
+included; a body with no chip key reads no snapshot; a GET whose snapshot fails answers the
+unavailable marker (C.6) without reading the file, as does a GET whose FRC file cannot be read. A
+field with a live chip readback is read through `get_dict_cfg()`'s `callback`.
 
 Every module's schema is fixed at construction: `NotificationService` takes its signals as
 constructor arguments, so no module completes itself after construction (no
@@ -2100,7 +2222,8 @@ through `compare_before_write()` (G.2), so an unchanged value is `"Unchanged"` a
 `_set_dict_cfg(data, cfg_vals) -> WriteValidity` validates and stages first, then pushes live only
 fields that both changed (`"Valid"`, not `"Unchanged"`) and have a registered push callback, and the
 flash write follows the pushes (a failed push whose recovery restores the stored value writes
-nothing); PUTs to one module run one at a time (`SensorReader._set_lock`, C.8). Every field reports
+nothing); PUTs to one module run one at a time, and a config GET waits for a PUT in progress
+(`SensorReader._set_lock`, C.8). Every field reports
 independently including unrecognized keys; a whole-operation failure (an invalid, unwritable or
 closed store, or an internal error) marks every requested key `"Failed"`. `ConfigManager.write_config(data, *,
 defer=False)` validates against the manager's own schema. A closed store (`close_writes()`, run
@@ -2147,14 +2270,33 @@ test_asy_base_classes.py` covers every rung.
 ### C.5.3 Response envelope (`asy_api_response.py`)
 
 Replaces the old ad hoc pipeline. Wire shape: `{"res": "OK"|"ERR", "code": int, "descr": str,
-"result": ...}`. `make_response(code, descr=None, result=None)` — a small standard catalog (`0`-`5`,
-`100`) plus support for a fully custom pair. `parse_cmd_request(request, keys)` — body parsing +
-`"cmd"` validation, decoupled from `microdot.Request`'s type via a local `Protocol`.
+"result": ...}`. `make_response(code, descr=None, result=None)` draws its `descr` from **one envelope
+code catalog** (`_STANDARD_CODES`), every code with a producer:
+
+| `code` | `descr` | produced by |
+|---|---|---|
+| `0` | Command executed | every request the server processed, a per-field failure included |
+| `1` | Invalid JSON request | a PUT whose body does not parse or is not a JSON object |
+| `2` | Command specifier missing | `parse_cmd_request()`, kept while it exists |
+| `3` | Invalid command | `parse_cmd_request()`, kept while it exists |
+| `400` | Bad request | the shaped HTTP errors (`_ERROR_STATUSES`, A.5) |
+| `404` | Not found | as `400` |
+| `405` | Method not allowed | as `400` |
+| `413` | Payload too large | as `400` |
+| `500` | Internal server error | as `400`, and the catch-all handler |
+
+A shaped HTTP error uses its status as its code. A producer may give its own `descr` (the busy
+`LightCmdLED` refusal's "LED busy - retry later", A.8); an uncatalogued code reads "Unknown error",
+so `make_response()` stays total and never raises. `tests/test_asy_api_response.py` checks that
+every catalogued code has a producer in `src/` and every produced code is catalogued.
+`parse_cmd_request(request, keys)` — body parsing + `"cmd"` validation, decoupled from
+`microdot.Request`'s type via a local `Protocol`.
 `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None)` — orchestrates
 `_set_dict_cfg()` plus one optional post-write hook (fires once per call, only if a field actually
-changed) and returns the per-field result (`WriteValidity`), not an envelope; a hook's failure reports
-its group's fields `"Failed"`, and the endpoint's OK envelope carries the result. Build `data` from
-only the keys the client sent. A per-field failure never
+changed — one hook per endpoint, not one per field, as legacy's `post_fct`/`post_asy_fct` (agent,
+2026-08-03)) and returns the per-field result (`WriteValidity`), not an envelope; a hook's failure
+reports its group's fields `"Failed"`, and the endpoint's OK envelope carries the result. Build
+`data` from only the keys the client sent. A per-field failure never
 demotes the overall response below `"OK"`/`0` — detail lives in `"result"`: `res` is `"OK"` when the
 request itself was processed; a non-`OK` `res` means the request was broken (unparseable, wrong
 shape, unknown endpoint), never invalid or failed content (owner, 2026-09-26: 'res not "OK" means
@@ -2180,6 +2322,23 @@ measurement namedtuple has flat scalar fields and is constructed with every fiel
 
 Every module's config dict has the same nested shape `{<name>: {field: value}}`; no module returns a
 flat one.
+
+A config GET that cannot read its source (a chip snapshot that failed, a store that cannot be read,
+a callback that raised or returned nothing) sends `{<name>: {"error": "unavailable"}}` in place of
+the field map: never `null` values a reader would take for unset ones, and never the marker beside
+values or file keys. `SensorReader._get_dict_cfg()` makes it, under the module's write lock (C.8):
+a store read (`_get_mgr_cfg()`) that raises or returns `None` answers it without reading the
+callback, and so does a callback that raises or returns `None`; a driver signals a failed chip read
+by returning `None` (BMP3XX's and ISL29125's `_read_sensor_dict()`, ISL29125's also for a snapshot
+it cannot decode; SCD30's `_get_mgr_cfg()` when either its chip snapshot or its FRC file fails). The
+failure keeps its one persisted entry (C.7): `errno` 3 `CFG_GET_RAISED`, 4 `CFG_CALLBACK_RAISED`,
+the driver's 12 `CHIP_GET`, or the store's own `CFGMGR_<name>` entry. A store-backed module answers
+the marker before its setup or after a failed one (an invalid `ConfigManager` reads `None`).
+`SystemService`'s settings follow the same rule and answer it also while its values are the defaults
+standing in for a file it could not read; a `SensorReaderConfig` store in that state answers the
+defaults it runs on, its `CFG_FILE_UNREADABLE` warning persisted (C.7.3). The flat routes
+(`/networking`, `/system`, `/notification`) send the marker in place of each field of a settings
+group whose module answered it. It is the marker a failed `/status` source sends (I.4).
 
 ## C.7 Error handling & logging contract (`asy_print_log.py`, `asy_base_classes.py`)
 
@@ -2243,7 +2402,10 @@ firmware:
   `dev`'s chunks (`UART_init`/`UART_resp` included) read back 0 with their rings cleared, and a
   concurrent `GET /status` stayed at 0.56-0.76s throughout a `PUT` lasting 8.1s — so the sweep never
   holds the event loop and cannot threaten the 8388ms watchdog cap. Its cost is fixed **per chunk**
-  (~305ms), not per history entry. Timings and the remaining load-case concern: BACKLOG.md item 24.
+  (~305ms), not per history entry, and the twin is no floor for it: real idle (6.32s) ran faster
+  than the twin's own `dev` figure (8.15s), the Unix-port interpreter and the fake chip costing more
+  than real SPI wire time saves. Timings, the 2026-09-25 reader-count curve and the bench budget
+  still to be sized from it: BACKLOG.md item 32.
 - **The UART link keeps its never-block invariant under sustained FRAM writing.** Across a 20.8s
   window carrying three back-to-back `ResetErrors` calls (~6.9s each, i.e. near-continuous chunk
   writing), `dev`'s crossover pair completed 23 further transfers with zero failures and held its 1s
@@ -2345,7 +2507,7 @@ alternating codes and reboots are outside the rule.
 | ntp | `asy_ntp_client.py` (`NTP`) | 67-74 | 40 |
 | dnssrv | `asy_captive_dns.py` (`DNSSRV`) | — | 41-43 |
 | notify | `asy_notification_service.py` (`NOTIFY`) | — | 44-47, 67-68 |
-| webserver | `asy_webserver_service.py` (`WEBSERVER`) | — | 48-53 |
+| webserver | `asy_webserver_service.py` (`WEBSERVER`) | — | 48-53, 60-62 |
 | uart | `asy_uart_comm.py`, `asy_uart_driver.py` (`UART`, or the instance name; the driver writes through its caller's logger) | 75-99 | 54-59 |
 | bmp3xx | `asy_bmp3xx_driver.py` (`BMP3XX`; base and shared errors) | — | 71-72 |
 | scd30 | `asy_scd30_driver.py` (`SCD30`; base and shared errors) | — | 73-74 |
@@ -2557,7 +2719,7 @@ FRAM driver's session and bus locks (levels 3, 2, 1).
 | `FRAM_SPI._bus_lock` | 1 | the FRAM's SPI bus (an alias of its `SPIDevice`'s bus lock) | nothing |
 | `ConfigManager._config_lock` | — | the config file and its staged snapshot | a FRAM-backed log write |
 | `PrintLogHistoryStore._write_lock` | — | one FRAM-backed log store's pack and write, so the newest state lands last (F.1) | a FRAM-backed log write |
-| `SensorReader._set_lock` | — | one module's config PUT end to end (stage, push, recovery, commit), so one PUT's recovery never overwrites another's accepted value | `ConfigManager._config_lock`, `ISL29125_Reader._threshold_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
+| `SensorReader._set_lock` | — | one module's config PUT end to end (stage, push, recovery, commit) and its config GET, so one PUT's recovery never overwrites another's accepted value and a GET reads the module before or after a PUT, never between; also held by BMP3XX `_read_bmp()`'s chip-reset re-apply and the BMP3XX and SCD30 `_recover_device()` rungs. Every await under it is bounded (bus calls, F.2; fixed sleeps, the longest the SCD30 soft reset's 2.5 s; locks whose holders are bounded alike), so a GET waits behind at most one of them, inside the webserver's `outer_cap_s` | `ConfigManager._config_lock`, `ISL29125_Reader._threshold_lock`, a device session and bus lock (2, 1), a FRAM-backed log write |
 | `ISL29125_Reader._threshold_lock` | — | the chip's threshold registers with the active range and auto-range threshold they derive from, so a range switch and a threshold rewrite never interleave | a device session and bus lock (2, 1), a FRAM-backed log write |
 | `WifiService.wifi_mode_lock` | — | the CYW43 radio mode (`NTPClient` holds the same lock for its sync attempt) | `UDPSocket._connect_lock` (the NTP attempt's DNS and NTP exchanges), a FRAM-backed log write |
 | `UDPSocket._connect_lock` | — | the socket object, its connect against its disconnect | nothing (the class has no logger) |
@@ -3474,10 +3636,10 @@ sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral ran
 silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
 moved below the ephemeral range, where the twin tier already sat: TCP bases sit in 17400-19999,
 each claimed by a module-level `PORT`/`_PORT*` constant in the file that binds it (the twin tier,
-`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins and the cross-browser
-smoke), and UDP 21000 / 22000 / 23000 / 24000 / 25000 / 26000 / 27000
-(`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` / `ntp_wifi_dns` / `ntp_fram_system` /
-`wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
+`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins, the cross-browser
+smoke and `tests/test_asy_webserver_connections.py`'s `_PORT_BASE` 18600), and UDP 21000 / 22000 /
+23000 / 24000 / 25000 / 26000 / 27000 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` /
+`ntp_wifi_dns` / `ntp_fram_system` / `wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
 neighbour's, never inside the ephemeral range.
 
 **`tests/_tmp` gets one bounded `rm -rf` before any test file runs**, not a per-file sweep: every
@@ -3558,8 +3720,11 @@ Any test file that imports a `sensortask_<device>.py` module directly (`tests/_s
 same) needs one more
 prerequisite first, since no such module is ever committed to `src/` any more (SPECIFICATION.md Part L's
 Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
-`build/generated_src/` directory — it writes every device's modules and definitions there, the
-definitions with an `index.json` manifest under `build/generated_src/definitions/` (H.5) —
+`build/generated_src/` directory — it writes every device's modules, definitions and REST reference
+there, the definitions with an `index.json` manifest under `build/generated_src/definitions/` (H.5)
+and the reference as `build/generated_src/api/<device>.json` (A.8), and builds every output of a
+device before writing any, so a definitions or reference `BuildError` is a one-line `error:` and
+exit 1 with none of that device's files written —
 and `build/generated_src` prepended to `MICROPYPATH` (ahead of
 `src`) so the generated module resolves before anything else. `scripts/test.sh`/`scripts/
 typecheck.sh` already do both automatically; running one such file directly, as the invocation above
@@ -4436,8 +4601,11 @@ own task (`stream.py:172-174`); a task cancelled before its first step raises `C
 its awaiter without running any of its body — its first resume is a `throw()` instead of a
 `send(None)` (agent, 2026-07-22; `core.py:184-193`); a stream or `ThreadSafeFlag` takes one
 waiter per direction — a second `wait()` on the same flag fails `assert sm[idx] is None`
-(`core.py:82-83`); a task that ends with an exception nobody awaited goes to the loop's exception
-handler (the paragraph on it below).
+(`core.py:82-83`); `readexactly(n)` with `n < 0` reads everything, then raises `MemoryError`: it loops
+`while n:`, so `read(-1)` reads all that is there and the next `read()` asks for less than −1 bytes
+(`stream.py:42-52`, `py/stream.c:122-125`), which the webserver's head guard keeps from happening
+(A.5); a task that ends with an exception nobody awaited goes to the loop's exception handler (the
+paragraph on it below).
 
 **A response streamed as many small pieces has a real per-piece cost**: every stream write wraps in
 its own `asyncio.wait_for()`, so splitting one response into N pieces multiplies that overhead by
@@ -5394,6 +5562,10 @@ workaround.
 | Power-cycle backstop for the CYW43 `isconnected()` false positive | `src/asy_wifi_service.py` | none: the recovery is intended (owner, 2026-09-04) | F.2 |
 | Header block coalesced into one write | `src/asy_webserver_service.py` `_TimeoutStreamProxy.awrite()` | Microdot writes the header block in one call | I.3 |
 | Read timeouts logged in the per-call proxy; write-phase escapes caught in `_serve()` | `src/asy_webserver_service.py` | Microdot reports both through a hook | A.5 |
+| A reset during a response write recorded by the proxy (`peer_gone`) | `src/asy_webserver_service.py` `_TimeoutStreamProxy.awrite()` | Microdot reports a response-write reset it mutes | A.5 |
+| The request head bounded and refused with errno 32 before Microdot parses it | `src/asy_webserver_service.py` `_TimeoutStreamProxy.readline()` | Microdot bounds the header count and the whole head, takes `Content-Length` as digits once, and refuses without a traceback | A.5 |
+| Microdot's module-level `print_exception` rebound to the level-gated logger | `src/asy_webserver_service.py` `WebserverService.__init__` | Microdot prints through a level or a hook | A.5 |
+| The opened static stream held on the connection and closed at its end | `src/asy_webserver_service.py` `_StaticRoutes.serve()`, `_TimeoutStreamProxy.release()` | Microdot closes a `send_file()` stream on a `HEAD` or cut-short response | A.9, I.3 |
 | zizmor's `self-repository` audit disabled | `.github/zizmor.yml` | actionlint accepts `uses: $/…` | H.8 |
 | Vitest coverage excludes `**/*.json` | `vitest.config.js` | `@vitest/coverage-v8` stops re-parsing non-JS files | H.8 |
 | Firefox from conda-forge, Edge from Microsoft's repository | `scripts/setup_cross_browser_toolchain.sh` | Ubuntu ships a non-snap Firefox and Playwright's own engines are reachable | H.7 |
@@ -5438,9 +5610,10 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `checked_int()`, `checked_float()`, `checked_numeric()` (`None` = refused) for a typed caller,
   which never narrows a validated value at runtime. `bool` is not an `int` here (F.1). Never
   hand-roll a cast or range comparison.
-- **Caller-supplied callback dispatch guarding** — the `_dispatch_system_cmd()`/
-  `_dispatch_notification_led()`/`_dispatch_notification_pause()` shape: validate payload, `try/
-  await` the callback, `except Exception` → `err_s(...)` → `"Failed"`.
+- **Caller-supplied callback dispatch guarding** — the `_dispatch_system_cmd()` (through
+  `_run_system_cmd()`)/`_dispatch_notification_led()`/`_dispatch_notification_pause()` shape:
+  validate payload (`"Invalid"`), `try/await` the callback, `except Exception` → `err_s(...)` →
+  `"Failed"`; a callback answering `False` is `"Failed"` too.
 - **REST response envelope construction** — `asy_api_response.py`'s `make_response()` only, never a
   hand-built `{"res", "code", "descr", "result"}` dict.
 - **Task-scoped mutable state shared across coroutines** — `asy_base_classes.py`'s `Lockable`/
@@ -5458,6 +5631,13 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Current UTC timestamp** — `asy_base_classes.py`'s `utc_now()`: `None` until the NTP client has
   set the clock this boot (its one writer, `set_utc_valid()`); never computed inside a read's `try`
   (agent, 2026-09-29; owner-reviewed, 2026-10-02).
+- **Hourly window counter** — `asy_base_classes.py`'s `HourlyWindowCounter`: a count of events in
+  the last 24 hours at hourly resolution, in 24 integer bins allocated once at construction; the bins
+  advance lazily on the next `add(now_s)` or `total(now_s)` from the uptime seconds the caller passes
+  (`SysUptime`, monotonic, untouched by NTP steps; a value behind the last hour advances nothing),
+  zeroing every hour passed — all 24 after a gap of a day or more; each bin and the sum are capped at
+  `COUNTER_CAP`; `reset()` clears every bin; no event, read or hour change allocates, and no method
+  awaits, so it needs no lock. Its first user is `HTTPDropped` (A.8; owner, 2026-10-01).
 - **Per-module logging/error-history** — `asy_print_log.py`'s `make_logger()` with one `LogConfig`
   (`DEFAULT_LOG` for a module with no store of its own; one per FRAM store), `PrintLog`/
   `PrintLogHistory`/`PrintLogHistoryStore`, never a bespoke print-based counter. `PrintLog`'s
@@ -5542,7 +5722,8 @@ backend-only or frontend-only validation/coercion policy change in this project.
   Any route whose response scales with device configuration returns `await
   _stream_dict_response(result, self._chunk_bytes)` instead of `return result`. A response that is
   not one dict (`/status`) builds on the same parts directly: `_PieceWriter` (JSON written value by
-  value into pieces of at most `chunk_bytes`) and `_pieces_response()` (exact Content-Length), I.3.
+  value into pieces of at most `chunk_bytes` bytes, each fragment encoded once) and
+  `_pieces_response()` (exact Content-Length, the pieces sent as they are), I.3.
   The writer writes a non-finite float as `null`; producers still gate their own values (F.1).
 - **Bounded piece assembly** — `asy_base_classes.py`'s `PieceBuffer` (the webserver's streaming
   `_PieceWriter` is its model): a payload whose size the caller did not fix is held as pieces of at
@@ -5619,6 +5800,11 @@ backend-only or frontend-only validation/coercion policy change in this project.
   feed sites are pinned by `tests_scripts/test_watchdog_feed_sites.py`, the supervisor scan budget by
   the per-device scan scenario (`tests/_sensortask_scenarios.py`);
   the timeout is Part N `wdt.timeout_ms`.
+- **Result words** — `asy_config_manager.py`'s `VALID`/`UNCHANGED`/`INVALID`/`FAILED`: every
+  per-field result, never a bare `"Valid"`; plain module attributes, never `const()`, so every module
+  imports them by name, and `WriteValidity` is their `Literal` type.
+  `tests_scripts/test_result_words.py` fails on a string literal equal to one of the four anywhere in
+  `src/` or the generated modules outside those definitions.
 - **Compare-before-write** — `asy_config_manager.py`'s `compare_before_write()`: every setter that
   writes persistent memory.
 - **Config objects** — parameters that travel together are one namedtuple built by generated code
@@ -5750,7 +5936,7 @@ number/string field's caption** — a toggle/enum field's round-trip needs a gen
 | Nav grouping | Mirrors the 6 REST endpoints 1:1 | Measurements, Sensors, Networking, System, Status, Notification. |
 | History depth | Counts always visible; full history on demand; no pagination | A realistic depth stays well under 20 entries, rides along in `/status`. |
 | Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. The poll interval is Part N `web.poll_interval_ms`; a page load opens `web.connections_per_page_load` connections. |
-| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (BACKLOG item 24) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
+| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (its measured cost: C.7) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
 | API reachability | No dedicated API-browser page | Reachable somewhere in the ordinary GUI is enough. |
 | Definitions validation | Strict — visible error banner on mismatch | Checks shape/version including `pollGroup` and poll-interval fields. |
 | Landing page | Measurements | Matches legacy's default. |
@@ -5918,10 +6104,11 @@ repeat rule: C.7.1), no per-entry timestamp — `type` only colors `num`. **Errc
 groups, starts collapsed to a rollup + two filter buttons, wired entirely inside `templates.js`
 (no controller involvement). **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
 `LightCmdLED` (R/G/B/T, bounds matching legacy exactly, rejecting not clamping),
-`ResetErrors`, `ContMeas`, `ResetVOC`: `"Invalid"` only for a structurally wrong payload; a
-well-formed submission always reports `"Valid"`, including on an identical repeat (never
-`"Unchanged"`), except `LightCmdLED`, which reports `"Failed"` while a signal is still queued or
-running (owner, 2026-09-29). `js/mock-server.js` mirrors this via dedicated dispatch functions —
+`ResetErrors`, `ContMeas`, `ResetVOC`: `"Invalid"` for a bad or unknown key or a value out of its
+type or range; a valid submission reports `"Valid"` on every repeat (never `"Unchanged"`), except
+`LightCmdLED`, answered `"Failed"` while a signal is still queued or running (owner, 2026-09-29) — a
+refusal that tells the caller to try again later, its envelope's `descr` reading "LED busy - retry
+later" (owner, 2026-10-02). `js/mock-server.js` mirrors this via dedicated dispatch functions —
 none ever persisted into the generic settings store. **Server-side settings-group failure**: if a
 `SettingsGroup`'s post-write hook raises, every field that group attempted is reported `"Failed"` —
 never silently dropped — while the overall envelope still reports success.
@@ -6002,11 +6189,37 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   open connection ~7.5-8 KB of live heap at peak (streams, `Request`, handler, the built response).
   The failure is a hole too small for one ≤ 257 B `/status` piece; only 6 keeps the conventional
   20-30 % free at peak with several pieces' worth of contiguous space.
-- **lwIP is never the constraint.** An image provisioned for 16 admitted 16 on every probe, no pool
-  surfaced, and the GC heap bound first — while a raised ceiling turns a clean refusal into an
-  admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST if the client's
-  request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's `tcp_close()` resets
-  a connection with unread data).
+- **The serving demand per admitted connection** (agent, 2026-09-30), both sides: the request side
+  is a head of at most 2,048 B (`web.max_head_bytes`) and a body of at most `max_content_length`
+  (2,048 B, I.6); the response side is the device's largest GET body, held once as its encoded
+  pieces (I.3), its piece list at 4 B per piece on the RP2040, and one in-flight piece of
+  `chunk_bytes`. The device's demand is `max_connections` × their sum — many small pieces, never one
+  block — and must stay within `web.serving_demand_budget_b`: the heap free after boot (about
+  105,000 B, I.6) less the 32,768 B contiguity reserve, 72,232 B, an estimate. The per-device
+  scenario in `tests/_sensortask_scenarios.py` drives every GET route at a clean boot with a
+  non-ASCII SSID, asserts the one-copy identity (the response body yields exactly the writer's own
+  pieces, so a second encoded copy fails it) and the budget, and printed on the mock tier
+  (2026-10-08):
+
+  | device | demand at 6 connections | largest body |
+  | --- | --- | --- |
+  | `dev` | 68,172 B | `/status`, 6,890 B in 30 pieces |
+  | `wozi` | 60,804 B | `/status`, 5,682 B in 25 pieces |
+  | `arzi`, `klkizi`, `grkizi`, `schlafzi` | 57,270 B each | `/status`, 5,101 B in 23 pieces |
+
+  `dev`'s other routes: `/measurements` 470 B in 2 pieces, `/sensors` 622 B in 3, `/networking`
+  214 B, `/system` 151 B and `/notification` 147 B in one each. `dev` stays about 4 KB inside the
+  budget, but the sources disagree on the free heap it rests on: I.6 records about 105,000 B free
+  after boot; F.5.3 measured 130,224 B free after a real `build_system()` on `dev` (2026-09-11,
+  before the six-connection lwIP ensemble took 5,040 B of GC heap, B.14.2); and the flash tier's
+  survivor bound (at most 100,000 B allocated of the 192,488 B heap, F.5.3) would leave 59,720 B
+  after the reserve, below `dev`'s demand. Whether six connections fit on `dev` at peak waits on the
+  post-boot free-heap measurement on the dev bench (L4).
+- **lwIP is never the constraint on admission.** An image provisioned for 16 admitted 16 on every
+  probe, no pool surfaced, and the GC heap bound first — while a raised ceiling turns a clean
+  refusal into an admitted request answered 500. A refusal is a FIN ~6 ms after connect, or an RST
+  if the client's request bytes had already arrived (`modlwip.c` frees them unread, and lwIP's
+  `tcp_close()` resets a connection with unread data).
 - **Refusals are expected, not failures** (owner, 2026-09-23, `84f3d57`): a connection counts until
   it has closed (H.7.1), so back-to-back clients see ~70 % refused at every limit; the device's own
   rejection count matches the host's exactly. It stays that way (owner, 2026-09-26: a connection
@@ -6017,6 +6230,14 @@ PUT), each image built for and tested at its own limit (`HEAP_FRAGMENTATION_MEAS
   zero-think-time readers are a degradation check, not a contract — no crash, reboot, task end or
   `MemoryError` marker, full recovery once the load stops; a writer starved meanwhile is accepted
   (owner, 2026-09-26: 'Very hypothetical test.'; confirmed 2026-09-28).
+- **Every drop leaves evidence** (owner, 2026-09-29): a refusal, a refused head and a peer reset
+  before or during the response are counted in `HTTPDropped`'s 24-hour window (A.8) and traced once
+  per event as `wrnno` 60, 61 and 48 (one history slot per run of identical codes), unless an arm of
+  `_serve()` already persisted that connection's entry (a timeout, a socket error, an unexpected
+  error); `tests/test_asy_webserver_connections.py` pins the count, the trace and the window. A
+  failed `accept()` and an arrival past the backlog are invisible to the product: asyncio's server
+  loop discards the first (`extmod/asyncio/stream.py:160-164`) and lwIP resets the second before
+  asyncio sees it.
 - **`gc.threshold(32768)` does not move the limit**: more collections, no fewer failures.
 - A browser opens at most 6 connections per host and a page load here needs 2, so 6 costs nothing.
 
@@ -6074,8 +6295,8 @@ fails silently, not loudly.
   `extmod/modlwip.c` has freed the pcb but the socket's state (6) still passes the write path's
   error check, so microdot's 400 goes through a NULL pcb: it raises an unmuted `OSError(EIO)` or,
   depending on a boot-ROM word the NULL read lands on, spins the writer until the per-call timeout
-  (v1.29.0; agent, 2026-09-29); `_TimeoutStreamProxy` drops every write once a read of the pair
-  raised `OSError`.
+  (v1.29.0; agent, 2026-09-29); `_TimeoutStreamProxy` drops every write once a read or a write of
+  the pair raised `OSError`, and a reset Microdot mutes counts in `HTTPDropped` (A.8).
 
 What follows for the instruments:
 
@@ -6336,10 +6557,12 @@ behind them is `HEAP_FRAGMENTATION_MEASUREMENTS.md`):
 
 Every GET route whose response grows with device configuration — `/status`, `/sensors`,
 `/measurements`, `/networking`, `/system`, `/notification` — writes its JSON through one
-`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` with an exact Content-Length. The
-writer concatenates adjacent JSON text fragments into pieces of at most `chunk_bytes` — one
-`ServingLimits` field, default **256** (`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read
-size below, so the two bounds cannot drift apart — without ever splitting a fragment, and
+`_PieceWriter` and hands Microdot `Response(iter(pieces), ...)` (already encoded, one copy) with an
+exact Content-Length. The writer encodes each JSON text fragment once and concatenates adjacent
+fragments into pieces of at most `chunk_bytes` bytes — counted in bytes, so a non-ASCII SSID cannot
+make a piece longer than the cap — one `ServingLimits` field, default **256**
+(`_DEFAULT_CHUNK_BYTES`), that also sets the static-file read size below, so the two bounds cannot
+drift apart — without ever splitting a fragment, and
 `add_value()` writes a value the way `json.dumps()` would — dicts, lists and tuples walked, only
 keys and scalars dumped, with `json.dumps()`'s own `", "`/`": "` separators and its non-string-key
 rule (`True` → `"true"`). No value, however nested, is ever built as one string, so **the largest
@@ -6386,9 +6609,11 @@ response the writer does not build: microdot's `send_file` streams the file, rea
 `Response.send_file_buffer_size` bytes per write — **1,024** by default, so each read is one fresh
 1,025 B allocation, four times the JSON cap. On silicon that failed from N = 6, and worse, *after*
 the `200` and its headers were out: the response is HTTP/1.0 with no `Content-Length`, so the
-client saw a cut-off gzip page as a complete one. `_serve_static()` now opens the file itself,
-passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
-`chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size. The attribute
+client saw a cut-off gzip page as a complete one. `_StaticRoutes.serve()` now opens the file
+itself, passes it to `send_file(stream=...)`, sets that attribute on the one response to the same
+`chunk_bytes` (**256**) and adds `Content-Length` from the stream's own size; the connection's writer
+proxy holds the opened stream (`Request.sock`) and closes it when the connection ends, so a `HEAD`
+request or a response cut short closes it too. The attribute
 is microdot's own, public, per-instance knob — nothing in `ext/microdot.py` changes — and the page
 now needs 320 B on the 32-bit twin with `dev`'s own site (1,536 B before). **A write-phase failure is never a success**:
 a response whose body can still fail after its status line goes out must carry its length, so the
@@ -6657,13 +6882,16 @@ which reads the body at `:426`, and only then `dispatch_request()` (`:1428`), wh
 immediately thrown away. Verified against the vendored v2.7.0 and against upstream `main`, which
 carries the same defaults and the same ordering — this is not fixed by a version bump, and
 `ext/microdot.py` is never edited (Part A.5's vendoring rule), so the fix is ours to apply from
-outside.
+outside. A negative `Content-Length` is refused with the head, before Microdot reads anything
+(`readexactly(n)` with `n < 0` reads everything, F.1): the reader proxy takes only ASCII digits, once
+(A.5).
 
 **The exposure was per-request, not per-server.** `readexactly(content_length)` allocates a fresh
-`bytes` per request, and `max_connections` is 4, so up to **four** such buffers could be live at
-once: 4 x 16,384 = 65,536 B of contiguous demand, against roughly 105,000 B free after boot.
-Nothing legitimate could provoke it — every accepted body is far smaller — but a client sending
-four concurrent oversized PUTs could, and each would be answered 413 *after* allocating.
+`bytes` per request, and `max_connections` is 6, so up to **six** such buffers could be live at
+once: 6 x 16,384 = 98,304 B of contiguous demand before the fix, against roughly 105,000 B free
+after boot. Nothing legitimate could provoke it — every accepted body is far smaller — but a client
+sending six concurrent oversized PUTs could, and each would be answered 413 *after* allocating. The
+whole per-connection demand, request and response side, is derived in H.7.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
 rather than per group: the largest legitimate body is **1,080 B** on `PUT /sensors` on `dev` (743 B on
@@ -6671,8 +6899,10 @@ rather than per group: the largest legitimate body is **1,080 B** on `PUT /senso
 253-character bound (RFC 1035) being 266 B of it, `HotspotPW` 78 B and `DNSFallback` 64 B; the
 others are smaller — `/notification` 530 B, `/system` 139 B, `/status` 22 B — and real traffic
 measures 232 B. So 2048 clears the schema maximum
-with **1.9x** margin and real traffic with ~9x, and takes the four-connection worst case to 4 x 2,048
-= 8,192 B.
+with **1.9x** margin and real traffic with ~9x, and takes the six-connection worst case to 6 x 2,048
+= 12,288 B. A body that arrives partly in the head's last read is joined from the proxy's read-ahead
+and the rest, so for that moment it is held about twice, as upstream's multi-read `readexactly()`
+re-concatenates (F.9).
 
 **Per route, not per group, and the difference is load-bearing** [SRC]. An earlier revision quoted
 1,132 B, which is the *NTP group alone*, on the grounds that `js/render.js` submits one group at a
@@ -6693,13 +6923,13 @@ The hardware tier's W3 checks the same property on silicon but cannot run in CI,
 the one this guard would otherwise be quoting.
 
 **Both are set from the one constructor parameter**, so they cannot drift apart again — the defect
-was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s F.2b section pins this
-behaviourally by recording every `readexactly()` size the server asks its reader for: an oversized
+was never a value, it was the gap. `tests/test_asy_webserver_service.py`'s request-body-buffering
+section pins this behaviourally by recording every `readexactly()` size the server asks its reader for: an oversized
 request must produce **no body read at all**, including under concurrent mixed load at both
 `gc.threshold(-1)` and `gc.threshold(32768)`.
 
 **On real hardware the wire shows less than that, and the bench rows say so** [SRC].
-`tests_hardware/bench/test_network_resilience.py` mirrors F.2b over real WiFi (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I.2, §7J.2),
+`tests_hardware/bench/test_network_resilience.py` mirrors that section over real WiFi (`HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7I.2, §7J.2),
 but a socket cannot distinguish "buffered then rejected" from "rejected unread" — both firmwares
 answer 413, only at different sizes. The mirrors therefore pin the **cap value** and the
 boundary's exactness; the 2048-4096 band rejecting is what tells this firmware from the previous
@@ -7930,6 +8160,13 @@ module set. There is no separate `boot_entry/` directory: the generic boot entry
   Status section's live-readonly field lists, the six-REST-endpoint section skeleton) are
   generator-owned catalogs in `buildgen/definitions.py`, the same precedent `_KNOWN_SIGNALS` sets.
   Full grammar and architecture: Part H.5.1.
+- **REST API reference**: `buildgen.api_reference.generate_api_reference(model, src_dir)` builds the
+  device's normative REST reference (A.8) from the one route table (`ROUTES` in
+  `src/asy_webserver_service.py`), the device's generated definitions, the four result words and the
+  envelope code catalog (`_STANDARD_CODES`), the `src/` facts read by `ast`, never imported;
+  `api_reference_json()` is its one serialisation (indent 2, sorted keys, no timestamp).
+  `scripts/_generate_sensortask_modules.py` writes it as `build/generated_src/api/<device>.json`,
+  never frozen; `tests_scripts/test_api_reference.py` pins it.
 - **Digital-twin wiring**: `buildgen.twin_wiring.compute_twin_wiring(model)` walks the model and
   emits the twin's own per-attachment wiring facts. Two facts a `DeviceModel` structurally cannot
   carry get a small, explicit twin-side exception table: scd30/sgp40's fixed hardware address
@@ -8759,11 +8996,15 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 4 × 2,048 = 8,192 B at the four-connection worst case | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
 | `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256`; `tests/test_asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
+| `web.max_header_lines` | 32 | `src/asy_webserver_service.py` — `32` | the reader proxy's head guard: a 33rd header refuses the head, answered 400 and traced as `wrnno` 61 (A.5) | estimated (agent, 2026-09-30): browsers send about 15-20 headers, curl about 4 — measurement owed: the header count of each supported browser's requests to the device, L4 | about 1.6× a browser's 20 headers | the device sets a cookie or an auth header, or a supported client sends more headers |
+| `web.max_head_bytes` | 2048 B | `src/asy_webserver_service.py` — `2048` | the reader proxy's head guard: a head (request line, headers and the blank line) past it is refused like a bad head (A.5); without it, 33 lines of `max_readline` could hold about 67 KB; the request side of the serving demand per connection (H.7) | estimated (agent, 2026-09-30): this device sets no cookie or auth header, so a browser's head stays well below one `max_readline` — measurement owed: the largest request head a supported browser sends to the device, on the dev bench, L4 | unknown until measured | the device sets a cookie or an auth header, or Microdot's `max_readline` changes |
+| `web.start_retries` | 3 attempts | `src/asy_webserver_service.py` — `3` | with `web.start_retry_s`, the last attempt comes one lwIP close linger after the first (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`, 10 s, `extmod/modlwip.c:61-63`); a failed `bind()`/`listen()` holds its pcb until a collection, so up to two across the attempts; the last failure persists `wrnno` 62 and ends the task (A.5) | estimated (agent, 2026-09-30): sized so the attempts span one close linger, the time a closing connection holds its pcb — measurement owed: a server start that fails with every TCP pcb held by closing connections, on the twin or the dev bench, L2/L4 | the third attempt, at 10 s, meets the pcbs the linger has freed | the close linger or the `MEMP_NUM_TCP_PCB` headroom over `max_connections` changes |
+| `web.start_retry_s` | 5 s | `src/asy_webserver_service.py` — `5` | `web.start_retries` × it spans the close linger; each wait is an `asyncio.sleep()`, so the task supervisor keeps feeding the watchdog through it (`system.task_check_s`) | estimated (agent, 2026-09-30): half the 10 s close linger, so three attempts span it — measurement owed: as `web.start_retries`, L2/L4 | two waits, 10 s, against the 10 s linger | the close linger changes |
 | `uart.cancel_ack_timeout_ms` | 1000 ms | `src/asy_uart_driver.py` — `1000` | `tests/test_asy_uart_comm.py`'s `_PAST_CANCEL_ACK_HOLD_MS` (1300 ms, past the driver's own 1000 ms acknowledgement bound) and `l1.asy_uart_comm_prompt_hold_ms` (5 ms, a holder that acknowledges well inside it) | estimated (agent, `442a559`) — measurement owed: the cancel acknowledgement's latency on the dev bench crossover, L3 | unknown until measured | the driver's cancel path changes |
 | `uart.delimited_yield_bytes` | 16 B | `src/asy_uart_driver.py` — `16` | the loop hold of one delimited read (F.5.8); `tests/test_asy_uart_driver.py`'s `turns[0] >= 2` (40 bytes at 16 per yield) | estimated (agent, `441de83`) — measurement owed: the longest synchronous span of a delimited read on the dev bench, L3 | unknown until measured | the driver's read path changes |
 | `uart.rxbuf_default` | 256 B | `src/asy_uart_driver.py` — `256` | `uart.rxbuf_floor` (a construction refusal below it) | estimated (agent, `7f4ebc3`) — measurement owed: the receive arrivals per poll at the default rate, L3 | J.6 states the floor against this default | a poll-rate or baud default changes |
@@ -8943,6 +9184,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.webserver_leak_scenario_timeout_s` | 60.0 s | `tests/test_asy_webserver_service.py` — `60.0` | — | estimated (agent, `d49a0f7`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 30 → 60 s without a stated cause | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_write_prompt_s` | 1.0 s | `tests/test_ntp_fram_system_integration.py` — `1.0` | stays well under `l1.fram_lock_fetch_timeout_ms` (2000 ms): the write completes promptly, not stuck behind the lock | estimated (agent, `c5478f0`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 0.2 → 1.0 s 'for scheduling-jitter headroom' | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_lock_fetch_timeout_ms` | 2000 ms | `tests/test_ntp_fram_system_integration.py` — `2000` | `l1.fram_write_prompt_s` stays well under it | estimated (agent, `ce7b50d`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,172 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | about 4 KB over `dev`'s demand, against an estimated budget | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 | `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `LightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
 | `l1.sensortask_locked_status_ms` | 5000 ms | `tests/_sensortask_scenarios.py` — `5000` | the bound on a `GET /status` taken while a test task holds `wifi_mode_lock`; it only ends a regression that waits on the lock instead of letting it hang the file | measured (agent, 2026-10-08): one `GET /status` took 86-194 ms on `build-standard` and 129-318 ms on `build-settrace` | more than 15× the slowest measured read | a `GET /status` nears 1 s on the coverage lane |
 | `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |

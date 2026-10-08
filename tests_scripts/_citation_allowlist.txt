@@ -4,9 +4,6 @@ BACKLOG.md	HARDWARE_TEST_HANDOVER.md
 BACKLOG.md	HARDWARE_TEST_PLAN.md
 BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md
 BACKLOG.md	Session 2
-BACKLOG.md	WP1
-BACKLOG.md	WP2
-BACKLOG.md	WP3
 CLAUDE.md	WP1
 CLAUDE.md	WP1
 CLAUDE.md	WP2
@@ -87,7 +84,6 @@ devices/dev.toml	WP3
 digital_twin/README.md	WP1
 digital_twin/machine.py	Step 5
 digital_twin/machine.py	Step 5
-js/mock-server.js	src/sensortask_wozi.py
 scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP1
 scripts/_digital_twin_ci_suite.py	WP2

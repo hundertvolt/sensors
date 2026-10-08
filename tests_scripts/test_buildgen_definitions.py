@@ -205,6 +205,14 @@ def test_networking_status_carries_the_address_once_and_says_what_the_link_count
     assert fields["WifiUptime"]["description"] == "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down."
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo_root: Path, src_dir: Path, device: str) -> None:
+    status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
+    fields = {f["key"]: f for f in next(g for g in status["groups"] if g["key"] == "networking")["fields"]}
+    assert fields["HTTPDropped"] == {"key": "HTTPDropped", "label": "Dropped Connections", "kind": "readonly", "description": "Web connections dropped in the last 24 hours, hourly resolution."}
+    assert fields["WifiTS"] == {"key": "WifiTS", "label": "Wi-Fi Status Time", "kind": "readonly", "format": "epoch"}
+
+
 # ---------------------------------------------------------------------------
 # A string field's special value: the schema's sentinel, labelled by its tag's quoted special:
 # ---------------------------------------------------------------------------

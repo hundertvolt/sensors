@@ -178,6 +178,9 @@ const DATA = {
     },
 };
 
+// src/asy_webserver_service.py's _LED_BUSY_DESCR: the envelope's descr when a running signal refused LightCmdLED.
+const LED_BUSY_DESCR = "LED busy - retry later";
+
 /**
  * Moves the frozen mock clock forward; vi.setSystemTime() mocks Date only, so timers stay real.
  * @param {number} ms
@@ -312,6 +315,27 @@ describe("installMockFetch", () => {
         expect((await bad.json()).result.SystemCmd).toBe("Invalid");
     });
 
+    // One argument per case: it.each() spreads an array case into its arguments.
+    it.each([["Reboot"], ["reboot "], [" reboot"], ["reb"], ["rebootx"], [1], [null], [["reboot"]], [{}]])("answers the SystemCmd near miss %j with Invalid: only the whole word runs a command", async (value) => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const response = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: value }) });
+        expect((await response.json()).result.SystemCmd).toBe("Invalid");
+    });
+
+    it("answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included", async () => {
+        // Mirrors _apply_settings_groups(): every submitted key gets a word, an unknown one "Invalid".
+        uninstall = installMockFetch(DEFS, DATA);
+        const networking = await (await fetch("/networking", { method: "PUT", body: JSON.stringify({ NoSuchKey: 1, SystemCmd: "reboot" }) })).json();
+        expect(networking.res).toBe("OK");
+        expect(networking.result).toEqual({ NoSuchKey: "Invalid", SystemCmd: "Invalid" });
+
+        const system = await (await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot", Bogus: 1, PauseTime: 60 }) })).json();
+        expect(system.result).toEqual({ SystemCmd: "Valid", Bogus: "Invalid", PauseTime: "Invalid" });
+
+        const notification = await (await fetch("/notification", { method: "PUT", body: JSON.stringify({ Bogus: 1 }) })).json();
+        expect(notification.result).toEqual({ Bogus: "Invalid" });
+    });
+
     it("never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
@@ -337,6 +361,10 @@ describe("installMockFetch", () => {
         expect((await negative.json()).result.PauseTime).toBe("Invalid");
         const fractional = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60.5 }) });
         expect((await fractional.json()).result.PauseTime).toBe("Invalid");
+        const list = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: [60] }) });
+        expect((await list.json()).result.PauseTime).toBe("Invalid");
+        const object = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: { s: 60 } }) });
+        expect((await object.json()).result.PauseTime).toBe("Invalid");
 
         const ok = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
         expect((await ok.json()).result.PauseTime).toBe("Valid");
@@ -352,8 +380,8 @@ describe("installMockFetch", () => {
     });
 
     it("dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
-        // Mirrors the real behavior: "Invalid" only for a non-dict payload; a missing, non-numeric,
-        // fractional or out-of-range subfield reports "Failed" (legacy's led_cmd() bounds, Part A.8).
+        // Mirrors _dispatch_notification_led(): a malformed payload, a missing or extra member or a value outside
+        // its schema answers "Invalid"; a well-formed command while a signal still runs answers "Failed".
         // Each started flash makes the next one wait out its t on the frozen mock clock.
         vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
@@ -362,24 +390,30 @@ describe("installMockFetch", () => {
         expect((await notADict.json()).result.LightCmdLED).toBe("Invalid");
 
         const missingSubfield = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30 } }) });
-        expect((await missingSubfield.json()).result.LightCmdLED).toBe("Failed");
+        expect((await missingSubfield.json()).result.LightCmdLED).toBe("Invalid");
+
+        const extraMember = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1, X: 0 } }) });
+        expect((await extraMember.json()).result.LightCmdLED).toBe("Invalid");
 
         const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: "abc", G: 20, B: 30, T: 1 } }) });
-        expect((await nonNumeric.json()).result.LightCmdLED).toBe("Failed");
+        expect((await nonNumeric.json()).result.LightCmdLED).toBe("Invalid");
+        const boolT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: true } }) });
+        expect((await boolT.json()).result.LightCmdLED).toBe("Invalid");
 
-        // A fractional R/G/B is rejected outright, not truncated - the int<->float coercion policy
-        // applied to LightCmdLED too (superseding the old raw int()/float() truncating casts).
+        // A fractional R/G/B is rejected, never truncated.
         const fractionalRgb = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10.5, G: 20, B: 30, T: 1 } }) });
-        expect((await fractionalRgb.json()).result.LightCmdLED).toBe("Failed");
+        expect((await fractionalRgb.json()).result.LightCmdLED).toBe("Invalid");
 
         // A fractional t is fine - it's float-typed, a blanket accept regardless of shape.
         const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1.5 } }) });
         expect((await fractionalT.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(1500);
 
-        // Out-of-range R/G/B/T is now rejected, matching legacy's own led_cmd() bounds.
+        // Out-of-range members are rejected (legacy led_cmd()'s bounds).
         const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 9999, G: -50, B: 30, T: 999 } }) });
-        expect((await outOfRange.json()).result.LightCmdLED).toBe("Failed");
+        expect((await outOfRange.json()).result.LightCmdLED).toBe("Invalid");
+        const r256 = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 256, G: 0, B: 0, T: 1 } }) });
+        expect((await r256.json()).result.LightCmdLED).toBe("Invalid");
 
         // Boundary values (0/255 for R/G/B, 0.5/60.0 for T) are still accepted - only genuinely
         // outside the range is rejected.
@@ -406,14 +440,15 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const flash = JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 2 } });
 
-        const first = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await first.json()).result.LightCmdLED).toBe("Valid");
-        const second = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await second.json()).result.LightCmdLED).toBe("Failed");
+        const first = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        expect(first.result.LightCmdLED).toBe("Valid");
+        expect(first.descr).not.toBe(LED_BUSY_DESCR);
+        const second = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        expect([second.res, second.code, second.descr, second.result.LightCmdLED]).toEqual(["OK", 0, LED_BUSY_DESCR, "Failed"]);
 
         advanceMockClockMs(1999); // still inside the first flash
-        const stillBusy = await fetch("/notification", { method: "PUT", body: flash });
-        expect((await stillBusy.json()).result.LightCmdLED).toBe("Failed");
+        const stillBusy = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        expect([stillBusy.descr, stillBusy.result.LightCmdLED]).toEqual([LED_BUSY_DESCR, "Failed"]);
 
         advanceMockClockMs(1); // the first flash's t has passed; neither refusal extended it
         const afterward = await fetch("/notification", { method: "PUT", body: flash });
@@ -589,7 +624,7 @@ describe("installMockFetch", () => {
         }
     });
 
-    it("silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally", async () => {
+    it("answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors", {
             method: "PUT",
@@ -597,14 +632,22 @@ describe("installMockFetch", () => {
         });
         const body = await response.json();
 
-        expect(body.result.BOGUS).toBeUndefined();
+        expect(body.result.BOGUS).toBe("Invalid");
         expect(body.result.SCD30.MeasInterval).toBe("Valid");
+    });
+
+    it.each([[5], [null], [[1]], ["x"]])("answers a PUT /sensors entry %j that is not an object with Invalid in place of its field map", async (entry) => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await (await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: entry }) })).json();
+        expect(body.result).toEqual({ SCD30: "Invalid" });
     });
 
     it("rejects an unsupported HTTP method with a 405", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors", { method: "DELETE" });
         expect(response.status).toBe(405);
+        const body = await response.json();
+        expect([body.res, body.code, body.descr]).toEqual(["ERR", 405, "Method not allowed"]); // the status is its code
     });
 
     it("injects exactly one network failure via controls.nextFailure, then serves normally again", async () => {

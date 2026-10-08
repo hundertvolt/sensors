@@ -1,0 +1,27 @@
+
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests_scripts/test_api_reference.py _____________
+ImportError while importing test module '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r/tests_scripts/test_api_reference.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_api_reference.py:16: in <module>
+    from buildgen.api_reference import api_reference_json, generate_api_reference
+E   ModuleNotFoundError: No module named 'buildgen.api_reference'
+______ ERROR collecting tests_scripts/test_generate_sensortask_modules.py ______
+ImportError while importing test module '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19r/tests_scripts/test_generate_sensortask_modules.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests_scripts/test_generate_sensortask_modules.py:13: in <module>
+    from buildgen.api_reference import api_reference_json, generate_api_reference
+E   ModuleNotFoundError: No module named 'buildgen.api_reference'
+=========================== short test summary info ============================
+ERROR tests_scripts/test_api_reference.py
+ERROR tests_scripts/test_generate_sensortask_modules.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+2 errors in 0.46s

@@ -735,9 +735,9 @@ a live question:
   armed throughout. The earlier "dropped as noise" finding (a bare 404 on a mismatched
   `scripts/build_firmware.py wozi`-on-dev-bench test) is now doubly moot: not only was that
   configuration invalid, the *real*, valid `dev`-native configuration has since been directly
-  confirmed working. `src/`'s own `is_hotspot_active()`/`_serve_static()` logic was already proven
-  correct against the real Unix-port interpreter; this closes the one remaining "never run on real
-  rp2/lwIP" gap. Per CLAUDE.md's hard rule, `wozi` is never physically flashed — this dev-bench
+  confirmed working. `src/`'s own `is_hotspot_active()`/`_StaticRoutes.serve()` logic was already
+  proven correct against the real Unix-port interpreter; this closes the one remaining "never run on
+  real rp2/lwIP" gap. Per CLAUDE.md's hard rule, `wozi` is never physically flashed — this dev-bench
   result is the real, complete verification, valid for `wozi` too.
   **Pitfall found investigating this, still worth keeping**: don't reach for `mpremote exec()` to
   inspect live state — per the liveness-polling finding above, `exec()` soft-resets the board and
@@ -1019,7 +1019,7 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   the build's configured `max_connections` (6 on `dev`) real slots open with bare `connect()` calls
   and deterministically observe the next one being rejected (closed with zero bytes written, matching
   `_serve()`'s reject-when-full comment).
-- **Nonsense GET/PUT over the normal network**: a genuine 404 (shaped per `_ERROR_SHAPES`), a
+- **Nonsense GET/PUT over the normal network**: a genuine 404 (shaped per `_ERROR_STATUSES`), a
   genuinely malformed raw JSON body (needs a raw socket - `http_client.fetch()` can only ever
   serialize valid JSON), a real 413 over `max_content_length=2048`, and syntactically valid but
   nonsensical field values (wrong type, out-of-range, an entirely unknown sensor key) - each
@@ -1071,10 +1071,12 @@ response (confirmed directly against that class's own module comment), not the *
 `outer_cap_s` backstop the test meant to exercise. Fixed with a genuine trickle-feed pace (one extra
 header line every 3s, 6 of them - each individual gap safely under the 5s per-call timeout, the 18s
 cumulative total safely over the 15s outer one) that actually reaches the outer path instead.
-Not every fault has a groundable expected log entry: `_serve()`'s own reject-when-full,
-`_shaped_error_handler()`, and `_body_as_dict() is None` paths call no `pr.err_s()`/`wrn_s()` at all
-(confirmed directly, not assumed) - those tests assert the log stays *empty* instead, which is
-itself the real, meaningful check for a benign/expected outcome. One case (`test_abrupt_disconnect_
+Not every fault has a groundable expected log entry: a 404 or 405 from `_shaped_error_handler()`
+and the `_body_as_dict() is None` path call no `pr.err_s()`/`wrn_s()` at all (confirmed directly,
+not assumed) - those tests assert the log stays *empty* instead, which is itself the real,
+meaningful check for a benign/expected outcome. `_serve()`'s own drops do log: one
+`HTTP_REFUSED` warning per connection refused at the ceiling and one `HTTP_BAD_HEAD` per refused
+request head, each counted in `/status`'s `HTTPDropped`. One case (`test_abrupt_disconnect_
 mid_response_does_not_hang_the_server`) has a real but genuinely timing-dependent expected log entry
 (whether the server is still mid-write when the client's RST lands) - documented as a deliberate
 non-assertion rather than a flaky one. This retrofit was **not** extended to the rest of the tier in
@@ -1086,8 +1088,10 @@ this pass.
 empty too (`DNSSRV`/`WEBSERVER` respectively - both grounded directly against source: a
 garbage-but-present UDP datagram never reaches `asy_captive_dns.py`'s own `DNS_RECV_FAILED` (`W42`)
 backoff branch, which only fires on a genuine `(None, None)` `recvfrom()` failure, and an
-unparseable HTTP request line fails entirely inside vendored `ext/microdot.py` before this
-project's own code is ever reached). **Real finding while doing this, since corrected (2026-09-08)**:
+unparseable HTTP request line then failed entirely inside vendored `ext/microdot.py`). The
+webserver's request-head guard now refuses such a line before Microdot parses it, answering 400
+and logging one `HTTP_BAD_HEAD` warning, so the `WEBSERVER` half of that assertion no longer
+matches the source. **Real finding while doing this, since corrected (2026-09-08)**:
 `test_dns_flood_backoff_curve_recovers_once_flood_stops`'s own comment used to claim its flood
 "triggers the backoff path" - checked directly against `asy_captive_dns.py`'s `run()` and that was not
 what happens: `UDPSocket.recvfrom()` returns real `(data, addr)` for any received-but-garbage UDP

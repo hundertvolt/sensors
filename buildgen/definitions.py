@@ -535,9 +535,11 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {"key": "DNS", "label": "Name Server", "kind": "readonly"},
         {"key": "RSSI", "label": "Wi-Fi RSSI", "unit": "dBm", "kind": "readonly"},
         {"key": "WifiUptime", "label": "Wi-Fi Uptime", "unit": "s", "kind": "readonly", "description": "Seconds the Wi-Fi link has been up, hotspot included; 0 while it is down."},
+        {"key": "WifiTS", "label": "Wi-Fi Status Time", "kind": "readonly", "format": "epoch"},
         {"key": "NTPSynced", "label": "NTP Synced", "kind": "readonly"},
         {"key": "NTPLastSyncAge", "label": "NTP Last Sync Age", "unit": "s", "kind": "readonly"},
         {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
+        {"key": "HTTPDropped", "label": "Dropped Connections", "kind": "readonly", "description": "Web connections dropped in the last 24 hours, hourly resolution."},
     ]
     system_fields = [
         {"key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly"},

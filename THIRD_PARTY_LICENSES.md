@@ -13,7 +13,8 @@ away.
 ## Vendored, unmodified
 
 - **Microdot** ([`miguelgrinberg/microdot`](https://github.com/miguelgrinberg/microdot),
-  `ext/microdot.py`, pinned `v2.7.0` — verified byte-identical to that tag, with upstream's type stubs
+  `ext/microdot.py`, pinned `v2.7.0` — verified byte-identical to that tag (pinned by
+  `tests_scripts/test_vendored_microdot.py`), with upstream's type stubs
   `ext/typings/microdot/` copied unmodified from the same tag; a legacy copy of a
   much older, untagged snapshot between `v2.0.1` and `v2.1.0` also ships as
   `legacy/firmware/python/CommonDrivers/microdot.py`) — © 2019 Miguel Grinberg, MIT. License

@@ -31,6 +31,7 @@ from microdot import Request, Response
 import asy_config_manager
 import asy_spi_driver
 import asy_system_service
+import asy_webserver_service
 import asy_wifi_service
 from asy_base_classes import SensorReader, SensorReaderConfig
 from asy_crc_checks import CRC8
@@ -70,7 +71,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Iterable
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -121,6 +122,16 @@ def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
     plan = _wiring_plan(device)
     (spi_attachment,) = plan["spi"].values()  # every real device has exactly one FRAM/SPI instance
     return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
+
+
+def _src_const(path: str, name: str) -> str:
+    # A shipped const()'s literal, read from its source: a const() is not a module attribute on MicroPython.
+    with open(path) as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                literal: str = line.split("const(", 1)[1].split(")", 1)[0]
+                return literal
+    raise AssertionError(name + " not found in " + path)
 
 
 # ---------------------------------------------------------------------------
@@ -291,12 +302,18 @@ def _sensor_reader_owners(module: "Any") -> "list[Any]":
     return owners
 
 
+class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
 def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] | None" = None, timeout_ms: "int | None" = None) -> "Response":
     assert module.webserver is not None
     app = module.webserver._app
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
-    req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
+    sock = (_NoopHolder(), _NoopHolder())
+    req = Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body, sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
     coro = app.dispatch_request(req)
     if timeout_ms is not None:  # a request that must answer at once fails with TimeoutError, never hangs
         coro = asyncio.wait_for_ms(coro, timeout_ms)
@@ -1262,9 +1279,10 @@ _GET_ROUTES = ("/measurements", "/sensors", "/networking", "/system", "/notifica
 
 
 def _float_config_keys(obj: "Any") -> "list[str]":
+    # The float fields the module's own store holds: a chip-stored one (SCD30's TempOffset) is read from the chip.
     if not hasattr(obj, "get_cfg_schema") or not hasattr(obj, "cfgmgr"):
         return []
-    return [field[0] for field in obj.get_cfg_schema() if field[1] == "float"]
+    return [field[0] for field in obj.get_cfg_schema() if field[1] == "float" and field[0] in obj.cfgmgr._cache]
 
 
 def _leaves(parsed: "Any") -> "list[Any]":
@@ -1277,8 +1295,8 @@ def _leaves(parsed: "Any") -> "list[Any]":
 
 @_register("no_get_route_serialises_a_non_finite_float")
 def _scenario_no_non_finite_float_on_the_wire(device: str) -> None:
-    # Every measurement field and every float config value set to NaN, +inf and -inf in turn: every GET
-    # body stays strict JSON (json.dumps() would write bare nan/inf) and the injected fields read null.
+    # Every measurement field and every float config value a store holds set to NaN, +inf and -inf in turn: every GET
+    # body stays strict JSON (json.dumps() would write bare nan/inf), and every injected field is served and reads null.
     module = build(device, web_host="127.0.0.1", web_port=0)
     objects = _module_objects(module)
     readers = [obj for obj in objects.values() if hasattr(obj, "_set_meas_data")]
@@ -1292,22 +1310,75 @@ def _scenario_no_non_finite_float_on_the_wire(device: str) -> None:
             for key in _float_config_keys(obj):
                 obj.cfgmgr._cache[key] = value
                 injected.append((obj, key))
-        seen: list[Any] = []
+        seen: dict[tuple[str, str], Any] = {}
         for route in _GET_ROUTES:
+            if route == "/sensors" and _has(module, "scd30"):  # its snapshot answered, so SCD30's map is served, not the marker
+                _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
             res = _dispatch(module, "GET", route)
             assert res.status_code == 200, (route, res.status_code)
             body = drain_json_response_body(res.body)  # strict RFC 8259: a bare nan or inf fails here
             parsed = json.loads(body)
             if route == "/measurements":
                 for obj in readers:
-                    if obj.name in parsed:
+                    if obj.name in module.webserver._sensors:  # every sensor answers here; the other readers feed /status
                         assert _leaves(parsed[obj.name]) == [None] * len(_leaves(parsed[obj.name])), (obj.name, parsed[obj.name])
             elif route == "/sensors":
-                seen += [parsed[obj.name][key] for obj, key in injected if key in parsed.get(obj.name, {})]
+                seen.update({(obj.name, key): parsed[obj.name][key] for obj, key in injected if key in parsed.get(obj.name, {})})
             elif route != "/status":  # the flat settings routes: one module's keys each
-                seen += [parsed[key] for obj, key in injected if obj.name not in module.webserver._sensors and key in parsed]
-        assert seen == [None] * len(seen), seen  # every injected config value served reads null
-        assert seen or not injected
+                seen.update({(obj.name, key): parsed[key] for obj, key in injected if obj.name not in module.webserver._sensors and key in parsed})
+        assert sorted(seen) == sorted((obj.name, key) for obj, key in injected), (sorted(seen), injected)  # every injected value served
+        assert list(seen.values()) == [None] * len(seen), seen  # and read null
+
+
+# A device's whole serving demand stays within the heap free after boot (SPECIFICATION.md I.6: about 105,000 B) less
+# the 32,768 B contiguity reserve; estimated (agent, 2026-10-08) - measurement owed: post-boot free heap on dev, phase C.
+# @tunable web.serving_demand_budget_b = 72232
+_SERVING_DEMAND_BUDGET_B = 72232
+_POINTER_BYTES = 4  # one piece-list slot on the RP2040
+
+
+@_register("webserver_every_get_route_fits_the_serving_demand_budget_and_sends_its_pieces_uncopied")
+def _scenario_serving_demand(device: str) -> None:
+    # Per admitted connection: the head and body caps, the largest GET body held once as its encoded pieces, the piece
+    # list and one in-flight chunk; the body is the writer's own pieces (identity), so an encode-copy fails here.
+    module = build(device)
+    webserver = module.webserver
+    ssid = "K\u00fcche-W\u00e4sche"  # non-ASCII: a body's byte count differs from its character count
+    assert json.loads(_dispatch(module, "PUT", "/networking", {"SSID": ssid}).body)["result"] == {"SSID": "Valid"}
+    if _has(module, "scd30"):  # its config snapshot answered, so /sensors carries SCD30's whole map
+        _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
+    filled: list[list[bytes]] = []
+    real_writer = asy_webserver_service._PieceWriter
+
+    class _RecordingPieceWriter(asy_webserver_service._PieceWriter):
+        def __init__(self, pieces: "list[bytes]", max_bytes: int) -> None:
+            filled.append(pieces)
+            super().__init__(pieces, max_bytes)
+
+    sizes: dict[str, tuple[int, int]] = {}
+    asy_webserver_service._PieceWriter = _RecordingPieceWriter  # type: ignore[misc]
+    try:
+        for route in _GET_ROUTES:
+            filled.clear()
+            res = _dispatch(module, "GET", route)
+            assert res.status_code == 200 and len(filled) == 1, (route, res.status_code, len(filled))
+            pieces = filled[0]
+            body: Iterable[bytes] = res.body  # type: ignore[assignment]  # the stub types Response.body as bytes (microdot.pyi:162), yet a streamed route's is an iterator over its pieces - removal trigger: SPECIFICATION.md B.15
+            sent = list(body)
+            assert len(sent) == len(pieces) and all(sent[i] is pieces[i] for i in range(len(pieces))), route
+            sizes[route] = (sum(len(piece) for piece in pieces), len(pieces))
+            assert int(res.headers["Content-Length"]) == sizes[route][0], route
+            if route == "/networking":
+                assert json.loads(drain_json_response_body(iter(sent)))["SSID"] == ssid
+    finally:
+        asy_webserver_service._PieceWriter = real_writer  # type: ignore[misc]
+    head = int(_src_const("src/asy_webserver_service.py", "_MAX_HEAD_BYTES"))
+    body_cap = Request.max_content_length  # this device's ServingLimits, set by the build above
+    largest_body = max(size for size, _ in sizes.values())
+    most_pieces = max(count for _, count in sizes.values())
+    demand = webserver._max_connections * (head + body_cap + largest_body + _POINTER_BYTES * most_pieces + webserver._chunk_bytes)
+    print(f"SERVING_DEMAND {device} connections={webserver._max_connections} head={head} body_cap={body_cap} largest_body={largest_body} most_pieces={most_pieces} chunk={webserver._chunk_bytes} demand={demand} budget={_SERVING_DEMAND_BUDGET_B} routes={sizes}")
+    assert demand <= _SERVING_DEMAND_BUDGET_B, (demand, sizes)
 
 
 @_register("collect_task_starters_never_touches_start_and_check_tasks")
@@ -1407,9 +1478,12 @@ def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
     measurements = json.loads(status_body(res))
     assert_sensor_payload_not_self_wrapped(measurements, expected)
 
+    if _has(module, "scd30"):  # its config snapshot answered, so SCD30's map is read rather than marked unavailable
+        _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
     res = _dispatch(module, "GET", "/sensors")
     sensors = json.loads(status_body(res))
     assert_sensor_payload_not_self_wrapped(sensors, expected)
+    assert all("error" not in fields for fields in sensors.values()), sensors  # the marker is no sensor's config
 
 
 @_register("webserver_sensors_put_round_trips_a_real_field_through_the_real_driver")
@@ -1449,6 +1523,48 @@ def _scenario_sensors_put_scd30(device: str) -> None:
     assert json.loads(status_body(res))["SCD30"]["MeasInterval"] == 4
 
 
+def _config_snapshot_chips(module: "Any") -> "list[tuple[Any, Any]]":
+    # (reader, I2CDevice) for every sensor whose config GET reads a chip snapshot, found by shape, never by name.
+    chips = []
+    for reader in module.webserver._sensors.values():
+        for protocol in reader.__dict__.values():
+            if hasattr(protocol, "get_config_snapshot"):
+                chips += [(reader, session.i2c_device) for session in protocol.__dict__.values() if hasattr(session, "i2c_device")]
+    return chips
+
+
+@_register("webserver_sensors_get_sends_the_unavailable_marker_for_a_failed_chip_config_read")
+def _scenario_sensors_get_marks_a_failed_chip_read(device: str) -> None:
+    # A chip that stops acknowledging under its config snapshot: GET /sensors sends exactly the marker for that module,
+    # never nulls a reader would take for unset values, keeps its one persisted entry, and leaves every other map as it was.
+    module = build(device)
+    chips = _config_snapshot_chips(module)
+    expected = [name for attr, name in _READER_OWNERS if attr != "sgp40" and _has(module, attr)]  # SGP40's config is its file alone
+    assert sorted(reader.name for reader, _ in chips) == sorted(expected)
+
+    def get_sensors(faulted: "Any") -> "dict[str, Any]":
+        if _has(module, "scd30") and faulted is not module.scd30:  # its six replies, as the PUT scenario above queues them
+            _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
+        sensors: dict[str, Any] = json.loads(status_body(_dispatch(module, "GET", "/sensors")))
+        return sensors
+
+    before = get_sensors(None)
+    assert all("error" not in fields for fields in before.values()), before
+    for reader, i2c_device in chips:
+        count = run(reader.get_error_counter())[reader.name]["ErrCount"]
+        bus = i2c_device.i2c._i2c
+        bus.nak_addresses.add(i2c_device.device_address)
+        try:
+            sensors = get_sensors(reader)
+        finally:
+            bus.nak_addresses.discard(i2c_device.device_address)
+        assert sensors[reader.name] == {"error": "unavailable"}, (reader.name, sensors[reader.name])
+        assert {k: v for k, v in sensors.items() if k != reader.name} == {k: v for k, v in before.items() if k != reader.name}
+        log = run(reader.get_error_counter())[reader.name]
+        assert log["ErrCount"] == count + 1, (reader.name, log)
+        assert (log["ErrType"][-1], log["ErrNum"][-1]) == ("E", code("E", "CHIP_GET")), (reader.name, log)
+
+
 @_register("webserver_networking_put_ssid_group_reconnects_but_led_group_alone_does_not")
 def _scenario_networking_put_ssid_group(device: str) -> None:
     module = build(device)
@@ -1460,6 +1576,14 @@ def _scenario_networking_put_ssid_group(device: str) -> None:
     res = _dispatch(module, "PUT", "/networking", {"Hostname": "TestHost"})
     assert json.loads(res.body)["result"] == {"Hostname": "Valid"}
     assert module.conn._reconn_wifi is True  # setNetwork's own field group did change
+
+
+@_register("webserver_networking_put_answers_an_unknown_key_invalid")
+def _scenario_networking_put_unknown_key(device: str) -> None:
+    # A key no settings group of the endpoint lists is answered in the OK envelope, never dropped unanswered.
+    module = build(device)
+    body = json.loads(_dispatch(module, "PUT", "/networking", {"NoSuchKey": 1}).body)
+    assert (body["res"], body["result"]) == ("OK", {"NoSuchKey": "Invalid"})
 
 
 @_register("webserver_networking_put_ntp_fields_forces_a_resync")
@@ -1624,7 +1748,7 @@ def _scenario_notification_light_cmd_led_rejects_fractional(device: str) -> None
     # becomes a silent 12).
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10.5, "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_field")
@@ -1634,7 +1758,7 @@ def _scenario_notification_light_cmd_led_rejects_non_numeric_field(device: str) 
     # coerces between the two numeric types, so this is now rejected too.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": "10", "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_t")
@@ -1644,14 +1768,14 @@ def _scenario_notification_light_cmd_led_rejects_non_numeric_t(device: str) -> N
     # rejection holds for T's own float-typed branch, not just the int-typed ones.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": "soon"}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_missing_field")
 def _scenario_notification_light_cmd_led_rejects_missing_field(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30}})  # T missing
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb")
@@ -1661,14 +1785,14 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_rgb(device: str) -
     # promoted callback used to silently clamp. Rejected exactly like a missing/non-numeric field.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 256, "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_negative_rgb")
 def _scenario_notification_light_cmd_led_rejects_negative_rgb(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": -1, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_t")
@@ -1677,9 +1801,9 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_t(device: str) -> 
     # 0.1 and never bounded a too-large one at all.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 0.1}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 100.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Failed"
+    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t")
@@ -1750,7 +1874,8 @@ def _scenario_status_get(device: str) -> None:
     if _has_uart_link(module):
         assert "Transfers" in body["sensors"]["UARTLINK"] and "Failures" in body["sensors"]["UARTLINK"]
     assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UTCTime" in body["system"]
-    assert "WifiUptime" in body["networking"] and "NTPSynced" in body["networking"]
+    assert "WifiUptime" in body["networking"] and "NTPSynced" in body["networking"] and "WifiTS" in body["networking"]
+    assert body["networking"]["HTTPDropped"] == 0  # a clean boot has dropped no connection
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]
     # One entry per real module + per real ConfigManager + this service's own "WEBSERVER" entry,
     # from _all_loggers()'s reflected shape. By NAME, not count: the website's errcount rows are
@@ -1778,6 +1903,7 @@ def _scenario_status_snapshot_under_the_held_lock(device: str) -> None:
     assert "IP" not in networking
     got = {key: networking[key] for key in ("Mode", "Connected", "IPv4", "Subnet", "Gateway", "DNS", "RSSI")}
     assert got == {"Mode": "STA", "Connected": True, "IPv4": "192.168.1.42", "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.53", "RSSI": -61}
+    assert networking["WifiTS"] == run(conn.get_data()).TS  # the time of the snapshot these fields came from
 
 
 @_register("webserver_status_in_ap_mode_reports_no_rssi_and_never_queries_it")
@@ -1836,6 +1962,23 @@ def _scenario_system_get_build_info(device: str) -> None:
     assert isinstance(build_info["BuildDate"], str) and build_info["BuildDate"]
 
 
+@_register("webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store")
+def _scenario_system_get_unreadable_store(device: str) -> None:
+    # SYSTEM's config file is a directory, so its store cannot be read: each of its fields on GET /system carries the
+    # marker in place of a value, never a null or a missing key, while the other modules' fields keep theirs.
+    cfg_path = _tmp_cfg_dir()
+    os.mkdir(cfg_path + "config_SYSTEM.cfg")
+    module = build(device, cfg_path=cfg_path)
+    body = json.loads(status_body(_dispatch(module, "GET", "/system")))
+    groups = module.webserver._settings["system"]
+    system_fields = [field for group in groups if group.module is module.sysfunct for field in group.fields]
+    others = [(group.module, field) for group in groups if group.module is not module.sysfunct for field in group.fields]
+    assert system_fields and others
+    assert [body[field] for field in system_fields] == [{"error": "unavailable"}] * len(system_fields), body
+    for other, field in others:
+        assert body[field] == run(other.get_dict_cfg())[other.name][field], (field, body[field])
+
+
 @_register("webserver_status_put_reset_errors_clears_a_real_modules_history")
 def _scenario_status_put_reset_errors(device: str) -> None:
     module = build(device)
@@ -1868,6 +2011,43 @@ def _scenario_status_reset_errors_not_undone(device: str) -> None:
     log = run(sgp.get_error_counter())
     assert log["SGP40"]["ErrCount"] == 0
     assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned OK"
+
+
+class _RefusedStream:
+    # A connection the ceiling refuses: _serve() closes it and never reads or writes it.
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        pass
+
+
+@_register("webserver_status_counts_a_refused_connection_in_http_dropped_until_reset_errors")
+def _scenario_http_dropped_counts_a_refusal(device: str) -> None:
+    # One connection past the device's own ceiling: refused, traced once, counted in /status's HTTPDropped, and
+    # ResetErrors clears the window with the logs.
+    module = build(device)
+    webserver = module.webserver
+    stream = _RefusedStream()
+
+    async def refuse_one() -> None:
+        for _ in range(webserver._max_connections):  # every slot held, as by open connections
+            await webserver._open_conns.increment()
+        await webserver._serve(stream, stream)
+        for _ in range(webserver._max_connections):
+            await webserver._open_conns.decrement()
+
+    run(refuse_one())
+    assert stream.closed
+    log = run(webserver.get_error_counter())["WEBSERVER"]
+    assert log["ErrCount"] == 1, log
+    assert (log["ErrType"][-1], log["ErrNum"][-1]) == ("W", code("W", "HTTP_REFUSED")), log
+    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 1
+    assert json.loads(_dispatch(module, "PUT", "/status", {"ResetErrors": True}).body)["result"] == {"ResetErrors": "Valid"}
+    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1937,7 +2117,7 @@ def _scenario_hotspot_real_routes_unaffected(device: str) -> None:
 
 @_register("is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode")
 def _scenario_hotspot_directory_traversal_404s(device: str) -> None:
-    # All-paths coverage through the real wiring: the ".." guard clause in _serve_static() runs
+    # All-paths coverage through the real wiring: the ".." guard clause in _StaticRoutes.serve() runs
     # before is_hotspot_active() is ever consulted (see asy_webserver_service.py's own source order).
     module = build(device)
     assert module.conn is not None
@@ -1949,7 +2129,7 @@ def _scenario_hotspot_directory_traversal_404s(device: str) -> None:
 @_register("is_hotspot_active_wiring_put_to_unmatched_path_still_405_in_hotspot_mode")
 def _scenario_hotspot_put_unmatched_405(device: str) -> None:
     # All-paths coverage: a non-GET request to an unmatched path resolves to 405 inside Microdot's
-    # own routing before _serve_static() is ever reached - real hotspot state must not change that.
+    # own routing before _StaticRoutes.serve() is ever reached - real hotspot state must not change that.
     module = build(device)
     assert module.conn is not None
     module.conn._conn_phase = _PHASE_HOTSPOT

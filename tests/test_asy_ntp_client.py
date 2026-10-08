@@ -385,19 +385,10 @@ def test_get_dict_cfg_reflects_a_customized_on_disk_config() -> None:
     }
 
 
-def test_get_dict_cfg_returns_all_none_values_when_config_manager_is_invalid() -> None:
+def test_get_dict_cfg_is_the_unavailable_marker_when_config_manager_is_invalid() -> None:
     client = make_invalid_cfg_client()
     result = run(client.get_dict_cfg())
-    assert result == {
-        "NTP": {
-            "NTPHost": None,
-            "NTPOffset": None,
-            "NTPInterval": None,
-            "GMTOffset": None,
-            "DSTOffset": None,
-            "DNSFallback": None,
-        },
-    }
+    assert result == {"NTP": {"error": "unavailable"}}
 
 
 def test_get_data_and_get_dict_data_reflect_the_initial_never_synced_state() -> None:

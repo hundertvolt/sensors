@@ -19,7 +19,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Literal, NamedTuple, TypeVar
+    from typing import Final, Literal, NamedTuple, TypeVar
 
     from asy_base_classes import JsonMapping
     from asy_print_log import ErrorLog, LogConfig, PrintLogHistory
@@ -206,26 +206,26 @@ def compare_before_write(
     for key, value in data.items():
         field = fields.get(key)
         if field is None:
-            results[key] = "Invalid"
+            results[key] = INVALID
             continue
         is_error, coerced = type_or_range_error(value, field)
         if is_error:
-            results[key] = "Invalid"
+            results[key] = INVALID
             continue
         if key in always:
             write[key] = coerced
-            results[key] = "Valid"
+            results[key] = VALID
             continue
         if key not in current:
-            results[key] = "Failed"
+            results[key] = FAILED
             continue
         res = None if resolution is None else resolution.get(key)
         stored = current[key]
         if (coerced != stored) if res is None else (res(coerced) != res(stored)):
             write[key] = coerced
-            results[key] = "Valid"
+            results[key] = VALID
         else:
-            results[key] = "Unchanged"
+            results[key] = UNCHANGED
     return write, results
 
 
@@ -276,6 +276,13 @@ def schema_names(schema: "ConfigSchema") -> list[str]:  # field names, in schema
 
 if TYPE_CHECKING:
     WriteValidity = dict[str, Literal["Invalid", "Unchanged", "Valid", "Failed"]]
+
+# The four per-field result words (SPECIFICATION.md G.2): plain module attributes, never const(), so every
+# module imports them by name; mypy reads each as its Literal, which WriteValidity takes.
+VALID: "Final" = "Valid"
+UNCHANGED: "Final" = "Unchanged"
+INVALID: "Final" = "Invalid"
+FAILED: "Final" = "Failed"
 
 
 def type_or_range_error(
@@ -594,12 +601,12 @@ class ConfigManager:
             # No bad-default check: the manager's own schema passed setup()'s self-check, and a malformed
             # schema fails tests_scripts/test_config_schemas.py.
             for key, result in dict_results.items():
-                if result == "Invalid":
+                if result == INVALID:
                     if key not in fields:
                         await self.pr.err_s(self._config_file, "- Key", key, "not found, skipping!", errno=_ERR_BAD_ARG)
                     else:
                         await self.pr.err_s(self._config_file, "- Type / range error in", key, "- skipping!", errno=_ERR_BAD_ARG)
-                elif result == "Failed":
+                elif result == FAILED:
                     await self.pr.err_s(self._config_file, "- Key", key, "not found in config file, ignoring!", errno=_ERR_CONTRACT)
                 elif key in always:
                     del write[key]  # "Valid", nothing staged: the push stage dispatches it

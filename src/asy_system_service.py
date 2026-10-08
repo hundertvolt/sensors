@@ -17,7 +17,7 @@ from machine import reset as system_reset
 from micropython import const
 
 from asy_base_classes import LockedValue, TickSeconds, arm_tick_timer, utc_now
-from asy_config_manager import ConfigManager, config_filename, instance_name, name_cfg, schema_names
+from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
 from asy_print_log import DEFAULT_LOG, LogConfig, make_logger
 
 try:
@@ -212,8 +212,8 @@ class SystemService:
         # level stays provably in sync with the persisted value after any accepted request.
         persisted, results = await self.cfgmgr.write_config(data)
         if not persisted:
-            return dict.fromkeys(data, "Failed")
-        if results.get(name_cfg(_VAL_DEBUG_LEVEL)) in ("Valid", "Unchanged"):
+            return dict.fromkeys(data, FAILED)
+        if results.get(name_cfg(_VAL_DEBUG_LEVEL)) in (VALID, UNCHANGED):
             level = await self.cfgmgr.get_int_values(self._cfg_schema)
             if level is not None:
                 await self._apply_level(level[0])

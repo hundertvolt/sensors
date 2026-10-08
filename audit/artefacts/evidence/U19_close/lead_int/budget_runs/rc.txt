@@ -1,0 +1,7 @@
+arzi rc=0
+wozi rc=0
+dev rc=1
+plant_dev rc=1
+schlafzi rc=0
+grkizi rc=0
+klkizi rc=0

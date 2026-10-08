@@ -702,7 +702,7 @@ since the server aborts first — so the suite observes the server's own diagnos
 a bare "something took too long". The earlier flat 20.0 was inert for that reason, and also sat
 above the 15s the real web UI gives up at. What is still missing is an elapsed-time budget well
 below the cap: this is a backstop, not a performance assertion, and the suite is blind to the whole
-5-15s band (BACKLOG item 24, which carries the real-hardware measurements).
+5-15s band (SPECIFICATION.md C.7).
 
 ### `--hang` (real bus hangs, distinct from `--fault`)
 

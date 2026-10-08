@@ -133,3 +133,11 @@ again.
 
 The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor; a
 device's TOML decides its sensors.
+
+## Clearing the error logs
+
+The Status page's error-log reset (`PUT /status {"ResetErrors": true}`) clears every module's log
+and the dropped-connection count (`HTTPDropped`) at once. It must finish within the device's
+15-second request limit, the same limit the web page waits; on a busy device it can take several
+seconds. A reset that reports "Failed" means one module's log could not be written; the other logs
+are cleared. Read and save the logs before clearing them: the reset cannot be undone.

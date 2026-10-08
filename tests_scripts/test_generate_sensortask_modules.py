@@ -1,6 +1,6 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
-pre-generation step) - both its real-device happy path (module source, wiring-plan JSON, definitions
-and their manifest) and its BuildError-reporting failure path."""
+pre-generation step) - both its real-device happy path (module source, wiring-plan JSON, definitions,
+their manifest and the REST API reference) and its BuildError-reporting failure path."""
 
 import json
 from pathlib import Path
@@ -10,6 +10,7 @@ import pytest
 from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
+from buildgen.api_reference import api_reference_json, generate_api_reference
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
@@ -47,6 +48,7 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
         assert actual_plan == expected_plan
         written = json.loads((out_dir / "definitions" / f"{device}.json").read_text())
         assert written == definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
+        assert (out_dir / "api" / f"{device}.json").read_text() == api_reference_json(generate_api_reference(expected.model, repo_root / "src"))
     assert json.loads((out_dir / "definitions" / "index.json").read_text()) == {"devices": sorted(DEVICE_NAMES)}
 
 
@@ -67,5 +69,27 @@ def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_
     assert exit_code == 1
     assert "simulated failure for broken.toml" in capsys.readouterr().err
 
-    # Never left holding a half-written module (or wiring plan) for the device that failed.
-    assert not list((tmp_path / "build" / "generated_src").glob("sensortask_broken*"))
+    # Never left holding a half-written module, wiring plan, definitions or API reference for the device that failed.
+    out_dir = tmp_path / "build" / "generated_src"
+    assert not [*out_dir.glob("sensortask_broken*"), *out_dir.glob("definitions/broken*"), *out_dir.glob("api/broken*")]
+
+
+@pytest.mark.parametrize("stage", ["generate_definitions", "generate_api_reference"])
+def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], stage: str) -> None:
+    # A device's outputs are all computed before any is written, so a stage after the module's own
+    # generation failing is the same one-line report and exit 1, with no file of that device behind.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    (tmp_path / "devices").mkdir()
+    (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
+    (tmp_path / "src").symlink_to(repo_root / "src")
+    (tmp_path / "ext").symlink_to(repo_root / "ext")
+
+    def failing_stage(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        raise BuildError(DEVICE_NAMES[0], f"simulated {stage} failure")
+
+    monkeypatch.setattr(generate_sensortask_modules, stage, failing_stage)
+
+    assert generate_sensortask_modules.main() == 1
+    assert f"simulated {stage} failure" in capsys.readouterr().err
+    out_dir = tmp_path / "build" / "generated_src"
+    assert not [p for p in out_dir.rglob("*") if p.is_file()]

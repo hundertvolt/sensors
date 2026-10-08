@@ -50,8 +50,14 @@ def _decompress(body: "_ResponseBody") -> bytes:
     return d.read()  # type: ignore[no-any-return]
 
 
+class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
 def _make_request(app: "Microdot", method: str, path: str) -> Request:
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
+    sock = (_NoopHolder(), _NoopHolder())
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"", sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
 
 
 def _src_const(name: str) -> str:
@@ -64,6 +70,10 @@ def _src_const(name: str) -> str:
     raise AssertionError(name + " not found in src/asy_webserver_service.py")
 
 
+async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no connection is counted here
+    return 0
+
+
 def _make_app() -> "tuple[WebserverService, Microdot]":
     app = Microdot()
     # Dispatch only, no server starts: backlog, host and port are never used here.
@@ -72,7 +82,7 @@ def _make_app() -> "tuple[WebserverService, Microdot]":
         None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
     )
     routes = RouteSources([], None, None, None, None, None, None, [], [])
-    service = WebserverService(app, routes, serving, static=StaticSite("/html", "index.html", None))  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
+    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
     return service, app
 
 

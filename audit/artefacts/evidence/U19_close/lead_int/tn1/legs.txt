@@ -1,0 +1,9 @@
+start 07:47:04
+wozi rc=0 08:00:31
+npm rc=0 08:00:42
+dev rc=0 08:02:46
+arzi rc=0 08:12:37
+klkizi rc=0 08:12:38
+schlafzi rc=0 08:12:38
+grkizi rc=0 08:12:39
+done 08:12:39

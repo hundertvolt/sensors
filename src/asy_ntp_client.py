@@ -18,7 +18,7 @@ from machine import RTC, Timer
 from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, set_utc_valid, utc_now
-from asy_config_manager import make_dict
+from asy_config_manager import INVALID, make_dict
 from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, resolve_ipv4
 from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_udp_socket import UDPSocket
@@ -229,7 +229,7 @@ class NTPClient(SensorReaderConfig):
             await self.pr.err_s("Refusing", key, why, errno=_ERR_BAD_ARG)
         ok, results = await super()._set_mgr_cfg({k: v for k, v in data.items() if k not in refused}, cfg_vals)
         for key in refused:
-            results[key] = "Invalid"
+            results[key] = INVALID
         return ok, results
 
     async def _set_synced(self, *, value: bool) -> None:

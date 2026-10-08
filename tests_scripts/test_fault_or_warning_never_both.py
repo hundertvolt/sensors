@@ -27,6 +27,7 @@ _FILE_THEN_WRITE = "the config file was unusable, then writing its repair failed
 _TWO_SOURCES = "the config manager and the read callback are two sources: two occurrences"
 _FILE_THEN_SCHEMA = "the config file was unusable, then the schema itself proved invalid: two occurrences"
 _CHIP_RESET = "a chip reset, then a failed re-apply or a rejected reading: separate occurrences"
+_ARM_OR_DROP_TRACE = "never in one run: an arm that persisted sets the flag the trace tests"
 
 # The mixed pairs the tree holds on purpose, each with why its two entries are two occurrences. A listed
 # pair the scan no longer finds fails, so the list follows every change that renames or removes one.
@@ -39,9 +40,10 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_fram_driver.py", "setup", ("W", "FRAM_ID_RETRIED"), ("E", "FRAM_WP_PARTIAL")): "the chip answered its identification only on a retry, then its status register read partly protected: two conditions",
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
-    ("src/asy_base_classes.py", "_get_dict_cfg", ("E", "CFG_GET_RAISED"), ("W", "CALLBACK_KEYS")): _TWO_SOURCES,
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
     ("src/asy_captive_dns.py", "run", ("E", "UNEXPECTED"), ("W", "SOCKET_TEARDOWN")): "never in one run: the raising disconnect sets disconnect_ok, which the teardown warning tests",
+    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_BAD_HEAD")): _ARM_OR_DROP_TRACE,
+    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_PEER_RESET")): _ARM_OR_DROP_TRACE,
     ("src/asy_ntp_client.py", "_fetch_ntp_reply", ("W", "SOCKET_TEARDOWN"), ("E", "NTP_NO_REPLY")): "the socket's teardown and the exchange's outcome (a silent server) are two occurrences",
     ("src/asy_wifi_service.py", "_deactivate_wlan_permanently", ("W", "WLAN_DEACTIVATED"), ("E", "WLAN_OFF")): "the permanent switch-off is persisted first, then a raise in its teardown (disconnect/active/deinit) is a second occurrence",
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,

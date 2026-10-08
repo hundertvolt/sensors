@@ -47,6 +47,7 @@ class _FakeRequest:
     def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
         self._json_value = json_value
         self._raise_instead = raise_instead
+        self.sock = (_NoopHolder(), _NoopHolder())
 
     @property
     def json(self) -> object:  # matches asy_api_response.py's own _RequestLike Protocol
@@ -55,9 +56,53 @@ class _FakeRequest:
         return self._json_value
 
 
+class _NoopHolder:
+    # The writer side of Request.sock as the static routes use it; nothing here opens a stream.
+    def hold(self, closable: object) -> None:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # make_response - envelope/catalog primitive
 # ---------------------------------------------------------------------------
+
+
+def _catalogued_codes() -> list[int]:
+    # _STANDARD_CODES' keys as the source writes them: each "<int>:" line of its dict block.
+    codes: list[int] = []
+    inside = False
+    with open("src/asy_api_response.py") as f:
+        for line in f:
+            if line.startswith("_STANDARD_CODES"):
+                inside = True
+            elif inside and line.startswith("}"):
+                return codes
+            elif inside:
+                codes.append(int(line.split(":", 1)[0]))
+    raise AssertionError("_STANDARD_CODES block not found in src/asy_api_response.py")
+
+
+def _produced_codes() -> list[int]:
+    # Each literal code src/ passes first to make_response() outside a comment, plus the webserver's shaped
+    # statuses, read from their source line: an underscore const() is not a module attribute on MicroPython.
+    codes: list[int] = []
+    for name in sorted(os.listdir("src")):
+        if not name.endswith(".py"):
+            continue
+        with open("src/" + name) as f:
+            for line in f:
+                if line.startswith("_ERROR_STATUSES = const(("):
+                    codes.extend(int(c) for c in line.split("const((", 1)[1].split("))", 1)[0].split(","))
+                comment_at = line.find("#")
+                for tail in (line if comment_at < 0 else line[:comment_at]).split("make_response(")[1:]:
+                    digits = ""
+                    for ch in tail:
+                        if not ch.isdigit():
+                            break
+                        digits += ch
+                    if digits:
+                        codes.append(int(digits))
+    return codes
 
 
 def test_make_response_standard_success_code_uses_catalog_text() -> None:
@@ -74,18 +119,35 @@ def test_make_response_standard_error_code_uses_catalog_text() -> None:
 
 
 def test_make_response_standard_error_text_can_be_overridden() -> None:
-    resp = ar.make_response(2, descr="Custom missing-cmd text")
-    assert resp == {"res": "ERR", "code": 2, "descr": "Custom missing-cmd text", "result": {}}
+    resp = ar.make_response(404, descr="Custom not-found text")
+    assert resp == {"res": "ERR", "code": 404, "descr": "Custom not-found text", "result": {}}
 
 
 def test_make_response_every_standard_code_present() -> None:
-    for status in (0, 1, 2, 3, 4, 5, 100):
-        resp = ar.make_response(status)
-        assert resp["code"] == status
-        assert resp["descr"] != ""
-    assert ar.make_response(0)["res"] == "OK"
-    for status in (1, 2, 3, 4, 5, 100):
-        assert ar.make_response(status)["res"] == "ERR"
+    # The whole catalog with its texts: a shaped HTTP error's code is its status (SPECIFICATION.md C.5.3).
+    catalog = {
+        0: "Command executed",
+        1: "Invalid JSON request",
+        2: "Command specifier missing",
+        3: "Invalid command",
+        400: "Bad request",
+        404: "Not found",
+        405: "Method not allowed",
+        413: "Payload too large",
+        500: "Internal server error",
+    }
+    assert sorted(ar._STANDARD_CODES) == sorted(catalog)
+    for status, descr in catalog.items():
+        assert ar.make_response(status) == {"res": "OK" if status == 0 else "ERR", "code": status, "descr": descr, "result": {}}
+
+
+def test_every_catalogued_code_has_a_producer_and_every_produced_code_is_catalogued() -> None:
+    catalogued = _catalogued_codes()
+    assert sorted(catalogued) == sorted(ar._STANDARD_CODES)  # the source read sees the live catalog
+    produced = _produced_codes()
+    never_produced = [c for c in catalogued if c not in produced]
+    uncatalogued = [c for c in produced if c not in catalogued]
+    assert never_produced == [] and uncatalogued == [], (never_produced, uncatalogued)
 
 
 def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() -> None:
@@ -93,9 +155,8 @@ def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() 
     assert resp == {"res": "ERR", "code": 999, "descr": "Unknown error", "result": {}}
 
 
-def test_make_response_unknown_code_with_descr_is_a_real_custom_code() -> None:
-    # The generalization the legacy special_err closed enum didn't support: any caller-defined
-    # code outside the standard catalog, with its own message.
+def test_make_response_unknown_code_with_descr_keeps_the_given_descr() -> None:
+    # Totality only: an uncatalogued code keeps the given text; the catalog itself is closed (C.5.3).
     resp = ar.make_response(42, descr="LED is busy")
     assert resp == {"res": "ERR", "code": 42, "descr": "LED is busy", "result": {}}
 
