@@ -70,16 +70,20 @@ And on 2026-10-08:
   whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
   `f5c8255` (U19, the REST layer). It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host, not on hardware**:
+- **Verified on the host** (`43b5373`, the bench findings' fixes):
   - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 93 files, about 4,590 MicroPython tests, zero memory errors;
-  - the full `tests_scripts/` tier: about 3,240 tests;
-  - the `dev` twin suite at both stages, Run 12 included (the client against a real mosquitto: kill, stall,
-    takeover, flood), 346 of 346 checks;
+  - `scripts/test.sh` at both GC stages: 94 files, 4,800 MicroPython tests, zero memory errors;
+  - the full `tests_scripts/` tier: 3,415 tests passed, 11 skipped;
+  - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
+    flood): 173 of 173 checks at `gc.threshold(-1)`;
   - the website's settings matrix.
-- **CI**: the last fully finished run before the U18 merge (on `51a5bd2`) was green on all 27 checks; the
-  PR's checks show the current head.
-- **Nothing has run on the board.** This session is the first.
+- **CI**: green on `59eac40`, the five web lanes skipped as nothing under the web tree changed; the PR's
+  checks show the current head.
+- **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
+  `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
+  test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
+  100,000 B tripwire. The publish cadence and the `online` timing changed after them (`43b5373`, section 8), so the next
+  run is the first to see those on the board.
 
 ### 1.4 The client in brief
 
