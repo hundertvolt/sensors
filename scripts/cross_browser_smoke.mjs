@@ -4,16 +4,16 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import net from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
 import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
-import { classifyConnections } from "./_page_load_connections.mjs";
+import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
 
 /** @typedef {import("./_cross_browser_probe.mjs").Probe} Probe */
 /** @typedef {import("./_cross_browser_probe.mjs").ProbeDefinitions} ProbeDefinitions */
+/** @typedef {import("./_page_load_connections.mjs").CountingProxy} CountingProxy */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
@@ -43,9 +43,13 @@ const H1_WAIT_MS = 10000;
 // per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
 // @tunable web.connections_per_page_load = 2
 const CONNECTIONS_PER_PAGE_LOAD = 2;
-// An engine (Chromium and Firefox both seen) sometimes opens one spare socket that carries no request; it is printed and bounded.
-// @tunable l0.smoke_speculative_connections_max = 1
-const SPECULATIVE_CONNECTIONS_MAX = 1;
+// A Chromium-family engine sometimes opens spare sockets that carry no request (Edge two, Chromium one), counted once the
+// page's first data request went out, so the socket opened for it is not one; they are printed and bounded.
+// @tunable l0.smoke_speculative_connections_max = 2
+const SPECULATIVE_CONNECTIONS_MAX = 2;
+// The count waits for that first data request; this bounds only a page that never sends one.
+// @tunable l0.smoke_first_data_request_wait_ms = 10000
+const FIRST_DATA_REQUEST_WAIT_MS = 10000;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");
 const FIREFOX_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bin", "firefox");
@@ -124,59 +128,8 @@ async function waitUntilServing(url, timeoutMs) {
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
 }
 
-/** @typedef {{reset: () => void, firstRequests: () => (string | null)[], close: () => Promise<void>}} CountingProxy */
-
-/** A TCP proxy in front of the twin that records every connection a browser opens through it, with its first request line. @returns {Promise<CountingProxy>} */
-function startCountingProxy() {
-    /** @type {(string | null)[]} */
-    let firstRequests = [];
-    /** @type {Set<net.Socket>} */
-    const sockets = new Set();
-    const server = net.createServer((client) => {
-        const slot = firstRequests.length;
-        firstRequests.push(null);
-        client.once("data", (chunk) => {
-            const [line] = chunk.toString("latin1").split("\r\n", 1);
-            firstRequests[slot] = line ?? "";
-        });
-        const upstream = net.connect(PORT, HOST);
-        const close = () => {
-            client.destroy();
-            upstream.destroy();
-            sockets.delete(client);
-            sockets.delete(upstream);
-        };
-        sockets.add(client);
-        sockets.add(upstream);
-        for (const socket of [client, upstream]) {
-            socket.on("error", close);
-            socket.on("close", close);
-        }
-        client.pipe(upstream);
-        upstream.pipe(client);
-    });
-    return new Promise((resolve, reject) => {
-        server.once("error", reject);
-        server.listen(PROXY_PORT, HOST, () => {
-            resolve({
-                reset: () => {
-                    firstRequests = [];
-                },
-                firstRequests: () => [...firstRequests],
-                close: () => new Promise((done) => {
-                    for (const socket of sockets) {
-                        socket.destroy();
-                    }
-                    server.close(() => done());
-                }),
-            });
-        });
-    });
-}
-
-/** Fails a check whose page load opened more of its own connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {CountingProxy} proxy */
-function checkPageLoadConnections(device, engine, proxy) {
-    const firstRequests = proxy.firstRequests();
+/** Fails a check whose page load opened more of its own connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {(string | null)[]} firstRequests */
+function checkPageLoadConnections(device, engine, firstRequests) {
     const { page, speculative, data } = classifyConnections(firstRequests);
     console.log(`connections per page load (${device} ${engine}): ${page}, plus ${speculative} speculative and ${data} for its data requests`);
     if (page === 0 || page > CONNECTIONS_PER_PAGE_LOAD || speculative > SPECULATIVE_CONNECTIONS_MAX) {
@@ -415,7 +368,7 @@ async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue,
         await wdSetWindowRect(driverBase, sid, target.width, target.height);
         proxy.reset();
         await wdNavigate(driverBase, sid, SITE_URL);
-        checkPageLoadConnections(device, engine, proxy);
+        checkPageLoadConnections(device, engine, await settledPageLoadConnections(proxy, FIRST_DATA_REQUEST_WAIT_MS));
         const readyTitle = await pollUntil(
             () => /** @type {Promise<string>} */ (wdExecute(driverBase, /** @type {string} */ (sid), "return document.title;")),
             (t) => typeof t === "string" && t.includes("Sensor Station"),
@@ -543,7 +496,7 @@ async function runChromiumFamily(which, device, viewport, probe, probeValue, pro
         const page = await context.newPage();
         proxy.reset();
         await page.goto(SITE_URL);
-        checkPageLoadConnections(device, engine, proxy);
+        checkPageLoadConnections(device, engine, await settledPageLoadConnections(proxy, FIRST_DATA_REQUEST_WAIT_MS));
         await page.waitForSelector("h1", { timeout: H1_WAIT_MS });
 
         const clickOrTap = viewport === "mobile" ? "tap" : "click";
@@ -601,7 +554,7 @@ async function smokeDevice(device, probe, engines, counter, results) {
     let proxy;
     try {
         await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
-        proxy = await startCountingProxy();
+        proxy = await startCountingProxy(HOST, PROXY_PORT, PORT);
         for (const engine of engines) {
             for (const viewport of /** @type {const} */ (["desktop", "mobile"])) {
                 // One counter across every device and check, so no two checks against a twin ever
