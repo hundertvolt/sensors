@@ -264,3 +264,31 @@ round was sent. Cause: `Probe._read_exact()` kept waiting through the 1 s read t
 PINGREQ only after some packet arrived, and a probe idle for 1.5 × its 20 s keepalive was dropped. Fixed with
 `tests_scripts/test_mqtt_probe.py`, whose idle-ping test failed before the fix. The bench tests passed
 regardless, and their observers are mostly busy, but a quiet wait longer than 30 s could have lost messages.
+
+### Attempt 6: the five heap tests rerun with `-s` (`heap_rerun_step/`)
+
+Run to keep the figures attempt 4 discarded (owner, 2026-10-08: "measure and push"); no write group, MQTT
+resident but disabled, as in attempt 4. The FRAM logs were read first (`status_before.json`: NTP 3, SGP40 2),
+since the hammer test resets them. **4 passed, 1 failed, and the failure is a checkout/image skew, not the
+board's.** `test_serving_sweep_at_the_reactive_default` stopped at `ImportError: can't import name
+_StaticRoutes`: this checkout carries U19 (`f5c82557`), whose `serving_at_default_gc.py` imports a class the
+`51a5bd2d` image does not have. `allocation_need_per_source.py` changed in U19 too, so both serving-heap tests
+were rerun from a `51a5bd2d` worktree with `-s`: **2 passed** (`worktree_51a5bd2d/console.log.gz`). The
+lesson for every later bench step: device scripts must come from the image's own commit.
+
+Figures, the first kept with the client resident (no earlier run kept any, so no pre-MQTT baseline exists):
+
+- **Full ceiling held** (`test_heap_at_peak_while_a_full_ceiling_is_held`): ceiling 5, held 1–5, at the ceiling
+  in 115 of 142 samples. After boot free 36,960 B, largest free run 33,472 B, 16 placeable 2,048 B blocks; at
+  peak (worst of 69 samples) largest free run 21,440 B, 12 slots against the 5 needed.
+- **Connection wall**: the board admitted 5 simultaneous connections against its configured 5.
+- **Serving sweep at `gc.threshold(-1)`** (from the worktree): 0 allocation failures; N=4: 48 of 48 answered;
+  N=6 over the ceiling of 5: 60 answered, 12 refused. Free before load 55,248–63,104 B (largest run
+  5,696–13,488 B); **under load down to free 1,152 B with a largest run of 912 B** (`load13`), the tightest heap
+  figure this session produced; after load 61,776–61,840 B (largest run 4,288–5,776 B).
+- **Allocation need per source** (51 probes, both runs): the largest need is 320 B (`route:/status`,
+  `route:/`), then 256 B (`/measurements`, `/sensors`, `status:networking`); `/status` churns 51,984–53,984 B per
+  call, `/` 22,352 B, `/sensors` 22,304 B. The errcount probes' need moved by one 16 B rung (80/128 B vs 112 B)
+  between the two runs with the same probe code, so a single reading of that size is ±16 B.
+- **Hammer** (`test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot`): passed; it
+  prints only the error logs it read before reset, so it keeps no load figure even with `-s`.

@@ -25,14 +25,14 @@ not retune. The Part N rows named move only in a later commit that cites this di
 - **The AP outage needed the bench's documented recovery** (a station kick, then one hard reset, the CYW43
   reconnect behaviour); it is counted as a pass with recovery, not a clean pass.
 - **Free heap minimum 2,192 B at `gc.threshold(-1)`** under the broker faults with the client resident, with
-  zero memory markers (the test passed). It is the smallest free-heap figure this run produced.
+  zero memory markers (the test passed). The serving sweep of attempt 6 went lower: 1,152 B.
 - **`test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status`**: 19 answered, 21 refused at
   the connection ceiling (5 on this image), 0 answered wrongly.
-- **The heap tests** (`test_heap_at_peak_while_a_full_ceiling_is_held`, `test_report_the_boards_own_connection_wall`,
-  `test_every_source_and_route_fits_a_small_free_run`, `test_serving_sweep_at_the_reactive_default`,
-  `test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot`) all passed, but recorded
-  no `result_note`: their figures go to captured stdout, which pytest discards on a pass, so this run kept
-  none of them. Rerunning them with `-s` (or giving them `result_note`s) is what would keep the first
-  figures with the client resident.
+- **The heap tests** kept no figures in attempt 4 (stdout is captured on a pass); attempt 6 reran them with
+  `-s` (README). Peak at a held full ceiling: largest free run 21,440 B, 12 placeable 2,048 B slots against the 5 needed; the
+  serving sweep at `gc.threshold(-1)`: 0 allocation failures, tightest load sample free 1,152 B / largest run
+  912 B; largest per-source allocation need 320 B (`/status`, `/`).
+- **Steady state** (README, observation): rounds every 60.49 s / 10.56 s at 60 s / 10 s, four messages within
+  46 ms, an interval change reconnects in 150 ms, `GET /status` median 1.56 s with or without the client.
 - **The flash step's full-build heap**: 113,280 B allocated after `build_system()` against the 100,000 B
   tripwire; the client measured at 11,360 B of it (README, attempt 3).
