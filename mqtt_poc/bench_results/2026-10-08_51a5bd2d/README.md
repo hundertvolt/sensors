@@ -134,3 +134,20 @@ The owner chose (owner, 2026-10-08, asked "How do I go on?": "Run bench step now
 The runner's bench-step line with the scope's 66 selections (`tests_hardware/run_scopes.py mqtt bench`),
 `--allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`,
 and a not-clean reason naming everything above. Started 2026-10-08 12:12 UTC.
+
+**Progress (interim, 12:40 UTC).** The MQTT client module, `test_mqtt_broker_faults.py`, passed 18 of 18:
+connect and `online`, strict-JSON measurements, an inbound command, broker SIGKILL and restart, SIGSTOP stall,
+silent path loss, reset path, client-id takeover, the 3000-message QoS 0 flood, the 500-message QoS 1 burst,
+the oversized message, the `.local` broker name, the no-task-ended checkpoint, the AP outage, the reboot, the
+faults at `gc.threshold(-1)` and the switch-off with a retained `offline`. Its measured values reach the run
+record only when the step ends (section "Measurements" will follow).
+
+NTP/DNS so far: real NTP sync, real DNS resolution, an unreachable NTP server and garbage DNS answers passed.
+**`test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot` failed**: after the
+test's 8 s UDP 123 block and its `NTPHost` re-trigger, the board did not resync within the 20 s bound, and was
+still `NTPSynced: false` with `NTPLastSync: null` at 12:38 UTC, about 6 min later
+(`fram_after_failure_test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot.json`,
+saved at the failure; its error logs had been reset by the test). This branch does not change
+`src/asy_ntp_client.py`, and its `src/asy_dns_client.py` change leaves the unicast path byte-identical for a
+normal answer (`NTPHost` is `pool.ntp.org`, not `.local`); the MQTT client was already switched off. The
+traceback follows with the step's end.
