@@ -142,7 +142,7 @@ _QOS1_MAX_TRIES = const(3)
 # @tunable mqtt.short_session_warn = 3
 _SHORT_SESSION_WARN = const(3)
 # @tunable mqtt.pub_step_ms = 1000
-_PUB_STEP_MS = const(1000)  # the publisher's check for a due round: how late the first one follows a CONNACK
+_PUB_STEP_MS = const(1000)  # the longest the publisher sleeps toward a due round: how late the first follows a CONNACK
 # @tunable mqtt.unconfirmed_max_bytes = 2000
 _UNCONFIRMED_MAX = const(2000)  # bytes written but not yet proven received: the connection's lwIP MEM_SIZE share
 _MAX_TEXT_BYTES = const(64)  # MQTTUser/MQTTPW
@@ -604,16 +604,24 @@ class MQTTClient(SensorReaderConfig):
 
     async def _publish_loop(self) -> None:
         # A round right after each CONNACK, then every MQTTPubInterval; the interval is read at connect, so a changed
-        # setting, which reconnects, applies at once.
-        last = time.ticks_ms()
+        # setting, which reconnects, applies at once. Each round falls due one interval after the last one fell due, not
+        # after it ran, so a late wake delays that round alone, never the cadence (Part A.11).
+        due = time.ticks_ms()
         while True:
-            await asyncio.sleep_ms(_PUB_STEP_MS)
             if self._state != _ST_CONNECTED:
+                await asyncio.sleep_ms(_PUB_STEP_MS)
                 continue
-            if self._pub_due or time.ticks_diff(time.ticks_ms(), last) >= self._pub_interval_ms:
+            if self._pub_due:
                 self._pub_due = False
-                last = time.ticks_ms()
-                await self._publish_measurements()
+                due = time.ticks_ms()
+            wait = time.ticks_diff(due, time.ticks_ms())
+            if wait > 0:
+                await asyncio.sleep_ms(min(wait, _PUB_STEP_MS))  # re-checks the state and a CONNACK at least each step
+                continue
+            due = time.ticks_add(due, self._pub_interval_ms)
+            if time.ticks_diff(due, time.ticks_ms()) <= 0:
+                due = time.ticks_add(time.ticks_ms(), self._pub_interval_ms)  # a stall past a whole interval: no catch-up
+            await self._publish_measurements()
 
     async def _publish_measurements(self) -> None:
         # One QoS 0 message per module, its /measurements object as JSON (owner, 2026-10-07: 'Also measurements JSON').
@@ -786,6 +794,7 @@ class MQTTClient(SensorReaderConfig):
         if subscribe > 0:
             self._write(stream, self._txmv[:subscribe])
         self._queue(self._base + b"/status", _ONLINE, 1, retain=True)
+        self._flush_outbound(stream, time.ticks_ms())  # online in this step: a stalled loop cannot hold it past a tick
         while True:
             await asyncio.sleep_ms(cfg.tick_ms)  # sleep_ms() allocates nothing
             if self._reconfigure:

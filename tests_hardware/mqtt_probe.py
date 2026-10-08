@@ -4,6 +4,7 @@ test drives and watches the device's broker traffic with no MQTT CLI tool (SPECI
 
 from __future__ import annotations
 
+import os
 import shutil
 import signal
 import socket
@@ -65,8 +66,11 @@ class Mosquitto:
             for name, secret in users.items():
                 subprocess.run([passwd, "-b", str(password_file), name, secret], check=True, capture_output=True)  # noqa: S603 - fixed argv
             access = f"allow_anonymous false\npassword_file {password_file}\n"
+        # Started as root, mosquitto drops to its own user, which cannot read a password file in a root-only work dir
+        # (the clean-chroot verification runs as root); `user root` keeps it, and does nothing for any other user.
+        stay = "user root\n" if os.geteuid() == 0 else ""
         self.conf.write_text(
-            f"listener {port} {bind}\n{access}persistence false\nconnection_messages true\n"
+            f"listener {port} {bind}\n{access}{stay}persistence false\nconnection_messages true\n"
             "log_type error\nlog_type warning\nlog_type notice\nlog_type information\n",
         )
         self.proc: subprocess.Popen[bytes] | None = None

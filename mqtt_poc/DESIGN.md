@@ -57,9 +57,10 @@ run) and closing every finding in `RESULTS.md`.
   write has one author and no PUBACK can land inside a running drain (which resets the stream's
   pending output when it finishes).
 - **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Right
-  after each CONNACK and then every `MQTTPubInterval` seconds (read at connect, checked every
-  `mqtt.pub_step_ms`) it reads each source's `get_dict_data()` and enqueues one QoS 0 message per
-  module; it never touches the socket.
+  after each CONNACK and then every `MQTTPubInterval` seconds (read at connect) it reads each source's
+  `get_dict_data()` and enqueues one QoS 0 message per module; it never touches the socket. Each round
+  falls due one interval after the previous one fell due, and the publisher sleeps to that time in steps
+  of at most `mqtt.pub_step_ms` (§13 item 13).
 - **Socket ownership.** The keeper creates the socket itself (`socket.socket()`, `setblocking(False)`,
   `connect()` to the resolved IPv4 literal, EINPROGRESS accepted), wraps it in an asyncio `Stream`, and
   closes it with `wait_closed()` in a `finally` on every exit path (`Stream.close()` is a no-op).
@@ -178,8 +179,14 @@ pass, each a single `bytearray` with `memoryview` regions; an allocation failure
 | outbound ring | 8 × 384 | `mqtt.out_slots`, `mqtt.out_payload_max` |
 | last inbound topic | 64 | `mqtt.last_topic_bytes` |
 
-About 5 KB plus the object, against the ~7.5–8 KB one HTTP connection holds at peak, which the
-`max_connections` 6 → 5 step frees (owner, 8.4). Steady-state per-message allocation: the `readinto`
+The buffers are about 5 KB, against the ~7.5–8 KB one HTTP connection holds at peak, which the
+`max_connections` 6 → 5 step frees (owner, 8.4). Measured on the bench board (2026-10-08,
+`mqtt_poc/bench_results/2026-10-08_51a5bd2d/`): one construction holds 8,432 B, the buffers plus what
+every `SensorReaderConfig` module holds (its config manager, log, locks and instance dict); the two
+imports add 2,928 B, so the client costs 11,360 B in all. Allocating the buffers only at the first enable
+would spare a board that never enables the client about 5 KB, but it would place long-lived buffers late
+into a fragmented heap, which HEAP_FRAGMENTATION_MEASUREMENTS.md's placement law shows splitting the large
+free run; they stay allocated at boot (agent, 2026-10-08). Steady-state per-message allocation: the `readinto`
 generator per inbound read, one `memoryview` slice per write, the measurement JSON text per module per
 interval. Counters saturate at `COUNTER_CAP`. Nothing grows with uptime or traffic; the twin and bench
 tiers check it at `gc.threshold(-1)` and `32768` with zero memory markers.
@@ -299,12 +306,19 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   timeouts, subscribe, QoS 0/1 both ways, DUP retransmission and give-up, ping deadline, malformed and
   oversize input, broker EOF, stall, short-session warning, link gating, hotspot, disabled, reconnect,
   backoff growth and stable reset, consumer dispatch and a raising consumer, the drain-timeout-ends-the-
-  connection rule, the config shape refusals, and an allocation-flat run.
+  connection rule, the config shape refusals, and an allocation-flat run. The publisher's cadence runs on a
+  virtual clock whose loop stalls as the bench board's did (§13 item 13), and `online` is checked to go out
+  with the SUBSCRIBE, not a keeper tick later.
 - **L2** (Run 12 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enable over
   REST; `online` retained and every module's measurements arrive; inbound `cmd` messages counted; broker
   SIGKILL and restart, SIGSTOP stall, client-id takeover and an inbound flood, each recovered by the rules
   above; REST serving throughout; no task restarted; the expected codes and nothing else in `MQTT`'s log;
   zero memory markers at both GC stages (the suite runs twice).
+- **What the twin does not show** (the bench of 2026-10-08, `mqtt_poc/bench_results/`): it runs at host
+  speed, so the board's loop stalls (a `GET /status` held it about 0.8 s every 5 s) are L1's virtual clock
+  above; its fake readings print more digits than the board's, so its payloads run larger than the real
+  ones; and the 60 s backoff after a run of short sessions, which the board measured, is pinned by L1's
+  `test_only_a_stable_session_resets_the_backoff`, not by a Run 12 wait of a minute or more.
 - **L4** (bench, Pi4, `tests_hardware/bench/test_mqtt_broker_faults.py`): §11.1.
 
 ### 11.1 Bench runbook (a session on the Pi4, owner's go-ahead in that session)
@@ -354,6 +368,12 @@ Each the more conservative, more easily reversible choice, for review:
     built-in 8.8.8.8/1.1.1.1 out and gave NTP its own `DNSFallback` list; the broker sits on the local
     network (owner, 2026-10-08: 'TLS is not needed as it all runs in a local network.'), where a public
     resolver knows no local name, so MQTT does not borrow NTP's list.
+13. Each round falls due one interval after the previous one fell due, not after it ran, and a round
+    missed by more than a whole interval starts a fresh interval instead of being caught up. The bench
+    board's rounds came 10.56 s apart at 10 s and 60.49 s at 60 s: each fired at the first 1 s step after
+    its due time, and the next interval counted from that late start, so the board's loop stalls (a
+    `GET /status` held it about 0.8 s every 5 s) moved the whole cadence. `MQTTPubInterval` now holds on
+    average; one late wake delays its own round only.
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 

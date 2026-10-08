@@ -5,6 +5,7 @@ and a reboot at the firmware's own gc threshold, then the broker faults again at
 from __future__ import annotations
 
 import contextlib
+import itertools
 import json
 import signal
 import socket
@@ -671,8 +672,11 @@ def test_the_broker_faults_run_clean_at_micropythons_default_gc(mqtt_bench: Mqtt
     assert not any(marker in output for marker in MEMORY_ERROR_MARKERS), f"allocation failure at the reactive default (I.4(e)): {output[-2500:]}"
     assert "UNRETRIEVED TASK EXCEPTION" not in output, output[-2500:]
     assert steps and steps[-1] == "done", f"the fault timeline did not finish inside the script's window: {steps}"
+    # At the reactive default free memory sinks until an allocation forces a collect, so the lowest sample is only how
+    # near a collect it landed, never a margin: the note keeps every sample and counts the collects they straddle.
     free = [int(line.split("free=")[1].split()[0]) for line in output.splitlines() if line.startswith("MEM_SAMPLE")]
-    result_note(f"timeline {steps}; free heap min {min(free) if free else None} B over {len(free)} samples")
+    rises = sum(1 for before, after in itertools.pairwise(free) if after > before)
+    result_note(f"timeline {steps}; free heap at the reactive default over {len(free)} samples, {rises} collects between them: {free} B")
     _wait_connected(m.dut_ip, "after the board went back to its own firmware", timeout_s=_REBOOT_WAIT_S)
 
 

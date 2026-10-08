@@ -1005,9 +1005,13 @@ wire input (C.7.1's no-logging layers).
   with no timeout, parses in place and dispatches; it never writes, never logs and never raises, and
   records why it ended for the keeper, which persists it;
 - the publisher, `_publish_loop()` (starter `start_asy_publish`), queues each sensor's
-  `/measurements` object right after each CONNACK and then every `MQTTPubInterval` seconds, checking
-  every `mqtt.pub_step_ms`; the interval is read at connect, and a changed setting reconnects, so it
-  applies at once (agent, 2026-10-08). It never touches the socket.
+  `/measurements` object right after each CONNACK and then every `MQTTPubInterval` seconds; the
+  interval is read at connect, and a changed setting reconnects, so it applies at once (agent,
+  2026-10-08). Each round falls due one interval after the previous one fell due, and the publisher
+  sleeps to that due time in steps of at most `mqtt.pub_step_ms`, so a late wake delays its own round
+  only; a round missed by more than a whole interval starts a fresh one, with no catch-up (agent,
+  2026-10-08: the bench board's rounds, counted from each late start, came 10.56 s apart at 10 s). It
+  never touches the socket.
 
 **Cancelling one waiter on a socket drops the socket's whole poll entry**
 (`extmod/asyncio/core.py`'s `IOQueue.remove()`, v1.29.0), so only two things ever cancel one: the
@@ -9221,7 +9225,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `mqtt.max_out_backlog` | 2048 B | `src/asy_mqtt_client.py` — `2048` | the stalled-broker teardown | estimated (agent, `93b0976`) — measurement owed: the backlog a slow reader produces, L4 | unknown until measured | the outbound rate changes |
 | `mqtt.qos1_max_tries` | 3 | `src/asy_mqtt_client.py` — `3` | the QoS 1 give-up | estimated (agent, `93b0976`) — measurement owed: PUBACK loss on the bench, L4 | unknown until measured | the retry policy changes |
 | `mqtt.short_session_warn` | 3 | `src/asy_mqtt_client.py` — `3` | the short-session warning | estimated (agent, `93b0976`) — measurement owed: the session pattern a takeover produces, L4 | unknown until measured | the retry policy changes |
-| `mqtt.pub_step_ms` | 1000 ms | `src/asy_mqtt_client.py` — `1000` | how late the first measurement round follows a CONNACK, and the publisher's check for a due round | estimated (agent, 2026-10-08) — measurement owed: none: a polling step against a 10 s minimum interval | 1 s against the 10 s minimum interval | the interval's minimum changes |
+| `mqtt.pub_step_ms` | 1000 ms | `src/asy_mqtt_client.py` — `1000` | how late the first measurement round follows a CONNACK, and the longest the publisher sleeps toward a due round | estimated (agent, 2026-10-08) — measurement owed: none: a polling step against a 10 s minimum interval | 1 s against the 10 s minimum interval | the interval's minimum changes |
 | `mqtt.unconfirmed_max_bytes` | 2000 B | `src/asy_mqtt_client.py` — `2000`; `tests/test_asy_mqtt_client.py` — `2000` | the connection's share of lwIP's `MEM_SIZE` (`toolchain/versions.toml`: limit × 2,000 B); the bytes written that no PINGRESP has confirmed | owner decision (owner, 2026-10-08: 'Cap at 2,000 B (Recommended)') | the whole share, by definition | `MEM_SIZE`'s per-connection rule changes |
 | `wifi.hotspot_stations_settle_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)`, both the mode switch and the deactivation path | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |

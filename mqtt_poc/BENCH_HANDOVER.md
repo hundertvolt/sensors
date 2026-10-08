@@ -405,10 +405,15 @@ the summary block's notes. Each settles a SPECIFICATION.md Part N row that still
 | `test_the_broker_is_found_by_the_bench_hosts_local_name` | resolved address, connect time | none: the `.local` path itself |
 | `test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link` | reconnect, failed attempts | `l4.mqtt_ap_reconnect_timeout_s`, `l4.mqtt_ap_max_failed_attempts` |
 | `test_a_reboot_reconnects_from_the_stored_settings` | connected after the reset | `l4.mqtt_reboot_wait_s` |
-| `test_the_broker_faults_run_clean_at_micropythons_default_gc` | timeline, free heap minimum | `l4.mqtt_at_default_gc_window_s`, `l4.mqtt_default_gc_script_timeout_s` |
+| `test_the_broker_faults_run_clean_at_micropythons_default_gc` | timeline, every free-heap sample and the collects between them (at the reactive default the lowest sample is no margin) | `l4.mqtt_at_default_gc_window_s`, `l4.mqtt_default_gc_script_timeout_s` |
 
 Record the heap tests' notes beside them (the connection wall, the serving sweep, the hammer load): they are
 the first figures with the client resident. The bench session records; it does not retune.
+
+Since the bench of 2026-10-08 (`mqtt_poc/bench_results/`), rounds fall due one interval after the last one
+fell due (DESIGN.md §13 item 13). An observer timing rounds should therefore see the mean gap equal
+`MQTTPubInterval`, where that run saw 10.56 s at 10 s; a single gap may still run long or short by one loop
+stall.
 
 ## 9. After the run
 

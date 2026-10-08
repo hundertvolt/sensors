@@ -95,3 +95,12 @@ def test_a_password_broker_admits_only_a_probe_with_its_credentials(tmp_path: Pa
         for probe in probes:
             probe.close()
         broker.stop()
+
+
+@pytest.mark.skipif(mqtt_probe.mosquitto_binary() is None, reason="mosquitto is not installed")
+@pytest.mark.parametrize(("euid", "stays"), [(0, True), (1000, False)])
+def test_a_broker_started_as_root_keeps_root_to_read_its_password_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, euid: int, *, stays: bool) -> None:
+    # Root's mosquitto otherwise drops to its own user, which cannot open the password file in a root-only tmp_path.
+    monkeypatch.setattr(mqtt_probe.os, "geteuid", lambda: euid)
+    broker = mqtt_probe.Mosquitto(tmp_path, mqtt_probe.free_tcp_port(), users=dict([_CREDENTIALS]))
+    assert ("user root" in broker.conf.read_text().splitlines()) is stays

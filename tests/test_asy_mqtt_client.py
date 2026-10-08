@@ -36,6 +36,7 @@ _CFG = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 200
 _QUIET_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
 _R_STALLED = 7  # asy_mqtt_client.py's const()-folded teardown reason - mirrored, not importable
+_ST_CONNECTED = 3  # asy_mqtt_client.py's const()-folded state - mirrored, not importable
 
 
 def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -895,6 +896,105 @@ def test_a_raising_source_is_logged_and_the_others_still_published() -> None:
             assert await until(client.is_connected)
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
             assert code("E", "SOURCE") in await errnums(client)
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+class _StallingLoop:
+    # The publisher's clock and sleep, virtual: a wake that falls in one of the loop's stalls runs at the stall's end,
+    # as the board's did under a GET /status every 5 s (0.70-0.85 s each, bench console 2026-10-08). Each stall's
+    # start and length vary, as there, so the 1 s steps cannot lock onto the stalls' ends.
+    def __init__(self, stall_every_ms: int, stall_ms: int, spread_ms: int = 0, *, now: int = 0) -> None:
+        self.now = now
+        self._every = stall_every_ms
+        self._stall = stall_ms
+        self._spread = spread_ms  # the most a stall starts late; each is also up to a fifth shorter than stall_ms
+
+    def _window(self, k: int) -> "tuple[int, int]":
+        start = k * self._every + 337 + (k * 7919) % (self._spread + 1)  # 337: off the publisher's 1 s grid
+        return start, start + self._stall - (k * 104729) % (self._stall // 5 + 1)
+
+    async def sleep_ms(self, ms: int) -> None:
+        wake = self.now + ms
+        start, end = self._window(wake // self._every)
+        if start <= wake < end:
+            wake = end
+        self.now = wake
+        await asyncio.sleep_ms(0)
+
+    def ticks_add(self, ticks: int, delta: int) -> int:
+        return ticks + delta
+
+    def ticks_diff(self, end: int, start: int) -> int:
+        return end - start
+
+    def ticks_ms(self) -> int:
+        return self.now
+
+
+def _rounds_on(loop: _StallingLoop, interval_ms: int, rounds: int) -> "list[int]":
+    # The virtual times at which the publisher starts its first `rounds` rounds, connected from the start.
+    client = make_client()
+    client._pub_interval_ms = interval_ms
+    client._state = _ST_CONNECTED
+    client._pub_due = True  # as the CONNACK sets it
+    fired: list[int] = []
+
+    async def record() -> None:
+        fired.append(loop.now)
+
+    client._publish_measurements = record  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client._publish_loop())
+        while len(fired) < rounds:
+            await asyncio.sleep_ms(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    shim = type("StallingAsyncio", (), {})()
+    shim.sleep_ms = loop.sleep_ms
+    real_time, real_asyncio = asy_mqtt_client.time, asy_mqtt_client.asyncio
+    asy_mqtt_client.time, asy_mqtt_client.asyncio = loop, shim  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_mqtt_client.time, asy_mqtt_client.asyncio = real_time, real_asyncio
+    return fired
+
+
+def test_rounds_keep_their_interval_through_the_loop_stalls_the_board_showed() -> None:
+    # The board's rounds came 10.56 s apart at 10 s: each landed at the first 1 s step after its due time, and the
+    # next interval counted from that late start. Now each round is due one interval after the last one's due time.
+    fired = _rounds_on(_StallingLoop(5000, 850, 600, now=600), 10000, 31)
+    late = [t - fired[0] - k * 10000 for k, t in enumerate(fired)]
+    assert all(0 <= ms <= 850 for ms in late), late  # never behind by more than the one stall it woke in
+    assert any(ms > 0 for ms in late), late  # some rounds did fall due inside a stall
+    assert abs((fired[-1] - fired[0]) / 30 - 10000) <= 30, fired  # the mean is the setting
+
+
+def test_a_stall_longer_than_the_interval_never_bunches_rounds() -> None:
+    # A round whose due time passed during a stall starts a fresh interval rather than firing the missed ones at once.
+    fired = _rounds_on(_StallingLoop(30000, 25000), 10000, 8)
+    gaps = [fired[i + 1] - fired[i] for i in range(len(fired) - 1)]
+    assert min(gaps) >= 10000, gaps
+
+
+def test_online_goes_out_with_the_subscribe_not_a_tick_later() -> None:
+    # The bench board's online reached the broker 0.9 s after a reconnect's CONNACK: a GET /status held the loop past
+    # the keeper's next tick. Written in the same step as the SUBSCRIBE, it waits on no wake; this tick is 2 s.
+    slow_tick = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 2000, 50, 200, 100, 1)
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(config=slow_tick)
+        try:
+            assert await until(client.is_connected)
+            assert await until(lambda: len(broker.published(b"sensors/t1/status")) == 1, 1000)
         finally:
             await stop(client, tasks, broker)
 
