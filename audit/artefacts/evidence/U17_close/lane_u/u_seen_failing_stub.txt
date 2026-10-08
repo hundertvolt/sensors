@@ -1,0 +1,15 @@
+        found = findings(module, changelog)
+>       assert found[0] == f"no '{_CONSTANTS_HEADING}' table with columns {', '.join(_CONSTANT_COLUMNS)}"
+               ^^^^^^^^
+E       IndexError: list index out of range
+
+test_uart_changelog_stub.py:246: IndexError
+=========================== short test summary info ============================
+FAILED test_uart_changelog_stub.py::test_a_changed_module_constant_fails - as...
+FAILED test_uart_changelog_stub.py::test_a_constant_without_a_row_and_a_row_without_a_constant_fail
+FAILED test_uart_changelog_stub.py::test_an_unknown_status_fails - assert [] ...
+FAILED test_uart_changelog_stub.py::test_a_swapped_row_pair_fails - Assertion...
+FAILED test_uart_changelog_stub.py::test_a_last_entry_whose_change_does_not_name_the_constant_fails
+FAILED test_uart_changelog_stub.py::test_a_last_entry_naming_no_row_and_a_bad_class_fail
+FAILED test_uart_changelog_stub.py::test_a_renamed_heading_fails_rather_than_passing_empty
+7 failed, 2 passed in 0.22s

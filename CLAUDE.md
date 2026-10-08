@@ -129,11 +129,13 @@ information):
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source
-  is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`, and reconciling it is
-  post-audit only (owner, 2026-09-25: 'the C port stays out of scope, anything there is post-audit
-  only')), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
-  impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
+  `UART_C_PORT_CHANGELOG.md`** (kept until the post-audit C reconciliation, and deleted there; its
+  source is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`, and reconciling it
+  is post-audit only (owner, 2026-09-25: 'the C port stays out of scope, anything there is
+  post-audit only')), classified as protocol-level ("must be mirrored in C") or Python-internal ("no
+  C impact") — the second class is logged too, so a future session doesn't re-derive it; the
+  protocol module and the layers below it where a change could reach the wire are in scope, and a
+  changed `const()` wire constant or recovery timing is Class A by definition. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
   the former keeps a mixed-version pair working, the latter is a coordinated flag-day, which the
   Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); until the C reconciliation the
@@ -159,16 +161,16 @@ information):
   instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
   variant. dev, two instances') **and `wozi` carries none** — wozi is never flashed, so the
   peripheral would be untestable there (agent, 2026-09-11). The protocol's own wire constants and
-  recovery timings live in `src/asy_uart_comm.py` as `const()` values; a change to any of them is
-  Class A by definition. **Construction is buildgen-driven, like every other driver**:
-  `devices/dev.toml` declares the two instances as `driver = "uart_link"` (`role =
-  "initiator"`/`"responder"`, one on each of `[bus.uart0]`/`[bus.uart1]`) —
-  `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one role's `UARTComm` plus the bench-only
-  banner/echo application logic and transfer/failure counters (none of which belong in the
-  standalone protocol module itself); resolved via `buildgen/driver_registry.py`'s `_OVERRIDES`
-  table like `fram`/`neopixel`/`notification`, since it isn't a `SensorReader`/`SensorReaderConfig`
-  subclass either — but unlike those three it is not a singleton (`SINGLETON_SERVICE_DRIVERS`
-  excludes it), since a device wires exactly one initiator + one responder.
+  recovery timings live in `src/asy_uart_comm.py` as `const()` values. **Construction is
+  buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
+  `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
+  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one role's
+  `UARTComm` plus the bench-only banner/echo application logic and transfer/failure counters (none
+  of which belong in the standalone protocol module itself); resolved via
+  `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
+  isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
+  singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
+  one responder.
 - **`dev` meets every device's bar**: its generated config is held to the same standard as every
   device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —

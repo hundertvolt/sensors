@@ -1,5 +1,5 @@
-"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
-Every method returns a well-defined value, never raises.
+"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), received bytes in pieces (PieceBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+Every method returns a well-defined value, never raises; PieceBuffer's construction alone may raise, its caller's checks bounding size and piece_bytes.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
 # store's (SensorReaderConfig) - both inside the one-time boot batch, never lazily in a task (Part A.7).
@@ -19,7 +19,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Mapping
+    from collections.abc import Awaitable, Callable, Iterator, Mapping
     from typing import Literal, NamedTuple, Protocol, TypeVar
 
     from machine import Timer
@@ -156,6 +156,64 @@ class RegionBuffer:
         if self._buf is None:
             return None
         return memoryview(self._buf)[self.data_start : self.data_end]
+
+
+class PieceBuffer:
+    # Bytes too many for one allocation, held as pieces of at most piece_bytes: no allocation is larger
+    # than one piece (owner, 2026-10-05). Read through its length, its pieces and copy-out, never joined.
+    def __init__(self, size: int, piece_bytes: int) -> None:
+        self._size = size
+        self._piece_bytes = piece_bytes
+        # Every piece allocated here, after the caller's cap admitted size; a MemoryError is not caught.
+        self._pieces = [bytearray(min(piece_bytes, size - start)) for start in range(0, size, piece_bytes)]
+
+    def __len__(self) -> int:
+        return self._size
+
+    def copy_into(self, dest: bytearray | memoryview, start: int = 0) -> bool:
+        # The bytes from start to the end into the front of dest; a short dest gets nothing, never a partial copy.
+        if start < 0 or start > self._size or len(dest) < self._size - start:
+            return False
+        index, at = divmod(start, self._piece_bytes)
+        pos = 0
+        while index < len(self._pieces):
+            piece = self._pieces[index]
+            n = len(piece) - at
+            dest[pos : pos + n] = memoryview(piece)[at:]
+            pos += n
+            index += 1
+            at = 0
+        return True
+
+    def pieces(self) -> "Iterator[bytearray]":
+        return iter(self._pieces)
+
+    def trim(self, length: int) -> bool:
+        # A short train's length: trailing pieces dropped and the last one shortened in place, nothing allocated.
+        if length < 0 or length > self._size:
+            return False
+        keep = (length + self._piece_bytes - 1) // self._piece_bytes
+        while len(self._pieces) > keep:
+            self._pieces.pop()
+        if keep:
+            self._pieces[-1][length - (keep - 1) * self._piece_bytes :] = b""
+        self._size = length
+        return True
+
+    def write_at(self, offset: int, src: bytes | bytearray | memoryview) -> bool:
+        if offset < 0 or offset + len(src) > self._size:
+            return False
+        view = memoryview(src)
+        index, at = divmod(offset, self._piece_bytes)
+        done = 0
+        while done < len(view):
+            piece = self._pieces[index]
+            n = min(len(piece) - at, len(view) - done)
+            piece[at : at + n] = view[done : done + n]
+            done += n
+            index += 1
+            at = 0
+        return True
 
 
 class LockedCounter:

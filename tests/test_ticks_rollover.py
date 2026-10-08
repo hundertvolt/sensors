@@ -29,7 +29,7 @@ from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
 from asy_print_log import LogConfig
 from asy_system_service import SystemService
-from asy_uart_comm import ROLE_INITIATOR, UARTComm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, TransferLimits, UARTComm
 from asy_uart_driver import UART
 
 try:
@@ -150,7 +150,7 @@ def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
     # UARTComm._drain() (100 ms timeout: a 600 ms bound) from uptime `start`, 50 ms per clock read, a frame's worth
     # of bytes arriving at each of the first `fed_reads` reads. Returns (bytes drained, bound hit, clock reads).
     driver = _uart_driver()
-    comm = UARTComm(driver, ROLE_INITIATOR, payload_size=8, timeout=100)
+    comm = UARTComm(driver, ROLE_INITIATOR, limits=TransferLimits(8, 100, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes))
     assert asyncio.run(comm.setup()) is True
     size = len(comm._rx.get_buf() or b"")
     fake: FakeUART = driver._uart  # type: ignore[assignment]
@@ -199,7 +199,9 @@ def _install_stepping(module: object, start: int, step_ms: int, on_read: "Callab
 def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int | None") -> "tuple[bool, bool, bool]":
     # request_signal() behind a queued signal, its deadline armed at `start`: (still pending one ms before the deadline
     # or after the release, finished at the deadline, returned True); release_after_ms clears the signal that far in.
-    driver = NeopixelDriver(0, neopixel_freq=100, led_overl_bri=50, log=LogConfig(None, 10, None))
+    driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
+    driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
+    driver.neopixel_dt = 0.01
     asyncio.run(driver.setup())
     fake = _install(asy_neopixel_driver, start)
 

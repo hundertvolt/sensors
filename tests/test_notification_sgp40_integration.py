@@ -123,7 +123,9 @@ def make_sgp_reader() -> "tuple[SGP40_Reader, Any]":
 def make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
     # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), mirrors
     # src/sensortask_wozi.py's own real registration shape.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())

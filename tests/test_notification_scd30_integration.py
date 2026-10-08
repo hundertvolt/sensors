@@ -112,7 +112,9 @@ def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationS
     # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
     # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
     # its own .CO2/.Hum fields) - mirrors src/sensortask_wozi.py's own real registration shape.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
 
     signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
@@ -125,7 +127,9 @@ def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notificat
     # Separate stack (own pixel/notify instance) rather than a second signal registered on
     # make_stack()'s own notify - matches WarnCO2's own test scope of one signal per scenario, and
     # avoids the two signals' ramps overlapping in the same pixel._pixel.writes trace.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
 
     signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())

@@ -1395,7 +1395,7 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
 
 
 def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # 2 x 2 + poll_idle_ms + 21ms GC pause against UARTLinkDriver's 1000ms timeout: 975 is the
+    # 2 x 2 + poll_idle_ms + 21ms GC pause against asy_uart_comm's 1000ms default timeout: 975 is the
     # last idle poll that fits, 976 the first UARTComm.setup() refuses with UART_TIMEOUT_PARAM.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart1"]["poll_idle_ms"] = 975
@@ -1420,7 +1420,7 @@ def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_d
 def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: Path, src_dir: Path) -> None:
     # At 9600 baud a poll brings 6 bytes, so the 5-byte header + 48-byte payload frame is the floor.
     doc = _with_uart_pair(base_doc())
-    doc["bus"]["uart0"]["baudrate"] = 9600
+    doc["bus"]["uart0"]["baudrate"] = doc["bus"]["uart1"]["baudrate"] = 9600  # both ends agree (Part J.6)
     doc["bus"]["uart0"]["rxbuf"] = 53
     _build(tmp_path, src_dir, doc)
     doc["bus"]["uart0"]["rxbuf"] = 52
@@ -1435,7 +1435,7 @@ def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, s
     for bus in ("uart0", "uart1"):
         doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 115200}
     _build(tmp_path, src_dir, doc)
-    doc["bus"]["uart0"]["baudrate"] = 9600  # a poll brings 6 bytes, so one frame is the floor
+    doc["bus"]["uart0"]["baudrate"] = doc["bus"]["uart1"]["baudrate"] = 9600  # a poll brings 6 bytes, so one frame is the floor
     doc["bus"]["uart0"]["rxbuf"] = 52
     with pytest.raises(BuildError, match=r"rxbuf 52 is below the 53 bytes .*one 53-byte frame"):
         _build(tmp_path, src_dir, doc)
@@ -1443,7 +1443,7 @@ def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, s
 
 def test_an_unstated_poll_idle_ms_is_read_from_the_driver_source(tmp_path: Path, src_dir: Path) -> None:
     # An unstated poll_idle_ms is UART's own default, read from source: 2 x 2 + 975 + 21 = 1000 fits
-    # UARTLinkDriver's 1000ms timeout, 976 does not.
+    # asy_uart_comm's 1000ms default timeout, 976 does not.
     doc = _with_uart_pair(base_doc())
     del doc["bus"]["uart1"]["poll_idle_ms"]
     staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 50,", "poll_idle_ms: int = 975,")
@@ -1452,6 +1452,41 @@ def test_an_unstated_poll_idle_ms_is_read_from_the_driver_source(tmp_path: Path,
     with pytest.raises(BuildError, match=r"poll_idle_ms 976") as info:
         _build(tmp_path, staged, doc)
     assert (info.value.field, info.value.instance) == ("poll_idle_ms", "uart_link_resp")
+
+
+def test_a_uart_pair_whose_baud_rates_differ_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Both ends of the link agree their parameters out of band and never negotiate (Part J.6).
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart1"]["baudrate"] = 9600
+    with pytest.raises(BuildError, match=r"bus\.uart0 runs at 115200 baud and bus\.uart1 at 9600") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.field, info.value.instance) == ("baudrate", "uart_link_resp")
+    doc["bus"]["uart0"]["baudrate"] = 9600
+    _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("poll_wait_ms", [0, 10])
+def test_a_uart_poll_wait_ms_outside_one_to_nine_is_rejected(tmp_path: Path, src_dir: Path, poll_wait_ms: int) -> None:
+    # UARTComm refuses a transaction poll outside single-digit milliseconds (UART_POLL_RATE); 9 builds.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["poll_wait_ms"] = 9
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart0"]["poll_wait_ms"] = poll_wait_ms
+    with pytest.raises(BuildError, match=rf"bus\.uart0: poll_wait_ms {poll_wait_ms} is outside 1 … 9") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.field, info.value.instance) == ("poll_wait_ms", "uart_link_init")
+
+
+def test_a_uart_link_timeout_above_the_ticks_horizon_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The link's timeout default lives in asy_uart_comm; its drain bound, 3/2 x 4 x timeout, must stay
+    # inside rp2's 2**29 - 1 ms ticks range: (2**29 - 1) * 2 // 12 = 89,478,485 is the last that fits.
+    old = "_DEFAULT_TIMEOUT_MS = const(1000)"
+    doc = _with_uart_pair(base_doc())
+    _build(tmp_path, _staged_src(tmp_path, src_dir, "asy_uart_comm.py", old, "_DEFAULT_TIMEOUT_MS = const(89478485)"), doc)
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_comm.py", "const(89478485)", "const(89478486)")
+    with pytest.raises(BuildError, match=r"89478486ms reply timeout is above 89478485ms") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.instance == "uart_link_init"
 
 
 def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:

@@ -1,0 +1,20 @@
+start 23:37:05
+lint rc=0 23:37:07
+typecheck noargs rc=0 23:38:02
+typecheck ci rc=0 23:38:45
+gc32768 rc=0 23:48:41
+gc-1 rc=0 23:48:47
+wozi rc=0 23:50:07
+dev rc=0 23:51:59
+klkizi rc=0 00:00:36
+grkizi rc=0 00:00:36
+arzi rc=0 00:00:36
+schlafzi rc=0 00:00:36
+npm rc=0 00:02:18
+done 00:02:18
+coverage rc=1 795s 00:15:33
+all done 00:15:33
+lint rc=0 00:50:07
+typecheck noargs rc=0 00:50:19
+typecheck ci rc=0 00:50:32
+coverage rc=0 772s 01:03:24

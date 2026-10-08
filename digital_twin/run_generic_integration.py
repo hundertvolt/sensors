@@ -103,80 +103,30 @@ class RunConfig:
         )
 
 
-def _pop_value(remaining: "list[str]", flag: str) -> str:
-    if not remaining:
-        raise ValueError(f"{flag} requires a value")
-    return remaining.pop(0)
+# @tunable l2.twin_ready_poll_ms = 20
+_READY_POLL_MS = 20
 
 
-def parse_args(argv: "list[str]") -> RunConfig:
-    remaining = list(argv)
-    module: str | None = None
-    wiring_plan_path: str | None = None
-    host = "localhost"
-    port = 8080
-    device: str | None = None
-    fram_state_path: str | None = None
-    scd30_state_path: str | None = None
-    seed: int | None = None
-    faults: list[tuple[str, str, int]] = []
-    hangs: list[tuple[str, str, float, int]] = []
-    wifi_outcomes: list[int] = []
-    duration: float | None = None
-    gc_threshold = _GC_THRESHOLD_DEFAULT
-    mem_sample_interval_ms: int | None = None
+# @tunable l2.twin_wire_log_clear_interval_ms = 5000
+_WIRE_LOG_CLEAR_INTERVAL_MS = 5000
 
-    while remaining:
-        arg = remaining.pop(0)
-        if arg == "--module":
-            module = _pop_value(remaining, arg)
-        elif arg == "--wiring-plan":
-            wiring_plan_path = _pop_value(remaining, arg)
-        elif arg == "--host":
-            host = _pop_value(remaining, arg)
-        elif arg == "--port":
-            port = int(_pop_value(remaining, arg))
-        elif arg == "--device":
-            device = _pop_value(remaining, arg)
-        elif arg == "--fram-state-path":
-            value = _pop_value(remaining, arg)
-            fram_state_path = value or None  # "" means in-memory only, matches
-            # machine.configure_fram_state_path(None)'s own documented meaning.
-        elif arg == "--scd30-state-path":
-            value = _pop_value(remaining, arg)
-            scd30_state_path = value or None  # same "" convention as --fram-state-path above
-        elif arg == "--seed":
-            seed = int(_pop_value(remaining, arg))
-        elif arg == "--fault":
-            faults.append(parse_fault_spec(_pop_value(remaining, arg)))
-        elif arg == "--hang":
-            hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
-        elif arg == "--wifi-outcome":
-            wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
-        elif arg == "--duration":
-            duration = float(_pop_value(remaining, arg))
-        elif arg == "--gc-threshold":
-            gc_threshold = int(_pop_value(remaining, arg))
-        elif arg == "--mem-sample-interval-ms":
-            mem_sample_interval_ms = int(_pop_value(remaining, arg))
-        else:
-            raise ValueError(f"unrecognized argument: {arg!r}")
 
-    if module is None:
-        raise ValueError("--module is required (the sensortask_<device> module to import and boot)")
-    if wiring_plan_path is None:
-        raise ValueError("--wiring-plan is required (a JSON file in buildgen.twin_wiring.compute_twin_wiring()'s own shape)")
+def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
+    # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects the
+    # booted generated module actually constructed.
+    import errno
 
-    return RunConfig(
-        module,
-        wiring_plan_path,
-        host=host,
-        port=port,
-        device=device,
-        state=StatePaths(fram_state_path, scd30_state_path),
-        injections=Injections(seed, faults, hangs, wifi_outcomes),
-        run=RunLimits(duration, gc_threshold, mem_sample_interval_ms),
-    )
+    message = f"digital_twin/run_generic_integration.py --fault {device}:{op}"
+    if device == "wlan":
+        wlan.raise_on[op] = OSError(errno.EIO, message)
+        return
+    _require_wired(device, chips)
+    chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
+
+
+def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
+    _require_wired(device, chips)
+    chips[device].fault.inject_hang(op, seconds, times=times)
 
 
 def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
@@ -211,22 +161,37 @@ def _collect_chips(module: "Any", plan: "dict[str, Any]") -> "dict[str, Any]":
     return chips
 
 
-def _apply_fault(device: str, op: str, times: int, chips: "dict[str, Any]", wlan: "network.WLAN") -> None:
-    # Same shape as digital_twin/launch.py's own _apply_fault() - reads the real bus objects the
-    # booted generated module actually constructed.
-    import errno
+def _ensure_dir(path: str) -> None:
+    import os
 
-    message = f"digital_twin/run_generic_integration.py --fault {device}:{op}"
-    if device == "wlan":
-        wlan.raise_on[op] = OSError(errno.EIO, message)
-        return
-    _require_wired(device, chips)
-    chips[device].fault.inject_fault(op, OSError(errno.EIO, message), times=times)
+    try:
+        os.mkdir(path)
+    except OSError:
+        pass  # already exists
 
 
-def _apply_hang(device: str, op: str, seconds: float, times: int, chips: "dict[str, Any]") -> None:
-    _require_wired(device, chips)
-    chips[device].fault.inject_hang(op, seconds, times=times)
+async def _mem_sampler(interval_ms: int) -> None:
+    # Optional (--mem-sample-interval-ms): the one thing a host-side driver cannot get any other
+    # way, gc.mem_free() living in this heap with no REST route. Fixed timer, timestamped lines,
+    # and an instrumentation-only gc.collect() - README.md has the reasoning and measurement.
+    while True:
+        await asyncio.sleep_ms(interval_ms)
+        gc.collect()
+        print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
+
+
+def _pop_value(remaining: "list[str]", flag: str) -> str:
+    if not remaining:
+        raise ValueError(f"{flag} requires a value")
+    return remaining.pop(0)
+
+
+def _print_wdt_status(config: RunConfig) -> None:
+    # See both call sites' own comments in run_wozi_integration.py for why this needs to run from
+    # two different places - same reasoning applies here.
+    watchdog = getattr(_booted_module, "watchdog", None) if _booted_module is not None else None
+    if watchdog is not None:
+        print(f"digital_twin/run_generic_integration.py [{config.device}] shutdown: would_have_triggered_count={watchdog.would_have_triggered_count}")
 
 
 def _require_wired(device: str, chips: "dict[str, Any]") -> None:
@@ -235,10 +200,6 @@ def _require_wired(device: str, chips: "dict[str, Any]") -> None:
     # A bare KeyError here would name neither the device nor what was actually wired.
     if device not in chips:
         raise ValueError(f"--fault/--hang device {device!r} is not wired on this device - wired here: {sorted(chips)}")
-
-
-# @tunable l2.twin_ready_poll_ms = 20
-_READY_POLL_MS = 20
 
 
 async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
@@ -252,46 +213,6 @@ async def _wait_until_built(module: "Any", timeout_s: float = 10.0) -> None:
     await asyncio.wait_for(poll(), timeout_s)
 
 
-def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
-    # The wiring-plan-driven equivalent of what the retired per-device entry point did by hand:
-    # the bench's permanent crossover jumper. Without it the twin models a dev board whose jumper
-    # is missing, and the exerciser spends the run timing out instead of moving bytes (Part J).
-
-    # A no-op for a device with no "uart" key, which only a declared initiator/responder pair
-    # produces. Returns the built link so main() can hold a reference for _wire_log_clearer(),
-    # which has no other way to reach it.
-
-    # Not inside machine.configure_wiring(), which runs BEFORE anything is constructed: the
-    # jumper needs the two built UART wrappers' own fakes and pollers, which exist only once the
-    # booted module has made them - the same reason _collect_chips() is post-construction too.
-    uart_plan = plan.get("uart")
-    if uart_plan is None:
-        return None
-    initiator = getattr(module, uart_plan["initiator_var"])
-    responder = getattr(module, uart_plan["responder_var"])
-    assert initiator is not None and responder is not None
-    assert initiator.uart is not None and responder.uart is not None
-    assert initiator.uart._uart is not None and responder.uart._uart is not None
-    link, poll_a, poll_b = machine.attach_crossover_jumper(initiator.uart._uart, responder.uart._uart)
-    initiator.uart.poller = poll_a
-    responder.uart.poller = poll_b
-    return link
-
-
-async def _mem_sampler(interval_ms: int) -> None:
-    # Optional (--mem-sample-interval-ms): the one thing a host-side driver cannot get any other
-    # way, gc.mem_free() living in this heap with no REST route. Fixed timer, timestamped lines,
-    # and an instrumentation-only gc.collect() - README.md has the reasoning and measurement.
-    while True:
-        await asyncio.sleep_ms(interval_ms)
-        gc.collect()
-        print(f"MEM_SAMPLE {time.time():.3f} {gc.mem_free()}")
-
-
-# @tunable l2.twin_wire_log_clear_interval_ms = 5000
-_WIRE_LOG_CLEAR_INTERVAL_MS = 5000
-
-
 async def _wire_log_clearer(link: "Any") -> None:
     # UARTLink.wire_log is unbounded (agent, 2026-09-14) and nothing in this process reads it, so
     # left alone it grows for as long as the link carries traffic - which is what made Run 11's
@@ -302,21 +223,29 @@ async def _wire_log_clearer(link: "Any") -> None:
         link.b_to_a.wire_log = bytearray()
 
 
-def _print_wdt_status(config: RunConfig) -> None:
-    # See both call sites' own comments in run_wozi_integration.py for why this needs to run from
-    # two different places - same reasoning applies here.
-    watchdog = getattr(_booted_module, "watchdog", None) if _booted_module is not None else None
-    if watchdog is not None:
-        print(f"digital_twin/run_generic_integration.py [{config.device}] shutdown: would_have_triggered_count={watchdog.would_have_triggered_count}")
+def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
+    # The bench's permanent crossover jumper between the two generated UART buses the plan names,
+    # by their globals. Without it the twin models a dev board whose jumper is missing, and the
+    # exerciser spends the run timing out instead of moving bytes (Part J).
 
+    # A no-op for a device with no "uart" key, which only a declared initiator/responder pair
+    # produces. Returns the built link so main() can hold a reference for _wire_log_clearer(),
+    # which has no other way to reach it.
 
-def _ensure_dir(path: str) -> None:
-    import os
-
-    try:
-        os.mkdir(path)
-    except OSError:
-        pass  # already exists
+    # Not inside machine.configure_wiring(), which runs BEFORE anything is constructed: the
+    # jumper needs the two built UART buses' own fakes and pollers, which exist only once the
+    # booted module has made them - the same reason _collect_chips() is post-construction too.
+    uart_plan = plan.get("uart")
+    if uart_plan is None:
+        return None
+    initiator = getattr(module, uart_plan["initiator_bus"])
+    responder = getattr(module, uart_plan["responder_bus"])
+    assert initiator is not None and responder is not None
+    assert initiator._uart is not None and responder._uart is not None
+    link, poll_a, poll_b = machine.attach_crossover_jumper(initiator._uart, responder._uart)
+    initiator.poller = poll_a
+    responder.poller = poll_b
+    return link
 
 
 async def main(config: RunConfig) -> None:
@@ -414,6 +343,76 @@ async def main(config: RunConfig) -> None:
                 pass
         machine.flush_fram()
         machine.flush_scd30()
+
+
+def parse_args(argv: "list[str]") -> RunConfig:
+    remaining = list(argv)
+    module: str | None = None
+    wiring_plan_path: str | None = None
+    host = "localhost"
+    port = 8080
+    device: str | None = None
+    fram_state_path: str | None = None
+    scd30_state_path: str | None = None
+    seed: int | None = None
+    faults: list[tuple[str, str, int]] = []
+    hangs: list[tuple[str, str, float, int]] = []
+    wifi_outcomes: list[int] = []
+    duration: float | None = None
+    gc_threshold = _GC_THRESHOLD_DEFAULT
+    mem_sample_interval_ms: int | None = None
+
+    while remaining:
+        arg = remaining.pop(0)
+        if arg == "--module":
+            module = _pop_value(remaining, arg)
+        elif arg == "--wiring-plan":
+            wiring_plan_path = _pop_value(remaining, arg)
+        elif arg == "--host":
+            host = _pop_value(remaining, arg)
+        elif arg == "--port":
+            port = int(_pop_value(remaining, arg))
+        elif arg == "--device":
+            device = _pop_value(remaining, arg)
+        elif arg == "--fram-state-path":
+            value = _pop_value(remaining, arg)
+            fram_state_path = value or None  # "" means in-memory only, matches
+            # machine.configure_fram_state_path(None)'s own documented meaning.
+        elif arg == "--scd30-state-path":
+            value = _pop_value(remaining, arg)
+            scd30_state_path = value or None  # same "" convention as --fram-state-path above
+        elif arg == "--seed":
+            seed = int(_pop_value(remaining, arg))
+        elif arg == "--fault":
+            faults.append(parse_fault_spec(_pop_value(remaining, arg)))
+        elif arg == "--hang":
+            hangs.append(parse_hang_spec(_pop_value(remaining, arg)))
+        elif arg == "--wifi-outcome":
+            wifi_outcomes.append(_parse_wifi_outcome(_pop_value(remaining, arg)))
+        elif arg == "--duration":
+            duration = float(_pop_value(remaining, arg))
+        elif arg == "--gc-threshold":
+            gc_threshold = int(_pop_value(remaining, arg))
+        elif arg == "--mem-sample-interval-ms":
+            mem_sample_interval_ms = int(_pop_value(remaining, arg))
+        else:
+            raise ValueError(f"unrecognized argument: {arg!r}")
+
+    if module is None:
+        raise ValueError("--module is required (the sensortask_<device> module to import and boot)")
+    if wiring_plan_path is None:
+        raise ValueError("--wiring-plan is required (a JSON file in buildgen.twin_wiring.compute_twin_wiring()'s own shape)")
+
+    return RunConfig(
+        module,
+        wiring_plan_path,
+        host=host,
+        port=port,
+        device=device,
+        state=StatePaths(fram_state_path, scd30_state_path),
+        injections=Injections(seed, faults, hangs, wifi_outcomes),
+        run=RunLimits(duration, gc_threshold, mem_sample_interval_ms),
+    )
 
 
 if __name__ == "__main__":

@@ -29,6 +29,10 @@ _NAME = const("NEOPIXEL")
 # @tunable led.min_signal_s = 0.1
 _MIN_SIGNAL_S = const(0.1)  # floor for a signal's ramp duration; also the non-finite fallback
 _MAX_SIGNAL_S = const(60.0)  # the REST ceiling of t (buildgen's LED command bound, legacy led_cmd())
+# @tunable led.refresh_hz = 20
+_NEOPIXEL_FREQ_HZ = const(20)
+# @tunable led.overlay_brightness = 50
+_LED_OVERL_BRI = const(50)
 # Twice the longest signal: a late frame schedule never drops a queued flash; the deadline only guards a signal task that never restarts.
 # @tunable led.signal_wait_ms = 120000
 _SIGNAL_WAIT_MS = const(120000)
@@ -63,15 +67,7 @@ def _signal_values(r: object, g: object, b: object, t: object) -> list[int | flo
 
 
 class NeopixelDriver:
-    def __init__(
-        self,
-        neopixel_pin: int,
-        # @tunable led.refresh_hz_default = 20
-        neopixel_freq: int = 20,
-        # @tunable led.overlay_brightness_default = 50
-        led_overl_bri: int = 50,
-        log: LogConfig = DEFAULT_LOG,
-    ) -> None:
+    def __init__(self, neopixel_pin: int, log: LogConfig = DEFAULT_LOG) -> None:
         self.pr: PrintLogHistory = make_logger(log, _NAME)
         self.name = _NAME  # matches self.pr.name - the _ModuleLike registration shape
         # asy_webserver_service.py's registration lists key on (error_sources=).
@@ -80,11 +76,11 @@ class NeopixelDriver:
         self._start_signal_event = asyncio.Event()
         self._overlay_lock = asyncio.Lock()  # serialises the pixel and its write() between the overlay and a signal ramp
         self._overlay_start = asyncio.ThreadSafeFlag()
-        self._overlay_bri = led_overl_bri
+        self._overlay_bri = _LED_OVERL_BRI
         self._overlay_rgb: tuple[int, int, int] = (0, 0, 0)
         self._overlay_on = False
-        self.neopixel_freq = neopixel_freq
-        self.neopixel_dt = 1.0 / neopixel_freq
+        self.neopixel_freq = _NEOPIXEL_FREQ_HZ
+        self.neopixel_dt = 1.0 / _NEOPIXEL_FREQ_HZ
 
     async def _overlay_loop(self) -> None:
         while True:

@@ -159,6 +159,17 @@ def write_micropython_ref(path: Path, ref: str) -> None:
     path.write_text(new_text)
 
 
+# @tunable tool.apt_acquire_timeout_s = 30
+APT_ACQUIRE_TIMEOUT_S = 30
+
+
+def apt_options() -> list[str]:
+    # A stalled mirror otherwise holds apt, and a CI job, until its own time limit: each fetch gives up after the
+    # timeout and is retried, the attempt count the one every retried network step shares.
+    timeout = str(APT_ACQUIRE_TIMEOUT_S)
+    return ["-o", f"Acquire::Retries={UV_SYNC_ATTEMPTS - 1}", "-o", f"Acquire::http::Timeout={timeout}", "-o", f"Acquire::https::Timeout={timeout}"]
+
+
 def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     if skip:
         log("Skipping apt package install (--skip-apt)")
@@ -167,9 +178,9 @@ def ensure_apt_packages(packages: list[str], *, skip: bool) -> None:
     env = network_env()
     # Non-fatal: unrelated third-party sources some environments have configured (PPAs etc.)
     # may be blocked or broken without affecting the main archive packages we actually need.
-    run(["sudo", "apt-get", "update"], check=False, env=env)
+    run(["sudo", "apt-get", *apt_options(), "update"], check=False, env=env)
     run(
-        ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y",
+        ["sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", *apt_options(), "install", "-y",
          "--no-install-recommends", *packages],
         env=env,
     )

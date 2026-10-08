@@ -4,7 +4,7 @@ See `digital_twin/README.md`'s "Booting a generated device" section for the twin
 from typing import Any
 
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS
-from buildgen.model import DeviceModel, instance_label
+from buildgen.model import DeviceModel
 
 # scd30/sgp40/isl29125 carry no TOML `address` field (buildspec.py's FIXED_ADDRESS_DRIVERS):
 # their I2C address is fixed in hardware, matching each driver's own default. A twin-only named
@@ -13,27 +13,26 @@ FIXED_ADDRESSES: "dict[str, int]" = {"scd30": 0x61, "sgp40": 0x59, "isl29125": 0
 
 
 def _compute_uart_wiring(model: DeviceModel) -> "dict[str, str] | None":
-    # Which two uart_link instances are the crossover pair, named by the generated Python
-    # variable each resolves to - the same identity instance_var() derives from, so a caller can
-    # getattr() it off the real booted module. None on every device but "dev" today.
-    initiator_var: str | None = None
-    responder_var: str | None = None
+    # Which two UART buses carry the crossover pair, named by the generated global each bus is
+    # bound to (its [bus.<id>] table), so a caller can getattr() the built driver off the booted
+    # module. None on every device without a uart_link pair.
+    initiator_bus: str | None = None
+    responder_bus: str | None = None
     for spec in model.instances.values():
         if spec.driver != "uart_link":
             continue
-        var = instance_label(spec.key)
         if spec.fields.get("role") == "initiator":
-            initiator_var = var
+            initiator_bus = spec.fields["bus"]
         elif spec.fields.get("role") == "responder":
-            responder_var = var
-    if initiator_var is None or responder_var is None:
+            responder_bus = spec.fields["bus"]
+    if initiator_bus is None or responder_bus is None:
         return None
-    return {"initiator_var": initiator_var, "responder_var": responder_var}
+    return {"initiator_bus": initiator_bus, "responder_bus": responder_bus}
 
 
 def compute_twin_wiring(model: DeviceModel) -> "dict[str, Any]":
-    # A JSON-serializable wiring plan - which chip fake sits at which I2C address/bus, which FRAM chip on which SPI bus, and which two UART instances are the crossover pair - covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()`/`configure_wiring()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
-    # Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]}, "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}, "uart": {"initiator_var", "responder_var"} | None}. Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus, no more than one initiator/responder pair).
+    # A JSON-serializable wiring plan - which chip fake sits at which I2C address/bus, which FRAM chip on which SPI bus, and which two UART buses carry the crossover pair - covering everything `machine.py`'s `_wire_i2c_devices()`/`_wire_spi_device()`/`configure_wiring()` need, derived straight from `model`'s own validated facts rather than a second hand-maintained table.
+    # Shape: {"device": str, "buses": {"i2cN": [{"driver", "name_ext", "address", ["irq_pin"]}, ...]}, "spi": {"spiN": {"driver": "fram", "name_ext", "max_size"}}, "uart": {"initiator_bus", "responder_bus"} | None}. Trusts an already-`build_model()`-validated `model` (no duplicate address within one bus, no more than one initiator/responder pair).
     buses: dict[str, list[dict[str, Any]]] = {}
     spi: dict[str, dict[str, Any]] = {}
     uart = _compute_uart_wiring(model)

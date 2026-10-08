@@ -25,7 +25,7 @@ from asy_notification_service import NotificationService
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
 from asy_spi_driver import SPI, SPIDevice
 from asy_system_service import SystemService
-from asy_uart_comm import ROLE_INITIATOR, UARTComm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, TransferLimits, UARTComm
 from asy_uart_driver import UART
 from asy_uart_link_driver import UARTLinkDriver
 from asy_webserver_service import RouteSources, ServingLimits, WebserverService
@@ -360,7 +360,8 @@ def test_uart_link_driver_with_no_bus_answers_false_and_persists_the_refusal() -
 
 
 def test_uart_comm_refused_at_construction_answers_its_sentinels_and_persists_the_refusal() -> None:
-    comm = UARTComm(UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=2), ROLE_INITIATOR, payload_size=0, name="GATEUART")
+    limits = TransferLimits(0, DEFAULT_LIMITS.timeout, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    comm = UARTComm(UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=2), ROLE_INITIATOR, limits=limits, name="GATEUART")
     calls: Calls = {
         "uart_get": ((1,), _is(None)),
         "uart_set": ((1, b"x"), _is(False)),

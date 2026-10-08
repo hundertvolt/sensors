@@ -1,5 +1,6 @@
 import asyncio
 import errno
+import gc
 import json
 import os
 import time
@@ -22,6 +23,7 @@ from asy_base_classes import (
     LockedCounter,
     LockedFlag,
     LockedValue,
+    PieceBuffer,
     RegionBuffer,
     SensorReader,
     SensorReaderConfig,
@@ -35,6 +37,7 @@ from asy_fram_manager import FRAMManager
 from asy_i2c_driver import I2C, I2CDevice
 from asy_print_log import LogConfig, PrintLogHistory, PrintLogHistoryStore
 from asy_spi_driver import SPI
+from asy_uart_comm import DEFAULT_LIMITS
 
 # Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -306,6 +309,172 @@ def test_regionbuffer_holds_no_lock() -> None:
     buf = RegionBuffer(4)
     assert not isinstance(buf, Lockable)
     assert not hasattr(buf, "session_lock")
+
+
+# ---------------------------------------------------------------------------
+# PieceBuffer
+# ---------------------------------------------------------------------------
+
+
+def _copied(buf: PieceBuffer, start: int = 0) -> bytes:
+    dest = bytearray(len(buf) - start)
+    assert buf.copy_into(dest, start)
+    return bytes(dest)
+
+
+def test_piecebuffer_holds_its_size_in_pieces_of_at_most_piece_bytes() -> None:
+    buf = PieceBuffer(10, 4)
+    assert len(buf) == 10
+    assert [len(piece) for piece in buf.pieces()] == [4, 4, 2]
+    assert all(isinstance(piece, bytearray) for piece in buf.pieces())
+    assert [len(piece) for piece in PieceBuffer(8, 4).pieces()] == [4, 4]  # an exact multiple: no empty tail piece
+
+
+def test_an_empty_piecebuffer_has_no_pieces() -> None:
+    buf = PieceBuffer(0, 4)
+    assert len(buf) == 0
+    assert list(buf.pieces()) == []
+    assert buf.copy_into(bytearray(0))
+
+
+def test_piecebuffer_write_at_crosses_piece_ends() -> None:
+    buf = PieceBuffer(10, 4)
+    assert buf.write_at(0, memoryview(b"ab"))
+    assert buf.write_at(2, memoryview(b"cdefghij"))  # crosses both piece ends
+    assert [bytes(piece) for piece in buf.pieces()] == [b"abcd", b"efgh", b"ij"]
+    assert _copied(buf) == b"abcdefghij"
+
+
+def test_piecebuffer_write_at_refuses_a_range_outside_its_size() -> None:
+    buf = PieceBuffer(6, 4)
+    assert buf.write_at(0, memoryview(b"uvwxyz"))
+    assert not buf.write_at(-1, memoryview(b"a"))
+    assert not buf.write_at(5, memoryview(b"ab"))  # one byte past the end
+    assert not buf.write_at(7, memoryview(b""))
+    assert buf.write_at(6, memoryview(b""))  # an empty write at the end is in range
+    assert _copied(buf) == b"uvwxyz"  # a refused write changed nothing
+
+
+def test_piecebuffer_copy_into_copies_from_start_into_the_front_of_dest() -> None:
+    buf = PieceBuffer(10, 4)
+    assert buf.write_at(0, memoryview(b"0123456789"))
+    for start in range(11):
+        assert _copied(buf, start) == b"0123456789"[start:]
+    dest = bytearray(b"..........!!")  # a longer destination keeps its tail
+    assert buf.copy_into(memoryview(dest), 3)
+    assert bytes(dest) == b"3456789...!!"
+
+
+def test_piecebuffer_copy_into_a_short_dest_or_a_bad_start_copies_nothing() -> None:
+    buf = PieceBuffer(10, 4)
+    assert buf.write_at(0, memoryview(b"0123456789"))
+    for dest_len, start in ((9, 0), (6, 3), (0, 9)):
+        dest = bytearray(b"\xa5" * dest_len)
+        assert not buf.copy_into(dest, start)
+        assert dest == bytearray(b"\xa5" * dest_len)  # never a partial copy
+    for start in (-1, 11):
+        dest = bytearray(b"\xa5" * 12)
+        assert not buf.copy_into(dest, start)
+        assert dest == bytearray(b"\xa5" * 12)
+
+
+def test_piecebuffer_trim_drops_trailing_bytes_and_pieces() -> None:
+    buf = PieceBuffer(10, 4)
+    assert buf.write_at(0, memoryview(b"0123456789"))
+    assert not buf.trim(11)
+    assert not buf.trim(-1)
+    assert len(buf) == 10  # a refused trim changed nothing
+    assert buf.trim(6)
+    assert len(buf) == 6
+    assert [bytes(piece) for piece in buf.pieces()] == [b"0123", b"45"]
+    assert _copied(buf) == b"012345"
+    assert not buf.write_at(5, memoryview(b"ab"))  # the trimmed length bounds a later write
+    assert buf.trim(4)
+    assert [bytes(piece) for piece in buf.pieces()] == [b"0123"]
+    assert buf.trim(0)
+    assert len(buf) == 0
+    assert list(buf.pieces()) == []
+
+
+# @tunable l1.asy_base_classes_piece_rounds = 50
+_PIECE_ROUNDS = 50
+_ROUNDS_BUF = PieceBuffer(40, 16)
+_ROUNDS_SRC = bytes(range(33))  # crosses two piece ends from every offset used
+_ROUNDS_DEST = bytearray(40)
+
+
+def test_piecebuffer_allocates_no_block_larger_than_one_piece() -> None:
+    # Structural, never by filling the heap: every bytearray the module allocates is recorded while the largest
+    # train is built, written, copied out and trimmed.
+    sizes: list[int] = []
+
+    def recording(*args: object) -> bytearray:
+        made = bytearray(*args)
+        sizes.append(len(made))
+        return made
+
+    size, piece_bytes = DEFAULT_LIMITS.max_transfer_bytes, DEFAULT_LIMITS.chunk_bytes  # the UART link's largest default train
+    payload = bytes(i & 0xFF for i in range(size))
+    dest = bytearray(size)
+    asy_base_classes.bytearray = recording  # type: ignore[attr-defined]
+    try:
+        buf = PieceBuffer(size, piece_bytes)
+        assert buf.write_at(0, memoryview(payload))
+        assert buf.copy_into(dest)
+        assert buf.trim(size - piece_bytes - 1)
+    finally:
+        del asy_base_classes.bytearray  # type: ignore[attr-defined]
+    assert sizes, "no allocation was recorded: the shadow missed the module's bytearray"
+    assert max(sizes) == piece_bytes, max(sizes)
+    assert sum(sizes) == size  # one piece per piece_bytes, nothing joined or copied besides
+    assert bytes(dest) == payload
+    assert max(len(piece) for piece in buf.pieces()) <= piece_bytes
+
+
+def _ambient_rounds() -> int:
+    # The control: the same loop and calls with no buffer involved.
+    done = 0
+    for _ in range(_PIECE_ROUNDS):
+        done += 1 if len(b"") == 0 else 0
+    return done
+
+
+def _built_and_dropped_rounds() -> int:
+    done = 0
+    for _ in range(_PIECE_ROUNDS):
+        done += 1 if len(PieceBuffer(40, 16)) == 40 else 0
+    return done
+
+
+def _written_and_copied_rounds() -> int:
+    buf = _ROUNDS_BUF
+    src = memoryview(_ROUNDS_SRC)
+    done = 0
+    for i in range(_PIECE_ROUNDS):
+        done += 1 if buf.write_at(i % 7, src) and buf.copy_into(_ROUNDS_DEST) else 0
+    return done
+
+
+def test_piecebuffer_retains_nothing_after_construction() -> None:
+    # Written and copied out over and over, then built and dropped over and over: the heap grows no more than
+    # across the ambient control's same number of rounds (gc.collect() bracketing each measurement).
+    for measured in (_written_and_copied_rounds, _built_and_dropped_rounds):
+        measured()  # every path once before the heap is sampled
+        nets = [0, 0, 0]
+        for k in range(3):
+            gc.collect()
+            before = gc.mem_alloc()
+            assert _ambient_rounds() == _PIECE_ROUNDS
+            gc.collect()
+            ambient = gc.mem_alloc() - before
+            gc.collect()
+            before = gc.mem_alloc()
+            assert measured() == _PIECE_ROUNDS
+            gc.collect()
+            nets[k] = gc.mem_alloc() - before - ambient
+        # The collector scans the C stack conservatively, so a stale word can keep a block alive in one sample
+        # (32 B on the settrace build): a per-round leak shows in all three windows, so the least must be 0.
+        assert min(nets) <= 0, nets
 
 
 # ---------------------------------------------------------------------------

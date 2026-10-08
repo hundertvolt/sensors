@@ -30,13 +30,7 @@ _EXEMPT: dict[tuple[str, str], str] = {
 }
 # Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is
 # masked, and the stale-entry test then fails until the entry is deleted. The list only shrinks.
-_PENDING: dict[tuple[str, str], str] = {
-    ("src/asy_uart_comm.py", "UARTComm._blind_resyncs"): "saturates at the resync streak threshold",
-    ("src/asy_uart_driver.py", "UART._cancel_req"): "becomes a conditionally wrapped sequence",
-    ("src/asy_uart_driver.py", "UART.cancel_unacknowledged"): "becomes a conditionally wrapped sequence",
-    ("src/asy_uart_link_driver.py", "UARTLinkDriver._failures"): "saturates at COUNTER_CAP",
-    ("src/asy_uart_link_driver.py", "UARTLinkDriver._transfers"): "saturates at COUNTER_CAP",
-}
+_PENDING: dict[tuple[str, str], str] = {}
 
 
 def _all_steps(modules: list[tuple[str, ast.Module]]) -> dict[tuple[str, str], int]:

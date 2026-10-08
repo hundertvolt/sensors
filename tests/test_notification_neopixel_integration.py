@@ -73,7 +73,9 @@ def make_pair(
 ) -> "tuple[NeopixelDriver, NotificationService]":
     # freq=100 keeps ramps fast in real wall-clock time (same reasoning as
     # tests/test_asy_neopixel_driver.py's own make_driver()).
-    pixel = NeopixelDriver(0, neopixel_freq=_FREQ_HZ)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = _FREQ_HZ  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = _FRAME_S
     notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_tmp_cfg_dir())
     run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())

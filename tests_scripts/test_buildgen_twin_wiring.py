@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import tomllib
 from _devices import DEVICE_NAMES
 
 from buildgen import twin_wiring
@@ -79,6 +80,27 @@ def test_every_real_device_wires_fram_on_its_own_declared_spi_bus(repo_root: Pat
     plan = compute_twin_wiring(model)
     assert set(plan["spi"]) == {"spi0"}
     assert plan["spi"]["spi0"]["driver"] == "fram"
+
+
+def _toml_uart_pair(toml_path: Path) -> "dict[str, str] | None":
+    # The expected pair read straight from the TOML, independent of build_model()'s own parse.
+    with toml_path.open("rb") as f:
+        links = [i for i in tomllib.load(f).get("instance", []) if i.get("driver") == "uart_link"]
+    if not links:
+        return None
+    return {f"{i['role']}_bus": i["bus"] for i in links}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_uart_pair_names_the_two_generated_bus_globals(repo_root: Path, src_dir: Path, device: str) -> None:
+    toml_path = repo_root / "devices" / f"{device}.toml"
+    assert compute_twin_wiring(build_model(toml_path, src_dir))["uart"] == _toml_uart_pair(toml_path)
+
+
+def test_at_least_one_shipped_device_wires_a_uart_pair(repo_root: Path) -> None:
+    # Keeps the per-device check above from passing vacuously on an all-None device set.
+    pairs = [_toml_uart_pair(repo_root / "devices" / f"{d}.toml") for d in DEVICE_NAMES]
+    assert any(p is not None and set(p) == {"initiator_bus", "responder_bus"} for p in pairs)
 
 
 def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(repo_root: Path, src_dir: Path) -> None:

@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, UARTComm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, TransferLimits, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -89,12 +89,12 @@ async def _main() -> None:
     wdt = machine.WDT(timeout=8000)
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
+    limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits, name="UART_INIT")
     responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
-        payload_size=PAYLOAD_SIZE,
-        timeout=TIMEOUT_MS,
+        limits=limits,
         callbacks=ResponderCallbacks(get_callback, set_callback, None),
         name="UART_RESP",
     )
@@ -113,9 +113,13 @@ async def _main() -> None:
             await _join_listener(wdt, responder, listener)
 
     if not failures:
+        # The answer is a PieceBuffer (no buffer protocol, no __eq__): compared by one copy-out into this scratch.
+        scratch = bytearray(len(_BANNER))
         answer = await exchange(initiator.uart_get(_CMD_BANNER))
-        if answer is None or bytes(answer) != _BANNER:
+        if answer is None:
             failures.append(f"GET returned {answer!r}, expected {_BANNER!r}")
+        elif len(answer) != len(_BANNER) or not answer.copy_into(scratch) or scratch != _BANNER:
+            failures.append(f"GET returned {len(answer)} bytes {bytes(scratch)!r}, expected {_BANNER!r}")
         wdt.feed()
 
         payload = bytes((i * 11) & 0xFF for i in range(_TRAIN_BYTES))

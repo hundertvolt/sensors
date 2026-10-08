@@ -16,7 +16,7 @@ import asy_uart_driver
 from asy_fram_manager import FRAMManager
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, UARTComm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
 
 BAUDRATE = 115200
 PAYLOAD_SIZE = 48
@@ -121,7 +121,6 @@ async def _memory_churn_loop(load: Load) -> None:
         except MemoryError:
             load.alloc_failures += 1
             held = []
-            gc.collect()
         if len(held) > 24:
             held = held[12:]
         await asyncio.sleep_ms(_CHURN_STEP_MS)
@@ -154,11 +153,9 @@ async def _main() -> None:
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UARTComm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UARTComm(
-        uart1, ROLE_RESPONDER, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS,
-        callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP",
-    )
+    limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits, name="UART_INIT")
+    responder = UARTComm(uart1, ROLE_RESPONDER, limits=limits, callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP")
     await initiator.setup()
     await responder.setup()
 
@@ -177,6 +174,7 @@ async def _main() -> None:
     transfers = 0
     link_failures = 0
     worst_rtt_ms = 0
+    scratch = bytearray(len(_BANNER))  # each answer is a PieceBuffer (no buffer protocol): compared by one copy-out
     # Heap sampled at the third and the end, so the one-time cost of the first transactions and the
     # first fault is absorbed before anything is measured. What is asserted is the steady state:
     # under sustained parallel load the link must not grow the heap transaction by transaction.
@@ -199,7 +197,7 @@ async def _main() -> None:
             started = time.ticks_ms()
             answer = await initiator.uart_get(_CMD_BANNER)
             rtt = time.ticks_diff(time.ticks_ms(), started)
-            if answer is not None and bytes(answer) == _BANNER:
+            if answer is not None and len(answer) == len(_BANNER) and answer.copy_into(scratch) and scratch == _BANNER:
                 transfers += 1
                 worst_rtt_ms = max(worst_rtt_ms, rtt)
             else:
