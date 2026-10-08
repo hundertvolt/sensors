@@ -95,7 +95,7 @@ relative_humidity = 35
 driver = "fram"
 bus = "spi0"
 cs_pin = 1
-max_size = 0x4000
+max_size = 0x40000
 
 [[instance]]
 driver = "neopixel"

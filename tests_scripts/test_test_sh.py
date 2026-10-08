@@ -175,6 +175,29 @@ def test_a_zero_reading_is_a_failed_probe(repo_root: Path, tmp_path: Path) -> No
     assert "== speed probe failed - running at 1x" in stderr
 
 
+def _run_coverage_cap(repo_root: Path, tmp_path: Path, jobs: int, cores: int, multiplier: int) -> tuple[int, int]:
+    # Runs scripts/test.sh's own _coverage_parallelism() on a detector result.
+    body = re.search(r"^_coverage_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines _coverage_parallelism() - update this test with it"
+    script = tmp_path / "cap.sh"
+    script.write_text(f"#!/usr/bin/env bash\nset -uo pipefail\n{body.group(0)}\n_coverage_parallelism {jobs} {cores} {multiplier}\n")
+    capped_jobs, capped_multiplier = (int(v) for v in subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split())
+    return capped_jobs, capped_multiplier
+
+
+@pytest.mark.parametrize(("jobs", "cores", "multiplier"), [(16, 4, 4), (8, 4, 2), (4, 4, 1), (2, 1, 2)])
+def test_a_coverage_run_never_oversubscribes_the_cores(repo_root: Path, tmp_path: Path, jobs: int, cores: int, multiplier: int) -> None:
+    # The settrace binary makes the suite CPU-bound, so a coverage run gets one test file per usable core.
+    assert _run_coverage_cap(repo_root, tmp_path, jobs, cores, multiplier) == (cores, 1)
+
+
+def test_the_coverage_cap_is_applied_to_the_detected_parallelism(repo_root: Path, tmp_path: Path) -> None:
+    # Wired where the detector's result is read, for --coverage only: 4 cores at 2x give 8, capped to 4.
+    assert _resolved_parallelism(repo_root, tmp_path, None, coverage=True) == 4
+    assert _resolved_parallelism(repo_root, tmp_path, None) == 8
+    assert _resolved_parallelism(repo_root, tmp_path, "3", coverage=True) == 3  # TEST_PARALLELISM still overrides
+
+
 def test_a_genuinely_slow_host_drops_to_one_times_on_the_real_clock(repo_root: Path, tmp_path: Path) -> None:
     # The one band test kept on the REAL clock, and the only one that can be: load can only make
     # the reading larger, which keeps a 1.2s stub inside the same >900ms band it is asserting.
@@ -226,13 +249,15 @@ def test_an_unlimited_or_malformed_quota_leaves_the_core_count_alone(repo_root: 
     assert unlimited == malformed >= 1, f"neither an unlimited nor a malformed cpu.max may change the core count ({unlimited} vs {malformed})"
 
 
-def _resolved_parallelism(repo_root: Path, tmp_path: Path, env_value: str | None) -> int:
+def _resolved_parallelism(repo_root: Path, tmp_path: Path, env_value: str | None, *, coverage: bool = False) -> int:
     # Runs the real override/clamp block with _detect_parallelism() stubbed to a known answer.
     text = _test_sh_text(repo_root)
     start = text.index('if [ -n "${TEST_PARALLELISM:-}" ]; then')
     end = text.index("    max_parallel=1\nfi\n", start) + len("    max_parallel=1\nfi\n")
+    cap = re.search(r"^_coverage_parallelism\(\) \{.*?^\}", text, re.DOTALL | re.MULTILINE)
+    assert cap is not None, "scripts/test.sh no longer defines _coverage_parallelism() - update this test with it"
     script = tmp_path / "resolve.sh"
-    script.write_text('#!/usr/bin/env bash\nset -uo pipefail\n_detect_parallelism() { echo "8 4 2 300"; }\n' + text[start:end] + 'echo "RESOLVED=$max_parallel"\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\ncoverage={int(coverage)}\n_detect_parallelism() {{ echo "8 4 2 300"; }}\n{cap.group(0)}\n' + text[start:end] + 'echo "RESOLVED=$max_parallel"\n')
     env = {"PATH": "/usr/bin:/bin"} | ({} if env_value is None else {"TEST_PARALLELISM": env_value})
     out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, env=env).stdout
     return int(out.rsplit("RESOLVED=", 1)[1].strip())

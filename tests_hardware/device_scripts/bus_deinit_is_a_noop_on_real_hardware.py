@@ -46,7 +46,7 @@ async def _main() -> None:
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding, cannot judge SPI deinit()")
         return
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="bus_deinit_is_a_noop_on_real_hardware")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return

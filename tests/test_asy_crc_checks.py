@@ -779,7 +779,7 @@ def test_add_on_empty_payload_produces_buffer_check_cannot_verify() -> None:
 def test_add_lets_a_memoryerror_from_its_own_buffer_allocation_propagate() -> None:
     # add()'s new buffer is bytearray(self._num_bytes), whitebox-widened here to a size confirmed against the
     # real interpreter to raise MemoryError - the same allocation-exhaustion technique
-    # test_asy_base_classes.py's LockableBuffer tests use.
+    # test_asy_base_classes.py's RegionBuffer tests use.
     #
     # The widened width would route _crc() to the two-word path, so it is swapped for a pristine CRC8's: the
     # CRC is still computed normally and only the allocation fails - the shape a genuinely exhausted heap

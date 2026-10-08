@@ -19,7 +19,7 @@ from _toml_fixtures import base_doc, write_doc
 
 from buildgen.codegen import trigger_spread
 from buildgen.errors import BuildError
-from buildgen.generate import generate_device
+from buildgen.generate import GeneratedDevice, generate_device
 from buildgen.model import instance_label
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 
@@ -219,6 +219,32 @@ def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(rep
     result = generate_device(repo_root / "devices" / f"{device}.toml", src, ext_dir)
     assert _trigger_modules(result.module_source) == expected
     assert "scd30" not in _trigger_modules(result.module_source)
+
+
+def _collected_modules(source: str, collector: str) -> "list[str]":
+    (loop,) = [n for n in ast.walk(_function(source, collector)) if isinstance(n, ast.For)]
+    assert isinstance(loop.iter, ast.Tuple)
+    return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
+
+
+def _fram_var(result: GeneratedDevice) -> str:
+    (key,) = [key for key in result.model.instances if key[0] == "fram"]
+    return instance_label(key)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+@pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])
+def test_real_device_collects_the_fram_managers_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str, collector: str) -> None:
+    # A declared chip that fails setup escalates through its supervised task like any other chip.
+    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    assert _fram_var(result) in _collected_modules(result.module_source, collector)
+
+
+@pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])
+def test_a_fixture_without_fram_target_still_collects_its_declared_fram(fixtures_dir: Path, src_dir: Path, ext_dir: Path, collector: str) -> None:
+    result = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir)
+    assert "storage=None" in result.module_source  # [device.wiring].fram_target unwired
+    assert _fram_var(result) in _collected_modules(result.module_source, collector)
 
 
 def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_on_ties() -> None:

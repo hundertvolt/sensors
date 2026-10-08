@@ -49,6 +49,7 @@ else:
 _ERR_INIT = const(10)
 _ERR_READ = const(11)
 _ERR_CHIP_SET = const(13)
+_ERR_CALLBACK = const(14)
 _ERR_SOURCE = const(15)
 _ERR_CFG_READ = const(26)
 _ERR_SGP_ALGO_STATE = const(58)
@@ -234,16 +235,16 @@ class SGP40_Reader(SensorReaderConfig):
             self._ts_storage = None
         else:
             self._ntp_synced = backup.ntp_synced
-            try:  # broad on purpose, matching asy_print_log.py's own FRAM-allocation guard - this
-                # matters more here since __init__ runs before any task supervisor exists to
-                # catch an escaped exception.
+            try:  # the chunk object's own allocation; any other raise is a code defect and propagates
                 self._ts_storage = backup.store.get_timestamped_chunk(
-                    VOCAlgorithm.get_params_memsize(), backup.ntp_synced, crc=CRC32(),
-                )  # timestamped backup storage (FRAM)
-            except Exception:
+                    VOCAlgorithm.get_params_memsize(), backup.ntp_synced, crc=CRC32(), owner=self.name + "_VOC",
+                )  # timestamped backup storage (FRAM), its CRC seeded apart from the logger's own chunk
+            except MemoryError as e:
                 self._ts_storage = None
-            if self._ts_storage is None:
-                self.pr.err("FRAM backup storage allocation failed!")
+                self.pr.err("FRAM backup storage allocation failed:", e)
+            else:
+                if self._ts_storage is None:  # refused: the declared chunks exceed the chip, fixed by the build
+                    self.pr.err("FRAM backup storage allocation failed!")
         self._last_backup: int | None = None
         self._restored_from: int | None = None
         self._reset_pending = False
@@ -287,9 +288,13 @@ class SGP40_Reader(SensorReaderConfig):
             # counts seconds, resets at 86400 = 1 day, give it some more space
 
         buf = self._ts_storage.get_buffer() if serialize or deserialize else None
+        if buf is not None and buf.get_buf() is None:  # the buffer's allocation failed: both parts wait a cycle
+            if deserialize:
+                self._voc_init += 1  # the restore stays pending, never read as "no backup"
+            serialize = deserialize = False
+            buf = None
 
-        # explicit unpack-then-repack (not tuple(cfg_values)) so mypy sees a real 3-tuple, matching
-        # the declared return type, without a runtime-unsafe typing.cast (see module docstring)
+        # Explicit unpack-then-repack so mypy sees a real 3-tuple without a typing.cast (C.4.2).
         backup_period, backup_maxage, wait_ntp = cfg_values
         return buf, serialize, deserialize, (backup_period, backup_maxage, wait_ntp)
 
@@ -315,6 +320,7 @@ class SGP40_Reader(SensorReaderConfig):
             self.start_timer()
         self._err_cnt_internal = 0
         self._backup_counter = 0
+        restore_pending = self._voc_init > 0  # this boot's restore has not run its course yet
         self._voc_init = 0
         self._voc_write = 0
         try:
@@ -339,6 +345,11 @@ class SGP40_Reader(SensorReaderConfig):
 
         wait = min(cfg_values[1], _MAX_NTP_WAITTIME)
         self._voc_init = max(1, wait)  # 0 = never wait: one restore attempt on the first cycle, as legacy
+        if not restore_pending and (self._voc_samples > 0 or self._voc_restored):
+            # A task restart keeps the algorithm, which lives on SGP40_I2C: the backup is older than it. A boot still
+            # restores, and so does a restart while the boot's restore waits: its samples are the fresh start it replaces.
+            self._voc_init = 0
+            self.pr.one("live VOC state kept, no restore")
         self._voc_write = wait
         self._restore_waiting = False
         self.pr.one("initialized with storage")
@@ -488,7 +499,7 @@ class SGP40_Reader(SensorReaderConfig):
         require_ntp = self._voc_write > 0
 
         self.pr.evt("Writing backup.")
-        ntp_synced, ts, res = await self._ts_storage.write_into(buf, require_ntp=require_ntp)
+        res, ntp_synced, ts = await self._ts_storage.write_into(buf, require_ntp=require_ntp)
 
         if require_ntp and not ntp_synced:  # no write due to no timesync yet
             # set backup counter to retry serialization in self._read_sgp()
@@ -525,13 +536,22 @@ class SGP40_Reader(SensorReaderConfig):
             return False  # no buffer / no trigger
 
         ntp_synced = self._ntp_synced
-        if self._restore_waiting and self._voc_init > 0 and ntp_synced is not None and not await ntp_synced():
-            return False  # still waiting for NTP: the chunk was read when the wait began, not every second
+        if self._restore_waiting and self._voc_init > 0 and ntp_synced is not None:
+            try:
+                synced = await ntp_synced()
+            except Exception as e:  # counts as not synced, as the FRAM layer treats the same callback
+                await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
+                return False
+            if not synced:
+                return False  # still waiting for NTP: the chunk was read when the wait began, not every second
         res, ts, age = await self._ts_storage.read_into(buf)
-        if not res:  # not valid / no backup
-            await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)
+        if not res:
             self._voc_init = 0
             self._restore_waiting = False
+            if res is None:  # unreadable: the FRAM layer persisted its fault, SGP40 keeps its own entry
+                await self.pr.wrn_s("No backup found!", wrnno=_WRN_SGP_NO_BACKUP)
+            else:  # blank (a first boot) or invalid: the FRAM layer logged what it found
+                self.pr.one("No backup found")
             return False
 
         # One chain, as legacy: the age bound is tested only once an age is known.

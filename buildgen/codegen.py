@@ -699,11 +699,6 @@ def _module_names(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) 
 
 def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     modules = _module_names(construction_order, ctx)
-    # fram has get_error_sources()/get_loggers() but no task or timer starters: a synchronous
-    # store owns neither, and the hand-written modules excluded it from exactly these two loops.
-    # Getting it wrong was AttributeError on every FRAM-wired device, caught only by Part L.4.
-    fram_var = next((ctx.instance_var(n) for n in construction_order if isinstance(n, tuple) and n[0] == "fram"), None)
-    task_timer_modules = [m for m in modules if m != fram_var] if fram_var is not None else modules
     lines.append('def _collect_error_sources() -> "list[ErrorSource]":')
     for name in modules:
         lines.append(f"    assert {name} is not None")
@@ -722,14 +717,14 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append('def _collect_task_starters() -> "list[Callable[[], asyncio.Task[Any]]]":')
     lines.append("    assert webserver is not None")
     lines.append("    starters: list[Callable[[], asyncio.Task[Any]]] = []")
-    lines.append(f"    for module in ({', '.join(task_timer_modules)}, webserver):")
+    lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        starters.extend(module.get_task_starters())")
     lines.append("    return starters")
     lines.append("")
     lines.append('def _collect_timer_starters() -> "list[TimerStarter]":')
     lines.append("    assert webserver is not None")
     lines.append('    starters: "list[TimerStarter]" = []')
-    lines.append(f"    for module in ({', '.join(task_timer_modules)}, webserver):")
+    lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        starters.extend(module.get_timer_starters())")
     lines.append("    return starters")
     lines.append("")

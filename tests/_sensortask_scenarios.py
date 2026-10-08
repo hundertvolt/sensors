@@ -16,6 +16,7 @@ sys.path.insert(0, "ext")
 
 import machine
 import rp2
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
@@ -31,7 +32,7 @@ import asy_spi_driver
 import asy_system_service
 from asy_base_classes import SensorReader, SensorReaderConfig
 from asy_crc_checks import CRC8
-from asy_fram_manager import FRAMManager
+from asy_fram_manager import FRAMManager, _owner_seed
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService
 from asy_print_log import PrintLogHistory, PrintLogHistoryStore
@@ -61,11 +62,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine
+    from collections.abc import Callable, Coroutine
     from typing import Any, TypeVar
-
-    from asy_crc_checks import CRCBase
-    from asy_fram_manager import FRAMChunk, FRAMTimestampedChunk
 
     T = TypeVar("T")
 
@@ -87,12 +85,10 @@ _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
 
 
 class _FakeMB85RS2MTA(FakeMB85RS64V):
-    # dev's real FRAM is a 256KB MB85RS2MTA (SPECIFICATION.md Part C.3.1), not the 8KB MB85RS64V
-    # the base fake defaults to. A subclass, since build_system() offers no post-construction hook.
-    # Only the RDID changes - that is what asy_fram_manager.py's setup() keys its chip check off.
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
-        self.rdid_response = bytes([0x04, 0x7F, 0x48, 0x03])
+    # dev's real FRAM: a 256KB MB85RS2MTA with its own RDID (DS501-00032 p.10), not the base fake's 8KB
+    # MB85RS64V. A subclass, since build_system() offers no post-construction hook.
+    SIZE = 0x40000
+    RDID = bytes([0x04, 0x7F, 0x48, 0x03])
 
 
 # Same "keyed by the real chip's own max_size" table digital_twin/machine.py's _FRAM_RDID_BY_MAX_SIZE
@@ -144,18 +140,18 @@ def _tmp_cfg_dir() -> str:
 _OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
 
 
-async def _boot(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> "Any":
+async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
     # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
     # several devices' own modules get booted in this one process across this file's full run.
-    asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
+    asy_spi_driver._SPI = fram_fake_class(device) if chip is None else chip  # type: ignore[misc]
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
     module = __import__(f"sensortask_{device}")
     await module.build_system(cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
     return module
 
 
-def build(device: str, cfg_path: "str | None" = None, **kwargs: "Any") -> "Any":
-    return run(_boot(device, cfg_path, **kwargs))
+def build(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
+    return run(_boot(device, cfg_path, chip, **kwargs))
 
 
 def _device_of(module: "Any") -> str:
@@ -239,31 +235,43 @@ def _ram_only_config_logs(module: "Any") -> "list[str]":
     return sorted(owner.cfgmgr.pr.name for owner in owners if getattr(owner, "cfgmgr", None) is not None and not getattr(type(owner), "_CFG_LOG_FRAM", True))
 
 
-def _expected_fram_chunk_calls(module: "Any") -> "list[str]":
-    # The full expected chunk order is SPECIFICATION.md Part A.7's "Real FRAM chunk order" -
-    # implicit-FRAM-wiring (conn/ntp/webserver and conn's CaptiveDNS) and a cfgmgr chunk right after
-    # each SensorReaderConfig-based module's own pr chunk are the two rules that shape it.
+_READER_OWNERS = (("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("isl29125", "ISL29125"))
+_STATUS_BYTES_PER_BLOCK = 2  # mirrors asy_fram_manager.py's _NUM_STATUS_BYTES (const(), not importable); keep in sync
 
-    # Built from the module's own reflected instance set, not a hardcoded per-device literal: every
-    # device's TOML lists its instances in this same relative order (Part L.3) and wires its
-    # NeoPixel as conn's ext_led, so the fixed shape below stays correct for all 6.
-    calls = ["chunk"]  # NeopixelDriver - built before conn, which takes it at construction; no cfgmgr
-    calls += ["chunk", "chunk", "chunk"]  # WifiService, its own CFGMGR_WIFI, its own CaptiveDNS
-    calls += ["chunk", "chunk"]  # NTPClient, its own CFGMGR_NTP
-    calls += ["chunk", "chunk"]  # SystemService, its own CFGMGR_SYSTEM
-    if _has(module, "scd30"):
-        calls.append("chunk")  # SCD30_Reader - its CFGMGR_SCD30 stays RAM-only, no chunk
-    if _has(module, "sgp40"):
-        calls += ["chunk", "chunk", "timestamped"]  # SGP40, its own CFGMGR_SGP40, VOC backup
-    if _has(module, "bmp3xx"):
-        calls += ["chunk", "chunk"]  # BMP3XX_Reader, its own CFGMGR_BMP3XX
-    if _has(module, "isl29125"):
-        calls += ["chunk", "chunk"]  # ISL29125_Reader, its own CFGMGR_ISL29125
-    calls += ["chunk", "chunk"]  # NotificationService, its own CFGMGR_NOTIFY - always present
+
+def _expected_fram_chunk_owners(module: "Any") -> "list[str]":
+    # SPECIFICATION.md Part A.7's "Real FRAM chunk order": construction order, the NeoPixel first (conn's
+    # ext_led), each module's own log then its FRAM-backed config log, conn's captive DNS after conn's two.
+    owners = ["NEOPIXEL", "WIFI", "CFGMGR_WIFI", "DNSSRV", "NTP", "CFGMGR_NTP", "SYSTEM", "CFGMGR_SYSTEM"]
+    for attr, name in _READER_OWNERS:
+        if _has(module, attr):
+            reader = getattr(module, attr)
+            owners.append(name)
+            if getattr(type(reader), "_CFG_LOG_FRAM", True):  # derived from the class, never named
+                owners.append("CFGMGR_" + name)
+            if attr == "sgp40":
+                owners.append(reader.name + "_VOC")  # the VOC backup's owner, read from the built reader
+    owners += ["NOTIFY", "CFGMGR_NOTIFY"]
     if _has_uart_link(module):
-        calls += ["chunk", "chunk"]  # UARTLinkDriver x2 (init, resp) - no cfgmgr, WP3
-    calls.append("chunk")  # WebserverService - no cfgmgr
-    return calls
+        owners += ["UART_init", "UART_resp"]  # no config store: the link's parameters are a wire contract
+    owners.append("WEBSERVER")
+    return owners
+
+
+def _fram_stores(module: "Any") -> "list[Any]":
+    return [logger for logger in _all_loggers(module) if isinstance(logger, PrintLogHistoryStore) and logger.fram is not None]
+
+
+def _fram_chunks(module: "Any") -> "list[tuple[str, Any]]":
+    # Every chunk the built graph holds, with the owner name it was allocated under, in address order.
+    chunks = [(logger.name, logger.fram) for logger in _fram_stores(module)]
+    if _has(module, "sgp40") and module.sgp40._ts_storage is not None:
+        chunks.append((module.sgp40.name + "_VOC", module.sgp40._ts_storage))
+    return sorted(chunks, key=lambda owned: owned[1]._block_addr[0])
+
+
+def _fram_chip(module: "Any") -> "Any":
+    return module.fram.fram._spidev.spi._spi
 
 
 def _sensor_reader_owners(module: "Any") -> "list[Any]":
@@ -425,46 +433,110 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# FRAM chunk order - exact relative sequence (six or seven chunks, depending on bmp3xx presence).
+# FRAM chunk layout: one build's on-chip layout, fixed within that build and free to change in the
+# next (owner, 2026-09-26); each chunk's CRC is seeded by its owner, so another build's bytes read blank.
 # ---------------------------------------------------------------------------
 
 
-@_register("fram_chunk_allocation_order_matches_the_documented_sequence")
-def _scenario_fram_chunk_order(device: str) -> None:
-    calls: list[str] = []
-    from asy_fram_manager import FRAMManager
+def _layout(module: "Any") -> "list[tuple[str, int, int]]":
+    return [(owner, chunk._block_addr[0], chunk.size) for owner, chunk in _fram_chunks(module)]
 
-    real_get_chunk = FRAMManager.get_chunk
-    real_get_timestamped_chunk = FRAMManager.get_timestamped_chunk
 
-    # Both wrappers restate FRAMManager's own signature verbatim rather than forwarding
-    # *args/**kwargs - same call for every caller, and it keeps the parameter types real.
-    def _tracking_get_chunk(
-        self: "FRAMManager", size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
-    ) -> "FRAMChunk | None":
-        calls.append("chunk")
-        return real_get_chunk(self, size, crc, verify, check_length)
+@_register("fram_chunk_layout_is_contiguous_deterministic_and_in_owner_order")
+def _scenario_fram_chunk_layout(device: str) -> None:
+    module = build(device)
+    chunks = _fram_chunks(module)
+    owners = [owner for owner, _chunk in chunks]
+    assert owners == _expected_fram_chunk_owners(module), owners
+    assert len(set(owners)) == len(owners), f"two chunks share an owner name, so they share a CRC seed: {owners}"
+    end = 0
+    for owner, chunk in chunks:
+        assert chunk._block_addr[0] == end, (owner, chunk._block_addr, end)  # bump allocation: no gap, no overlap
+        assert chunk._crc_seed == _owner_seed(owner, chunk.crc), f"{owner}'s chunk is not seeded by its own name"
+        end += 2 * (chunk.size + chunk.crc.length() + _STATUS_BYTES_PER_BLOCK)
+    assert end == module.fram._allocated_size
+    first = _layout(module)
+    assert _layout(build(device)) == first  # a second build of the same image lays out identically
 
-    def _tracking_get_timestamped_chunk(
-        self: "FRAMManager",
-        size: int,
-        ntp_sync_callback: "Callable[[], Awaitable[bool]]",
-        crc: "CRCBase | None" = None,
-        verify: int = 0,
-        check_length: int = 8,
-    ) -> "FRAMTimestampedChunk | None":
-        calls.append("timestamped")
-        return real_get_timestamped_chunk(self, size, ntp_sync_callback, crc, verify, check_length)
 
-    FRAMManager.get_chunk = _tracking_get_chunk  # type: ignore[method-assign]
-    FRAMManager.get_timestamped_chunk = _tracking_get_timestamped_chunk  # type: ignore[method-assign]
-    try:
-        module = build(device)
-    finally:
-        FRAMManager.get_chunk = real_get_chunk  # type: ignore[method-assign]
-        FRAMManager.get_timestamped_chunk = real_get_timestamped_chunk  # type: ignore[method-assign]
+def _chip_holding(base: "type[FakeMB85RS64V]", image: bytes) -> "type[FakeMB85RS64V]":
+    # The device's own part, powered up holding `image`: what the next boot finds on the chip.
+    class _Holding(base):  # type: ignore[valid-type,misc]
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            super().__init__(*args, **kwargs)
+            self.memory[:] = image
 
-    assert calls == _expected_fram_chunk_calls(module)
+    return _Holding
+
+
+def _log_one_entry_everywhere(module: "Any", text: str) -> None:
+    for logger in _fram_stores(module):
+        run(logger.err_s(text, errno=code("E", "INIT")))
+
+
+def _error_count(logger: "Any") -> int:
+    count: int = run(logger.get_log())[logger.name]["ErrCount"]
+    return count
+
+
+def _assert_every_chunk_starts_empty_and_accepts_writes(device: str, image: bytes) -> None:
+    # A boot on an image this build did not write: no owner restores anything, every store is set up on a
+    # re-initialised chunk, and a reboot on the same filesystem then restores what that boot wrote.
+    base = fram_fake_class(device)
+    cfg_path = _tmp_cfg_dir()
+    module = build(device, cfg_path, chip=_chip_holding(base, image))
+    stores = _fram_stores(module)
+    for logger in stores:
+        assert logger.initialized is True, f"{logger.name} stayed RAM-only on a foreign image"
+        assert _error_count(logger) == 0, f"{logger.name} restored a history it never wrote"
+    if _has(module, "sgp40"):
+        backup = module.sgp40._ts_storage
+        valid, _ts, _age = run(backup.read_into(backup.get_buffer()))
+        assert valid is False, "the VOC backup read a foreign image as a backup"
+    fram_log = run(module.fram.get_error_counter())["FRAM"]
+    content = {("E", code("E", n)) for n in ("FRAM_STATUS_BYTE", "FRAM_STATUS_DISAGREE", "FRAM_DATA_CRC", "FRAM_COPIES_DIFFER")}
+    content.add(("W", code("W", "FRAM_BLOCK_INVALID")))
+    found = {(kind, fram_log["ErrNum"][i]) for i, kind in enumerate(fram_log["ErrType"]) if kind != "N"}
+    assert found <= content, f"a foreign image raised a fault, not a content state: {found - content}"
+    # No flood: each of a chunk's two blocks is read once, and its CRC check and its block check each keep one entry.
+    assert fram_log["ErrCount"] <= 2 * 2 * len(_fram_chunks(module)), fram_log
+    _log_one_entry_everywhere(module, "written after the foreign image")
+    rewritten = bytes(_fram_chip(module).memory)
+    module = build(device, cfg_path, chip=_chip_holding(base, rewritten))
+    for logger in _fram_stores(module):
+        log = run(logger.get_log())[logger.name]
+        assert log["ErrCount"] == 1 and code("E", "INIT") in log["ErrNum"], (logger.name, log)
+
+
+def _image_with_every_chunk_written(device: str) -> "tuple[bytes, int]":
+    # One entry in every store and one VOC backup: every chunk holds a valid dual copy. Also returns the
+    # first chunk's full size, the shift a layout with one more leading chunk of that size would have.
+    module = build(device)
+    _log_one_entry_everywhere(module, "written by the previous build")
+    if _has(module, "sgp40"):
+        backup = module.sgp40._ts_storage
+        data = backup.get_buffer().get_data_buf()
+        assert data is not None
+        written, _synced, _utc = run(backup.write(bytes(len(data))))
+        assert written is True
+    _owner, first = _fram_chunks(module)[0]
+    return bytes(_fram_chip(module).memory), 2 * (first.size + first.crc.length() + _STATUS_BYTES_PER_BLOCK)
+
+
+@_register("first_boot_after_a_reflash_reinitialises_every_chunk_without_flood")
+def _scenario_first_boot_after_a_reflash(device: str) -> None:
+    # Another build's bytes over this build's addresses read as invalid and are re-initialised, with no
+    # crash and no error flood (owner, 2026-09-26). Rotating the image by 3 bytes misaligns every chunk.
+    image, _shift = _image_with_every_chunk_written(device)
+    _assert_every_chunk_starts_empty_and_accepts_writes(device, image[3:] + image[:3])
+
+
+@_register("a_layout_shifted_by_one_chunk_restores_no_neighbours_history")
+def _scenario_layout_shifted_by_one_chunk(device: str) -> None:
+    # An image from a build with one more leading chunk: each equal-size chunk now holds its neighbour's
+    # valid dual copy, and only the owner seed tells them apart, so every owner must read it as blank.
+    image, shift = _image_with_every_chunk_written(device)
+    _assert_every_chunk_starts_empty_and_accepts_writes(device, bytes(shift) + image[: len(image) - shift])
 
 
 @_register("fram_chunks_are_all_successfully_allocated_not_out_of_memory")
@@ -544,57 +616,61 @@ class _DeadFramChip(FakeMB85RS64V):
     # Same technique as test_fram_integration.py's
     # test_sensorreader_runs_in_degraded_mode_when_fram_setup_never_succeeded: a real device-ID
     # mismatch, not just fram=None - the chip responds, it just never comes up as the expected one.
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, **kwargs)
-        self.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
+    RDID = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
 
-@_register("build_system_never_insists_on_fram_hardware_being_available")
-def _scenario_fram_never_required(device: str) -> None:
-    # Owner requirement (owner, 2026-08-11): no module may insist on FRAM availability - every FRAM-backed error log
-    # must keep working in plain RAM, and SGP40 must keep running without backup/restore. Exercises
-    # the whole construction chain with a dead chip, not one driver in isolation.
-    asy_spi_driver._SPI = _DeadFramChip  # type: ignore[misc]
-    module = __import__(f"sensortask_{device}")
-    run(module.build_system(cfg_path=_tmp_cfg_dir()))
+def _ram_only_entries(logger: "Any") -> int:
+    log = run(logger.get_log())[logger.name]
+    return sum(1 for i, kind in enumerate(log["ErrType"]) if kind == "E" and log["ErrNum"][i] == code("E", "LOG_RAM_ONLY"))
 
-    # build_system() completed fully - didn't raise, didn't skip constructing anything - despite
-    # the underlying FRAM chip never coming up.
-    assert module.fram is not None
-    assert module.fram.fram is not None
-    assert module.fram.fram.initialized is False  # the dead chip, confirmed never ready
-    assert module.sysfunct is not None and module.neopixel is not None and module.notification is not None
 
-    # Every FRAM-chunk-owning logger still allocated a chunk (pure bookkeeping, SPECIFICATION.md
-    # Part C.13 - doesn't need setup() to have succeeded) but stays functional in degraded mode,
-    # matching test_fram_integration.py's "not None, just permanently hardware-unusable" pattern.
-    assert isinstance(module.sysfunct.pr, PrintLogHistoryStore)
-    run(module.sysfunct.pr.err_s("boom", errno=1))  # never raises despite the dead chip
-    assert run(module.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 1  # still counted in memory
+async def _supervise_until_the_reboot_is_armed(sysfunct: "Any", starters: "list[Any]") -> None:
+    sup = asyncio.create_task(sysfunct.start_and_check_tasks(starters))
+    for _ in range(5000):
+        if sysfunct._reset_armed or sup.done():
+            break
+        await asyncio.sleep(0)
+    sup.cancel()
+    await asyncio.sleep(0)
 
-    # SGP40 (present on every real device): VOC backup/restore chunk allocated but unusable - skips
-    # backups, starts from scratch every time, but the reader itself keeps running
-    # (asy_sgp40_driver.py's own _check_storage() contract, not re-tested here at that depth).
-    if _has(module, "sgp40"):
-        assert isinstance(module.sgp40.pr, PrintLogHistoryStore)
+
+@_register("a_declared_dead_fram_chip_escalates_to_a_reboot")
+def _scenario_dead_fram_chip_escalates(device: str) -> None:
+    # A declared chip that never comes up escalates like every other declared chip (owner, 2026-09-29: 'the
+    # same as all other chips'); until the reboot every module keeps logging in RAM (owner, 2026-08-11).
+    module = build(device, chip=_DeadFramChip)
+    assert module.fram is not None and module.sysfunct is not None
+    assert module.neopixel is not None and module.notification is not None
+    rdids = _fram_chip(module).rdid_count
+    assert rdids == 3, rdids  # identification retried before setup gives up
+    assert module.fram.initialized is False
+    assert module.fram.fram.initialized is False
+
+    # Every chunk is still allocated (bookkeeping, SPECIFICATION.md Part C.13) but unreadable: each store
+    # runs RAM-only for this boot and says so once in its own history, then keeps counting in memory.
+    stores = _fram_stores(module)
+    assert stores
+    for logger in stores:
+        assert logger.initialized is False, logger.name
+        assert _ram_only_entries(logger) == 1, logger.name
+        assert _error_count(logger) == 1, logger.name
+    run(module.sysfunct.pr.err_s("boom", errno=code("E", "INIT")))  # never raises despite the dead chip
+    assert run(module.sysfunct.get_error_counter())["SYSTEM"]["ErrCount"] == 2
+    if _has(module, "sgp40"):  # its backup chunk is allocated but unusable; the reader itself keeps running
         assert module.sgp40._ts_storage is not None
-        assert run(module.sgp40.get_error_counter())["SGP40"]["ErrCount"] == 0
 
-    # bmp3xx/scd30: same degraded-mode contract as sysfunct above - a FRAM-backed logger stays
-    # functional in plain memory when the chip never comes up. Only asserted for whichever of the
-    # two this device actually has.
-    if _has(module, "bmp3xx"):
-        assert isinstance(module.bmp3xx.pr, PrintLogHistoryStore)
-        run(module.bmp3xx.pr.err_s("boom", errno=1))
-        assert run(module.bmp3xx.get_error_counter())["BMP3XX"]["ErrCount"] == 1
-    if _has(module, "scd30"):
-        assert isinstance(module.scd30.pr, PrintLogHistoryStore)
-        run(module.scd30.pr.err_s("boom", errno=1))
-        assert run(module.scd30.get_error_counter())["SCD30"]["ErrCount"] == 1
-
-    # The rest of the system is unaffected - task/timer starter collection still works end to end.
-    starters = module._collect_task_starters()
-    assert len(starters) > 0
+    # The manager's one supervised task ends at once, so the supervisor's restart budget arms the reboot.
+    (watch,) = module.fram.get_task_starters()
+    assert watch in module._collect_task_starters()
+    asy_system_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
+    try:
+        run(_supervise_until_the_reboot_is_armed(module.sysfunct, [watch]))
+    finally:
+        asy_system_service.asyncio = asyncio
+    assert module.sysfunct._reset_armed is True
+    assert machine.mem_backup(0)[1] == _system_const("_RR_TASK_BUDGET")
+    assert module.sysfunct._reset_timer.callback is not None
+    run(_cancel_reset_task(module.sysfunct))
 
 
 # ---------------------------------------------------------------------------
@@ -808,13 +884,15 @@ def _scenario_collect_task_starters(device: str) -> None:
     starters = module._collect_task_starters()
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
-    # The webserver's serving task is supervised like every other: its own starter is collected.
-    assert module.webserver is not None
+    # The webserver's serving task is supervised like every other: its own starter is collected; so is the
+    # FRAM manager's chip watch, on every device that declares a chip.
+    assert module.webserver is not None and module.fram is not None
     assert module.webserver.get_task_starters() != []
+    assert len(module.fram.get_task_starters()) == 1
     # MicroPython bound methods don't expose __self__ (confirmed against the real Unix-port
     # interpreter - that is a CPython-only assumption), but they compare equal when bound to the
     # same (instance, function) pair, so membership via == still proves real ownership.
-    for owner in _sensor_reader_owners(module) + [module.webserver]:
+    for owner in _sensor_reader_owners(module) + [module.fram, module.webserver]:
         for expected in owner.get_task_starters():
             assert expected in starters, f"no task starter bound to {owner!r}"
 
@@ -822,13 +900,13 @@ def _scenario_collect_task_starters(device: str) -> None:
 @_register("collect_timer_starters_includes_every_constructed_module")
 def _scenario_collect_timer_starters(device: str) -> None:
     # Every constructed module is checked, not just those currently contributing a timer:
-    # neopixel/notification/webserver all return [] today, but this proves _collect_timer_starters()
+    # neopixel/notification/webserver/fram all return [] today, but this proves _collect_timer_starters()
     # actually calls each of them rather than picking modules by name.
     module = build(device)
     starters = module._collect_timer_starters()
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
-    for owner in _sensor_reader_owners(module) + [module.webserver]:
+    for owner in _sensor_reader_owners(module) + [module.fram, module.webserver]:
         assert owner is not None
         for expected in owner.get_timer_starters():
             assert expected in starters, f"no timer starter bound to {owner!r}"

@@ -243,8 +243,9 @@ quota, because an unthrottled twin is optimistic near the wall (`SPECIFICATION.m
 Shrinking it would also make the suppressed arm's churn force collections and stop being suppressed.
 So the committed twin guard (`tests_scripts/test_digital_twin_boot_contiguity.py`) asserts
 **placement relative to each list's own seam** — reach above it and median depth below it — which
-is byte-identical at 8M and 16M, and it runs a suppressed control arm that must *violate* every bound,
-or the guard is not a guard. Its bounds are twin bounds; none is ever copied to the board.
+is byte-identical at 8M and 16M, and it runs a suppressed control arm, on `dev`, that must *violate*
+the batch-depth, reach and high-band bounds, or the guard is not a guard. The probe keeps the fakes'
+call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.md` I.4(f.1)). Its bounds are twin bounds; none is ever copied to the board.
 
 ### M4.4 A faithful frozen twin
 

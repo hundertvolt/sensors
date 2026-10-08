@@ -1,11 +1,12 @@
 import asyncio
 from collections import deque
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_print_log as print_log_module
 import asy_spi_driver
-from asy_base_classes import LockableBuffer
+from asy_base_classes import RegionBuffer
 from asy_fram_manager import FRAMChunk, FRAMManager
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, make_logger
 from asy_spi_driver import SPI
@@ -50,18 +51,18 @@ class _RaisingFramChunk:
         self.none_buffer = none_buffer
         self.error = MemoryError("simulated allocation failure") if error is None else error
 
-    def get_buffer(self) -> "LockableBuffer":
-        buf = LockableBuffer(6, data_start=0, data_length=6)
+    def get_buffer(self) -> "RegionBuffer":
+        buf = RegionBuffer(6, data_start=0, data_length=6)
         if self.none_buffer:
             buf._buf = None  # the shape a failed buffer allocation leaves
         return buf
 
-    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "RegionBuffer") -> bool:
         if self.raise_on_write:
             raise self.error
         return True
 
-    async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: "RegionBuffer") -> bool:
         if self.raise_on_read:
             raise self.error
         return True
@@ -75,7 +76,7 @@ class _RaisingFramManager:
     # Fails only by allocation, the one failure the real chunk documents (SPECIFICATION.md C.7); parameter names
     # stay exact so mypy checks the fake against asy_print_log's Protocols.
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
     ) -> "_RaisingFramChunk | None":
         if self.raise_on_get_chunk:
             raise MemoryError("simulated allocation failure")
@@ -88,7 +89,7 @@ class _CountingFramManager:
 
     # Parameter names kept exact for the structural _FramManager Protocol match (see _RaisingFramManager).
     def get_chunk(
-        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8,
+        self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
     ) -> "_CountingFramChunk":
         return self._chunk
 
@@ -312,21 +313,36 @@ class _PrintRecorder:
 
 
 class _CountingFramChunk:
-    # Counts the write-throughs a store makes; reads report nothing stored (a blank chunk).
-    def __init__(self, size: int) -> None:
+    # Counts the write-throughs a store makes and keeps the last payload; a read waits on read_gate when set, then
+    # answers read_result (False: blank, None: unreadable, True: `stored` copied into the buffer).
+    def __init__(self, size: int, *, read_result: "bool | None" = False, stored: bytes = b"", write_result: bool = True) -> None:
         self.size = size
         self.writes = 0
+        self.read_result = read_result
+        self.stored = stored
+        self.write_result = write_result
+        self.read_gate: asyncio.Event | None = None
+        self.last_payload: bytes | None = None
 
     # Parameter names kept exact for the structural _FramChunk Protocol match (see _RaisingFramChunk).
-    def get_buffer(self) -> "LockableBuffer":
-        return LockableBuffer(self.size, data_start=0, data_length=self.size)
+    def get_buffer(self) -> "RegionBuffer":
+        return RegionBuffer(self.size, data_start=0, data_length=self.size)
 
-    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "RegionBuffer") -> bool:
         self.writes += 1
-        return True
+        dbuf = buf.get_data_buf()
+        assert dbuf is not None
+        self.last_payload = bytes(dbuf)
+        return self.write_result
 
-    async def read_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
-        return False
+    async def read_into(self, buf: "RegionBuffer") -> bool | None:
+        if self.read_gate is not None:
+            await self.read_gate.wait()
+        if self.read_result:
+            dbuf = buf.get_data_buf()
+            assert dbuf is not None
+            dbuf[: len(self.stored)] = self.stored
+        return self.read_result
 
 
 def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "_CountingFramChunk | None") -> None:
@@ -536,7 +552,7 @@ def test_printloghistorystore_out_of_memory_leaves_fram_none_and_never_raises() 
     store = PrintLogHistoryStore(manager, history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
-    assert run(store._read()) is False
+    assert run(store._read()) is None  # nothing was read
 
 
 def test_printloghistorystore_read_before_any_write_fails_cleanly() -> None:
@@ -706,7 +722,7 @@ def test_printloghistorystore_zero_length_history_survives_write_and_read() -> N
     run(store.err_s("e", errno=1))
     assert store._err_count == 1
     assert list(store.history) == []
-    assert run(store._read()) is True
+    assert run(store._read()) == (1, ())  # the stored count and its (empty) entries
 
 
 def test_printloghistorystore_write_uses_explicit_little_endian_layout() -> None:
@@ -752,7 +768,7 @@ class _GatedFramChunk(_CountingFramChunk):
         self.payloads: list[bytes] = []
         self.failing_writes: tuple[int, ...] = ()
 
-    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "RegionBuffer") -> bool:
         await self.gate.wait()
         dbuf = buf.get_data_buf()
         assert dbuf is not None
@@ -852,6 +868,157 @@ def test_a_failed_write_leaves_the_next_queued_call_to_write() -> None:
     assert store.results == [True, False, True], store.results
 
 
+def test_read_answers_the_stored_entries_false_or_none_and_mutates_nothing() -> None:
+    blank = PrintLogHistoryStore(_CountingFramManager(_CountingFramChunk(2 + 3)), history_length=3)
+    assert run(blank._read()) is False
+    unreadable = PrintLogHistoryStore(_CountingFramManager(_CountingFramChunk(2 + 3, read_result=None)), history_length=3)
+    assert run(unreadable._read()) is None
+    chunk = _CountingFramChunk(2 + 3, read_result=True, stored=b"\x05\x00\x01\x02\x03")
+    stored = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    run(stored.err_s("pre", errno=9))
+    assert run(stored._read()) == (5, (1, 2, 3))
+    assert list(stored.history) == [0, 0, 9]  # the read itself applies nothing
+    assert stored._err_count == 1
+
+
+def test_setup_merges_entries_logged_before_it_after_the_stored_ones() -> None:
+    # Two stored entries and one logged before setup(): the stored ring first, the earlier entry newest, counts
+    # summed; a repeat of it before setup() is counted but takes no slot.
+    earlier_chunk = _CountingFramChunk(2 + 4)
+    earlier = PrintLogHistoryStore(_CountingFramManager(earlier_chunk), history_length=4)  # the earlier boot
+    run(earlier.setup())
+    run(earlier.err_s("stored", errno=3))
+    run(earlier.err_s("stored", errno=7))
+    assert earlier_chunk.last_payload is not None
+    for repeats, count in ((1, 3), (2, 4)):
+        chunk = _CountingFramChunk(2 + 4, read_result=True, stored=earlier_chunk.last_payload)
+        store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=4)
+        for _ in range(repeats):
+            run(store.err_s("before setup", errno=5))
+        assert chunk.writes == 0
+        assert run(store.setup()) is True
+        assert list(store.history) == [0, 3, 7, 5]
+        assert store._err_count == count
+        assert store._pre_setup_slots == 0
+        assert store.restored is True
+        assert chunk.writes == 1  # the merge changed the ring: written once
+        assert chunk.last_payload == bytes((count, 0, 0, 3, 7, 5))
+
+
+def test_a_clean_read_of_a_valid_store_sets_up_without_writing() -> None:
+    # Nothing logged before setup(): the chunk already holds exactly this state, so setup() writes nothing back.
+    chunk = _CountingFramChunk(2 + 3, read_result=True, stored=b"\x02\x00\x00\x03\x07")
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    assert run(store.setup()) is True
+    assert store.initialized is True
+    assert store.restored is True
+    assert store._err_count == 2
+    assert chunk.writes == 0
+
+
+def test_a_merged_count_saturates_at_the_cap() -> None:
+    chunk = _CountingFramChunk(2 + 2, read_result=True, stored=b"\xfe\xff\x00\x00")  # 0xFFFE stored
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=2)
+    run(store.err_s("before setup", errno=1))
+    run(store.err_s("before setup", errno=2))
+    assert run(store.setup()) is True
+    assert store._err_count == 0xFFFF  # the uint16 header's own maximum, never past it
+
+
+def test_a_reset_landing_during_setups_read_leaves_ram_and_the_chunk_cleared() -> None:
+    chunk = _CountingFramChunk(2 + 3, read_result=True, stored=b"\x02\x00\x00\x03\x07")
+    gate = asyncio.Event()
+    chunk.read_gate = gate
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+
+    async def scenario() -> bool:
+        setup = asyncio.create_task(store.setup())
+        await asyncio.sleep(0)  # setup() now waits inside its read
+        assert await store.reset() is True
+        gate.set()
+        return await setup
+
+    assert run(scenario()) is True
+    assert store._err_count == 0
+    assert list(store.history) == [0, 0, 0]
+    assert chunk.writes == 1  # the reset's write only: setup() applied and wrote nothing
+    assert chunk.last_payload == bytes(5)
+    assert store.restored is False
+
+
+def test_an_entry_logged_during_the_setup_write_still_lands_on_the_chunk() -> None:
+    # An entry arriving while setup()'s own write is in flight is neither in that write's payload nor written through
+    # (the store is not initialised yet): setup() writes once more, so it survives a reboot.
+    chunk = _GatedFramChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+
+    async def scenario() -> bool:
+        setup = asyncio.create_task(store.setup())
+        for _ in range(5):  # setup() now waits inside its write
+            await asyncio.sleep(0)
+        await store.err_s("during the setup write", errno=4)
+        chunk.gate.set()
+        return await setup
+
+    assert run(scenario()) is True
+    assert chunk.payloads[-1] == b"\x01\x00\x00\x00\x04", chunk.payloads
+
+
+def test_a_blank_store_is_reinitialised() -> None:
+    chunk = _CountingFramChunk(2 + 3)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3)
+    assert run(store.setup()) is True
+    assert store.initialized is True
+    assert store.restored is False
+    assert chunk.writes == 1
+    assert chunk.last_payload == bytes(5)
+
+
+def test_an_unreadable_store_keeps_its_bytes_and_stays_ram_only() -> None:
+    chunk = _CountingFramChunk(2 + 3, read_result=None)
+    store = PrintLogHistoryStore(_CountingFramManager(chunk), history_length=3, name="U")
+    assert run(store.setup()) is False
+    assert store.initialized is False
+    assert store.restored is False
+    run(store.err_s("later", errno=4))
+    assert chunk.writes == 0  # nothing ever reached the chunk: the stored history stays for the next boot
+    assert list(store.history) == [0, code("E", "LOG_RAM_ONLY"), 4]
+    assert store._err_count == 2
+
+
+def test_each_ram_only_store_shows_one_entry_under_its_own_name() -> None:
+    # The chunk's heap allocation raised, it read unreadable at setup(), or its first write failed: setup() is False and
+    # the store's own ring holds one counted LOG_RAM_ONLY entry, the console line kept; nothing lands on the chunk.
+    unreadable = _CountingFramChunk(2 + 3, read_result=None)
+    refusing = _CountingFramChunk(2 + 3, write_result=False)
+    cases = (
+        (PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=3, level=1, name="A"), None, "FRAM history allocation failed - RAM-only until reboot"),
+        (PrintLogHistoryStore(_CountingFramManager(unreadable), history_length=3, level=1, name="B"), unreadable, "FRAM history unreadable - RAM-only until reboot"),
+        (PrintLogHistoryStore(_CountingFramManager(refusing), history_length=3, level=1, name="C"), refusing, "FRAM history setup write failed - RAM-only until reboot"),
+    )
+    for store, chunk, text in cases:
+        writes_before = 0 if chunk is None else chunk.writes
+        rec = _PrintRecorder()
+        try:
+            assert run(store.setup()) is False
+        finally:
+            rec.restore()
+        log = run(store.get_log())[store.name]
+        assert log["ErrCount"] == 1, (store.name, log)
+        assert log["ErrNum"].count(code("E", "LOG_RAM_ONLY")) == 1, (store.name, log)
+        assert (store.name, text) in rec.lines, (store.name, rec.lines)
+        if chunk is not None:
+            assert chunk.writes == writes_before + (1 if chunk is refusing else 0)  # only the refused setup write
+    refused = PrintLogHistoryStore(_RaisingFramManager(None), history_length=3)  # the allocator had no room left
+    assert run(refused.setup()) is False
+    assert refused._err_count == 0  # an allocator refusal records nothing; the bench's capacity check finds it
+    blank = PrintLogHistoryStore(_CountingFramManager(_CountingFramChunk(2 + 3)), history_length=3)
+    assert run(blank.setup()) is True
+    assert run(blank.setup()) is True  # an initialised store's second setup() adds no entry
+    assert blank._err_count == 0
+    assert code("E", "LOG_RAM_ONLY") not in blank.history
+
+
 # ---------------------------------------------------------------------------
 # PrintLogHistoryStore - real FRAM failure modes injected at the simulated-chip level (the fault-injection
 # knobs in tests/_fram_chip_fake.py, covered in their own right by test_asy_fram_driver.py), plus the two
@@ -865,20 +1032,20 @@ def test_printloghistorystore_get_chunk_raising_leaves_fram_none() -> None:
     store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True), history_length=4)
     assert store.fram is None
     assert run(store._write()) is False
-    assert run(store._read()) is False
+    assert run(store._read()) is None
 
 
 def test_printloghistorystore_read_into_raising_is_caught() -> None:
     chunk = _RaisingFramChunk(raise_on_read=True)
     store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
-    assert run(store._read()) is False
+    assert run(store._read()) is None  # unreadable, not blank: setup() must not overwrite the store
 
 
 def test_a_none_data_buffer_fails_write_and_read_without_raising() -> None:
     chunk = _RaisingFramChunk(none_buffer=True)
     store = PrintLogHistoryStore(_RaisingFramManager(chunk), history_length=4)
     assert run(store._write()) is False
-    assert run(store._read()) is False
+    assert run(store._read()) is None
     run(store.reset())
     run(store.err_s("e", errno=1))
     assert store._err_count == 1  # the entry still counts in RAM
@@ -898,7 +1065,7 @@ def test_a_non_allocation_failure_from_a_chunk_propagates() -> None:
 
 class _RefusingFramChunk(_RaisingFramChunk):
     # A chunk whose every write reports failure, as the real one does for a chip it cannot reach.
-    async def write_into(self, buf: "LockableBuffer", *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: "RegionBuffer") -> bool:
         return False
 
 

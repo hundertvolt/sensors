@@ -6,7 +6,7 @@ from _tmp_scratch import TmpScratch
 
 import asy_base_classes
 import asy_notification_service
-from asy_base_classes import LockableBuffer, ValueRef
+from asy_base_classes import RegionBuffer, ValueRef
 from asy_notification_service import NotificationService, NotificationSignal
 from asy_print_log import LogConfig
 
@@ -585,22 +585,22 @@ def test_all_fields_invalid_in_one_write_none_persist() -> None:
 
 def test_fram_backed_variant_survives_a_reboot() -> None:
     class _FakeFramChunk:
-        # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
+        # One chunk's bytes, moved through the real RegionBuffer asy_print_log's _FramChunk Protocol names.
         def __init__(self) -> None:
             self.buf = bytearray(64)
-            self._buffer = LockableBuffer(64)
+            self._buffer = RegionBuffer(64)
 
-        def get_buffer(self) -> LockableBuffer:
+        def get_buffer(self) -> RegionBuffer:
             return self._buffer
 
-        async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        async def write_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
             self.buf[:] = data
             return True
 
-        async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+        async def read_into(self, buf: RegionBuffer) -> bool:
             data = buf.get_data_buf()
             if data is None:
                 return False
@@ -611,7 +611,7 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
         def __init__(self, chunk: "_FakeFramChunk") -> None:
             self.chunk = chunk
 
-        def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+        def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk":
             return self.chunk
 
     chunk = _FakeFramChunk()
@@ -1110,6 +1110,37 @@ def test_an_overnight_window_flashes_at_23_30() -> None:
 
     assert run(scenario()) is True
     assert len(cb.calls) == 1
+
+
+class _SteppingClock(FakeClock):
+    # Steps the local time across 10:00 after every read: 10:01, then 09:59, then 10:01 again (an RTC correction).
+    async def get(self) -> "_FakeTime | None":
+        now = await super().get()
+        self.value = _FakeTime(9, 59) if now is not None and now.minute == 1 else _FakeTime(10, 1)
+        return now
+
+
+def test_a_clock_step_across_on_time_flashes_at_most_once_per_cycle() -> None:
+    # A cycle reads the clock once, so a step during the cycle (the clock already back at 09:59 while its flash runs)
+    # or between cycles never flashes twice in one cycle; a cycle stepped back before the window flashes nothing.
+    cb = FakeSignalCb()
+    signal, _fv = make_signal("WarnCO2", value=2000)
+    clock = _SteppingClock(10, 1)
+    coordinator, _clock, _cb = make_coordinator((signal,), local_time=clock, signal_cb=cb)
+    run(coordinator.setup())
+
+    async def scenario() -> "list[int]":
+        await coordinator._set_dict_cfg({"OnH": 10, "OnM": 0, "OffH": 18, "OffM": 0}, coordinator.get_cfg_schema())
+        flashes = []
+        for _ in range(4):
+            cb.calls.clear()
+            task = coordinator.start_asy_monitor()
+            await _one_cycle(coordinator, task)
+            flashes.append(len(cb.calls))
+        return flashes
+
+    assert run(scenario()) == [1, 0, 1, 0]
+    assert clock.calls == 4  # one clock read per cycle
 
 
 def test_local_time_callback_returns_none_no_checks_run_no_crash() -> None:

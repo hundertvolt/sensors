@@ -1,6 +1,6 @@
 """Isolated-driver device script: the FRAM storage-pause gate against the real chip - a pause
-genuinely prevents the bus write rather than only returning False, override_pause still reaches the
-chip, and the auto-unpause deadline ends a pause on SYSTEM's real uptime tick (Part F.1, C.9)."""
+genuinely prevents the bus write rather than only returning False, and the auto-unpause deadline
+ends a pause on SYSTEM's real uptime tick (Part F.1, C.9)."""
 
 import asyncio
 
@@ -59,45 +59,42 @@ async def _check_gating(fram: FRAMManager, chunk: FRAMChunk) -> None:
     check("baseline read did not return the written pattern", condition=bytes(await chunk.read() or b"") == PATTERN_A)
     check("manager reported paused before anything paused it", condition=fram.get_pause() is False)
 
-    # 2. Paused write is refused AND never reaches the chip - proven by reading the real bytes back
-    #    with override_pause, which is the only way to distinguish "refused" from "silently wrote".
+    # 2. Paused write is refused AND never reaches the chip - proven by unpausing and reading the
+    #    real bytes back: the old pattern there tells "refused" from "silently wrote".
     fram.set_pause(value=True)
     check("get_pause() did not reflect set_pause(True)", condition=fram.get_pause() is True)
     check("write while paused returned True - the gate did not refuse it", condition=await chunk.write(PATTERN_B) is False)
-    still_a = await chunk.read(override_pause=True)
+    fram.set_pause(value=False)
+    still_a = await chunk.read()
     check("real chip contents changed while paused - the pause did not prevent the bus write", condition=bytes(still_a or b"") == PATTERN_A)
 
     # 3. Paused read is refused too.
+    fram.set_pause(value=True)
     check("read while paused returned data - the gate did not refuse it", condition=await chunk.read() is None)
 
-    # 4. override_pause reaches the real chip in both directions (zero callers in src/, so this
-    #    escape hatch has only ever been exercised against mocks).
-    check("override_pause write was refused", condition=await chunk.write(PATTERN_B, override_pause=True) is True)
-    check("override_pause read did not return the overridden write", condition=bytes(await chunk.read(override_pause=True) or b"") == PATTERN_B)
-
-    # 5. Unpausing restores normal operation.
+    # 4. Unpausing restores normal operation; PATTERN_B is not on the chip yet, so the read-back is fresh.
     fram.set_pause(value=False)
     check("get_pause() did not reflect set_pause(False)", condition=fram.get_pause() is False)
-    check("write after unpause was still refused", condition=await chunk.write(PATTERN_A) is True)
-    check("read after unpause did not return the fresh write", condition=bytes(await chunk.read() or b"") == PATTERN_A)
+    check("write after unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
+    check("read after unpause did not return the fresh write", condition=bytes(await chunk.read() or b"") == PATTERN_B)
 
 
 
 async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 6. The auto-unpause deadline, tested by the uptime pass on the board's real tick timer.
+    # 5. The auto-unpause deadline, tested by the uptime pass on the board's real tick timer.
     check(f"pause_permanent_storage({PAUSE_SEC}) answered False", condition=sysfunct.pause_permanent_storage(PAUSE_SEC))
     check(f"pause_permanent_storage({PAUSE_SEC}) did not pause", condition=fram.get_pause() is True)
     await sleep_fed(PAUSE_SEC + _PAUSE_MARGIN_S)
     check(f"the auto-unpause deadline never ended the pause after {PAUSE_SEC}s - storage stayed paused", condition=fram.get_pause() is False)
     check("write after the real auto-unpause was still refused", condition=await chunk.write(PATTERN_B) is True)
 
-    # 7. Zero duration unpauses immediately.
+    # 6. Zero duration unpauses immediately.
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     check("re-pause before the zero-duration check did not take effect", condition=fram.get_pause() is True)
     sysfunct.pause_permanent_storage(0)
     check("pause_permanent_storage(0) did not unpause immediately", condition=fram.get_pause() is False)
 
-    # 8. Re-arm: a second pause replaces the first pending deadline rather than leaving it to end
+    # 7. Re-arm: a second pause replaces the first pending deadline rather than leaving it to end
     #    the pause early.
     sysfunct.pause_permanent_storage(PAUSE_SEC)
     sysfunct.pause_permanent_storage(REARM_SEC)
@@ -109,7 +106,7 @@ async def _check_auto_unpause_timers(fram: FRAMManager, sysfunct: SystemService,
 
 
 async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService, chunk: FRAMChunk) -> None:
-    # 9. Safety invariant under an exhausted alarm pool: storage is never left paused with nothing
+    # 8. Safety invariant under an exhausted alarm pool: storage is never left paused with nothing
     #    able to unpause it. A pause arms no timer, so the pool cannot refuse it; the uptime tick
     #    armed before the pool ran out ends it.
     hogged = []
@@ -139,38 +136,37 @@ async def _check_exhausted_alarm_pool(fram: FRAMManager, sysfunct: SystemService
 
 
 async def _check_clear_and_timestamped(fram: FRAMManager, chunk: FRAMChunk) -> None:
-    # 10. clear() honours the same gate as write()/read() (mock tier covers this; the real chip
-    #     never has). Proven against real bytes: a refused clear leaves the payload readable.
+    # 9. clear() honours the same gate as write()/read() (mock tier covers this; the real chip
+    #    never has). Proven against real bytes: a refused clear leaves the payload readable once unpaused.
     fram.set_pause(value=True)
     check("clear() while paused was not refused", condition=await chunk.clear() is False)
-    check("a refused clear still wiped the real chip", condition=bytes(await chunk.read(override_pause=True) or b"") == PATTERN_A)
-    check("clear(override_pause=True) was refused", condition=await chunk.clear(override_pause=True) is True)
     fram.set_pause(value=False)
-    check("a chunk cleared with override did not read back as uninitialized", condition=await chunk.read() is None)
+    check("a refused clear still wiped the real chip", condition=bytes(await chunk.read() or b"") == PATTERN_A)
+    check("clear() after unpausing was refused", condition=await chunk.clear() is True)
+    check("a cleared chunk did not read back as uninitialized", condition=await chunk.read() is None)
     check("the cleared chunk could not be rewritten", condition=await chunk.write(PATTERN_A) is True)
 
-    # 11. The timestamped chunk variant honours the gate too - this is the shape SGP40's real VOC
+    # 10. The timestamped chunk variant honours the gate too - this is the shape SGP40's real VOC
     #     backup uses (FRAMTimestampedChunk), so covering only the plain chunk above would leave
     #     the production-relevant one unproven on real hardware.
-    ts_chunk = fram.get_timestamped_chunk(CHUNK_SIZE, _ntp_never_synced, crc=CRC8())
+    ts_chunk = fram.get_timestamped_chunk(CHUNK_SIZE, _ntp_never_synced, crc=CRC8(), owner="fram_pause_unpause_and_gating_ts")
     if ts_chunk is None:
         failures.append("get_timestamped_chunk() returned None")
     else:
-        # write() here returns (ntp_synced, utc, written) - the third element is the actual write
-        # result; the first two report whether a real timestamp could be stamped, which is False on
-        # this NTP-less isolated script and deliberately not what the pause gate is being judged on.
-        *_, written = await ts_chunk.write(PATTERN_A)
+        # write() returns (written, ntp_synced, utc); only the first is judged here (no NTP in an
+        # isolated script).
+        written, *_ = await ts_chunk.write(PATTERN_A)
         check("baseline timestamped write while unpaused failed", condition=written is True)
         fram.set_pause(value=True)
-        *_, written = await ts_chunk.write(PATTERN_B)
+        written, *_ = await ts_chunk.write(PATTERN_B)
         check("timestamped write while paused was not refused", condition=written is False)
-        _valid, _ts, data = await ts_chunk.read(override_pause=True)
-        check("the refused timestamped write still reached the real chip", condition=bytes(data or b"") == PATTERN_A)
-        *_, written = await ts_chunk.write(PATTERN_B, override_pause=True)
-        check("timestamped write with override_pause was refused", condition=written is True)
         fram.set_pause(value=False)
+        _valid, _ts, data = await ts_chunk.read()
+        check("the refused timestamped write still reached the real chip", condition=bytes(data or b"") == PATTERN_A)
+        written, *_ = await ts_chunk.write(PATTERN_B)
+        check("timestamped write after unpausing was refused", condition=written is True)
         _valid2, _ts2, data2 = await ts_chunk.read()
-        check("timestamped read after unpause did not return the overridden write", condition=bytes(data2 or b"") == PATTERN_B)
+        check("timestamped read after unpause did not return the fresh write", condition=bytes(data2 or b"") == PATTERN_B)
 
 
 async def _main() -> None:
@@ -182,7 +178,7 @@ async def _main() -> None:
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_pause_unpause_and_gating")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return
@@ -199,7 +195,7 @@ async def _main() -> None:
     if failures:
         print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:8])}")
     else:
-        print("RESULT: PASS pause gates real writes/reads/clears (plain and timestamped chunks), override_pause bypasses, and the auto-unpause deadline ends a pause (immediate, delayed and re-armed)")
+        print("RESULT: PASS pause gates real writes/reads/clears (plain and timestamped chunks) and the auto-unpause deadline ends a pause (immediate, delayed and re-armed)")
 
 
 asyncio.run(_main())

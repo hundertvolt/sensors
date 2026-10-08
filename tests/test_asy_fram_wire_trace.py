@@ -1,5 +1,6 @@
 """Golden wire traces for the FRAM path: every SPI.init(), every CS edge and every transfer's bytes, recorded from the real src/ chain against tests/_fram_chip_fake.py's chip.
-A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the 2026-09-18 heap restructure was held to (agent, 2026-09-18; HEAP_FRAGMENTATION_MEASUREMENTS.md archive 3B)."""
+A restructure of asy_spi_driver.py/asy_fram_driver.py/asy_fram_manager.py must leave these byte-identical - the contract the 2026-09-18 heap restructure was held to (agent, 2026-09-18); what each protocol element is for is SPECIFICATION.md A.4 (owner, 2026-09-18).
+Deliberate changes since: a blank block is read without a busy marker (agent, 2026-09-29); each chunk's CRC is seeded by its owner (agent, 2026-10-06)."""
 # The recorder decomposes a trace into CS cycles. Every cycle is asserted to be framed by exactly
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
@@ -10,9 +11,9 @@ import machine
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-from asy_crc_checks import CRC32
+from asy_crc_checks import CRC8, CRC32
 from asy_fram_driver import FRAM_SPI
-from asy_fram_manager import FRAMManager, FRAMTimestampedChunk
+from asy_fram_manager import FRAMChunk, FRAMManager, FRAMTimestampedChunk, _owner_seed
 from asy_print_log import PrintLogHistoryStore
 from asy_spi_driver import SPI
 
@@ -28,11 +29,13 @@ if TYPE_CHECKING:
     from collections.abc import Coroutine
     from typing import Any, TypeVar
 
+    from asy_crc_checks import CRCBase
+
     T = TypeVar("T")
 
 # The one bus config SPIDevice.__aenter__ applies, as one recorded event. Every CS cycle carries it.
 _INIT_EVENT = "init 1000000/0/0/8/0"
-_WRDI = b"\x04"  # asy_fram_driver.py's own _SPI_OPCODE_WRDI is a const() and so not importable
+_WRDI = b"\x04"  # asy_fram_driver.py's _CMD_WRDI is module-private
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -141,6 +144,10 @@ def _disarm() -> "tuple[tuple[str, ...], int]":
 
 
 # --------------------------------------------------------------------------- rig
+_STORE_OWNER = "WT"  # the store's name, which it passes as its chunk's owner
+_VALUE_OWNER = "WT_VALUE"
+
+
 async def _never_synced() -> bool:
     return False  # a fixed, unsynced clock keeps every timestamped trace deterministic
 
@@ -151,8 +158,8 @@ async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChu
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     manager = FRAMManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
-    logger = PrintLogHistoryStore(manager, 10, None, name="WT")
-    chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32())
+    logger = PrintLogHistoryStore(manager, 10, None, name=_STORE_OWNER)
+    chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32(), owner=_VALUE_OWNER)
     assert chunk is not None
     return manager, logger, chunk
 
@@ -162,31 +169,11 @@ async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChu
 # Opcodes: 06 WREN, 04 WRDI, 05 RDSR, 02 WRITE, 03 READ, 9f RDID, 01 WRSR.
 _GOLDEN_BLANK_SETUP = """\
 w:03000d r:00
-w:06
-w:05 r:02
-w:02000d w:02
-w:04
-w:05 r:00
 w:03000e r:00
-w:06
-w:05 r:02
-w:02000e w:02
-w:04
-w:05 r:00
 w:03001c r:00
-w:06
-w:05 r:02
-w:02001c w:02
-w:04
-w:05 r:00
 w:03001d r:00
 w:06
 w:05 r:02
-w:02001d w:02
-w:04
-w:05 r:00
-w:06
-w:05 r:02
 w:02000d w:02
 w:04
 w:05 r:00
@@ -197,7 +184,7 @@ w:04
 w:05 r:00
 w:06
 w:05 r:02
-w:020000 w:00000000000000000000000039
+w:020000 w:000000000000000000000000{store_crc}
 w:04
 w:05 r:00
 w:06
@@ -222,7 +209,7 @@ w:04
 w:05 r:00
 w:06
 w:05 r:02
-w:02000f w:00000000000000000000000039
+w:02000f w:000000000000000000000000{store_crc}
 w:04
 w:05 r:00
 w:06
@@ -250,7 +237,7 @@ w:05 r:02
 w:02000e w:02
 w:04
 w:05 r:00
-w:030000 r:00000000000000000000000039
+w:030000 r:000000000000000000000000{store_crc}
 w:06
 w:05 r:02
 w:02000d w:01
@@ -274,7 +261,7 @@ w:02001d w:02
 w:04
 w:05 r:00
 w:03000f r:0000000000000000
-w:030017 r:0000000039
+w:030017 r:00000000{store_crc}
 w:06
 w:05 r:02
 w:02001c w:01
@@ -300,7 +287,7 @@ w:04
 w:05 r:00
 w:06
 w:05 r:02
-w:02001e w:00000000000000001122334455667788e6962c5c
+w:02001e w:00000000000000001122334455667788{value_crc}
 w:04
 w:05 r:00
 w:06
@@ -325,7 +312,7 @@ w:04
 w:05 r:00
 w:06
 w:05 r:02
-w:020034 w:00000000000000001122334455667788e6962c5c
+w:020034 w:00000000000000001122334455667788{value_crc}
 w:04
 w:05 r:00
 w:06
@@ -353,7 +340,7 @@ w:05 r:02
 w:020033 w:02
 w:04
 w:05 r:00
-w:03001e r:00000000000000001122334455667788e6962c5c
+w:03001e r:00000000000000001122334455667788{value_crc}
 w:06
 w:05 r:02
 w:020032 w:01
@@ -378,7 +365,7 @@ w:04
 w:05 r:00
 w:030034 r:0000000000000000
 w:03003c r:1122334455667788
-w:030044 r:e6962c5c
+w:030044 r:{value_crc}
 w:06
 w:05 r:02
 w:020048 w:01
@@ -448,7 +435,7 @@ async def _collect() -> "dict[str, tuple[tuple[str, ...], int]]":
     _arm(manager)
     written = await chunk.write_into(buf)
     out["ts_write"] = _disarm()
-    assert written[2]  # (ntp_synced, utc, wrote_ok) - the clock is deliberately unsynced
+    assert written[0]  # (wrote_ok, ntp_synced, utc) - the clock is unsynced on purpose
 
     _arm(manager)
     read = await chunk.read_into(buf)
@@ -463,8 +450,17 @@ async def _collect() -> "dict[str, tuple[tuple[str, ...], int]]":
     return out
 
 
+async def _crc_hex(crc: "CRCBase", owner: str, payload: bytes) -> str:
+    # The CRC bytes a chunk of `owner` stores after `payload`, from the shared CRC class under that owner's seed.
+    buf = bytearray(payload) + bytearray(crc.length())
+    assert await crc.add_into(buf, len(payload), init=_owner_seed(owner, crc)) is not None
+    return _hex(buf[len(payload) :])
+
+
 def _golden(text: str) -> "tuple[str, ...]":
-    return tuple(text.strip().split("\n"))
+    store_crc = run(_crc_hex(CRC8(), _STORE_OWNER, bytes(12)))  # the empty ring: 12 zero bytes
+    value_crc = run(_crc_hex(CRC32(), _VALUE_OWNER, bytes(8) + bytes.fromhex("1122334455667788")))  # timestamp 0, then the data
+    return tuple(text.format(store_crc=store_crc, value_crc=value_crc).strip().split("\n"))
 
 
 def _assert_trace(name: str, got: "tuple[str, ...]", want: "tuple[str, ...]") -> None:
@@ -496,15 +492,63 @@ def test_timestamped_clear_wire_trace_matches_the_golden() -> None:
 
 # --------------------------------------------------------------------------- the shape of the traces
 def test_cs_cycle_counts_are_the_measured_figures() -> None:
-    # The headline numbers HEAP_FRAGMENTATION_MEASUREMENTS.md archive section 3B prices the FRAM path by.
-    # Every one of these cycles is required by the chip; the restructure removes allocations, not
-    # CS cycles, so a change here is a protocol change and not an optimisation.
+    # Every one of these cycles stays by design (owner, 2026-09-18; SPECIFICATION.md A.4).
+    # The restructure removed allocations, not CS cycles, so a change here is a protocol change and not an
+    # optimisation.
     traces = run(_collect())
-    assert len(traces["blank"][0]) == 74
+    assert len(traces["blank"][0]) == 54
     assert len(traces["valid"][0]) == 47
     assert len(traces["ts_write"][0]) == 50
     assert len(traces["ts_read"][0]) == 48
     assert len(traces["clear"][0]) == 30
+
+
+# Per-command times on the dev bench, SPECIFICATION.md F.5.8 (the minima of three runs, 2026-09-25).
+_WRITE_COMMAND_US = 2833
+_READ_COMMAND_US = 783
+_ENDURANCE_OPS = 10**12  # MB85RS64V read/write endurance per byte (p.17); the MB85RS2MTA's 10**13 only widens it
+
+
+def _commands_at(cycles: "tuple[str, ...]", first: int, end: int) -> "tuple[int, int, list[int]]":
+    # Each READ (03) or WRITE (02) cycle as (opcode, start, length), 2-byte address form: the counts of
+    # those starting inside [first, end), and the start addresses of every one.
+    reads = writes = 0
+    starts: list[int] = []
+    for cycle in cycles:
+        parts = cycle.split()
+        if len(parts[0]) != 8 or parts[0][2:4] not in ("02", "03"):
+            continue
+        start = int(parts[0][4:], 16)
+        if first <= start < end:
+            if parts[0][2:4] == "02":
+                writes += 1
+            else:
+                reads += 1
+        starts.extend(range(start, start + len(parts[1][2:]) // 2))
+    return reads, writes, starts
+
+
+def test_status_bytes_outlast_the_parts_endurance_at_the_bus_ceiling() -> None:
+    # The chip reads destructively, so every read is a cell operation too. Even if one block took every block
+    # operation the bus allows, back to back, its busiest byte would outlast 10**12 operations by about 144
+    # years; 100 years is the stated floor, above any service life (agent, 2026-09-29).
+    async def addresses() -> "tuple[int, int, int, int]":
+        _manager, logger, chunk = await _rig()
+        assert isinstance(logger.fram, FRAMChunk)
+        store_block0, store_block1 = logger.fram._block_addr
+        value_status = chunk._block_addr[0] + chunk.size + chunk.crc.length()
+        return store_block0, store_block1, store_block0 + logger.fram.size + logger.fram.crc.length(), value_status
+
+    store_block0, store_block1, store_status, value_status = run(addresses())
+    traces = run(_collect())
+    _r, _w, write_starts = _commands_at(traces["ts_write"][0], 0, 0)
+    assert write_starts.count(value_status) == 2  # one chunk write: busy, then idle
+    reads, writes, read_starts = _commands_at(traces["valid"][0], store_block0, store_block1)
+    assert read_starts.count(store_status) == 3  # one valid chunk read: the check read, busy, idle
+    block_op_us = writes * _WRITE_COMMAND_US + reads * _READ_COMMAND_US  # one block of the valid read: 4 writes, 3 reads
+    assert (reads, writes) == (3, 4)
+    years = _ENDURANCE_OPS / 3 * block_op_us / 1_000_000 / (365.25 * 24 * 3600)
+    assert years > 100, f"{years:.0f} years"
 
 
 def test_compact_goldens_account_for_every_recorded_event() -> None:

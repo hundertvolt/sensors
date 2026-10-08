@@ -39,10 +39,14 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   a backup stamped later than the unit's clock (the clock was set back) counts as too old.
 - **`WaitTimeNTP`** (seconds, 0–600): how long a boot waits for NTP before restoring a timestamped
   backup (so its age can be checked). **`0` means never wait**: the backup is restored at once,
-  without an age check.
+  without an age check. A wait that ends without a sync restores the backup without an age check
+  and logs a warning.
 
 The `0`s point in different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a
 limit off, `WaitTimeNTP` skips a wait.
+
+A restart of the SGP40 task (not a boot) keeps the running VOC state and restores nothing, unless the
+boot's own restore is still waiting for NTP.
 
 ## ISL29125 colour sensor (dev units only)
 

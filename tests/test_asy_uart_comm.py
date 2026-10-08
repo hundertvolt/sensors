@@ -16,7 +16,7 @@ from rp2 import DMA
 
 import asy_spi_driver
 import asy_uart_comm
-from asy_base_classes import COUNTER_CAP, LockableBuffer
+from asy_base_classes import COUNTER_CAP, RegionBuffer
 from asy_crc_checks import CRC16
 from asy_fram_manager import FRAMManager
 from asy_framing_codecs import FramingCOBS
@@ -280,7 +280,7 @@ def test_a_fram_backed_log_reads_back_through_a_second_logger() -> None:
     comm = make_comm(name="UART_X", log=LogConfig(manager, 10, None))
     assert isinstance(comm.pr, PrintLogHistoryStore)
     assert run(comm.setup()) is True
-    assert run(comm.uart_set(1, b"x"), limit=20) is False  # nothing is on the line: a silent peer
+    assert run(comm.uart_set(1, b"x"), limit=_RUN_BOUND_S) is False  # nothing is on the line: a silent peer
     assert persisted(comm)[-1] == _e("UART_NO_ACK"), persisted(comm)
     rebooted, _ = _make_fram_manager(chip)
     second = make_logger(LogConfig(rebooted, 10, None), "UART_X")
@@ -407,7 +407,7 @@ def test_tx_and_rx_buffers_are_separate() -> None:
 
 
 def test_a_failed_buffer_allocation_degrades_every_entry_point() -> None:
-    # LockableBuffer returns None rather than raising, and every consumer's first act is to
+    # RegionBuffer returns None rather than raising, and every consumer's first act is to
     # check for it.
     comm = make_comm()
     run(comm.setup())
@@ -942,7 +942,7 @@ def test_one_fault_on_a_quiet_line_adds_one_entry() -> None:
     # The fault persists its errno; the resync it performs prints only.
     pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()))
     pair.link.direction_from(pair.fake_b).silent = True
-    assert run(pair.initiator.uart_set(1, b"x"), limit=20) is False
+    assert run(pair.initiator.uart_set(1, b"x"), limit=_RUN_BOUND_S) is False
     assert persisted(pair.initiator) == [_e("UART_NO_ACK")], persisted(pair.initiator)
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 1
     assert pair.initiator._holdoff_active is True  # the resync ran
@@ -955,17 +955,17 @@ def test_one_fault_hitting_the_drain_bound_adds_the_errno_and_w54() -> None:
     async def flood() -> None:
         while True:
             pair.fake_a.feed_rx(b"\xff" * 32)
-            await asyncio.sleep_ms(1)
+            await asyncio.sleep_ms(_FLOOD_STEP_MS)
 
     async def scenario() -> None:
         flooder = asyncio.create_task(flood())
         try:
             async with pair.driver_a as device:
-                await asyncio.wait_for(pair.initiator._fault(device, code("E", "UART_NO_ACK"), "synthetic"), 10)
+                await asyncio.wait_for(pair.initiator._fault(device, code("E", "UART_NO_ACK"), "synthetic"), _STEP_BOUND_S)
         finally:
             flooder.cancel()
 
-    run(scenario(), limit=20)
+    run(scenario(), limit=_RUN_BOUND_S)
     assert persisted(pair.initiator) == [_e("UART_NO_ACK"), _w("UART_DRAIN_BOUND")], persisted(pair.initiator)
     assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 2
 
@@ -1425,7 +1425,7 @@ def test_an_into_destination_that_is_too_small_is_refused() -> None:
 
 
 def test_an_into_destination_of_none_returns_the_sentinel() -> None:
-    # A failed LockableBuffer hands its owner None; an AttributeError here would be the
+    # A failed RegionBuffer hands its owner None; an AttributeError here would be the
     # worst possible moment for one.
     comm = make_comm()
     run(comm.setup())
@@ -2351,7 +2351,7 @@ def test_a_drain_that_cannot_run_clears_the_previous_drains_verdict() -> None:
     # way to reach that return, and it must not hand the next resync the last drain's answer.
     comm = make_comm()
     comm._drain_bound_hit = True
-    comm._rx = LockableBuffer(-1)  # a failed allocation, which is what hands its owner None
+    comm._rx = RegionBuffer(-1)  # a failed allocation, which is what hands its owner None
     assert comm._rx.get_buf() is None  # the early return really is the path taken
     assert run(comm._drain(comm._uart)) == 0  # type: ignore[arg-type]
     assert comm._drain_bound_hit is False

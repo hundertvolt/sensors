@@ -2,6 +2,7 @@
 comment tag - a TOML field's own unconditional domain. Walks the same accept/reject dimensions as
 test_buildgen_wiring.py; see that file's own dimension index."""
 
+import ast
 from pathlib import Path
 
 import pytest
@@ -203,6 +204,22 @@ def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
     assert parse_limits(src_dir / "asy_scd30_driver.py", "dev", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
 
 
+def _known_fram_sizes(driver: Path) -> "frozenset[int]":
+    # _KNOWN_PRODUCT_IDS' keys, read without importing the MicroPython-only driver.
+    for node in ast.walk(ast.parse(driver.read_text())):
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "_KNOWN_PRODUCT_IDS":
+            assert isinstance(node.value, ast.Dict)
+            return frozenset(ast.literal_eval(key) for key in node.value.keys if key is not None)
+    raise AssertionError(f"{driver.name} declares no _KNOWN_PRODUCT_IDS")
+
+
+def test_fram_max_size_limits_match_the_known_product_ids(src_dir: Path) -> None:
+    # The build-time set and the boot-time RDID table are two copies of one fact; a size in one only builds-then-fails.
+    (limit,) = parse_limits(src_dir / "asy_fram_manager.py", "dev", "fram")
+    assert limit.toml_field == "max_size"
+    assert limit.choices == _known_fram_sizes(src_dir / "asy_fram_driver.py")
+
+
 def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:
     tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "dev", "x")}
-    assert tagged == {"asy_bmp3xx_driver.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}
+    assert tagged == {"asy_bmp3xx_driver.py", "asy_fram_manager.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}

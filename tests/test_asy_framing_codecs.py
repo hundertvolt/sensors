@@ -191,7 +191,7 @@ def test_cobs_decode_of_an_empty_frame_is_empty_not_a_failure() -> None:
 
 def test_cobs_failed_allocation_degrades_to_not_ready() -> None:
     # A codec that could not allocate its scratch reports it instead of looking constructed.
-    codec = FramingCOBS(-1)  # an impossible frame bound, the same guard LockableBuffer applies
+    codec = FramingCOBS(-1)  # an impossible frame bound, the same guard RegionBuffer applies
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4)) is None
     assert run(codec.decode_from(bytearray(8), 4)) is None

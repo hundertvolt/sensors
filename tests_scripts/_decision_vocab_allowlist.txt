@@ -81,7 +81,6 @@ SPECIFICATION.md	The accepted trade-off is that neither test would now catch a *
 SPECIFICATION.md	The comparable 1.28 figure is the 2026-09-08 hammer-load `mem_free` floor of 91,
 SPECIFICATION.md	The corrected value writes back through `_set_mgr_cfg`, deliberately **not** thr
 SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred until after the total
-SPECIFICATION.md	The generated `sensortask_wozi.py` constructs `scd30` before `sgp40` for exactly
 SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage
 SPECIFICATION.md	The widened gate still costs nothing: measured over a full 85-file run at `gc.th
 SPECIFICATION.md	W1-W4 pass on the real `dev` board over real WiFi: the boundary is exact (2047 -
@@ -186,10 +185,7 @@ scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be delibe
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
-src/asy_fram_driver.py	WP8: persisted by the caller, matching FRAMManager's own "communication paused,
-src/asy_fram_driver.py	WP8: persisted, matching FRAMManager's own "communication paused, not writing" p
 src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
-src/asy_fram_manager.py	Deliberate: no generation counter says which block is newer, so a write torn bet
 src/asy_isl29125_driver.py	Calibrate is deliberately absent from this schema argument: ConfigManager.get_di
 src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
 src/asy_isl29125_driver.py	The shadow must never claim a value the part did not take: normalise() scales ev
@@ -254,12 +250,10 @@ tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
 tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
 tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
 tests/test_asy_fram_manager.py	Deliberately-allowed exceptions propagating through this file's own composition
-tests/test_asy_fram_manager.py	Intended, accepted behavior, not a defect (project owner, 2026-09-11; Part A.4):
 tests/test_asy_fram_manager.py	Parameter name must match FakeMB85RS64V.readinto()'s own (_write_value) - mypy c
 tests/test_asy_fram_manager.py	Real callers: a deliberate reboot pauses storage right before resetting so no wr
 tests/test_asy_fram_manager.py	deliberately not _STATUS_UNINIT/_STATUS_IDLE/_STATUS_BUSY
 tests/test_asy_fram_manager.py	type: ignore[method-assign] # deliberate monkeypatch
-tests/test_asy_fram_wire_trace.py	(ntp_synced, utc, wrote_ok) - the clock is deliberately unsynced
 tests/test_asy_i2c_driver.py	I2CDevice's read and write methods never acquire self.session_lock themselves -
 tests/test_asy_i2c_driver.py	Not reentrant by design, being a plain asyncio.Lock: nesting `async with device:
 tests/test_asy_i2c_driver.py	This driver deliberately doesn't range-check `address` itself (SPECIFICATION.md
@@ -434,7 +428,6 @@ tests/test_digital_twin_uart_link.py	The pollers are then swapped for the bounde
 tests/test_digital_twin_unix_port_gc_unwedge.py	The wedged state itself - GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT
 tests/test_fram_integration.py	A shared physical chip does not mean shared bookkeeping - each SensorReader gets
 tests/test_fram_integration.py	And the chunk must still be usable afterwards - a wedged chunk that never takes
-tests/test_fram_integration.py	Deliberately not modeled: a raw-SPI-bus-level fault.
 tests/test_fram_integration.py	That loss is accepted behavior, not a defect (project owner, 2026-09-11): no rec
 tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
 tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
@@ -515,7 +508,6 @@ tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	Clear f
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Proves the restored history is ALL-OR-NOTHING (never partial, never garbage) and
 tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	The chunk must be writable again afterwards - a reset-wedged chunk that stays un
-tests_hardware/device_scripts/fram_pause_unpause_and_gating.py	the first two report whether a real timestamp could be stamped, which is False o
 tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	what the interrupted write attempts, must never land
 tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py	Hard requirement: the raced write must never have reached the chip.
 tests_hardware/device_scripts/fram_same_device_rw_concurrency.py	deliberately distinct from SEED_PATTERN

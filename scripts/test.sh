@@ -242,11 +242,24 @@ for i in range($probe_iterations):
     fi
     echo "$(( cores * multiplier )) $cores $multiplier $probe_ms"
 }
+# A --coverage run is CPU-bound, not sleep-bound: settrace turns a 0.4 s file into 72 s of CPU, so the
+# oversubscription above queued CI's files for a core past the per-file timeout. One file per usable core.
+_coverage_parallelism() {
+    local jobs="$1" cores="$2" multiplier="$3"
+    if [ "$multiplier" -gt 1 ]; then
+        jobs="$cores"
+        multiplier=1
+    fi
+    echo "$jobs $multiplier"
+}
 if [ -n "${TEST_PARALLELISM:-}" ]; then
     max_parallel="$TEST_PARALLELISM"
     echo "== Test parallelism: $max_parallel (TEST_PARALLELISM override)"
 else
     read -r max_parallel _cores _multiplier _probe_ms < <(_detect_parallelism)
+    if [ "$coverage" = "1" ]; then
+        read -r max_parallel _multiplier < <(_coverage_parallelism "$max_parallel" "$_cores" "$_multiplier")
+    fi
     echo "== Test parallelism: $max_parallel ($_cores usable cores x $_multiplier, interpreter speed probe ${_probe_ms}ms)"
 fi
 # Clamped to >= 1 as a backstop behind the validation above: the dispatch loop blocks while running

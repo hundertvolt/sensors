@@ -305,14 +305,14 @@ def test_fram_write_into_gets_a_real_valid_timestamp_once_the_real_ntp_chain_is_
     ntp = make_ntp(conn, "127.0.0.1")
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
-    async def scenario() -> tuple[bool, int | None, bool]:
+    async def scenario() -> tuple[bool, bool, int | None]:
         await sync_real_ntp_chain(conn, ntp)
         return await chunk.write(b"12345678", require_ntp=True)
 
-    ntp_synced, utc, write_ok = run(scenario())
+    write_ok, ntp_synced, utc = run(scenario())
     assert ntp_synced is True
     assert write_ok is True
     assert utc is not None and abs(utc - int(time.time())) < _UTC_TOLERANCE_S  # a real, current UTC timestamp
@@ -326,14 +326,13 @@ def test_fram_write_into_require_ntp_refuses_when_the_real_ntp_chain_has_never_s
     ntp = make_ntp(conn, "127.0.0.1")
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
-    async def scenario() -> tuple[bool, int | None, bool]:
+    async def scenario() -> tuple[bool, bool, int | None]:
         return await chunk.write(b"12345678", require_ntp=True)
 
-    ntp_synced, utc, write_ok = run(scenario())
-    assert (ntp_synced, utc, write_ok) == (False, None, False)
+    assert run(scenario()) == (False, False, None)
 
 
 def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() -> None:
@@ -341,7 +340,7 @@ def test_fram_read_into_age_is_computed_from_the_real_ntp_chains_synced_clock() 
     ntp = make_ntp(conn, "127.0.0.1")
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     async def scenario() -> tuple[int | None, int | None, bytearray | None]:
@@ -374,7 +373,7 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
     ntp = make_ntp(conn, unreachable_addr[0], ntp_fetch_timeout_ms=_LOCK_HOLD_FETCH_TIMEOUT_MS)  # long enough to observe the lock held
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
 
     async def scenario() -> bool:
@@ -384,10 +383,8 @@ def test_calling_real_ntp_issynced_from_fram_write_into_does_not_block_on_a_conc
         await asyncio.sleep(0)
         assert conn.wifi_mode_lock.locked() is True  # ntp genuinely holds conn's own shared lock right now
         try:
-            # 1.0s, not a razor-thin 0.2s: still a fraction of ntp_fetch_timeout_ms=2000 above, the "stuck
-            # behind the lock" case this guards against, but with margin enough that scheduling jitter
-            # cannot produce a false failure. It checks "did it complete promptly", not an exact latency.
-            _ntp_synced, _utc, write_ok = await asyncio.wait_for(chunk.write(b"12345678"), _WRITE_PROMPT_S)
+            # A fraction of _LOCK_HOLD_FETCH_TIMEOUT_MS: checks the write completes promptly, not stuck behind the lock.
+            write_ok, *_ = await asyncio.wait_for(chunk.write(b"12345678"), _WRITE_PROMPT_S)
         except asyncio.TimeoutError:
             await _cancel(task)
             return False  # would mean ntp_issynced() got stuck behind the shared lock - a real bug
@@ -447,7 +444,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
     ntp = make_ntp(conn, "127.0.0.1")
     manager, _chip = make_fram_manager()
     run(manager.setup())
-    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk = manager.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk is not None
     with _UptimeClock() as clock:
         svc = SystemService(ntp.ntp_issynced)
@@ -458,7 +455,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
             await _tick(svc._uptime_event, 1, clock)
             await _cancel(task)
             boot_signature = await svc.get_boot_signature()
-            _ntp_synced, _utc, write_ok = await chunk.write(b"12345678", require_ntp=True)
+            write_ok, _ntp_synced, _utc = await chunk.write(b"12345678", require_ntp=True)
             return boot_signature, write_ok
 
         boot_signature, write_ok = run(scenario())
@@ -531,12 +528,12 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
     ntp = make_ntp(conn, "127.0.0.1")
     manager1, chip = make_fram_manager()
     run(manager1.setup())
-    chunk1 = manager1.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32())
+    chunk1 = manager1.get_timestamped_chunk(8, ntp.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk1 is not None
 
     async def before_reboot() -> None:
         await sync_real_ntp_chain(conn, ntp)
-        ntp_synced, _utc, write_ok = await chunk1.write(b"deadbeef")
+        write_ok, ntp_synced, _utc = await chunk1.write(b"deadbeef")
         assert ntp_synced is True
         assert write_ok is True
 
@@ -555,7 +552,7 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
     run(manager2.setup())
     conn2 = make_conn()
     ntp2 = make_ntp(conn2, "127.0.0.1")
-    chunk2 = manager2.get_timestamped_chunk(8, ntp2.ntp_issynced, crc=CRC32())
+    chunk2 = manager2.get_timestamped_chunk(8, ntp2.ntp_issynced, crc=CRC32(), owner="SGP40_VOC")
     assert chunk2 is not None
 
     ts, _age, data = run(chunk2.read())

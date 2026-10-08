@@ -26,6 +26,7 @@ _EXEMPT: dict[tuple[str, str], str] = {
     ("src/asy_base_classes.py", "SensorReader._err_cnt_internal"): "bounded by the give-up: past max_module_error each failed cycle ends the read loop, whose restarts are budgeted (C.7)",
     ("src/asy_isl29125_driver.py", "ISL29125_Reader._periodic_only_switches"): "returns below its warn threshold and resets to 0 at it",
     ("src/asy_ntp_client.py", "NTPClient._unsynced_wait_s"): "reset to 0 once it reaches the retry wait (through `due`)",
+    ("src/asy_sgp40_driver.py", "SGP40_Reader._voc_init"): "restores the same call's decrement, so it never rises above its starting value",
 }
 # Unguarded steps whose bound is not written yet: each leaves when its counter saturates, wraps or is
 # masked, and the stale-entry test then fails until the entry is deleted. The list only shrinks.

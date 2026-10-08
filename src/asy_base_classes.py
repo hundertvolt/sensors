@@ -1,4 +1,4 @@
-"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), lock-guarded buffers (LockableBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
+"""Shared base classes and primitives: the session lock (Lockable, DeviceSession), region buffers (RegionBuffer), shared scalars (LockedCounter, LockedFlag, LockedValue: no method awaits, so no lock), elapsed seconds (TickSeconds), the UTC timestamp, and the sensor-driver base (SensorReader, SensorReaderConfig) with error bookkeeping and optional JSON config storage.
 Every method returns a well-defined value, never raises.
 """
 # __init__ never calls self.pr.setup() (sync vs. async): setup() does it first (SensorReader), then the
@@ -130,9 +130,8 @@ class DeviceSession(Lockable):
         self.i2c_device = bus_device
 
 
-class LockableBuffer(Lockable):
+class RegionBuffer:
     def __init__(self, size: int, data_start: int = 0, data_length: int | None = None) -> None:
-        super().__init__()
         self.data_start = data_start
         data_length = size - data_start if data_length is None else data_length
         self.data_end = data_start + data_length
@@ -148,7 +147,7 @@ class LockableBuffer(Lockable):
             try:
                 self._buf = bytearray(size)
             except (MemoryError, OverflowError):
-                self._buf = None
+                self._buf = None  # silent: no logger here and print() stays in asy_print_log.py; the owner reads None
 
     def get_buf(self) -> bytearray | None:
         return self._buf

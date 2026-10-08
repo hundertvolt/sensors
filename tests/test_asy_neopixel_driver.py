@@ -3,7 +3,7 @@ import time
 
 import asy_neopixel_driver
 import asy_print_log as print_log_module
-from asy_base_classes import LockableBuffer
+from asy_base_classes import RegionBuffer
 from asy_neopixel_driver import NeopixelDriver, _clamp_byte
 from asy_print_log import LogConfig
 
@@ -698,22 +698,22 @@ def test_setup_initialises_the_logger_and_the_driver_before_any_task() -> None:
 
 
 class _FakeFramChunk:
-    # One chunk's bytes, moved through the real LockableBuffer asy_print_log's _FramChunk Protocol names.
+    # One chunk's bytes, moved through the real RegionBuffer asy_print_log's _FramChunk Protocol names.
     def __init__(self) -> None:
         self.buf = bytearray(64)
-        self._buffer = LockableBuffer(64)
+        self._buffer = RegionBuffer(64)
 
-    def get_buffer(self) -> LockableBuffer:
+    def get_buffer(self) -> RegionBuffer:
         return self._buffer
 
-    async def write_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+    async def write_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
         self.buf[:] = data
         return True
 
-    async def read_into(self, buf: LockableBuffer, *, override_pause: bool = False) -> bool:
+    async def read_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
@@ -725,7 +725,7 @@ class _FakeFramManager:
     def __init__(self, chunk: "_FakeFramChunk") -> None:
         self.chunk = chunk
 
-    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8) -> "_FakeFramChunk":
+    def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk":
         return self.chunk
 
 
