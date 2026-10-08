@@ -75,8 +75,8 @@ And on 2026-10-08:
   - `scripts/test.sh` at both GC stages: 94 files, 4,800 MicroPython tests, zero memory errors;
   - the full `tests_scripts/` tier: 3,415 tests passed, 11 skipped;
   - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
-    flood): 173 of 173 checks at `gc.threshold(-1)`;
-  - the website's settings matrix.
+    flood): 346 of 346 checks across both stages;
+  - `npm test`, the website's settings matrix with it: 1,272 passed, 7 skipped.
 - **CI**: green on `59eac40`, the five web lanes skipped as nothing under the web tree changed; the PR's
   checks show the current head.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
