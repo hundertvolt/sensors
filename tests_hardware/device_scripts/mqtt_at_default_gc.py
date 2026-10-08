@@ -1,11 +1,13 @@
 """The bench device's real task graph at MicroPython's own gc default for a fixed window, while the HOST drives
 the MQTT client through broker faults; heap figures sampled, every unretrieved task exception printed
-(SPECIFICATION.md Part A.11, Part I.4(e)). The bench test completes _MODULE with the device's name."""
+(SPECIFICATION.md Part A.11, Part I.4(e)). The bench test completes the module import with the device's name."""
 
 import asyncio
 import gc
 import sys
 import time
+
+import sensortask_ as sensortask_bench  # type: ignore[import-not-found]  # completed from the device TOML carrying the client
 
 try:
     from typing import TYPE_CHECKING
@@ -17,8 +19,6 @@ if TYPE_CHECKING:
 
 # Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force (MEASUREMENTS M3.8).
 gc.threshold(-1)
-_MODULE = "sensortask_"  # completed by test_mqtt_broker_faults.py from the device TOML carrying the client
-sensortask_bench = __import__(_MODULE)
 # @tunable l4.mqtt_at_default_gc_window_s = 420
 _WINDOW_S = 420  # the host's whole fault timeline fits inside it, with its own stop well before the end
 # @tunable l4.mqtt_at_default_gc_sample_s = 10

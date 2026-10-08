@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import signal
 import socket
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -19,6 +20,10 @@ import tomllib
 from error_log_helpers import assert_no_task_ended, code, get_errcount, reset_all_error_logs
 from harness import MEMORY_ERROR_MARKERS, REPO_ROOT, restore_board_to_serving, wait_for_script_server, wait_until
 from mqtt_probe import Mosquitto, Probe, wait_for
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # the repo root, for buildgen
+
+from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -33,7 +38,7 @@ _BROKER_PORT = 18883  # fixed, so every iptables rule names it; a distribution m
 _FAULT_COMMENT = "sensors-bench-mqtt-fault"
 _OBSERVER_ID = "bench-observer"
 _SLOT_PAYLOAD_MAX = 384  # mqtt.out_payload_max: a larger measurement object would be dropped, counted
-_MODULE_PLACEHOLDER = '_MODULE = "sensortask_"'
+_MODULE_PLACEHOLDER = "import sensortask_ as sensortask_bench"
 
 # @tunable l4.mqtt_pub_interval_s = 10
 _PUB_INTERVAL_S = 10  # MQTTPubInterval's minimum, so the measurement checks wait least
@@ -101,8 +106,6 @@ def _mqtt_device() -> str:
 
 def _sensor_names(device: str) -> list[str]:
     # The modules the client publishes: every sensor, the same set as the website's measurements cards.
-    from buildgen.definitions import definitions_for_toml
-
     definitions = definitions_for_toml(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
     section = next(s for s in definitions["sections"] if s["key"] == "measurements")
     return [str(g["key"]) for g in section["groups"]]
@@ -456,6 +459,7 @@ def test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link(mqtt_bench:
         note, recovery = f"reconnected {back:.1f}s after a recovery hard reset", True
     attempts = sum(1 for h in _mqtt_history(m.dut_ip) if h.get("num") == _E_CONNECT)
     assert attempts <= _AP_MAX_FAILED_ATTEMPTS, f"{attempts} failed attempts logged across the outage: {_mqtt_history(m.dut_ip)!r}"
+    assert_no_task_ended(m.dut_ip, "AP outage")  # on both paths: FRAM keeps SYSTEM across the hard reset
     _assert_mqtt_logged_only(m.dut_ip, "AP outage")
     result_note(f"{note}; {attempts} failed attempt(s) logged", recovery=recovery)
 
@@ -479,8 +483,8 @@ def test_the_broker_faults_run_clean_at_micropythons_default_gc(mqtt_bench: Mqtt
     m = mqtt_bench
     script = tmp_path / "mqtt_at_default_gc.py"
     source = (DEVICE_SCRIPTS / "mqtt_at_default_gc.py").read_text()
-    assert source.count(_MODULE_PLACEHOLDER) == 1, "the device script's _MODULE placeholder moved"
-    script.write_text(source.replace(_MODULE_PLACEHOLDER, f'_MODULE = "sensortask_{_mqtt_device()}"'))
+    assert source.count(_MODULE_PLACEHOLDER) == 1, "the device script's module placeholder moved"
+    script.write_text(source.replace(_MODULE_PLACEHOLDER, f"import sensortask_{_mqtt_device()} as sensortask_bench"))
     stop = threading.Event()
     steps: list[str] = []
     driver = threading.Thread(target=_drive_faults, args=(m, stop, steps), daemon=True)

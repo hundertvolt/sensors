@@ -589,6 +589,9 @@ gates, traps).
   **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg (MQTT PoC branch)**: `env --tier bench` gains
   `ensure_avahi()`, installing `avahi-daemon` when missing, as `ensure_iptables()` does `iptables`; the generic
   and flash tiers are unchanged.
+  **2026-10-08, lint config only, no build impact (MQTT PoC branch)**: `pyproject.toml` `max-statements` 77 → 75,
+  the measured maximum once the generator's networking-status emitter became its own function; nothing here moves
+  either leg.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

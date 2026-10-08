@@ -137,7 +137,7 @@ def _tmp_cfg_dir() -> str:
 # _boot()/reflective helpers - the mechanism every parametrized scenario below shares.
 # ---------------------------------------------------------------------------
 
-_OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
+_OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification", "mqtt")
 
 
 async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
@@ -225,6 +225,8 @@ def _all_loggers(module: "Any") -> "list[Any]":
         # No cfgmgr - UARTComm has no config schema (its parameters are an out-of-band wire
         # contract, never runtime-writable, SPECIFICATION.md Part J.6), one entry per instance.
         loggers += [module.uart_link_init.pr, module.uart_link_resp.pr]
+    if _has(module, "mqtt"):
+        loggers += [module.mqtt.pr, module.mqtt.cfgmgr.pr]
     loggers.append(module.webserver.pr)
     return loggers
 
@@ -254,6 +256,8 @@ def _expected_fram_chunk_owners(module: "Any") -> "list[str]":
     owners += ["NOTIFY", "CFGMGR_NOTIFY"]
     if _has_uart_link(module):
         owners += ["UART_init", "UART_resp"]  # no config store: the link's parameters are a wire contract
+    if _has(module, "mqtt"):
+        owners += ["MQTT", "CFGMGR_MQTT"]
     owners.append("WEBSERVER")
     return owners
 
@@ -599,6 +603,11 @@ def _scenario_fram_chunks_allocated(device: str) -> None:
         assert module.uart_link_init.pr.fram is not None
         assert isinstance(module.uart_link_resp.pr, PrintLogHistoryStore)
         assert module.uart_link_resp.pr.fram is not None
+    if _has(module, "mqtt"):
+        assert isinstance(module.mqtt.pr, PrintLogHistoryStore)
+        assert module.mqtt.pr.fram is not None
+        assert isinstance(module.mqtt.cfgmgr.pr, PrintLogHistoryStore)
+        assert module.mqtt.cfgmgr.pr.fram is not None
 
 
 @_register("the_fram_manager_is_the_only_error_source_whose_own_log_is_not_fram_backed")
