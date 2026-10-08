@@ -909,7 +909,7 @@ class MQTTClient(SensorReaderConfig):
             self._compact(total)
         return _R_NONE
 
-    def _write(self, stream: "_Stream", data: "bytes | memoryview") -> None:
+    def _write(self, stream: "_Stream", data: bytes | memoryview) -> None:
         # Every keeper write but the CONNECT and the teardown's, counted until a PINGRESP confirms it (_UNCONFIRMED_MAX).
         stream.write(data)
         self._unconfirmed += len(data)
