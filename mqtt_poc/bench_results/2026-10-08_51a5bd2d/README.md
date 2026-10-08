@@ -195,3 +195,10 @@ Exit code: 1
 ```
 
 ("uncommitted changes": this results directory.)
+
+**The fix** (the commit after these results): `tests_hardware/run_scopes.py` now lists the scope's NTP/DNS
+tests in the full tier's relative order, and `tests_scripts/test_run_scopes.py` pins that order for every
+scope (it fails on the order this run used). Not yet re-verified on the board. In the full tier's own order,
+`test_ntp_server_sends_garbage_instead_of_a_valid_response` also hard-resets the board against a rogue NTP
+answer shortly before `test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source`, which asserts a
+synced clock at once, so the same precondition could still bite there; only a rerun of the block shows it.

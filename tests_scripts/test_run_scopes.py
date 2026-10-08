@@ -2,6 +2,7 @@
 survives the bench runner's own marker floor, and a scope's writes are exactly the groups its tests' markers
 name, so --allow-persistence-writes-to with them selects the whole scope and permits nothing beyond it."""
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +52,22 @@ def test_a_scopes_writes_are_exactly_what_its_marked_tests_name(repo_root: Path,
         others = [f"--allow-persistence-writes-to={g}" for g in scope.writes if g != group]
         output = _collect(repo_root, nodes, *others) if others else _collect(repo_root, nodes)
         assert "deselected" in output, f"scope {name} lists {group}, but no test of it needs that group"
+
+
+def _tier_position(repo_root: Path, node: str) -> "tuple[str, int]":
+    # Where the full tier runs a test: pytest collects a directory's files by name, then each file's tests by line.
+    path, name = node.split("::")
+    tree = ast.parse((repo_root / path).read_text())
+    return path, next(f.lineno for f in tree.body if isinstance(f, ast.FunctionDef) and f.name == name)
+
+
+@pytest.mark.parametrize("name", sorted(SCOPES))
+def test_the_ntp_and_dns_tests_keep_the_full_tiers_relative_order(repo_root: Path, name: str) -> None:
+    # They share the board's NTP state: one leaves it unsynced and backing off, and a later one requires it synced.
+    # The bench run of 2026-10-08 lost two tests to exactly that when the scope reordered them.
+    nodes = [n for n in _nodes(SCOPES[name], "bench") if "::" in n and ("ntp" in n.lower() or "dns" in n.lower())]
+    positions = [_tier_position(repo_root, n) for n in nodes]
+    assert positions == sorted(positions), f"scope {name} runs its NTP/DNS tests out of the full tier's order:\n" + "\n".join(nodes)
 
 
 def test_the_mqtt_scope_runs_the_whole_client_module_and_writes_only_its_settings(repo_root: Path) -> None:
