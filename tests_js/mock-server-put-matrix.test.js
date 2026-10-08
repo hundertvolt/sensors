@@ -232,8 +232,8 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
             },
         );
 
-        // A too-short probe that is a declared special (MQTTHost's "" at minLength 1) is accepted by design, as the
-        // number branch steps past its specials; mock-server.test.js pins a string special before its bounds.
+        // A too-short probe that is a declared special (MQTTHost's "" at minLength 1) is a valid value, so it is no
+        // rejection probe, as the number branch steps past its specials; mock-server.test.js pins a string special.
         const tooShort = "x".repeat(Math.max(minLength - 1, 0));
         if (minLength > 0 && !(field.specialValues ?? []).some((special) => special.value === tooShort)) {
             it("rejects a too-short string: Invalid, not persisted", async () => {

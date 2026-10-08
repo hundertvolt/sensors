@@ -106,34 +106,6 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
     return None
 
 
-def host_label_ok(label: str) -> bool:
-    # RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length.
-    if not label or label[0] == "-" or label[-1] == "-":
-        return False
-    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
-
-
-def ipv4_to_int(ip: str) -> int | None:
-    # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form; never raises for a malformed str
-    parts = ip.split(".")
-    if len(parts) != _IPV4_OCTETS:
-        return None
-    octets = []
-    for part in parts:
-        if not part.isdigit() or not (0 <= int(part) <= _IPV4_OCTET_MAX):
-            return None
-        octets.append(int(part))
-    a, b, c, d = octets
-    return (a << 24) | (b << 16) | (c << 8) | d
-
-
-def host_name_ok(value: object) -> bool:
-    # The hostName shape (js/mock-server.js mirrors it): an IPv4 literal, or dot-separated RFC 1123 labels of at most 63 characters.
-    if type(value) is not str:
-        return False
-    return ipv4_to_int(value) is not None or all(len(label) <= DNS_LABEL_MAX and host_label_ok(label) for label in value.split("."))
-
-
 async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int, pr: "PrintLogHistory") -> str | None:
     # A one-shot query from an ephemeral port (RFC 6762 SS5.1): a responder answers by unicast with the ID and
     # question repeated, as a conventional DNS reply (SS6.7), from its own address, so the socket is bound, not connected.
@@ -162,6 +134,34 @@ async def _resolve_mdns(query: bytearray, timeout_ms: int, tries: int, pr: "Prin
         if not await sock.disconnect():
             await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
     return None
+
+
+def host_label_ok(label: str) -> bool:
+    # RFC 1123 SS2.1 host label (letters, digits, '-'; not at either end); the caller bounds the length.
+    if not label or label[0] == "-" or label[-1] == "-":
+        return False
+    return all("0" <= ch <= "9" or "A" <= ch <= "Z" or "a" <= ch <= "z" or ch == "-" for ch in label)
+
+
+def host_name_ok(value: object) -> bool:
+    # The hostName shape (js/mock-server.js mirrors it): an IPv4 literal, or dot-separated RFC 1123 labels of at most 63 characters.
+    if type(value) is not str:
+        return False
+    return ipv4_to_int(value) is not None or all(len(label) <= DNS_LABEL_MAX and host_label_ok(label) for label in value.split("."))
+
+
+def ipv4_to_int(ip: str) -> int | None:
+    # RFC 791 section 3.2 dotted-quad -> 32-bit big-endian form; never raises for a malformed str
+    parts = ip.split(".")
+    if len(parts) != _IPV4_OCTETS:
+        return None
+    octets = []
+    for part in parts:
+        if not part.isdigit() or not (0 <= int(part) <= _IPV4_OCTET_MAX):
+            return None
+        octets.append(int(part))
+    a, b, c, d = octets
+    return (a << 24) | (b << 16) | (c << 8) | d
 
 
 async def resolve_ipv4(
