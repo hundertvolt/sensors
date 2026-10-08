@@ -1,0 +1,14 @@
+test_fault_or_warning_never_both: 11 passed in 4.27s
+test_lint_ceilings: 19 passed in 17.17s
+test_mypy_any_baseline: 7 passed in 0.19s
+test_code_conventions: 23 passed in 4.08s
+test_error_catalog: 31 passed in 24.20s
+test_buildgen_generate: 155 passed in 47.35s
+test_buildgen_definitions: 214 passed in 19.13s
+test_decision_vocabulary: 6 passed in 11.43s
+test_citations: 15 passed in 14.69s
+test_comment_block_cap: 432 passed in 8.04s
+test_tunables_register: 1 failed, 14 passed in 5.52s
+test_legacy_paths: 3 passed in 1.54s
+test_import_placement: 7 passed in 12.02s
+test_counter_steps: 9 passed in 4.99s

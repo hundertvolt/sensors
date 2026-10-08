@@ -3,6 +3,7 @@ This is the CI-every-commit version of the NeoPixel rig - continuity, hysteresis
 
 import asyncio
 import sys
+import time
 
 try:
     from typing import TYPE_CHECKING
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from _isl29125_chip import Isl29125Chip
 
     from asy_isl29125_driver import ISL29125
-    from print_log import ErrorLog
+    from asy_print_log import ErrorLog
 
     T = TypeVar("T")
 
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")
 
 import machine
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 from machine import Pin
 
@@ -39,6 +41,11 @@ _CHIP_GAIN_RATIO = 25.9  # _isl29125_chip.py's own per-instance default - the va
 # The fake's effective full scale, and therefore the real switch-up point the driver lands on:
 # 85% of the low range's 375 lx. The switch-DOWN point is derived from it and is not needed here.
 _SWITCH_UP_LUX = 0.85 * 375.0
+
+# Twin time a red-dominant scene runs for; the read loop's own SampleInterval for it.
+# @tunable l2.isl29125_autorange_red_scene_window_s = 20
+_RED_SCENE_WINDOW_S = 20
+_RED_SCENE_INTERVAL_S = 5
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -83,7 +90,7 @@ def make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) ->
 
 async def cycle(chip: "Isl29125Chip", reader: ISL29125_Reader, lux: float, tint: "tuple[float, float, float] | None" = None) -> "ISL29125":
     # One complete real cycle: the chip converts at its current gain, the driver reads, decides
-    # the range, and stores - exactly the sequence read_loop() runs, minus the trigger wait.
+    # the range, and stores - exactly the sequence _read_loop() runs, minus the trigger wait.
     chip.set_illumination(lux, tint=tint)
     results = await reader._read_isl()
     await reader._store_isl(results)
@@ -235,6 +242,40 @@ def test_the_clipped_scene_reports_the_tints_own_hue_once_it_is_on_the_right_ran
     assert 0.0 <= settled_hue < 60.0  # red-dominant, as the tint says
 
 
+def test_a_red_dominant_scene_does_not_drive_a_read_every_prst_window() -> None:
+    # Green under its window while red holds the high range: the peak rule declines every crossing the INT flags,
+    # so the first one parks INTSEL and the periodic path alone reads - at most one cycle per SampleInterval and a
+    # margin, where an armed INT would add one cycle per PRST window.
+    chip, reader = make_dev_reader("red_scene")
+    cycles = [0]
+    real_read = reader._read_isl
+
+    async def counting_read() -> "tuple[int | None, int | None, int | None, int | None, int | None, int | None]":
+        cycles[0] += 1
+        return await real_read()
+
+    reader._read_isl = counting_read  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        assert (await reader.cfgmgr.write_config({"SampleInterval": _RED_SCENE_INTERVAL_S}))[0] is True
+        chip.set_illumination(200.0, tint=(3.0, 0.1, 0.1))
+        reader.start_timer()
+        tasks = [asyncio.create_task(reader._read_loop()), reader.start_asy_trigger()]
+        await asyncio.sleep(_RED_SCENE_WINDOW_S)
+        reader.stop_timer()
+        for task in tasks:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    run(scenario())
+    assert cycles[0] <= -(-_RED_SCENE_WINDOW_S // _RED_SCENE_INTERVAL_S) + 2, cycles[0]
+    assert reader._active_range == _RANGE_HIGH_LUX
+    assert reader._int_held is True
+
+
 # ---------------------------------------------------------------------------
 # Requirement 17 - the interrupt is the fast path, never the only one
 # ---------------------------------------------------------------------------
@@ -246,18 +287,18 @@ def test_a_real_threshold_crossing_drives_the_interrupt_line_into_the_read_event
     # sets the read event. Nothing between here and real hardware is stubbed.
     chip, reader = make_dev_reader("int_path")
     reader.start_timer()  # this is what wires the falling-edge handler
-    reader.read_event.clear()
+    reader._read_event.clear()
     assert reader._active_range == _RANGE_HIGH_LUX  # so the armed threshold is the DOWN crossing
 
     async def scenario() -> "tuple[bool, int]":
         # Two conversions with no driver read between: the derived PRST is 2, so the chip holds the
         # interrupt off until a change has persisted that long. Two cycles (606ms at 16 bit) keeps
-        # the window inside the 1s SampleInterv, so the interrupt can lead the re-check (M.1.4).
+        # the window inside the 1s SampleInterval, so the interrupt can lead the re-check (M.1.4).
         for index in range(2):
             chip.set_illumination(5.0)  # far below the down threshold: the window is crossed
             if index < 1:
-                assert reader.read_event.state == 0, "the persistence counter released too early"
-        fired = bool(reader.read_event.state)
+                assert reader._read_event.state == 0, "the persistence counter released too early"
+        fired = bool(reader._read_event.state)
         # The destructive status read is what clears the flag and releases the line again.
         # Pin(6) is the same registry singleton object the chip fake drives and the driver
         # listens on, which is exactly what makes the whole mechanism work.
@@ -282,7 +323,7 @@ def test_the_range_still_tracks_when_the_interrupt_line_never_asserts() -> None:
         for lux in (40.0, 900.0, 40.0, 900.0):
             await cycle(chip, reader, lux)
             ranges.append(reader._active_range)
-        return ranges, bool(reader.read_event.state)
+        return ranges, bool(reader._read_event.state)
 
     ranges, interrupt_fired = run(scenario())
     assert interrupt_fired is False  # the line really never moved
@@ -299,7 +340,34 @@ def test_a_dead_interrupt_line_eventually_warns_rather_than_staying_invisible() 
             await cycle(chip, reader, 40.0 if index % 2 == 0 else 900.0)
         return await reader.get_error_counter()
 
-    assert 13 in warnings(run(scenario()))
+    assert code("W", "ISL_PERIODIC_ONLY") in warnings(run(scenario()))
+
+
+def test_a_muted_interrupt_is_rearmed_once_and_delivers_again() -> None:
+    # The dead-line warning re-writes the chip's interrupt setup once; with the line back, the next crossing reaches
+    # the read event, and the interrupt-led decision it brings ends the episode.
+    chip, reader = make_dev_reader("int_rearm")
+    chip.configure_fault("isl29125:int_stuck_high")
+    reader.start_timer()
+
+    async def scenario() -> "tuple[bool, bool, ErrorLog]":
+        for index in range(6):
+            await cycle(chip, reader, 40.0 if index % 2 == 0 else 900.0)
+        rearmed = reader._int_rearmed
+        chip.configure_fault("isl29125:int_stuck_high", active=False)
+        reader._read_event.clear()
+        for _ in range(2):  # PRST 2 at the 1 s default: two conversions outside the window
+            chip.set_illumination(5.0)
+        delivered = bool(reader._read_event.state)
+        await cycle(chip, reader, 5.0)  # the interrupt-led decision: flag and edge together
+        return rearmed, delivered, await reader.get_error_counter()
+
+    rearmed, delivered, counters = run(scenario())
+    reader.stop_timer()
+    assert code("W", "ISL_PERIODIC_ONLY") in warnings(counters)
+    assert rearmed is True
+    assert delivered is True
+    assert reader._int_rearmed is False
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +392,57 @@ def test_a_calibration_run_measures_the_chips_own_real_ratio() -> None:
     assert measured is not None, "a steady in-band scene has to produce a candidate"
     assert abs(measured - _CHIP_GAIN_RATIO) < 0.5, "the measurement has to find the chip's own ratio"
     assert applied == _GAIN_RATIO_NOMINAL, "measuring must never change what the driver applies"
+
+
+def test_a_calibration_window_without_a_stable_reading_warns_once() -> None:
+    # A walking scene moves between the sandwich's legs, so no reading is stable: the window closes unconverged and
+    # persists one ISL_CAL_TIMEOUT. The window is shortened on the stored deadline; a real run waits two minutes.
+    chip, reader = make_dev_reader("gain_timeout", resolution=12)
+    chip._lux_step = 150.0  # half the scene per 19 ms conversion
+
+    async def scenario() -> "ErrorLog":
+        assert await reader.start_calibration(flag=True) is True
+        reader._cal_until_ms = time.ticks_add(time.ticks_ms(), 2000)
+        for _ in range(200):
+            if not reader._calibrating:
+                break
+            await cycle(chip, reader, 300.0)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._calibrating is False
+    assert warnings(counters) == [code("W", "ISL_CAL_TIMEOUT")]
+
+
+def test_a_steady_calibration_scene_converges_with_no_entry() -> None:
+    chip, reader = make_dev_reader("gain_steady", resolution=12)
+
+    async def scenario() -> "ErrorLog":
+        assert await reader.start_calibration(flag=True) is True
+        for _ in range(30):
+            if not reader._calibrating:
+                break
+            await cycle(chip, reader, 300.0)
+        return await reader.get_error_counter()
+
+    counters = run(scenario())
+    assert reader._calibrating is False, "a steady in-band scene converges inside the window"
+    assert warnings(counters) == []
+
+
+def test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model() -> None:
+    # The published CalLight code through the real driver against the modelled light: dark, mid and bright on the
+    # high range (the dwell holds it there) read 2, 1, 3.
+    chip, reader = make_dev_reader("cal_light", dwell_s=10.0)
+
+    async def scenario() -> "list[int | None]":
+        seen = []
+        for lux in (2.0, 300.0, 9500.0):
+            seen.append((await cycle(chip, reader, lux)).CalLight)  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+        return seen
+
+    assert run(scenario()) == [2, 1, 3]
+    assert reader._active_range == _RANGE_HIGH_LUX
 
 
 def test_the_applied_ratio_changes_only_by_a_config_push() -> None:
@@ -380,7 +499,7 @@ def test_a_freshly_constructed_chip_is_recovered_from_its_own_power_on_brownout_
 
     data, counters = run(scenario())
     assert data.Lux is not None
-    assert 10 not in warnings(counters)
+    assert code("W", "ISL_BROWNOUT") not in warnings(counters)
 
 
 def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
@@ -395,10 +514,31 @@ def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
         return good, recovered, await reader.get_error_counter()
 
     good, recovered, counters = run(scenario())
-    assert 10 in warnings(counters)
+    assert code("W", "ISL_BROWNOUT") in warnings(counters)
     assert recovered.Lux is not None
     assert abs(recovered.Lux - 200.0) / 200.0 < 0.04  # reading correctly again afterwards
     assert good.Lux is not None
+
+
+def test_each_brownout_is_one_warning_and_nothing_else() -> None:
+    # A supply dip zeroes CONFIG1-3 and raises BOUTF: each one adds exactly one W30 to the count, never a
+    # divergence warning for the zeroed CONFIG it leaves behind.
+    chip, reader = make_dev_reader("brownout_once")
+
+    async def scenario() -> "list[ErrorLog]":
+        seen = [await reader.get_error_counter()]
+        await cycle(chip, reader, 200.0)
+        for _ in range(2):
+            chip.simulate_brownout()
+            await cycle(chip, reader, 200.0)
+            await cycle(chip, reader, 200.0)
+            seen.append(await reader.get_error_counter())
+        return seen
+
+    seen = run(scenario())
+    assert [log["ISL29125"]["ErrCount"] for log in seen] == [0, 1, 2]
+    assert warnings(seen[-1]) == [code("W", "ISL_BROWNOUT")]
+    assert run(reader.get_data()).Lux is not None
 
 
 if __name__ == "__main__":

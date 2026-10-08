@@ -15,12 +15,22 @@ from asy_sgp40_driver import SGP40_I2C
 # Varied, not a fixed cadence: 5ms is back-to-back with a sibling's transaction, 120ms is mid
 # another sibling's read. Cycled across WRITE_CYCLES so every run covers the whole spread rather
 # than whichever phase natural jitter lands on.
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_write_delays_ms = 5
 _WRITE_DELAYS_MS = (5, 15, 40, 80, 120)
-WRITE_CYCLES = len(_WRITE_DELAYS_MS) * 2  # each delay exercised twice, not just once
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_delay_repeats = 2
+_DELAY_REPEATS = 2
+WRITE_CYCLES = len(_WRITE_DELAYS_MS) * _DELAY_REPEATS  # each delay exercised twice, not just once
 _MODE_RGB = 0x05
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_sibling_step_ms = 15
+_SIBLING_STEP_MS = 15
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every = 10
+_WDT_FEED_EVERY = 10
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     isl = ISL29125_I2C(i2c1)
@@ -49,9 +59,9 @@ async def _main() -> None:
             except Exception as e:
                 scd_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(15)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def sgp_loop() -> None:
         nonlocal sgp_reads
@@ -65,9 +75,9 @@ async def _main() -> None:
             except Exception as e:
                 sgp_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(15)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def writer_loop() -> None:
         nonlocal stop
@@ -83,7 +93,7 @@ async def _main() -> None:
             wdt.feed()
         stop = True
 
-    await asyncio.wait_for(asyncio.gather(scd_loop(), sgp_loop(), writer_loop()), 60.0)
+    await asyncio.wait_for(asyncio.gather(scd_loop(), sgp_loop(), writer_loop()), _RUN_BOUND_S)
 
     failures = []
     if scd_errors:

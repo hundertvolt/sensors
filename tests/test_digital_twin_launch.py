@@ -18,7 +18,22 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import machine
 import network
+from _twin_common import Injections, StatePaths
 from launch import LaunchConfig, _apply_fault, _apply_hang, main, parse_args, parse_fault_spec
+
+_IN_MEMORY = StatePaths(None, None)  # neither chip persists: every main() run here starts fresh
+# @tunable l2.launch_short_duration_s = 0.5
+_SHORT_DURATION_S = 0.5
+# @tunable l2.launch_main_bound_s = 10
+_MAIN_BOUND_S = 10
+# @tunable l2.launch_fault_duration_s = 2.5
+_FAULT_DURATION_S = 2.5
+# @tunable l2.launch_long_duration_s = 4.5
+_LONG_DURATION_S = 4.5
+# @tunable l2.launch_long_main_bound_s = 15
+_LONG_MAIN_BOUND_S = 15
+# @tunable l2.launch_long_min_readings = 5
+_LONG_MIN_READINGS = 5
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
@@ -107,28 +122,25 @@ def test_parse_fault_spec_rejects_times_for_wlan() -> None:
 
 def test_parse_args_with_no_flags_returns_all_defaults() -> None:
     config = parse_args([])
-    assert config.seed is None
-    assert config.fram_state_path is None
-    assert config.scd30_state_path is None
-    assert config.faults == []
-    assert config.wifi_outcomes == []
+    assert config.state == StatePaths(None, None)
+    assert config.injections == Injections(None, [], [], [])
     assert config.no_wdt_feed is False
     assert config.duration is None
 
 
 def test_parse_args_seed_is_parsed_as_int() -> None:
     config = parse_args(["--seed", "42"])
-    assert config.seed == 42
+    assert config.injections.seed == 42
 
 
 def test_parse_args_fram_state_path_is_passed_through() -> None:
     config = parse_args(["--fram-state-path", "tests/_tmp/launch_fram.bin"])
-    assert config.fram_state_path == "tests/_tmp/launch_fram.bin"
+    assert config.state.fram == "tests/_tmp/launch_fram.bin"
 
 
 def test_parse_args_scd30_state_path_is_passed_through() -> None:
     config = parse_args(["--scd30-state-path", "tests/_tmp/launch_scd30.json"])
-    assert config.scd30_state_path == "tests/_tmp/launch_scd30.json"
+    assert config.state.scd30 == "tests/_tmp/launch_scd30.json"
 
 
 def test_parse_args_no_wdt_feed_is_a_bare_flag() -> None:
@@ -143,12 +155,12 @@ def test_parse_args_duration_is_parsed_as_float() -> None:
 
 def test_parse_args_fault_is_repeatable_and_accumulates_in_order() -> None:
     config = parse_args(["--fault", "scd30:writeto:2", "--fault", "wlan:connect"])
-    assert config.faults == [("scd30", "writeto", 2), ("wlan", "connect", 1)]
+    assert config.injections.faults == [("scd30", "writeto", 2), ("wlan", "connect", 1)]
 
 
 def test_parse_args_wifi_outcome_is_repeatable_and_resolves_to_real_network_constants() -> None:
     config = parse_args(["--wifi-outcome", "no_ap", "--wifi-outcome", "success"])
-    assert config.wifi_outcomes == [network.STAT_NO_AP_FOUND, network.STAT_GOT_IP]
+    assert config.injections.wifi_outcomes == [network.STAT_NO_AP_FOUND, network.STAT_GOT_IP]
 
 
 def test_parse_args_rejects_an_unrecognized_wifi_outcome() -> None:
@@ -175,6 +187,17 @@ def test_parse_args_rejects_a_flag_missing_its_value() -> None:
         pass
 
 
+def test_parse_args_help_exits_zero_before_parsing_anything_else() -> None:
+    # --help answers before any other flag is read, so a typo next to it cannot turn the usage
+    # request into a ValueError, and nothing after parse_args() (the chip fakes, the WDT) runs.
+    for argv in (["--help"], ["-h"], ["--seed", "not-a-number", "--help"]):
+        try:
+            parse_args(argv)
+            raise AssertionError(f"expected SystemExit(0) for {argv}")
+        except SystemExit as e:
+            assert e.args == (0,), f"{argv}: --help must exit 0, got {e.args}"
+
+
 def test_parse_args_combines_every_flag_together() -> None:
     config = parse_args(
         [
@@ -193,11 +216,8 @@ def test_parse_args_combines_every_flag_together() -> None:
             "1.5",
         ],
     )
-    assert config.seed == 7
-    assert config.fram_state_path == "tests/_tmp/launch_fram.bin"
-    assert config.scd30_state_path == "tests/_tmp/launch_scd30.json"
-    assert config.faults == [("bmp3xx", "readfrom_mem", 3)]
-    assert config.wifi_outcomes == [network.STAT_CONNECT_FAIL]
+    assert config.state == StatePaths("tests/_tmp/launch_fram.bin", "tests/_tmp/launch_scd30.json")
+    assert config.injections == Injections(7, [("bmp3xx", "readfrom_mem", 3)], [], [network.STAT_CONNECT_FAIL])
     assert config.no_wdt_feed is True
     assert config.duration == 1.5
 
@@ -209,11 +229,11 @@ def test_parse_args_combines_every_flag_together() -> None:
 
 def test_main_runs_end_to_end_and_returns_a_summary() -> None:
     machine.Pin.reset_registry()  # isolate from any earlier test file's own Pin(8)/etc. wiring
-    config = LaunchConfig(seed=1234, no_wdt_feed=True, duration=0.5)
-    summary = run(asyncio.wait_for(main(config), 10))
+    config = LaunchConfig(_IN_MEMORY, Injections(1234, [], [], []), no_wdt_feed=True, duration=_SHORT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["readings"] >= 1  # at least one real bus-level read happened
     assert summary["wifi_status"] is not None
-    assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under the 8000ms WDT timeout
+    assert summary["would_have_triggered_count"] == 0  # only 0.5s, well under wdt.timeout_ms (8000 ms)
 
 
 def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
@@ -224,14 +244,9 @@ def test_main_with_scripted_faults_and_wifi_outcome_still_completes() -> None:
     # leave every sensor faulted or not-yet-ready with no reading produced at all - SCD30 is not ready that
     # early either, which the longer-duration test below covers.
     machine.Pin.reset_registry()
-    config = LaunchConfig(
-        seed=99,
-        no_wdt_feed=True,
-        duration=2.5,
-        faults=[("sgp40", "writeto", 1), ("bmp3xx", "readfrom_mem", 1)],
-        wifi_outcomes=[network.STAT_NO_AP_FOUND],
-    )
-    summary = run(asyncio.wait_for(main(config), 10))
+    injections = Injections(99, [("sgp40", "writeto", 1), ("bmp3xx", "readfrom_mem", 1)], [], [network.STAT_NO_AP_FOUND])
+    config = LaunchConfig(_IN_MEMORY, injections, no_wdt_feed=True, duration=_FAULT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["wifi_status"] == network.STAT_NO_AP_FOUND
     # Both one-shot faults (sgp40/bmp3xx) are isolated to their own read and spent after the first
     # iteration - the second iteration's real readings must still have been produced.
@@ -243,8 +258,8 @@ def test_main_a_wlan_fault_is_isolated_and_still_returns_a_summary() -> None:
     # loop, all used to be unguarded, so a --fault wlan:... crashed main() outright before it reached the
     # WDT-feed and sensor-read loops. Now isolated the way _sensor_loop() isolates each sensor's read.
     machine.Pin.reset_registry()
-    config = LaunchConfig(seed=7, no_wdt_feed=True, duration=0.5, faults=[("wlan", "connect", 1)])
-    summary = run(asyncio.wait_for(main(config), 10))
+    config = LaunchConfig(_IN_MEMORY, Injections(7, [("wlan", "connect", 1)], [], []), no_wdt_feed=True, duration=_SHORT_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _MAIN_BOUND_S))
     assert summary["readings"] >= 1  # sensor loop still ran despite the WLAN fault
 
 
@@ -255,10 +270,10 @@ def test_main_long_enough_duration_reaches_a_real_wdt_feed_and_scd30s_timer_driv
     #
     # no_wdt_feed=False here also exercises a real watchdog.feed() call, unlike every other main() test.
     machine.Pin.reset_registry()
-    config = LaunchConfig(seed=55, no_wdt_feed=False, duration=4.5)
-    summary = run(asyncio.wait_for(main(config), 15))
-    assert summary["readings"] >= 5  # several rounds across 4.5s, well past SCD30's 2s cadence
-    assert summary["would_have_triggered_count"] == 0  # fed for real, well under the 8000ms timeout
+    config = LaunchConfig(_IN_MEMORY, Injections(55, [], [], []), no_wdt_feed=False, duration=_LONG_DURATION_S)
+    summary = run(asyncio.wait_for(main(config), _LONG_MAIN_BOUND_S))
+    assert summary["readings"] >= _LONG_MIN_READINGS  # several rounds across 4.5s, well past SCD30's 2s cadence
+    assert summary["would_have_triggered_count"] == 0  # fed for real, well under wdt.timeout_ms (8000 ms)
 
 
 # ---------------------------------------------------------------------------

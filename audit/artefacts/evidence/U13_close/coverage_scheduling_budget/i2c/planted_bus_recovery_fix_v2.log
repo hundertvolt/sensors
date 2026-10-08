@@ -1,0 +1,100 @@
+=== catalog=fix_v2 plant=P1 th=-1
+catalog: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+selected: ['test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets', 'test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets']
+FAIL test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 5/6 timing offset(s) reproduced a hazard: ["offset=0: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=1: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=2: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=3: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=4: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]"]
+FAIL test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ["offset=0: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=1: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=2: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=3: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=4: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=5: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]"]
+0/2 passed, 2 failed, 0 skipped
+exit 1
+=== catalog=fix_v2 plant=P1 th=32768
+catalog: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+selected: ['test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets', 'test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets']
+FAIL test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 5/6 timing offset(s) reproduced a hazard: ["offset=0: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=1: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=2: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=3: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]", "offset=4: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('deinit',)]"]
+FAIL test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ["offset=0: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=1: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=2: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=3: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=4: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]", "offset=5: a transfer landed inside the recovery window: [('writeto', 89, b'&\\x0f\\x80\\x00\\xa2ff\\x93', True), ('readfrom_into', 97, b'C\\xce}@\\x00\\x08A\\xbb\\xa933\\x88B6\\xb2ff\\x93', True), ('writeto', 97, b'\\x02\\x02', True), ('readfrom_into', 97, b'\\x00\\x01\\xb0', True), ('deinit',)]"]
+0/2 passed, 2 failed, 0 skipped
+exit 1
+=== catalog=fix_v2 plant=P2 th=-1
+catalog: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+selected: ['test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets', 'test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets']
+FAIL test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ['offset=0: the recovery did not clear the planted held SDA: status 5', 'offset=1: the recovery did not clear the planted held SDA: status 5', 'offset=2: the recovery did not clear the planted held SDA: status 5', 'offset=3: the recovery did not clear the planted held SDA: status 5', 'offset=4: the recovery did not clear the planted held SDA: status 5', 'offset=5: the recovery did not clear the planted held SDA: status 5']
+FAIL test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ['offset=0: the recovery did not clear the planted held SDA: status 5', 'offset=1: the recovery did not clear the planted held SDA: status 5', 'offset=2: the recovery did not clear the planted held SDA: status 5', 'offset=3: the recovery did not clear the planted held SDA: status 5', 'offset=4: the recovery did not clear the planted held SDA: status 5', 'offset=5: the recovery did not clear the planted held SDA: status 5']
+0/2 passed, 2 failed, 0 skipped
+exit 1
+=== catalog=fix_v2 plant=P2 th=32768
+catalog: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py
+selected: ['test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets', 'test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets']
+FAIL test_wozi_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ['offset=0: the recovery did not clear the planted held SDA: status 5', 'offset=1: the recovery did not clear the planted held SDA: status 5', 'offset=2: the recovery did not clear the planted held SDA: status 5', 'offset=3: the recovery did not clear the planted held SDA: status 5', 'offset=4: the recovery did not clear the planted held SDA: status 5', 'offset=5: the recovery did not clear the planted held SDA: status 5']
+FAIL test_dev_i2c1_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/test_bus_hazard_generated.py", line 134, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+  File "tests/test_bus_hazard_generated.py", line 38, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_catalog/_bus_hazard_catalog.py", line 666, in scenario_bus_recovery_does_not_disturb_concurrent_siblings
+AssertionError: 6/6 timing offset(s) reproduced a hazard: ['offset=0: the recovery did not clear the planted held SDA: status 5', 'offset=1: the recovery did not clear the planted held SDA: status 5', 'offset=2: the recovery did not clear the planted held SDA: status 5', 'offset=3: the recovery did not clear the planted held SDA: status 5', 'offset=4: the recovery did not clear the planted held SDA: status 5', 'offset=5: the recovery did not clear the planted held SDA: status 5']
+0/2 passed, 2 failed, 0 skipped
+exit 1

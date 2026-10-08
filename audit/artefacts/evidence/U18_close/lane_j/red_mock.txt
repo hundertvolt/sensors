@@ -1,0 +1,193 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18j
+
+ ❯ |chromium| tests_js/mock-server.test.js (70 tests | 8 failed) 16762ms
+   ❯ installMockFetch (70)
+     × runs on fixture definitions the site's own validator accepts 808ms
+     ✓ answers GET /sensors from the fixture 189ms
+     ✓ passes non-REST paths through to the real fetch 8ms
+     ✓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged 322ms
+     ✓ marks an in-range changed value as Valid and persists it for the next GET 221ms
+     ✓ resets error counters and refills history with no-error placeholders (real reset() never shrinks it) 334ms
+     ✓ leaves error counters untouched when ResetErrors is absent 216ms
+     ✓ validates PUT /networking against the networking group's own field defs 501ms
+     ✓ finds a fixture field for every shape the shared corpus names 1ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorNode" with Valid, as the server's shape check does 172ms
+     ✓ answers a hostLabel field (Hostname) PUT of "SensorStation7" with Valid, as the server's shape check does 173ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a" with Valid, as the server's shape check does 159ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-b" with Valid, as the server's shape check does 106ms
+     ✓ answers a hostLabel field (Hostname) PUT of "A1-b2" with Valid, as the server's shape check does 93ms
+     ✓ answers a hostLabel field (Hostname) PUT of "" with Invalid, as the server's shape check does 159ms
+     ✓ answers a hostLabel field (Hostname) PUT of "-a" with Invalid, as the server's shape check does 93ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a-" with Invalid, as the server's shape check does 113ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a b" with Invalid, as the server's shape check does 161ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a.b" with Invalid, as the server's shape check does 115ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a_b" with Invalid, as the server's shape check does 154ms
+     ✓ answers a hostLabel field (Hostname) PUT of "a\u0000b" with Invalid, as the server's shape check does 189ms
+     ✓ answers a hostLabel field (Hostname) PUT of "ä" with Invalid, as the server's shape check does 166ms
+     ✓ answers a countryCode field (Country) PUT of "DE" with Valid, as the server's shape check does 87ms
+     ✓ answers a countryCode field (Country) PUT of "XX" with Valid, as the server's shape check does 158ms
+     ✓ answers a countryCode field (Country) PUT of "de" with Invalid, as the server's shape check does 110ms
+     ✓ answers a countryCode field (Country) PUT of "D1" with Invalid, as the server's shape check does 168ms
+     ✓ answers a countryCode field (Country) PUT of "ZZZ" with Invalid, as the server's shape check does 137ms
+     ✓ answers a countryCode field (Country) PUT of "Z" with Invalid, as the server's shape check does 100ms
+     ✓ answers a countryCode field (Country) PUT of "D\u0000" with Invalid, as the server's shape check does 83ms
+     ✓ answers a countryCode field (Country) PUT of "DÉ" with Invalid, as the server's shape check does 151ms
+     × answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does 270ms
+     × answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does 233ms
+     ✓ answers a hostName field (NTPHost) PUT of "-a.b" with Invalid, as the server's shape check does 196ms
+     ✓ answers a hostName field (NTPHost) PUT of "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" with Invalid, as the server's shape check does 130ms
+     ✓ answers a hostName field (NTPHost) PUT of "a..b" with Invalid, as the server's shape check does 94ms
+     ✓ answers a hostName field (NTPHost) PUT of "a b" with Invalid, as the server's shape check does 145ms
+     × answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does 182ms
+     × answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does 230ms
+     × answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does 167ms
+     × answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does 256ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8," with Invalid, as the server's shape check does 152ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "a.b.c.d" with Invalid, as the server's shape check does 137ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1" with Invalid, as the server's shape check does 196ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "8.8.8.8 ,1.1.1.1" with Invalid, as the server's shape check does 95ms
+     ✓ answers a ipv4List field (DNSFallback) PUT of "256.1.1.1" with Invalid, as the server's shape check does 190ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 261ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 204ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set 363ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 465ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 945ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1454ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 557ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 568ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 779ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 510ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 491ms
+     × masks PW (and HotspotPW) on every GET /networking, whatever was applied 372ms
+     ✓ increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched 111ms
+     ✓ jitters a nested measurement sub-object's leaves too, not just the top level 203ms
+     ✓ never jitters a non-negative measurement leaf into a negative one 82ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 276ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 298ms
+     ✓ silently ignores a PUT /sensors group key that isn't a real sensor, applying the real ones normally 97ms
+     ✓ rejects an unsupported HTTP method with a 405 156ms
+     ✓ injects exactly one network failure via controls.nextFailure, then serves normally again 197ms
+     ✓ injects exactly one HTTP error status via controls.nextFailure, then serves normally again 146ms
+     ✓ injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly 1ms
+     ✓ injects a torn-json failure: HTTP 200 with an unparseable body, simulating a corrupted transmission 1ms
+     ✓ injects an empty-body failure: HTTP 200 with a zero-length body 1ms
+     ✓ injects a partial-result failure: one submitted field silently missing from a successful PUT's result 100ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > runs on fixture definitions the site's own validator accepts
+AssertionError: expected [ …(2) ] to deeply equal []
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---runs-on-fixture-definitions-the-site-s-own-validator-accepts.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [][39m
+[31m+ [[39m
+[31m+   "sections[1].groups[1].fields[0].shape must be one of hostLabel, countryCode on a string field when present",[39m
+[31m+   "sections[1].groups[2].fields[0].shape must be one of hostLabel, countryCode on a string field when present",[39m
+[31m+ ][39m
+
+ ❯ tests_js/mock-server.test.js:199:43
+    197|
+    198|     it("runs on fixture definitions the site's own validator accepts",…
+    199|         expect(validateDefinitions(DEFS)).toEqual([]);
+       |                                           ^
+    200|     });
+    201|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does
+AssertionError: expected 'Invalid' to be 'Valid' // Object.is equality
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-hostName-field--NTPHost--PUT-of--pool-ntp-org--with-Valid--as-the-server-s-shape-check-does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-hostName-field--NTPHost--PUT-of--192-168-1-1--with-Valid--as-the-server-s-shape-check-does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-ipv4List-field--DNSFallback--PUT-of----with-Valid--as-the-server-s-shape-check-does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-ipv4List-field--DNSFallback--PUT-of--8-8-8-8--with-Valid--as-the-server-s-shape-check-does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-ipv4List-field--DNSFallback--PUT-of--8-8-8-8-1-1-1-1--with-Valid--as-the-server-s-shape-check-does.png
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---answers-a-ipv4List-field--DNSFallback--PUT-of--1-1-1-1-8-8-4-4-9-9-9-9--with-Valid--as-the-server-s-shape-check-does.png
+
+Expected: [32m"[7mV[27malid"[39m
+Received: [31m"[7mInv[27malid"[39m
+
+ ❯ tests_js/mock-server.test.js:287:53
+    285|         uninstall = installMockFetch(DEFS, DATA);
+    286|         const response = await fetch("/networking", { method: "PUT", b…
+    287|         expect((await response.json()).result[key]).toBe(expected);
+       |                                                     ^
+    288|     });
+    289|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  |chromium| tests_js/mock-server.test.js > installMockFetch > masks PW (and HotspotPW) on every GET /networking, whatever was applied
+AssertionError: expected [ '********', 'fixture-hotspot' ] to deeply equal [ '********', '********' ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-server.test.js/installMockFetch---masks-PW--and-HotspotPW--on-every-GET--networking--whatever-was-applied.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "********",[22m
+[32m-   "********",[39m
+[31m+   "fixture-hotspot",[39m
+[2m  ][22m
+
+ ❯ tests_js/mock-server.test.js:498:47
+    496|         // Fixture-seeded values are never echoed in plaintext, even b…
+    497|         const before = await (await fetch("/networking")).json();
+    498|         expect([before.PW, before.HotspotPW]).toEqual(["********", "**…
+       |                                               ^
+    499|
+    500|         const applied = await fetch("/networking", { method: "PUT", bo…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-Bt3SOppk.js?v=583bc16e:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  8 failed | 62 passed (70)
+   Start at  01:58:20
+   Duration  19.18s (tests 97%, worker 2%, import 1%)
+
+== Summary: npm test ==
+Commit: c11ca0a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 62 · failed 8 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-server.test.js > installMockFetch > runs on fixture definitions the site's own validator accepts: expected [ …(2) ] to deeply equal []
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "pool.ntp.org" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a hostName field (NTPHost) PUT of "192.168.1.1" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "8.8.8.8,1.1.1.1" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > answers a ipv4List field (DNSFallback) PUT of "1.1.1.1,8.8.4.4,9.9.9.9" with Valid, as the server's shape check does: expected 'Invalid' to be 'Valid' // Object.is equality
+  - tests_js/mock-server.test.js > installMockFetch > masks PW (and HotspotPW) on every GET /networking, whatever was applied: expected [ '********', 'fixture-hotspot' ] to deeply equal [ '********', '********' ]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

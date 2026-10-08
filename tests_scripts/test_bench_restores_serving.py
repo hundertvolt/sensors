@@ -2,8 +2,6 @@
 run_isolated() leaves main.py stopped, and the one bench test that did not restore it failed every
 network test after it in the same run (tests_hardware/README.md, "Holding a ceiling open")."""
 
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 

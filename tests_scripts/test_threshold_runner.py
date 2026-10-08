@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 _RUNNER = "tests/_threshold_runner.py"
+# @tunable gc.threshold_bytes = 32768
 _SHIPPED_THRESHOLD = 32768  # what buildgen emits into the generated boot entry (codegen.py)
+# @tunable l0.threshold_runner_timeout_s = 60
+_RUN_TIMEOUT_S = 60
 
 
 def _probe(tmp_path: Path, body: str) -> Path:
@@ -23,7 +26,7 @@ def _run(repo_root: Path, micropython_bin: Path, args: "list[str]") -> "subproce
         cwd=repo_root,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=_RUN_TIMEOUT_S,
         check=False,
     )
 
@@ -48,6 +51,7 @@ def test_the_same_file_run_directly_is_the_reactive_default(repo_root: Path, mic
 def test_the_threshold_is_set_before_the_test_file_body_runs(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
     # Ordering, not just the final value: a test file allocates while importing its own module under
     # test, and a threshold applied after that would leave the heaviest part of the file unmeasured.
+    # @tunable gc.threshold_bytes = 32768
     probe = _probe(tmp_path, "import gc\nassert gc.threshold() == 32768, gc.threshold()\nprint('ORDER ok')\n")
     completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"

@@ -1,0 +1,67 @@
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 11%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+..............................................................F......... [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+.....................................                                    [100%]
+=================================== FAILURES ===================================
+___ test_each_rule_aborts_with_one_line_naming_place_and_fix[src.unreadable] ___
+
+rule = 'src.unreadable'
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7073/test_each_rule_aborts_with_one117')
+capsys = <_pytest.capture.CaptureFixture object at 0x7fd1a3b009d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fd1a3b00f50>
+
+    @pytest.mark.parametrize("rule", sorted(_ROWS))
+    def test_each_rule_aborts_with_one_line_naming_place_and_fix(rule: str, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+        row = _ROWS[rule]
+        code, err, built = _run(row, tmp_path, capsys, monkeypatch)
+        assert code == 1, err
+        lines = err.strip().splitlines()
+        assert len(lines) == 1, err
+>       assert lines[0].startswith(_PREFIX[row.entry] + row.place), err
+E       AssertionError: buildgen: [<src>] cannot read /tmp/pytest-of-root/pytest-7073/test_each_rule_aborts_with_one117/src/asy_wifi_service.py: [Errno 2] No such file or directory: '/tmp/pytest-of-root/pytest-7073/test_each_rule_aborts_with_one117/src/asy_wifi_service.py' - fix: restore asy_wifi_service.py in the source directory
+E         
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x7fd1b3125e60>(('buildgen: ' + '[<src>.HotspotPW] '))
+E        +    where <built-in method startswith of str object at 0x7fd1b3125e60> = "buildgen: [<src>] cannot read /tmp/pytest-of-root/pytest-7073/test_each_rule_aborts_with_one117/src/asy_wifi_service..../test_each_rule_aborts_with_one117/src/asy_wifi_service.py' - fix: restore asy_wifi_service.py in the source directory".startswith
+E        +    and   '[<src>.HotspotPW] ' = Row(entry='generate', place='[<src>.HotspotPW] ', doc=<function _doc_unchanged at 0x7fd1c0e23380>, toml=None, absent=F...s=(), drop=('asy_wifi_service.py',), copy_src=False, call=None, patch=<function _no_patch at 0x7fd1c0e507c0>, extra=()).place
+
+tests_scripts/test_buildgen_error_contract.py:571: AssertionError
+============================= slowest 12 durations =============================
+11.24s call     tests_scripts/test_buildgen_fuzz.py::test_a_mutated_device_builds_or_fails_with_a_build_error
+4.70s call     tests_scripts/test_buildgen_generate.py::test_real_device_types_the_collectors_by_what_the_service_takes[grkizi]
+3.89s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[web.string-key-off-string]
+2.92s call     tests_scripts/test_buildgen_locale.py::test_devs_build_is_the_same_under_an_ascii_locale_as_in_utf8_mode
+2.88s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[web.hidden-not-alone]
+2.82s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[twin.no-address-rule]
+2.80s call     tests_scripts/test_buildgen_reproducible.py::test_every_generated_input_is_identical_across_hash_seeds
+2.59s call     tests_scripts/test_buildgen_validate.py::test_an_unstated_rx_ring_is_read_from_the_driver_source
+2.25s call     tests_scripts/test_buildgen_validate.py::test_optional_value_wiring_field_may_be_absent
+2.11s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[schema.malformed]
+2.07s call     tests_scripts/test_buildgen_source_ast.py::test_a_whole_build_of_every_device_leaves_every_shared_tree_as_parsed
+1.63s call     tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[instance.no-buildspec-row]
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_error_contract.py::test_each_rule_aborts_with_one_line_naming_place_and_fix[src.unreadable]
+1 failed, 1908 passed in 117.92s (0:01:57)

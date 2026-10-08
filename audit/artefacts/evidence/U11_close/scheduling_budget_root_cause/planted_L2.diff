@@ -1,0 +1,11 @@
+--- src/asy_uart_comm.py	2026-10-07 11:45:40.808365805 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/planted_L2/asy_uart_comm.py	2026-10-07 12:50:23.181312257 +0000
+@@ -290,7 +290,7 @@
+             # the two must not collapse - the cmd_id is what says the message actually arrived.
+             return ListenResult(cmd_id, CMD_SET, None)
+         if written == len(dest):
+-            return ListenResult(cmd_id, CMD_SET, dest)
++            return ListenResult(cmd_id, CMD_SET, None)  # PLANTED: the accepted payload is dropped
+         try:
+             return ListenResult(cmd_id, CMD_SET, bytearray(memoryview(dest)[0:written]))
+         except (MemoryError, OverflowError):

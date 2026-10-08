@@ -2,6 +2,7 @@
 type_char selection (Run 8's "W" case) and _bus_fault_drivers()'s filtering - without a live twin
 subprocess/HTTP server, the same way test_digital_twin_ci_suite_soak.py does for Run 11's."""
 
+import errno
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, object]:
-    """One GET /status errcount entry, in asy_webserver_service.py's own published shape."""
+    # One GET /status errcount entry, in asy_webserver_service.py's own published shape.
     items = [{"num": num, "type": kind} for num, kind in history]
     return {"counter": len(items) if counter is None else counter, "history": items}
 
@@ -41,7 +42,7 @@ def test_error_type_count_selects_warnings_when_asked(ci_suite: ModuleType) -> N
 
 
 def test_error_type_count_ignores_the_empty_ring_slots(ci_suite: ModuleType) -> None:
-    # print_log.py pre-fills the history deque with its own "nothing recorded" sentinel, published
+    # asy_print_log.py pre-fills the history deque with its own "nothing recorded" sentinel, published
     # as type "N" - a full ten-slot ring with one real entry must still count as one, never ten.
     entry = _entry(*([(0, "N")] * 9), (5, "W"))
     assert ci_suite._error_type_count(entry, "W") == 1
@@ -63,6 +64,58 @@ def test_error_type_count_is_never_satisfied_by_the_raw_counter(ci_suite: Module
     # target while no new error of the counted type was ever recorded.
     entry = _entry((18, "E"), (14, "W"), counter=9)
     assert ci_suite._error_type_count(entry) == 1
+
+
+# ---------------------------------------------------------------------------
+# _failure_events() - under asy_print_log.py's newest-entry rule a repeated code spends no slot, so a
+# failure is an ErrCount step not backed by a warning slot.
+# ---------------------------------------------------------------------------
+
+
+def test_failure_events_counts_repeats_the_ring_folded_into_one_slot(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry((10, "E"), counter=3)) == 3
+
+
+def test_failure_events_subtracts_each_warning_slot(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry((10, "E"), (15, "W"), (10, "E"), counter=4)) == 3
+
+
+def test_failure_events_is_zero_for_an_empty_or_unreadable_entry(ci_suite: ModuleType) -> None:
+    assert ci_suite._failure_events(_entry()) == 0
+    assert ci_suite._failure_events({}) == 0
+
+
+def test_link_failures_count_only_what_one_link_added(ci_suite: ModuleType) -> None:
+    # Run 5c's real case: each earlier link's boot logged SGP40's no-backup warning, folded into one slot.
+    before = _entry((65, "W"), counter=2)
+    after = _entry((65, "W"), (10, "E"), (65, "W"), counter=6)
+    assert ci_suite._failure_events(after) == 4
+    assert ci_suite._link_failures(before, after) == 3
+
+
+def test_a_restore_equal_to_the_ring_written_is_whole(ci_suite: ModuleType) -> None:
+    written = _entry((10, "E"), (65, "W"), counter=4)
+    assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=5))
+
+
+def test_a_whole_ring_followed_by_this_boots_own_warning_is_whole(ci_suite: ModuleType) -> None:
+    # CI's arzi and grkizi case: the restored ring, then the new boot's no-backup warning after it.
+    written = _entry((10, "E"), counter=3)
+    assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=4))
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=2))
+
+
+def test_a_lost_ring_holding_only_this_boots_warning_is_nothing(ci_suite: ModuleType) -> None:
+    written = _entry((10, "E"), (65, "W"), counter=4)
+    assert ci_suite._restore_is_all_or_nothing(written, _entry((65, "W"), counter=1))
+    assert ci_suite._restore_is_all_or_nothing(written, _entry())
+
+
+def test_a_partial_ring_or_a_lost_count_is_neither(ci_suite: ModuleType) -> None:
+    written = _entry((11, "E"), (10, "E"), (65, "W"), counter=6)
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=6))
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((11, "E"), (10, "E"), (65, "W"), counter=2))
+    assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), (11, "E"), counter=7))
 
 
 # ---------------------------------------------------------------------------
@@ -113,12 +166,13 @@ def test_run_5c_faults_every_bus_attached_driver_but_never_the_store_itself(ci_s
     assert set(ci_suite._healthy_store_fault_drivers(ctx)) == set(ci_suite._bus_fault_drivers(ctx)) - {"fram"}
 
 
-def test_the_only_error_source_exempt_from_run_5cs_loss_sweep_is_the_store_itself(ci_suite: ModuleType) -> None:
-    # Everything else in errcount is FRAM-backed and must come back across a commanded reboot.
-    # AsyFramManager cannot persist its own history through the store that failed, the one
-    # legitimate exemption, which _sensortask_scenarios.py pins from the real object graph too.
-    assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["FRAM"]
-    assert set(ci_suite._DRIVER_ERRCOUNT_NAME.values()) >= ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES
+def test_the_error_sources_exempt_from_run_5cs_loss_sweep_are_the_store_and_the_ram_only_config_log(ci_suite: ModuleType) -> None:
+    # Everything else in errcount is FRAM-backed and must come back across a commanded reboot. FRAMManager
+    # cannot persist its own history through the store that failed, and CFGMGR_SCD30 is RAM-only (owner,
+    # 2026-09-29: 'no extra FRAM chunk'); _sensortask_scenarios.py pins the same set from the real object graph.
+    assert sorted(ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES) == ["CFGMGR_SCD30", "FRAM"]
+    names = set(ci_suite._DRIVER_ERRCOUNT_NAME.values())
+    assert ci_suite._IN_MEMORY_ONLY_ERROR_SOURCES.issubset(names | {f"CFGMGR_{name}" for name in names})
 
 
 def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci_suite: ModuleType) -> None:
@@ -127,7 +181,7 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
     # check: the real device set decides who belongs.
 
     # Scoped to i2c/spi, the buses the twin's chip fakes can fault. uart_link's peer is a second
-    # UART_Comm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
+    # UARTComm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
     attached = set()
     for device in DEVICE_NAMES:
         doc = tomllib.loads(device_toml(device).read_text())
@@ -223,6 +277,14 @@ def test_error_counts_settle_only_once_consecutive_reads_agree(ci_suite: ModuleT
     assert ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=30.0) == {"SGP40": 3}
 
 
+def test_error_counts_settle_on_the_counter_while_a_repeated_code_keeps_one_slot(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The newest-entry rule: three identical failures hold one slot, so only the counter shows them landing.
+    reads = iter([1, 2, 3, 3, 3])
+    monkeypatch.setattr(ci_suite, "_errcount_all", lambda: {"SGP40": _entry((10, "E"), counter=next(reads))})
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    assert ci_suite._wait_for_error_counts_to_settle(["SGP40"], timeout_s=30.0) == {"SGP40": 3}
+
+
 def test_error_counts_that_never_settle_raise_instead_of_returning_a_moving_target(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     toggle = [0]
 
@@ -256,14 +318,13 @@ def test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry(ci_suite: Modu
 
 
 # ---------------------------------------------------------------------------
-# _put_reset_errors_timed() - the elapsed-time budget (BACKLOG item 24). A timeout only catches a
-# call that never finished; without this the suite was blind to the whole band between "normal" and
-# the server's own cap.
+# _put_reset_errors_timed() - the elapsed-time budget (SPECIFICATION.md C.7). A timeout only catches
+# a call that never finished; the budget covers the band between a normal reset and the server's own cap.
 # ---------------------------------------------------------------------------
 
 
 def _drive_timed_reset(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, elapsed_s: float, status: int = 200) -> "tuple[int, list[str], list[str]]":
-    """Runs _put_reset_errors_timed() with a scripted elapsed time; returns (status, oks, failures)."""
+    # Runs _put_reset_errors_timed() with a scripted elapsed time; returns (status, oks, failures).
     clock = iter([1000.0, 1000.0 + elapsed_s])
     monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, None))
@@ -338,7 +399,7 @@ def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suit
 
 
 def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
-    """Runs the check over one captured run log and returns whatever failures it recorded."""
+    # Runs the check over one captured run log and returns whatever failures it recorded.
     log = tmp_path / "run.log"
     log.write_text(log_text)
     saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated
@@ -365,13 +426,67 @@ def test_a_clean_run_log_records_no_failure(ci_suite: ModuleType, tmp_path: Path
     assert _memory_error_verdict(ci_suite, tmp_path, "OK: served\nOK: clean shutdown\n") == []
 
 
-def test_a_missing_log_is_not_reported_as_a_memory_error(ci_suite: ModuleType, tmp_path: Path) -> None:
-    # _read_log() returns "" for a log that was never written; a run that died before opening one
-    # fails on its own checks, and must not be blamed on an allocation it never made.
+@pytest.mark.parametrize("make", ["missing", "unreadable"])
+def test_a_missing_or_unreadable_log_fails_the_check_and_names_the_path(ci_suite: ModuleType, tmp_path: Path, make: str) -> None:
+    # Fails closed: a log the check cannot read is a run it cannot vouch for, never a clean one.
+    log = tmp_path / "absent.log"
+    if make == "unreadable":
+        log.mkdir()  # reading a directory raises, as any unreadable log does
     saved = list(ci_suite._FAILURES)
     ci_suite._FAILURES.clear()
     try:
-        ci_suite._check_no_memory_error_in_log(tmp_path / "absent.log", "Run 1")
-        assert ci_suite._FAILURES == []
+        ci_suite._check_no_memory_error_in_log(log, "Run 1")
+        failures = list(ci_suite._FAILURES)
     finally:
         ci_suite._FAILURES[:] = saved
+    assert len(failures) == 1, failures
+    assert "Run 1" in failures[0] and str(log) in failures[0], failures
+
+
+# ---------------------------------------------------------------------------
+# Run 9's host that never answers: the request leaves this host and goes unanswered (NTP_NO_REPLY), or, with no
+# route out (a network namespace holding only lo), the send itself fails (NTP_NOT_SENT). The route decides which.
+# ---------------------------------------------------------------------------
+
+
+def test_run_9_expects_no_reply_where_a_route_leaves_the_host(ci_suite: ModuleType) -> None:
+    no_reply, not_sent = ci_suite.code("E", "NTP_NO_REPLY"), ci_suite.code("E", "NTP_NOT_SENT")
+    ok, msg = ci_suite._ntp_unreachable_verdict([0, no_reply], route=True)
+    assert ok, msg
+    assert "NTP_NO_REPLY" in msg and "a route" in msg
+    assert not ci_suite._ntp_unreachable_verdict([0, not_sent], route=True)[0]  # the other code is not this branch's
+    assert not ci_suite._ntp_unreachable_verdict([0, not_sent, no_reply], route=True)[0]
+    assert not ci_suite._ntp_unreachable_verdict([0], route=True)[0]
+
+
+def test_run_9_expects_not_sent_where_no_route_leaves_the_host(ci_suite: ModuleType) -> None:
+    no_reply, not_sent = ci_suite.code("E", "NTP_NO_REPLY"), ci_suite.code("E", "NTP_NOT_SENT")
+    ok, msg = ci_suite._ntp_unreachable_verdict([not_sent], route=False)
+    assert ok, msg
+    assert "NTP_NOT_SENT" in msg and "no route" in msg
+    assert not ci_suite._ntp_unreachable_verdict([no_reply], route=False)[0]
+    assert not ci_suite._ntp_unreachable_verdict([], route=False)[0]
+
+
+def test_the_route_probe_finds_the_loopback_route(ci_suite: ModuleType) -> None:
+    assert ci_suite._route_leaves_host("127.0.0.1", 123) is True  # a UDP connect() sends nothing
+
+
+class _NoRouteSocket:
+    # A socket.socket stand-in whose connect() fails as a host with no route out does (ENETUNREACH).
+    def __init__(self, *_args: object) -> None:
+        self.closed = False
+
+    def __enter__(self) -> "_NoRouteSocket":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.closed = True
+
+    def connect(self, _addr: object) -> None:
+        raise OSError(errno.ENETUNREACH, "Network is unreachable")
+
+
+def test_the_route_probe_reports_a_host_with_no_route_out(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ci_suite.socket, "socket", _NoRouteSocket)
+    assert ci_suite._route_leaves_host("192.0.2.1", 123) is False

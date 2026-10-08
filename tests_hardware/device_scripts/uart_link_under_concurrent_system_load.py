@@ -13,28 +13,50 @@ import machine
 import asy_i2c_driver
 import asy_spi_driver
 import asy_uart_driver
-from asy_fram_manager import AsyFramManager
+from asy_fram_manager import FRAMManager
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, UART_Comm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
 
 BAUDRATE = 115200
 PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2
+# @tunable dev.uart_poll_idle_ms = 50
 POLL_IDLE_MS = 50
+# @tunable dev.uart_rxbuf = 512
 BUF_BYTES = 512
 _CMD_BANNER = 0x01
 _BANNER = b"loaded-link-ok"
+# @tunable l3.uart_link_under_concurrent_system_load_run_ms = 12000
 RUN_MS = 12000  # long enough for a second measurement window to mean something
 # A stop-and-wait round trip is a few ms; over this window even a heavily loaded board should land
 # many. The floor is deliberately far below the unloaded rate - this asserts the link keeps making
 # progress under load, not a throughput number.
+# @tunable l3.uart_link_under_concurrent_system_load_min_transfers = 20
 _MIN_TRANSFERS = 20  # measured 58 unloaded-by-comparison; this is a floor, not a throughput target
 # No transfer may come close to its own deadline: half the timeout still leaves the link visibly
 # healthy rather than merely not-yet-failing. Measured worst case under this load is ~114ms.
-_MAX_RTT_MS = TIMEOUT_MS // 2
+# @tunable l3.uart_link_under_concurrent_system_load_max_rtt_fraction = 2
+_MAX_RTT_FRACTION = 2
+_MAX_RTT_MS = TIMEOUT_MS // _MAX_RTT_FRACTION
+# @tunable l3.uart_link_under_concurrent_system_load_churn_block = 512
 _CHURN_BLOCK = 512  # bytes per allocation in the churn task - enough to fragment, far from the cap
+# @tunable l3.uart_link_under_concurrent_system_load_sensor_load_step_ms = 5
+_SENSOR_LOAD_STEP_MS = 5
+# @tunable l3.uart_link_under_concurrent_system_load_spi_load_step_ms = 10
+_SPI_LOAD_STEP_MS = 10
+# @tunable l3.uart_link_under_concurrent_system_load_churn_step_ms = 2
+_CHURN_STEP_MS = 2
+# @tunable l3.uart_link_under_concurrent_system_load_heap_sample_step_ms = 8
+_HEAP_SAMPLE_STEP_MS = 8
+# @tunable l3.uart_link_under_concurrent_system_load_transfer_step_ms = 5
+_TRANSFER_STEP_MS = 5
+# @tunable l3.uart_link_under_concurrent_system_load_heap_floor_samples = 8
+_HEAP_FLOOR_SAMPLES = 8
+# @tunable l3.uart_link_under_concurrent_system_load_heap_growth_max_bytes = 2048
+_HEAP_GROWTH_MAX_BYTES = 2048
 
 
 def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
@@ -51,6 +73,7 @@ class Load:
     def __init__(self) -> None:
         self.i2c0_reads = 0
         self.i2c1_reads = 0
+        self.i2c_errors = 0  # counted and reported, never silently dropped
         self.spi_reads = 0
         self.churn_blocks = 0
         self.alloc_failures = 0
@@ -64,9 +87,9 @@ async def _sgp_load_loop(sgp: "SGP40_I2C", load: Load) -> None:
         try:
             await sgp.measure_raw()
             load.i2c1_reads += 1
-        except Exception:  # a device fault is a different tier's subject
-            pass
-        await asyncio.sleep_ms(5)
+        except Exception:  # a device fault is a different tier's subject; counted so it stays visible
+            load.i2c_errors += 1
+        await asyncio.sleep_ms(_SENSOR_LOAD_STEP_MS)
 
 
 async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
@@ -76,15 +99,15 @@ async def _scd_load_loop(scd: SCD30_I2C, load: Load) -> None:
             await scd.get_measurement_interval()
             load.i2c0_reads += 1
         except Exception:
-            pass
-        await asyncio.sleep_ms(5)
+            load.i2c_errors += 1
+        await asyncio.sleep_ms(_SENSOR_LOAD_STEP_MS)
 
 
-async def _fram_read_loop(fram: AsyFramManager, load: Load) -> None:
+async def _fram_read_loop(fram: FRAMManager, load: Load) -> None:
     while not load.stop:
         if await fram.fram.verify_present():
             load.spi_reads += 1
-        await asyncio.sleep_ms(10)
+        await asyncio.sleep_ms(_SPI_LOAD_STEP_MS)
 
 
 async def _memory_churn_loop(load: Load) -> None:
@@ -98,10 +121,9 @@ async def _memory_churn_loop(load: Load) -> None:
         except MemoryError:
             load.alloc_failures += 1
             held = []
-            gc.collect()
         if len(held) > 24:
             held = held[12:]
-        await asyncio.sleep_ms(2)
+        await asyncio.sleep_ms(_CHURN_STEP_MS)
 
 
 async def _heap_floor() -> int:
@@ -109,15 +131,16 @@ async def _heap_floor() -> int:
     # 13 and 25 x 512 B - a 6144 B swing that swamped the 2048 B bound (queue F7). The minimum over
     # more than two churn cycles is the live floor, which is what "did the link retain" needs.
     floor = 0
-    for _ in range(8):
+    for _ in range(_HEAP_FLOOR_SAMPLES):
         gc.collect()
         sample = gc.mem_alloc()
         floor = sample if not floor else min(floor, sample)
-        await asyncio.sleep_ms(8)
+        await asyncio.sleep_ms(_HEAP_SAMPLE_STEP_MS)
     return floor
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     failures = []
     load = Load()
@@ -130,18 +153,16 @@ async def _main() -> None:
 
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
-        uart1, ROLE_RESPONDER, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS,
-        get_callback=get_callback, set_callback=set_callback, name="UART_RESP",
-    )
+    limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits, name="UART_INIT")
+    responder = UARTComm(uart1, ROLE_RESPONDER, limits=limits, callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP")
     await initiator.setup()
     await responder.setup()
 
-    # dev_legacy/README.md's wiring: i2c0 (13, 12), i2c1 (15, 14), SPI0 (2, 3, 4) with FRAM CS=5.
+    # the bench device TOML's wiring: i2c0 (13, 12), i2c1 (15, 14), SPI0 (2, 3, 4) with FRAM CS=5.
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     await fram.setup()
     # SCD30 and SGP40 both sit on i2c1 on this bench; the SCD30 getters below are reads, so the
     # loop labelled i2c0 is really "the other device on the shared bus" - both contend for i2c1,
@@ -153,6 +174,7 @@ async def _main() -> None:
     transfers = 0
     link_failures = 0
     worst_rtt_ms = 0
+    scratch = bytearray(len(_BANNER))  # each answer is a PieceBuffer (no buffer protocol): compared by one copy-out
     # Heap sampled at the third and the end, so the one-time cost of the first transactions and the
     # first fault is absorbed before anything is measured. What is asserted is the steady state:
     # under sustained parallel load the link must not grow the heap transaction by transaction.
@@ -175,12 +197,12 @@ async def _main() -> None:
             started = time.ticks_ms()
             answer = await initiator.uart_get(_CMD_BANNER)
             rtt = time.ticks_diff(time.ticks_ms(), started)
-            if answer is not None and bytes(answer) == _BANNER:
+            if answer is not None and len(answer) == len(_BANNER) and answer.copy_into(scratch) and scratch == _BANNER:
                 transfers += 1
                 worst_rtt_ms = max(worst_rtt_ms, rtt)
             else:
                 link_failures += 1
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_TRANSFER_STEP_MS)
     finally:
         # Sampled the same way and while the same loads still run, so both ends are comparable
         # floors - stopping the loads first would bias the difference negative instead.
@@ -216,7 +238,7 @@ async def _main() -> None:
     # The memory half of the claim. A frame is 53 bytes; two thirds of the run happen after the
     # sample, so real per-transaction retention would be thousands of bytes, far above this bound.
     heap_growth = heap_at_end - heap_at_third
-    if heap_at_third and heap_growth > 2048:
+    if heap_at_third and heap_growth > _HEAP_GROWTH_MAX_BYTES:
         failures.append(f"heap grew {heap_growth} bytes over the last two thirds of the run under parallel load")
 
     if failures:
@@ -224,7 +246,7 @@ async def _main() -> None:
     else:
         print(
             f"RESULT: PASS {transfers} transfers (worst RTT {worst_rtt_ms}ms) while scd={load.i2c0_reads} "
-            f"sgp={load.i2c1_reads} spi={load.spi_reads} churn={load.churn_blocks} "
+            f"sgp={load.i2c1_reads} i2cerr={load.i2c_errors} spi={load.spi_reads} churn={load.churn_blocks} "
             f"allocfail={load.alloc_failures} heapgrowth={heap_growth}B",
         )
 

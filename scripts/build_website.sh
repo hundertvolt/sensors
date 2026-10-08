@@ -8,9 +8,18 @@
 # inlining exist at all, and why keep-alive is deliberately not the answer.
 #
 # Usage: scripts/build_website.sh <device> [output_path]
-#   <device>     matches an html/definitions/<device>.json file, e.g. "wozi".
+#   <device>     names a devices/<device>.toml; its definitions are generated from it (Part H.5).
 #   output_path  forwarded to build_frozen_html.sh (default: frozen_modules/frozen_html.py).
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/build_website.sh <device> [output_path]
+Builds one device's website into a frozen module.
+  <device>     names a devices/<device>.toml
+  output_path  the frozen module written (default: frozen_modules/frozen_html.py)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 device="${1:?Usage: scripts/build_website.sh <device> [output_path]}"
@@ -23,19 +32,14 @@ stage_dir="$(mktemp -d)"
 scratch_dir="$(mktemp -d)"
 trap 'rm -rf "$stage_dir" "$scratch_dir"' EXIT
 
-# wozi/dev keep their hand-written html/definitions/<device>.json, which tests_js/'s PUT-matrix
-# fixtures load straight off disk; retiring them is deferred work (SPECIFICATION.md Part L.4).
-# Every other device has none, so buildgen generates one here rather than failing the build.
-definitions_src="html/definitions/${device}.json"
-if [[ ! -f "$definitions_src" ]]; then
-    device_toml="devices/${device}.toml"
-    if [[ ! -f "$device_toml" ]]; then
-        echo "error: no definitions file at $definitions_src and no $device_toml to generate one from" >&2
-        exit 1
-    fi
-    definitions_src="$scratch_dir/definitions.json"
-    python3 -m buildgen.definitions "$device_toml" --src-dir src --out "$definitions_src"
+# Every device's definitions are generated from its TOML and the src/ tags, never hand-kept.
+device_toml="devices/${device}.toml"
+if [[ ! -f "$device_toml" ]]; then
+    echo "error: no $device_toml" >&2
+    exit 1
 fi
+definitions_src="$scratch_dir/definitions.json"
+python3 -m buildgen.definitions "$device_toml" --src-dir src --out "$definitions_src"
 
 STAGE_DIR="$stage_dir" DEFINITIONS_SRC="$definitions_src" python3 <<'PYEOF'
 import os

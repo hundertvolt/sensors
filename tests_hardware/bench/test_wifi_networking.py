@@ -2,16 +2,18 @@
 over genuine lwIP/UDP (real captive-DNS/bind(53) lives in test_hotspot_role_reversal.py instead).
 Uses passive observation (Board.tail_log()), not exec()/run_isolated() - see run_isolated()."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import http_client
-from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, reset_all_error_logs
+from error_log_helpers import assert_module_error_log_contains, assert_no_task_ended, code, reset_all_error_logs
 from harness import Board, wait_until
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from bench_control import BenchBridge
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("network_neopixel", "ci_suite._run_9_ntp_unreachable")
 
 # ---------------------------------------------------------------------------
 # Item 7 - real STA connect/disconnect against a genuine AP: real SEEKING->ESTABLISHED
@@ -19,7 +21,23 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+# @tunable l4.wifi_networking_boot_tail_s = 45.0
+_BOOT_TAIL_S = 45.0
+# @tunable l4.wifi_networking_sync_tail_s = 60.0
+_SYNC_TAIL_S = 60.0
+# @tunable l4.wifi_networking_ntp_fault_tail_s = 90.0
+_ROGUE_TAIL_S = 90.0
+# @tunable l4.wifi_networking_reconnect_timeout_s = 60.0
+_RECONNECT_TIMEOUT_S = 60.0
+# @tunable l4.wifi_networking_reconnect_poll_s = 3.0
+_RECONNECT_POLL_S = 3.0
+# @tunable l4.wifi_networking_ready_probe_timeout_s = 5.0
+_READY_PROBE_TIMEOUT_S = 5.0
+# @tunable l4.wifi_networking_association_attempts = 2
+_ASSOCIATION_ATTEMPTS = 2
+
+
+def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "Callable[..., None]") -> None:
     # dut_ip (session-scoped) already proves a real STA connection was reached once this session -
     # this test's own value is confirming it happens again, cleanly, from a cold boot.
     #
@@ -31,15 +49,15 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
     # full suite runs, 12/12 clean in isolation, CYW43 reporting status -1 after the firmware's own
     # two retries). A second cold boot separates that from a break, which fails both - queue F13.
     attempts = []
-    for attempt in range(2):
+    for attempt in range(_ASSOCIATION_ATTEMPTS):
         bench.kick_all_stations()
         board.hard_reset()
-        joined = "\n".join(board.tail_log(duration_s=45.0))
+        joined = "\n".join(board.tail_log(duration_s=_BOOT_TAIL_S))
         established = "WLAN connection established" in joined and "Permanently no WLAN connection" not in joined
         attempts.append(joined)
         if established:
             if attempt:
-                print("RESULT NOTE: STA connect needed a second cold boot - one association was missed")
+                result_note("STA connect needed a second cold boot - one association was missed", recovery=True)
             break
     assert "Permanently no WLAN connection" not in attempts[-1], f"DUT fell back to hotspot mode instead of establishing a real STA connection, on {len(attempts)} consecutive cold boots:\n{attempts[-1]}"
     assert "WLAN connection established" in attempts[-1], f"no 'WLAN connection established' log line observed after {len(attempts)} cold boots:\n{attempts[-1]}"
@@ -52,7 +70,7 @@ def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, b
 
 
 def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board) -> None:
-    lines = board.tail_log(duration_s=60.0)
+    lines = board.tail_log(duration_s=_SYNC_TAIL_S)
     joined = "\n".join(lines)
     failure_markers = [ln for ln in lines if "NTP" in ln and ("fail" in ln.lower() or "error" in ln.lower() or "timeout" in ln.lower())]
     assert not failure_markers, "observed NTP failure/error/timeout log lines during a window with no fault injected:\n" + "\n".join(failure_markers)
@@ -65,7 +83,7 @@ def test_real_ntp_sync_succeeds_over_genuine_udp(board: Board) -> None:
 
 
 def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
-    lines = board.tail_log(duration_s=60.0)
+    lines = board.tail_log(duration_s=_SYNC_TAIL_S)
     failure_markers = [ln for ln in lines if "DNS" in ln and ("fail" in ln.lower() or "error" in ln.lower())]
     assert not failure_markers, "observed DNS failure/error log lines during a window with no fault injected:\n" + "\n".join(failure_markers)
 
@@ -76,7 +94,7 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # This tier's real-hardware proof for BACKLOG open question 6: only UDP 123 is blocked, not
     # the AP, so the STA link stays up - "isconnected()==True but one downstream operation is
     # unreachable", which tests/test_ntp_wifi_dns_integration.py proves at the mock level.
@@ -85,7 +103,7 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     try:
         bench.kick_all_stations()  # see conftest.py's dut_ip docstring for the full finding
         board.hard_reset()  # forces a fresh NTP sync attempt against the now-unreachable server
-        lines = board.tail_log(duration_s=90.0)  # generous relative to asy_ntp_client.py's own retry/backoff budget
+        lines = board.tail_log(duration_s=_ROGUE_TAIL_S)  # generous relative to asy_ntp_client.py's own retry/backoff budget
     finally:
         bench.unblock_udp_ports([123])
 
@@ -100,14 +118,14 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
     # occasionally lands on a real, disclosed CYW43-firmware/AP-state characteristic rather than
     # this test's own scenario - one more retry cycle before treating it as a real failure.
     try:
-        wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again after the hard_reset() above")
+        wait_until(lambda: _http_ok(dut_ip), timeout_s=_RECONNECT_TIMEOUT_S, poll_interval_s=_RECONNECT_POLL_S, description="DUT reachable over REST again after the hard_reset() above")
     except TimeoutError:
         bench.kick_all_stations()
         board.hard_reset()
-        wait_until(lambda: _http_ok(dut_ip), timeout_s=60.0, poll_interval_s=3.0, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
-    # A blocked port is routine for NTP (SPECIFICATION.md Part C.7.2): errno 21 (no reply) is logged
-    # and the task backs off in place - it must never end and cost the supervisor's reboot budget.
-    assert_module_error_log_contains(dut_ip, "NTP", 21, "E")
+        wait_until(lambda: _http_ok(dut_ip), timeout_s=_RECONNECT_TIMEOUT_S, poll_interval_s=_RECONNECT_POLL_S, description="DUT reachable over REST again (after one recovery hard_reset() retry - see this test's own comment)")
+    # A blocked port is handled in place by NTP (SPECIFICATION.md Part C.7.2): NTP_NO_REPLY is logged
+    # and the task backs off; an ended task would cost the supervisor's reboot budget.
+    assert_module_error_log_contains(dut_ip, "NTP", code("E", "NTP_NO_REPLY"), "E")
     restarts = [ln for ln in lines if "Task ended - attempting restart" in ln]
     assert not restarts, "a blocked NTP server made a task end and be restarted:\n" + "\n".join(restarts)
     assert_no_task_ended(dut_ip, "a blocked NTP server")  # the persisted record, beyond the tail window
@@ -115,6 +133,6 @@ def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board:
 
 def _http_ok(dut_ip: str) -> bool:
     try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=5.0).status_code == 200
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
     except OSError:
         return False

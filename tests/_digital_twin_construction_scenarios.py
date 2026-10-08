@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0, "ext")  # same convention as tests/_sensortask_scenarios.py's own comment
 sys.path.insert(0, "digital_twin")  # see tests/test_digital_twin_sgp40.py's own comment for why
+sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
 import _http_client
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -17,12 +18,13 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # already in it, a segfault rather than a failure (digital_twin/README.md "Known gaps").
 prewarm_poll_set()
 
-# Must run before AsyUDPSocket is constructed (DNSServer, inside AsyConnTime.__init__, built for
+# Must run before UDPSocket is constructed (CaptiveDNS, inside WifiService.__init__, built for
 # every device below) - same reasoning as tests/test_digital_twin_sensortask_integration.py's own
 # identical call.
 patch_asy_udp_socket_for_unix_port()
 
 import machine  # noqa: E402
+from _generated_module import boot_generated  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -40,6 +42,10 @@ if TYPE_CHECKING:
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
+
+
+# @tunable l2.construction_scenarios_run_timeout_s = 10.0
+_RUN_TIMEOUT_S = 10.0
 
 
 # Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
@@ -96,7 +102,7 @@ def _register_param(name: str) -> "Callable[[Callable[[str], None]], Callable[[s
 async def _boot_device(port: int, device: str) -> "Any":
     machine.configure_wiring(_wiring_plan(device))
     module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
     return module
 
 
@@ -125,10 +131,10 @@ def _scenario_boots_against_real_twin_buses(device: str) -> None:
     # test (tests/_shared_rest_roundtrip.py); adds "webserver" since this file exercises real HTTP.
     async def scenario() -> None:
         module = await _boot_device(_next_test_port(), device)
-        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver", "watchdog")
+        mandatory = ("conn", "ntp", "i2c0", "i2c1", "spi0", "fram", "sysfunct", "neopixel", "notification", "webserver")
         assert_named_modules_constructed(module, mandatory + _present_optional_instances(module, device))
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 @_register_param("get_measurements_and_sensors_are_reachable_and_shaped_correctly")
@@ -142,7 +148,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         module = await _boot_device(port, device)
         task = module.webserver.get_task_starters()[0]()
         # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
+        # made webserver.pr real-FRAM-backed on every real device, so _serve_loop() now awaits a real
         # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
         await asyncio.sleep(1.0)
         try:
@@ -157,7 +163,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 @_register_param("a_real_bus_fault_degrades_to_a_clean_response_not_a_crash")
@@ -171,7 +177,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         module = await _boot_device(port, device)
         import errno
 
-        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.FIXED_ADDRESSES),
+        # SGP40 is fixed-address (0x59) on every real device (buildgen.twin_wiring.fixed_address()),
         # but which bus it's actually wired to varies by device (wozi/dev already differ from each
         # other) - resolved here from the device's own real wiring plan, never assumed to be i2c1.
         plan = _wiring_plan(device)
@@ -188,7 +194,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         sgp40_chip.fault.inject_fault("writeto", OSError(errno.EIO, "test-injected"), times=5)
         task = module.webserver.get_task_starters()[0]()
         # See test_digital_twin_sensortask_integration.py's own _start_webserver() comment: WP1
-        # made webserver.pr real-FRAM-backed on every real device, so _run() now awaits a real
+        # made webserver.pr real-FRAM-backed on every real device, so _serve_loop() now awaits a real
         # self.pr.setup() before start_server()/bind - measured at ~400ms here too.
         await asyncio.sleep(1.0)
         try:
@@ -200,7 +206,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
 
 # ---------------------------------------------------------------------------

@@ -7,17 +7,19 @@ data to an external FRAM chip, and persists configuration to a JSON file on the 
 filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware, not loaded from
 the device filesystem at runtime.
 
-**5 units are currently deployed**: `arzi`, `wozi`, and three physically-identical-to-arzi units
-sharing the `neu` build (same sensors, different GPIO wiring). `dev` is a bench/test rig only — the
-one physically-flashed/bench-tested `src/`-based variant, never deployed in the field (see
-CLAUDE.md's hard rules for why wozi, not dev, is never flashed).
+**Five legacy units are in service**, all the owner's own and within reach at any time (owner,
+2026-09-26: 'I build all sensors and still own all of them - full access anytime'): `arzi`, `wozi`
+and three arzi-identical units sharing the `neu` build (same sensors, different GPIO wiring), running
+the legacy firmware on MicroPython 1.24.1. Each moves to the refactor only by the owner's own
+reflash. `dev` is the bench rig — the only unit a session flashes and bench-tests; no session ever
+flashes `wozi` (owner, 2026-09-03, CLAUDE.md).
 
 | Config | Sensors | FRAM | Watchdog | HTML source |
 |---|---|---|---|---|
-| arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `html_raw/arzi` |
-| neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `html_raw/arzi` (reused) |
-| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `html_raw/wozi` |
-| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `html_raw/dev` (bench rig) |
+| arzi | SCD30 (CO2/temp/hum), SGP40 (VOC) | yes | active (8000ms) | `legacy/firmware/html_raw/arzi` |
+| neu ×3 | same as arzi, different pin assignments | yes | active (8000ms) | `legacy/firmware/html_raw/arzi` (reused) |
+| wozi | SCD30, SGP40, BMP388 (pressure/temp) | yes | active (8000ms) | `legacy/firmware/html_raw/wozi` |
+| dev | SCD30, SGP40, BMP388, ISL29125 (RGB colour/lux, dev-only) — the other three share wozi's drivers with a different I2C bus pairing (Part C.8) | yes | active (8000ms) | `legacy/firmware/html_raw/dev` (bench rig) |
 
 ## Repository layout, architecture, refactor status, and the build process
 
@@ -33,10 +35,11 @@ Everyday build commands:
 ```sh
 uv run toolchain/setup_toolchain.py                              # first-time setup / everyday re-run (see SPECIFICATION.md Part B)
 uv run toolchain/setup_toolchain.py --latest                      # detect + pin + install newest stable MicroPython
-uv run toolchain/setup_toolchain.py test                          # offline re-verify an existing install (~30s), no network/apt access needed
+uv run toolchain/setup_toolchain.py test                          # offline re-verify an existing install (a few minutes), no network/apt access needed
 uv run toolchain/setup_toolchain.py setup --clean                 # wipe build-artifact dirs and rebuild from scratch, without re-cloning sources
 uv run toolchain/setup_toolchain.py setup --toolchain-dir /path   # install/build under a different directory than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
 uv run toolchain/setup_toolchain.py setup --jobs 4                # override parallel make jobs (default: all cores)
+uv run toolchain/setup_toolchain.py board                         # print the connected MicroPython board's serial path (no lock, no build)
 ```
 
 `setup_toolchain.py` (no subcommand) is shorthand for `setup` — any flag valid for `setup` also
@@ -44,16 +47,24 @@ works with no subcommand named. Full `setup` flag reference:
 
 | Flag | Effect |
 |---|---|
-| `--micropython-ref REF` | Build a specific MicroPython tag/ref instead of `toolchain/versions.toml`'s pinned one |
-| `--latest` | Detect the newest stable MicroPython release, pin `versions.toml` to it, then build that |
+| `--micropython-ref REF` | Build this MicroPython ref instead of the pin, without changing `versions.toml` (an off-pin build: the platform re-check applies before trusting it) |
+| `--latest` | Pin `versions.toml` to the newest stable MicroPython tag, then build it (a pin move: the owner's call, and the platform re-check follows); exclusive with `--micropython-ref` |
 | `--skip-apt` | Skip installing system/apt packages (assumes they're already present) |
-| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and both Unix-port variants `ports/unix/build-standard` and `ports/unix/build-settrace`) before building, without re-cloning git sources |
+| `--clean` | Wipe all build-artifact directories (`picotool/build`, `mpy-cross/build`, `ports/rp2/build-<board>`, and every Unix-port build flavour: `ports/unix/build-standard`, `build-settrace`, `build-lwip`) before building, without re-cloning git sources |
 | `--toolchain-dir PATH` | Directory holding the micropython/pico-sdk/picotool source trees (default: `$PICO_TOOLCHAIN_DIR` or `~/pico-toolchain`) |
 | `--jobs N` | Parallel make jobs (default: `os.cpu_count()`) |
 
-`test` re-verifies an already-installed toolchain (checks the Unix port and RP2 firmware both
-still build/run) with no network or apt access — the CI-friendly, ~30s re-check; it accepts the
-same `--toolchain-dir`/`--jobs` flags as `setup`.
+`test` re-verifies an already-installed toolchain (rebuilds `mpy-cross`, the RP2 firmware and the
+three Unix-port builds, each proven by its readbacks) with no network or apt access — the
+CI-friendly re-check, a few minutes; it accepts the same `--toolchain-dir`/`--jobs` flags as
+`setup`.
+
+Every `setup` and `test` run deletes `toolchain-record.json` in the toolchain directory first and
+writes it last: what was built from what — refs, commits, picotool, compilers, input hashes
+(SPECIFICATION.md B.5). A directory without one is unfinished or older, so `scripts/test.sh` reruns
+`setup` on it and `scripts/build_firmware.py` refuses it. picotool is rebuilt and
+`sudo make install`ed only when its tag changed or the installed binary no longer reports it. One
+run at a time per toolchain directory: a second fails at once, naming the first one's pid.
 
 ## Dev environment setup (generic / flash / bench)
 
@@ -63,16 +74,17 @@ superset of the one before it:
 | Tier | Adds on top of the previous tier | Command |
 |---|---|---|
 | generic | Python (`uv sync`) + website (`npm ci`) deps, the firmware/Unix-port toolchain above | `uv run toolchain/setup_toolchain.py env --tier generic` |
-| flash | Non-root USB serial access (`dialout` group) + an auto-detected real RP2040/Pico W board | `uv run toolchain/setup_toolchain.py env --tier flash` |
-| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP | `uv run toolchain/setup_toolchain.py env --tier bench` |
+| flash | Non-root USB serial access (`dialout` group) + a real board, resolved by USB vendor ID `2e8a` and its MicroPython `/dev/serial/by-id` name (SPECIFICATION.md B.12) | `uv run toolchain/setup_toolchain.py env --tier flash` |
+| bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP; the commands it installs and the passwordless-sudo rules it checks: `tests_hardware/README.md` Prerequisites | `uv run toolchain/setup_toolchain.py env --tier bench` |
 
-Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to
-the tier(s) below rather than needing them run separately first. apt packages, `dialout` group
-membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via
-`sudo`. `bench` is idempotent: re-running it against an already-configured bridge reports the
-existing AP's SSID rather than recreating (and re-randomizing) it — see `dev_legacy/README.md`'s
-WiFi/NTP/DNS section for the manual `nmcli` recipe this automates, including the Pico W
-`cyw43439`-specific WPA2/PMF tuning it applies.
+Every tier needs only itself run once on a given host — `flash`/`bench` call straight through to the
+tier(s) below rather than needing them run separately first. apt packages, `dialout` group
+membership, and the `bench` NetworkManager bridge/AP all install/configure automatically via `sudo`;
+each tier checks the commands it runs and installs the missing ones' packages, which `--skip-apt`
+turns into an error naming them. `bench` is idempotent: re-running it against an already-configured
+bridge reports the existing AP's SSID rather than recreating (and re-randomizing) it — see
+`tests_hardware/README.md`'s 'Host network' section for the manual `nmcli` recipe this automates,
+including the Pico W `cyw43439`-specific WPA2/PMF tuning it applies.
 
 Full `env` flag reference (in addition to `setup`'s `--micropython-ref`/`--latest`/`--clean`/
 `--toolchain-dir`/`--jobs` above, all of which `env` also accepts):
@@ -82,39 +94,46 @@ Full `env` flag reference (in addition to `setup`'s `--micropython-ref`/`--lates
 | `--tier {generic,flash,bench}` | Required. Which tier to set up |
 | `--skip-apt` | Skip apt packages, `dialout` group, and NetworkManager install (every step needing `sudo`) |
 | `--skip-npm` | Skip `npm ci` even if `package.json` is present |
-| `--device PATH` | `[flash/bench]` explicit serial device path, skips USB vendor-ID auto-detection |
+| `--device PATH` | `[flash/bench]` explicit serial device path; otherwise `$MPREMOTE_DEVICE`, otherwise the one board detected (none or several is an error) |
 | `--uplink-iface IFACE` | `[bench]` explicit uplink (internet-bearing) network interface, skips auto-detection |
 | `--wifi-iface IFACE` | `[bench]` explicit WiFi adapter to host the AP on, skips auto-detection |
 | `--ssid SSID` | `[bench]` explicit AP SSID — only used when creating a new bridge, ignored if one already exists |
-| `--password PW` | `[bench]` explicit AP password — only used when creating a new bridge, ignored if one already exists |
 
-USB device detection (by Raspberry Pi's USB vendor ID) and network interface detection (uplink =
-default-route interface, WiFi = a free adapter that isn't the uplink) are automatic but overridable
-with `--device`/`--uplink-iface`/`--wifi-iface` if a host has more than one candidate and
-auto-detection is ambiguous. Without `--ssid`/`--password`, a fresh bridge gets a randomly
-generated SSID/password (`generate_bench_ap_credentials()`) rather than a fixed default. Example,
-bench setup with an explicit interface pairing and fixed credentials (useful when auto-detection
-picks the wrong adapter, or a specific SSID/password is needed for a known client device):
+`BENCH_AP_PASSWORD` (environment variable) is the explicit AP password for a new bridge, ignored
+if one already exists; it is never a command-line flag.
+
+The board is resolved by USB vendor ID `2e8a` plus its MicroPython `/dev/serial/by-id` name (a
+debug probe shares the vendor ID) and named by that by-id path, which survives the re-enumeration
+a hard reset causes (SPECIFICATION.md B.12); `setup_toolchain.py board` prints it. Network
+interface detection (uplink = default-route interface, WiFi = a free adapter that isn't the
+uplink) is automatic too; both are overridable with `--device`/`--uplink-iface`/`--wifi-iface` if
+a host has more than one candidate. A new bridge gets a random SSID and password unless `--ssid`
+and `BENCH_AP_PASSWORD` are set — a throwaway password, used once and passed to `nmcli` on its
+command line, kept out of the echoed command; a generated one is shown once, and none is ever
+committed (owner, 2026-10-02). Example, bench setup with an explicit interface pairing and fixed
+credentials (useful when auto-detection picks the wrong adapter, or a specific SSID/password is
+needed for a known client device):
 
 ```sh
-uv run toolchain/setup_toolchain.py env --tier bench \
-    --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap --password correct-horse-battery
+BENCH_AP_PASSWORD=<psk> uv run toolchain/setup_toolchain.py env --tier bench \
+    --uplink-iface eth0 --wifi-iface wlan1 --ssid bench-ap
 ```
 
-Once a bridge exists, re-running `env --tier bench` (with or without these flags) never recreates
-or re-randomizes it — it only reports the existing SSID and self-heals two specific drift cases
-(a non-pinned AP channel, an unpinned/drifted bridge MAC — the latter only flagged, never
-auto-repaired, since fixing it live can cycle the interface the session itself depends on; see
-SPECIFICATION.md Part B.13). To force a genuinely new bridge/credentials, remove the existing
-bridge and both its slave connections first (`sudo nmcli connection delete br0-wifi-ap br0-eth0
-br0`) before re-running — mind that this briefly drops the bridge's own network connectivity, so
-never run it over a connection that depends on the bridge staying up.
+`env --tier bench` makes every bridge change under its own recovery timer, armed and verified before
+the change and disarmed only once `br0` has an address and the default route (SPECIFICATION.md Part
+B.13). Once a bridge exists, re-running `env --tier bench` (with or without these flags) never
+recreates or re-randomizes it — it only reports the existing SSID and self-heals two specific drift
+cases (a non-pinned AP channel, re-pinned under that timer, and an unpinned/drifted bridge MAC — the
+latter only flagged with the manual remedy, never auto-repaired, since fixing it live can cycle the
+interface the session itself depends on; see SPECIFICATION.md Part B.13). To force a new bridge,
+follow the delete-and-recreate recipe in `tests_hardware/README.md`'s 'Host network' section
+(dead-man's switch first).
 
 ## Code quality tooling
 
 Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
-`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the
-pre-refactor codebase — `python/`, `modules/` — isn't covered yet) — shellcheck over `scripts/`, actionlint +
+`buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the legacy tree,
+`legacy/`, is never covered) — shellcheck over `scripts/`, actionlint +
 zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
 runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
 different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
@@ -132,44 +151,58 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
 scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
+uv run pytest tests_scripts # the pytest tier alone - needs the toolchain built first
+                            # (scripts/test.sh or toolchain/setup_toolchain.py setup)
 ```
 
-`test.sh` takes no positional arguments (only the `--coverage` flag above); six environment
-variables tune it: `PICO_TOOLCHAIN_DIR` (where to find/build the toolchain, default
-`~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if the Unix port needs building and
-they're already present), `PER_FILE_TIMEOUT_S` (per-test-file timeout in seconds before a retry,
-default 240), `TEST_PARALLELISM` (how many test files run at once — by default autodetected, not a
-flat multiple of the core count: `test.sh` times a fixed loop in the very Unix-port interpreter the
-tests run under and picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond, honouring a cgroup
-CPU quota when one is set, because core *count* alone cannot tell a fast x86 runner from a slow
-host (the bench Pi4 probes at ~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than
-CPU-bound, so oversubscribing a fast host is close to free; set `TEST_PARALLELISM=1` for strictly
-sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
-(whole-suite timeout for the backgrounded `tests_scripts/` pytest job, default 1200 — roughly 5x its
-real runtime, so it only fires on a genuine hang), and `GC_THRESHOLD` (run the MicroPython tier with
-that `gc.threshold()` set instead of the interpreter's own reactive default — `GC_THRESHOLD=32768
-scripts/test.sh` is the value the firmware's boot entry ships, and the suite has to pass both ways;
-a value that is not an integer, or falls outside the rp2040's own 32-bit machine word, is rejected up
-front before the run touches anything, rather than failing inside the runner once per test file;
-see "Memory-safety discipline" in CLAUDE.md for why both runs are required and which one proves
-what). Every `tests/test_*.py` file runs as
-its own interpreter process and prints its own `PASS`/`FAIL` lines plus an `N/N passed` count as it
-goes, each line prefixed with that file's own name in brackets (e.g. `[test_sensortask_dev]`) since
-several files' output interleaves when they run concurrently; **the run ends with one rolled-up
-summary** (`tests_scripts/`'s own pass/fail, the
-MicroPython file count, every failed file named by path, and any file whose output contained a
-`MemoryError` or the interpreter's own `memory allocation failed` wording — caught-and-logged
-counts, and fails the run, even if that file's own tests passed; both spellings are matched because
-`src/` logs the exception's message and not its class, so a real degrade never says "MemoryError")
-so a failure earlier in a long run doesn't require scrolling back through the log:
+`test.sh` takes no positional arguments (only the `--coverage` flag above, and `--help`); an unknown
+argument, or an invalid `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S`, `TEST_PARALLELISM` or `GC_THRESHOLD`, exits 2
+before the run touches anything. Six environment variables tune it: `PICO_TOOLCHAIN_DIR` (where to
+find/build the toolchain, default `~/pico-toolchain`), `SKIP_APT=1` (skip apt package installs if
+the Unix port needs building and they're already present), `PER_FILE_TIMEOUT_S` (per-test-file
+timeout before a retry, a positive integer of seconds, default 240), `TEST_PARALLELISM` (how many
+test files run at once — by default autodetected, not a flat multiple of the core count: `test.sh`
+times a fixed loop in the very Unix-port interpreter the tests run under, on a monotonic clock, and
+picks 4x usable cores at <=250ms, 2x at <=900ms, 1x beyond or when the probe cannot run (the bands
+are SPECIFICATION.md Part N's `runner.*` rows), honouring a cgroup CPU quota when one is set,
+because core *count* alone cannot tell a fast x86 runner from a slow host (the bench Pi4 probes at
+~139 ms: 4x, 16 jobs, green). The suite is sleep-bound rather than CPU-bound, so oversubscribing a
+fast host is
+close to free; a `--coverage` run is the exception, CPU-bound under the settrace binary, and takes one
+file per usable core; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
+(whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
+seconds, default 1200 — roughly 5x its real runtime, so it only fires on a genuine hang), and
+`GC_THRESHOLD` (run the MicroPython tier with that `gc.threshold()` set instead of the interpreter's
+own reactive default — `GC_THRESHOLD=32768 scripts/test.sh` is the value the firmware's boot entry
+ships, and the suite has to pass both ways; a value that is not an integer, or falls outside the
+rp2040's own 32-bit machine word, is rejected up front before the run touches anything, rather than
+failing inside the runner once per test file; see "Memory-safety discipline" in CLAUDE.md for why
+both runs are required and which one proves what). Every `tests/test_*.py` file runs as its own
+interpreter process and prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the
+file's name in brackets (e.g. `[test_sensortask_dev]`), since several files' output interleaves when
+they run concurrently; a file collecting no test fails. The run ends with the summary block every
+runner prints (SPECIFICATION.md E.10): units, levels, the GC stage, counts, the failures named, and
+any file whose output contained a `MemoryError` or `memory allocation failed` — which fails the run
+even when its tests passed (`src/` logs the message, not the class):
 
 ```
-== Test summary ==
-tests_scripts/ (CPython/pytest): PASS
-tests/test_*.py (MicroPython Unix port): 41/42 files passed
-Failed files:
-  - tests/test_asy_scd30_driver.py
-Result: FAILED
+== Summary: scripts/test.sh ==
+Commit: 1a2b3c4
+Levels: L0 PASS · L1 FAIL · L2 PASS
+GC stage: -1 (reactive default)
+Counts (files): passed <n> · failed 1 · skipped 0 · deselected 0 · retried 1 · recovered 0 · vacuous 0
+Counts (tests): passed <n> · failed 1 · skipped <s> · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests/test_asy_scd30_driver.py: FAIL
+Skipped: none
+Deselected: none
+Passed only on retry:
+  - tests/test_uart_comm_hazard.py (attempt 2/3)
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
 ```
 
 All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
@@ -206,9 +239,12 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
 downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
-repo pins 22, so `apt install nodejs` would silently install a version the repo says not to use. A
-Node already on `PATH` that matches the pin is used as-is and never overridden, so `nvm`, a system
-install or CI's own `setup-node` all keep working. `--skip-npm` opts out of the whole JS side.
+repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use.
+The release's SHASUMS256.txt is fetched once per install and the tarball checked against it before
+anything is unpacked; the tree is unpacked aside, renamed into place and recorded in
+`node/node-record.json`. A Node already on `PATH` that matches the pin is used as-is and never
+overridden, so `nvm`, a system install or CI's own `setup-node` all keep working. `--skip-npm` opts
+out of the whole JS side.
 
 The individual commands, if you want to run them by hand:
 
@@ -225,27 +261,30 @@ npm run preview        # serves the repo root locally (python3 -m http.server 80
 ```
 
 `web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
-needs the MicroPython Unix port and the real website built first, then its own one-time browser install:
+needs the MicroPython Unix port and every device's real website built first, then its own one-time
+browser install:
 
 ```sh
 uv run toolchain/setup_toolchain.py        # one-time - builds the MicroPython Unix port (see above)
-scripts/build_website.sh wozi              # build the real website into frozen_modules/frozen_html.py
+npm run build:site                         # every device's real website, into build/generated_html/<device>/
 scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
 node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
 ```
 
-`npm run preview`, then open `http://localhost:8000/html/index.html?device=wozi` (or `?device=dev`),
-opens the locally-viewable prototype — the real `html/`+`js/`
-tree against a fake in-browser backend (`js/mock-server.js`, `mockdata/*.json`), driven by one of
-two worked-example `html/definitions/*.json` files. The `?device=` switch is a prototype-only
-convenience (see `js/app.js`'s own docstring) — real firmware always serves exactly one
-definitions.json, never branches on a query param.
+`npm run preview` (it generates every device's definitions first), then open
+`http://localhost:8000/html/index.html` — the real `html/`+`js/` tree against a fake in-browser
+backend (`js/mock-server.js`, data composed from `mockdata/samples.json`), for the first device of
+the generated manifest; `?device=<name>` picks another device of `devices/*.toml`. The `?device=`
+switch is a prototype-only convenience (see `js/app.js`'s own docstring) — real firmware always
+serves exactly one definitions.json, never branches on a query param.
 
 All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
 `web-unit-tests` jobs, plus `web-put-matrix` for the live PUT matrix, which is sharded three ways
 because that one file is the web tier's whole wall clock), gated by a `dorny/paths-filter` job so
-they only run when this push changed `html/`, `js/`, `tests_js/`, or their own tooling configs — alongside, not replacing, the Python
-jobs above, which keep gating on Python paths exactly as before. Config lives at the repo root
+they only run when this push changed the website (`html/`, `js/`, `tests_js/`, `mockdata/`), the
+sources its definitions are generated from (`src/`, `buildgen/`, `devices/`), or their own
+tooling — alongside, not replacing, the Python jobs above, which keep gating on Python paths
+exactly as before. Config lives at the repo root
 (`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
 `.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
 browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
@@ -255,10 +294,10 @@ locally.
 A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
 Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
 edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
-twin. Vitest's browser mode can't reach any of these itself (it's wired to a single Playwright
-provider, which can only automate Chromium-family browsers), so this runs as a standalone script,
-`scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see `SPECIFICATION.md` Part
-H.7's "Cross-browser coverage" for the full account of why and how.
+twin of every device in turn. Vitest's browser mode can't reach any of these itself (it's wired to
+a single Playwright provider, which can only automate Chromium-family browsers), so this runs as a
+standalone script, `scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see
+`SPECIFICATION.md` Part H.7's "Cross-browser coverage" for the full account of why and how.
 
 ## Building real firmware
 
@@ -266,7 +305,9 @@ H.7's "Cross-browser coverage" for the full account of why and how.
 `ext/microdot.py` + the real website (`html/`+`js/`, staged by `scripts/build_website.sh`) for one
 device. Build-only, like every other RP2 build this project's tooling produces — nothing here
 flashes or tests real hardware. Needs the toolchain already installed
-(`uv run toolchain/setup_toolchain.py`, see above):
+(`uv run toolchain/setup_toolchain.py`, see above): it holds the toolchain directory's lock for the
+build, refuses a directory without `toolchain-record.json`, and prints the recorded MicroPython ref
+and commit first:
 
 ```sh
 uv run scripts/build_firmware.py wozi                                   # -> build/firmware-wozi.uf2
@@ -275,9 +316,9 @@ uv run scripts/build_firmware.py wozi --jobs 8                          # overri
 uv run scripts/build_firmware.py wozi --toolchain-dir /path             # toolchain installed somewhere other than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
 ```
 
-`<device>` (positional, required) must match an `html/definitions/<device>.json` file (`wozi` and
-`dev` today — `dev` is the bench-only variant, never built for field deployment, but a real
-`src/`-assembled one all the same). This script only builds `build/firmware-<device>.uf2`; it never
+`<device>` (positional, required) must match a `devices/<device>.toml` file (`dev` is the
+bench-only variant, never built for field deployment, but a real `src/`-assembled one all the
+same). This script only builds `build/firmware-<device>.uf2`; it never
 flashes or touches real hardware — see "Flashing a real board" below for that step. Under the hood
 it also stages and freezes the real website for that one device, runnable on its own for just that
 step:
@@ -329,8 +370,8 @@ recipes are exercised as real, automated/manual tests, not just prose here —
 ## Real hardware access (mpremote)
 
 `mpremote` (dev dependency, installed by `uv sync`) talks to a real RP2040/Pico W over its USB
-serial port for flash-free iteration: `exec`/`run`/`ls`/`cat` execute or read against the device
-without writing flash, unlike `cp`/`rm`/`mkdir`/`rmdir`, which do. `scripts/mpremote_connect.sh`
+serial port. What each `mpremote` operation writes to the board, and what it stops:
+`tests_hardware/README.md` 'What each tool writes to the board'. `scripts/mpremote_connect.sh`
 wraps `uv run mpremote connect <device>` with a default device path of `/dev/ttyACM0`, overridable
 via `MPREMOTE_DEVICE`:
 
@@ -343,17 +384,16 @@ MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different seri
 
 Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
 $USER`, then re-login) and a real board plugged in — both checked/added automatically, including
-USB-vendor-ID auto-detection of which `/dev/ttyACM*` is the board (still pass it as
+resolving which serial device is the board (USB vendor `2e8a` plus its MicroPython by-id name,
+SPECIFICATION.md B.12; `uv run toolchain/setup_toolchain.py board` prints it — still pass it as
 `MPREMOTE_DEVICE` yourself, or override with `--device` if more than one is plugged in), by
 `uv run toolchain/setup_toolchain.py env --tier flash` (see "Dev environment setup" above). This
 is a genuinely different tier from the mocked `tests/` suite (which
 runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
 `SPECIFICATION.md` Part E) and from `scripts/build_firmware.py` (which builds a `.uf2` but never
-flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against a physical
-bench unit — full workflow, including a frozen-firmware full-system bring-up and a bridged-AP
-WiFi/NTP/DNS integration setup — is documented as its own single source of truth in
-`dev_legacy/README.md` (see "Further reading" below); `dev_legacy/`'s own sessions are exploratory/
-ad hoc bring-up logs, distinct from **`tests_hardware/`**, the newer structured, repeatable
+flashes or touches real hardware, see above). Real-hardware-in-the-loop testing against the
+physical bench unit is documented in `tests_hardware/README.md` (bench wiring, host network, tool
+writes, by-hand workflow). **`tests_hardware/`** itself is the structured, repeatable
 `pytest`-based automated test tier (plus a separate manual-test runner) built against this same
 `mpremote`/bench-bridge access — see `tests_hardware/README.md` for the full reference (prerequisites,
 env vars, safety facts, known assumptions) and the essential commands below for how to run it.
@@ -374,11 +414,14 @@ know (safety facts, known assumptions/findings); this section only covers how to
 | manual | Same as flash/bench, plus a human present | `scripts/run_manual_hardware_tests.sh` |
 
 ```sh
-# Flash tier: real USB board, no network
+# Flash tier (L3): runs L0-L2 first, then tests_hardware/flash/ on a real USB board, no network
 scripts/run_flash_hardware_suite.sh
 
-# Bench tier: flash tier + real WiFi bridge (strict superset)
+# Bench tier (L4): runs L0-L2, then L3 as its own clean step, then tests_hardware/bench/ (WiFi bridge)
 scripts/run_bench_hardware_suite.sh
+
+# --skip-lower-levels is for debugging only: the run is never reported clean (NOT CLEAN, exit 4)
+scripts/run_flash_hardware_suite.sh --skip-lower-levels
 
 # Either wrapper passes through any extra pytest args
 scripts/run_bench_hardware_suite.sh -k test_hotspot_role_reversal   # only tests matching a substring
@@ -411,15 +454,9 @@ scripts/run_manual_hardware_tests.sh                 # run all of them, in seque
 uv run pytest tests_hardware --collect-only
 ```
 
-Every automated invocation above (flash/bench/soak) already ends with a clear pass/fail summary,
-not just an exit code: `-v` per-test output, then either `OK: real-hardware suite run clean - no
-unexpected skips, no failures.` or a `FAILED: ...` line naming what went wrong (an unexpected skip
-lists which test, a real failure shows pytest's own summary above it) — see
-`scripts/_require_clean_hardware_run.sh`, the shared wrapper both `run_flash_hardware_suite.sh` and
-`run_bench_hardware_suite.sh` call through to; a plain skip (hardware unreachable) is treated as a
-failure here, not a silent pass, since `tests_hardware/`'s own fixtures skip identically whether
-hardware is genuinely absent or just became unreachable mid-run. The manual runner prints its own
-equivalent summary at the end (`All N manual test(s) passed.` or `N/M manual test(s) failed: ...`).
+Every runner, the manual one included, ends with the summary block (SPECIFICATION.md E.10), its
+verdict read from the run record: a test skipped for an unreachable board is not clean, and a
+deselected gate is named, not hidden.
 
 ## Digital twin (hardware simulator)
 
@@ -519,9 +556,8 @@ scripts/run_digital_twin_ci.sh          # wozi (default)
 scripts/run_digital_twin_ci.sh dev      # or any other real device variant
 ```
 
-Ends with its own clear summary: `== digital-twin CI suite PASSED: every check succeeded` or
-`== digital-twin CI suite FAILED: N check(s) failed`, listing each failed check by name. Logs from
-every subprocess run land in `digital_twin_ci_logs/`. This is what `.github/workflows/ci.yml` runs
+It ends with the summary block (SPECIFICATION.md E.10). Logs from every subprocess run land in
+`digital_twin_ci_logs/`. This is what `.github/workflows/ci.yml` runs
 on every push/PR — see `digital_twin/README.md`'s "Automated CI suite" section for the full
 reference.
 
@@ -559,11 +595,11 @@ open http://127.0.0.1:8080/   # the real website - a browser (not curl) is the u
 ```
 
 **2. Set the log level to `all` (5) via the real API, then reboot to see a full startup log.**
-`DebugLevel` is a persisted `/system` setting (0-5, see `print_log.py`'s `PrintLog.level_*()`
-methods) — like every config write, it takes effect immediately (the accepted value is pushed live
+`DebugLevel` is a persisted `/system` setting (0 off … 5 all, the `level` every `PrintLog` reads) —
+like every config write, it takes effect immediately (the accepted value is pushed live
 the moment the request is validated) and is saved to disk shortly after, off the request's own
-critical path (`config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
-`system_service.py`'s `set_level_setters()`/`_apply_level()` registry pushes any accepted
+critical path (`asy_config_manager.py`'s deferred-flush design, SPECIFICATION.md Part F.2):
+`asy_system_service.py`'s `level_setters` provider/`_apply_level()` registry pushes any accepted
 `DebugLevel` write straight out to every other already-constructed module's own
 `PrintLog.set_level()`, live, no reboot required (confirmed directly — a running twin's console
 starts emitting full per-cycle event traces the instant the PUT below lands). The reboot that
@@ -604,17 +640,17 @@ curl -s -X PUT -H "Content-Type: application/json" -d '{"GMTOffset": 3600, "DSTO
 curl -s -X PUT -H "Content-Type: application/json" \
   -d '{"WarnCO2": 1500, "WarnVOC": 300, "WarnHum": 60.0}' http://127.0.0.1:8080/notification
 curl -s -X PUT -H "Content-Type: application/json" \
-  -d '{"SCD30": {"MeasInt": 4}, "SGP40": {"BackupPeriod": 2}, "BMP3XX": {"SampleInterv": 3}}' \
+  -d '{"SCD30": {"MeasInterval": 4}, "SGP40": {"BackupPeriod": 2}, "BMP3XX": {"SampleInterval": 3}}' \
   http://127.0.0.1:8080/sensors
 ```
 
-Every field type is checked strictly against its schema — a JSON integer where a `"float"` field is
-declared (e.g. `60` instead of `60.0`) is correctly rejected as `"Invalid"`, not a bug; send a real
-decimal point for float-typed fields (`WarnHum`/`TempOffs`/`Interv`/`FlashDur`, ...). Read each
-endpoint back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
+Every field is checked against its schema: a JSON integer for a `"float"` field (`60` for `WarnHum`)
+is allowed and stored as `60.0`; a float for an `"int"` field is allowed only without a fractional
+part (`5.0` → `5`, `5.7` is `"Invalid"`); `true`/`false` is never a number. Read each endpoint
+back (`curl -s http://127.0.0.1:8080/<endpoint>`) to confirm the write took, then Ctrl-C
 and boot once more without wiping `digital_twin/config/` (nor `digital_twin/scd30_state.json`, this
 entry point's own default persisted path) to confirm it survived the restart — including SCD30's
-own NVM-backed fields (`MeasInt`, `TempOffs`, ...), which `digital_twin/_scd30_chip.py` persists the
+own NVM-backed fields (`MeasInterval`, `TempOffset`, ...), which `digital_twin/_scd30_chip.py` persists the
 same explicit-flush way `_fram_chip.py` does (see `digital_twin/README.md`'s "SCD30 persistence"
 section).
 
@@ -632,7 +668,7 @@ scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 \
 Watch `/status`'s `errcount` section for each affected module's counter to tick up, then confirm
 `/measurements` still returns plausible readings from every sensor once the run has been up for a
 few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
-task-failure streak beyond `system_service.py`'s own threshold triggers a real reboot request too
+task-failure streak beyond `asy_system_service.py`'s own threshold triggers a real reboot request too
 (logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
 restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedResetError` instead, which
 is expected and harmless - see `SimulatedRebootError`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
@@ -669,9 +705,11 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   architecture spec, the `src/` production-quality checklist, testing & coverage,
   MicroPython/RP2040 platform-target facts, the cross-cutting shared-pattern/primitive-reuse
   catalog, the website's own architecture, the new-driver checklist, the device-TOML/`buildgen`
-  build chain and a per-chip reference — all in one place, organized into lettered Parts (A-M) for different needs. Produced by a first-pass doc-scatter cleanup that merged
-  `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, most of this
-  file's former "Repository layout"/"Architecture at a glance"/"Refactor in progress"/"Build
+  build chain, a per-chip reference and the tunable-parameter register (Part N) — all in one place,
+  organized into lettered Parts (A-N) for different needs. Produced by a first-pass doc-scatter
+  cleanup that merged `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`,
+  `toolchain/README.md`, most of this file's former "Repository layout"/"Architecture at a
+  glance"/"Refactor in progress"/"Build
   process" content, and the spec-shaped parts of `CLAUDE.md`/`BACKLOG.md` into one document. Start
   here for "how does this codebase actually work" or "what shape should a new driver's code take."
   `DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, and `toolchain/README.md` were deleted once
@@ -695,8 +733,17 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   changes that must be mirrored into the Arduino peer's C implementation of the same protocol (plus
   the Python-internal changes explicitly recorded as having no C impact). Carries those decisions
   across the gap until that C source (`arduino/libraries/Async_UART_Comm/`, imported 2026-09-13) is
-  reconciled - outside this project's scope (owner, 2026-09-24) - then gets deleted.
+  reconciled: kept until the post-audit C reconciliation deletes it (owner, 2026-09-25).
   The protocol itself is specified in `SPECIFICATION.md` Part J, which is permanent.
+- **[`PROJECT_AUDIT_PLAN.md`](PROJECT_AUDIT_PLAN.md)** — the plan and topic catalog for the
+  whole-project audit (broad and deep, every tier): scope, method, open owner decisions, per-area
+  topics and unverified seed observations. Planning only: its execution is blocked until the owner's
+  explicit go-ahead. Deleted once the audit closes and its outcomes are migrated. Not the retired
+  `src/`-only `AUDIT_PLAN.md` listed below.
+- **[`audit/`](audit/)** — that audit's temporary apparatus: `PLANNING_SURVEY.md` (the raw, unverified
+  survey the plan was built from), the harvest of what the project's own comments, docs and history
+  already record, the plan validators under `sweeps/`, and later the findings register. Outside the
+  lint/typecheck scopes; deleted together with the plan.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
 lines and deleted once its findings are migrated. Never treat one as a durable reference; for
@@ -714,7 +761,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)** — every piece of vendored or
   attribution-derived third-party code in one place (Microdot, freezefs, the Adafruit-derived
   sensor drivers, the DFRobot-derived VOC algorithm port), plus the one area where a specific
-  source couldn't be established (`captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
+  source couldn't be established (`asy_captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
   disclosure that parts of this codebase were written with AI assistance.
 
 **`digital_twin/README.md`** (permanent, kept current):
@@ -722,37 +769,30 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **`digital_twin/README.md`** — the standing reference for the hardware simulator: what's there,
   how to swap it in for a Unix-port run, FRAM/SCD30 persistence, running its own tests, and how to
   add a new chip fake when a new sensor driver lands (required per `SPECIFICATION.md` Part C.11
-  point 9). Folding it into `SPECIFICATION.md`, the way `src/README.md`/`tests/README.md` were, is
-  an open option. See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the
-  architecture.
+  point 9). See `SPECIFICATION.md` Part A.10 for how it fits into the rest of the architecture.
 
 **`tests_hardware/README.md`** (permanent, kept current):
 
 - **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
   prerequisites, environment variables, how to run each tier, the safety facts (the
   `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
-  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the ISL29125
-  bench-rig facts and the numbered audit passes that found this tier's own gaps. CLAUDE.md's
+  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the dev
+  bench's wiring, chips, host-network recipe and dated state, the ISL29125 bench-rig facts and the
+  numbered audit passes that found this tier's own gaps. CLAUDE.md's
   real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
   BACKLOG.md's "Real-hardware work still owed" says *what* is owed, this file says *how*.
 
-**`dev_legacy/README.md`** (permanent, kept current):
+**`legacy/README.md`** (permanent):
 
-- **`dev_legacy/README.md`** — the single source of truth for the physical "dev" RP2040 bench
-  unit: wiring, chip identities, confirmed-working status (per peripheral and for the full
-  assembled system), current bench state, the `mpremote` workflow for testing `src/` drivers
-  against it (see "Real hardware access (mpremote)" above), building/flashing a frozen firmware for
-  a full-system bring-up, and the bridged-AP setup for real WiFi/NTP/DNS integration testing — see
-  that file itself for specifics, not restated here. Also holds, in its own clearly-marked final
-  section, a historical, frozen-in-time snapshot of this unit's onboard filesystem from 2026-08-27
-  (back when it still ran 1.24.1) — reference material for future `src/` promotion work, not
-  itself reviewed, promoted, or covered by lint/type/test config.
+- **`legacy/README.md`** — the legacy tree's own description: `legacy/firmware/` (what the owner's
+  legacy units run, MicroPython 1.24.1) and `legacy/dev_drivers/` (the dev unit's 2026-08-27
+  snapshot); reference-only (CLAUDE.md).
 
 `HARDWARE_TEST_PLAN.md`, `tmp_hardware_test_candidates.md`, `REAL_HARDWARE_HANDOFF.md`,
 `REAL_HARDWARE_RUN_LOG.md`, and `DEV_HARDWARE_BASELINE_PLAN.md` — five temporary real-hardware
 planning/handoff docs, all now deleted (2026-09-04) once real-hardware execution was genuinely
 complete and verified (both `tests_hardware/` tiers running clean end to end on the bench Pi4).
-Everything permanent each one settled was migrated first: the five-backend model table, the
+Everything permanent in each one was migrated first: the test-tier table (now the level ladder), the
 shared-behavior-catalog/capability-adapter design, the no-extra-flash-cycles harness's two execution
 modes, the hotspot role-reversal deep-dive's verified driver-behavior facts, and the mock/twin
 overlap scan now live in `SPECIFICATION.md` Part E.6; the "a session needs the project owner's

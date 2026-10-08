@@ -1,11 +1,11 @@
 # Pin for the build-environment installer (toolchain/setup_toolchain.py).
 #
 # Only the MicroPython ref is pinned by hand. pico-sdk is derived from MicroPython's own
-# lib/pico-sdk submodule at this ref, picotool as the newest tag matching its major.minor
-# (SPECIFICATION.md Part B.3).
+# lib/pico-sdk submodule at this ref, picotool as the newest tag sharing its major.minor (inside
+# pico-sdk's same-major rule, SPECIFICATION.md B.1).
 #
-# To move: change `ref` (or run the installer with --latest to write back the newest stable tag),
-# then re-run the installer.
+# A move is the owner's call (owner, 2026-09-26) and the platform re-check follows (SPECIFICATION.md
+# Part F): change `ref`, or run the installer with --latest, then re-run the installer.
 [micropython]
 ref = "v1.29.0"
 
@@ -40,13 +40,20 @@ apt_packages = [
 # B.14.2.
 [lwip]
 MEMP_NUM_TCP_PCB = 9
+# @tunable lwip.memp_num_tcp_pcb_listen = 8
 MEMP_NUM_TCP_PCB_LISTEN = 8
+# @tunable lwip.memp_num_pbuf = 16
 MEMP_NUM_PBUF = 16
+# @tunable lwip.pbuf_pool_size = 16
 PBUF_POOL_SIZE = 16
+# @tunable lwip.memp_num_udp_pcb = 5
 MEMP_NUM_UDP_PCB = 5
 LWIP_STATS = 0
 MEM_SIZE = 12000
+# @tunable lwip.tcp_mss = 800
 TCP_MSS = 800
+# @tunable lwip.tcp_wnd = 6400
 TCP_WND = 6400
+# @tunable lwip.tcp_snd_buf = 6400
 TCP_SND_BUF = 6400
 MEMP_NUM_TCP_SEG = 48

@@ -16,8 +16,8 @@ _ARDUINO_VENDOR = "2341"  # the bench's UART peer: a real ACM device that is NOT
 
 
 class _Tree:
-    """One fabricated host: `/sys/class/tty`, `/dev` and `/dev/serial/by-id`, laid out exactly as
-    the kernel does (by-id entries are `../../ttyACMx` relative symlinks)."""
+    # One fabricated host: `/sys/class/tty`, `/dev` and `/dev/serial/by-id`, laid out exactly as
+    # the kernel does (by-id entries are `../../ttyACMx` relative symlinks).
 
     def __init__(self, root: Path) -> None:
         self.sys_tty = root / "sys" / "class" / "tty"

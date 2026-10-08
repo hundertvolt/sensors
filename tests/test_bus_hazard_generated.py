@@ -11,6 +11,7 @@ from _bus_hazard_catalog import (
     make_i2c,
     scenario_a_write_does_not_disturb_concurrent_sibling_reads,
     scenario_all_occupants_concurrent_reads_stay_correct,
+    scenario_bus_recovery_does_not_disturb_concurrent_siblings,
     scenario_each_occupant_never_touches_an_unexpected_address,
     scenario_general_call_does_not_disturb_concurrent_siblings,
     scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read,
@@ -45,9 +46,9 @@ def _generated_src_dir() -> str:
 
 
 def _all_device_wiring_plans() -> "list[tuple[str, dict[str, Any]]]":
-    """(device, plan) for every real devices/*.toml - discovered from whichever wiring-plan JSONs
-    scripts/_generate_sensortask_modules.py already wrote, not a hand-kept device list, so a 7th
-    device is picked up with zero edits here."""
+    # (device, plan) for every real devices/*.toml - discovered from whichever wiring-plan JSONs
+    # scripts/_generate_sensortask_modules.py already wrote, not a hand-kept device list, so a 7th
+    # device is picked up with zero edits here.
     src_dir = _generated_src_dir()
     # os.listdir() + manual filtering, not glob - MicroPython's Unix-port test build has no glob
     # module (confirmed by grep: nothing under tests/ imports it, every existing directory scan
@@ -128,6 +129,11 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
         run(scenario_general_call_does_not_disturb_concurrent_siblings(_make_build_fresh(bus_name, attachments)))
 
     namespace[f"{prefix}_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets"] = test_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets
+
+    def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets() -> None:
+        run(scenario_bus_recovery_does_not_disturb_concurrent_siblings(_make_build_fresh(bus_name, attachments)))
+
+    namespace[f"{prefix}_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
 for _device, _plan in _all_device_wiring_plans():

@@ -1,5 +1,5 @@
 """Standalone, `src/`-free CLI launcher/demo for the digital twin (`micropython digital_twin/launch.py [options]`) — brings up the same bus/peripheral wiring `sensortask_wozi.build_system()` uses and periodically drives one real bus-level read per sensor, a `WLAN.connect()` attempt, and WDT feeding.
-`--fault DEVICE:OP[:TIMES]` exposes each chip fake's existing `FaultInjector` API. `parse_args()` is hand-rolled (the vendored `argparse` lacks `action="append"`/`choices=`). See `digital_twin/README.md`'s "What's here" section."""
+`--fault DEVICE:OP[:TIMES]` exposes each chip fake's existing `FaultInjector` API (owner, 2026-08-12: chosen over a probabilistic flaky mode). `parse_args()` is hand-rolled (the vendored `argparse` lacks `action="append"`/`choices=`). See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
 import errno
@@ -16,8 +16,10 @@ if TYPE_CHECKING:
 
 import machine
 import network
+from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, WDT, Pin
 from unix_port_gc_unwedge import unwedge_heap_after_interrupt
+from unix_port_unretrieved_report import install
 
 _FAULT_DEVICE_OPS = {
     "sgp40": ("writeto", "readfrom_into"),
@@ -38,8 +40,11 @@ _WIFI_OUTCOME_MAP = {
 
 _SSID = "digital-twin-ssid"
 _PASSWORD = "digital-twin-password"
+# @tunable l2.twin_wdt_feed_interval_s = 1.0
 _WDT_FEED_INTERVAL_S = 1.0  # comfortably under the WDT's own 8000ms timeout
+# @tunable l2.launch_sensor_poll_interval_s = 2.0
 _SENSOR_POLL_INTERVAL_S = 2.0
+# @tunable l2.launch_wifi_poll_interval_s = 0.1
 _WIFI_POLL_INTERVAL_S = 0.1
 
 
@@ -116,24 +121,9 @@ def _parse_wifi_outcome(value: str) -> int:
 
 
 class LaunchConfig:
-    def __init__(
-        self,
-        seed: "int | None" = None,
-        fram_state_path: "str | None" = None,
-        scd30_state_path: "str | None" = None,
-        faults: "list[tuple[str, str, int]] | None" = None,
-        hangs: "list[tuple[str, str, float, int]] | None" = None,
-        wifi_outcomes: "list[int] | None" = None,
-        *,
-        no_wdt_feed: bool = False,
-        duration: "float | None" = None,
-    ) -> None:
-        self.seed = seed
-        self.fram_state_path = fram_state_path
-        self.scd30_state_path = scd30_state_path
-        self.faults = faults if faults is not None else []
-        self.hangs = hangs if hangs is not None else []
-        self.wifi_outcomes = wifi_outcomes if wifi_outcomes is not None else []
+    def __init__(self, state: StatePaths, injections: Injections, *, no_wdt_feed: bool = False, duration: "float | None" = None) -> None:
+        self.state = state
+        self.injections = injections
         self.no_wdt_feed = no_wdt_feed
         self.duration = duration
 
@@ -144,7 +134,23 @@ def _pop_value(remaining: "list[str]", flag: str) -> str:
     return remaining.pop(0)
 
 
+_USAGE = """Usage: micropython digital_twin/launch.py [options]
+  --seed N                 random seed for the chip fakes (default: none)
+  --fram-state-path PATH   persist the FRAM image there (default: in memory)
+  --scd30-state-path PATH  persist the SCD30's NVM there (default: in memory)
+  --fault DEVICE:OP[:TIMES]          inject an OSError (repeatable; TIMES default 1)
+  --hang DEVICE:OP:SECONDS[:TIMES]   inject a blocking hang (repeatable; TIMES default 1)
+  --wifi-outcome OUTCOME   scripted connect outcome (repeatable): connect_fail, no_ap, success, wrong_password
+  --no-wdt-feed            never feed the watchdog (default: fed)
+  --duration SECONDS       stop after this long (default: run until interrupted)
+  -h, --help               print this and exit 0"""
+
+
 def parse_args(argv: "list[str]") -> "LaunchConfig":
+    # --help is answered before any other argument is read, so nothing else in the file runs.
+    if "-h" in argv or "--help" in argv:
+        print(_USAGE)
+        sys.exit(0)
     remaining = list(argv)
     seed: int | None = None
     fram_state_path: str | None = None
@@ -177,12 +183,8 @@ def parse_args(argv: "list[str]") -> "LaunchConfig":
             raise ValueError(f"unrecognized argument: {arg!r}")
 
     return LaunchConfig(
-        seed=seed,
-        fram_state_path=fram_state_path,
-        scd30_state_path=scd30_state_path,
-        faults=faults,
-        hangs=hangs,
-        wifi_outcomes=wifi_outcomes,
+        StatePaths(fram_state_path, scd30_state_path),
+        Injections(seed, faults, hangs, wifi_outcomes),
         no_wdt_feed=no_wdt_feed,
         duration=duration,
     )
@@ -347,7 +349,9 @@ async def _sensor_loop(i2c0: "I2C", i2c1: "I2C", summary: "dict[str, Any]") -> N
 
 
 async def main(config: "LaunchConfig") -> "dict[str, Any]":
-    if config.seed is not None:
+    install()  # every unretrieved task exception prints, at every level (Part I.4(e))
+    injections = config.injections
+    if injections.seed is not None:
         # MicroPython's `random` has no instantiable Random class, unlike CPython - but every
         # chip fake's random_source=None default already falls back to this same module-level
         # generator, so reseeding it here seeds every wired chip's walk at once.
@@ -356,16 +360,17 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
         # a distinct generator; this simpler case does not need it.
         import random as _random_module
 
-        _random_module.seed(config.seed)
-    machine.configure_fram_state_path(config.fram_state_path)
-    machine.configure_scd30_state_path(config.scd30_state_path)
+        _random_module.seed(injections.seed)
+    machine.configure_fram_state_path(config.state.fram)
+    machine.configure_scd30_state_path(config.state.scd30)
 
     print(
-        f"digital_twin/launch.py starting - seed={config.seed!r} fram_state_path={config.fram_state_path!r} "
-        f"scd30_state_path={config.scd30_state_path!r} no_wdt_feed={config.no_wdt_feed!r} "
-        f"duration={config.duration!r} faults={config.faults!r} hangs={config.hangs!r} wifi_outcomes={config.wifi_outcomes!r}",
+        f"digital_twin/launch.py starting - seed={injections.seed!r} fram_state_path={config.state.fram!r} "
+        f"scd30_state_path={config.state.scd30!r} no_wdt_feed={config.no_wdt_feed!r} "
+        f"duration={config.duration!r} faults={injections.faults!r} hangs={injections.hangs!r} wifi_outcomes={injections.wifi_outcomes!r}",
     )
 
+    # @tunable wdt.timeout_ms = 8000
     watchdog = WDT(timeout=8000)
     i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     i2c1 = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
@@ -373,13 +378,13 @@ async def main(config: "LaunchConfig") -> "dict[str, Any]":
     wlan = network.WLAN(network.STA_IF)
 
     chips = {"scd30": i2c0.devices[0x61], "sgp40": i2c1.devices[0x59], "bmp3xx": i2c1.devices[0x77], "fram": spi0.device}
-    for device, op, times in config.faults:
+    for device, op, times in injections.faults:
         _apply_fault(device, op, times, chips, wlan)
-    for device, op, seconds, times in config.hangs:
+    for device, op, seconds, times in injections.hangs:
         _apply_hang(device, op, seconds, times, chips)
 
-    if config.wifi_outcomes:
-        wlan.script_connect_outcomes(config.wifi_outcomes)
+    if injections.wifi_outcomes:
+        wlan.script_connect_outcomes(injections.wifi_outcomes)
 
     summary: dict[str, Any] = {"readings": 0, "wifi_status": None, "would_have_triggered_count": 0}
 

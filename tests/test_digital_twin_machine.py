@@ -36,6 +36,41 @@ from machine import (
     reset,
 )
 
+# @tunable l2.machine_wdt_short_timeout_ms = 150
+_WDT_SHORT_TIMEOUT_MS = 150
+# @tunable l2.machine_wdt_poll_ms = 5
+_WDT_POLL_MS = 5
+# @tunable l2.machine_wdt_poll_tries = 200
+_WDT_POLL_TRIES = 200
+# @tunable l2.machine_wdt_second_notice_poll_tries = 600
+_WDT_SECOND_NOTICE_POLL_TRIES = 600
+# @tunable l2.machine_run_bound_s = 5
+_RUN_BOUND_S = 5
+# @tunable l2.machine_wdt_fed_timeout_ms = 100
+_WDT_FED_TIMEOUT_MS = 100
+# @tunable l2.machine_feed_step_ms = 20
+_FEED_STEP_MS = 20
+# @tunable l2.machine_feed_rounds = 6
+_FEED_ROUNDS = 6
+# @tunable l2.machine_double_trigger_bound_s = 8
+_DOUBLE_TRIGGER_BOUND_S = 8
+# @tunable l2.machine_timer_period_ms = 20
+_TIMER_PERIOD_MS = 20
+# @tunable l2.machine_before_deinit_ms = 60
+_BEFORE_DEINIT_MS = 60
+# @tunable l2.machine_after_deinit_ms = 80
+_AFTER_DEINIT_MS = 80
+# @tunable l2.machine_chain_period_ms = 10
+_CHAIN_PERIOD_MS = 10
+# @tunable l2.machine_chain_poll_ms = 10
+_CHAIN_POLL_MS = 10
+# @tunable l2.machine_chain_poll_tries = 100
+_CHAIN_POLL_TRIES = 100
+# @tunable l2.machine_fire_poll_ms = 20
+_FIRE_POLL_MS = 20
+# @tunable l2.machine_fire_poll_tries = 100
+_FIRE_POLL_TRIES = 100
+
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":
     return asyncio.run(coro)
@@ -127,6 +162,7 @@ def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
                 return 0
 
         machine.configure_random_source(_FixedRandom())
+        machine.configure_i2c_wiring("wozi")  # a new board: I2C(0) wires its chips after the hook is set
         i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
         scd30 = i2c0.devices[0x61]
         assert scd30._co2 == scd30._min_co2  # drawn via the fixed source's uniform(a, b) -> a
@@ -218,13 +254,16 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     Pin.reset_registry()
     try:
         machine.configure_scd30_state_path(path)
+        machine.configure_i2c_wiring("wozi")
         i2c0a = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
         payload = bytes([0x46, 0x00, 0x00, 0x0A])  # SET_MEASUREMENT_INTERVAL, arg=10
         i2c0a.devices[0x61].handle_writeto(payload + bytes([crc8(payload[2:4])]))
         machine.flush_scd30()
 
         Pin.reset_registry()
+        machine.configure_i2c_wiring("wozi")  # the reboot: a fresh I2C(0) whose SCD30 loads the saved state
         i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+        assert i2c0b is not i2c0a
         i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
         assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
     finally:
@@ -300,12 +339,160 @@ def test_i2c_log_stays_bounded_across_many_transactions() -> None:
     assert i2c.log[-1] == ("writeto", 0x00, b"", True)  # most recent entry survives, not the oldest
 
 
+def test_pin_open_drain_reads_the_wired_and_of_its_drive_and_the_line() -> None:
+    Pin.reset_registry()
+    pin = Pin(16, Pin.OPEN_DRAIN, Pin.PULL_UP)
+    assert pin.value() == 1  # released: an undriven line reads high, the bus pull-ups
+    pin.value(0)
+    assert pin.value() == 0
+    pin.value(1)
+    Pin.set_external_level(16, 0)  # a slave holds the line low
+    assert pin.value() == 0
+    assert list(Pin.value_log(16)) == [0, 1]
+    Pin.reset_registry()
+    assert list(Pin.value_log(16)) == []
+
+
+def test_pin_init_applies_value_before_the_mode_and_records_alt() -> None:
+    Pin.reset_registry()
+    cs = Pin(17)
+    cs.init(Pin.OUT, value=1)
+    assert (cs.mode, cs.value()) == (Pin.OUT, 1)
+    scl = Pin(13, Pin.ALT, Pin.PULL_UP, alt=Pin.ALT_I2C)
+    assert (scl.mode, scl.pull, scl.alt) == (Pin.ALT, Pin.PULL_UP, Pin.ALT_I2C)
+    assert (Pin.OPEN_DRAIN, Pin.ALT, Pin.ALT_I2C) == (2, 3, 3)  # ports/rp2/machine_pin.h:34-37, GPIO_FUNC_I2C
+    Pin.reset_registry()
+
+
+def test_pin_external_level_callable_sees_the_value_log() -> None:
+    Pin.reset_registry()
+    scl = Pin(13, Pin.OPEN_DRAIN, Pin.PULL_UP, value=1)
+    sda = Pin(12, Pin.OPEN_DRAIN, Pin.PULL_UP, value=1)
+    Pin.set_external_level(12, lambda _pin_id, _log: 1 if list(Pin.value_log(13)).count(0) >= 3 else 0)
+    pulses = 0
+    while sda.value() == 0 and pulses < 9:
+        scl.value(0)
+        scl.value(1)
+        pulses += 1
+    assert pulses == 3
+    Pin.reset_registry()
+
+
+def test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads() -> None:
+    Pin.reset_registry()
+    irq = Pin(6, Pin.IN, Pin.PULL_UP)
+    assert irq.value() == 1  # idle high through the pull-up, before any edge
+    irq.simulate_edge(0)
+    assert irq.value() == 0
+    Pin.reset_registry()
+
+
+def test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions() -> None:
+    machine.configure_i2c_wiring("wozi")
+    Pin.reset_registry()
+    first = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    chip = first.devices[0x77]
+    again = I2C(1, scl=Pin(19), sda=Pin(18), freq=100000, timeout=1234)
+    assert again is first and again.devices[0x77] is chip
+    assert again.log[-1] == ("init", 100000, 1234)
+    assert (again.freq, again.timeout) == (100000, 1234)
+    machine.configure_i2c_wiring("wozi")  # a new wiring is a new board: fresh buses and chips
+    assert I2C(1, scl=Pin(19), sda=Pin(18), freq=50000) is not first
+
+
+def test_i2c_address_prefixed_writeto_reaches_the_register_handler() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    assert i2c.writeto(0x77, bytes([0x1C, 0x05]), True) == 2  # OSR register, one payload byte
+    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x05])
+    assert i2c.log[-1] == ("writeto", 0x77, bytes([0x1C, 0x05]), True)
+
+
+def test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    assert i2c.writeto(0x77, bytes([0x00]), False) == 1  # CHIP_ID pointer
+    reply = bytearray(1)
+    i2c.readfrom_into(0x77, reply)
+    assert reply[0] in (0x50, 0x60)
+    assert [entry[0] for entry in list(i2c.log)[-2:]] == ["writeto", "readfrom_into"]
+
+
+def test_i2c_zero_length_write_to_a_register_chip_is_the_probe() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.devices[0x77].fault.inject_fault("writeto", OSError(5, "probe NAK"))
+    try:
+        i2c.writeto(0x77, b"")
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_i2c_register_faults_keep_the_chip_keys() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.devices[0x77].fault.inject_fault("readfrom_mem", OSError(5, "read fault"))
+    i2c.writeto(0x77, bytes([0x04]), False)
+    try:
+        i2c.readfrom_into(0x77, bytearray(6))
+        raise AssertionError("expected OSError")
+    except OSError:
+        pass
+
+
+def test_i2c_nack_after_returns_the_short_count_and_records_the_stop() -> None:
+    machine.configure_i2c_wiring("wozi")
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    i2c.nack_after[0x77] = 1
+    assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 1  # the data byte NACKed
+    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x00])  # the chip took nothing
+    i2c.nack_after[0x77] = 0
+    assert i2c.writeto(0x77, bytes([0x04]), False) == 0  # the register byte NACKed, no stop
+    i2c.writeto(0x77, b"", True)  # the STOP the driver sends after a short no-stop write
+    assert list(i2c.log)[-2:] == [("writeto", 0x77, bytes([0x04]), False), ("writeto", 0x77, b"", True)]
+    assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 2  # the knob is spent
+
+
 def test_spi_log_stays_bounded_across_many_transactions() -> None:
     spi = SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7))  # id 1 wires no device - write() still logs
     for _ in range(machine._LOG_MAXLEN + 50):
         spi.write(bytes([0x00]))
     assert len(spi.log) == machine._LOG_MAXLEN
     assert spi.log[-1] == ("write", bytes([0x00]))
+
+
+def test_bounded_log_reads_oldest_first_before_and_after_it_wraps() -> None:
+    # Every read sees the entries oldest first once the oldest are overwritten in place, the head back at slot 0 included.
+    for appended in (3, 4, 6, 8, 9):
+        log = machine._BoundedLog(4)
+        for entry in range(appended):
+            log.append(entry)
+        expected = list(range(max(0, appended - 4), appended))
+        assert list(log) == expected, (appended, list(log))
+        assert [log[i] for i in range(len(log))] == expected
+        assert [log[-i] for i in range(1, len(log) + 1)] == expected[::-1]
+        assert log[1:3] == expected[1:3]
+        assert log == expected
+        assert (len(log), log.dropped) == (len(expected), appended - len(expected))
+        assert expected[0] in log and expected[0] - 1 not in log
+        for outside in (len(log), -len(log) - 1):
+            try:
+                log[outside]
+            except IndexError:
+                pass
+            else:
+                raise AssertionError(f"index {outside} of {appended} read {log[outside]!r}")
+
+
+def test_bounded_log_clear_starts_over_at_slot_zero() -> None:
+    log = machine._BoundedLog(4)
+    for entry in range(6):
+        log.append(entry)
+    log.clear()
+    for entry in (10, 11, 12):
+        log.append(entry)
+    assert (list(log), log[0], log[-1]) == ([10, 11, 12], 10, 12)
 
 
 def test_wdt_feed_increments_count() -> None:
@@ -354,67 +541,67 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
     # background monitor loops forever rather than stopping after one notification, so a granularity close
     # to its period races it, the observed count depending on scheduling.
     async def scenario() -> None:
-        wdt = WDT(timeout=150)
-        for _ in range(200):
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
+        for _ in range(_WDT_POLL_TRIES):
             if wdt.would_have_triggered_count >= 1:
                 return
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    run(asyncio.wait_for(scenario(), 5))
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
 
 
 def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
     async def scenario() -> int:
-        wdt = WDT(timeout=100)
-        for _ in range(6):  # ~120ms of continuous feeding, comfortably past one 100ms window
-            await asyncio.sleep_ms(20)
+        wdt = WDT(timeout=_WDT_FED_TIMEOUT_MS)
+        for _ in range(_FEED_ROUNDS):  # ~120ms of continuous feeding, comfortably past one 100ms window
+            await asyncio.sleep_ms(_FEED_STEP_MS)
             wdt.feed()
         return wdt.would_have_triggered_count
 
-    count = run(asyncio.wait_for(scenario(), 5))
+    count = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert count == 0  # kept fed the whole time - never should have noticed a gap
 
 
 def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> None:
     # "keeps monitoring so a long-unfed stretch can notify more than once" - not a one-shot.
     async def scenario() -> None:
-        wdt = WDT(timeout=150)
-        for _ in range(600):
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
+        for _ in range(_WDT_SECOND_NOTICE_POLL_TRIES):
             if wdt.would_have_triggered_count >= 2:
                 return
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never reached a second would-have-triggered notification")
 
-    run(asyncio.wait_for(scenario(), 8))
+    run(asyncio.wait_for(scenario(), _DOUBLE_TRIGGER_BOUND_S))
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
     async def scenario() -> "deque[int]":
-        wdt = WDT(timeout=150)
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         wdt.feed()
         wdt.feed()  # feed_count is 2 going into the unfed stretch below
-        for _ in range(200):
+        for _ in range(_WDT_POLL_TRIES):
             if wdt.would_have_triggered_count >= 1:
                 return wdt.would_have_triggered_log
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    log = run(asyncio.wait_for(scenario(), 5))
+    log = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert log[0] == 2  # the first notification must reflect feed_count as of the unfed stretch
 
 
 def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
     async def scenario() -> "list[WDT]":
         seen: list[WDT] = []
-        _wdt = WDT(timeout=150, on_would_trigger=seen.append)
-        for _ in range(200):
+        _wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS, on_would_trigger=seen.append)
+        for _ in range(_WDT_POLL_TRIES):
             if seen:
                 return seen
-            await asyncio.sleep_ms(5)
+            await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("on_would_trigger callback never fired")
 
-    seen = run(asyncio.wait_for(scenario(), 5))
+    seen = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert seen[0].would_have_triggered_count >= 1
 
 
@@ -448,6 +635,99 @@ def test_simulated_reset_and_bootloader_entry_are_both_simulated_reboot() -> Non
         pass  # caught via the base class, not the specific subclass
 
 
+def test_mem_backup_has_rp2s_two_regions_of_four_and_three_words() -> None:
+    machine.power_on()
+    assert len(machine.mem_backup(0)) == 4
+    assert len(machine.mem_backup(1)) == 3
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    assert list(machine.mem_backup(1)) == [0, 0, 0]
+
+
+def test_mem_backup_returns_the_same_view_each_call_and_both_for_minus_one() -> None:
+    machine.power_on()
+    region0 = machine.mem_backup(0)
+    region0[1] = 7
+    assert machine.mem_backup(0) is region0
+    assert machine.mem_backup(0)[1] == 7
+    assert machine.mem_backup() is region0  # region 0 is the default (extmod/machine_mem.c at v1.29.0)
+    both = machine.mem_backup(-1)
+    assert isinstance(both, tuple)
+    assert both[0] is region0
+    assert both[1] is machine.mem_backup(1)
+    machine.power_on()
+
+
+def test_mem_backup_refuses_any_other_region() -> None:
+    for region in (2, -2):
+        try:
+            machine.mem_backup(region)
+            raise AssertionError("expected ValueError")
+        except ValueError as e:
+            assert str(e) == "invalid region"
+
+
+def test_reset_cause_reads_power_on_until_a_reset_then_watchdog() -> None:
+    machine.power_on()
+    assert machine.reset_cause() == machine.PWRON_RESET
+    try:
+        reset()
+        raise AssertionError("expected SimulatedResetError")
+    except SimulatedResetError:
+        pass
+    assert machine.reset_cause() == machine.WDT_RESET
+    machine.power_on()
+    assert machine.reset_cause() == machine.PWRON_RESET
+
+
+def test_bootloader_also_reads_back_as_a_watchdog_reset() -> None:
+    machine.power_on()
+    try:
+        bootloader()
+        raise AssertionError("expected SimulatedBootloaderEntryError")
+    except SimulatedBootloaderEntryError:
+        pass
+    assert machine.reset_cause() == machine.WDT_RESET
+    machine.power_on()
+
+
+def test_power_on_clears_both_regions() -> None:
+    machine.mem_backup(0)[0] = 1
+    machine.mem_backup(1)[2] = 2
+    machine.power_on()
+    assert list(machine.mem_backup(0)) == [0, 0, 0, 0]
+    assert list(machine.mem_backup(1)) == [0, 0, 0]
+
+
+def test_mem32_answers_the_reset_registers_on_each_reset_path() -> None:
+    reason, chip = 0x40058008, 0x40064008  # WATCHDOG REASON, VREG_AND_CHIP_RESET CHIP_RESET
+    machine.power_on()
+    assert (machine.mem32[reason], machine.mem32[chip]) == (0, 0x100)  # HAD_POR
+    for action in (reset, bootloader):
+        machine.power_on()
+        try:
+            action()
+        except SimulatedRebootError:
+            pass
+        assert (machine.mem32[reason], machine.mem32[chip]) == (2, 0x100)  # FORCE; HAD_POR survives
+    machine.power_on()
+
+    async def starve() -> None:
+        wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
+        for _ in range(_WDT_POLL_TRIES):
+            if wdt.would_have_triggered_count:
+                return
+            await asyncio.sleep_ms(_WDT_POLL_MS)
+
+    run(starve())
+    assert machine.mem32[reason] == 1  # TIMER: the reset a starved watchdog makes
+    machine.power_on()
+    try:
+        machine.mem32[0x40058000]
+        raise AssertionError("an unmodelled address answered")
+    except ValueError:
+        pass
+
+
 def test_rtc_datetime_round_trips() -> None:
     rtc = RTC()
     rtc.datetime((2026, 1, 1, 4, 12, 0, 0, 0))
@@ -457,13 +737,13 @@ def test_rtc_datetime_round_trips() -> None:
 def test_timer_deinit_stops_further_callbacks() -> None:
     calls: list[int] = []
     timer = Timer()
-    timer.init(period=20, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
+    timer.init(period=_TIMER_PERIOD_MS, mode=Timer.PERIODIC, callback=lambda _t: calls.append(1))
 
     async def scenario() -> "tuple[int, int]":
-        await asyncio.sleep_ms(60)
+        await asyncio.sleep_ms(_BEFORE_DEINIT_MS)
         timer.deinit()
         count_at_deinit = len(calls)
-        await asyncio.sleep_ms(80)
+        await asyncio.sleep_ms(_AFTER_DEINIT_MS)
         return count_at_deinit, len(calls)
 
     count_at_deinit, count_after = run(scenario())
@@ -472,9 +752,9 @@ def test_timer_deinit_stops_further_callbacks() -> None:
 
 
 def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
-    # Regression test: self-rearming chained timers - system_service.py's _timer_sequencer(), fixed to reuse
-    # one preallocated Timer via repeated .init() calls rather than constructing a fresh one per step (Part
-    # F.1) - re-.init() the SAME Timer object from inside that object's currently-firing callback.
+    # Regression test: a self-rearming chain that reuses one preallocated Timer through repeated .init()
+    # calls rather than constructing a fresh one per step (Part F.1) - re-.init() the SAME Timer object
+    # from inside that object's currently-firing callback.
     #
     # Timer.init()'s internal deinit() used to unconditionally call self._task.cancel(), cancelling the task
     # that is at that moment running the very callback doing the re-init, which MicroPython's asyncio
@@ -488,17 +768,17 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
     def _chain(_t: "Timer", counter: int = 0) -> None:
         steps.append(counter)
         if counter < 2:
-            timer.init(period=10, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
+            timer.init(period=_CHAIN_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda t: _chain(t, counter + 1))
 
     async def scenario() -> None:
-        timer.init(period=10, mode=Timer.ONE_SHOT, callback=_chain)
-        for _ in range(100):  # generous relative to the 10ms period, matches the sibling test below
+        timer.init(period=_CHAIN_PERIOD_MS, mode=Timer.ONE_SHOT, callback=_chain)
+        for _ in range(_CHAIN_POLL_TRIES):  # generous relative to the 10ms period, matches the sibling test below
             if len(steps) >= 3:
                 return
-            await asyncio.sleep_ms(10)
+            await asyncio.sleep_ms(_CHAIN_POLL_MS)
         raise AssertionError("chained timer never completed all steps")
 
-    run(asyncio.wait_for(scenario(), 5))  # must not raise "can't cancel self"
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))  # must not raise "can't cancel self"
     assert steps == [0, 1, 2]
 
 
@@ -522,14 +802,14 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
     timer = Timer()
 
     async def scenario() -> None:
-        timer.init(period=20, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
-        for _ in range(100):  # up to ~2s total, generous relative to the 20ms period
+        timer.init(period=_TIMER_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda _t: fired.append(1))
+        for _ in range(_FIRE_POLL_TRIES):  # up to ~2s total, generous relative to the 20ms period
             if fired:
                 return
-            await asyncio.sleep_ms(20)
+            await asyncio.sleep_ms(_FIRE_POLL_MS)
         raise AssertionError("Timer callback never fired")
 
-    run(asyncio.wait_for(scenario(), 5))
+    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
     assert fired == [1]
 
 

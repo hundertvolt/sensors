@@ -7,9 +7,20 @@
 # HTML_SRC_DIRS is required (scripts/build_website.sh sets it): a space-separated list merged
 # recursively into one build tree. Output is a gitignored build artifact, never committed.
 #
-# ext/freezefs is vendored and unmodified. Don't copy build-wozi.sh's literal invocation: that
-# legacy pipeline predates freezefs 2.4's current CLI (its "-s" flag is gone).
+# ext/freezefs is vendored and unmodified. Don't copy the legacy build scripts'
+# (legacy/firmware/build-*.sh) literal invocation: that legacy pipeline predates freezefs 2.4's
+# current CLI (its "-s" flag is gone).
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: HTML_SRC_DIRS="dir ..." scripts/build_frozen_html.sh [output_path]
+Freezes the merged HTML_SRC_DIRS tree into one module (default output: frozen_modules/frozen_html.py).
+
+Environment:
+  HTML_SRC_DIRS   required, a space-separated list of source directories (scripts/build_website.sh sets it)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 src_dirs="${HTML_SRC_DIRS:?HTML_SRC_DIRS must name the source dir(s) - scripts/build_website.sh sets it}"

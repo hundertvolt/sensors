@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, UART_Comm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, TransferLimits, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -26,15 +26,20 @@ if TYPE_CHECKING:
 PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
 BAUDRATE = 115200
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2
 # Mirrors sensortask_dev.py's own pair: 2ms while a transaction is in flight, 50ms while the line
 # is idle. A bench run that used one rate would not be exercising the shipped configuration.
+# @tunable dev.uart_poll_idle_ms = 50
 POLL_IDLE_MS = 50
+# @tunable dev.uart_rxbuf = 512
 BUF_BYTES = 512
 # Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
 # uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so a wiring fault
 # resets the board instead of naming the failing check (measured on deliberately unjumpered pins).
+# @tunable l3.uart_crossover_exchange_join_step_ms = 100
 JOIN_STEP_MS = 100
+# @tunable l3.uart_crossover_exchange_join_budget_ms = 2000
 JOIN_BUDGET_MS = 2000
 
 _CMD_BANNER = 0x01
@@ -68,7 +73,7 @@ async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bo
     return task.done()
 
 
-async def _join_listener(wdt: "machine.WDT", responder: UART_Comm, listener: "asyncio.Task[ListenResult]") -> None:
+async def _join_listener(wdt: "machine.WDT", responder: UARTComm, listener: "asyncio.Task[ListenResult]") -> None:
     # clear() is the module's own documented unstick for a listener parked in that unbounded read
     # (SPECIFICATION.md Part J.5) - it cannot finish on its own once its frame never arrived.
     if await _settled(wdt, listener):
@@ -80,17 +85,17 @@ async def _join_listener(wdt: "machine.WDT", responder: UART_Comm, listener: "as
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
+    limits = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits, name="UART_INIT")
+    responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
-        payload_size=PAYLOAD_SIZE,
-        timeout=TIMEOUT_MS,
-        get_callback=get_callback,
-        set_callback=set_callback,
+        limits=limits,
+        callbacks=ResponderCallbacks(get_callback, set_callback, None),
         name="UART_RESP",
     )
     failures = []
@@ -108,9 +113,13 @@ async def _main() -> None:
             await _join_listener(wdt, responder, listener)
 
     if not failures:
+        # The answer is a PieceBuffer (no buffer protocol, no __eq__): compared by one copy-out into this scratch.
+        scratch = bytearray(len(_BANNER))
         answer = await exchange(initiator.uart_get(_CMD_BANNER))
-        if answer is None or bytes(answer) != _BANNER:
+        if answer is None:
             failures.append(f"GET returned {answer!r}, expected {_BANNER!r}")
+        elif len(answer) != len(_BANNER) or not answer.copy_into(scratch) or scratch != _BANNER:
+            failures.append(f"GET returned {len(answer)} bytes {bytes(scratch)!r}, expected {_BANNER!r}")
         wdt.feed()
 
         payload = bytes((i * 11) & 0xFF for i in range(_TRAIN_BYTES))

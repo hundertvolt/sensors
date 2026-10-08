@@ -2,13 +2,13 @@
 Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
 See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
 
-from __future__ import annotations
-
 import http.client
 import json
 import os
 import socket
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,18 +16,29 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from _devices import DEVICE_NAMES
 from _devices import device_toml as device_toml_path
+from _script_loader import load_script_module
 
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from buildgen.model import DeviceModel
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
+# @tunable l0.generated_boot_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0
+# @tunable l0.generated_boot_shutdown_timeout_s = 15.0
 _SHUTDOWN_TIMEOUT_S = 15.0
+# @tunable l0.generated_boot_poll_timeout_s = 1.0
+_POLL_TIMEOUT_S = 1.0  # one readiness GET
+# @tunable l0.generated_boot_poll_step_s = 0.25
+_POLL_STEP_S = 0.25
+# @tunable l0.generated_boot_exit_wait_s = 5
+_EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # Must outlast real boot-to-serving latency plus the smoke loop's sequential round trips. The
 # old `3` passed only on unintentional slack in a slower shutdown sequence; removing that slack
 # exposed the budget as always having been too tight, not a new regression.
@@ -39,12 +50,14 @@ _SHUTDOWN_TIMEOUT_S = 15.0
 # Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across the six real
 # devices, dev slowest. A boot-time-only, self-resolving cost that leaves steady-state serving
 # untouched - and boot latency is not a thing to optimise for its own sake (CLAUDE.md).
-_TWIN_DURATION_S = 15
+# @tunable l0.generated_boot_twin_duration_s = 15
+_TWIN_DURATION_S = 15  # the bound: the run ends on its stop file once the smoke loop is done
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).
 _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static content of its own; this suite never requests \'/\'."""\n'
 _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/status")
+_STOP_SEEN = "stop file seen, ending the run"  # digital_twin/run_generic_integration.py's _serve_until()
 
 # Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
@@ -55,6 +68,10 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # one suite that would actually BOOT that deliberately malformed fixture.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
+
+# The allocation-failure markers every gate shares, from the hardware tier's harness
+# (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(_REPO_ROOT / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
 
 
 @pytest.fixture
@@ -95,32 +112,33 @@ def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its own captured output")
+            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its output in the failures below")
         try:
-            status, _ = _http_get(port, "/system", timeout=1.0)
+            status, _ = _http_get(port, "/system", timeout=_POLL_TIMEOUT_S)
             if status == _HTTP_OK:
                 return
         except OSError:
             pass
-        time.sleep(0.25)
+        time.sleep(_POLL_STEP_S)
     raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
 
 
-def _website_errcount_keys(model: DeviceModel, src_dir: Path) -> set[str]:
-    """The errcount rows js/templates.js will render for this device, from the real generator."""
-    groups = [g for section in generate_definitions(model, src_dir)["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
-    assert len(groups) == 1, f"expected exactly one errcount group for {model.device}, got {len(groups)}"
-    return {row["key"] for row in groups[0]["modules"]}
+def _website_errcount_keys(definitions: dict[str, Any]) -> set[str]:
+    # The errcount rows js/templates.js will render for this device: the union over every errcount
+    # group, wherever the definitions place one (the captive DNS history sits on Networking).
+    groups = [g for section in definitions["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
+    assert groups, f"no errcount group in {definitions['device']['id']}'s definitions"
+    return {row["key"] for g in groups for row in g["modules"]}
 
 
-def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: object) -> list[str]:
-    """Compares the error sources GET /status really publishes against the website's own catalog.
-    The API derives itself from the live object graph; buildgen/definitions.py's catalog is
-    hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6."""
+def _errcount_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
+    # Compares the error sources GET /status really publishes against the website's own catalog.
+    # The API derives itself from the live object graph; buildgen/definitions.py's catalog is
+    # hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6.
     if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
-    displayed = _website_errcount_keys(model, src_dir)
+    displayed = _website_errcount_keys(definitions)
     # No exemptions: _errcount_group() derives its rows per logger instance (fixed
     # 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
     missing = published - displayed
@@ -133,10 +151,100 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
     return failures
 
 
+def _resolves(body: object, path: list[str]) -> bool:
+    # Whether a readonly field's `path` resolves in a GET body; a null leaf is a published value.
+    for step in path:
+        if not isinstance(body, dict) or step not in body:
+            return False
+        body = body[step]
+    return True
+
+
+def _readonly_fields(definitions: dict[str, Any], section_key: str) -> list[tuple[str, dict[str, Any]]]:
+    section = next(s for s in definitions["sections"] if s["key"] == section_key)
+    return [(g["key"], f) for g in section["groups"] if g.get("kind") != "errcount" for f in g.get("fields", []) if f.get("kind") == "readonly"]
+
+
+def _status_field_parity_failures(definitions: dict[str, Any], status_body: object) -> list[str]:
+    # Every readonly field the Status page names must be in GET /status - the page's catalog of these
+    # rows is hand-kept, so a key it names but the device never publishes renders blank, silently.
+    if not isinstance(status_body, dict):
+        return ["GET /status carried no object, so no field parity claim would mean anything"]
+    missing = []
+    for group_key, field in _readonly_fields(definitions, "status"):
+        source = status_body.get(group_key)
+        if group_key == "sensors" and isinstance(source, dict):
+            # Maintenance data is per sensor; the page flattens it to <SENSOR>_<field> as js/render.js does.
+            source = {f"{sensor}_{key}": value for sensor, values in source.items() if isinstance(values, dict) for key, value in values.items()}
+        found = _resolves(source, field["path"]) if "path" in field else isinstance(source, dict) and field["key"] in source
+        if not found:
+            missing.append(f"{group_key}.{field['key']}")
+    return [f"Status page fields GET /status does not publish (each renders blank): {missing}"] if missing else []
+
+
+def _maintenance_key_failures(model: "DeviceModel", status_body: object) -> list[str]:
+    # One maintenance entry per SGP40 instance, keyed by its REST identity (resolved_name, SPECIFICATION.md
+    # Part C.14.1) and read from that instance: a source reading the wrong global answers the error marker.
+    sensors = status_body.get("sensors") if isinstance(status_body, dict) else None
+    if not isinstance(sensors, dict):
+        return ["GET /status carried no sensors object, so no maintenance claim would mean anything"]
+    expected = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    unserved = [name for name in expected if not isinstance(sensors.get(name), dict) or "error" in sensors[name]]
+    return [f"SGP40 maintenance entries GET /status does not serve: {unserved} of {expected} (served: {sorted(sensors)})"] if unserved else []
+
+
+def _system_path_failures(definitions: dict[str, Any], system_body: object) -> list[str]:
+    # Every readonly System field reads GET /system through its `path` (the build information).
+    unresolved = [f"{group_key}.{field['key']}" for group_key, field in _readonly_fields(definitions, "system") if "path" in field and not _resolves(system_body, field["path"])]
+    return [f"System page paths GET /system does not resolve: {unresolved}"] if unresolved else []
+
+
+def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
+    # The finished twin's own verdict: its exit status, and every output line holding an
+    # allocation-failure marker (SPECIFICATION.md Part I.4(e)), quoted - a clean exit included.
+    failures = [f"subprocess exited with code {returncode}:\n{output}"] if returncode not in (0, None) else []
+    marked = [line for line in output.splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
+    if marked:
+        failures.append("allocation-failure marker in the twin's output:\n" + "\n".join(marked))
+    return failures
+
+
+def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: "Callable[[subprocess.Popen[str]], list[str]]", shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
+    # Runs `session` against the spawned twin, then its exit and output verdicts; returns the
+    # failures and the twin's whole merged output.
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Drained while the twin runs: a pipe read only after exit blocks a child past 64 KiB of output.
+    lines: list[str] = []
+    reader = threading.Thread(target=lambda: lines.extend(proc.stdout or ()), daemon=True)
+    reader.start()
+    failures: list[str] = []
+    try:
+        failures.extend(session(proc))
+    except (OSError, RuntimeError, ValueError, http.client.HTTPException) as exc:
+        failures.append(f"twin session aborted: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            proc.wait(timeout=shutdown_timeout_s)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=_EXIT_WAIT_S)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=_EXIT_WAIT_S)
+            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
+        reader.join(timeout=shutdown_timeout_s)
+        if reader.is_alive():
+            failures.append("the twin's output never reached end of file after its exit - the output below is incomplete")
+        output = "".join(lines)
+        failures.extend(_twin_output_failures(proc.returncode, output))
+    return failures, output
+
+
 def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
-    """Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
-    real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
-    failures (empty list = clean boot, clean REST responses, clean shutdown)."""
+    # Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
+    # real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
+    # failures (empty list = clean boot, clean REST responses, clean shutdown).
     generated = generate_device(device_toml, src_dir, ext_dir)
     module_name = f"sensortask_{generated.model.device}"
     (tmp_path / f"{module_name}.py").write_text(generated.module_source)
@@ -145,6 +253,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
     wiring_plan = compute_twin_wiring(generated.model)
     wiring_plan_path = tmp_path / "wiring_plan.json"
     wiring_plan_path.write_text(json.dumps(wiring_plan))
+    stop_file = tmp_path / "stop"
 
     env = dict(os.environ)
     # tmp_path first: makes `import sensortask_<device>` (inside run_generic_integration.py) resolve
@@ -161,11 +270,13 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--host", _HOST,
         "--port", str(port),
         "--duration", str(_TWIN_DURATION_S),
+        "--stop-file", str(stop_file),
     ]
-    proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    failures: list[str] = []
-    try:
+    definitions = generate_definitions(generated.model, src_dir)
+
+    def smoke(proc: subprocess.Popen[str]) -> list[str]:
         _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
+        failures: list[str] = []
         for path in _SMOKE_ENDPOINTS:
             status, body = _http_get(port, path)
             if status != _HTTP_OK:
@@ -173,24 +284,68 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
             elif not isinstance(body, dict):
                 failures.append(f"GET {path} -> non-JSON-object body {body!r}")
             elif path == "/status":
-                # Rides the body this loop already fetched - the parity check costs no extra boot,
-                # and inherits this test's own generic device/fixture coverage for free.
-                failures.extend(_errcount_parity_failures(generated.model, src_dir, body))
-    finally:
-        try:
-            proc.wait(timeout=_SHUTDOWN_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
-        output = proc.stdout.read() if proc.stdout else ""
-        if proc.returncode not in (0, None):
-            failures.append(f"subprocess exited with code {proc.returncode}:\n{output}")
+                # Rides the body this loop already fetched - the parity checks cost no extra boot,
+                # and inherit this test's own generic device/fixture coverage for free.
+                failures.extend(_errcount_parity_failures(definitions, body))
+                failures.extend(_status_field_parity_failures(definitions, body))
+                failures.extend(_maintenance_key_failures(generated.model, body))
+            elif path == "/system":
+                failures.extend(_system_path_failures(definitions, body))
+        stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
+        return failures
+
+    failures, output = _run_twin(cmd, repo_root, env, smoke)
+    if _STOP_SEEN not in output:
+        failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
     return failures
+
+
+def test_an_allocation_failure_in_a_clean_exiting_twin_is_a_failure() -> None:
+    # The degrade-and-pass case: src/ logs str(e), so a caught allocation failure reads "memory
+    # allocation failed" in a twin that still serves every request and exits 0.
+    output = "serving\n[E] WEBSERVER: memory allocation failed, allocating 2048 bytes\nshutdown complete\n"
+    failures = _twin_output_failures(0, output)
+    assert len(failures) == 1, failures
+    assert "memory allocation failed, allocating 2048 bytes" in failures[0]
+    assert _twin_output_failures(0, "serving\nshutdown complete\n") == []
+    assert _twin_output_failures(1, "Traceback\n")[0].startswith("subprocess exited with code 1")
+
+
+def test_every_sgp40_instance_needs_its_own_served_maintenance_entry(src_dir: Path, ext_dir: Path, fixtures_dir: Path) -> None:
+    # The multi-instance fixture's two SGP40s each need an entry under their own name; a missing one or the
+    # error marker in place of one is reported, an extra non-SGP40 entry (dev's UARTLINK shape) is not.
+    model = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir).model
+    names = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    assert len(names) == 2, names
+    served = {name: {"BackupTS": None, "RestoreTS": None} for name in names}
+    assert _maintenance_key_failures(model, {"sensors": {**served, "UARTLINK": {}}}) == []
+    assert names[1] in _maintenance_key_failures(model, {"sensors": {names[0]: served[names[0]]}})[0]
+    assert names[0] in _maintenance_key_failures(model, {"sensors": {**served, names[0]: {"error": "unavailable"}}})[0]
+    assert _maintenance_key_failures(model, {})[0].startswith("GET /status carried no sensors object")
+
+
+def test_a_twin_printing_more_than_a_pipe_buffer_is_drained_while_it_runs(tmp_path: Path) -> None:
+    # 128 KiB of boot chatter fills a 64 KiB pipe: read only after exit, the child blocks on its
+    # write and is then reported as hung, its real output never scanned.
+    child = "import sys\nfor i in range(2048):\n    sys.stdout.write(f'{i:05d} ' + 'x' * 57 + '\\n')\nprint('last line of a long boot')\n"
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), lambda _proc: [], shutdown_timeout_s=10)
+    assert failures == []
+    assert len(output) > 128 * 1024
+    assert output.endswith("last line of a long boot\n")
+
+
+def test_a_twin_that_dies_before_serving_keeps_its_output(tmp_path: Path) -> None:
+    # The boot crash is the evidence: an aborted session must still report the child's own output.
+    child = "print('boot banner'); print('Traceback: planted boot crash'); raise SystemExit(3)"
+
+    def session(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, _free_port(), 10)
+        return []
+
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), session)
+    assert "planted boot crash" in output
+    assert any(f.startswith("twin session aborted: RuntimeError: digital twin subprocess exited early with code 3") for f in failures), failures
+    assert any(f.startswith("subprocess exited with code 3:") and "planted boot crash" in f for f in failures), failures
 
 
 @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)

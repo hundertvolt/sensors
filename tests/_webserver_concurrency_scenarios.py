@@ -33,6 +33,7 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _generated_module import boot_generated
 from _tmp_scratch import TmpScratch
 from microdot import Request  # type: ignore[import-not-found]
 
@@ -98,11 +99,13 @@ async def _boot(port: int, device: str) -> "Any":
     # build_system(), not once at import, several devices being booted in one process here.
     machine.configure_wiring(_wiring_plan(device))
     module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
     return module
 
 
 _BODY_CAP = 2048  # WebserverService's shipped max_content_length (Part I.6), stated, never read back
+# @tunable web.connections_per_page_load = 2
+_CONNECTIONS_PER_PAGE_LOAD = 2  # the real post-inlining footprint of one page load (Part H.7)
 
 
 def _ceiling(module: "Any") -> int:
@@ -127,7 +130,7 @@ async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     assert module.webserver is not None
     task: asyncio.Task[None] = module.webserver.get_task_starters()[0]()
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
-    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # FRAM, so _serve_loop() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
     # not the instant no-op a RAM-only logger's setup() was.
     #
     # A polling readiness check was tried instead and made things measurably worse: a real fetch() probe
@@ -246,12 +249,13 @@ async def _slow_but_healthy_put(host: str, port: int, delay_s: float) -> int:
         await writer.wait_closed()
 
 
-async def _real_config_write(host: str, port: int, interval: int) -> int:
+async def _real_config_write(host: str, port: int, interval: int) -> "tuple[int, object]":
     """A real config write reaching ConfigManager.write_config() through the real object graph
     (SCD30 is on every device, Part L.3) - unlike _slow_but_healthy_put()'s no-op above. Proves
     concurrent GET polling survives a real write; bench and unit equivalents exist per tier."""
-    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"Interval": interval}}, read_body=False)
-    return res.status_code
+    res = await _http_client.fetch(host, port, "PUT", "/sensors", {"SCD30": {"MeasInterval": interval}})
+    # The field's own answer, not just the status: an unknown key answers "Invalid" under a 200.
+    return res.status_code, res.json().get("result", {}).get("SCD30", {}).get("MeasInterval")
 
 
 # ---------------------------------------------------------------------------
@@ -604,7 +608,7 @@ async def _scenario_polling_and_config_write(device: str) -> None:
 
         openhab_result, write_results = await asyncio.gather(_openhab_poll("127.0.0.1", port), _writes())
         assert openhab_result == [200, 200], openhab_result
-        assert write_results == [200] * writes, write_results
+        assert write_results == [(200, "Valid")] * writes, write_results
         assert await _still_serving("127.0.0.1", port)
     finally:
         await _cancel(task)
@@ -691,7 +695,7 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
     ceiling = _ceiling(module)
     task = await _start_webserver(module)
     try:
-        tabs = max(2, ceiling // 2)  # 2 connections per page load, the real post-inlining footprint
+        tabs = max(2, ceiling // _CONNECTIONS_PER_PAGE_LOAD)
 
         async def _index() -> bytes:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
@@ -798,14 +802,14 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
     task = await _start_webserver(module)
     try:
         results = await asyncio.gather(*(_real_config_write("127.0.0.1", port, 5 + i) for i in range(ceiling)))
-        assert list(results) == [200] * ceiling, results
+        assert list(results) == [(200, "Valid")] * ceiling, results
         # Then the same count again with bodies at the cap's own boundary: read at the cap (the
         # schema may still refuse the value), 413 one byte over - each a separate live allocation.
         assert Request.max_content_length == _BODY_CAP, Request.max_content_length
-        padding = _BODY_CAP - len(json.dumps({"NTP_Host": ""}))
+        padding = _BODY_CAP - len(json.dumps({"NTPHost": ""}))
 
         async def _sized(nbytes: int) -> "int | str":
-            body = {"NTP_Host": "x" * nbytes}
+            body = {"NTPHost": "x" * nbytes}
             try:
                 res = await _http_client.fetch("127.0.0.1", port, "PUT", "/networking", body, read_body=False)
             except OSError:

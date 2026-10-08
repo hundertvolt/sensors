@@ -1,0 +1,49 @@
+tests_scripts/ failed:
+  - tests_scripts/test_hardware_runners.py::test_the_flash_runner_runs_every_lower_level_first_in_order: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_device_loop_is_derived_and_skips_leaked_test_fixtures: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[test_sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[npm]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_a_failing_lower_level_stops_before_any_board_is_touched[run_digital_twin_ci_sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_skipping_the_lower_levels_is_never_clean: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_skipping_the_lower_levels_keeps_a_failure_a_failure: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_bench_runner_runs_flash_then_bench_as_two_steps: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_each_hardware_step_keeps_its_own_three_runs: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_bench_runner_gives_test_paths_to_the_bench_step_only: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_bench_runners_usage_states_where_its_arguments_go: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_a_failing_flash_step_stops_the_bench_runner_before_the_bench_level: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_bench_runner_without_lower_levels_is_not_clean: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_soak_runner_runs_no_lower_level_and_names_its_duration: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_the_soak_runner_without_a_duration_is_a_usage_error: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[run_flash_hardware_suite.sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[run_bench_hardware_suite.sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[run_bench_soak_tests.sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[run_manual_hardware_tests.sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[mpremote_connect.sh]: error in setup: subprocess.CalledProcessError: Command '['/usr/bin/git', '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'tree']' returned non-zero exit status 128.
+  - tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists: failed in call: AssertionError: imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:
+  - tests_scripts/test_summary_block.py::test_the_commit_line_names_the_commit_and_uncommitted_changes: failed in call: subprocess.CalledProcessError: Command '['/usr/bin/git', 'commit', '-q', '-m', 'c']' returned non-zero exit status 128.
+tests_scripts/ skipped:
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[arzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[dev]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[grkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[klkizi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[schlafzi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+  - tests_scripts/test_build_firmware.py::test_real_firmware_build_produces_a_valid_uf2[wozi]: real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 (see .github/workflows/ci.yml's firmware-build-verify job, which sets it)
+== Evidence archived in /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u7g/build/archive/test_sh/20261006T211312Z
+== Summary: scripts/test.sh ==
+== Summary: scripts/test.sh ==
+Commit: 2421a80
+Levels: L0 FAIL · L1 PASS · L2 PASS (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)
+GC stage: 32768
+Counts (files): passed 88 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests_scripts tests): passed 2721 · failed 22 · skipped 6 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Counts (tests): passed 3867 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_scripts/ (pytest): pytest exited nonzero or timed out; 22 failed (listed above)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

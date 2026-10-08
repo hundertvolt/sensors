@@ -12,16 +12,20 @@ import sys
 import _http_client
 import machine
 import sensortask_wozi
+from run_generic_integration import _WDT_TIMEOUT_MS
 from unix_port_poll_prewarm import prewarm_poll_set
+from unix_port_unretrieved_report import install
 
 _CONFIG_DIR = "digital_twin/config/"
 _ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
+# @tunable l2.twin_ready_poll_ms = 20
+_READY_POLL_MS = 20
 
 
 async def _wait_until_built(timeout_s: float = 10.0) -> None:
     async def poll() -> None:
-        while sensortask_wozi.webserver is None:
-            await asyncio.sleep_ms(20)
+        while getattr(sensortask_wozi, "webserver", None) is None:  # unbound until build_system() assigns it
+            await asyncio.sleep_ms(_READY_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
 
@@ -77,14 +81,16 @@ def _parse_args(argv: "list[str]") -> "dict[str, object]":
 
 
 async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: int) -> None:
+    install()  # before the firmware: start_tasks() keeps it, so every task death prints (Part I.4(e))
     # Must run before anything else in the process registers a poll object - see
     # unix_port_poll_prewarm.py's own module docstring and digital_twin/README.md's "Known gaps"
     # section.
     prewarm_poll_set(port=port + 1000)
     machine.configure_fram_state_path(None)
     machine.configure_scd30_state_path(None)
+    watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS)  # the one a boot entry would arm and pass in
     main_task = asyncio.get_event_loop().create_task(
-        sensortask_wozi.main(cfg_path=_CONFIG_DIR, web_host=host, web_port=port),
+        sensortask_wozi.main(watchdog=watchdog, cfg_path=_CONFIG_DIR, web_host=host, web_port=port),
     )
     try:
         await _wait_until_built()
@@ -102,8 +108,8 @@ async def main(n_clients: int, n_requests: int, n_rounds: int, host: str, port: 
         main_task.cancel()
         try:
             await main_task
-        except (asyncio.CancelledError, Exception):
-            pass
+        except asyncio.CancelledError:
+            pass  # the cancel above; a main task that died on its own re-raises and fails the run
 
 
 if __name__ == "__main__":

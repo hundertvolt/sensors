@@ -1,14 +1,19 @@
-"""Isolated-driver device script: SystemService.start_and_check_tasks() really restarts a dead task
-on real hardware, not just in mock/twin bookkeeping - the mechanism CLAUDE.md's memory-safety
-discipline leans on when it says to trust the supervisor to restart a task that still dies."""
+"""Isolated-driver device script: SystemService's supervisor (start_tasks(), then supervise_tasks()) really
+restarts a dead task on real hardware, not just in mock/twin bookkeeping - the mechanism CLAUDE.md's
+memory-safety discipline leans on when it says to trust the supervisor to restart a task that still dies."""
 
 import asyncio
 
 import machine
 
-from system_service import SystemService
+from asy_system_service import SystemService
 
+# @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
+# @tunable l3.system_service_restarts_a_real_dead_task_watch_step_s = 0.9
+_WATCH_STEP_S = 0.9
+# @tunable l3.system_service_restarts_a_real_dead_task_wait_rounds = 4
+_WAIT_ROUNDS = 4
 call_count = 0
 
 
@@ -29,13 +34,14 @@ def _dying_starter() -> "asyncio.Task[None]":
 async def _main() -> None:
     wdt = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     sysfunct = SystemService(_ntp_never_synced, watchdog=wdt)
-    supervisor = asyncio.create_task(sysfunct.start_and_check_tasks([_dying_starter]))
+    await sysfunct.start_tasks([_dying_starter])
+    supervisor = asyncio.create_task(sysfunct.supervise_tasks())
 
     # ~3.5s real time: two real restarts expected (task_errors capped at 200) but well short of
     # the ~7s a task that dies every ~2s cycle would need to trip a REAL reboot (_TASK_FAIL_MAX=300,
     # _TASK_FAIL_INCREMENT=100 per cycle) - not what this script is testing.
-    for _ in range(4):
-        await asyncio.sleep(0.9)
+    for _ in range(_WAIT_ROUNDS):
+        await asyncio.sleep(_WATCH_STEP_S)
         wdt.feed()
 
     supervisor.cancel()

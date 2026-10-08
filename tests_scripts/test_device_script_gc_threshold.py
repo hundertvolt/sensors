@@ -2,8 +2,6 @@
 mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2 runs gc_init() once, outside that
 loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS M3.8)."""
 
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 
@@ -93,6 +91,7 @@ def test_a_threshold_set_but_never_reported_is_caught() -> None:
 def test_a_threshold_set_only_after_the_first_reported_arm_is_caught() -> None:
     # A set anywhere in the file is not enough: a later switch would make an inherited first arm
     # look chosen, so the first report must follow the first set.
+    # @tunable gc.threshold_bytes = 32768
     source = 'import gc\nprint(f"GC_THRESHOLD={gc.threshold()}")\nprint(gc.mem_free())\ngc.threshold(32768)\nprint(f"GC_THRESHOLD={gc.threshold()}")\n'
     assert _problems(source) == ["reports GC_THRESHOLD= at line 2 before setting gc.threshold at line 4 - that first arm runs at whatever it inherited"]
 

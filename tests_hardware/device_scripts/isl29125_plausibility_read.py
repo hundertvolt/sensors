@@ -14,12 +14,18 @@ from asy_isl29125_driver import ISL29125_Reader
 LUX_MIN, LUX_MAX = 0.0, 10000.0  # p1's own feature list: range 1 reaches 10000 lx
 CCT_MIN_K, CCT_MAX_K = 2000.0, 12500.0  # McCamy (1992)'s own usable span
 _SELF_LIGHT_LEVEL = 20  # ~750 lx at this geometry: well inside range 1, nowhere near clipping
+# @tunable l3.isl29125_plausibility_read_room_light_min_lux = 5.0
 ROOM_LIGHT_MIN_LUX = 5.0  # with the board lighting ITSELF (below), anything this dark is a real
 # fault rather than a dark bench - see the self-lighting note in _main().
+# @tunable l3.isl29125_plausibility_read_poll_s = 0.5
+_POLL_S = 0.5
+# @tunable l3.isl29125_plausibility_read_poll_tries = 30
+_POLL_TRIES = 30
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     # The board lights its OWN scene rather than trusting the bench: depending on ambient made this
     # result depend on test ORDER - it passed with the pixel latched white, then failed once a
     # preceding test parked it dark. Lit and still dark now means a real fault.
@@ -28,13 +34,13 @@ async def _main() -> None:
     np.write()
     await asyncio.sleep_ms(300)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = ISL29125_Reader(i2c1, 6, max_module_error=999, fram=None, debug=None)
+    reader = ISL29125_Reader(i2c1, 6, max_module_error=999)
     # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O.
     reader.cfgmgr.valid = True
     # Seeded from the driver's own schema, never a hand-copied list - a key added there
     # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
     # starts the read chain. Command-only entries have no default and are skipped.
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.cfg_schema if field[2] is not None}
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
     reader.start_timer()  # wires the real 1s hardware timer and the falling-edge INT handler
     trigger_task = reader.start_asy_trigger()
     read_task = reader.start_asy_read()
@@ -42,19 +48,25 @@ async def _main() -> None:
     data = None
     # One RGB cycle is ~303 ms at 16 bit, so this window is generous; ~15s worst case exceeds the
     # 8.388s hardware WDT ceiling, so this script feeds it rather than relying on anything else.
-    for _ in range(30):
+    for _ in range(_POLL_TRIES):
         data = await reader.get_data()
         if data.Lux is not None:
             break
         wdt.feed()
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(_POLL_S)
 
+    died: list[str] = []
     for task in (trigger_task, read_task):
         task.cancel()
         try:
             await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
             pass
+        except Exception as e:  # a task that died on its own fails the run, never passes it
+            died.append(repr(e))
+    if died:
+        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
+        return
 
     if data is None or data.Lux is None:
         print("RESULT: FAIL no reading obtained within the wait window - sensor not responding or not wired to i2c1")

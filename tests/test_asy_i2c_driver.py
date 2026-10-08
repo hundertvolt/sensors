@@ -1,10 +1,15 @@
 import asyncio
 import errno
 import struct
+import time
 
+from _bus_hazard_catalog import PollRoundClock
+from _ticks30 import TICKS_PERIOD, Ticks30Time
 from machine import I2C as FakeI2C
+from machine import Pin
 
 import asy_i2c_driver
+from asy_base_classes import COUNTER_CAP
 from asy_i2c_driver import I2C, I2CDevice
 
 try:
@@ -13,8 +18,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable, Coroutine
+    from typing import Any, ClassVar, TypeVar
 
     T = TypeVar("T")
 
@@ -23,8 +28,33 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
-def make_i2c() -> I2C:
-    return I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+# @tunable l1.asy_i2c_driver_gather_wait_s = 1.0
+_GATHER_WAIT_S = 1.0
+# @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
+_DEADLOCK_WAIT_S = 0.2
+# @tunable l1.asy_i2c_driver_held_scl_timeout_us = 3000
+_HELD_SCL_TIMEOUT_US = 3000  # a short bus timeout: a line that never releases ends the wait at it
+# Mirrors of asy_i2c_driver's private _REC_* bits (a const() with a leading underscore is no module
+# attribute on MicroPython); keep in sync with the driver.
+_REC_SDA_LOW = 1
+_REC_SDA_STUCK = 2
+_REC_SCL_HELD = 4
+_REC_NO_CONTROLLER = 8
+_SCL, _SDA = 1, 0  # make_i2c()'s pins
+_HOST_STALL_MS = 60  # past rp2's 50 ms default bus timeout, the SCL-release bound of a construction without one
+_LET_GO_READS = 5000  # a line "held for good" lets go this many reads in, so a wait that never ends fails, not hangs
+_WRAP_EDGE_MS = TICKS_PERIOD // 1000  # an uptime whose ticks_us() sits 824 us below rp2's 2**30 wrap
+
+
+def make_i2c(*, timeout: int | None = None) -> I2C:
+    # A fresh static bus 0 and fresh lines (no per-test reset in this tier), its construction entry
+    # dropped so a test's log assertions see only its own traffic; 0x50 is a register device.
+    FakeI2C.reset_id(0)
+    Pin.reset_registry()
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000, timeout=timeout)
+    fake(i2c).log.clear()
+    fake(i2c).register_device(0x50)
+    return i2c
 
 
 def fake(i2c: I2C) -> FakeI2C:
@@ -40,7 +70,7 @@ def fake(i2c: I2C) -> FakeI2C:
 def test_deinit_forwards_to_machine_i2c_and_drops_the_reference() -> None:
     i2c = make_i2c()
     mock = fake(i2c)
-    i2c.deinit()
+    assert i2c.deinit() is True
     assert mock.deinit_called is True  # forwarded, even though rp2 implements it as a no-op
     assert i2c._i2c is None  # this is what actually makes the wrapper report "bus unavailable"
 
@@ -52,34 +82,44 @@ def test_forwarded_machine_i2c_deinit_does_not_disable_the_underlying_bus() -> N
     i2c = make_i2c()
     mock = fake(i2c)
     mock.registers[(0x50, 0x00)] = bytearray(b"\x01\x02")
-    i2c.deinit()
-    assert mock.readfrom_mem(0x50, 0x00, 2) == b"\x01\x02"  # underlying bus still fully alive
+    assert i2c.deinit() is True
+    mock.writeto(0x50, b"\x00", False)
+    buf = bytearray(2)
+    mock.readfrom_into(0x50, buf)
+    assert buf == bytearray(b"\x01\x02")  # underlying bus still fully alive
     i2c._i2c = mock
     assert i2c.get_register_struct(0x50, 0x00, ">H") == 0x0102
 
 
 def test_reinit_deinits_the_previous_bus_first() -> None:
+    # rp2's machine.I2C(id) is one static object per id: a re-init deinits, then re-constructs that
+    # same object, which keeps its devices.
     i2c = make_i2c()
     first = fake(i2c)
     i2c.init(0, scl_pin=1, sda_pin=0, frequency=100000)
     assert first.deinit_called is True
-    assert fake(i2c) is not first
+    assert fake(i2c) is first
+    assert first.log == [("deinit",), ("init", 100000, 50000)]
 
 
-def test_operations_after_deinit_return_none_or_noop() -> None:
+def test_operations_after_deinit_return_false_or_none() -> None:
     i2c = make_i2c()
+    mock = fake(i2c)
     i2c.deinit()
+    logged = len(mock.log)
     assert i2c.scan() is None
     assert i2c.writeto(0x50, b"x") is None
     assert i2c.get_bits(0x50, 1, 0x00, 0) is None
     assert i2c.get_register_struct(0x50, 0x00, ">H") is None
-    i2c.readfrom_into(0x50, bytearray(2))  # no-op, must not raise
-    i2c.set_bits(0x50, 1, 0x00, 0, 1)  # no-op, must not raise
-    i2c.set_register_struct(0x50, 0x00, ">H", 1)  # no-op, must not raise
-    i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2))  # no-op, must not raise
+    assert i2c.get_register_bytes(0x50, 0x00, 2) is None
+    assert i2c.readfrom_into(0x50, bytearray(2)) is False
+    assert i2c.set_bits(0x50, 1, 0x00, 0, 1) is False
+    assert i2c.set_register_struct(0x50, 0x00, ">H", 1) is False
+    assert i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2)) is False
+    assert len(mock.log) == logged  # nothing reached the bus
 
 
-def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop() -> None:
+def test_device_operations_on_an_already_deinitialized_bus_return_false_or_none() -> None:
     # Distinct from the mid-session case above: the bus is deinitialized before any session starts, and
     # every I2CDevice method is exercised directly rather than just readinto via a mid-session probe. A
     # never-initialized bus cannot be observed separately - I2C.__init__ always calls init() immediately.
@@ -88,13 +128,14 @@ def test_device_operations_on_an_already_deinitialized_bus_return_none_or_noop()
     i2c.deinit()
 
     async def scenario() -> None:
-        await device.write(b"x")  # no-op, must not raise
-        await device.readinto(bytearray(2))  # no-op, must not raise
-        await device.write_then_readinto(b"cmd", bytearray(2))  # no-op, must not raise
-        await device.set_bits(1, 0x00, 0, 1)  # no-op, must not raise
+        assert await device.write(b"x") is False
+        assert await device.readinto(bytearray(2)) is False
+        assert await device.write_then_readinto(b"cmd", bytearray(2)) is False
+        assert await device.set_bits(1, 0x00, 0, 1) is False
         assert await device.get_bits(1, 0x00, 0) is None
-        await device.set_register_struct(0x00, ">H", 1)  # no-op, must not raise
+        assert await device.set_register_struct(0x00, ">H", 1) is False
         assert await device.get_register_struct(0x00, ">H") is None
+        assert await device.get_register_bytes(0x00, 2) is None
 
     run(scenario())
 
@@ -131,7 +172,7 @@ def test_writeto_str_buffer_beyond_latin1_returns_none_instead_of_raising() -> N
 def test_readfrom_into_and_writeto_respect_start_end_slice() -> None:
     i2c = make_i2c()
     buf = bytearray(b"\x00\x00\x00\x00")
-    i2c.readfrom_into(0x50, buf, start=1, end=3)
+    assert i2c.readfrom_into(0x50, buf, start=1, end=3) is True
     assert fake(i2c).log[-1][0] == "readfrom_into"
     i2c.writeto(0x50, b"XYZ", start=1, end=3)
     assert fake(i2c).log[-1] == ("writeto", 0x50, b"YZ", True)
@@ -139,7 +180,7 @@ def test_readfrom_into_and_writeto_respect_start_end_slice() -> None:
 
 def test_writeto_then_readfrom_forwards_both() -> None:
     i2c = make_i2c()
-    i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2))
+    assert i2c.writeto_then_readfrom(0x50, b"cmd", bytearray(2)) is True
     ops = [entry[0] for entry in fake(i2c).log]
     assert ops == ["writeto", "readfrom_into"]
 
@@ -234,7 +275,7 @@ def test_register_struct_round_trip_little_endian() -> None:
 def test_register_struct_malformed_format_returns_none_and_noop() -> None:
     i2c = make_i2c()
     assert i2c.get_register_struct(0x50, 0x20, "Y") is None  # not a real struct format char
-    i2c.set_register_struct(0x50, 0x20, "Y", 1)
+    assert i2c.set_register_struct(0x50, 0x20, "Y", 1) is False
     assert len(fake(i2c).log) == 0
 
 
@@ -340,14 +381,14 @@ def test_set_register_struct_accepts_bytearray_for_bytes_formats() -> None:
     assert i2c.get_register_struct(0x50, 0x20, "4s") == b"data"
 
 
-def test_set_register_struct_type_mismatch_returns_none_instead_of_raising() -> None:
+def test_set_register_struct_type_mismatch_returns_false_instead_of_raising() -> None:
     # Found during review: struct.pack raises TypeError, not ValueError, when value's type does not match
     # what reg_format expects - previously uncaught, a real "never raises" contract violation for an in-
     # contract call, not an out-of-domain input the type system already excluded.
     i2c = make_i2c()
-    i2c.set_register_struct(0x50, 0x20, "4s", 5)  # int value, bytes-type format
+    assert i2c.set_register_struct(0x50, 0x20, "4s", 5) is False  # int value, bytes-type format
     assert len(fake(i2c).log) == 0  # rejected before ever touching the bus
-    i2c.set_register_struct(0x50, 0x20, "f", b"x")  # bytes value, float-type format
+    assert i2c.set_register_struct(0x50, 0x20, "f", b"x") is False  # bytes value, float-type format
     assert len(fake(i2c).log) == 0
 
 
@@ -359,7 +400,7 @@ def test_set_register_struct_type_mismatch_returns_none_instead_of_raising() -> 
 def test_device_shares_the_bus_lock() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
-    assert device.asy_lock is i2c.async_lock
+    assert device.session_lock is i2c.bus_lock
 
 
 def test_device_context_manager_acquires_and_releases_lock() -> None:
@@ -367,10 +408,10 @@ def test_device_context_manager_acquires_and_releases_lock() -> None:
     device = I2CDevice(i2c, 0x50)
 
     async def scenario() -> None:
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
         async with device:
-            assert i2c.async_lock.locked()
-        assert not i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -378,7 +419,7 @@ def test_device_context_manager_acquires_and_releases_lock() -> None:
 def test_probe_succeeds_when_device_acks() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
-    run(device.setup())  # must not raise
+    assert run(device.setup()) is True
 
 
 def test_probe_raises_value_error_when_device_missing() -> None:
@@ -387,10 +428,10 @@ def test_probe_raises_value_error_when_device_missing() -> None:
     device = I2CDevice(i2c, 0x50)
     try:
         run(device.setup())
-        raised = False
-    except ValueError:
-        raised = True
-    assert raised
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert message == f"no I2C device at address: {0x50:#x}"
 
 
 def test_probe_raises_runtime_error_when_bus_uninitialized() -> None:
@@ -408,9 +449,9 @@ def test_probe_raises_runtime_error_when_bus_uninitialized() -> None:
 def test_device_readinto_and_write_use_device_address() -> None:
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
-    run(device.write(b"cmd"))
+    assert run(device.write(b"cmd")) is True
     assert fake(i2c).log[-1] == ("writeto", 0x50, b"cmd", True)
-    run(device.readinto(bytearray(2)))
+    assert run(device.readinto(bytearray(2))) is True
     assert fake(i2c).log[-1][0:2] == ("readfrom_into", 0x50)
 
 
@@ -518,26 +559,34 @@ def test_get_bits_propagates_bus_fault() -> None:
 
 def test_set_bits_read_half_can_fail_before_any_write_is_attempted() -> None:
     i2c = make_i2c()
-    fake(i2c).inject_fault("readfrom_mem", OSError(errno.EIO, "no ACK"))
+    fake(i2c).inject_fault("readfrom_into", OSError(errno.EIO, "no ACK"), match=0x10)
     try:
         i2c.set_bits(0x50, 3, 0x10, 0, 0x5, reg_width=1)
         raised = False
     except OSError:
         raised = True
     assert raised
-    assert not any(entry[0] == "writeto_mem" for entry in fake(i2c).log)  # never reached the write
+    assert fake(i2c).log == [("writeto", 0x50, b"\x10", False)]  # the pointer only: never reached the write
 
 
 def test_set_bits_write_half_can_fail_after_read_half_succeeds() -> None:
     i2c = make_i2c()
-    fake(i2c).inject_fault("writeto_mem", OSError(errno.EIO, "no ACK"))
+    mock = fake(i2c)
+    real_writeto = mock.writeto
+
+    def fail_the_register_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if stop:  # the pointer write of the read half is no-stop; the register write is the one with a stop
+            raise OSError(errno.EIO, "no ACK")
+        return real_writeto(address, buf, stop)
+
+    mock.writeto = fail_the_register_write  # type: ignore[method-assign]
     try:
         i2c.set_bits(0x50, 3, 0x10, 0, 0x5, reg_width=1)
         raised = False
     except OSError:
         raised = True
     assert raised
-    assert any(entry[0] == "readfrom_mem" for entry in fake(i2c).log)  # the read did happen first
+    assert [entry[0] for entry in mock.log] == ["writeto", "readfrom_into"]  # the read did happen first
 
 
 # ---------------------------------------------------------------------------
@@ -575,18 +624,20 @@ def test_deinit_mid_session_degrades_later_ops_in_the_same_session_cleanly() -> 
     device = I2CDevice(i2c, 0x50)
 
     async def scenario() -> bytearray:
-        buf = bytearray(2)
+        buf = bytearray(b"\x55\x55")
         async with device:
-            await device.write(b"first")
+            assert await device.write(b"first") is True
             i2c.deinit()
-            await device.readinto(buf)  # must not raise
+            assert await device.readinto(buf) is False
         return buf
 
     result = run(scenario())
-    assert result == bytearray(2)  # untouched: readinto no-op'd, buffer stays as allocated
+    assert result == bytearray(b"\x55\x55")  # untouched: no transfer
 
 
-def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
+def test_reinit_mid_session_re_constructs_the_same_static_bus() -> None:
+    # rp2's machine.I2C(id) is one static object per id, as the fake models it: the re-init goes through
+    # deinit() and a re-construction of that object, between the session's two writes.
     i2c = make_i2c()
     device = I2CDevice(i2c, 0x50)
     old_mock = fake(i2c)
@@ -598,13 +649,8 @@ def test_reinit_mid_session_switches_to_a_fresh_bus() -> None:
             await device.write(b"second")
 
     run(scenario())
-    assert old_mock.log[0] == ("writeto", 0x50, b"first", True)
-    assert old_mock.log[-1] == ("deinit",)  # init() deinits the old bus before swapping it out
-    assert fake(i2c).log[-1] == ("writeto", 0x50, b"second", True)
-    # Fake-only: real rp2 machine.I2C(id) returns one static per-bus singleton, so a re-init would
-    # hand back the *same* object. tests/machine.py deliberately diverges here (see its own note)
-    # so a test can tell the pre- and post-re-init bus apart; nothing in src/ depends on either.
-    assert fake(i2c) is not old_mock
+    assert fake(i2c) is old_mock
+    assert old_mock.log == [("writeto", 0x50, b"first", True), ("deinit",), ("init", 100000, 50000), ("writeto", 0x50, b"second", True)]
 
 
 # ---------------------------------------------------------------------------
@@ -620,7 +666,7 @@ def test_single_op_session_releases_lock_immediately_after() -> None:
     async def scenario() -> None:
         async with device:
             await device.write(b"x")
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -632,12 +678,12 @@ def test_multi_transfer_session_holds_the_lock_across_every_transfer() -> None:
     async def scenario() -> None:
         async with device:
             await device.write(b"cmd1")
-            assert i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
             await device.readinto(bytearray(2))
-            assert i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
             await device.write(b"cmd2")
-            assert i2c.async_lock.locked()
-        assert not i2c.async_lock.locked()
+            assert i2c.bus_lock.locked()
+        assert not i2c.bus_lock.locked()
         ops = [entry[0] for entry in fake(i2c).log]
         assert ops == ["writeto", "readfrom_into", "writeto"]
 
@@ -652,14 +698,14 @@ def test_sequential_sessions_do_not_leak_lock_state_between_them() -> None:
         for _ in range(3):
             async with device:
                 await device.write(b"x")
-            assert not i2c.async_lock.locked()
+            assert not i2c.bus_lock.locked()
 
     run(scenario())
     assert len(fake(i2c).log) == 3
 
 
 def test_device_operations_do_not_self_lock_caller_must_wrap_in_async_with() -> None:
-    # I2CDevice's read and write methods never acquire self.asy_lock themselves - by design, every real
+    # I2CDevice's read and write methods never acquire self.session_lock themselves - by design, every real
     # caller wraps them in `async with device:`. This makes an easy-to-miss division of responsibility
     # explicit: locking is the caller's job, not something write()/readinto() provide.
     i2c = make_i2c()
@@ -667,7 +713,7 @@ def test_device_operations_do_not_self_lock_caller_must_wrap_in_async_with() -> 
 
     async def scenario() -> None:
         await device.write(b"x")  # no `async with device:` wrapper at all
-        assert not i2c.async_lock.locked()  # never touched: write() itself doesn't lock
+        assert not i2c.bus_lock.locked()  # never touched: write() itself doesn't lock
 
     run(scenario())
 
@@ -716,7 +762,7 @@ def test_four_concurrent_sessions_all_complete_and_stay_serialized() -> None:
             completed += 1
 
     async def scenario() -> None:
-        await asyncio.wait_for(asyncio.gather(*(worker(d) for d in devices)), 1.0)
+        await asyncio.wait_for(asyncio.gather(*(worker(d) for d in devices)), _GATHER_WAIT_S)
 
     run(scenario())
     assert max_concurrent == 1
@@ -762,7 +808,7 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
                 boom()
         except RuntimeError:
             pass
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
         async with device:  # must still be acquirable - not left stuck locked
             pass
 
@@ -791,11 +837,11 @@ def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
 
     async def scenario() -> None:
         async with device:
-            device.asy_lock.release()  # released early by hand
+            device.session_lock.release()  # released early by hand
         # __aexit__'s own release() must swallow the resulting RuntimeError, not propagate it
 
     run(scenario())  # must not raise
-    assert not i2c.async_lock.locked()
+    assert not i2c.bus_lock.locked()
 
 
 def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
@@ -816,13 +862,13 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
         task = asyncio.create_task(holder())
         while not started:
             await asyncio.sleep(0)
-        assert i2c.async_lock.locked()
+        assert i2c.bus_lock.locked()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert not i2c.async_lock.locked()
+        assert not i2c.bus_lock.locked()
 
     run(scenario())
 
@@ -840,14 +886,14 @@ def test_reentrant_acquisition_on_the_same_device_deadlocks_and_cleans_up() -> N
 
     async def scenario() -> bool:
         try:
-            await asyncio.wait_for(reentrant(), 0.2)
+            await asyncio.wait_for(reentrant(), _DEADLOCK_WAIT_S)
         except asyncio.TimeoutError:
             return True
         else:
             return False
 
     assert run(scenario())
-    assert not i2c.async_lock.locked()
+    assert not i2c.bus_lock.locked()
 
 
 def test_aenter_returns_the_device_itself() -> None:
@@ -930,40 +976,60 @@ def test_timeout_omitted_leaves_the_bus_default_untouched() -> None:
 
 
 def test_timeout_explicit_value_is_forwarded() -> None:
-    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000, timeout=12345)
+    i2c = make_i2c(timeout=12345)
     assert fake(i2c).timeout == 12345
 
 
-def test_addrsize_omitted_uses_the_bus_default() -> None:
+def test_addrsize_omitted_writes_one_address_byte() -> None:
+    # A register read is a no-stop address write then a read, as read_mem() issues it on rp2; 8 bits is
+    # machine.I2C's own default address size.
     i2c = make_i2c()
-    i2c.get_bits(0x50, 1, 0x10, 0, reg_width=1)
-    assert fake(i2c).log[-1] == ("readfrom_mem", 0x50, 0x10, 1, 8)  # 8 is machine.I2C's own default
+    fake(i2c).registers[(0x50, 0x10)] = bytearray([0x07])
+    assert i2c.get_bits(0x50, 3, 0x10, 0, reg_width=1) == 0x07
+    assert fake(i2c).log == [("writeto", 0x50, b"\x10", False), ("readfrom_into", 0x50, b"\x07", True)]
+    fake(i2c).log.clear()
+    i2c.set_register_struct(0x50, 0x10, "B", 0x42, addrsize=8)
+    assert fake(i2c).log == [("writeto", 0x50, b"\x10\x42", True)]
 
 
-def test_addrsize_explicit_value_is_forwarded_through_get_set_bits() -> None:
+def test_addrsize_16_writes_two_address_bytes_most_significant_first() -> None:
     i2c = make_i2c()
-    i2c.set_bits(0x50, 3, 0x10, 0, 0x5, reg_width=1, addrsize=16)
-    assert fake(i2c).log[0][-1] == 16  # readfrom_mem
-    assert fake(i2c).log[1][-1] == 16  # writeto_mem
-    i2c.get_bits(0x50, 3, 0x10, 0, reg_width=1, addrsize=16)
-    assert fake(i2c).log[-1][-1] == 16
+    fake(i2c).register_device(0x50, addrsize=16)
+    assert i2c.set_bits(0x50, 3, 0x0110, 0, 0x5, reg_width=1, addrsize=16) is True
+    assert fake(i2c).log == [
+        ("writeto", 0x50, b"\x01\x10", False),
+        ("readfrom_into", 0x50, b"\x00", True),
+        ("writeto", 0x50, b"\x01\x10\x05", True),
+    ]
+    assert i2c.get_bits(0x50, 3, 0x0110, 0, reg_width=1, addrsize=16) == 0x5
+    fake(i2c).log.clear()
+    assert i2c.set_register_struct(0x50, 0x0110, ">H", 0x1234, addrsize=16) is True
+    assert fake(i2c).log == [("writeto", 0x50, b"\x01\x10\x12\x34", True)]
+    assert i2c.get_register_struct(0x50, 0x0110, ">H", addrsize=16) == 0x1234
 
 
-def test_addrsize_explicit_value_is_forwarded_through_register_struct() -> None:
+def test_an_addrsize_machine_i2c_refuses_still_raises_value_error() -> None:
+    # machine.I2C's fill_memaddr_buf() raises for a non-multiple of 8 or more than 32 bits; the helpers keep that.
     i2c = make_i2c()
-    i2c.set_register_struct(0x50, 0x10, ">H", 0x1234, addrsize=16)
-    assert fake(i2c).log[-1][-1] == 16
-    i2c.get_register_struct(0x50, 0x10, ">H", addrsize=16)
-    assert fake(i2c).log[-1][-1] == 16
+    for addrsize in (12, 40):
+        try:
+            i2c.get_register_bytes(0x50, 0x10, 1, addrsize)
+            raised = False
+        except ValueError:
+            raised = True
+        assert raised, addrsize
+    assert fake(i2c).log == []
 
 
 def test_device_forwards_addrsize_for_bits_and_struct() -> None:
     i2c = make_i2c()
+    fake(i2c).register_device(0x50, addrsize=16)
     device = I2CDevice(i2c, 0x50)
-    run(device.set_bits(3, 0x10, 0, 0x5, reg_width=1, addrsize=16))
-    assert fake(i2c).log[-1][-1] == 16
-    run(device.set_register_struct(0x20, ">H", 0x1234, addrsize=16))
-    assert fake(i2c).log[-1][-1] == 16
+    assert run(device.set_bits(3, 0x10, 0, 0x5, reg_width=1, addrsize=16)) is True
+    assert fake(i2c).log[-1] == ("writeto", 0x50, b"\x00\x10\x05", True)
+    assert run(device.set_register_struct(0x20, ">H", 0x1234, addrsize=16)) is True
+    assert fake(i2c).log[-1] == ("writeto", 0x50, b"\x00\x20\x12\x34", True)
+    assert run(device.get_register_bytes(0x20, 2, addrsize=16)) == b"\x12\x34"
 
 
 # ---------------------------------------------------------------------------
@@ -976,7 +1042,7 @@ def test_out_stop_and_in_stop_are_independent() -> None:
     # and the read) while still stopping normally after the read - previously inexpressible
     # since one shared `stop` forced both legs to the same value.
     i2c = make_i2c()
-    i2c.writeto_then_readfrom(0x50, b"reg", bytearray(2), out_stop=False, in_stop=True)
+    assert i2c.writeto_then_readfrom(0x50, b"reg", bytearray(2), out_stop=False, in_stop=True) is True
     assert fake(i2c).log[0] == ("writeto", 0x50, b"reg", False)
     assert fake(i2c).log[1][-1] is True
 
@@ -1015,35 +1081,37 @@ def test_set_bits_masks_an_oversized_value_instead_of_corrupting_adjacent_bits()
 
 
 # ---------------------------------------------------------------------------
-# shared read scratch - readfrom_mem_into() instead of an allocation per read
+# shared read scratch - the address and the read share one buffer, no allocation per read
 # ---------------------------------------------------------------------------
 
 
-def test_register_reads_go_through_readfrom_mem_into_not_the_allocating_form() -> None:
+def test_register_access_writes_the_address_then_reads_into_the_scratch_never_a_mem_call() -> None:
+    # A register read is writeto(address, stop=False) then readfrom_into(), the sequence read_mem() issues
+    # on rp2 but with the ACK count tested; a register write is one writeto() of address and payload.
     i2c = make_i2c()
     mock = fake(i2c)
-    calls: list[str] = []
-    real_alloc = mock.readfrom_mem
+    mem_calls: list[str] = []
 
-    def spy_into(address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
-        # Fills from real_alloc rather than calling through to the fake's own readfrom_mem_into,
-        # which itself delegates to readfrom_mem - that delegation would otherwise show up here as a
-        # second call and hide whether the driver used the allocating form directly.
-        calls.append("readfrom_mem_into")
-        buf[:] = real_alloc(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+    def no_mem_call(*_args: object, **_kwargs: object) -> None:
+        mem_calls.append("mem")
 
-    def spy_alloc(address: int, memaddr: int, nbytes: int, *, addrsize: int = 8) -> bytes:
-        calls.append("readfrom_mem")
-        return real_alloc(address, memaddr, nbytes, addrsize=addrsize)
-
-    mock.readfrom_mem_into = spy_into  # type: ignore[method-assign]
-    mock.readfrom_mem = spy_alloc  # type: ignore[method-assign]
+    mock.readfrom_mem_into = no_mem_call  # type: ignore[method-assign]
+    mock.readfrom_mem = no_mem_call  # type: ignore[method-assign, assignment]
+    mock.writeto_mem = no_mem_call  # type: ignore[method-assign]
     mock.registers[(0x42, 0x10)] = bytearray(b"\x01\x02\x03")
-    i2c.get_register_struct(0x42, 0x10, "3s")
-    i2c.get_bits(0x42, 4, 0x10, 0, 1)
-    i2c.set_bits(0x42, 4, 0x10, 0, 0x5, 1)
-    # The allocating form survives only as the oversized-read fallback; none of the three uses it.
-    assert calls == ["readfrom_mem_into"] * 3, calls
+    assert i2c.get_register_struct(0x42, 0x10, "3s") == b"\x01\x02\x03"
+    assert i2c.get_bits(0x42, 4, 0x10, 0, 1) == 0x1
+    assert i2c.set_bits(0x42, 4, 0x10, 0, 0x5, 1) is True
+    assert mem_calls == []
+    assert mock.log == [
+        ("writeto", 0x42, b"\x10", False),
+        ("readfrom_into", 0x42, b"\x01\x02\x03", True),
+        ("writeto", 0x42, b"\x10", False),
+        ("readfrom_into", 0x42, b"\x01", True),
+        ("writeto", 0x42, b"\x10", False),
+        ("readfrom_into", 0x42, b"\x01", True),
+        ("writeto", 0x42, b"\x10\x05", True),
+    ]
 
 
 def test_a_read_result_is_copied_out_of_the_scratch_not_aliased_to_it() -> None:
@@ -1067,6 +1135,492 @@ def test_a_read_larger_than_the_scratch_still_works() -> None:
     size = 40  # asy_i2c_driver._SCRATCH_SIZE is 32, and const() folds the name out of the module
     mock.registers[(0x42, 0x20)] = bytearray(range(size))
     assert i2c.get_register_struct(0x42, 0x20, f"{size}s") == bytes(range(size))
+
+
+# ---------------------------------------------------------------------------
+# bool results: every completed transfer and write is True; a short ACK count is an EIO
+# ---------------------------------------------------------------------------
+
+
+def test_every_completed_transfer_and_write_returns_true() -> None:
+    i2c = make_i2c()
+    device = I2CDevice(i2c, 0x50)
+    assert i2c.readfrom_into(0x50, bytearray(2)) is True
+    assert i2c.writeto_then_readfrom(0x50, b"\x10", bytearray(2)) is True
+    assert i2c.set_bits(0x50, 1, 0x10, 0, 1) is True
+    assert i2c.set_register_struct(0x50, 0x10, "B", 1) is True
+
+    async def scenario() -> None:
+        assert await device.readinto(bytearray(2)) is True
+        assert await device.write(b"\x10") is True
+        assert await device.write_then_readinto(b"\x10", bytearray(2)) is True
+        assert await device.set_bits(1, 0x10, 0, 1) is True
+        assert await device.set_register_struct(0x10, "B", 1) is True
+
+    run(scenario())
+
+
+def _eio(call: "Callable[[], object]") -> bool:
+    try:
+        call()
+    except OSError as e:
+        return e.errno == errno.EIO
+    return False
+
+
+def test_a_short_ack_count_raises_eio_and_a_no_stop_write_then_sends_the_stop() -> None:
+    i2c = make_i2c()
+    fake(i2c).short_ack(0x60, 2)
+    assert _eio(lambda: i2c.writeto(0x60, b"abc"))
+    assert fake(i2c).log == [("writeto", 0x60, b"abc", True)]
+    fake(i2c).log.clear()
+    fake(i2c).short_ack(0x60, 2)
+    assert _eio(lambda: i2c.writeto(0x60, b"abc", stop=False))
+    assert fake(i2c).log == [("writeto", 0x60, b"abc", False), ("writeto", 0x60, b"", True)]
+    assert i2c.writeto(0x60, b"abc") == 3  # the next full ACK count is a plain success again
+
+
+def test_a_short_no_stop_write_raises_eio_even_when_its_stop_is_refused() -> None:
+    # read_mem() ignores the result of the STOP it sends after a short address write; so does the
+    # driver, so the caller sees the EIO of the short count, never the STOP's own error.
+    i2c = make_i2c()
+    mock = fake(i2c)
+    real_writeto = mock.writeto
+
+    def refuse_the_stop(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        if not len(buf):  # type: ignore[arg-type]
+            raise OSError(errno.ENODEV, "zero-length write NACKed")
+        return real_writeto(address, buf, stop)
+
+    mock.writeto = refuse_the_stop  # type: ignore[method-assign]
+    mock.short_ack(0x50, 0)
+    try:
+        i2c.get_register_bytes(0x50, 0x20, 2)
+        raised = None
+    except OSError as e:
+        raised = e.errno
+    assert raised == errno.EIO
+
+
+def test_a_nacked_data_byte_in_a_register_write_raises_eio_and_stores_nothing() -> None:
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\xaa\xbb")
+    fake(i2c).short_ack(0x50, 1)  # the register byte ACKed, the first data byte not
+    assert _eio(lambda: i2c.set_register_struct(0x50, 0x20, ">H", 0x1234))
+    assert fake(i2c).log == [("writeto", 0x50, b"\x20\x12\x34", True)]
+    assert fake(i2c).registers[(0x50, 0x20)] == bytearray(b"\xaa\xbb")
+    fake(i2c).log.clear()
+    mock = fake(i2c)
+    real_read = mock.readfrom_into
+
+    def nack_the_following_write(address: int, buf: object, stop: bool = True) -> None:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+        real_read(address, buf, stop)
+        mock.short_ack(address, 1)  # set_bits()'s read half done: its register write is NACKed
+
+    mock.readfrom_into = nack_the_following_write  # type: ignore[method-assign]
+    assert _eio(lambda: i2c.set_bits(0x50, 4, 0x20, 0, 0x5))
+    assert mock.log[-1] == ("writeto", 0x50, b"\x20\xa5", True)  # one writeto: address, then the merged value
+    assert mock.registers[(0x50, 0x20)] == bytearray(b"\xaa\xbb")
+
+
+def test_a_nacked_register_byte_raises_eio_instead_of_a_stale_read() -> None:
+    # readfrom_mem_into() would return with the buffer untouched here; the helpers see the short count.
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\x01\x02")
+    fake(i2c).short_ack(0x50, 0)
+    assert _eio(lambda: i2c.get_register_bytes(0x50, 0x20, 2))
+    assert fake(i2c).log == [("writeto", 0x50, b"\x20", False), ("writeto", 0x50, b"", True)]  # the STOP, no read
+    fake(i2c).short_ack(0x50, 0)
+    assert _eio(lambda: i2c.get_register_struct(0x50, 0x20, ">H"))
+    fake(i2c).short_ack(0x50, 0)
+    assert _eio(lambda: i2c.get_bits(0x50, 1, 0x20, 0))
+    assert i2c.get_register_bytes(0x50, 0x20, 2) == b"\x01\x02"  # a full ACK count reads as before
+
+
+def test_a_general_call_no_device_acks_raises_eio() -> None:
+    # SGP40's _reset() catches it and stays best-effort (test_asy_sgp40_driver.py).
+    i2c = make_i2c()
+    fake(i2c).nak_addresses.add(0x00)
+    assert _eio(lambda: i2c.writeto(0x00, b"\x06"))
+
+
+# ---------------------------------------------------------------------------
+# get_register_bytes() - exactly `length` bytes, copied out of the shared scratch
+# ---------------------------------------------------------------------------
+
+
+def test_get_register_bytes_returns_a_copy_of_exactly_length_bytes() -> None:
+    i2c = make_i2c()
+    fake(i2c).registers[(0x50, 0x04)] = bytearray(b"\x10\x20\x30\x40")
+    value = i2c.get_register_bytes(0x50, 0x04, 3)
+    assert value == b"\x10\x20\x30"
+    i2c._scratch[:4] = b"\xff\xff\xff\xff"
+    assert value == b"\x10\x20\x30"  # a copy: the scratch's next use leaves it alone
+    assert i2c.get_register_bytes(0x50, 0x04, 0) is None
+    assert i2c.get_register_bytes(0x50, 0x04, -1) is None
+    assert fake(i2c).log[-1][0] == "readfrom_into"  # the two refusals made no transfer
+
+
+def test_get_register_bytes_above_the_scratch_uses_the_allocating_fallback() -> None:
+    i2c = make_i2c()
+    size = 40  # above the driver's 32-byte scratch
+    fake(i2c).registers[(0x50, 0x20)] = bytearray(range(size))
+    scratch_before = bytes(i2c._scratch)
+    assert i2c.get_register_bytes(0x50, 0x20, size) == bytes(range(size))
+    assert bytes(i2c._scratch)[1:] == scratch_before[1:]  # only the address byte went through the scratch
+
+
+def test_get_register_bytes_lets_a_bus_oserror_propagate() -> None:
+    i2c = make_i2c()
+    fake(i2c).inject_fault("readfrom_into", OSError(errno.ETIMEDOUT, "stretch"), match=0x20)
+    try:
+        i2c.get_register_bytes(0x50, 0x20, 2)
+        raised = None
+    except OSError as e:
+        raised = e.errno
+    assert raised == errno.ETIMEDOUT
+
+
+def test_a_set_register_struct_above_the_scratch_still_writes_address_and_payload() -> None:
+    i2c = make_i2c()
+    payload = bytes(range(40))
+    assert i2c.set_register_struct(0x50, 0x20, "40s", payload) is True
+    assert fake(i2c).log == [("writeto", 0x50, b"\x20" + payload, True)]
+
+
+# ---------------------------------------------------------------------------
+# The bus rungs: the boot clear before the controller exists, then clear() and recover() at runtime
+# ---------------------------------------------------------------------------
+
+
+def _build(*, sda: "int | Callable[[int, object], int]" = 1, scl: "int | Callable[[int, object], int]" = 1, timeout: int | None = None) -> I2C:
+    FakeI2C.reset_id(0)
+    Pin.reset_registry()
+    Pin.set_external_level(_SDA, sda)
+    Pin.set_external_level(_SCL, scl)
+    return I2C(0, scl_pin=_SCL, sda_pin=_SDA, frequency=100000, timeout=timeout)
+
+
+def _held_for(reads: int, host_stall_ms: int = 0) -> "tuple[Callable[[int, object], int], list[int]]":
+    # SCL held low for its first `reads` reads, then let go; the reads still owed are returned beside the level.
+    held = [reads]
+    stall = [host_stall_ms]
+
+    def level(_pin: int, _log: object) -> int:
+        _stall_once(stall)
+        if held[0]:
+            held[0] -= 1
+            return 0
+        return 1
+
+    return level, held
+
+
+def _pulses_then_stop(pulses: int) -> list[int]:
+    return [0, 1] * pulses + [0, 1]  # each pulse low then released, then the STOP's SCL low and release
+
+
+def _released_after(pulses: int) -> "Callable[[int, object], int]":
+    # SDA held low by a slave until SCL has risen `pulses` times.
+    def level(_pin: int, _log: object) -> int:
+        return 1 if list(Pin.value_log(_SCL)).count(1) >= pulses else 0
+
+    return level
+
+
+def _stall_once(stall: "list[int]") -> None:
+    # A host deschedule inside the first SCL read: the whole interpreter blocks once for stall[0] ms.
+    if stall[0]:
+        time.sleep_ms(stall[0])
+        stall[0] = 0
+
+
+def _scl_on_the_fake_clock(clock: Ticks30Time, held_reads: int) -> "tuple[Callable[[int, object], int], list[int]]":
+    # SCL held low for `held_reads` reads, then released, and the reads counted; each read moves the fake clock
+    # 1 ms on, so a wait on the line lasts as many ms as it reads it.
+    reads = [0]
+
+    def level(_pin: int, _log: object) -> int:
+        reads[0] += 1
+        clock.advance(1)
+        return 0 if reads[0] <= held_reads else 1
+
+    return level, reads
+
+
+def _stretching(reads: int, host_stall_ms: int = 0) -> "Callable[[int, object], int]":
+    # SCL held low by a slave for `reads` reads after every release the driver makes; a new drive is a
+    # change in the line's drive count (the value log is a ring: its len() stops at its capacity).
+    state = [-1, 0]
+    stall = [host_stall_ms]
+
+    def level(_pin: int, _log: object) -> int:
+        _stall_once(stall)
+        log = Pin.value_log(_SCL)
+        drives = len(log) + log.dropped
+        if drives != state[0]:
+            state[0], state[1] = drives, 0
+        state[1] += 1
+        return 1 if state[1] > reads else 0
+
+    return level
+
+
+def test_the_boot_clear_leaves_a_free_bus_untouched() -> None:
+    i2c = _build()
+    assert list(Pin.value_log(_SCL)) == []
+    assert list(Pin.value_log(_SDA)) == []
+    assert i2c.take_boot_clear_status() == 0
+    assert fake(i2c).log == [("init", 100000, 50000)]
+
+
+def test_the_boot_clear_stops_pulsing_once_the_slave_releases_sda() -> None:
+    i2c = _build(sda=_released_after(3))
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(3)
+    assert list(Pin.value_log(_SDA)) == [0, 1]  # the STOP: driven low while SCL is low, released after SCL
+    assert i2c.take_boot_clear_status() == _REC_SDA_LOW
+    assert i2c.take_boot_clear_status() == 0  # taken once
+
+
+def test_the_boot_clear_gives_up_after_nine_pulses_and_construction_proceeds() -> None:
+    i2c = _build(sda=0)
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9)
+    assert i2c.take_boot_clear_status() == _REC_SDA_LOW | _REC_SDA_STUCK
+    assert fake(i2c).log == [("init", 100000, 50000)]
+    assert i2c.get_register_bytes(0x50, 0x00, 1) is not None  # the controller exists
+
+
+def test_the_boot_clear_counts_a_stretched_pulse_only_once_scl_is_released() -> None:
+    # The slave stretches for a count of reads, so the wait is judged in poll rounds: a host stall past the 50 ms
+    # bound, inside the first read, must not read as a held clock (as in every stretched case below).
+    for host_stall_ms in (0, _HOST_STALL_MS):
+        with PollRoundClock():
+            i2c = _build(sda=0, scl=_stretching(2, host_stall_ms))
+        assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9), host_stall_ms
+        assert i2c.take_boot_clear_status() == _REC_SDA_LOW | _REC_SDA_STUCK, host_stall_ms
+
+
+def test_the_boot_clear_reports_a_held_scl_and_pulses_nothing() -> None:
+    # Like the runtime clear, the boot clear first waits for SCL up to the bus timeout: a slave holding
+    # SCL is reported as such, never as a free bus nor as SDA cleared, and no pulse is sent.
+    for sda in (0, 1):
+        i2c = _build(sda=sda, scl=0, timeout=_HELD_SCL_TIMEOUT_US)
+        assert list(Pin.value_log(_SCL)) == [], sda
+        assert list(Pin.value_log(_SDA)) == [], sda
+        assert i2c.take_boot_clear_status() == _REC_SCL_HELD, sda
+        assert fake(i2c).log == [("init", 100000, _HELD_SCL_TIMEOUT_US)]  # construction proceeds
+
+
+def test_the_boot_clear_proceeds_once_scl_is_released_inside_the_timeout() -> None:
+    for host_stall_ms in (0, _HOST_STALL_MS):
+        scl_level, held = _held_for(3, host_stall_ms)  # SCL reads low three times at boot, then is let go
+        with PollRoundClock():
+            i2c = _build(sda=_released_after(2), scl=scl_level, timeout=_HELD_SCL_TIMEOUT_US)
+        assert held == [0], host_stall_ms
+        assert list(Pin.value_log(_SCL)) == _pulses_then_stop(2), host_stall_ms
+        assert i2c.take_boot_clear_status() == _REC_SDA_LOW, host_stall_ms
+
+
+def test_the_boot_clear_ends_at_the_bus_timeout_on_the_fake_clock() -> None:
+    # The SCL lead-in across ticks_us()'s wrap: a held SCL is read once per ms up to the bus timeout, configured or
+    # rp2's 50 ms default; one let go a ms inside it costs those 20 reads, then one per pulse's release and the STOP's.
+    cases = ((20000, _LET_GO_READS, 20), (None, _LET_GO_READS, 50), (20000, 19, 20 + 9 + 1))
+    for timeout, held_reads, reads_expected in cases:
+        clock = Ticks30Time(_WRAP_EDGE_MS)
+        level, reads = _scl_on_the_fake_clock(clock, held_reads)
+        asy_i2c_driver.time = clock  # type: ignore[assignment]
+        try:
+            i2c = _build(sda=0, scl=level, timeout=timeout)
+        finally:
+            asy_i2c_driver.time = time
+        held = held_reads == _LET_GO_READS
+        assert reads[0] == reads_expected, (timeout, held_reads, reads[0])
+        assert list(Pin.value_log(_SCL)) == ([] if held else _pulses_then_stop(9))
+        assert i2c.take_boot_clear_status() == (_REC_SCL_HELD if held else _REC_SDA_LOW | _REC_SDA_STUCK)
+        assert fake(i2c).log == [("init", 100000, 50000 if timeout is None else timeout)]
+
+
+def test_a_later_init_never_clears() -> None:
+    i2c = _build()
+    Pin.set_external_level(_SDA, 0)
+    i2c.init(0, _SCL, _SDA, 100000)
+    assert list(Pin.value_log(_SCL)) == []
+
+
+class _PinSpy(Pin):
+    # Records each Pin construction's (id, mode, pull, alt): the pins a clear hands back to the controller.
+    made: "ClassVar[list[tuple[int, int, int, int]]]" = []
+
+    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None, alt: int = Pin._ALT_SIO) -> None:  # noqa: A002  # machine.Pin's own parameter name
+        super().__init__(id, mode, pull, value=value, alt=alt)
+        _PinSpy.made.append((id, mode, pull, alt))
+
+
+def _clear(i2c: I2C, *, recover: bool = False) -> "tuple[int, list[tuple[int, int, int, int]]]":
+    _PinSpy.made = []
+    asy_i2c_driver.Pin = _PinSpy  # type: ignore[misc]
+    try:
+        status = run(i2c.recover() if recover else i2c.clear())
+    finally:
+        asy_i2c_driver.Pin = Pin  # type: ignore[misc]
+    return status, _PinSpy.made
+
+
+_HANDED_BACK = [(_SCL, Pin.ALT, Pin.PULL_UP, Pin.ALT_I2C), (_SDA, Pin.ALT, Pin.PULL_UP, Pin.ALT_I2C)]
+
+
+def test_clear_on_a_free_bus_pulses_nothing_and_hands_the_pins_back() -> None:
+    i2c = _build()
+    fake(i2c).log.clear()
+    status, made = _clear(i2c)
+    assert status == 0
+    assert list(Pin.value_log(_SCL)) == []
+    assert made[-2:] == _HANDED_BACK
+    assert fake(i2c).log == []  # a clear constructs no controller
+    assert i2c.recoveries == 1
+
+
+def test_clear_stops_once_sda_is_released_and_reports_it() -> None:
+    i2c = _build()
+    Pin.set_external_level(_SDA, _released_after(4))
+    status, made = _clear(i2c)
+    assert status == _REC_SDA_LOW
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(4)
+    assert made[-2:] == _HANDED_BACK
+
+
+def test_clear_of_a_held_sda_sends_nine_pulses_and_a_stop() -> None:
+    i2c = _build()
+    Pin.set_external_level(_SDA, 0)
+    status, _made = _clear(i2c)
+    assert status == _REC_SDA_LOW | _REC_SDA_STUCK
+    assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9)
+    assert list(Pin.value_log(_SDA)) == [0, 1]
+
+
+def test_clear_waits_out_a_stretched_clock_and_still_sends_nine_effective_pulses() -> None:
+    for host_stall_ms in (0, _HOST_STALL_MS):
+        i2c = _build()
+        Pin.set_external_level(_SDA, 0)
+        Pin.set_external_level(_SCL, _stretching(2, host_stall_ms))
+        with PollRoundClock():
+            status, _made = _clear(i2c)
+        assert status == _REC_SDA_LOW | _REC_SDA_STUCK, host_stall_ms
+        assert list(Pin.value_log(_SCL)) == _pulses_then_stop(9), host_stall_ms
+
+
+def test_clear_with_scl_held_past_the_timeout_pulses_nothing() -> None:
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    Pin.set_external_level(_SDA, 0)
+    Pin.set_external_level(_SCL, 0)
+    status, made = _clear(i2c)
+    assert status == _REC_SCL_HELD
+    assert list(Pin.value_log(_SCL)) == []
+    assert made[-2:] == _HANDED_BACK  # handed back even so
+
+
+def test_clear_and_recover_end_a_held_scl_at_the_bus_timeout_on_the_fake_clock() -> None:
+    # The lead-in wait across ticks_us()'s wrap: a held SCL is read once per ms up to the bus timeout, then status 4
+    # with no pulse (recover() still re-constructs); a clock let go a ms inside the timeout is cleared as usual.
+    for recover in (False, True):
+        for held_reads, status, scl_log, reads_expected in ((_LET_GO_READS, _REC_SCL_HELD, [], 20), (19, _REC_SDA_LOW | _REC_SDA_STUCK, _pulses_then_stop(9), 20 + 10)):
+            i2c = _build(timeout=20000)
+            fake(i2c).log.clear()
+            clock = Ticks30Time(_WRAP_EDGE_MS)
+            level, reads = _scl_on_the_fake_clock(clock, held_reads)
+            Pin.set_external_level(_SDA, 0)
+            Pin.set_external_level(_SCL, level)
+            asy_i2c_driver.time = clock  # type: ignore[assignment]
+            try:
+                got, made = _clear(i2c, recover=recover)
+            finally:
+                asy_i2c_driver.time = time
+            assert (got, list(Pin.value_log(_SCL)), reads[0]) == (status, scl_log, reads_expected), (recover, held_reads)
+            assert all(pin in made for pin in _HANDED_BACK), made  # recover() constructs its own pins after these
+            assert fake(i2c).log == ([("deinit",), ("init", 100000, 20000)] if recover else [])
+
+
+def test_recover_clears_then_re_constructs_with_the_stored_frequency_and_timeout() -> None:
+    i2c = _build(timeout=20000)
+    fake(i2c).register_device(0x50)
+    fake(i2c).log.clear()
+    Pin.set_external_level(_SDA, _released_after(2))
+    status, _made = _clear(i2c, recover=True)
+    assert status == _REC_SDA_LOW
+    assert fake(i2c).log == [("deinit",), ("init", 100000, 20000)]
+    assert i2c.recoveries == 1
+    assert i2c.writeto(0x50, b"\x00") == 1  # the rebuilt controller works
+
+
+def test_recover_re_constructs_even_after_a_held_scl() -> None:
+    i2c = _build(timeout=_HELD_SCL_TIMEOUT_US)
+    fake(i2c).log.clear()
+    Pin.set_external_level(_SCL, 0)
+    status, _made = _clear(i2c, recover=True)
+    assert status == _REC_SCL_HELD
+    assert fake(i2c).log == [("deinit",), ("init", 100000, _HELD_SCL_TIMEOUT_US)]
+
+
+def test_recover_reports_a_controller_that_will_not_construct_and_leaves_no_bus() -> None:
+    i2c = _build()
+    FakeI2C.raise_on_construct = OSError(errno.EIO, "construction failed")
+    try:
+        status, _made = _clear(i2c, recover=True)
+    finally:
+        FakeI2C.raise_on_construct = None
+    assert status == _REC_NO_CONTROLLER
+    assert i2c._i2c is None
+    assert i2c.get_register_bytes(0x50, 0x00, 1) is None  # the unavailable-bus path
+    assert i2c.recoveries == 1
+
+
+def test_each_clear_and_recover_steps_recoveries_once_and_the_sequence_wraps() -> None:
+    i2c = _build()
+    run(i2c.clear())
+    run(i2c.recover())
+    assert i2c.recoveries == 2
+    i2c.recoveries = COUNTER_CAP
+    run(i2c.clear())
+    assert i2c.recoveries == 0  # compared for equality only, so it wraps rather than saturating
+
+
+def test_a_session_holding_the_bus_delays_clear_and_a_session_started_during_it_waits() -> None:
+    i2c = _build()
+    Pin.set_external_level(_SDA, 0)
+    Pin.set_external_level(_SCL, _stretching(1))  # every pulse yields once: the clear spans many passes
+    device = I2CDevice(i2c, 0x50)
+    order: list[str] = []
+
+    async def holder(release: asyncio.Event) -> None:
+        async with device:
+            order.append("holder in")
+            await release.wait()
+            order.append("holder out")
+
+    async def clearer() -> None:
+        await i2c.clear()
+        order.append("clear done")
+
+    async def late_session() -> None:
+        async with device:
+            order.append("late in")
+
+    async def scenario() -> None:
+        release = asyncio.Event()
+        first = asyncio.create_task(holder(release))
+        await asyncio.sleep(0)
+        clearing = asyncio.create_task(clearer())
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert list(Pin.value_log(_SCL)) == []  # the clear waits for the session
+        release.set()
+        while not Pin.value_log(_SCL):
+            await asyncio.sleep(0)
+        late = asyncio.create_task(late_session())  # started while the clear holds the bus
+        await asyncio.gather(first, clearing, late)
+
+    run(scenario())
+    assert order == ["holder in", "holder out", "clear done", "late in"], order
 
 
 if __name__ == "__main__":

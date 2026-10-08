@@ -2,23 +2,41 @@
 own test, driven by a deliberately malformed fixture built from _toml_fixtures.base_doc() - never
 just incidentally exercised by the six real device TOMLs happening to be valid."""
 
+import ast
 import importlib.util
+import json
+import re
 import shutil
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
 from _toml_fixtures import base_doc, write_doc, write_text
 
-from buildgen.errors import BuildError
-from buildgen.validate import build_model
+import buildgen.validate as validate_mod
+from buildgen.buildspec import ALLOWED_INSTANCE_FIELDS, UART_CRC_MODES
+from buildgen.definitions import definitions_for_toml
+from buildgen.driver_registry import resolve_driver
+from buildgen.errors import BuildError, BuildInternalError
+from buildgen.generate import generate_device
+from buildgen.graph import build_construction_order
+from buildgen.pico_gpio import I2C_ROLE, SPI_ROLE, UART_ROLE, WIRELESS_RESERVED_GPIOS
+from buildgen.validate import build_model, device_max_connections, module_float_const, module_str_const, webserver_init_default
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from _toml_fixtures import TomlDoc
 
     from buildgen.model import DeviceModel
+
+
+# The shared host-label corpus src/, the mock and this check all read (tests/_radio_shape_cases.json).
+_RADIO_SHAPES = json.loads((Path(__file__).resolve().parent.parent / "tests" / "_radio_shape_cases.json").read_text())
 
 
 @pytest.fixture
@@ -31,16 +49,51 @@ def overrides(repo_root: Path) -> ModuleType:
     return load_script_module(repo_root / "toolchain" / "micropython_overrides.py", "micropython_overrides")
 
 
-def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "dev") -> "DeviceModel":
+def _build(tmp_path: Path, src_dir: Path, doc: "TomlDoc", name: str = "fixture") -> "DeviceModel":
     return build_model(write_doc(tmp_path, name, doc), src_dir)
 
 
+def _at(doc: "Mapping[str, object]", *keys: str) -> object:
+    # One nested value of a parsed TOML document, each step on the way a table.
+    value: object = doc
+    for key in keys:
+        assert isinstance(value, dict), f"no table holds {key!r}"
+        value = value[key]
+    return value
+
+
+def _generated(tmp_path: Path, src_dir: Path, doc: "TomlDoc") -> "tuple[DeviceModel, str]":
+    # The model and the generated module of one fixture, so an accept test checks what reaches the device.
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir)
+    return result.model, result.module_source
+
+
+def _construction(source: str, var: str) -> str:
+    # The generated module's one construction line of the module variable `var`.
+    found = [line.strip() for line in source.splitlines() if line.strip().startswith(f"{var} = ")]
+    assert len(found) == 1, found
+    return found[0]
+
+
+def _src_int(src_dir: Path, filename: str, name: str) -> int:
+    # A src/ file's module-level `NAME = const(<int>)`, read here independently of the reader under test.
+    for node in ast.parse((src_dir / filename).read_text()).body:
+        if isinstance(node, ast.Assign) and [t.id for t in node.targets if isinstance(t, ast.Name)] == [name]:
+            value = node.value.args[0] if isinstance(node.value, ast.Call) else node.value
+            assert isinstance(value, ast.Constant) and isinstance(value.value, int), f"{filename}'s {name} is no int literal"
+            return value.value
+    raise AssertionError(f"{filename} has no {name}")
+
+
 def test_base_doc_is_valid(tmp_path: Path, src_dir: Path) -> None:
-    _build(tmp_path, src_dir, base_doc())  # no raise
+    doc = base_doc()
+    model = _build(tmp_path, src_dir, doc)
+    assert [spec.label for spec in model.instances.values()] == [inst["driver"] for inst in doc["instance"]]
+    assert set(model.instances) <= set(build_construction_order(model))
 
 
 def test_malformed_toml_syntax(tmp_path: Path, src_dir: Path) -> None:
-    path = write_text(tmp_path, "dev", "this is not [valid toml\n")
+    path = write_text(tmp_path, "fixture", "this is not [valid toml\n")
     with pytest.raises(BuildError, match="not valid TOML"):
         build_model(path, src_dir)
 
@@ -49,7 +102,7 @@ def test_literal_duplicate_toml_key_in_one_table_rejected(tmp_path: Path, src_di
     # tomllib itself rejects a repeated key in one table before buildgen
     # ever sees the parsed doc - load_device() wraps that TOMLDecodeError into the same BuildError
     # as any other malformed-syntax input. Not exercised by any existing test until now.
-    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\nname = "Test2"\n')
+    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\nname = "Test2"\n')
     with pytest.raises(BuildError, match="not valid TOML"):
         build_model(path, src_dir)
 
@@ -102,20 +155,20 @@ def test_device_hotspot_password_longer_than_wpa2_allows_is_rejected(tmp_path: P
 def test_device_hotspot_password_at_either_bound_is_accepted(tmp_path: Path, src_dir: Path, value: str) -> None:
     doc = base_doc()
     doc["device"]["hotspot_password"] = value
-    assert _build(tmp_path, src_dir, doc).doc["device"]["hotspot_password"] == value
+    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "hotspot_password") == value
 
 
 def test_single_bracket_instance_table_names_the_real_mistake(tmp_path: Path, src_dir: Path) -> None:
     # [instance] instead of [[instance]] parses to a dict, whose iteration yields its keys - which
     # used to surface as "entry #0 is missing a 'driver' field", pointing at the wrong mistake.
-    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n\n[instance]\ndriver = "neopixel"\npin = 15\n')
+    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n\n[instance]\ndriver = "neopixel"\npin = 15\n')
     with pytest.raises(BuildError, match=r"double brackets"):
         build_model(path, src_dir)
 
 
 def test_instance_table_of_the_wrong_type_entirely_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     # Top-level key, deliberately written before the [device] header so it isn't swallowed into it.
-    path = write_text(tmp_path, "dev", 'instance = 5\n\n[device]\nname = "Test"\n')
+    path = write_text(tmp_path, "fixture", 'instance = 5\n\n[device]\nname = "Test"\n')
     with pytest.raises(BuildError, match=r"must be an array of tables"):
         build_model(path, src_dir)
 
@@ -124,13 +177,12 @@ def test_toml_document_not_parsing_to_a_table_at_the_top_level_is_rejected(tmp_p
     # load_device()'s isinstance guard is unreachable through any real file: tomllib.load()
     # always returns a dict, the grammar requiring the document root to be a table. Reached by
     # monkeypatching the one thing the real code trusts, rather than leaving the guard untested.
-    import tomllib
 
     # Patches the real, single cached tomllib module object every importer (buildgen.model
     # included) shares - never `buildgen.model.tomllib`, which mypy's host_typecheck.ini
     # (no_implicit_reexport) rejects as accessing a name buildgen.model only imported, not exported.
     monkeypatch.setattr(tomllib, "load", lambda f: ["not", "a", "table"])
-    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n')
+    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n')
     with pytest.raises(BuildError, match=r"did not parse to a table at the top level"):
         build_model(path, src_dir)
 
@@ -167,6 +219,39 @@ def test_hostname_longer_than_the_network_cap_is_rejected(tmp_path: Path, src_di
         _build(tmp_path, src_dir, doc)
 
 
+def _host_label_names(kind: str) -> "list[str]":
+    # A name reaches the hostname behind "SensorStation": a leading '-' is no longer at the label's
+    # start, and an empty name fails its own check first, so only the other corpus values apply.
+    return [v for v in _RADIO_SHAPES["hostLabel"][kind] if v and not v.startswith("-")]
+
+
+@pytest.mark.parametrize("name", _host_label_names("reject"))
+def test_a_name_making_the_hostname_no_host_label_is_rejected(tmp_path: Path, src_dir: Path, name: str) -> None:
+    # DHCP and mDNS announce the hostname as is, so the build refuses one that is not an RFC 1123 label.
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    with pytest.raises(BuildError, match="is not a host label"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("name", ["Two Words", "Dotted.Name"])
+def test_a_name_with_a_space_or_a_dot_is_rejected(tmp_path: Path, src_dir: Path, name: str) -> None:
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    with pytest.raises(BuildError, match="is not a host label"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("name", _host_label_names("accept"))
+def test_a_name_keeping_the_hostname_a_host_label_builds(tmp_path: Path, src_dir: Path, name: str) -> None:
+    doc = base_doc()
+    doc["device"]["name"] = name
+    doc["device"]["hostname"] = "SensorStation" + name
+    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "hostname") == "SensorStation" + name
+
+
 @pytest.mark.parametrize("bad_name", [5, ""])
 def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: object) -> None:
     # [device].name's own type/non-emptiness check, exercised only implicitly by every
@@ -175,6 +260,94 @@ def test_device_name_invalid_rejected(tmp_path: Path, src_dir: Path, bad_name: o
     doc["device"]["name"] = bad_name
     with pytest.raises(BuildError, match="non-empty string"):
         _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("minutes", [0, -1, 35792])
+def test_a_hotspot_time_outside_its_timer_range_is_rejected(tmp_path: Path, src_dir: Path, minutes: int) -> None:
+    # Timer.init(period=60000 x minutes) takes a signed machine int: 35791 is the last that fits, 0 fires at once.
+    doc = base_doc()
+    doc["device"]["hotspot_time_min"] = minutes
+    with pytest.raises(BuildError, match=rf"hotspot_time_min is {minutes}") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("device.hotspot-time-min-range", "hotspot_time_min", "set hotspot_time_min within 1..35791")
+
+
+@pytest.mark.parametrize("minutes", [1, 35791])
+def test_a_hotspot_time_at_its_range_edges_builds(tmp_path: Path, src_dir: Path, minutes: int) -> None:
+    doc = base_doc()
+    doc["device"]["hotspot_time_min"] = minutes
+    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "hotspot_time_min") == minutes
+
+
+@pytest.mark.parametrize("failures", [0, -3])
+def test_a_hotspot_failure_count_below_one_is_rejected(tmp_path: Path, src_dir: Path, failures: int) -> None:
+    # The WiFi service opens the hotspot once its failure count reaches conn_fail_to_hotspot - 1, so 0 opens it at once.
+    doc = base_doc()
+    doc["device"]["conn_fail_to_hotspot"] = failures
+    with pytest.raises(BuildError, match=rf"conn_fail_to_hotspot is {failures}") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("device.conn-fail-to-hotspot-range", "conn_fail_to_hotspot")
+    doc["device"]["conn_fail_to_hotspot"] = 1
+    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "conn_fail_to_hotspot") == 1
+
+
+def test_an_ntp_retry_cap_past_the_small_int_range_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The unsynced retry wait doubles up to the cap: past (2**30 - 1) // 2 the doubling leaves rp2's small ints.
+    bound = (2**30 - 1) // _src_int(src_dir, "asy_ntp_client.py", "_NTP_BACKOFF_MULT")
+    doc = base_doc()
+    doc["device"]["ntp_retry_max_s"] = bound
+    assert _at(_build(tmp_path, src_dir, doc).doc, "device", "ntp_retry_max_s") == bound
+    doc["device"]["ntp_retry_max_s"] = bound + 1
+    with pytest.raises(BuildError, match=rf"ntp_retry_max_s is {bound + 1}") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("device.ntp-retry-max-range", "ntp_retry_max_s", f"set ntp_retry_max_s to at most {bound}")
+
+
+@pytest.mark.parametrize("family", ["", 5, ["label"], True])
+def test_a_hardware_family_that_is_no_non_empty_string_is_rejected(tmp_path: Path, src_dir: Path, family: object) -> None:
+    doc = base_doc()
+    doc["device"]["hardware_family"] = family
+    with pytest.raises(BuildError, match="hardware_family must be a non-empty string") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("device.field-type", "hardware_family")
+
+
+@pytest.mark.parametrize("value", [1, "fram", ["fram"]])
+def test_a_device_wiring_that_is_not_a_table_is_rejected(tmp_path: Path, src_dir: Path, value: object) -> None:
+    doc = base_doc()
+    doc["device"]["wiring"] = value
+    path = write_doc(tmp_path, "fixture", doc)
+    assert tomllib.loads(path.read_text())["device"]["wiring"] == value
+    with pytest.raises(BuildError, match=r"\[device\]\.wiring must be a table") as info:
+        build_model(path, src_dir)
+    assert (info.value.rule, info.value.field) == ("device.wiring-not-table", "wiring")
+
+
+def test_the_hostname_and_password_bounds_come_from_the_wifi_schemas(tmp_path: Path, src_dir: Path) -> None:
+    # The build refuses what _VAL_HOSTNAME/_VAL_HOTSPOT_PW refuse at boot, read from them: a wider
+    # hostname cap admits a longer name, a higher password floor refuses the old minimum.
+    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", '"SensorNode", 1, 32, None', '"SensorNode", 1, 33, None')
+    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", '"12345678", 8, 63, None', '"12345678", 9, 63, None')
+    doc = base_doc()
+    doc["device"]["name"] = "A" * 20  # "SensorStation" (13) + 20 = 33
+    doc["device"]["hostname"] = "SensorStation" + doc["device"]["name"]
+    doc["device"]["hotspot_password"] = "123456789"
+    assert _at(_build(tmp_path, staged, doc).doc, "device", "hostname") == doc["device"]["hostname"]
+    doc["device"]["hotspot_password"] = "12345678"
+    with pytest.raises(BuildError, match="WPA2 allows 9 to 63") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.rule == "device.hotspot-password-length"
+
+
+def test_the_ntp_check_tick_comes_from_the_ntp_client(tmp_path: Path, src_dir: Path) -> None:
+    staged = _staged_src(tmp_path, src_dir, "asy_ntp_client.py", "_NTP_CHECK_INTERV = const(10)", "_NTP_CHECK_INTERV = const(20)")
+    doc = base_doc()
+    doc["device"]["ntp_retry_s"] = 20
+    assert _at(_build(tmp_path, staged, doc).doc, "device", "ntp_retry_s") == 20
+    doc["device"]["ntp_retry_s"] = 15
+    with pytest.raises(BuildError, match="every 20s") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.rule, info.value.field) == ("device.ntp-retry-below-tick", "ntp_retry_s")
 
 
 def test_empty_bus_table_with_bus_attached_instances_still_fails(tmp_path: Path, src_dir: Path) -> None:
@@ -194,7 +367,8 @@ def test_no_buses_and_no_instances_is_a_valid_minimal_device(tmp_path: Path, src
     doc["bus"] = {}
     doc["instance"] = []
     doc["device"]["wiring"] = {}
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert (model.instances, model.doc.get("bus", {}), model.device_wiring) == ({}, {}, {})
 
 
 def test_fram_entirely_absent_with_single_i2c_bus_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -206,7 +380,9 @@ def test_fram_entirely_absent_with_single_i2c_bus_is_fine(tmp_path: Path, src_di
         inst.get("wiring", {}).pop("fram_target", None)
     doc["device"]["wiring"].pop("fram_target", None)
     del doc["bus"]["spi0"]
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert "fram" not in [spec.driver for spec in model.instances.values()]
+    assert _at(model.doc, "bus") == {"i2c0": doc["bus"]["i2c0"]}
 
 
 def test_bus_id_with_unrecognized_kind_prefix_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -231,11 +407,12 @@ def test_bus_id_bare_kind_with_no_port_digit_rejected(tmp_path: Path, src_dir: P
 
 def test_two_i2c_buses_legal_topology(tmp_path: Path, src_dir: Path) -> None:
     # One pair from the I2C0 set, one from the I2C1 set - the same shape every real
-    # device already uses (e.g. devices/wozi.toml), driven directly at the validate level here.
+    # device already uses, driven directly at the validate level here.
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000}
     doc["instance"][1]["bus"] = "i2c1"  # sgp40 moves off the shared i2c0 bus
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert (model.instances[("sgp40", "")].fields["bus"], _at(model.doc, "bus", "i2c1")) == ("i2c1", doc["bus"]["i2c1"])
 
 
 def test_spi1_is_a_legal_peripheral_index(tmp_path: Path, src_dir: Path) -> None:
@@ -247,7 +424,8 @@ def test_spi1_is_a_legal_peripheral_index(tmp_path: Path, src_dir: Path) -> None
     del doc["bus"]["spi0"]
     doc["bus"]["spi1"] = {"sck_pin": 10, "mosi_pin": 11, "miso_pin": 8}  # real spi1-block pins
     doc["instance"][2]["bus"] = "spi1"  # fram
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert (model.instances[("fram", "")].fields["bus"], _at(model.doc, "bus", "spi1")) == ("spi1", doc["bus"]["spi1"])
 
 
 def test_i2c_pin_belonging_to_the_other_i2c_index_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -276,19 +454,70 @@ def test_spi_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path) -> None
         _build(tmp_path, src_dir, doc)
 
 
-def test_gpio_with_no_i2c_function_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # GP22 is a real, usable GPIO (not wireless-reserved) that simply has no I2C function.
-    doc = base_doc()
-    doc["bus"]["i2c0"]["scl_pin"] = 22
-    with pytest.raises(BuildError, match="has no I2C function"):
-        _build(tmp_path, src_dir, doc)
+def _with_bus_pins(doc: "TomlDoc", bus: str, pins: "dict[str, int]") -> "TomlDoc":
+    # base_doc() with `bus` wired to `pins` and a user moved onto it, every partner pin unclaimed.
+    if bus.startswith("uart"):
+        doc = _with_uart_pair(doc)
+        doc["bus"][bus].update(pins)
+    elif bus == "i2c0":
+        doc["bus"]["i2c0"].update(pins)
+    elif bus == "i2c1":
+        doc["bus"]["i2c1"] = {**pins, "frequency": 50000}
+        next(inst for inst in doc["instance"] if inst["driver"] == "sgp40")["bus"] = "i2c1"
+    else:
+        del doc["bus"]["spi0"]
+        doc["bus"][bus] = pins
+        next(inst for inst in doc["instance"] if inst["driver"] == "fram")["bus"] = bus
+    return doc
 
 
-def test_gpio_with_no_spi_function_rejected(tmp_path: Path, src_dir: Path) -> None:
+_SPI1_HIGH = {"sck_pin": 26, "mosi_pin": 27, "miso_pin": 28}
+_UART1_HIGH = {"tx_pin": 20, "rx_pin": 21}
+
+
+@pytest.mark.parametrize(
+    ("bus", "field", "pin", "pins"),
+    [
+        ("i2c1", "sda_pin", 22, {"sda_pin": 22, "scl_pin": 27}),
+        ("i2c0", "sda_pin", 28, {"sda_pin": 28, "scl_pin": 13}),
+        ("spi0", "miso_pin", 20, {"sck_pin": 2, "mosi_pin": 3, "miso_pin": 20}),
+        ("spi0", "sck_pin", 22, {"sck_pin": 22, "mosi_pin": 3, "miso_pin": 4}),
+        ("spi1", "sck_pin", 26, _SPI1_HIGH),
+        ("spi1", "mosi_pin", 27, _SPI1_HIGH),
+        ("spi1", "miso_pin", 28, _SPI1_HIGH),
+        ("uart1", "tx_pin", 20, _UART1_HIGH),
+        ("uart1", "rx_pin", 21, _UART1_HIGH),
+        ("uart0", "tx_pin", 28, {"tx_pin": 28, "rx_pin": 17}),
+    ],
+)
+def test_newly_legal_pin_is_accepted(tmp_path: Path, src_dir: Path, bus: str, field: str, pin: int, pins: "dict[str, int]") -> None:
+    # RP2040 datasheet Table 279 offers each of these on the Pico W's user GPIOs; the old pair tables left them out.
+    model = _build(tmp_path, src_dir, _with_bus_pins(base_doc(), bus, dict(pins)))
+    assert _at(model.doc, "bus", bus, field) == pin
+
+
+def test_pin_table_agrees_with_micropython_pin_macros() -> None:
+    # An independent source, MicroPython's pin checks at v1.29.0: ports/rp2/machine_i2c.h:65-66, machine_spi.c:89-95
+    # and machine_uart.c:71-77 (the RP2040 branch). The four wireless GPIOs are never offered.
+    for pin in range(30):
+        if pin in WIRELESS_RESERVED_GPIOS:
+            assert all(pin not in table for table in (I2C_ROLE, SPI_ROLE, UART_ROLE)), pin
+            continue
+        assert I2C_ROLE[pin] == (f"i2c{(pin & 2) >> 1}", "scl" if pin & 1 else "sda"), pin
+        spi_role = {0: "miso", 2: "sck", 3: "mosi"}.get(pin & 3)
+        assert SPI_ROLE.get(pin) == (None if spi_role is None else (f"spi{(pin & 8) >> 3}", spi_role)), pin
+        uart_role = {0: "tx", 1: "rx"}.get(pin & 3)
+        assert UART_ROLE.get(pin) == (None if uart_role is None else (f"uart{((pin + 4) & 8) >> 3}", uart_role)), pin
+
+
+def test_an_spi_chip_select_gpio_is_no_bus_wire_pin(tmp_path: Path, src_dir: Path) -> None:
+    # GP1 is SPI0's CSn in Table 279, but no bus field claims a chip select: cs_pin is any free GPIO.
     doc = base_doc()
-    doc["bus"]["spi0"]["sck_pin"] = 28  # ADC2-only, no SPI function
-    with pytest.raises(BuildError, match="has no SPI function"):
+    doc["instance"][2]["cs_pin"] = 5
+    doc["bus"]["spi0"]["miso_pin"] = 1
+    with pytest.raises(BuildError, match=r"bus\.spi0\.miso_pin=GP1 has no SPI bus-wire function") as info:
         _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("gpio.no-function", "miso_pin")
 
 
 @pytest.mark.parametrize("field,value", [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
@@ -359,20 +588,20 @@ def test_unknown_driver(tmp_path: Path, src_dir: Path) -> None:
         _build(tmp_path, src_dir, doc)
 
 
-def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tmp_path: Path) -> None:
+def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tmp_path: Path, src_dir: Path) -> None:
     # SPECIFICATION.md Part L.6.6's onboarding check: a driver that resolves via driver_registry (a real
     # asy_<name>_driver.py with a SensorReader subclass) but has no buildspec.py entry at all -
     # must fail loud, naming the real cause, not report every one of its fields as "unrecognized".
-    custom_src = tmp_path / "src"
-    custom_src.mkdir()
+    custom_src = shutil.copytree(src_dir, tmp_path / "src")
     (custom_src / "asy_bogus2_driver.py").write_text('_NAME = "BOGUS2"\n\n\nclass Bogus2_Reader(SensorReader):\n    pass\n')
     doc = {
         "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "12345678", "conn_fail_to_hotspot": 5, "hotspot_time_min": 8},
         "bus": {},
-        "instance": [{"driver": "bogus2"}],
+        "instance": [{"driver": "bogus2", "name_ext": ""}],
     }
-    with pytest.raises(BuildError, match=r"has no entry in buildgen\.buildspec"):
+    with pytest.raises(BuildError, match=r"has no entry in buildgen\.buildspec.*\(SPECIFICATION\.md L\.6\.6\)") as info:
         _build(tmp_path, custom_src, doc, name="bogus2dev")
+    assert (info.value.rule, info.value.instance) == ("instance.no-buildspec-row", "bogus2")
 
 
 def test_instance_missing_required_field(tmp_path: Path, src_dir: Path) -> None:
@@ -407,8 +636,47 @@ def test_instance_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 def test_instance_optional_field_is_allowed(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"][0]["trigger_sec"] = 7  # scd30's own optional field
-    _build(tmp_path, src_dir, doc)  # no raise
+    doc["instance"][0]["trigger_s"] = 7  # scd30's own optional field
+    assert _build(tmp_path, src_dir, doc).instances[("scd30", "")].fields["trigger_s"] == 7
+
+
+def test_a_trigger_sec_key_is_refused_as_unknown(tmp_path: Path, src_dir: Path) -> None:
+    # Guard: the interval key carries its unit as trigger_s; the old spelling is no key at all.
+    doc = base_doc()
+    doc["instance"][0]["trigger_sec"] = 3
+    with pytest.raises(BuildError, match=r"unrecognized field\(s\) \['trigger_sec'\]") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("instance.field-unknown", "trigger_sec")
+
+
+@pytest.mark.parametrize("driver", ["scd30", "sgp40"])
+def test_a_non_singleton_instance_without_name_ext_is_rejected(tmp_path: Path, src_dir: Path, driver: str) -> None:
+    # A driver that may repeat states its name_ext, "" included, so a second instance never renames the first.
+    doc = base_doc()
+    del next(inst for inst in doc["instance"] if inst["driver"] == driver)["name_ext"]
+    with pytest.raises(BuildError, match=rf"{driver} states no name_ext") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.name-ext-missing", "name_ext", driver)
+
+
+def _with_isl29125(doc: "TomlDoc", **fields: object) -> "TomlDoc":
+    # An isl29125 on i2c0, its IRQ on GP6 (unclaimed in base_doc()).
+    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, **fields})
+    return doc
+
+
+@pytest.mark.parametrize("value", ["yes", "false", 1, 0])
+def test_an_irq_pull_up_that_is_no_bool_is_rejected(tmp_path: Path, src_dir: Path, value: object) -> None:
+    # It is rendered into the constructor call as written, so "false" would boot as the bare name false.
+    with pytest.raises(BuildError, match="irq_pull_up must be true or false") as info:
+        _build(tmp_path, src_dir, _with_isl29125(base_doc(), irq_pull_up=value))
+    assert (info.value.rule, info.value.field, info.value.fix) == ("instance.irq-pull-up-type", "irq_pull_up", "write true or false")
+
+
+@pytest.mark.parametrize("value", [True, False])
+def test_an_irq_pull_up_bool_builds(tmp_path: Path, src_dir: Path, value: object) -> None:
+    model = _build(tmp_path, src_dir, _with_isl29125(base_doc(), irq_pull_up=value))
+    assert model.instances[("isl29125", "")].fields["irq_pull_up"] is value
 
 
 def test_device_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -416,6 +684,18 @@ def test_device_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
     doc["device"]["conn_fail_to_hotspot_typo"] = 5
     with pytest.raises(BuildError, match="unrecognized field"):
         _build(tmp_path, src_dir, doc)
+
+
+def test_device_hardware_family_is_accepted_and_emitted_nowhere(tmp_path: Path, src_dir: Path) -> None:
+    # A label only the test suite reads: the build accepts it and no generated output carries it.
+    doc = base_doc()
+    doc["device"]["hardware_family"] = "test-family"
+    path = write_doc(tmp_path, "fixture", doc)
+    result = generate_device(path, src_dir)
+    assert _at(result.model.doc, "device", "hardware_family") == "test-family"
+    for text in (result.module_source, result.boot_entry_source, json.dumps(definitions_for_toml(path, src_dir))):
+        assert "test-family" not in text
+        assert "hardware_family" not in text
 
 
 def test_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -427,8 +707,83 @@ def test_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 def test_bus_timeout_is_allowed_on_i2c(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["bus"]["i2c0"]["timeout"] = 300000
-    _build(tmp_path, src_dir, doc)  # no raise - i2c's own optional field, no false positive
+    doc["bus"]["i2c0"]["timeout"] = 200000
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "i2c0", "timeout") == 200000  # i2c's own optional field, no false positive
+
+
+def _second_i2c_bus(doc: "TomlDoc", timeout: "int | None") -> "TomlDoc":
+    # Moves the sgp40 onto its own i2c1 (GP7 SCL, GP6 SDA), with `timeout` declared or left out.
+    doc["bus"]["i2c1"] = {"scl_pin": 7, "sda_pin": 6, "frequency": 50000}
+    if timeout is not None:
+        doc["bus"]["i2c1"]["timeout"] = timeout
+    next(inst for inst in doc["instance"] if inst["driver"] == "sgp40")["bus"] = "i2c1"
+    return doc
+
+
+def test_bus_timeout_above_the_bound_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["bus"]["i2c0"]["timeout"] = 200001
+    with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 200001 us is above the 200000 us bound") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("bus.i2c-timeout-max", "timeout")
+
+
+@pytest.mark.parametrize("bad_value", [0, -1])
+def test_bus_timeout_not_positive_is_rejected(tmp_path: Path, src_dir: Path, bad_value: int) -> None:
+    doc = _second_i2c_bus(base_doc(), bad_value)  # on a bus with no scd30, so its @requires floor stays out of it
+    with pytest.raises(BuildError, match=rf"bus\.i2c1 \(i2c\) timeout {bad_value} us is not positive") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("bus.i2c-timeout-range", "timeout")
+
+
+@pytest.mark.parametrize("frequency", [0, -1, 1000001])
+def test_an_i2c_frequency_outside_the_silicon_range_is_rejected(tmp_path: Path, src_dir: Path, frequency: int) -> None:
+    # RP2040's I2C runs up to fast mode plus, 1000 kbps; 0 divides by zero in the port's own clock setup.
+    doc = _second_i2c_bus(base_doc(), None)
+    doc["bus"]["i2c1"]["frequency"] = frequency
+    with pytest.raises(BuildError, match=rf"bus\.i2c1 \(i2c\) frequency {frequency} Hz") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("bus.i2c-frequency-range", "frequency", "set frequency within 1..1000000")
+
+
+@pytest.mark.parametrize("frequency", [1, 1000000])
+def test_an_i2c_frequency_at_the_silicon_edges_builds(tmp_path: Path, src_dir: Path, frequency: int) -> None:
+    # A bmp3xx alone on i2c1: it states no bus ceiling of its own, so the silicon's edges are all that apply.
+    doc = base_doc()
+    doc["bus"]["i2c1"] = {"scl_pin": 7, "sda_pin": 6, "frequency": frequency}
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c1"})
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "i2c1", "frequency") == frequency
+
+
+def test_a_boot_clear_past_its_budget_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 11 SCL waits per bus (lead-in, nine pulses, the STOP) x 200 ms x 2 buses, against a budget set below it.
+    monkeypatch.setattr(validate_mod, "_BOOT_CLEAR_BUDGET_MS", 4000)
+    doc = _second_i2c_bus(base_doc(), 200000)
+    with pytest.raises(BuildError, match=r"boot bus clear can run 4400 ms unfed over 2 I2C bus\(es\) .* above its 4000 ms budget"):
+        _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("second_timeout", [None, 200000])
+def test_two_i2c_buses_up_to_the_bound_fit_the_boot_clear_budget(tmp_path: Path, src_dir: Path, second_timeout: "int | None") -> None:
+    # Every real device's 11 x (200 + 50) ms, and the two-SCD30 shape (one per bus, each at its floor): 4400 ms.
+    model = _build(tmp_path, src_dir, _second_i2c_bus(base_doc(), second_timeout))
+    i2c1 = _at(model.doc, "bus", "i2c1")
+    assert isinstance(i2c1, dict) and i2c1.get("timeout") == second_timeout
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_real_device_meets_the_i2c_timeout_bound_and_budget(src_dir: Path, device: str) -> None:
+    buses = _at(build_model(device_toml(device), src_dir).doc, "bus")
+    assert isinstance(buses, dict)
+    timeouts = [table.get("timeout", 0) for name, table in buses.items() if name.startswith("i2c") and isinstance(table, dict)]
+    assert all(isinstance(t, int) and t <= validate_mod._I2C_TIMEOUT_MAX_US for t in timeouts), timeouts
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_watchdog_the_budget_assumes_is_the_one_the_boot_entry_arms(src_dir: Path, device: str) -> None:
+    # The boot clear runs under the entry's WDT(), so the budget's watchdog must be that very timeout, armed once.
+    armed = re.findall(r"WDT\(timeout=(\d+)\)", generate_device(device_toml(device), src_dir).boot_entry_source)
+    assert armed == [str(validate_mod._WDT_TIMEOUT_MS)], armed
 
 
 def test_bus_timeout_wrong_type_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -463,7 +818,7 @@ def test_instance_bus_field_wrong_type_rejected(tmp_path: Path, src_dir: Path) -
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_sec", "3")])
+@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_s", "3")])
 def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: str) -> None:
     doc = base_doc()
     if field == "max_size":
@@ -476,12 +831,12 @@ def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, f
 
 def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": "0x77"})  # bmp3xx is address-capable
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": "0x77"})  # bmp3xx is address-capable
     with pytest.raises(BuildError, match="address must be an int"):
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_sec", True), ("trigger_sec", 3.0)])
+@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_s", True), ("trigger_s", 3.0)])
 def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: object) -> None:
     # The same isinstance guard as test_instance_int_field_wrong_type_rejected above,
     # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
@@ -497,7 +852,7 @@ def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path
 @pytest.mark.parametrize("bad_value", [True, 119.0])
 def test_instance_address_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, bad_value: object) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_value})
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": bad_value})
     with pytest.raises(BuildError, match="address must be an int"):
         _build(tmp_path, src_dir, doc)
 
@@ -546,33 +901,117 @@ def test_duplicate_driver_name_ext_pair(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_instance_name_collision_via_distinct_drivers_same_resolved_name(tmp_path: Path, src_dir: Path) -> None:
-    # Two different [[instance]] entries, so load_device()'s dedup misses them, that still
-    # resolve to the same instance_name(). No real driver's _NAME collides this way, so this
-    # drives the check against a synthetic model as the graph cycle test does.
+    # Extension-point guard, on a synthetic model: a future driver whose _NAME another instance already resolves to.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_instance_name_collisions
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
-    model.instances[("a", "")] = InstanceSpec("a", "", {}, {}, 0, resolved_name="SAME")
-    model.instances[("b", "")] = InstanceSpec("b", "", {}, {}, 1, resolved_name="SAME")
-    with pytest.raises(BuildError, match="instance_name collision"):
-        _check_instance_name_collisions(model)
+    neopixel = resolve_driver("neopixel", src_dir, "fixture")  # a real driver owning no config store
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
+    model.instances[("a", "")] = InstanceSpec("a", "", {}, {}, 0, driver_info=neopixel, resolved_name="SAME")
+    model.instances[("b", "")] = InstanceSpec("b", "", {}, {}, 1, driver_info=neopixel, resolved_name="SAME")
+    with pytest.raises(BuildError, match="instance_name collision") as info:
+        _check_instance_name_collisions(model, src_dir)
+    assert (info.value.rule, info.value.instance) == ("names.logger-collision", "b")
 
 
-def test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset(tmp_path: Path) -> None:
+def test_instance_name_collision_check_fails_loud_if_resolved_name_still_unset(tmp_path: Path, src_dir: Path) -> None:
     # The same function's own "internal:" invariant guard - _resolve_instances() always sets
     # resolved_name before this check ever runs in build_model()'s own pipeline, so this is driven
     # directly against a synthetic spec, same technique as the collision test just above.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_instance_name_collisions
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("a", "")] = InstanceSpec("a", "", {}, {}, 0)  # resolved_name defaults to None
-    with pytest.raises(BuildError, match="internal: resolved_name unresolved by collision-check time"):
-        _check_instance_name_collisions(model)
+    with pytest.raises(BuildInternalError, match="internal: resolved_name unresolved by collision-check time"):
+        _check_instance_name_collisions(model, src_dir)
 
 
-def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_kind_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(("name", "owner"), [("NTP", "the mandatory NTP module"), ("DNSSRV", "the mandatory DNSSRV module"), ("CFGMGR_SCD30", "scd30's config store"), ("CFGMGR_WIFI", "the mandatory WIFI module's config store")])
+def test_a_driver_named_like_another_logger_is_a_collision(tmp_path: Path, src_dir: Path, name: str, owner: str) -> None:
+    # Every logger lands in /status errcount under its name, so a second claim would overwrite the first there.
+    staged = _staged_src(tmp_path, src_dir, "asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', f'_NAME = const("{name}")')
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"})
+    with pytest.raises(BuildError, match=rf"instance_name collision: 'bmp3xx' and {owner} both claim the logger name '{name}'") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.rule, info.value.instance) == ("names.logger-collision", "bmp3xx")
+
+
+def test_a_config_store_built_through_a_module_attribute_still_claims_its_logger(tmp_path: Path, src_dir: Path) -> None:
+    # A module building its store as cm.ConfigManager(...) owns CFGMGR_<name> as surely as a bare call does.
+    staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", "class NeopixelDriver:", 'def _store() -> object:\n    return cm.ConfigManager("x", (), "NEOPIXEL")\n\n\nclass NeopixelDriver:')
+    staged = _staged_src(tmp_path, src_dir, "asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("CFGMGR_NEOPIXEL")')
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"})
+    with pytest.raises(BuildError, match="'bmp3xx' and neopixel's config store both claim the logger name 'CFGMGR_NEOPIXEL'") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.rule == "names.logger-collision"
+
+
+def test_a_missing_mandatory_module_is_a_named_build_error(tmp_path: Path, src_dir: Path) -> None:
+    # The collision check reads every mandatory module's file; one gone from the source tree is named, never a traceback.
+    staged = _staged_src(tmp_path, src_dir, "asy_captive_dns.py", "_NAME", "_NAME")
+    (staged / "asy_captive_dns.py").unlink()
+    with pytest.raises(BuildError, match=r"cannot read .*asy_captive_dns\.py") as info:
+        _build(tmp_path, staged, base_doc())
+    assert (info.value.rule, info.value.field) == ("src.unreadable", "asy_captive_dns.py")
+
+
+def test_a_config_store_logger_colliding_with_a_driver_name_is_named(tmp_path: Path, src_dir: Path) -> None:
+    # The store's claim is the second one here: an instance already took CFGMGR_SCD30 as its own name.
+    staged = _staged_src(tmp_path, src_dir, "asy_bmp3xx_driver.py", '_NAME = const("BMP3XX")', '_NAME = const("CFGMGR_SGP40")')
+    doc = base_doc()
+    doc["instance"].insert(0, {"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"})
+    with pytest.raises(BuildError, match="sgp40's config store and 'bmp3xx' both claim the logger name 'CFGMGR_SGP40'") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.rule == "names.logger-collision"
+
+
+def test_every_shipped_device_claims_each_logger_name_once(src_dir: Path) -> None:
+    # Guard: the real drivers' names and their config-store forms are distinct on every device.
+    for device in DEVICE_NAMES:
+        model = build_model(device_toml(device), src_dir)
+        assert all(spec.resolved_name for spec in model.instances.values()), device
+
+
+def test_a_settings_group_repeating_a_key_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # /networking merges its groups into one object, so a key two groups serve would answer from one of them only.
+    groups = (*validate_mod.SETTINGS_GROUPS, ("networking", "ntp", ("Hostname",), None))
+    monkeypatch.setattr(validate_mod, "SETTINGS_GROUPS", groups)
+    with pytest.raises(BuildError, match="settings key 'Hostname' is served twice in /networking: by conn and by ntp") as info:
+        _build(tmp_path, src_dir, base_doc())
+    assert (info.value.rule, info.value.field) == ("names.settings-key-collision", "Hostname")
+
+
+def _generated_settings_groups(module_source: str) -> "list[tuple[str, str, tuple[str, ...], str | None]]":
+    # Every SettingsGroup the generated webserver is built with, as SETTINGS_GROUPS rows in order;
+    # notification's group, computed from its schema at boot, is no row.
+    rows: list[tuple[str, str, tuple[str, ...], str | None]] = []
+    settings = [n.value for n in ast.walk(ast.parse(module_source)) if isinstance(n, ast.keyword) and n.arg == "settings"]
+    assert len(settings) == 1 and isinstance(settings[0], ast.Dict)
+    for key, groups in zip(settings[0].keys, settings[0].values, strict=True):
+        assert isinstance(key, ast.Constant) and isinstance(groups, ast.List)
+        if key.value == "notification":
+            continue
+        for call in groups.elts:
+            assert isinstance(call, ast.Call) and isinstance(call.args[0], ast.Name) and isinstance(call.args[1], ast.Tuple)
+            fields = tuple(str(ast.literal_eval(e)) for e in call.args[1].elts)
+            assert len(call.keywords) <= 1
+            hook = f"{call.keywords[0].arg}={ast.unparse(call.keywords[0].value)}" if call.keywords else None
+            rows.append((str(key.value), call.args[0].id, fields, hook))
+    return rows
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_settings_groups_are_the_generated_webserver_groups(src_dir: Path, device: str) -> None:
+    # Guard: the one table codegen renders and the settings-key collision check reads equals what
+    # every device's generated webserver is built with, row for row.
+    rows = _generated_settings_groups(generate_device(device_toml(device), src_dir).module_source)
+    assert rows == list(validate_mod.SETTINGS_GROUPS)
+
+
+def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_kind_entry(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # _check_required_fields()'s internal invariant: every BUS_ATTACHED_DRIVERS member must
     # appear in BUS_KIND_BY_DRIVER, true of every real driver, so this is reached by
     # monkeypatch - the technique the device-wiring test below also uses.
@@ -584,10 +1023,11 @@ def test_required_fields_check_fails_loud_for_a_bus_attached_driver_with_no_bus_
     # no_implicit_reexport rejects as accessing a name validate.py only imported. Both bind the
     # same dict, so mutating this one is what _check_required_fields() reads.
     monkeypatch.delitem(BUS_KIND_BY_DRIVER, "scd30")
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
-    model.instances[("scd30", "")] = InstanceSpec("scd30", "", {"bus": "i2c0", "irq_pin": 8}, {}, 0)
-    with pytest.raises(BuildError, match=r"is in BUS_ATTACHED_DRIVERS but has no buildgen\.buildspec\.BUS_KIND_BY_DRIVER entry"):
-        validate_mod._check_required_fields(model, {"i2c0": {}})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
+    model.instances[("scd30", "")] = InstanceSpec("scd30", "", {"name_ext": "", "bus": "i2c0", "irq_pin": 8}, {}, 0)
+    with pytest.raises(BuildError, match=r"is in BUS_ATTACHED_DRIVERS but has no buildgen\.buildspec\.BUS_KIND_BY_DRIVER entry") as info:
+        validate_mod._check_required_fields(model, {"i2c0": {}}, src_dir)
+    assert info.value.rule == "instance.no-bus-kind-row"
 
 
 def test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset(tmp_path: Path) -> None:
@@ -597,10 +1037,10 @@ def test_wiring_reference_check_fails_loud_if_target_driver_info_still_unset(tmp
     from buildgen.validate import _check_wiring_reference
     from buildgen.wiring import WiringField
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("neopixel", "")] = InstanceSpec("neopixel", "", {}, {}, 0)  # driver_info defaults to None
     wf = WiringField("signal_sink", "NeopixelDriver", "request_signal", True, "attr")
-    with pytest.raises(BuildError, match=r"internal: target\.driver_info unresolved by wiring-reference-check time"):
+    with pytest.raises(BuildInternalError, match=r"internal: target\.driver_info unresolved by wiring-reference-check time"):
         _check_wiring_reference(model, wf, "neopixel", "notification", "signal_sink")
 
 
@@ -610,9 +1050,9 @@ def test_default_provider_params_check_fails_loud_if_driver_info_still_unset(tmp
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_default_provider_params
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     spec = InstanceSpec("sgp40", "", {}, {}, 0)  # driver_info defaults to None
-    with pytest.raises(BuildError, match="internal: driver_info unresolved by default-provider-check time"):
+    with pytest.raises(BuildInternalError, match="internal: driver_info unresolved by default-provider-check time"):
         _check_default_provider_params(model, spec, "temperature_source", {"default": True})
 
 
@@ -623,21 +1063,19 @@ def test_default_value_selection_check_fails_loud_for_a_non_table_wiring_value(t
     from buildgen.validate import _check_default_value_selection
     from buildgen.value_wiring import ValueWiringField
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     spec = InstanceSpec("sgp40", "", {}, {"temperature_source": "not-a-table"}, 0)
-    vwf = ValueWiringField("temperature_source", "temperature_source", "temperature_field", True)
-    with pytest.raises(BuildError, match="internal: default-selection check reached with a non-table wiring value"):
+    vwf = ValueWiringField("temperature_source", "temperature", True)
+    with pytest.raises(BuildInternalError, match="internal: default-selection check reached with a non-table wiring value"):
         _check_default_value_selection(model, spec, vwf)
 
 
 def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> None:
-    # instance_label(), the generated Python-variable identity, has its own uniqueness check
-    # distinct from resolved_name's - unreachable with today's driver names, none carrying an
-    # underscore that could line up, so this drives it against a synthetic model.
+    # Extension-point guard, on a synthetic model: a future driver name with an underscore lining up with a name_ext.
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_instance_label_collisions
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("foo_bar", "")] = InstanceSpec("foo_bar", "", {}, {}, 0)
     model.instances[("foo", "bar")] = InstanceSpec("foo", "bar", {}, {}, 1)
     with pytest.raises(BuildError, match="instance_label collision"):
@@ -645,13 +1083,11 @@ def test_instance_label_collision_synthetic(tmp_path: Path, src_dir: Path) -> No
 
 
 def test_gpio_collision_cs_pin_synthetic_two_instances(tmp_path: Path, src_dir: Path) -> None:
-    # Duplicate CS pins are subsumed by _check_gpio_collisions()'s shared claims dict, but only
-    # fram has a cs_pin and it is a forced singleton, so no real TOML can produce two. Driven
-    # against a synthetic model instead.
+    # Extension-point guard, on a synthetic model: a second chip-select user (only the singleton fram has one today).
     from buildgen.model import DeviceModel, InstanceSpec
     from buildgen.validate import _check_gpio_collisions
 
-    model = DeviceModel("dev", tmp_path / "dev.toml", {})
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {})
     model.instances[("fram", "a")] = InstanceSpec("fram", "a", {"cs_pin": 9}, {}, 0)
     model.instances[("fram", "b")] = InstanceSpec("fram", "b", {"cs_pin": 9}, {}, 1)
     with pytest.raises(BuildError, match="claimed twice"):
@@ -663,7 +1099,7 @@ def test_singleton_service_declared_twice(tmp_path: Path, src_dir: Path) -> None
     # exact-duplicate [[instance]] entry - caught by load_device()'s dedup before the
     # singleton-specific check even runs (Part C.14).
     doc = base_doc()
-    second_fram = {"driver": "fram", "bus": "spi0", "cs_pin": 22, "max_size": 1024}
+    second_fram = {"driver": "fram", "bus": "spi0", "cs_pin": 22, "max_size": 0x2000}
     doc["instance"].append(second_fram)
     with pytest.raises(BuildError, match="duplicate \\[\\[instance\\]\\] entry"):
         _build(tmp_path, src_dir, doc)
@@ -715,17 +1151,18 @@ def test_per_bus_explicit_address_collision(tmp_path: Path, src_dir: Path) -> No
 
 def test_per_bus_address_reuse_on_different_bus_is_legitimate(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 50000}  # real i2c1 SDA/SCL pair (Phase 2)
+    doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 50000}  # a real i2c1 SDA/SCL pair
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x77})
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c1", "address": 0x77})
-    _build(tmp_path, src_dir, doc)  # no raise - different buses, same address value is fine
+    model = _build(tmp_path, src_dir, doc)  # different buses, same address value is fine
+    assert [(s.fields["bus"], s.fields["address"]) for s in model.instances.values() if s.driver == "bmp3xx"] == [("i2c0", 0x77), ("i2c1", 0x77)]
 
 
 def test_two_fixed_address_instances_same_driver_same_bus_collide(tmp_path: Path, src_dir: Path) -> None:
     # Neither declares an explicit address - both scd30's, hardware address is fixed, so they
     # can't be told apart on the same bus at all.
     doc = base_doc()
-    doc["instance"].append({"driver": "scd30", "name_ext": "second", "bus": "i2c0", "irq_pin": 21, "trigger_sec": 3})
+    doc["instance"].append({"driver": "scd30", "name_ext": "second", "bus": "i2c0", "irq_pin": 21, "trigger_s": 3})
     with pytest.raises(BuildError, match="can't be told apart"):
         _build(tmp_path, src_dir, doc)
 
@@ -733,8 +1170,9 @@ def test_two_fixed_address_instances_same_driver_same_bus_collide(tmp_path: Path
 def test_two_fixed_address_different_drivers_same_bus_do_not_collide(tmp_path: Path, src_dir: Path) -> None:
     # scd30 and sgp40 already share bus i2c0 in base_doc() with no explicit address on either -
     # different chip types have different real fixed addresses, so this must NOT raise.
-    doc = base_doc()
-    _build(tmp_path, src_dir, doc)
+    model = _build(tmp_path, src_dir, base_doc())
+    shared = [(s.driver, s.fields["bus"], "address" in s.fields) for s in model.instances.values() if s.driver in ("scd30", "sgp40")]
+    assert shared == [("scd30", "i2c0", False), ("sgp40", "i2c0", False)]
 
 
 @pytest.mark.parametrize("bad_address", [0x50, 0, 0x78])
@@ -742,31 +1180,101 @@ def test_bmp3xx_address_outside_legal_set_rejected(tmp_path: Path, src_dir: Path
     # SPECIFICATION.md Part L.6.4's _LIMITS: bmp3xx's address is well-typed and plausible but not one
     # of the two real SDO-pin-selected values - a datasheet-reading mistake, not a TOML mistake.
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": bad_address})
-    with pytest.raises(BuildError, match="not one of this driver's legal values"):
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": bad_address})
+    with pytest.raises(BuildError, match="not one of this driver's legal values") as info:
         _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.fix) == ("instance.field-not-in-set", "set address to one of [118, 119]")
 
 
 @pytest.mark.parametrize("legal_address", [0x76, 0x77])
 def test_bmp3xx_address_in_legal_set_is_fine(tmp_path: Path, src_dir: Path, legal_address: int) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": legal_address})
-    _build(tmp_path, src_dir, doc)  # no raise
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": legal_address})
+    spec = _build(tmp_path, src_dir, doc).instances[("bmp3xx", "")]
+    assert spec.fields["address"] == legal_address
+    assert [lf.choices for lf in spec.limits_schema if lf.toml_field == "address"] == [frozenset({0x76, 0x77})]
 
 
 @pytest.mark.parametrize("bad_trigger", [0, 3601, -1])
-def test_bmp3xx_trigger_sec_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
+def test_bmp3xx_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": bad_trigger})
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": bad_trigger})
+    with pytest.raises(BuildError, match="outside this driver's legal range") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.fix) == ("instance.field-out-of-range", "set trigger_s within 1..3600")
+
+
+@pytest.mark.parametrize("legal_trigger", [1, 3600, 60])
+def test_bmp3xx_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": legal_trigger})
+    spec = _build(tmp_path, src_dir, doc).instances[("bmp3xx", "")]
+    assert spec.fields["trigger_s"] == legal_trigger
+    assert [(lf.min, lf.max) for lf in spec.limits_schema if lf.toml_field == "trigger_s"] == [(1, 3600)]
+
+
+@pytest.mark.parametrize("bad_trigger", [0, 1801, -1])
+def test_scd30_trigger_s_outside_legal_range_rejected(tmp_path: Path, src_dir: Path, bad_trigger: int) -> None:
+    doc = base_doc()
+    doc["instance"][0]["trigger_s"] = bad_trigger  # scd30
     with pytest.raises(BuildError, match="outside this driver's legal range"):
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("legal_trigger", [1, 3600, 60])
-def test_bmp3xx_trigger_sec_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
+@pytest.mark.parametrize("legal_trigger", [1, 1800, 3])
+def test_scd30_trigger_s_in_legal_range_is_fine(tmp_path: Path, src_dir: Path, legal_trigger: int) -> None:
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "bus": "i2c0", "address": 0x77, "trigger_sec": legal_trigger})
-    _build(tmp_path, src_dir, doc)  # no raise
+    doc["instance"][0]["trigger_s"] = legal_trigger  # scd30
+    spec = _build(tmp_path, src_dir, doc).instances[("scd30", "")]
+    assert spec.fields["trigger_s"] == legal_trigger
+    assert [(lf.min, lf.max) for lf in spec.limits_schema if lf.toml_field == "trigger_s"] == [(1, 1800)]
+
+
+@pytest.mark.parametrize("bad_size", [0x1000, 0x8000])
+def test_fram_max_size_outside_legal_set_rejected(tmp_path: Path, src_dir: Path, bad_size: int) -> None:
+    # A size no known part has would build and then fail at boot; the build names the legal set.
+    doc = base_doc()
+    doc["instance"][2]["max_size"] = bad_size  # fram
+    with pytest.raises(BuildError, match=r"not one of this driver's legal values \[8192, 262144\]") as excinfo:
+        _build(tmp_path, src_dir, doc)
+    assert (excinfo.value.instance, excinfo.value.field) == ("fram", "max_size")
+
+
+def _float_limited_scd30(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # A synthetic float-limited optional field on scd30: no real @limits field is a float today.
+    monkeypatch.setitem(ALLOWED_INSTANCE_FIELDS, "scd30", ALLOWED_INSTANCE_FIELDS["scd30"] | {"gain"})
+    return _staged_src(tmp_path, src_dir, "asy_scd30_driver.py", "# @limits trigger_s 1..1800", "# @limits trigger_s 1..1800\n# @limits gain 0.5..2.5")
+
+
+@pytest.mark.parametrize("gain", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_value_in_a_limited_field_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch, gain: float) -> None:
+    # nan compares False against both bounds and would pass a plain range check; inf is past any bound worth having.
+    staged = _float_limited_scd30(tmp_path, src_dir, monkeypatch)
+    doc = base_doc()
+    doc["instance"][0]["gain"] = gain
+    with pytest.raises(BuildError, match=r"scd30\.gain=.* is not a finite number") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("instance.field-not-finite", "gain", "set gain within 0.5..2.5")
+
+
+def test_a_finite_value_in_a_float_limited_field_is_range_checked(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    staged = _float_limited_scd30(tmp_path, src_dir, monkeypatch)
+    doc = base_doc()
+    doc["instance"][0]["gain"] = 1.5
+    assert _build(tmp_path, staged, doc).instances[("scd30", "")].fields["gain"] == 1.5
+    doc["instance"][0]["gain"] = 2.6
+    with pytest.raises(BuildError, match="outside this driver's legal range") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.rule == "instance.field-out-of-range"
+
+
+@pytest.mark.parametrize("legal_size", [0x2000, 0x40000])
+def test_fram_max_size_in_legal_set_is_fine(tmp_path: Path, src_dir: Path, legal_size: int) -> None:
+    doc = base_doc()
+    doc["instance"][2]["max_size"] = legal_size  # fram
+    spec = _build(tmp_path, src_dir, doc).instances[("fram", "")]
+    assert spec.fields["max_size"] == legal_size
+    assert [lf.choices for lf in spec.limits_schema if lf.toml_field == "max_size"] == [frozenset({0x2000, 0x40000})]
 
 
 def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -776,7 +1284,8 @@ def test_two_bmp3xx_same_bus_different_legal_addresses_is_fine(tmp_path: Path, s
     doc = base_doc()
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "a", "bus": "i2c0", "address": 0x76})
     doc["instance"].append({"driver": "bmp3xx", "name_ext": "b", "bus": "i2c0", "address": 0x77})
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert [(s.fields["bus"], s.fields["address"]) for s in model.instances.values() if s.driver == "bmp3xx"] == [("i2c0", 0x76), ("i2c0", 0x77)]
 
 
 def test_wiring_field_not_declared_by_driver(tmp_path: Path, src_dir: Path) -> None:
@@ -815,7 +1324,7 @@ def test_wiring_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
 
 def test_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"][4]["wiring"]["signal_sink"] = "fram"  # fram is AsyFramManager, not NeopixelDriver
+    doc["instance"][4]["wiring"]["signal_sink"] = "fram"  # fram is FRAMManager, not NeopixelDriver
     with pytest.raises(BuildError, match="requires a NeopixelDriver"):
         _build(tmp_path, src_dir, doc)
 
@@ -831,7 +1340,9 @@ def test_signal_sink_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> No
     # SPECIFICATION.md Part L.6.1's motivating scenario: a notification setup that blinks no LED.
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
-    _build(tmp_path, src_dir, doc)  # no raise
+    model, source = _generated(tmp_path, src_dir, doc)
+    assert model.instances[("notification", "")].wiring["signal_sink"] == {"default": True}
+    assert "NotificationService(_DefaultSignalSink().request_signal," in source
 
 
 def test_signal_sink_default_with_unknown_key_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -845,13 +1356,17 @@ def test_signal_sink_default_with_unknown_key_rejected(tmp_path: Path, src_dir: 
 def test_temperature_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 20}
-    _build(tmp_path, src_dir, doc)  # no raise - humidity_source stays a real reference
+    model, source = _generated(tmp_path, src_dir, doc)  # humidity_source stays a real reference
+    assert model.instances[("sgp40", "")].wiring["temperature_source"] == {"default": True, "temperature": 20}
+    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=20), 'value'), humidity=ValueRef(scd30, 'Hum')" in source
 
 
 def test_humidity_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     doc["instance"][1]["wiring"]["humidity_source"] = {"default": True}
-    _build(tmp_path, src_dir, doc)  # no raise - default's own temperature param keeps its own default
+    model, source = _generated(tmp_path, src_dir, doc)  # the default's own humidity parameter keeps its default
+    assert model.instances[("sgp40", "")].wiring["humidity_source"] == {"default": True}
+    assert "humidity=ValueRef(_DefaultHumiditySource(), 'value')" in source
 
 
 def test_temperature_source_default_with_unknown_key_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -872,13 +1387,17 @@ def test_sgp40_without_any_scd30_using_both_defaults(tmp_path: Path, src_dir: Pa
         "fram_target": "fram",
     }
     del doc["instance"][3]["wiring"]["warn_co2"]  # notification, now index 3 - referenced scd30
-    _build(tmp_path, src_dir, doc)  # no raise
+    model, source = _generated(tmp_path, src_dir, doc)
+    assert ("scd30", "") not in model.instances
+    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=22), 'value'), humidity=ValueRef(_DefaultHumiditySource(), 'value')" in source
 
 
 def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["instance"][1]["wiring"]["fram_target"]
-    _build(tmp_path, src_dir, doc)  # no raise
+    model, source = _generated(tmp_path, src_dir, doc)
+    assert "fram_target" not in model.instances[("sgp40", "")].wiring
+    assert _construction(source, "sgp40").endswith("log=log_ram)")
 
 
 def test_notification_present_with_zero_warn_signals_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -887,7 +1406,9 @@ def test_notification_present_with_zero_warn_signals_is_fine(tmp_path: Path, src
     # warn_co2, so this was never actually exercised.
     doc = base_doc()
     del doc["instance"][4]["wiring"]["warn_co2"]
-    _build(tmp_path, src_dir, doc)  # no raise
+    model, source = _generated(tmp_path, src_dir, doc)
+    assert not [f for f in model.instances[("notification", "")].wiring if f.startswith("warn_")]
+    assert "signals=()," in _construction(source, "notification")
 
 
 def test_warn_signal_malformed_shape(tmp_path: Path, src_dir: Path) -> None:
@@ -902,6 +1423,74 @@ def test_warn_signal_source_unresolved(tmp_path: Path, src_dir: Path) -> None:
     doc["instance"][4]["wiring"]["warn_co2"]["source"] = "does_not_exist"
     with pytest.raises(BuildError, match="does not resolve to any declared instance"):
         _build(tmp_path, src_dir, doc)
+
+
+def test_a_warn_signal_off_the_notification_instance_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # A warn_* key and its {source} edge are the notification's alone; on a sensor it would wire nothing.
+    doc = base_doc()
+    doc["instance"][0]["wiring"]["warn_co2"] = {"source": "scd30", "field": "CO2"}
+    with pytest.raises(BuildError, match=r"scd30 declares wiring\.warn_co2, but warn signals belong to the notification instance") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("wiring.warn-outside-notification", "warn_co2", "scd30")
+
+
+def test_an_unknown_warn_signal_is_refused_at_validation(tmp_path: Path, src_dir: Path) -> None:
+    # The signal catalog is fixed by the generator, so a name outside it fails before anything is generated.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_foo"] = {"source": "scd30", "field": "CO2"}
+    with pytest.raises(BuildError, match=r"notification declares wiring\.warn_foo, but the signal catalog knows only \['warn_co2', 'warn_hum', 'warn_voc'\]") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("wiring.warn-unknown", "warn_foo")
+
+
+def test_a_source_field_its_producer_lacks_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The field set is read from the producer's get_data() namedtuple, so the fix lists the real spellings.
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_co2"]["field"] = "Co2"
+    with pytest.raises(BuildError, match=r"warn_co2\.field='Co2' names no field of scd30's get_data\(\) result") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("source.field-unknown", "warn_co2", "notification")
+    assert info.value.fix is not None and "'CO2'" in info.value.fix
+
+
+def test_a_bmp3xx_temperature_source_builds(tmp_path: Path, src_dir: Path) -> None:
+    doc = base_doc()
+    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"})
+    doc["instance"][1]["wiring"]["temperature_source"] = {"source": "bmp3xx", "field": "Temp"}
+    model = _build(tmp_path, src_dir, doc)
+    assert model.instances[("sgp40", "")].wiring["temperature_source"] == {"source": "bmp3xx", "field": "Temp"}
+
+
+@pytest.mark.parametrize(("filename", "result", "producer"), [("asy_scd30_driver.py", "SCD30", "scd30"), ("asy_sgp40_driver.py", "SGP40", "sgp40")])
+def test_a_producer_whose_result_is_no_namedtuple_is_rejected(tmp_path: Path, src_dir: Path, filename: str, result: str, producer: str) -> None:
+    # The refusal names the producer, whose driver file holds the fix; the notification reads both producers.
+    staged = _staged_src(tmp_path, src_dir, filename, f'{result} = namedtuple("{result}", (', f'{result} = make_record("{result}", (')
+    doc = base_doc()
+    doc["instance"][4]["wiring"]["warn_voc"] = {"source": "sgp40", "field": "VOC"}
+    with pytest.raises(BuildError, match=rf"cannot read the fields of {result}_Reader\.get_data\(\)'s result") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.rule, info.value.instance) == ("source.fields-unreadable", producer)
+
+
+def test_device_wiring_is_recorded_per_consumer(tmp_path: Path, src_dir: Path) -> None:
+    # Codegen renders each mandatory consumer's own tag target from what validation recorded.
+    model = _build(tmp_path, src_dir, base_doc())
+    assert {consumer: sorted(fields) for consumer, fields in model.device_wiring.items()} == {
+        "conn": ["fram_target", "led_target"], "sysfunct": ["fram_target"], "ntp": ["fram_target"], "webserver": ["fram_target"],
+    }
+    assert (model.device_wiring["conn"]["led_target"].producer_class, model.device_wiring["conn"]["led_target"].target) == ("NeopixelDriver", "ext_led")
+
+
+def test_a_required_keyword_only_default_parameter_is_enforced(tmp_path: Path, src_dir: Path) -> None:
+    # Guard: a keyword-only parameter without a default is a required sub-table key, as a positional one is.
+    staged = _staged_src(tmp_path, src_dir, "asy_sgp40_driver.py", "def __init__(self, temperature: float = 25) -> None:", "def __init__(self, *, temperature: float) -> None:")
+    doc = base_doc()
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True}
+    with pytest.raises(BuildError, match=r"missing required key\(s\) \['temperature'\]") as info:
+        _build(tmp_path, staged, doc)
+    assert info.value.rule == "wiring.default-key-missing"
+    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 21}
+    assert _build(tmp_path, staged, doc).instances[("sgp40", "")].wiring["temperature_source"] == {"default": True, "temperature": 21}
 
 
 def test_device_wiring_unknown_field(tmp_path: Path, src_dir: Path) -> None:
@@ -920,7 +1509,7 @@ def test_device_wiring_reference_unresolved(tmp_path: Path, src_dir: Path) -> No
 
 def test_device_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["device"]["wiring"]["led_target"] = "fram"  # fram is AsyFramManager, not NeopixelDriver
+    doc["device"]["wiring"]["led_target"] = "fram"  # fram is FRAMManager, not NeopixelDriver
     with pytest.raises(BuildError, match="requires a NeopixelDriver"):
         _build(tmp_path, src_dir, doc)
 
@@ -928,7 +1517,9 @@ def test_device_wiring_reference_wrong_class(tmp_path: Path, src_dir: Path) -> N
 def test_device_wiring_optional_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     del doc["device"]["wiring"]["led_target"]
-    _build(tmp_path, src_dir, doc)  # no raise
+    model, source = _generated(tmp_path, src_dir, doc)
+    assert "led_target" not in model.device_wiring["conn"]
+    assert "neopixel" not in _construction(source, "conn")
 
 
 def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir: Path) -> None:
@@ -943,18 +1534,18 @@ def test_device_wiring_fram_target_reference_unresolved(tmp_path: Path, src_dir:
 
 def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not AsyFramManager
-    with pytest.raises(BuildError, match="requires a AsyFramManager"):
+    doc["device"]["wiring"]["fram_target"] = "neopixel"  # neopixel is NeopixelDriver, not FRAMManager
+    with pytest.raises(BuildError, match="requires a FRAMManager"):
         _build(tmp_path, src_dir, doc)
 
 
 @pytest.mark.parametrize(
     "filename,tag",
     [
-        ("system_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_wifi_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_ntp_client.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
-        ("asy_webserver_service.py", "# @wiring fram_target AsyFramManager fram optional kwarg"),
+        ("asy_system_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_wifi_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_ntp_client.py", "# @wiring fram_target FRAMManager log optional kwarg"),
+        ("asy_webserver_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
     ],
 )
 def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path, src_dir: Path, filename: str, tag: str) -> None:
@@ -962,7 +1553,7 @@ def test_device_wiring_fram_target_checks_every_consumers_own_tag(tmp_path: Path
     # first one in _DEVICE_WIRING_CONSUMERS - each is staged to lose its tag in turn, and each one's
     # absence alone must still be caught.
     staged = _staged_src(tmp_path, src_dir, filename, tag, "")
-    path = write_doc(tmp_path, "dev", base_doc())
+    path = write_doc(tmp_path, "fixture", base_doc())
     with pytest.raises(BuildError, match="has no matching @wiring tag"):
         build_model(path, staged)
 
@@ -975,7 +1566,9 @@ def test_partial_instance_level_fram_wiring_is_fine(tmp_path: Path, src_dir: Pat
     del doc["instance"][0]["wiring"]["fram_target"]  # scd30 - unwired
     del doc["instance"][3]["wiring"]["fram_target"]  # neopixel - unwired
     # sgp40 (index 1) and notification (index 4) keep their fram_target wiring - genuinely partial.
-    _build(tmp_path, src_dir, doc)  # no raise
+    _model, source = _generated(tmp_path, src_dir, doc)
+    logs = {var: _construction(source, var).rsplit("log=", 1)[1] for var in ("scd30", "neopixel", "sgp40", "notification")}
+    assert logs == {"scd30": "log_ram)", "neopixel": "log_ram)", "sgp40": "log_fram)", "notification": "log_fram)"}
 
 
 def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -984,7 +1577,9 @@ def test_device_wiring_fram_target_left_unwired_is_fine(tmp_path: Path, src_dir:
     # fram instance itself.
     doc = base_doc()
     del doc["device"]["wiring"]["fram_target"]
-    _build(tmp_path, src_dir, doc)  # no raise
+    model = _build(tmp_path, src_dir, doc)
+    assert ("fram", "") in model.instances
+    assert not [consumer for consumer, fields in model.device_wiring.items() if "fram_target" in fields]
 
 
 def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -994,8 +1589,8 @@ def test_device_wiring_required_field_missing_is_rejected(tmp_path: Path, src_di
     import buildgen.validate as validate_mod
     from buildgen.model import DeviceModel
 
-    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "NotificationCoordinator", "signal_sink"),))
-    model = DeviceModel("dev", tmp_path / "dev.toml", {"device": {"wiring": {}}})
+    monkeypatch.setitem(validate_mod._DEVICE_WIRING_CONSUMERS, "signal_sink", (("asy_notification_service.py", "signal_sink"),))
+    model = DeviceModel("fixture", tmp_path / "fixture.toml", {"device": {"wiring": {}}})
     with pytest.raises(BuildError, match="missing required field 'signal_sink'"):
         validate_mod._check_device_wiring(model, src_dir)
 
@@ -1016,13 +1611,14 @@ def test_requires_tag_missing_bus_field(tmp_path: Path, src_dir: Path) -> None:
 
 def test_requires_tag_satisfied(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    doc["bus"]["i2c0"]["timeout"] = 250000
-    _build(tmp_path, src_dir, doc)  # no raise
+    doc["bus"]["i2c0"]["timeout"] = 200000
+    spec = _build(tmp_path, src_dir, doc).instances[("scd30", "")]
+    assert [(t.field, t.op, t.value) for t in spec.requires_tags] == [("timeout", ">=", 200000), ("frequency", "<=", 100000)]
 
 
 def _staged_src_with_scd30_tag(tmp_path: Path, src_dir: Path, replacement: str) -> Path:
-    """A writable copy of src/ whose scd30 driver carries `replacement` in place of its real
-    `# @requires` tag - the only way to exercise a broken tag end-to-end through build_model()."""
+    # A writable copy of src/ whose scd30 driver carries `replacement` in place of its real
+    # `# @requires` tag - the only way to exercise a broken tag end-to-end through build_model().
     staged = tmp_path / "staged_src"
     shutil.copytree(src_dir, staged)
     driver = staged / "asy_scd30_driver.py"
@@ -1082,14 +1678,16 @@ def test_requires_tag_sgp40_within_its_own_ceiling_on_a_separate_bus_builds(tmp_
     doc = base_doc()
     doc["bus"]["i2c1"] = {"scl_pin": 27, "sda_pin": 26, "frequency": 400000}
     doc["instance"][1]["bus"] = "i2c1"
-    _build(tmp_path, src_dir, doc)  # no raise
+    spec = _build(tmp_path, src_dir, doc).instances[("sgp40", "")]
+    assert (spec.fields["bus"], [(t.field, t.op, t.value) for t in spec.requires_tags]) == ("i2c1", [("frequency", "<=", 400000)])
 
 
 def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Path) -> None:
     # The control for the three cases above: with the tag genuinely absent (not typo'd), the same
     # build succeeds - so those aborts are the near-miss detector firing, not the staged copy.
     staged = _staged_src_with_scd30_tag(tmp_path, src_dir, "# no requirement declared")
-    _build(tmp_path, staged, base_doc())  # no raise
+    spec = _build(tmp_path, staged, base_doc()).instances[("scd30", "")]
+    assert [(t.field, t.op, t.value) for t in spec.requires_tags] == [("frequency", "<=", 100000)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1100,7 +1698,7 @@ def test_requires_tag_removed_entirely_still_builds(tmp_path: Path, src_dir: Pat
 
 
 def _staged_src(tmp_path: Path, src_dir: Path, filename: str, old: str, new: str) -> Path:
-    """A writable copy of src/ with one substitution applied to one driver file."""
+    # A writable copy of src/ with one substitution applied to one driver file.
     staged = tmp_path / "staged_src"
     if not staged.exists():
         shutil.copytree(src_dir, staged)
@@ -1119,13 +1717,13 @@ _MINIMAL_DEVICE_TABLE = (
 
 def test_bus_table_is_not_a_table_at_all(tmp_path: Path, src_dir: Path) -> None:
     # Written by hand rather than through the fixture writer, which can only serialize a real table.
-    path = write_text(tmp_path, "dev", "bus = 5\n\n" + _MINIMAL_DEVICE_TABLE)
+    path = write_text(tmp_path, "fixture", "bus = 5\n\n" + _MINIMAL_DEVICE_TABLE)
     with pytest.raises(BuildError, match=r"\[bus\] must be a table of bus tables"):
         build_model(path, src_dir)
 
 
 def test_single_bus_entry_is_not_a_table(tmp_path: Path, src_dir: Path) -> None:
-    path = write_text(tmp_path, "dev", _MINIMAL_DEVICE_TABLE + "\n[bus]\ni2c0 = 5\n")
+    path = write_text(tmp_path, "fixture", _MINIMAL_DEVICE_TABLE + "\n[bus]\ni2c0 = 5\n")
     with pytest.raises(BuildError, match=r"bus\.i2c0 is not a table"):
         build_model(path, src_dir)
 
@@ -1144,7 +1742,7 @@ def test_default_selection_when_the_driver_defines_no_default_class(tmp_path: Pa
     staged = _staged_src(tmp_path, src_dir, "asy_sgp40_driver.py", "class _DefaultTemperatureSource:", "class _RenamedAway:")
     doc = base_doc()
     doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 25.0}
-    path = write_doc(tmp_path, "dev", doc)
+    path = write_doc(tmp_path, "fixture", doc)
     with pytest.raises(BuildError, match="defines no _DefaultTemperatureSource class"):
         build_model(path, staged)
 
@@ -1155,7 +1753,7 @@ def test_default_sub_table_missing_a_required_key(tmp_path: Path, src_dir: Path)
     staged = _staged_src(tmp_path, src_dir, "asy_sgp40_driver.py", "def __init__(self, temperature: float = 25) -> None:", "def __init__(self, temperature: float) -> None:")
     doc = base_doc()
     doc["instance"][1]["wiring"]["temperature_source"] = {"default": True}
-    path = write_doc(tmp_path, "dev", doc)
+    path = write_doc(tmp_path, "fixture", doc)
     with pytest.raises(BuildError, match="missing required key"):
         build_model(path, staged)
 
@@ -1165,7 +1763,7 @@ def test_attr_mode_default_provider_without_the_target_attribute(tmp_path: Path,
     staged = _staged_src(tmp_path, src_dir, "asy_notification_service.py", "async def request_signal(", "async def renamed_away(")
     doc = base_doc()
     doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
-    path = write_doc(tmp_path, "dev", doc)
+    path = write_doc(tmp_path, "fixture", doc)
     with pytest.raises(BuildError, match="defines no 'request_signal' attribute/method"):
         build_model(path, staged)
 
@@ -1184,50 +1782,73 @@ def test_optional_value_wiring_field_may_be_absent(tmp_path: Path, src_dir: Path
         tmp_path,
         src_dir,
         "asy_sgp40_driver.py",
-        "# @value-wiring humidity_source humidity_source humidity_field required",
-        "# @value-wiring humidity_source humidity_source humidity_field optional",
+        "# @value-wiring humidity_source humidity required",
+        "# @value-wiring humidity_source humidity optional",
     )
     doc = base_doc()
     del doc["instance"][1]["wiring"]["humidity_source"]
-    path = write_doc(tmp_path, "dev", doc)
-    build_model(path, staged)  # no raise
+    model, source = _generated(tmp_path, staged, doc)
+    assert "humidity_source" not in model.instances[("sgp40", "")].wiring
+    assert "humidity=" not in _construction(source, "sgp40")
 
 
 def test_device_wiring_field_with_no_matching_tag_on_the_consumer(tmp_path: Path, src_dir: Path) -> None:
-    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", "# @wiring led_target NeopixelDriver set_ext_led optional setter", "")
-    path = write_doc(tmp_path, "dev", base_doc())
+    staged = _staged_src(tmp_path, src_dir, "asy_wifi_service.py", "# @wiring led_target NeopixelDriver ext_led optional kwarg", "")
+    path = write_doc(tmp_path, "fixture", base_doc())
     with pytest.raises(BuildError, match="has no matching @wiring tag"):
         build_model(path, staged)
 
 
-@pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}])
-def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir: Path, value: object) -> None:
+def test_a_setter_wiring_mode_is_refused_as_unknown(tmp_path: Path, src_dir: Path) -> None:
+    # The LED reaches conn at construction; the retired post-construction setter mode is no mode.
+    staged = _staged_src(
+        tmp_path, src_dir, "asy_wifi_service.py",
+        "# @wiring led_target NeopixelDriver ext_led optional kwarg", "# @wiring led_target NeopixelDriver set_ext_led optional setter",
+    )
+    path = write_doc(tmp_path, "fixture", base_doc())
+    with pytest.raises(BuildError, match="malformed @wiring tag"):
+        build_model(path, staged)
+
+
+@pytest.mark.parametrize("value", [5, 2.5, True, "x", ["neopixel"], [True, "a b"], [], {"target": "neopixel", "on": False}, {}, {"inner": {"n": [1]}}])
+def test_the_fixture_writer_writes_every_planted_value_exactly(tmp_path: Path, value: object) -> None:
+    # A value the writer garbles fails as a TOML syntax error, never as the refusal a test plants it for.
+
     doc = base_doc()
     doc["device"]["wiring"]["led_target"] = value
-    if isinstance(value, dict):
-        pytest.skip("an inline table can't be produced by this fixture writer")
+    assert tomllib.loads(write_doc(tmp_path, "fixture", doc).read_text())["device"]["wiring"]["led_target"] == value
+
+
+@pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}, {}])
+def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir: Path, value: object) -> None:
+
+    doc = base_doc()
+    doc["device"]["wiring"]["led_target"] = value
+    path = write_doc(tmp_path, "fixture", doc)
+    # The refusal must come from the wrong value itself, so the file has to carry it exactly.
+    assert tomllib.loads(path.read_text())["device"]["wiring"]["led_target"] == value
     with pytest.raises(BuildError, match="must be a string instance reference"):
-        _build(tmp_path, src_dir, doc)
+        build_model(path, src_dir)
 
 
 def test_driver_declaring_requires_tags_but_sitting_on_no_bus(tmp_path: Path, src_dir: Path) -> None:
     # A bus requirement on a driver with no bus field is a contradiction the build must name, not
     # silently skip. neopixel is the only driver with no bus at all, so the tag is staged onto it.
     staged = _staged_src(tmp_path, src_dir, "asy_neopixel_driver.py", "# @wiring fram_target", "# @requires bus.frequency<=100000\n# @wiring fram_target")
-    path = write_doc(tmp_path, "dev", base_doc())
+    path = write_doc(tmp_path, "fixture", base_doc())
     with pytest.raises(BuildError, match="declares @requires bus tags but has no 'bus' field"):
         build_model(path, staged)
 
 
 def test_unreadable_device_file_fails_loud(tmp_path: Path, src_dir: Path) -> None:
     # A directory where a TOML file was expected - an OSError that must surface as a BuildError.
-    (tmp_path / "dev.toml").mkdir()
+    (tmp_path / "fixture.toml").mkdir()
     with pytest.raises(BuildError, match="could not read"):
-        build_model(tmp_path / "dev.toml", src_dir)
+        build_model(tmp_path / "fixture.toml", src_dir)
 
 
 def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> None:
-    path = write_text(tmp_path, "dev", '[device]\nname = "Test"\n\n[[instance]]\nname_ext = "x"\n')
+    path = write_text(tmp_path, "fixture", '[device]\nname = "Test"\n\n[[instance]]\nname_ext = "x"\n')
     with pytest.raises(BuildError, match=r"entry #0 is missing a 'driver' field"):
         build_model(path, src_dir)
 
@@ -1238,12 +1859,10 @@ def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> N
 
 
 def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
-    # Mirrors dev.toml's uart0/uart1 initiator/responder shape, with a datasheet-legal pin pair
-    # per bus. GP16/17 rather than dev.toml's GP0/1, and scd30's irq_pin moved, because base_doc()
-    # and dev.toml are independently-evolved fixtures whose pin claims were never meant to meet.
+    # A uart0 initiator and a uart1 responder, the shape a crossover pair takes, each on a datasheet-legal
+    # pin pair (GP16/17, GP8/9) no base_doc() pin claims once scd30's irq_pin moves off GP8.
     next(i for i in doc["instance"] if i["driver"] == "scd30")["irq_pin"] = 6
-    # dev.toml's bus knobs too: at 115200 baud the driver's default rxbuf (256) and 20ms poll
-    # cannot hold one poll's arrivals, which UART_Comm.setup() refuses (_check_uart_link_buses()).
+    # The bench pair's bus knobs too, so the link checks run against tuning a real link ships with.
     knobs = {"baudrate": 115200, "rxbuf": 512, "txbuf": 512, "poll_wait_ms": 2, "poll_idle_ms": 50}
     doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, **knobs}
     doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, **knobs}
@@ -1253,32 +1872,32 @@ def _with_uart_pair(doc: "TomlDoc") -> "TomlDoc":
 
 
 def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # 2 x 2 + poll_idle_ms + 21ms GC pause against UartLinkExerciser's 1000ms timeout: 975 is the
-    # last idle poll that fits, 976 the first UART_Comm.setup() refuses with errno 11.
+    # 2 x 2 + poll_idle_ms + 21ms GC pause against asy_uart_comm's 1000ms default timeout: 975 is the
+    # last idle poll that fits, 976 the first UARTComm.setup() refuses with UART_TIMEOUT_PARAM.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart1"]["poll_idle_ms"] = 975
     _build(tmp_path, src_dir, doc)
     doc["bus"]["uart1"]["poll_idle_ms"] = 976
     with pytest.raises(BuildError, match=r"bus\.uart1: .*1000ms reply timeout is below the 1001ms") as info:
         _build(tmp_path, src_dir, doc)
-    assert (info.value.field, info.value.instance) == ("poll_idle_ms", "uart_link_resp")
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-timeout-floor", "poll_idle_ms", "uart_link_resp")
 
 
 def test_a_uart_rxbuf_below_one_polls_arrivals_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # 115200 baud over 2 + 5ms = 80 bytes per poll, above the 53-byte frame: 80 fits, 79 is errno 15.
+    # 115200 baud over 2 + 5ms = 80 bytes per poll, above the 53-byte frame: 80 fits, 79 is UART_RXBUF.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart0"]["rxbuf"] = 80
     _build(tmp_path, src_dir, doc)
     doc["bus"]["uart0"]["rxbuf"] = 79
     with pytest.raises(BuildError, match=r"bus\.uart0: rxbuf 79 is below the 80 bytes") as info:
         _build(tmp_path, src_dir, doc)
-    assert (info.value.field, info.value.instance) == ("rxbuf", "uart_link_init")
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-rxbuf-floor", "rxbuf", "uart_link_init")
 
 
 def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: Path, src_dir: Path) -> None:
     # At 9600 baud a poll brings 6 bytes, so the 5-byte header + 48-byte payload frame is the floor.
     doc = _with_uart_pair(base_doc())
-    doc["bus"]["uart0"]["baudrate"] = 9600
+    doc["bus"]["uart0"]["baudrate"] = doc["bus"]["uart1"]["baudrate"] = 9600  # both ends agree (Part J.6)
     doc["bus"]["uart0"]["rxbuf"] = 53
     _build(tmp_path, src_dir, doc)
     doc["bus"]["uart0"]["rxbuf"] = 52
@@ -1287,27 +1906,111 @@ def test_a_uart_rxbuf_below_one_frame_is_rejected_at_a_slow_baudrate(tmp_path: P
 
 
 def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, src_dir: Path) -> None:
-    # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 20, poll_idle_ms = poll_wait_ms)
-    # are what boots, so they are what gets checked - fine at 9600 baud, refused at 115200.
+    # No knobs stated: UART's own defaults (rxbuf 256, poll_wait_ms 2, poll_idle_ms 50) are what boots,
+    # so they are what gets checked - they fit at 115200 baud; an rxbuf of 52 is below one 53-byte frame.
     doc = _with_uart_pair(base_doc())
     for bus in ("uart0", "uart1"):
-        doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 9600}
+        doc["bus"][bus] = {"tx_pin": doc["bus"][bus]["tx_pin"], "rx_pin": doc["bus"][bus]["rx_pin"], "baudrate": 115200}
     _build(tmp_path, src_dir, doc)
-    doc["bus"]["uart0"]["baudrate"] = 115200
-    with pytest.raises(BuildError, match=r"rxbuf 256 is below the 288 bytes"):
+    doc["bus"]["uart0"]["baudrate"] = doc["bus"]["uart1"]["baudrate"] = 9600  # a poll brings 6 bytes, so one frame is the floor
+    doc["bus"]["uart0"]["rxbuf"] = 52
+    with pytest.raises(BuildError, match=r"rxbuf 52 is below the 53 bytes .*one 53-byte frame"):
         _build(tmp_path, src_dir, doc)
 
 
-def test_an_unstated_poll_idle_ms_is_checked_as_poll_wait_ms(tmp_path: Path, src_dir: Path) -> None:
-    # UART's poll_idle_ms=None means "poll at poll_wait_ms", so 3 x 326 + 21 = 999 fits and 327 does not.
+def test_an_unstated_poll_idle_ms_is_read_from_the_driver_source(tmp_path: Path, src_dir: Path) -> None:
+    # An unstated poll_idle_ms is UART's own default, read from source: 2 x 2 + 975 + 21 = 1000 fits
+    # asy_uart_comm's 1000ms default timeout, 976 does not.
     doc = _with_uart_pair(base_doc())
     del doc["bus"]["uart1"]["poll_idle_ms"]
-    doc["bus"]["uart1"]["baudrate"] = 9600  # keeps rxbuf 512 above one long poll's arrivals
-    doc["bus"]["uart1"]["poll_wait_ms"] = 326
-    _build(tmp_path, src_dir, doc)
-    doc["bus"]["uart1"]["poll_wait_ms"] = 327
-    with pytest.raises(BuildError, match=r"poll_idle_ms 327"):
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 50,", "poll_idle_ms: int = 975,")
+    _build(tmp_path, staged, doc)
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 975,", "poll_idle_ms: int = 976,")
+    with pytest.raises(BuildError, match=r"poll_idle_ms 976") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.field, info.value.instance) == ("poll_idle_ms", "uart_link_resp")
+
+
+def test_a_uart_pair_whose_baud_rates_differ_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Both ends of the link agree their parameters out of band and never negotiate (Part J.6).
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart1"]["baudrate"] = 9600
+    with pytest.raises(BuildError, match=r"bus\.uart0 runs at 115200 baud and bus\.uart1 at 9600") as info:
         _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-baud-mismatch", "baudrate", "uart_link_resp")
+    doc["bus"]["uart0"]["baudrate"] = 9600
+    _build(tmp_path, src_dir, doc)
+
+
+@pytest.mark.parametrize("poll_wait_ms", [0, 10])
+def test_a_uart_poll_wait_ms_outside_one_to_nine_is_rejected(tmp_path: Path, src_dir: Path, poll_wait_ms: int) -> None:
+    # UARTComm refuses a transaction poll outside single-digit milliseconds (UART_POLL_RATE); 9 builds.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["poll_wait_ms"] = 9
+    _build(tmp_path, src_dir, doc)
+    doc["bus"]["uart0"]["poll_wait_ms"] = poll_wait_ms
+    with pytest.raises(BuildError, match=rf"bus\.uart0: poll_wait_ms {poll_wait_ms} is outside 1 … 9") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-poll-wait-range", "poll_wait_ms", "uart_link_init")
+
+
+def test_a_uart_link_timeout_above_the_ticks_horizon_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # The link's timeout default lives in asy_uart_comm; its drain bound, 3/2 x 4 x timeout, must stay
+    # inside rp2's 2**29 - 1 ms ticks range: (2**29 - 1) * 2 // 12 = 89,478,485 is the last that fits.
+    old = "_DEFAULT_TIMEOUT_MS = const(1000)"
+    doc = _with_uart_pair(base_doc())
+    _build(tmp_path, _staged_src(tmp_path, src_dir, "asy_uart_comm.py", old, "_DEFAULT_TIMEOUT_MS = const(89478485)"), doc)
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_comm.py", "const(89478485)", "const(89478486)")
+    with pytest.raises(BuildError, match=r"89478486ms reply timeout is above 89478485ms") as info:
+        _build(tmp_path, staged, doc)
+    assert (info.value.rule, info.value.instance) == ("instance.uart-timeout-max", "uart_link_init")
+
+
+@pytest.mark.parametrize("poll_idle_ms", [1, 536870912])
+def test_a_uart_idle_poll_outside_its_range_is_rejected(tmp_path: Path, src_dir: Path, poll_idle_ms: int) -> None:
+    # The idle poll is the slower rate (Part F.5.9), so never below the transaction poll, and a delay
+    # ticks_add() takes, so never past 2**29 - 1 ms; both checked at the value that boots.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart1"]["poll_idle_ms"] = poll_idle_ms
+    with pytest.raises(BuildError, match=rf"bus\.uart1: poll_idle_ms {poll_idle_ms} is outside 2 … 536870911") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-poll-idle-range", "poll_idle_ms", "uart_link_resp")
+    doc["bus"]["uart1"]["poll_idle_ms"] = 2
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart1", "poll_idle_ms") == 2
+
+
+@pytest.mark.parametrize("baudrate", [0, -9600, 7812501])
+def test_a_uart_baudrate_outside_the_silicon_range_is_rejected(tmp_path: Path, src_dir: Path, baudrate: int) -> None:
+    # RP2040's UART tops out at UARTCLK / 16 (7.8 Mbaud at 125 MHz); the port silently keeps its default for 0 or less.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["baudrate"] = doc["bus"]["uart1"]["baudrate"] = baudrate
+    with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) baudrate {baudrate}") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("bus.uart-baudrate-range", "baudrate", "set baudrate within 1..7812500")
+
+
+@pytest.mark.parametrize("field", ["rxbuf", "txbuf"])
+@pytest.mark.parametrize("size", [31, 0, 32767])
+def test_a_uart_buffer_outside_the_port_range_is_rejected(tmp_path: Path, src_dir: Path, field: str, size: int) -> None:
+    # The port clamps a size below 32 up without a word and raises ValueError at boot for one above 32766.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"][field] = size
+    with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) {field} {size}") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == (f"bus.uart-{field}-range", field, f"set {field} within 32..32766")
+
+
+def test_the_uart_buffer_edges_pass_the_range_check(tmp_path: Path, src_dir: Path) -> None:
+    # txbuf builds at both edges; rxbuf 32766 builds and 32 passes the range only to meet the link's own floor.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["txbuf"] = 32
+    doc["bus"]["uart1"]["txbuf"] = doc["bus"]["uart1"]["rxbuf"] = 32766
+    model = _build(tmp_path, src_dir, doc)
+    assert [_at(model.doc, "bus", "uart0", "txbuf"), _at(model.doc, "bus", "uart1", "txbuf"), _at(model.doc, "bus", "uart1", "rxbuf")] == [32, 32766, 32766]
+    doc["bus"]["uart0"]["rxbuf"] = 32
+    with pytest.raises(BuildError, match="rxbuf 32 is below the 80 bytes") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.rule == "bus.uart-rxbuf-floor"
 
 
 def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:
@@ -1323,21 +2026,33 @@ def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path
         module_int_const(tmp_path, "nope.py", "_A")
 
 
-def test_every_shipped_device_passes_the_uart_link_bus_check(src_dir: Path) -> None:
-    # dev is the only device with a link; this pins that its bench tuning really boots the link.
-    from buildgen.validate import build_model
+def test_module_float_and_str_consts_read_only_their_own_literal_type(tmp_path: Path) -> None:
+    # The ServingLimits/StaticSite defaults codegen passes: a float or a str const(), never another type.
+    (tmp_path / "m.py").write_text('_F = const(5.0)\n_I = const(5)\n_S = const("index.html")\n')
+    assert module_float_const(tmp_path, "m.py", "_F") == 5.0
+    assert module_str_const(tmp_path, "m.py", "_S") == "index.html"
+    with pytest.raises(BuildError, match="no longer has a readable float _I"):
+        module_float_const(tmp_path, "m.py", "_I")
+    with pytest.raises(BuildError, match="no longer has a readable str _F"):
+        module_str_const(tmp_path, "m.py", "_F")
 
-    for toml_path in sorted((src_dir.parent / "devices").glob("*.toml")):
-        build_model(toml_path, src_dir)
+
+def test_every_shipped_device_passes_the_uart_link_bus_check(src_dir: Path) -> None:
+    # Every device with a link builds its bench tuning: the link checks pass at the values that boot.
+    for device in DEVICE_NAMES:
+        model = build_model(device_toml(device), src_dir)
+        links = [(s.fields["role"], s.fields["bus"] in ("uart0", "uart1")) for s in model.instances.values() if s.driver == "uart_link"]
+        assert sorted(links) in ([], [("initiator", True), ("responder", True)]), device
 
 
 def test_uart_link_pair_on_its_own_uart_buses_is_valid(tmp_path: Path, src_dir: Path) -> None:
-    _build(tmp_path, src_dir, _with_uart_pair(base_doc()))  # no raise
+    model = _build(tmp_path, src_dir, _with_uart_pair(base_doc()))
+    assert [(s.fields["role"], s.fields["bus"]) for s in model.instances.values() if s.driver == "uart_link"] == [("initiator", "uart0"), ("responder", "uart1")]
 
 
 def test_uart_link_pointed_at_an_i2c_bus_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     # The exact real-world typo this check exists for: a device TOML naming an existing bus of the
-    # wrong kind used to build clean and only fail at firmware boot, deep inside UART_Comm's own
+    # wrong kind used to build clean and only fail at firmware boot, deep inside UARTComm's own
     # construction, with a raw AttributeError - not here, at the build-time BuildError this asserts.
     doc = base_doc()
     doc["instance"].append({"driver": "uart_link", "name_ext": "init", "bus": "i2c0", "role": "initiator"})
@@ -1384,7 +2099,174 @@ def test_uart_link_initiator_with_no_responder_at_all_is_rejected(tmp_path: Path
 
 
 def test_device_with_no_uart_link_instances_at_all_is_fine(tmp_path: Path, src_dir: Path) -> None:
-    _build(tmp_path, src_dir, base_doc())  # no raise - base_doc() has no uart_link instance
+    model = _build(tmp_path, src_dir, base_doc())  # base_doc() has no uart_link instance
+    assert not [s for s in model.instances.values() if s.driver == "uart_link"]
+
+
+def test_uart_link_responder_with_no_initiator_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # Guard: the mirror of the case above, refused by the same pair count.
+    doc = base_doc()
+    doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, "baudrate": 115200}
+    doc["instance"].append({"driver": "uart_link", "name_ext": "resp", "bus": "uart1", "role": "responder"})
+    with pytest.raises(BuildError, match=r"found 0 initiator\(s\).*and 1 responder\(s\)") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.rule == "instance.uart-link-pair"
+
+
+def test_uart_link_pair_on_one_bus_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # One UART peripheral cannot be both ends of a crossover: the pair count passes, the bus check refuses it.
+    doc = _with_uart_pair(base_doc())
+    del doc["bus"]["uart1"]
+    doc["instance"][-1]["bus"] = "uart0"
+    with pytest.raises(BuildError, match=r"bus\.uart0 is claimed by both 'uart_link_init' and 'uart_link_resp' - a UART is point-to-point") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-shared", "bus", "uart_link_resp")
+
+
+@pytest.mark.parametrize("crc", ["crc8", 16, "CRC16", ["crc16"], {"mode": "crc16"}])
+def test_a_uart_crc_mode_outside_the_legal_set_is_rejected(tmp_path: Path, src_dir: Path, crc: object) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-2]["crc"] = crc
+    with pytest.raises(BuildError, match=r"uart_link_init\.crc must be one of \['crc16', 'none'\]") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-crc-mode", "crc", "uart_link_init")
+
+
+def test_a_uart_pair_whose_crc_modes_differ_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # An absent crc is "none", so one crc16 end against an unstated one disagrees (Part J.6: never negotiated).
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-2]["crc"] = "crc16"
+    with pytest.raises(BuildError, match=r"uart_link_init uses crc 'crc16' and uart_link_resp uses 'none'") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-crc-mismatch", "crc", "uart_link_resp")
+    doc["instance"][-1]["crc"] = "crc16"
+    model = _build(tmp_path, src_dir, doc)
+    assert [spec.fields.get("crc") for spec in model.instances.values() if spec.driver == "uart_link"] == ["crc16", "crc16"]
+
+
+def test_the_crc_trailer_counts_in_the_rxbuf_floor(tmp_path: Path, src_dir: Path) -> None:
+    # At 9600 baud and a 1 ms poll a poll brings 5 bytes, so the frame decides: 5 + 48 + 2 = 55 with crc16, 53 without.
+    doc = _with_uart_pair(base_doc())
+    for bus in ("uart0", "uart1"):
+        doc["bus"][bus].update(baudrate=9600, poll_wait_ms=1, rxbuf=53)
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart0", "rxbuf") == 53
+    doc["instance"][-2]["crc"] = doc["instance"][-1]["crc"] = "crc16"
+    doc["bus"]["uart0"]["rxbuf"] = doc["bus"]["uart1"]["rxbuf"] = 54
+    with pytest.raises(BuildError, match=r"rxbuf 54 is below the 55 bytes .*one 55-byte frame") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.rule == "bus.uart-rxbuf-floor"
+    doc["bus"]["uart0"]["rxbuf"] = doc["bus"]["uart1"]["rxbuf"] = 55
+    assert _at(_build(tmp_path, src_dir, doc).doc, "bus", "uart1", "rxbuf") == 55
+
+
+def _crc_widths(crc_source: str) -> "dict[str, int]":
+    # Every class of the CRC module whose __init__ opens with super().__init__(<int>, ...): its trailer width.
+    widths: dict[str, int] = {}
+    for cls in (n for n in ast.parse(crc_source).body if isinstance(n, ast.ClassDef)):
+        for call in (n for n in ast.walk(cls) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "__init__"):
+            if call.args and isinstance(call.args[0], ast.Constant) and isinstance(call.args[0].value, int):
+                widths[cls.name] = call.args[0].value
+    return widths
+
+
+def test_uart_crc_modes_match_crc_checks(tmp_path: Path, src_dir: Path) -> None:
+    # Guard: buildspec's hand-kept CRC table names real asy_crc_checks classes with their real widths.
+    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text())
+    assert {mode: (cls, widths.get(cls)) for mode, (cls, _width) in UART_CRC_MODES.items()} == UART_CRC_MODES
+    renamed = (src_dir / "asy_crc_checks.py").read_text().replace("class CRC16(", "class CRC16Renamed(")
+    assert "CRC16" not in _crc_widths(renamed), "the bite: a table naming a class the module lacks must not match"
+
+
+def _ring(doc: "TomlDoc", size: int) -> "TomlDoc":
+    doc["bus"]["uart0"]["rx_ring"] = doc["bus"]["uart1"]["rx_ring"] = size
+    return doc
+
+
+@pytest.mark.parametrize("size", [768, 8191, 3])
+def test_a_uart_rx_ring_that_is_no_power_of_two_is_rejected(tmp_path: Path, src_dir: Path, size: int) -> None:
+    # The DMA wraps its write address on a power-of-two boundary only (RP2040 datasheet, CH0_CTRL_TRIG.RING_SIZE).
+    with pytest.raises(BuildError, match=rf"bus\.uart0: rx_ring {size} is not a power of two") as info:
+        _build(tmp_path, src_dir, _ring(_with_uart_pair(base_doc()), size))
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-rx-ring", "rx_ring", "uart_link_init")
+
+
+@pytest.mark.parametrize("size", [65536, 1])
+def test_a_uart_rx_ring_outside_the_dma_ring_sizes_is_rejected(tmp_path: Path, src_dir: Path, size: int) -> None:
+    with pytest.raises(BuildError, match=rf"bus\.uart0: rx_ring {size} is outside 2 … 32768") as info:
+        _build(tmp_path, src_dir, _ring(_with_uart_pair(base_doc()), size))
+    assert (info.value.rule, info.value.field) == ("bus.uart-rx-ring", "rx_ring")
+
+
+def test_a_uart_rx_ring_below_its_floor_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # At the bench knobs the floor is one poll's 80 bytes rounded up: 128; the largest DMA ring builds too.
+    with pytest.raises(BuildError, match=r"bus\.uart0: rx_ring 64 is below the 128-byte floor") as info:
+        _build(tmp_path, src_dir, _ring(_with_uart_pair(base_doc()), 64))
+    assert (info.value.rule, info.value.field, info.value.instance) == ("bus.uart-rx-ring", "rx_ring", "uart_link_init")
+    for size in (128, 32768):
+        assert _at(_build(tmp_path, src_dir, _ring(_with_uart_pair(base_doc()), size)).doc, "bus", "uart0", "rx_ring") == size
+
+
+def test_the_rx_ring_floor_follows_the_flash_hold_read_from_source(tmp_path: Path, src_dir: Path) -> None:
+    # A 40 s hold fits ten re-initiations 4 x 1000 ms apart: 53 x 11 = 583 bytes, so the floor rises to 1024.
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_comm.py", "_FLASH_HOLD_MAX_MS = const(2129)", "_FLASH_HOLD_MAX_MS = const(40000)")
+    with pytest.raises(BuildError, match="rx_ring 512 is below the 1024-byte floor") as info:
+        _build(tmp_path, staged, _ring(_with_uart_pair(base_doc()), 512))
+    assert info.value.rule == "bus.uart-rx-ring"
+    assert _at(_build(tmp_path, staged, _ring(_with_uart_pair(base_doc()), 1024)).doc, "bus", "uart1", "rx_ring") == 1024
+
+
+def test_an_unstated_rx_ring_is_read_from_the_driver_source(tmp_path: Path, src_dir: Path) -> None:
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "rx_ring: int = 512,", "rx_ring: int = 64,")
+    with pytest.raises(BuildError, match="rx_ring 64 is below the 128-byte floor") as info:
+        _build(tmp_path, staged, _with_uart_pair(base_doc()))
+    assert info.value.rule == "bus.uart-rx-ring"
+    unstated = _at(_build(tmp_path, src_dir, _with_uart_pair(base_doc())).doc, "bus", "uart0")
+    assert isinstance(unstated, dict) and "rx_ring" not in unstated
+
+
+@pytest.mark.parametrize("cap", [47, 12193, 0])
+def test_a_uart_transfer_cap_outside_its_range_is_rejected(tmp_path: Path, src_dir: Path, cap: int) -> None:
+    # At least one payload (48 bytes) and at most the largest train, 254 chunks of it: 12192 bytes.
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-1]["max_transfer_bytes"] = cap
+    with pytest.raises(BuildError, match=rf"uart_link_resp\.max_transfer_bytes {cap} is outside 48 … 12192") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.instance) == ("instance.uart-transfer-cap", "max_transfer_bytes", "uart_link_resp")
+
+
+@pytest.mark.parametrize("cap", [48, 12192])
+def test_a_uart_transfer_cap_at_its_edges_builds(tmp_path: Path, src_dir: Path, cap: int) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-2]["max_transfer_bytes"] = doc["instance"][-1]["max_transfer_bytes"] = cap
+    model = _build(tmp_path, src_dir, doc)
+    assert [spec.fields["max_transfer_bytes"] for spec in model.instances.values() if spec.driver == "uart_link"] == [cap, cap]
+
+
+@pytest.mark.parametrize("cap", ["12192", 12192.0, True])
+def test_a_uart_transfer_cap_must_be_an_int(tmp_path: Path, src_dir: Path, cap: object) -> None:
+    doc = _with_uart_pair(base_doc())
+    doc["instance"][-2]["max_transfer_bytes"] = cap
+    with pytest.raises(BuildError, match="max_transfer_bytes must be an int") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("instance.field-type", "max_transfer_bytes")
+
+
+def test_an_unstated_transfer_cap_is_read_from_the_protocol_source(tmp_path: Path, src_dir: Path) -> None:
+    staged = _staged_src(tmp_path, src_dir, "asy_uart_comm.py", "_DEFAULT_MAX_TRANSFER_BYTES = const(12192)", "_DEFAULT_MAX_TRANSFER_BYTES = const(47)")
+    with pytest.raises(BuildError, match=r"uart_link_init\.max_transfer_bytes 47 is outside 48 … 12192") as info:
+        _build(tmp_path, staged, _with_uart_pair(base_doc()))
+    assert info.value.rule == "instance.uart-transfer-cap"
+
+
+def test_every_shipped_link_states_its_ring_and_its_cap(src_dir: Path) -> None:
+    # A device with links states both values, so the build checks the pair it ships rather than a default.
+    links = [d for d in DEVICE_NAMES if any(i.get("driver") == "uart_link" for i in tomllib.loads(device_toml(d).read_text()).get("instance", []))]
+    for device in links:
+        model = build_model(device_toml(device), src_dir)
+        for spec in (s for s in model.instances.values() if s.driver == "uart_link"):
+            bus = _at(model.doc, "bus", str(spec.fields["bus"]))
+            assert isinstance(bus, dict) and "rx_ring" in bus and "max_transfer_bytes" in spec.fields, (device, spec.label)
+    assert links, "no device wires a uart_link - the shipped-value check is checking nothing"
 
 
 # ---------------------------------------------------------------------------
@@ -1415,12 +2297,20 @@ def test_uart_bus_missing_baudrate(tmp_path: Path, src_dir: Path) -> None:
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field", ["rxbuf", "txbuf", "poll_wait_ms", "poll_idle_ms"])
+@pytest.mark.parametrize("field", ["rxbuf", "txbuf", "rx_ring", "poll_wait_ms", "poll_idle_ms"])
 def test_uart_bus_optional_int_field_wrong_type(tmp_path: Path, src_dir: Path, field: str) -> None:
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart0"][field] = "not-an-int"
     with pytest.raises(BuildError, match=rf"bus\.uart0 \(uart\) {field} must be an int, got 'not-an-int'"):
         _build(tmp_path, src_dir, doc)
+
+
+def test_uart_bus_rx_ring_is_accepted(tmp_path: Path, src_dir: Path) -> None:
+    # The link's DMA receive ring (Part J.6), stated on its bus table like the other optional knobs.
+    doc = _with_uart_pair(base_doc())
+    doc["bus"]["uart0"]["rx_ring"] = doc["bus"]["uart1"]["rx_ring"] = 8192
+    model = _build(tmp_path, src_dir, doc)
+    assert [_at(model.doc, "bus", bus, "rx_ring") for bus in ("uart0", "uart1")] == [8192, 8192]
 
 
 def test_uart_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -1431,12 +2321,11 @@ def test_uart_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
 
 
 def test_uart_pin_with_no_uart_function_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # GP7 has no UART function at all and is claimed by none of this fixture's other pins - a
-    # pin claimed elsewhere would hit the GPIO-collision check first, instead of the one this
-    # test targets.
+    # GP7 is UART1's RTS in Table 279, no TX or RX, and unclaimed here - a pin claimed elsewhere
+    # would hit the GPIO-collision check first, instead of the one this test targets.
     doc = _with_uart_pair(base_doc())
     doc["bus"]["uart0"]["tx_pin"] = 7
-    with pytest.raises(BuildError, match=r"bus\.uart0\.tx_pin=GP7 has no UART function on the Pico W"):
+    with pytest.raises(BuildError, match=r"bus\.uart0\.tx_pin=GP7 has no UART bus-wire function"):
         _build(tmp_path, src_dir, doc)
 
 
@@ -1483,7 +2372,9 @@ def test_max_connections_is_optional_and_falls_back_to_the_src_default(tmp_path:
     # against THAT, so saying nothing can never be a way past it.
     doc = base_doc()
     doc["device"].pop("max_connections", None)
-    _build(tmp_path, src_dir, doc)
+    path = write_doc(tmp_path, "fixture", doc)
+    build_model(path, src_dir)
+    assert device_max_connections(path, src_dir) == webserver_init_default(src_dir, "max_connections")
 
 
 def test_the_src_default_itself_is_servable_by_the_pinned_lwip_table(src_dir: Path, overrides: ModuleType) -> None:
@@ -1525,7 +2416,8 @@ def test_a_backlog_at_or_above_max_connections_is_accepted(tmp_path: Path, src_d
     doc = base_doc()
     doc["device"]["max_connections"] = 3
     doc["device"]["backlog"] = 3
-    _build(tmp_path, src_dir, doc)
+    path = write_doc(tmp_path, "fixture", doc)
+    assert (_at(build_model(path, src_dir).doc, "device", "backlog"), device_max_connections(path, src_dir)) == (3, 3)
 
 
 def test_a_backlog_above_one_over_max_connections_is_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -1595,57 +2487,57 @@ def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, sr
         _build(tmp_path, src_dir, base_doc())
 
 
-def _webserver_src(tmp_path: Path, init: str) -> Path:
-    (tmp_path / "asy_webserver_service.py").write_text(f"class Other:\n    def __init__(self, max_connections=99): ...\n\nclass WebserverService:\n    {init}\n")
+def _webserver_src(tmp_path: Path, body: str) -> Path:
+    (tmp_path / "asy_webserver_service.py").write_text(body)
     return tmp_path
 
 
 @pytest.mark.parametrize(
-    ("init", "want"),
+    ("body", "want"),
     [
-        ("def __init__(self, a, *, max_connections: int = 7, backlog: int = 8): ...", 7),
-        ("def __init__(self, a, max_connections=5, backlog=6): ...", 5),
-        ("def __init__(self, max_connections, *, backlog=6, other=max_connections): ...", None),
-        ("def __init__(self, *, max_connections=True): ...", None),
-        ("def __init__(self, *, max_connections=MAX): ...", None),
-        ("def setup(self, *, max_connections=4): ...", None),
+        ("_DEFAULT_MAX_CONNECTIONS = const(7)\n", 7),
+        ("_DEFAULT_MAX_CONNECTIONS = 5\n", 5),
+        ("_DEFAULT_MAX_CONNECTIONS = const(True)\n", None),
+        ("_DEFAULT_MAX_CONNECTIONS = const(_MAX)\n", None),
+        ("class WebserverService:\n    def __init__(self, *, max_connections=4): ...\n", None),
+        ("def f():\n    _DEFAULT_MAX_CONNECTIONS = 4\n", None),
     ],
 )
-def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, init: str, want: "int | None") -> None:
-    # Keyword-only and positional defaults both count; a same-named argument on another class, a
-    # bool, a name, or a method other than __init__ never does - each is refused by name instead.
+def test_webserver_init_default_reads_only_an_int_literal_of_the_real_class(tmp_path: Path, body: str, want: "int | None") -> None:
+    # The ServingLimits default is the module-level _DEFAULT_MAX_CONNECTIONS const(): a bool, a
+    # name, a constructor keyword or a function-local copy never counts - each is refused by name.
     from buildgen.validate import webserver_init_default
 
-    src = _webserver_src(tmp_path, init)
+    src = _webserver_src(tmp_path, body)
     if want is not None:
         assert webserver_init_default(src, "max_connections") == want
         return
-    with pytest.raises(BuildError, match=r"no longer has a readable int default for 'max_connections'"):
+    with pytest.raises(BuildError, match=r"no longer has a readable int _DEFAULT_MAX_CONNECTIONS"):
         webserver_init_default(src, "max_connections")
 
 
 def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path: Path) -> None:
-    # Generalised off webserver_init_default() for AsyNtpClient's backoff pair: the class name and
+    # Generalised off webserver_init_default() for NTPClient's backoff pair: the class name and
     # file both scope the lookup, and a miss names both rather than falling back to a guess.
     from buildgen.validate import init_int_default
 
-    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass AsyNtpClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
-    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
-    assert init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
-    with pytest.raises(BuildError, match=r"AsyNtpClient\.__init__ no longer has a readable int default for 'gone'"):
-        init_int_default(tmp_path, "asy_ntp_client.py", "AsyNtpClient", "gone")
+    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_s") == 10
+    assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_max_s") == 600
+    with pytest.raises(BuildError, match=r"NTPClient\.__init__ no longer has a readable int default for 'gone'"):
+        init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "gone")
     with pytest.raises(BuildError, match=r"Missing\.__init__ no longer has"):
         init_int_default(tmp_path, "asy_ntp_client.py", "Missing", "retry_s")
-    with pytest.raises(BuildError, match=r"cannot read .*nope\.py to resolve AsyNtpClient's own retry_s default"):
-        init_int_default(tmp_path, "nope.py", "AsyNtpClient", "retry_s")
+    with pytest.raises(BuildError, match=r"cannot read .*nope\.py to resolve NTPClient's own retry_s default"):
+        init_int_default(tmp_path, "nope.py", "NTPClient", "retry_s")
 
 
 def test_the_shipped_ntp_backoff_defaults_are_readable_from_the_real_source(src_dir: Path) -> None:
-    # Regression guard for the validator's own input: renaming either keyword breaks this, not a device build.
-    from buildgen.validate import init_int_default
+    # Regression guard for the validator's own input: renaming either constant breaks this, not a device build.
+    from buildgen.validate import module_int_const
 
-    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") == 10
-    assert init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s") == 600
+    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S") == 10
+    assert module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S") == 600
 
 
 @pytest.mark.parametrize("content", [None, "class WebserverService(:\n"])
@@ -1654,9 +2546,9 @@ def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, c
 
     if content is not None:
         (tmp_path / "asy_webserver_service.py").write_text(content)
-    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve WebserverService's own backlog default") as info:
-        webserver_init_default(tmp_path, "backlog")
-    assert info.value.field == "backlog"
+    with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve its _DEFAULT_MAX_CONNECTIONS") as info:
+        webserver_init_default(tmp_path, "max_connections")
+    assert info.value.field == "_DEFAULT_MAX_CONNECTIONS"
 
 
 @pytest.mark.parametrize("field", ["max_connections", "backlog"])
@@ -1669,17 +2561,18 @@ def test_a_non_int_connection_field_is_rejected(tmp_path: Path, src_dir: Path, f
 
 
 def test_ntp_backoff_keys_are_optional_and_their_src_defaults_pass_the_check(tmp_path: Path, src_dir: Path) -> None:
-    from buildgen.validate import init_int_default
+    from buildgen.validate import ntp_backoff
 
     doc = base_doc()
     for key in ("ntp_retry_s", "ntp_retry_max_s"):
         doc["device"].pop(key, None)
     _build(tmp_path, src_dir, doc)
-    assert 10 <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_s") <= init_int_default(src_dir, "asy_ntp_client.py", "AsyNtpClient", "retry_max_s")
+    retry_s, retry_max_s = ntp_backoff(doc["device"], src_dir)
+    assert 10 <= retry_s <= retry_max_s
 
 
 def test_an_ntp_retry_interval_below_the_check_tick_is_rejected(tmp_path: Path, src_dir: Path) -> None:
-    # AsyNtpClient would silently round it up to its 10s tick; the build says so instead.
+    # NTPClient would silently round it up to its 10s tick; the build says so instead.
     doc = base_doc()
     doc["device"]["ntp_retry_s"] = 9
     with pytest.raises(BuildError, match="every 10s") as info:
@@ -1727,8 +2620,8 @@ def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Pa
 
 def test_every_shipped_device_states_its_own_ceiling(repo_root: Path) -> None:
     # The owner's decision (2026-09-22) is that the recommended setting ships on every device, so
-    # each one says what its ceiling is rather than inheriting a default nobody reads.
-    import tomllib
+    # each one says what its ceiling is rather than inheriting a default nobody reads; the ceiling
+    # value itself is the agent's sweep result (agent, 2026-09-22).
 
     for toml_path in sorted((repo_root / "devices").glob("*.toml")):
         if toml_path.name.startswith("zz_test_"):

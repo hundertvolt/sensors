@@ -1,0 +1,63 @@
+== ORIG th=-1 offset=1 k=1 D=46ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=2 D=46ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=5 D=46ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=7 D=46ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=30 D=46ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=52 D=46ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 7']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=55 D=46ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=1 D=250ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=2 D=250ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=5 D=250ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=7 D=250ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 5']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=30 D=250ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=52 D=250ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 7']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=55 D=250ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=1 D=1000ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=2 D=1000ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=5 D=1000ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=7 D=1000ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 5']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=30 D=1000ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=52 D=1000ms
+rep 0 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 7']
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py
+== ORIG th=-1 offset=1 k=55 D=1000ms
+rep 0 PASS
+catalog /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u13rc/tests/_bus_hazard_catalog.py

@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 _GUARD_BEFORE_ADDR = 0xA000
 _TARGET_ADDR = 0xA010
@@ -22,6 +22,7 @@ _POST_RECOVERY_PATTERN = bytes(range(0x50, 0x60))
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=0x40000)

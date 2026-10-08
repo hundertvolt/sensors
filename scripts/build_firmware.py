@@ -11,8 +11,6 @@ sufficient, for a device to boot."""
 #     uv run scripts/build_firmware.py wozi
 #     uv run scripts/build_firmware.py wozi --output build/firmware-wozi.uf2
 
-from __future__ import annotations
-
 import argparse
 import os
 import shutil
@@ -43,10 +41,6 @@ _MANIFEST_TEMPLATE = """\
 include("$(PORT_DIR)/boards/{board}/manifest.py")
 freeze({stage_dir!r})
 """
-
-
-def log(msg: str) -> None:
-    print(f"\n== {msg}")
 
 
 def _stage_stripped(src_file: Path, dest: Path) -> None:
@@ -92,10 +86,10 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
     for module, path in sorted(module_files.items()):
         _stage_stripped(path, stage_dir / f"{module}.py")
 
-    # The generated device entry module and its boot entry: freshly generated text, never read
-    # off disk, so nothing to strip. Frozen as "main.py" rather than "<device>_boot.py" for the
-    # source-confirmed reason the docstring gives - a custom _boot.py would cost USB entirely.
-    (stage_dir / f"{entry_module}.py").write_text(generated.module_source)
+    # The generated module carries src/'s own TYPE_CHECKING form, so it is stripped like them. The
+    # autostart boot entry is frozen as "main.py", never a custom _boot.py: rp2 starts USB only after
+    # _boot.py returns (SPECIFICATION.md Part B.11), and main() never returns.
+    (stage_dir / f"{entry_module}.py").write_text(strip_type_checking_blocks(generated.module_source))
     (stage_dir / "main.py").write_text(generated.boot_entry_source)
 
     # This device's real website, frozen under the "frozen_html" name the generated entry module's
@@ -106,6 +100,10 @@ def build_stage_dir(stage_dir: Path, device: str) -> None:
         cwd=REPO_ROOT,
         check=True,
     )
+
+
+def log(msg: str) -> None:
+    print(f"\n== {msg}")
 
 
 def main() -> int:
@@ -120,6 +118,8 @@ def main() -> int:
     )
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="Parallel make jobs")
     args = parser.parse_args()
+    # One absolute path for the lock, the record and every path the build writes into generated files.
+    args.toolchain_dir = args.toolchain_dir.expanduser().resolve()
 
     device_toml = REPO_ROOT / "devices" / f"{args.device}.toml"
     if not device_toml.is_file():
@@ -136,30 +136,40 @@ def main() -> int:
     output = args.output or (REPO_ROOT / "build" / f"firmware-{args.device}.uf2")
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        # The staged modules and the generated manifest.py live in separate sibling directories -
-        # same reason write_freeze_manifest() keeps FROZEN_MODULE_SUBDIR out of the manifest's own
-        # directory: freeze()'s own directory walk must never pick up manifest.py itself.
-        stage_dir = tmp_path / "stage"
-        stage_dir.mkdir()
-        build_stage_dir(stage_dir, args.device)
+    # One build or setup at a time per toolchain directory, held until the image is copied out; setup
+    # deletes the record first and writes it last, so a directory without one is unfinished or older.
+    with st.toolchain_lock(args.toolchain_dir):
+        record = st.read_toolchain_record(args.toolchain_dir)
+        if record is None:
+            print(f"error: the toolchain at {args.toolchain_dir} is incomplete or predates the build record - run `uv run toolchain/setup_toolchain.py setup` first", file=sys.stderr)
+            return 1
+        # A record may carry no built ref (a `test` run with none to carry over): the pinned ref is printed, marked so.
+        built = record["built_ref"] or f"{record['pinned_ref']} as pinned (built by `test`, ref not recorded)"
+        log(f"Toolchain: MicroPython {built} ({record['micropython_commit']}), recorded in {args.toolchain_dir / st.TOOLCHAIN_RECORD}")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # The staged modules and the generated manifest.py live in separate sibling directories -
+            # same reason write_freeze_manifest() keeps FROZEN_MODULE_SUBDIR out of the manifest's own
+            # directory: freeze()'s own directory walk must never pick up manifest.py itself.
+            stage_dir = tmp_path / "stage"
+            stage_dir.mkdir()
+            build_stage_dir(stage_dir, args.device)
 
-        manifest_path = tmp_path / "manifest.py"
-        manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
+            manifest_path = tmp_path / "manifest.py"
+            manifest_path.write_text(_MANIFEST_TEMPLATE.format(board=board, stage_dir=str(stage_dir)))
 
-        # mpy-cross's build/ does not self-clean per build the way ports/rp2/build-{board} does,
-        # so it is wiped here - and must then be rebuilt explicitly, since the rp2 port's own
-        # implicit sub-build fails from a freshly wiped directory (Part B.11).
-        mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
-        if mpy_cross_build_dir.exists():
-            log(f"Cleaning {mpy_cross_build_dir} before rebuilding")
-            shutil.rmtree(mpy_cross_build_dir)
-        st.build_mpy_cross(micropython_dir, args.jobs)
+            # mpy-cross's build/ does not self-clean per build the way ports/rp2/build-{board} does,
+            # so it is wiped here - and must then be rebuilt explicitly, since the rp2 port's own
+            # implicit sub-build fails from a freshly wiped directory (Part B.11).
+            mpy_cross_build_dir = micropython_dir / "mpy-cross" / "build"
+            if mpy_cross_build_dir.exists():
+                log(f"Cleaning {mpy_cross_build_dir} before rebuilding")
+                shutil.rmtree(mpy_cross_build_dir)
+            st.build_mpy_cross(micropython_dir, args.jobs)
 
-        log(f"Building firmware for BOARD={board}, device={args.device!r}")
-        uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path, toolchain_dir=args.toolchain_dir)
-        shutil.copy(uf2, output)
+            log(f"Building firmware for BOARD={board}, device={args.device!r}")
+            uf2 = st.build_firmware(micropython_dir, board, args.jobs, frozen_manifest=manifest_path, toolchain_dir=args.toolchain_dir)
+            shutil.copy(uf2, output)
 
     print(f"\nWrote {output}")
     return 0
@@ -168,6 +178,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except (subprocess.CalledProcessError, st.SetupError, RuntimeError) as exc:
+    except (RuntimeError, st.SetupError, subprocess.CalledProcessError) as exc:
         print(f"\nFAILED: {exc}", file=sys.stderr)
         sys.exit(1)

@@ -7,8 +7,8 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
 
 I2C_PORT, I2C_SCL, I2C_SDA = 0, 13, 12  # dev bench wiring, same as the other i2c0 device scripts
 SPI_PORT, SPI_SCK, SPI_MOSI, SPI_MISO, SPI_CS = 0, 2, 3, 4, 5
@@ -42,11 +42,11 @@ async def _main() -> None:
 
     # --- machine.SPI: the same no-op claim, proven against real FRAM traffic rather than a scan ---
     spi_wrapper = asy_spi_driver.SPI(SPI_PORT, SPI_SCK, SPI_MOSI, SPI_MISO)
-    fram = AsyFramManager(spi_wrapper, SPI_CS, max_size=0x40000, debug=None)
+    fram = FRAMManager(spi_wrapper, SPI_CS, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding, cannot judge SPI deinit()")
         return
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="bus_deinit_is_a_noop_on_real_hardware")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return

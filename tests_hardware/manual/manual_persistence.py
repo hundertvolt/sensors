@@ -2,11 +2,13 @@
 only persistence tests - neither reset mechanism can reproduce a torn mid-flight write or what the
 real MB85RS64V/SCD30 preserve across a genuine supply-voltage loss."""
 
-from __future__ import annotations
-
 from runner import confirm, countdown, print_instruction, register, state_expected_outcome
 
 _DUT_IP_HINT = "the DUT's IP (see tests_hardware/README.md for how to find it without disturbing the running system)"
+# @tunable l4.manual_persistence_power_cut_window_s = 20
+_POWER_CUT_WINDOW_S = 20
+# @tunable l4.manual_persistence_power_off_s = 10
+_POWER_OFF_S = 10
 
 
 @register(
@@ -18,10 +20,10 @@ def test_real_fram_persistence_across_power_cycle() -> None:
     marker = "424242"
     print_instruction(f"Trigger a real FRAM-backed write now, e.g. PUT /notification WarnCO2={marker} against {_DUT_IP_HINT}, and confirm it returns 200/Valid.")
     confirm("Press Enter once the write has completed and returned a real 200 response")
-    print_instruction("Now physically disconnect the board's power supply (unplug USB or the bench power switch, whichever actually removes power - NOT a reset button). You have 20 seconds.")
-    countdown(20, "Cut power to the board now")
-    print_instruction("Wait 10 seconds with power OFF, to make sure this is a genuine loss, not a fast bounce.")
-    countdown(10, "Keep power off")
+    print_instruction(f"Now physically disconnect the board's power supply (unplug USB or the bench power switch, whichever actually removes power - NOT a reset button). You have {_POWER_CUT_WINDOW_S:g} seconds.")
+    countdown(_POWER_CUT_WINDOW_S, "Cut power to the board now")
+    print_instruction(f"Wait {_POWER_OFF_S:g} seconds with power OFF, to make sure this is a genuine loss, not a fast bounce.")
+    countdown(_POWER_OFF_S, "Keep power off")
     print_instruction("Now restore power to the board.")
     confirm("Press Enter once power is restored and the board is powering back up")
     print_instruction(f"Waiting up to 60s for the board to boot and become reachable again, then re-checking WarnCO2 via GET /notification against {_DUT_IP_HINT}.")
@@ -36,14 +38,14 @@ def test_real_fram_persistence_across_power_cycle() -> None:
 )
 def test_real_scd30_nvm_persistence_across_power_cycle() -> None:
     marker = 7
-    print_instruction(f'Trigger a real SCD30 NVM write now, e.g. PUT /sensors {{"SCD30": {{"MeasInt": {marker}}}}} against {_DUT_IP_HINT}, and confirm it returns 200/Valid.')
-    confirm("Press Enter once the write has completed and returned a real 200 response")
-    print_instruction("Now physically disconnect the board's power supply entirely (removes power to the SCD30 too, not just the RP2040). You have 20 seconds.")
-    countdown(20, "Cut power to the board (and SCD30) now")
-    countdown(10, "Keep power off")
+    print_instruction(f'Read the current SCD30 MeasInterval first (GET /sensors against {_DUT_IP_HINT}), then set MeasInterval to a value different from the current one, e.g. PUT /sensors {{"SCD30": {{"MeasInterval": {marker}}}}} ({marker + 1} if it already reads {marker}), and confirm it returns 200 and "Valid" - "Unchanged" means the value was already stored and nothing was written.')
+    confirm('Press Enter once the write has completed and returned a real 200 response with "Valid"')
+    print_instruction(f"Now physically disconnect the board's power supply entirely (removes power to the SCD30 too, not just the RP2040). You have {_POWER_CUT_WINDOW_S:g} seconds.")
+    countdown(_POWER_CUT_WINDOW_S, "Cut power to the board (and SCD30) now")
+    countdown(_POWER_OFF_S, "Keep power off")
     print_instruction("Now restore power.")
     confirm("Press Enter once power is restored")
-    state_expected_outcome(f"GET /sensors reports SCD30 MeasInt={marker}, the same value written before the power cycle - confirms it round-tripped through the sensor's own onboard NVM, not just the RP2040's own config file.")
+    state_expected_outcome("GET /sensors reports SCD30 MeasInterval equal to the value written before the power cycle - confirms it round-tripped through the sensor's own onboard NVM, not just the RP2040's own config file.")
     confirm("Press Enter once you've confirmed the value survived")
 
 
@@ -57,7 +59,7 @@ def test_genuine_power_loss_mid_write() -> None:
     confirm("Press Enter once you're ready to send the write and cut power immediately after")
     print_instruction("Send the write now, and cut power to the board as close to immediately afterward as you physically can (a second or two of slop is fine and expected - this is inherently imprecise by hand).")
     confirm("Press Enter once you've sent the write and cut power")
-    countdown(10, "Keep power off")
+    countdown(_POWER_OFF_S, "Keep power off")
     print_instruction("Restore power.")
     confirm("Press Enter once power is restored")
     state_expected_outcome(

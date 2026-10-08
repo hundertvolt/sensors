@@ -31,7 +31,7 @@ function readInputValue(rawInputValue, field) {
     }
     if (field.kind === "enum") {
         // A <select>'s own .value is always a string (DOM behavior), even when the option's real
-        // value is numeric (e.g. BMP3XX's PressOvers) - look the matching option back up so the
+        // value is numeric (e.g. BMP3XX's PresOvers) - look the matching option back up so the
         // submitted PUT body carries the same type definitions.json declared, not a stringified one.
         const match = (field.options ?? []).find((option) => String(option.value) === rawInputValue);
         return match ? match.value : rawInputValue;
@@ -41,7 +41,7 @@ function readInputValue(rawInputValue, field) {
 
 /**
  * A GET's non-ok/empty response, worded using the server's own shaped-error `descr` when present
- * (SPECIFICATION.md Part A.5's `_ERROR_SHAPES`/`_shaped_error_handler` - every 400/404/405/413/500
+ * (SPECIFICATION.md Part A.5's `_ERROR_STATUSES`/`_shaped_error_handler` - every 400/404/405/413/500
  * carries one) rather than a bare status code.
  * @param {{ok: boolean, status: number, body: unknown}} response
  * @param {string} url
@@ -96,7 +96,7 @@ function collectGroupBody(card, group, currentValues) {
                 const key = input.dataset.subFieldKey;
                 if (key !== undefined && input.value !== "") {
                     // Same NaN -> null -> 0 gap as readInputValue() above; every real subField
-                    // today is numeric (e.g. lightCmdLED's r/g/b/t), so this doesn't yet need
+                    // today is numeric (e.g. LightCmdLED's R/G/B/T), so this doesn't yet need
                     // readInputValue()'s own per-kind dispatch.
                     const num = Number(input.value);
                     sub[key] = Number.isFinite(num) ? num : input.value;
@@ -214,7 +214,7 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
         button.disabled = true;
         try {
             // No decimal-point forcing for a float field's whole-number value: the backend
-            // accepts a JSON int for a float-typed field and coerces it (coerce_numeric(),
+            // accepts a JSON int for a float-typed field and coerces it (checked_float(),
             // Part A.8), so JSON.stringify() is sufficient on its own.
             const response = await pollManager.request(putPath, {
                 method: "PUT",
@@ -263,7 +263,7 @@ function buildAndWireFieldGroup(group, section, currentValues, onApplied) {
             card.dataset.applyStatus = "failed";
             // The request never got far enough for a per-field breakdown, so every submitted
             // field shows the same "internal or communication error" individually, not just the
-            // card border - legacy only console.error'd here, and this is a deliberate change.
+            // card border - legacy only console.error'd here; this departs from it (agent, 2026-08-22).
             for (const key of Object.keys(groupBody)) {
                 const fieldEl = card.querySelector(`[data-field-wrapper-key="${key}"]`);
                 if (fieldEl instanceof HTMLElement) {
@@ -365,6 +365,15 @@ export function renderSection(defs, section, mainEl) {
                 const statusBody = /** @type {Record<string, unknown> | null} */ (statusResponse.body);
                 const statusNotification = /** @type {Record<string, unknown>} */ (statusBody?.notification ?? {});
                 data.PauseTime = statusNotification.PauseTime;
+            }
+            if (section.key !== "status" && section.groups.some((group) => "kind" in group && group.kind === "errcount")) {
+                // An errcount group on another page (the captive DNS history on Networking) reads
+                // GET /status's errcount, the one place the API publishes every module's history.
+                const statusResponse = await pollManager.request("/status");
+                if (!statusResponse.ok || statusResponse.body === null) {
+                    throw new Error(describeGetFailure(statusResponse, "/status"));
+                }
+                data.errcount = /** @type {Record<string, unknown>} */ (statusResponse.body).errcount;
             }
             errorBanner.classList.add("hidden");
             paint(data);

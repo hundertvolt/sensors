@@ -1,0 +1,26 @@
+== Generating buildgen device modules into build/generated_src/ (for import resolution)
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/build/generated_src
+tests/test_asy_system_service.py:3151: error: Unused "type: ignore" comment 
+[unused-ignore]
+        groups: dict[str, Sequence[SettingsGroup]] = {"system": [SettingsG...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_system_service.py:3154: error: Unused "type: ignore" comment 
+[unused-ignore]
+        WebserverService(app, routes, serving, svc.get_uptime, None, LogCo...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+Found 2 errors in 1 file (checked 173 source files)
+Success: no issues found in 52 source files
+Success: no issues found in 199 source files
+== Summary: scripts/typecheck.sh ==
+Commit: 1f1dab4
+Counts (checks): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - main pass: pyproject.toml [tool.mypy]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

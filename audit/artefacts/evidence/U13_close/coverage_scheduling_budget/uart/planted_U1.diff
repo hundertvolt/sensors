@@ -1,0 +1,21 @@
+--- ../wt-u13rc/src/asy_uart_comm.py	2026-10-07 16:03:00.883708676 +0000
++++ planted_U1/asy_uart_comm.py	2026-10-07 16:40:28.736857775 +0000
+@@ -11,6 +11,8 @@
+ 
+ from micropython import const
+ 
++_PLANT = [0]
++
+ from asy_base_classes import COUNTER_CAP, LockableBuffer
+ from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+ 
+@@ -767,7 +769,8 @@
+         # from its own. Both sides gating ACKs would stall a healthy link for no reason.
+         if len(self._ack) < self._frame_size:
+             return False
+-        self._ack[_MSG_UID] = uid
++        _PLANT[0] += 1  # PLANTED U1: the 100th ACK sent carries a wrong uid
++        self._ack[_MSG_UID] = uid ^ 0x55 if _PLANT[0] == 100 else uid
+         return await device.writefrom(self._ack, self._frame_size)
+ 
+     async def _send_train(self, device: "UART", cmd_id: int, payload: "Readable | None", total: int, pull: "_PullCallback | None") -> bool:

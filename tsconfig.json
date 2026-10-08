@@ -4,6 +4,9 @@
         "module": "ES2022",
         "moduleResolution": "bundler",
         "lib": ["ES2022", "DOM"],
+        // import.meta.glob (tests_js/_generated_definitions.js) and ?raw imports need Vite's client types;
+        // naming them also keeps Node's ambient types out of this browser-context pass.
+        "types": ["vite/client"],
         "allowJs": true,
         "checkJs": true,
         "noEmit": true,
@@ -26,12 +29,8 @@
         "skipLibCheck": true
     },
     "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],
-    // tests_js/_live_twin_command.js and tests_js/_live_matrix_command.js are Node-context (server-
-    // side Vitest Commands API implementations, not browser code - see each file's own header
-    // comment) and are type-checked separately instead, via tsconfig.node.json - same "two separate
-    // invocations for two environments that would otherwise wrongly share one global-type scope"
-    // shape as digital_twin/typecheck.ini's own split from the main mypy pass (see CLAUDE.md's
-    // "Code quality tooling"). Excluded here so this browser-context pass doesn't also see Node's
-    // ambient globals (process, require, "node:*" specifiers) as if they existed in a real browser.
-    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js"]
+    // The Node-context tests_js files (Vitest Commands API modules, the summary reporter) are checked by
+    // tsconfig.node.json instead, so this browser-context pass never sees Node's ambient globals as if a
+    // browser had them - the same two-environment split as digital_twin/typecheck.ini (SPECIFICATION.md H.8).
+    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js"]
 }

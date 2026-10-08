@@ -1,0 +1,12 @@
+== fixed th=-1 D=40
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/562 sleeps=562 clean=625ms
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 0/88 sleeps=88 clean=100ms
+== fixed th=-1 D=250
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/560 sleeps=560 clean=623ms
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 0/90 sleeps=90 clean=93ms
+== fixed th=32768 D=40
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/560 sleeps=560 clean=626ms
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 0/91 sleeps=91 clean=93ms
+== fixed th=32768 D=250
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_crc16 0/547 sleeps=547 clean=628ms
+ok   test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 0/91 sleeps=91 clean=95ms

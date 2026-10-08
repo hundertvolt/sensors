@@ -1,0 +1,11 @@
+PROBE rounds 500 now 2.499999999999969 real 11962
+PROBE rounds 1000 now 4.999999999999916 real 25563
+Traceback (most recent call last):
+  File "../u19wc_probe/probe_load.py", line 1082, in <module>
+  File "../u19wc_probe/probe_load.py", line 954, in test_client_faults_print_nothing_at_debug_level_zero
+  File "../u19wc_probe/probe_load.py", line 85, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+TimeoutError: 

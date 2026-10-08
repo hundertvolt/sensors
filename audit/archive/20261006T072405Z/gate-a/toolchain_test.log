@@ -1,0 +1,546 @@
+
+== Testing existing toolchain at /root/pico-toolchain (offline: no apt/git network access)
+Board: RPI_PICO_W
+
+== Building mpy-cross
+$ make -j4   (cwd=/root/pico-toolchain/micropython/mpy-cross)
+Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+
+$ /root/pico-toolchain/micropython/mpy-cross/build/mpy-cross --version
+MicroPython v1.29.0 on 2026-10-06; mpy-cross emitting mpy v6.3
+
+Built: MicroPython v1.29.0 on 2026-10-06; mpy-cross emitting mpy v6.3
+
+== Cross-compiling the verification test file to prove mpy-cross works standalone
+$ /root/pico-toolchain/micropython/mpy-cross/build/mpy-cross /tmp/tmps2id1j2u/frozen_module/frozen_verify_test.py
+
+Produced frozen_verify_test.mpy (347 bytes)
+
+== Building the MicroPython Unix port (settrace-free, the test rig, with the frozen verification module)
+$ make -j4 CFLAGS_EXTRA=-Wno-array-bounds VARIANT=standard VARIANT_DIR=/root/pico-toolchain/build_overrides/unix_kbd_intr_variant FROZEN_MANIFEST=/tmp/tmps2id1j2u/manifest_unix.py   (cwd=/root/pico-toolchain/micropython/ports/unix)
+Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+mkdir -p build-standard/genhdr
+mkdir -p build-standard/
+mkdir -p build-standard/extmod/
+mkdir -p build-standard/extmod/mbedtls/
+mkdir -p build-standard/lib/berkeley-db-1.xx/btree/
+mkdir -p build-standard/lib/berkeley-db-1.xx/mpool/
+mkdir -p build-standard/lib/littlefs/
+mkdir -p build-standard/lib/mbedtls/library/
+mkdir -p build-standard/lib/mbedtls_errors/
+mkdir -p build-standard/lib/oofatfs/
+mkdir -p build-standard/py/
+mkdir -p build-standard/shared/libc/
+mkdir -p build-standard/shared/readline/
+mkdir -p build-standard/shared/runtime/
+mkdir -p build-standard/shared/timeutils/
+GEN build-standard/genhdr/mpversion.h
+GEN build-standard/genhdr/qstr.i.last
+GEN build-standard/genhdr/qstr.split
+GEN build-standard/genhdr/root_pointers.split
+GEN build-standard/genhdr/moduledefs.split
+GEN build-standard/genhdr/compressed.split
+GEN build-standard/genhdr/root_pointers.collected
+GEN build-standard/genhdr/qstrdefs.collected.h
+GEN build-standard/genhdr/compressed.collected
+GEN build-standard/genhdr/moduledefs.collected
+Root pointer registrations updated
+GEN build-standard/genhdr/root_pointers.h
+Compressed data updated
+QSTR updated
+Module registrations updated
+GEN build-standard/genhdr/qstrdefs.generated.h
+GEN build-standard/genhdr/compressed.data.h
+GEN build-standard/genhdr/moduledefs.h
+CC ../../py/mpstate.c
+CC ../../py/nlr.c
+CC ../../py/nlrx86.c
+CC ../../py/nlrx64.c
+CC ../../py/nlrthumb.c
+CC ../../py/nlraarch64.c
+CC ../../py/nlrmips.c
+CC ../../py/nlrpowerpc.c
+CC ../../py/nlrxtensa.c
+CC ../../py/nlrrv32.c
+CC ../../py/nlrrv64.c
+CC ../../py/nlrloong64.c
+CC ../../py/nlrsetjmp.c
+CC ../../py/malloc.c
+CC ../../py/gc.c
+CC ../../py/pystack.c
+CC ../../py/qstr.c
+CC ../../py/vstr.c
+CC ../../py/mpprint.c
+CC ../../py/unicode.c
+CC ../../py/mpz.c
+CC ../../py/reader.c
+CC ../../py/lexer.c
+CC ../../py/parse.c
+CC ../../py/scope.c
+CC ../../py/compile.c
+CC ../../py/emitcommon.c
+CC ../../py/emitbc.c
+CC ../../py/asmbase.c
+CC ../../py/asmx64.c
+CC ../../py/emitnx64.c
+CC ../../py/asmx86.c
+CC ../../py/emitnx86.c
+CC ../../py/asmthumb.c
+CC ../../py/emitnthumb.c
+CC ../../py/emitinlinethumb.c
+CC ../../py/asmarm.c
+CC ../../py/emitnarm.c
+CC ../../py/asmxtensa.c
+CC ../../py/emitnxtensa.c
+CC ../../py/emitinlinextensa.c
+CC ../../py/emitnxtensawin.c
+CC ../../py/asmrv32.c
+CC ../../py/emitnrv32.c
+CC ../../py/emitinlinerv32.c
+CC ../../py/emitndebug.c
+CC ../../py/formatfloat.c
+CC ../../py/parsenumbase.c
+CC ../../py/parsenum.c
+CC ../../py/emitglue.c
+CC ../../py/persistentcode.c
+CC ../../py/runtime.c
+CC ../../py/runtime_utils.c
+CC ../../py/scheduler.c
+CC ../../py/nativeglue.c
+CC ../../py/pairheap.c
+CC ../../py/ringbuf.c
+CC ../../py/cstack.c
+CC ../../py/stackctrl.c
+CC ../../py/argcheck.c
+CC ../../py/warning.c
+CC ../../py/profile.c
+CC ../../py/map.c
+CC ../../py/obj.c
+CC ../../py/objarray.c
+CC ../../py/objattrtuple.c
+CC ../../py/objbool.c
+CC ../../py/objboundmeth.c
+CC ../../py/objcell.c
+CC ../../py/objclosure.c
+CC ../../py/objcode.c
+CC ../../py/objcomplex.c
+CC ../../py/objdeque.c
+CC ../../py/objdict.c
+CC ../../py/objenumerate.c
+CC ../../py/objexcept.c
+CC ../../py/objfilter.c
+CC ../../py/objfloat.c
+CC ../../py/objfun.c
+CC ../../py/objgenerator.c
+CC ../../py/objgetitemiter.c
+CC ../../py/objint.c
+CC ../../py/objint_longlong.c
+CC ../../py/objint_mpz.c
+CC ../../py/objlist.c
+CC ../../py/objmap.c
+CC ../../py/objmodule.c
+CC ../../py/objobject.c
+CC ../../py/objpolyiter.c
+CC ../../py/objproperty.c
+CC ../../py/objnone.c
+CC ../../py/objnamedtuple.c
+CC ../../py/objrange.c
+CC ../../py/objreversed.c
+CC ../../py/objringio.c
+CC ../../py/objset.c
+CC ../../py/objsingleton.c
+CC ../../py/objslice.c
+CC ../../py/objstr.c
+CC ../../py/objstrunicode.c
+CC ../../py/objstringio.c
+CC ../../py/objtemplate.c
+CC ../../py/objtuple.c
+CC ../../py/objtype.c
+CC ../../py/objzip.c
+CC ../../py/opmethods.c
+CC ../../py/sequence.c
+CC ../../py/stream.c
+CC ../../py/binary.c
+CC ../../py/builtinimport.c
+CC ../../py/builtinevex.c
+CC ../../py/builtinhelp.c
+CC ../../py/modarray.c
+CC ../../py/modbuiltins.c
+CC ../../py/modcollections.c
+CC ../../py/modgc.c
+CC ../../py/modio.c
+CC ../../py/modmath.c
+CC ../../py/modcmath.c
+CC ../../py/modmicropython.c
+CC ../../py/modstring.c
+CC ../../py/modstruct.c
+CC ../../py/modsys.c
+CC ../../py/moderrno.c
+CC ../../py/modthread.c
+CC ../../py/modweakref.c
+CC ../../py/vm.c
+CC ../../py/bc.c
+CC ../../py/showbc.c
+CC ../../py/repl.c
+CC ../../py/smallint.c
+CC ../../py/frozenmod.c
+CC ../../extmod/machine_adc.c
+CC ../../extmod/machine_adc_block.c
+MPY argparse.py
+MPY requests/__init__.py
+MPY mip/__init__.py
+MPY mip/__main__.py
+MPY ssl.py
+MPY frozen_verify_test.py
+GEN build-standard/frozen_content.c
+CC ../../extmod/machine_bitstream.c
+CC ../../extmod/machine_can.c
+CC ../../extmod/machine_i2c.c
+CC ../../extmod/machine_i2c_target.c
+CC ../../extmod/machine_i2s.c
+CC ../../extmod/machine_mem.c
+CC ../../extmod/machine_pinbase.c
+CC ../../extmod/machine_pulse.c
+CC ../../extmod/machine_pwm.c
+CC ../../extmod/machine_signal.c
+CC ../../extmod/machine_spi.c
+CC ../../extmod/machine_timer.c
+CC ../../extmod/machine_uart.c
+CC ../../extmod/machine_usb_device.c
+CC ../../extmod/machine_wdt.c
+CC ../../extmod/modasyncio.c
+CC ../../extmod/modbinascii.c
+CC ../../extmod/modbluetooth.c
+CC ../../extmod/modbtree.c
+CC ../../extmod/modcryptolib.c
+CC ../../extmod/moddeflate.c
+CC ../../extmod/modframebuf.c
+CC ../../extmod/modhashlib.c
+CC ../../extmod/modheapq.c
+CC ../../extmod/modjson.c
+CC ../../extmod/modlwip.c
+CC ../../extmod/modmachine.c
+CC ../../extmod/modmarshal.c
+CC ../../extmod/modnetwork.c
+CC ../../extmod/modonewire.c
+CC ../../extmod/modopenamp.c
+CC ../../extmod/modopenamp_remoteproc.c
+CC ../../extmod/modopenamp_remoteproc_store.c
+CC ../../extmod/modos.c
+CC ../../extmod/modplatform.c
+CC ../../extmod/modrandom.c
+CC ../../extmod/modre.c
+CC ../../extmod/modselect.c
+CC ../../extmod/modsocket.c
+CC ../../extmod/modtls_axtls.c
+CC ../../extmod/modtls_mbedtls.c
+CC ../../extmod/mbedtls/mbedtls_alt.c
+CC ../../extmod/modtime.c
+CC ../../extmod/moductypes.c
+CC ../../extmod/modvfs.c
+CC ../../extmod/modwebrepl.c
+CC ../../extmod/modwebsocket.c
+CC ../../extmod/network_cyw43.c
+CC ../../extmod/network_esp_hosted.c
+CC ../../extmod/network_lwip.c
+CC ../../extmod/network_ninaw10.c
+CC ../../extmod/network_ppp_lwip.c
+CC ../../extmod/network_usbd_ncm.c
+CC ../../extmod/network_wiznet5k.c
+CC ../../extmod/os_dupterm.c
+CC ../../extmod/vfs.c
+CC ../../extmod/vfs_blockdev.c
+CC ../../extmod/vfs_fat.c
+CC ../../extmod/vfs_fat_diskio.c
+CC ../../extmod/vfs_fat_file.c
+CC ../../extmod/vfs_lfs.c
+CC ../../extmod/vfs_rom.c
+CC ../../extmod/vfs_rom_file.c
+CC ../../extmod/vfs_posix.c
+CC ../../extmod/vfs_posix_file.c
+CC ../../extmod/vfs_reader.c
+CC ../../extmod/virtpin.c
+CC ../../shared/libc/abort_.c
+CC ../../shared/libc/printf.c
+CC ../../lib/oofatfs/ff.c
+CC ../../lib/oofatfs/ffunicode.c
+CC ../../lib/littlefs/lfs1.c
+CC ../../lib/littlefs/lfs1_util.c
+CC ../../lib/littlefs/lfs2.c
+CC ../../lib/littlefs/lfs2_util.c
+CC ../../lib/mbedtls_errors/mp_mbedtls_errors.c
+CC ../../lib/mbedtls/library/aes.c
+CC ../../lib/mbedtls/library/aesni.c
+CC ../../lib/mbedtls/library/asn1parse.c
+CC ../../lib/mbedtls/library/asn1write.c
+CC ../../lib/mbedtls/library/base64.c
+CC ../../lib/mbedtls/library/bignum_core.c
+CC ../../lib/mbedtls/library/bignum_mod.c
+CC ../../lib/mbedtls/library/bignum_mod_raw.c
+CC ../../lib/mbedtls/library/bignum.c
+CC ../../lib/mbedtls/library/camellia.c
+CC ../../lib/mbedtls/library/ccm.c
+CC ../../lib/mbedtls/library/chacha20.c
+CC ../../lib/mbedtls/library/chachapoly.c
+CC ../../lib/mbedtls/library/cipher.c
+CC ../../lib/mbedtls/library/cipher_wrap.c
+CC ../../lib/mbedtls/library/nist_kw.c
+CC ../../lib/mbedtls/library/aria.c
+CC ../../lib/mbedtls/library/cmac.c
+CC ../../lib/mbedtls/library/constant_time.c
+CC ../../lib/mbedtls/library/mps_reader.c
+CC ../../lib/mbedtls/library/mps_trace.c
+CC ../../lib/mbedtls/library/ctr_drbg.c
+CC ../../lib/mbedtls/library/debug.c
+CC ../../lib/mbedtls/library/des.c
+CC ../../lib/mbedtls/library/dhm.c
+CC ../../lib/mbedtls/library/ecdh.c
+CC ../../lib/mbedtls/library/ecdsa.c
+CC ../../lib/mbedtls/library/ecjpake.c
+CC ../../lib/mbedtls/library/ecp.c
+CC ../../lib/mbedtls/library/ecp_curves.c
+CC ../../lib/mbedtls/library/entropy.c
+CC ../../lib/mbedtls/library/entropy_poll.c
+CC ../../lib/mbedtls/library/gcm.c
+CC ../../lib/mbedtls/library/hmac_drbg.c
+CC ../../lib/mbedtls/library/md5.c
+CC ../../lib/mbedtls/library/md.c
+CC ../../lib/mbedtls/library/oid.c
+CC ../../lib/mbedtls/library/padlock.c
+CC ../../lib/mbedtls/library/pem.c
+CC ../../lib/mbedtls/library/pk.c
+CC ../../lib/mbedtls/library/pkcs12.c
+CC ../../lib/mbedtls/library/pkcs5.c
+CC ../../lib/mbedtls/library/pkparse.c
+CC ../../lib/mbedtls/library/pk_ecc.c
+CC ../../lib/mbedtls/library/pk_wrap.c
+CC ../../lib/mbedtls/library/pkwrite.c
+CC ../../lib/mbedtls/library/platform.c
+CC ../../lib/mbedtls/library/poly1305.c
+CC ../../lib/mbedtls/library/platform_util.c
+CC ../../lib/mbedtls/library/ripemd160.c
+CC ../../lib/mbedtls/library/rsa.c
+CC ../../lib/mbedtls/library/rsa_alt_helpers.c
+CC ../../lib/mbedtls/library/sha1.c
+CC ../../lib/mbedtls/library/sha256.c
+CC ../../lib/mbedtls/library/sha512.c
+CC ../../lib/mbedtls/library/ssl_cache.c
+CC ../../lib/mbedtls/library/ssl_ciphersuites.c
+CC ../../lib/mbedtls/library/ssl_client.c
+CC ../../lib/mbedtls/library/ssl_cookie.c
+CC ../../lib/mbedtls/library/ssl_debug_helpers_generated.c
+CC ../../lib/mbedtls/library/ssl_msg.c
+CC ../../lib/mbedtls/library/ssl_ticket.c
+CC ../../lib/mbedtls/library/ssl_tls.c
+CC ../../lib/mbedtls/library/ssl_tls12_client.c
+CC ../../lib/mbedtls/library/ssl_tls12_server.c
+CC ../../lib/mbedtls/library/timing.c
+CC ../../lib/mbedtls/library/x509.c
+CC ../../lib/mbedtls/library/x509_create.c
+CC ../../lib/mbedtls/library/x509_crl.c
+CC ../../lib/mbedtls/library/x509_crt.c
+CC ../../lib/mbedtls/library/x509_csr.c
+CC ../../lib/mbedtls/library/x509write_crt.c
+CC ../../lib/mbedtls/library/x509write_csr.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_close.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_conv.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_debug.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_delete.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_get.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_open.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_overflow.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_page.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_put.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_search.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_seq.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_split.c
+CC ../../lib/berkeley-db-1.xx/btree/bt_utils.c
+CC ../../lib/berkeley-db-1.xx/mpool/mpool.c
+CC main.c
+CC gccollect.c
+CC unix_mphal.c
+CC mpthreadport.c
+CC input.c
+CC alloc.c
+CC fatfs_port.c
+CC mpbthciport.c
+CC mpbtstackport_common.c
+CC mpbtstackport_h4.c
+CC mpbtstackport_usb.c
+CC mpnimbleport.c
+CC modtermios.c
+CC modsocket.c
+CC modffi.c
+CC modjni.c
+CC ../../shared/runtime/gchelper_generic.c
+CC ../../shared/runtime/pyexec.c
+CC ../../shared/timeutils/timeutils.c
+CC ../../shared/readline/readline.c
+CC build-standard/frozen_content.c
+LINK build-standard/micropython
+   text	   data	    bss	    dec	    hex	filename
+ 784313	  69144	   3024	 856481	  d11a1	build-standard/micropython
+
+$ /root/pico-toolchain/micropython/ports/unix/build-standard/micropython -c import sys; print(sys.implementation)
+(name='micropython', version=(1, 29, 0, ''), _machine='linux [GCC 13.3.0] version', _mpy=2822, _build='standard', _thread='unsafe')
+
+Built: (name='micropython', version=(1, 29, 0, ''), _machine='linux [GCC 13.3.0] version', _mpy=2822, _build='standard', _thread='unsafe')
+
+== Importing the frozen verification module inside the Unix port and checking its result
+$ /root/pico-toolchain/micropython/ports/unix/build-standard/micropython -c import frozen_verify_test; print(frozen_verify_test.RESULT)
+FROZEN_VERIFY_OK: micropython
+
+FROZEN_VERIFY_OK: micropython
+
+== Building firmware for BOARD=RPI_PICO_W (with the frozen verification module (build-only check))
+$ make -j4 CFLAGS_EXTRA=-Wno-array-bounds BOARD=RPI_PICO_W BOARD_DIR=/root/pico-toolchain/build_overrides/lwip_connection_counts_board FROZEN_MANIFEST=/tmp/tmps2id1j2u/manifest_rp2.py   (cwd=/root/pico-toolchain/micropython/ports/rp2)
+Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+PICO_SDK_PATH is /root/pico-toolchain/micropython/lib/pico-sdk
+Target board (PICO_BOARD) is 'pico_w'.
+Using board configuration from /root/pico-toolchain/micropython/lib/pico-sdk/src/boards/include/boards/pico_w.h
+Defaulting platform (PICO_PLATFORM) to 'rp2040' based on PICO_BOARD setting.
+Defaulting compiler (PICO_COMPILER) to 'pico_arm_cortex_m0plus_gcc' since not specified or detected.
+Configuring toolchain based on PICO_COMPILER 'pico_arm_cortex_m0plus_gcc'
+Defaulting PICO_GCC_TRIPLE to 'arm-none-eabi'
+-- The C compiler identification is GNU 13.2.1
+-- The CXX compiler identification is GNU 13.2.1
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/arm-none-eabi-gcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/arm-none-eabi-g++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- The ASM compiler identification is GNU
+-- Found assembler: /usr/bin/arm-none-eabi-gcc
+Build type is MinSizeRel
+-- Found Python3: /usr/local/bin/python3 (found version "3.11.15") found components: Interpreter 
+-- Detected native TLS (__aeabi_read_tp)
+TinyUSB available at /root/pico-toolchain/micropython/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+BTstack available at /root/pico-toolchain/micropython/lib/btstack
+cyw43-driver available at /root/pico-toolchain/micropython/lib/cyw43-driver
+Pico W Bluetooth build support available.
+lwIP available at /root/pico-toolchain/micropython/lib/lwip
+Pico W Wi-Fi build support available.
+C library type is newlib
+Found User C Module(s): 
+Using picotool from /usr/local/bin/picotool
+-- Configuring done (1.2s)
+-- Generating done (0.3s)
+-- Build files have been written to: /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W
+make[1]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[2]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  0%] Creating directories for 'pioasmBuild'
+[  0%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default.dir/compile_time_choice.S.o
+[  0%] No download step for 'pioasmBuild'
+[  0%] Linking ASM executable bs2_default.elf
+[  1%] No update step for 'pioasmBuild'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] No patch step for 'pioasmBuild'
+[  1%] Built target bs2_default
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] Generating bs2_default.bin
+GEN /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/genhdr/mpversion.h
+[  1%] Performing configure step for 'pioasmBuild'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+Not searching for unused variables given on the command line.
+loading initial cache file /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pico-sdk/src/rp2_common/pico_cyw43_driver/pioasm/tmp/pioasmBuild-cache-MinSizeRel.cmake
+[  1%] Built target BUILD_VERSION_HEADER
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] Generating bs2_default_padded_checksummed.S
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] Generating /root/pico-toolchain/micropython/mpy-cross/build/mpy-cross
+[  1%] Generating genhdr/pins.h, pins_RPI_PICO_W.c
+make[4]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[4]: warning: jobserver unavailable: using -j1.  Add '+' to parent make rule.
+Use make V=1 or set BUILD_VERBOSE in your environment to increase build verbosity.
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[3]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] Building ASM object pico-sdk/src/rp2040/boot_stage2/CMakeFiles/bs2_default_library.dir/bs2_default_padded_checksummed.S.o
+-- The CXX compiler identification is GNU 13.3.0
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  1%] Generating genhdr/qstr.i.last
+-- Detecting CXX compiler ABI info
+[  1%] Built target bs2_default_library
+GEN build/genhdr/qstr.split
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+GEN build/genhdr/qstrdefs.collected.h
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm
+QSTR not updated
+GEN build/genhdr/qstrdefs.generated.h
+[  2%] Performing build step for 'pioasmBuild'
+make[4]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[5]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+CC ../py/mpstate.c
+make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+CC ../py/nlr.c
+CC ../py/nlrx86.c
+CC ../py/nlrx64.c
+CC ../py/nlrthumb.c
+CC ../py/nlraarch64.c
+CC ../py/nlrmips.c
+CC ../py/nlrpowerpc.c
+CC ../py/nlrxtensa.c
+CC ../py/nlrrv32.c
+CC ../py/nlrrv64.c
+CC ../py/nlrloong64.c
+In file included from ../py/obj.h:33,
+                 from ../py/mpstate.h:35,
+                 from ../py/nlrloong64.c:27:
+../py/qstr.h:43:14: fatal error: genhdr/qstrdefs.generated.h: No such file or directory
+   43 |     #include "genhdr/qstrdefs.generated.h"
+      |              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+-e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+make[4]: *** [../py/mkrules.mk:113: build/py/nlrloong64.o] Error 1
+make[4]: Leaving directory '/root/pico-toolchain/micropython/mpy-cross'
+make[3]: *** [CMakeFiles/BUILD_FROZEN_CONTENT.dir/build.make:76: /root/pico-toolchain/micropython/mpy-cross/build/mpy-cross] Error 2
+make[3]: *** Waiting for unfinished jobs....
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[2]: *** [CMakeFiles/Makefile2:1949: CMakeFiles/BUILD_FROZEN_CONTENT.dir/all] Error 2
+make[2]: *** Waiting for unfinished jobs....
+make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+[100%] Built target pioasm
+make[5]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[4]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+[  2%] Performing install step for 'pioasmBuild'
+make[4]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[5]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[6]: Entering directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+make[6]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+[100%] Built target pioasm
+make[5]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+Install the project...
+-- Install configuration: "Release"
+make[4]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W/pioasm'
+[  2%] Completed 'pioasmBuild'
+make[3]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+[  2%] Built target pioasmBuild
+make[2]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+make[1]: *** [Makefile:91: all] Error 2
+make[1]: Leaving directory '/root/pico-toolchain/micropython/ports/rp2/build-RPI_PICO_W'
+-e See [1;31mhttps://github.com/micropython/micropython/wiki/Build-Troubleshooting[0m
+make: *** [Makefile:73: all] Error 1
+
+
+FAILED: command failed (exit 2): make -j4 CFLAGS_EXTRA=-Wno-array-bounds BOARD=RPI_PICO_W BOARD_DIR=/root/pico-toolchain/build_overrides/lwip_connection_counts_board FROZEN_MANIFEST=/tmp/tmps2id1j2u/manifest_rp2.py

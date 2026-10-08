@@ -17,6 +17,8 @@ from unix_port_poll_prewarm import prewarm_poll_set
 prewarm_poll_set()
 
 import _http_client  # noqa: E402
+import machine  # noqa: E402
+import run_generic_integration  # noqa: E402
 import sensortask_wozi  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -36,6 +38,11 @@ if TYPE_CHECKING:
     from typing import Any, TypeVar
 
     T = TypeVar("T")
+
+# @tunable l2.real_website_integration_run_bound_s = 10.0
+_RUN_BOUND_S = 10.0
+# @tunable l2.real_website_integration_burst_run_bound_s = 30.0
+_BURST_RUN_BOUND_S = 30.0
 
 
 def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
@@ -60,14 +67,16 @@ def _next_test_port() -> int:
 
 
 async def _boot(port: int) -> None:
-    await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    # The generated main()'s first two steps: build_system() with the watchdog a boot entry arms, then the setup list.
+    await sensortask_wozi.build_system(watchdog=machine.WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    await sensortask_wozi.sysfunct.run_setups(sensortask_wozi._collect_setups())
 
 
 async def _start_webserver() -> "asyncio.Task[None]":
     assert sensortask_wozi.webserver is not None
     task = sensortask_wozi.webserver.get_task_starters()[0]()
     # WP1/CLAUDE.md's implicit-FRAM-wiring rule made webserver.pr real-FRAM-backed whenever the device wires
-    # FRAM, so _run() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
+    # FRAM, so _serve_loop() now awaits a real self.pr.setup() - a real chunk read/write - before start_server(),
     # not the instant no-op a RAM-only logger's setup() was.
     #
     # Measured directly against this file's real twin fakes: consistently ready within ~400ms, so 1.0s keeps
@@ -110,7 +119,7 @@ def test_real_website_root_serves_the_actual_production_index_html() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() -> None:
@@ -152,7 +161,7 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_production_js_entry_is_served_not_the_prototype() -> None:
@@ -170,7 +179,7 @@ def test_real_website_production_js_entry_is_served_not_the_prototype() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
@@ -189,7 +198,7 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +230,7 @@ def test_real_website_hotspot_mode_redirects_unmatched_path_to_root() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() -> None:
@@ -248,7 +257,7 @@ def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() 
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -> None:
@@ -278,7 +287,7 @@ def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
@@ -297,7 +306,7 @@ def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=10.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website() -> None:
@@ -336,7 +345,7 @@ def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
         finally:
             await _cancel(task)
 
-    run_timed(scenario(), timeout_s=30.0)
+    run_timed(scenario(), timeout_s=_BURST_RUN_BOUND_S)
 
 
 if __name__ == "__main__":

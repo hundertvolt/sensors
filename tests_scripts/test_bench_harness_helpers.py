@@ -2,19 +2,14 @@
 restore_board_to_serving() against a faked http_client, error_log_helpers' all-modules check, and
 that every bench thread worker calling http_client.fetch() survives a cut-off answer."""
 
-from __future__ import annotations
-
 import ast
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
 sys.path.insert(0, str(TESTS_HARDWARE))
@@ -22,6 +17,9 @@ sys.path.insert(0, str(TESTS_HARDWARE))
 import error_log_helpers  # noqa: E402  (the sys.path line above is what makes these importable)
 import harness  # noqa: E402
 import http_client  # noqa: E402
+
+# @tunable l0.bench_helpers_stop_wait_s = 2.0
+_STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
 
 
 def _fetch_answering(outcomes: list[int | None]) -> Callable[..., http_client.HttpResponse]:
@@ -96,8 +94,8 @@ def _catches(handler: ast.ExceptHandler) -> set[str]:
 
 
 def _unguarded_fetches(source: str) -> list[str]:
-    """Thread-target functions whose try around http_client.fetch() names OSError but not HTTP_ERROR:
-    a cut-off answer is an HTTPException, which then kills the thread and silently stops its load."""
+    # Thread-target functions whose try around http_client.fetch() names OSError but not HTTP_ERROR:
+    # a cut-off answer is an HTTPException, which then kills the thread and silently stops its load.
     tree = ast.parse(source)
     targets = {ast.unparse(kw.value) for node in ast.walk(tree) if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("Thread") for kw in node.keywords if kw.arg == "target"}
     found = []
@@ -132,7 +130,7 @@ def test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends(
     threading.Timer(0.2, stop.set).start()
     started = time.monotonic()
     assert harness.wait_for_script_server("dut", stop, timeout_s=60.0, handover_s=0.0) is False
-    assert time.monotonic() - started < 2.0
+    assert time.monotonic() - started < _STOP_WAIT_S
 
 
 def test_configured_max_connections_is_the_builds_own_ceiling_for_every_device() -> None:

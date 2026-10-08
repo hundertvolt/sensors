@@ -8,17 +8,23 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 READ_REGION = (0x0000, 32)  # never touched by the writer below
 WRITE_REGION = (0x8000, 32)  # disjoint scratch region, well within the real 256KB chip's range
 SEED_PATTERN = bytes(range(32))
 WRITE_PATTERN = bytes((32 - i) & 0xFF for i in range(32))  # deliberately distinct from SEED_PATTERN
 
+# @tunable l3.fram_same_device_rw_concurrency_read_iterations = 30
 READ_ITERATIONS = 30
+# @tunable l3.fram_same_device_rw_concurrency_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.fram_same_device_rw_concurrency_wdt_feed_every = 5
+_WDT_FEED_EVERY = 5
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMCONCUR"), max_size=0x40000)
@@ -46,7 +52,7 @@ async def _main() -> None:
             if not ok or bytes(buf) != SEED_PATTERN:
                 read_mismatches.append(f"iter {i}: ok={ok} got={bytes(buf).hex()}")
             reads_completed += 1
-            if i % 5 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
 
     async def writer() -> None:
@@ -58,7 +64,7 @@ async def _main() -> None:
             read_mismatches.append("write() returned False under concurrent read load")
         write_completed = True
 
-    await asyncio.wait_for(asyncio.gather(reader(), writer()), 60.0)
+    await asyncio.wait_for(asyncio.gather(reader(), writer()), _RUN_BOUND_S)
 
     async with fram:
         write_readback = bytearray(WRITE_REGION[1])

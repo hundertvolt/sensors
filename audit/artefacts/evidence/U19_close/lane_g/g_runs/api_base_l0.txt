@@ -1,0 +1,11 @@
+test_error_catalog: 31 passed in 19.24s
+test_fault_or_warning_never_both: 2 failed, 9 passed in 5.99s
+test_code_conventions: 1 failed, 22 passed in 3.56s
+test_import_placement: 7 passed in 7.83s
+test_lint_ceilings: 19 passed in 12.17s
+test_mypy_any_baseline: 7 passed in 0.11s
+test_counter_steps: 9 passed in 3.53s
+test_buildgen_generate: 155 passed in 26.75s
+test_buildgen_definitions: 214 passed in 15.63s
+test_tunables_register: 1 failed, 14 passed in 4.27s
+test_ticks_wrap_scan: 17 passed in 45.68s

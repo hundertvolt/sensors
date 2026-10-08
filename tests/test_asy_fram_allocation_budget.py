@@ -11,9 +11,9 @@ import sys
 from _fram_chip_fake import FakeMB85RS64V
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
+from asy_fram_manager import FRAMManager
+from asy_print_log import PrintLogHistoryStore
 from asy_spi_driver import SPI
-from print_log import PrintLogHistoryStore
 
 # Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
 asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
@@ -29,12 +29,12 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# Measured 2026-09-18, mock tier, median of five, ~15% margin. Settrace build: 296,448 B blank /
-# 234,592 B valid (was 820,096 / 564,960). Settrace-free: 28,864 / 20,512 (was 137,088 / 89,408)
-# - that pair is the one whose ratios carry to the board.
+# Measured 2026-10-07, mock tier, median of five, ~15% margin (settrace valid 13%: never raised). Settrace
+# build: 262,656 B blank / 238,144 B valid (was 820,096 / 564,960). Settrace-free: 25,952 / 20,096 (was
+# 137,088 / 89,408) - that pair is the one whose ratios carry to the board.
 _SETTRACE_BUILD = hasattr(sys, "settrace")
-_BUDGET_BLANK = 344_000 if _SETTRACE_BUILD else 34_000
-_BUDGET_VALID = 270_000 if _SETTRACE_BUILD else 24_000
+_BUDGET_BLANK = 302_000 if _SETTRACE_BUILD else 30_000
+_BUDGET_VALID = 270_000 if _SETTRACE_BUILD else 23_000
 
 
 def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
@@ -54,16 +54,16 @@ async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
     return alloc_after - alloc_before, free_before - free_after
 
 
-async def _rig() -> "tuple[AsyFramManager, PrintLogHistoryStore]":
+async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore]":
     bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = AsyFramManager(bus, 1, max_size=0x2000, debug=None)
+    manager = FRAMManager(bus, 1, max_size=0x2000)
     assert await manager.setup()
     return manager, PrintLogHistoryStore(manager, 10, None, name="BUDGET")
 
 
 def test_blank_setup_stays_within_its_allocation_budget() -> None:
-    # A blank chip: setup()'s _read() finds no valid copy, so _write() lays down both. 18 byte-level
-    # commands over 74 CS cycles - the most expensive shape the boot batch ever asks for.
+    # A blank chip: setup()'s _read() finds no valid copy, so _write() lays down both. 14 byte-level
+    # commands over 54 CS cycles - the most expensive shape the boot batch ever asks for.
     async def scenario() -> "tuple[int, int]":
         _manager, logger = await _rig()
         return await _priced(logger)

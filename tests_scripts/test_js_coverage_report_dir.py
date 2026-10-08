@@ -17,8 +17,8 @@ def _reports_directory(repo_root: Path) -> str:
 
 
 def _top_level_imports(repo_root: Path) -> set[str]:
-    """Every top-level module name this repo's own Python imports, `coverage` included - which is a
-    `uv run` script dependency rather than a venv one, so importlib alone would not see it."""
+    # Every top-level module name this repo's own Python imports, `coverage` included - which is a
+    # `uv run` script dependency rather than a venv one, so importlib alone would not see it.
     names: set[str] = set()
     for scope in _PYTHON_SCOPES:
         for path in sorted((repo_root / scope).rglob("*.py")):

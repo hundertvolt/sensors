@@ -4,6 +4,7 @@ Calibration block is hand-picked, not real-chip data; see `digital_twin/README.m
 import struct
 
 from _fault_injection import FaultInjector
+from _twin_common import Walk
 
 try:
     from typing import TYPE_CHECKING
@@ -24,6 +25,7 @@ _REGISTER_CHIPID = 0x00
 _REGISTER_ERR = 0x02
 _REGISTER_STATUS = 0x03
 _REGISTER_PRESSUREDATA = 0x04
+_REGISTER_EVENT = 0x10
 _REGISTER_CONTROL = 0x1B
 _REGISTER_OSR = 0x1C
 _REGISTER_CONFIG = 0x1F
@@ -34,6 +36,11 @@ _STATUS_CMD_RDY = 0x10
 _STATUS_DATA_READY = 0x60
 _CONTROL_FORCED_MODE = 0x13
 _CMD_SOFT_RESET = 0xB6
+_EVENT_POR_DETECTED = 0x01  # EVENT bit 0: set by a power-up or a soft reset, clear-on-read (DS001 4.3.7)
+_FATAL_ERR_BIT = 0x01  # ERR_REG bit 0 fatal_err (DS001 4.3.2)
+
+_TEMP_WALK_DEFAULT = Walk(15.0, 30.0, 1.0)  # degC
+_PRESSURE_WALK_DEFAULT = Walk(950.0, 1050.0, 5.0)  # hPa
 
 # T1 T2 T3 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 raw values - see digital_twin/README.md's "Known
 # gaps" section for how these were chosen/verified.
@@ -87,30 +94,30 @@ def _invert_pressure(pressure_calib: "tuple[float, ...]", temperature: float, ta
 
 
 class Bmp3xxChip:
+    REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
+
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
-        min_temp_c: float = 15.0,
-        max_temp_c: float = 30.0,
-        min_pressure_hpa: float = 950.0,
-        max_pressure_hpa: float = 1050.0,
-        temp_step_c: float = 1.0,
-        pressure_step_hpa: float = 5.0,
+        temp: Walk = _TEMP_WALK_DEFAULT,
+        pressure: Walk = _PRESSURE_WALK_DEFAULT,
     ) -> None:
         if random_source is None:
             import random as _random_module
 
             random_source = _random_module
         self._random = random_source
-        self._min_temp_c, self._max_temp_c = min_temp_c, max_temp_c
-        self._min_pressure_hpa, self._max_pressure_hpa = min_pressure_hpa, max_pressure_hpa
-        # Not datasheet-derived (the min/max above are) - see _scd30_chip.py's own *_step comment
+        self._min_temp_c, self._max_temp_c = temp.lo, temp.hi
+        self._min_pressure_hpa, self._max_pressure_hpa = pressure.lo, pressure.hi
+        # Not datasheet-derived (the walks' lo/hi are) - see _scd30_chip.py's own walk comment
         # for the same judgment-call framing, applied here to weather-scale pressure/temperature.
-        self._temp_step_c, self._pressure_step_hpa = temp_step_c, pressure_step_hpa
+        self._temp_step_c, self._pressure_step_hpa = temp.step, pressure.step
         self._status = _STATUS_CMD_RDY
         self._osr = 0
         self._config = 0
         self._burst = bytes(6)
+        self._event = _EVENT_POR_DETECTED  # EVENT's reset value: the chip has just powered up (DS001 register map)
+        self.fatal_err = False  # twin-only test knob: ERR_REG reports fatal_err
         self.fault = FaultInjector()
         self._temp_calib, self._pressure_calib = _decode_calibration(_CAL_RAW)
         # One uniform draw within [min,max] at construction; every later value steps from the
@@ -151,9 +158,9 @@ class Bmp3xxChip:
         # an ACK, which real hardware answers whatever its protocol family. Without this the twin
         # raised AttributeError on every BMP3xx boot, restarting the reader task forever.
 
-        # Nothing else in this driver calls plain writeto(), every register access going through
-        # writeto_mem(), so this only has to answer the empty-probe shape - hence the ignored,
-        # underscore-prefixed payload, which every caller passes positionally anyway.
+        # Every register access reaches handle_writeto_mem()/handle_readfrom_mem(), the bus routing
+        # an address-prefixed writeto() there, so this only answers the empty probe - hence the
+        # ignored, underscore-prefixed payload, which every caller passes positionally anyway.
         self.fault.maybe_raise("writeto")
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
@@ -168,6 +175,7 @@ class Bmp3xxChip:
             self._config = data[0]
         elif reg_addr == _REGISTER_CMD and data and data[0] == _CMD_SOFT_RESET:
             self._status = _STATUS_CMD_RDY
+            self._event |= _EVENT_POR_DETECTED
         # any other register: real hardware would just silently accept/ignore it too.
 
     def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
@@ -175,12 +183,14 @@ class Bmp3xxChip:
         self.fault.maybe_raise("readfrom_mem")
         if reg_addr == _REGISTER_CHIPID:
             reply = bytes([_BMP390_CHIP_ID])
-        elif reg_addr == _REGISTER_ERR:
-            reply = bytes([0x00])
-        elif reg_addr == _REGISTER_STATUS:
-            reply = bytes([self._status])
-        elif reg_addr == _REGISTER_PRESSUREDATA:
-            reply = self._burst
+        elif _REGISTER_ERR <= reg_addr <= _REGISTER_PRESSUREDATA + 5:
+            # ERR_REG, STATUS and the six data bytes are one auto-incremented file (0x02-0x09), so a burst
+            # from any of them reads on through the rest, as the driver's 8-byte burst from ERR_REG does.
+            block = bytes([_FATAL_ERR_BIT if self.fatal_err else 0x00, self._status]) + self._burst
+            reply = block[reg_addr - _REGISTER_ERR :]
+        elif reg_addr == _REGISTER_EVENT:
+            reply = bytes([self._event])
+            self._event = 0  # clear-on-read
         elif reg_addr == _REGISTER_OSR:
             reply = bytes([self._osr])
         elif reg_addr == _REGISTER_CONFIG:

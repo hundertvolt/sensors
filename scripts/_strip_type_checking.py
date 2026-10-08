@@ -2,15 +2,13 @@
 source before it's frozen/mpy-cross-compiled - `mpy-cross` doesn't dead-code-eliminate these
 (SPECIFICATION.md Part B.11), so they'd otherwise survive into the .mpy bytecode as dead weight."""
 
-from __future__ import annotations
-
 import ast
 
 
 def _is_bare_type_checking_test(test: ast.expr) -> bool:
-    """Matches only a bare `TYPE_CHECKING` or `mod.TYPE_CHECKING` test - never a compound
-    condition (`if TYPE_CHECKING and x:`), which is left untouched rather than guessed at, per
-    BACKLOG.md's original prototype note."""
+    # Matches only a bare `TYPE_CHECKING` or `mod.TYPE_CHECKING` test - never a compound
+    # condition (`if TYPE_CHECKING and x:`), which is left untouched rather than guessed at, per
+    # BACKLOG.md's original prototype note.
     if isinstance(test, ast.Name):
         return bool(test.id == "TYPE_CHECKING")
     if isinstance(test, ast.Attribute):
@@ -19,9 +17,9 @@ def _is_bare_type_checking_test(test: ast.expr) -> bool:
 
 
 def _is_type_checking_import_guard(node: ast.Try) -> bool:
-    """Matches exactly this codebase's `try: from typing import TYPE_CHECKING / except
-    ImportError: TYPE_CHECKING = False` convention - never a general try/except guarding
-    something else, which is left alone."""
+    # Matches exactly this codebase's `try: from typing import TYPE_CHECKING / except
+    # ImportError: TYPE_CHECKING = False` convention - never a general try/except guarding
+    # something else, which is left alone.
     if node.orelse or node.finalbody or len(node.body) != 1 or len(node.handlers) != 1:
         return False
     (stmt,) = node.body
@@ -49,10 +47,13 @@ class _TypeCheckingStripper(ast.NodeTransformer):
     def __init__(self) -> None:
         self.removed_anything = False
 
-    def visit_If(self, node: ast.If) -> ast.If | None:
-        if not node.orelse and _is_bare_type_checking_test(node.test):
+    def visit_If(self, node: ast.If) -> ast.If | list[ast.stmt] | None:
+        if _is_bare_type_checking_test(node.test):
+            # TYPE_CHECKING is False at runtime: keep only the else/elif branch, stripped in turn.
             self.removed_anything = True
-            return None
+            branch = ast.Module(body=node.orelse, type_ignores=[])
+            self.generic_visit(branch)
+            return branch.body or None
         self.generic_visit(node)
         return node
 
@@ -65,9 +66,9 @@ class _TypeCheckingStripper(ast.NodeTransformer):
 
 
 def strip_type_checking_blocks(source: str) -> str:
-    """Returns `source` with every bare `if TYPE_CHECKING:` block (no `elif`/`else`) and its
-    try/except ImportError header removed, re-parsing the output to fail loudly on a bad
-    transform. Source with no such blocks is returned byte-for-byte unchanged."""
+    # Returns `source` with every bare `if TYPE_CHECKING:` block (an `elif`/`else` branch kept in
+    # its place) and its try/except ImportError header removed, re-parsing the output to fail loudly on a bad
+    # transform. Source with no such blocks is returned byte-for-byte unchanged.
     tree = ast.parse(source)
     stripper = _TypeCheckingStripper()
     stripped_tree = stripper.visit(tree)

@@ -25,6 +25,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_changes_timeout_min = 5
     timeout-minutes: 5
     outputs:
       web: ${{ steps.filter.outputs.web }}
@@ -32,7 +33,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           # Without a base, a push is compared against the default branch; naming the pushed branch
@@ -46,6 +47,9 @@ jobs:
               - 'tests_js/**'
               - 'mockdata/**'
               - 'scripts/**'
+              - 'src/**'
+              - 'buildgen/**'
+              - 'devices/**'
               - 'package.json'
               - 'package-lock.json'
               - 'eslint.config.js'
@@ -65,12 +69,13 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_lint_and_typecheck_timeout_min = 10
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -94,12 +99,13 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_unit_tests_timeout_min = 20
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -127,7 +133,7 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-      # npm's pretest hook builds the real wozi website first. Everything but the live PUT matrix,
+      # npm's pretest hook builds every device's website first. Everything but the live PUT matrix,
       # which is its own sharded job below (B.10.1).
       - name: Run unit tests (Vitest, real-browser mode)
         run: npm run test:unit
@@ -142,6 +148,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_put_matrix_timeout_min = 20
     timeout-minutes: 20
     strategy:
       fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
@@ -151,7 +158,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -190,12 +197,13 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_coverage_timeout_min = 20
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -231,13 +239,16 @@ jobs:
         # Quoted heredocs (not `echo '...'`) so the literal markdown backticks need no quoting
         # gymnastics, and one grouped redirect instead of four - both flagged by actionlint's
         # embedded shellcheck (SC2016/SC2129).
+        #
+        # The table runs from Vitest's coverage header (matched without its colored "%") up to the
+        # summary block the run ends with.
         run: |
           {
             cat <<'MD_FENCE_OPEN'
           ### JS coverage (`js/`)
           ```
           MD_FENCE_OPEN
-            tail -n 15 coverage-output.txt
+            awk '/Coverage report from/{p=1} /^== Summary: npm test ==/{p=0} p' coverage-output.txt
             cat <<'MD_FENCE_CLOSE'
           ```
           MD_FENCE_CLOSE
@@ -261,12 +272,13 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.web_cross_browser_smoke_timeout_min = 25
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -288,21 +300,20 @@ jobs:
         run: npx playwright install-deps chromium
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
-      - name: Build MicroPython Unix port (if not cached) and the real wozi website
+      - name: Build MicroPython Unix port (if not cached) and every device's website
         run: |
           bin="$HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython"
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
-          scripts/build_website.sh wozi
-          uv run scripts/_generate_sensortask_modules.py
+          npm run build:site
       # Firefox+geckodriver from conda-forge (~106 MB, nothing to key on) cached under a fixed key -
       # bump the suffix to force a refresh. WebKit and Edge reinstall every run (B.10.1).
       - name: Cache Firefox + geckodriver (conda-forge)
         uses: actions/cache@v6
         with:
           path: ~/cross-browser-toolchain
-          key: cross-browser-firefox-v1-${{ runner.os }}
+          key: cross-browser-firefox-v2-${{ runner.os }}
       - name: Install WebKit, Edge, and Firefox+geckodriver
         run: scripts/setup_cross_browser_toolchain.sh
       - name: Run cross-browser smoke check
@@ -315,6 +326,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.lint_and_typecheck_timeout_min = 15
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -327,9 +339,11 @@ jobs:
       # where nothing is wrong - HTTP 500 on 2026-09-13, 504 on 2026-09-14, on shell-free lanes.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -339,11 +353,12 @@ jobs:
         run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
 
   shellcheck:
-    # Its own stage so the tool has its own check run. scripts/ only: the legacy build-*.sh are out
-    # of scope forever (CLAUDE.md).
+    # Its own stage so the tool has its own check run. scripts/ only: the legacy tree is never in
+    # scope (CLAUDE.md).
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.shellcheck_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -354,9 +369,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -370,6 +387,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.actionlint_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -380,9 +398,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -395,6 +415,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.zizmor_timeout_min = 5
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -405,9 +426,11 @@ jobs:
       # Retried for the same reason as lint-and-typecheck's own sync above.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -427,6 +450,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -439,9 +463,11 @@ jobs:
       # then rebuilds nothing.
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -458,6 +484,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_gc_threshold_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -466,6 +493,7 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests at the shipped gc.threshold
+        # @tunable gc.threshold_bytes = 32768
         run: GC_THRESHOLD=32768 scripts/test.sh
 
   # Split from unit-tests for the same reason web-coverage is; needs: unit-tests only to reuse its
@@ -481,6 +509,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.unit_tests_coverage_timeout_min = 45
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -493,9 +522,11 @@ jobs:
       # why this sync is here and retried).
       - name: Sync dev dependencies (retried - third-party build downloads are not always up)
         run: |
+          # @tunable tool.uv_sync_attempts = 3
           for attempt in 1 2 3; do
               uv sync && exit 0
               echo "uv sync failed on attempt $attempt/3; retrying in $((attempt * 10))s" >&2
+              # @tunable tool.uv_sync_backoff_step_s = 10
               sleep $((attempt * 10))
           done
           uv sync
@@ -503,8 +534,9 @@ jobs:
       # swallows what did render. The instrumented rerun measures src/ and digital_twin/ from one
       # run.
       #
-      # This step is NOT advisory: build-settrace is the only interpreter no other job runs. Exit 1
-      # (a test failed) goes red; exit 3 (only the report failed) stays advisory (Part E.5.3).
+      # This step is NOT advisory (owner, 2026-09-22): build-settrace is the only interpreter no
+      # other job runs. Exit 1 (a test failed) goes red; exit 3 (only the report failed) stays
+      # advisory (Part E.5.3).
       - name: Run unit tests with coverage (the test result gates, the report does not)
         run: |
           status=0
@@ -570,6 +602,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.digital_twin_e2e_timeout_min = 20
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -603,6 +636,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # @tunable ci.firmware_build_verify_timeout_min = 15
     timeout-minutes: 15
     strategy:
       fail-fast: false

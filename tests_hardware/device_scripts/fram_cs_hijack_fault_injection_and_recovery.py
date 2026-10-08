@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 _WRITE_RACE_ADDR = 0x9000  # scratch addresses, disjoint from every other device script's own regions
 _READ_RACE_ADDR = 0x9100
@@ -19,12 +19,14 @@ _ORIGINAL_PATTERN = bytes(range(16))
 _HIJACKED_WRITE_PATTERN = bytes((0xAA,) * 16)  # deliberately distinct from _ORIGINAL_PATTERN
 _READ_SEED_PATTERN = bytes(range(0x60, 0x70))  # deliberately distinct from every other pattern above
 _POST_RECOVERY_PATTERN = bytes(range(0x40, 0x50))
+# @tunable l3.fram_cs_hijack_fault_injection_and_recovery_victim_bound_s = 30.0
+_VICTIM_BOUND_S = 30.0
 
 
 class _CsHijack:
-    """Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam. The
-    earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
-    window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5)."""
+    # Deasserts CS from inside the victim's own transfer, at the driver's synchronous seam. The
+    # earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
+    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5).
 
     def __init__(self, fram: FRAM_SPI, payload_len: int) -> None:
         self._spidev = fram._spidev
@@ -34,25 +36,25 @@ class _CsHijack:
         self.injected_with_cs_asserted = False
 
     def _yank(self) -> None:
-        cs, active = self._spidev.cs_pin, self._spidev.cs_active_value
+        cs, active = self._spidev._cs_pin, self._spidev._cs_active_value
         # Reading an output pin back gives its driven level on rp2, so this is real proof the
         # injection landed while the victim held CS rather than before or after its envelope.
         self.injected_with_cs_asserted = cs.value() == active
         cs.value(not active)
 
     def install_for_write(self) -> None:
-        def hijacked(buf: "bytes | bytearray | memoryview") -> None:
+        def hijacked(buf: "bytes | bytearray | memoryview") -> bool:
             if len(buf) == self._payload_len and not self.injected_with_cs_asserted:
                 self._yank()  # deselect the chip before its payload can reach it
-            self._write_sync(buf)
+            return self._write_sync(buf)
 
         self._spidev.write_sync = hijacked  # type: ignore[method-assign]
 
     def install_for_read(self) -> None:
-        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> None:
+        def hijacked(buf: "bytearray | memoryview", write_value: int = 0x00) -> bool:
             if len(buf) == self._payload_len and not self.injected_with_cs_asserted:
                 self._yank()
-            self._readinto_sync(buf, write_value)
+            return self._readinto_sync(buf, write_value)
 
         self._spidev.readinto_sync = hijacked  # type: ignore[method-assign]
 
@@ -82,6 +84,7 @@ async def _assert_recovery(fram: FRAM_SPI, addr: int, wdt: machine.WDT) -> list[
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMCSHIJACK"), max_size=0x40000)
@@ -113,7 +116,7 @@ async def _main() -> None:
     hijack = _CsHijack(fram, len(_HIJACKED_WRITE_PATTERN))
     hijack.install_for_write()
     try:
-        await asyncio.wait_for(victim_writer(), 30.0)
+        await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
     finally:
         hijack.remove()
     if not hijack.injected_with_cs_asserted:
@@ -122,8 +125,8 @@ async def _main() -> None:
         async with fram:
             write_readback = bytearray(16)
             write_readback_ok = await fram.get_values(write_readback, addr_start=_WRITE_RACE_ADDR)
-        # Hard requirement: the hijacked write must never have reached the chip. CS was proven
-        # deasserted before its payload transfer, so a landed write would be a real finding.
+        # Hard requirement (owner, 2026-09-04): the hijacked write must never have reached the chip.
+        # CS was proven deasserted before its payload transfer, so a landed write would be a real finding.
         if not write_readback_ok or bytes(write_readback) != _ORIGINAL_PATTERN:
             failures.append(
                 f"write hijack: expected original data {_ORIGINAL_PATTERN.hex()} untouched (write_raised={write_raised!r}), "
@@ -153,13 +156,13 @@ async def _main() -> None:
         hijack = _CsHijack(fram, len(hijacked_read_buf))
         hijack.install_for_read()
         try:
-            await asyncio.wait_for(victim_reader(), 30.0)
+            await asyncio.wait_for(victim_reader(), _VICTIM_BOUND_S)
         finally:
             hijack.remove()
         if not hijack.injected_with_cs_asserted:
             failures.append("read hijack: CS was never observed asserted at the payload transfer - nothing was injected, so nothing was tested")
-        # Hard requirement: a hijacked read must never return the real, correct data - a
-        # "sensible" result would mean the deassertion did not take effect. Not asserted against a
+        # Hard requirement (owner, 2026-09-04): a hijacked read must never return the real, correct
+        # data - a "sensible" result would mean the deassertion did not take effect. Not asserted against a
         # specific wrong value (a different unit could float differently on a deselected MISO).
         elif read_raised is None and bytes(hijacked_read_buf) == _READ_SEED_PATTERN:
             failures.append(f"read hijack: got back the real seeded data {_READ_SEED_PATTERN.hex()} with no exception - the read completed although CS was deasserted first")

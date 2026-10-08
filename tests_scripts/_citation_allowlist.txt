@@ -1,0 +1,118 @@
+# path<TAB>token: citations that did not resolve when the check landed. Only shrinks: fix the citing
+# text, then rerun `uv run python tests_scripts/test_citations.py --regenerate`.
+BACKLOG.md	HARDWARE_TEST_HANDOVER.md
+BACKLOG.md	HARDWARE_TEST_PLAN.md
+BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md
+BACKLOG.md	Session 2
+CLAUDE.md	WP1
+CLAUDE.md	WP1
+CLAUDE.md	WP2
+CLAUDE.md	WP2
+CLAUDE.md	WP3
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/
+CLAUDE.md	improved-quality/async_connect.py
+CLAUDE.md	improved-quality/microdot.py
+CLAUDE.md	improved-quality/microdot.py
+CLAUDE.md	improved-quality/mypy.ini
+CLAUDE.md	improved-quality/pycheck.sh
+CLAUDE.md	src/sensortask_wozi.py
+CLAUDE.md	tests_hardware/bus_topology.py
+HEAP_FRAGMENTATION_MEASUREMENTS.md	tests_hardware/combined_load_sweep.py
+README.md	AUDIT_PLAN.md
+README.md	AUDIT_PLAN.md
+README.md	BUILDGEN_WIRING_DEFAULTS_AND_TEST_MATRIX.md
+README.md	BUILD_CHAIN_PLAN.md
+README.md	DEV_HARDWARE_BASELINE_PLAN.md
+README.md	DRIVER_SPEC.md
+README.md	DRIVER_SPEC.md
+README.md	DRIVER_SPEC.md
+README.md	DRIVER_SPEC.md
+README.md	FINAL_WIRING_PLAN.md
+README.md	HARDWARE_TEST_PLAN.md
+README.md	REAL_HARDWARE_HANDOFF.md
+README.md	REAL_HARDWARE_RUN_LOG.md
+README.md	UART_PROMOTION_REQUIREMENTS.md
+README.md	WEBSITE_PLAN.md
+README.md	WIRING_CONTRACT.md
+README.md	src/README.md
+README.md	src/README.md
+README.md	src/README.md
+README.md	src/README.md
+README.md	tests/README.md
+README.md	tests/README.md
+README.md	tests/README.md
+README.md	tests/README.md
+README.md	tmp_hardware_test_candidates.md
+README.md	toolchain/README.md
+README.md	toolchain/README.md
+README.md	toolchain/README.md
+README.md	toolchain/README.md
+SPECIFICATION.md	Session 3
+SPECIFICATION.md	Session 3
+SPECIFICATION.md	Session 3
+SPECIFICATION.md	Session 8
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP2
+SPECIFICATION.md	WP3
+SPECIFICATION.md	WP3
+SPECIFICATION.md	WP3
+SPECIFICATION.md	WP5
+SPECIFICATION.md	WP5
+SPECIFICATION.md	WP8
+SPECIFICATION.md	devices/zz_test_*.toml
+SPECIFICATION.md	devices/zz_test_*.toml
+SPECIFICATION.md	digital_twin/run_dev_integration.py
+SPECIFICATION.md	improved-quality/
+SPECIFICATION.md	measure B
+SPECIFICATION.md	src/sensortask_*.py
+SPECIFICATION.md	src/sensortask_*.py
+SPECIFICATION.md	src/sensortask_dev.py
+SPECIFICATION.md	src/sensortask_wozi.py
+SPECIFICATION.md	src/sensortask_wozi.py
+SPECIFICATION.md	tests/test_digital_twin_run_dev_integration.py
+SPECIFICATION.md	tests_hardware/bus_topology.py
+UART_C_PORT_CHANGELOG.md	WP3
+digital_twin/README.md	WP1
+digital_twin/machine.py	Step 5
+digital_twin/machine.py	Step 5
+scripts/_digital_twin_ci_suite.py	WP1
+scripts/_digital_twin_ci_suite.py	WP1
+scripts/_digital_twin_ci_suite.py	WP2
+scripts/run_digital_twin_ci.sh	digital_twin/*.json
+scripts/run_digital_twin_ci.sh	src/sensortask_*.py
+scripts/run_unix_port_integration.sh	src/sensortask_*.py
+scripts/test.sh	devices/zz_test_*.toml
+src/asy_notification_service.py	improved-quality/neopixel_signal.py
+tests/_digital_twin_construction_scenarios.py	WP1
+tests/_digital_twin_construction_scenarios.py	WP1
+tests/_digital_twin_construction_scenarios.py	decision 10
+tests/test_asy_base_classes.py	Topic 6
+tests/test_asy_base_classes.py	WP4
+tests/test_asy_config_manager.py	WP5
+tests/test_asy_print_log.py	tests/_fram_mock.py
+tests/test_digital_twin_sensortask_integration.py	measure A
+tests/test_digital_twin_uart_link.py	WP3
+tests/test_notification_scd30_integration.py	src/sensortask_wozi.py
+tests/test_notification_scd30_sgp40_integration.py	src/sensortask_wozi.py
+tests/test_notification_sgp40_integration.py	src/sensortask_wozi.py
+tests/test_setter_microdot_integration.py	WP5
+tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
+tests_hardware/README.md	tests_hardware/bus_topology.py
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	Topic 6
+tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	WP4
+tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	measure A
+tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	measure A
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	measure B
+tests_hardware/flash/test_fram_storage.py	Topic 6
+tests_scripts/conftest.py	devices/zz_test_*.toml
+tests_scripts/test_build_firmware.py	devices/no-such-device.toml
+tests_scripts/test_build_website_sh.py	js/app.js.gz
+tests_scripts/test_buildgen_validate.py	WP1
+tests_scripts/test_device_tomls.py	tests_hardware/bus_topology.py
+tests_scripts/test_digital_twin_generated_boot.py	Session 3
+tests_scripts/test_digital_twin_generated_boot.py	Session 6
+tests_scripts/test_test_sh.py	devices/zz_test_*.toml

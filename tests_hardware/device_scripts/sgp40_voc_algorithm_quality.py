@@ -8,23 +8,28 @@ from collections import namedtuple
 import machine
 
 import asy_i2c_driver
+from asy_base_classes import ValueRef
 from asy_sgp40_driver import SGP40_Reader
 
 VOC_MIN, VOC_MAX = 0, 500
 RAW_MIN, RAW_MAX = 0, 65535
+# @tunable l3.sgp40_voc_algorithm_quality_blackout_wait_s = 60.0
 BLACKOUT_WAIT_S = 60.0  # 45s documented blackout + margin for a real 1s-cadence read loop to catch up
 N_QUALITY_SAMPLES = 8
+# @tunable l3.sgp40_voc_algorithm_quality_sample_interval_s = 2.0
 SAMPLE_INTERVAL_S = 2.0
+# @tunable l3.sgp40_voc_algorithm_quality_max_single_step_jump = 300
 MAX_SINGLE_STEP_JUMP = 300  # generous relative to the algorithm's own adaptive-lowpass smoothing
+# @tunable l3.sgp40_fram_backup_restore_wdt_feed_interval_s = 2.0
 _WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
 
 _FixedValue = namedtuple("_FixedValue", ("value",))
 
 
 class _FixedSource:
-    """Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
-    not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
-    object-with-.value contract asy_sgp40_driver.py's own _Default* providers use."""
+    # Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
+    # not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
+    # object-with-.value contract asy_sgp40_driver.py's own _Default* providers use.
 
     def __init__(self, value: float) -> None:
         self._data = _FixedValue(value)
@@ -42,19 +47,10 @@ async def _sleep_feeding_wdt(duration_s: float, wdt: machine.WDT) -> None:
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)  # matches src/system_service.py's own production value
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
-    reader = SGP40_Reader(
-        i2c1,
-        _FixedSource(25.0),
-        "value",
-        _FixedSource(50.0),
-        "value",
-        max_module_error=999,
-        fram_storage=None,
-        fram_ntp_callback=None,
-        debug=None,
-    )
+    reader = SGP40_Reader(i2c1, ValueRef(_FixedSource(25.0), "value"), ValueRef(_FixedSource(50.0), "value"), max_module_error=999)
     reader.start_timer()  # 1s fixed period - the algorithm's own sampling interval assumption
     read_task = reader.start_asy_read()
 
@@ -62,8 +58,8 @@ async def _main() -> None:
         read_task.cancel()
         try:
             await read_task
-        except (asyncio.CancelledError, Exception):
-            pass
+        except asyncio.CancelledError:
+            pass  # the cancel above; a read task that died on its own re-raises here and fails the run
 
     # Wait out the documented blackout window before sampling for real data.
     await _sleep_feeding_wdt(BLACKOUT_WAIT_S, wdt)

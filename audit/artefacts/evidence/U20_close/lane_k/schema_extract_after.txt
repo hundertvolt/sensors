@@ -1,0 +1,46 @@
+src/asy_api_response.py {}
+src/asy_base_classes.py {}
+src/asy_bmp3xx_driver.py {'SampleInterval': ('int', 2, 1, 3600, None), 'PresOvers': ('int', 1, None, None, (1, 2, 4, 8, 16, 32)), 'TempOvers': ('int', 1, None, None, (1, 2, 4, 8, 16, 32)), 'FiltCoeff': ('int', 0, None, None, (0, 1, 3, 7, 15, 31, 63, 127)), 'PresOffset': ('float', 0.0, -500.0, 500.0, None), 'TempOffset': ('float', 0.0, -10.0, 10.0, None), 'SeaLevelOffset': ('float', 0.0, -1000.0, 5000.0, None), 'MeanAtmTemp': ('float', 15.0, -40.0, 50.0, None)}
+src/asy_captive_dns.py {}
+src/asy_config_manager.py {}
+src/asy_crc_checks.py {}
+src/asy_dns_client.py {}
+src/asy_fram_driver.py {}
+src/asy_fram_manager.py {}
+src/asy_framing_codecs.py {}
+src/asy_i2c_driver.py {}
+src/asy_isl29125_driver.py {'SampleInterval': ('int', 1, 1, 3600, None), 'Resolution': ('int', 16, None, None, (12, 16)), 'RangeAuto': ('bool', True, None, None, None), 'Range': ('int', 10000, None, None, (375, 10000)), 'AutoRangeThresh': ('float', 85.0, 50.0, 95.0, None), 'AutoRangeDwell': ('float', 10.0, 0.0, 300.0, None), 'IRCompOffset': ('int', 0, None, None, (0, 1)), 'IRCompAdjust': ('int', 40, 0, 63, None), 'FiltCoeff': ('float', -1.0, -1.0, 1.0, None), 'GainRatio': ('float', 26.666666666666668, 20.0, 34.0, None), 'Calibrate': ('bool', None, None, None, True)}
+src/asy_neopixel_driver.py {}
+src/asy_notification_service.py {'OnH': ('int', 10, 0, 23, None), 'OnM': ('int', 0, 0, 59, None), 'OffH': ('int', 18, 0, 23, None), 'OffM': ('int', 0, 0, 59, None), 'FlashBri': ('int', 200, 1, 255, None), 'FlashInterval': ('float', 300.0, 60.0, 3600.0, None), 'FlashDur': ('float', 2.0, 0.5, 10.0, None), 'AutoOn': ('bool', True, None, None, None)}
+src/asy_ntp_client.py {'NTPHost': ('str', 'pool.ntp.org', 3, 253, None), 'NTPOffset': ('int', 0, -43200, 43200, None), 'NTPInterval': ('int', 12, 1, 24, None), 'GMTOffset': ('int', 3600, -43200, 43200, None), 'DSTOffset': ('int', 3600, -43200, 43200, None), 'DNSFallback': ('str', '8.8.8.8,1.1.1.1', 0, 47, None)}
+src/asy_print_log.py {}
+src/asy_scd30_driver.py {'ContMeas': ('bool', None, None, None, None), 'TempOffset': ('float', None, 0.0, 655.35, None), 'MeasInterval': ('int', None, 2, 1800, None), 'AmbPres': ('int', None, 700, 1400, 0), 'Altitude': ('int', None, 0, 65535, None), 'ForceCalRef': ('int', None, 400, 2000, None), 'SelfCal': ('bool', None, None, None, None), 'FRCNoise': ('float', 20.0, 1.0, 500.0, None), 'FRCRate': ('float', 10.0, 0.1, 1000.0, None), 'FRCWindow': ('int', 60, 20, 3600, None)}
+src/asy_sgp40_driver.py {'Temp': ('float', None, -16777216.0, 16777216.0, None), 'Hum': ('float', None, -16777216.0, 16777216.0, None), 'BackupPeriod': ('int', 1, 0, 1440, 0), 'BackupMaxAge': ('int', 7200, 0, 10080, 0), 'WaitTimeNTP': ('int', 30, 0, 600, 0), 'ResetVOC': ('bool', None, None, None, True)}
+src/asy_spi_driver.py {}
+src/asy_system_service.py {'DebugLevel': ('int', 0, 0, 5, None)}
+src/asy_uart_comm.py {}
+src/asy_uart_driver.py {}
+src/asy_uart_link_driver.py {}
+src/asy_udp_socket.py {}
+src/asy_webserver_service.py {'PauseTime': ('int', 0, 0, 3600, None)}
+src/asy_wifi_service.py {'SSID': ('str', '', 0, 32, None), 'PW': ('str', '', 8, 63, ''), 'Country': ('str', 'DE', 2, 2, None), 'Hostname': ('str', 'SensorNode', 1, 32, None), 'LEDWifiOn': ('bool', True, None, None, None), 'HotspotPW': ('str', '12345678', 8, 63, None)}
+src/math_helpers.py {}
+src/voc_algorithm.py {}
+build/generated_src/sensortask_arzi.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_arzi_main.py {}
+build/generated_src/sensortask_arzi_main_noautostart.py {}
+build/generated_src/sensortask_dev.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_dev_main.py {}
+build/generated_src/sensortask_dev_main_noautostart.py {}
+build/generated_src/sensortask_grkizi.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_grkizi_main.py {}
+build/generated_src/sensortask_grkizi_main_noautostart.py {}
+build/generated_src/sensortask_klkizi.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_klkizi_main.py {}
+build/generated_src/sensortask_klkizi_main_noautostart.py {}
+build/generated_src/sensortask_schlafzi.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_schlafzi_main.py {}
+build/generated_src/sensortask_schlafzi_main_noautostart.py {}
+build/generated_src/sensortask_wozi.py {'WarnCO2': ('int', 1600, 0, 3000, None), 'WarnVOC': ('int', 350, 0, 500, None), 'WarnHum': ('float', 65.0, 0.0, 100.0, None)}
+build/generated_src/sensortask_wozi_main.py {}
+build/generated_src/sensortask_wozi_main_noautostart.py {}

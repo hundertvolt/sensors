@@ -1,8 +1,9 @@
-"""SPECIFICATION.md Part I.4(e)'s bar is asserted by four separate gates - unit, twin and the
-flash/bench hardware pair - each holding its own copy of the pattern. This keeps all four agreeing,
-and the suite's own deliberate injections clear of the wording they grep for."""
+"""SPECIFICATION.md Part I.4(e)'s bar is asserted by separate gates - unit, twin, flash, bench, the
+tests_scripts twin boots and the JS live twins and smoke - each reading the pattern in its own
+language. This keeps them agreeing, and the suite's own injections clear of the wording they grep for."""
 
 import ast
+import re
 from pathlib import Path
 from types import ModuleType
 
@@ -26,7 +27,7 @@ def harness(repo_root: Path) -> ModuleType:
 
 
 def test_the_hardware_tier_holds_the_canonical_marker_set(harness: ModuleType) -> None:
-    assert tuple(harness.MEMORY_ERROR_MARKERS) == _CANONICAL, f"tests_hardware/harness.py no longer carries {_CANONICAL} - all four gates have to move together"
+    assert tuple(harness.MEMORY_ERROR_MARKERS) == _CANONICAL, f"tests_hardware/harness.py no longer carries {_CANONICAL} - every gate has to move together"
 
 
 def test_the_twin_tier_agrees_with_it(ci_suite: ModuleType, harness: ModuleType) -> None:
@@ -37,6 +38,28 @@ def test_the_unit_tier_agrees_with_it(repo_root: Path, harness: ModuleType) -> N
     # A grep pattern rather than a tuple, so this is the one gate that cannot simply be compared.
     pattern = "|".join(harness.MEMORY_ERROR_MARKERS)
     assert f'local pattern="{pattern}"' in (repo_root / "scripts" / "test.sh").read_text(), f"scripts/test.sh's MemoryError gate no longer greps for {pattern!r}"
+
+
+def test_the_js_gate_agrees_with_it(repo_root: Path, harness: ModuleType) -> None:
+    text = (repo_root / "tests_js" / "_memory_markers.js").read_text()
+    match = re.search(r"export const MEMORY_ERROR_MARKERS = \[([^\]]*)\]", text)
+    assert match is not None, "tests_js/_memory_markers.js no longer exports a MEMORY_ERROR_MARKERS array literal"
+    assert tuple(re.findall(r'"([^"]*)"', match.group(1))) == tuple(harness.MEMORY_ERROR_MARKERS), f"the JS gate matches {match.group(1)} against the hardware tier's {harness.MEMORY_ERROR_MARKERS}"
+
+
+# Each JS runner that boots a twin scans its output through the shared module, never a copy.
+_JS_GATE_IMPORTERS = ("scripts/cross_browser_smoke.mjs", "tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js")
+
+
+@pytest.mark.parametrize("path", _JS_GATE_IMPORTERS)
+def test_every_js_twin_runner_imports_the_shared_markers(repo_root: Path, path: str) -> None:
+    text = (repo_root / path).read_text()
+    assert re.search(r"""from\s+["'][^"']*_memory_markers\.js["']""", text), f"{path} must import the marker set from tests_js/_memory_markers.js"
+
+
+@pytest.mark.parametrize("path", ["tests_scripts/test_digital_twin_generated_boot.py", "tests_scripts/test_digital_twin_boot_contiguity.py"])
+def test_every_tests_scripts_twin_boot_gates_on_the_markers(repo_root: Path, path: str) -> None:
+    assert "MEMORY_ERROR_MARKERS" in (repo_root / path).read_text(), f"{path} boots a twin and must scan its output for harness.MEMORY_ERROR_MARKERS"
 
 
 @pytest.mark.parametrize("path", _HARDWARE_TIER_FILES)

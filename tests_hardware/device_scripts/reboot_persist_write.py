@@ -4,7 +4,7 @@ confirms it survived. Must flush before returning - write_config() only stages (
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SCHEMA: "cm.ConfigSchema" = (("Marker", "int", 0, 0, 999999999, None),)
 _PATH = "config_HWTEST_REBOOT.cfg"
@@ -14,7 +14,7 @@ _MARKER_VALUE = 424242
 async def _main() -> None:
     mgr = cm.ConfigManager(_PATH, _SCHEMA, "HWTEST")
     await mgr.setup()
-    ok, _validity = await mgr.write_config({"Marker": _MARKER_VALUE}, _SCHEMA)
+    ok, _validity = await mgr.write_config({"Marker": _MARKER_VALUE})
     if not ok:
         print(f"RESULT: FAIL write_config() reported failure for Marker={_MARKER_VALUE}")
         return

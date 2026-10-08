@@ -1,0 +1,53 @@
+PASS
+== slow window ms 510 total calls 86153
+    50880 L digital_twin/rp2.py:_field
+    4240 L digital_twin/rp2.py:_push
+    3816 L digital_twin/machine.py:_channel
+    3610 L digital_twin/machine.py:_advance
+    3416 L digital_twin/machine.py:shape
+    2160 L digital_twin/machine.py:_schedule
+    2120 L digital_twin/machine.py:_route
+    2120 digital_twin/rp2.py:_field
+    1371 L digital_twin/machine.py:append
+    1272 L digital_twin/rp2.py:_complete_one
+    936 L src/asy_uart_driver.py:_rx_copy
+    848 digital_twin/rp2.py:_accept
+    848 L digital_twin/machine.py:record
+    848 L digital_twin/rp2.py:_accept
+    457 digital_twin/machine.py:append
+    452 L src/asy_uart_driver.py:ready
+    424 digital_twin/machine.py:record
+    424 digital_twin/machine.py:_channel
+    424 digital_twin/rp2.py:_push
+    424 digital_twin/rp2.py:_complete_one
+    424 digital_twin/machine.py:_route
+    266 L digital_twin/machine.py:_uart_at
+    264 L src/asy_uart_driver.py:_rx_level
+    246 L digital_twin/machine.py:_update
+    205 L digital_twin/rp2.py:count
+== quiet window ms 459 total calls 85868
+    50880 L digital_twin/rp2.py:_field
+    4240 L digital_twin/rp2.py:_push
+    3816 L digital_twin/machine.py:_channel
+    3558 L digital_twin/machine.py:_advance
+    3416 L digital_twin/machine.py:shape
+    2160 L digital_twin/machine.py:_schedule
+    2120 digital_twin/rp2.py:_field
+    2120 L digital_twin/machine.py:_route
+    1396 L digital_twin/machine.py:append
+    1272 L digital_twin/rp2.py:_complete_one
+    936 L src/asy_uart_driver.py:_rx_copy
+    848 L digital_twin/rp2.py:_accept
+    848 L digital_twin/machine.py:record
+    848 digital_twin/rp2.py:_accept
+    455 digital_twin/machine.py:append
+    429 L src/asy_uart_driver.py:ready
+    424 digital_twin/rp2.py:_complete_one
+    424 digital_twin/machine.py:_channel
+    424 digital_twin/rp2.py:_push
+    424 digital_twin/machine.py:_route
+    424 digital_twin/machine.py:record
+    248 L src/asy_uart_driver.py:_rx_level
+    246 L digital_twin/machine.py:_uart_at
+    234 L digital_twin/machine.py:_update
+    195 L digital_twin/rp2.py:count

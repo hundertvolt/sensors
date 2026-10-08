@@ -1,0 +1,541 @@
+FAIL test_reader_setters_return_false_on_invalid_range_not_just_bus_faults:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1107, in test_reader_setters_return_false_on_invalid_range_not_just_bus_faults
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_dict_data_reports_measured_values_by_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1594, in test_get_dict_data_reports_measured_values_by_name
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_five_not_ready_reads_warn_once_and_new_data_clears:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1991, in test_five_not_ready_reads_warn_once_and_new_data_clears
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1259, in test_frc_keys_stay_in_the_file_and_chip_keys_on_the_chip
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_read_measurement_never_ran_yet_leaves_getters_at_their_initial_none
+PASS test_nak_propagates_as_oserror_from_every_write_based_command
+FAIL test_ambpres_and_forcecalref_always_write:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1423, in test_ambpres_and_forcecalref_always_write
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 597, in test_read_measurement_not_ready_leaves_cached_values_untouched_and_issues_no_measurement_read
+AssertionError: 
+FAIL test_frc_readiness_names_drift_noise_and_a_temperature_step:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2063, in test_frc_readiness_names_drift_noise_and_a_temperature_step
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_invalid_setter_call_does_not_corrupt_state_for_a_later_valid_call
+FAIL test_frc_counters_saturate_at_their_targets:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2099, in test_frc_counters_saturate_at_their_targets
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1544, in test_get_dict_cfg_after_a_failing_snapshot_shows_none_and_one_entry
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_altitude_rejects_fractional_values_that_would_truncate_to_zero
+PASS test_set_measurement_interval_boundaries
+PASS test_read_measurement_raises_on_crc_mismatch_in_any_of_the_six_words
+PASS test_send_dev_command_raises_when_crc_generation_produces_the_wrong_length
+PASS test_frc_matches_datasheet_example
+FAIL test_scd_init_irq_never_triggers_while_pin_reads_low:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 999, in test_scd_init_irq_never_triggers_while_pin_reads_low
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_frc_readiness_reaches_ready_after_the_settle_count_and_one_closed_window:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2051, in test_frc_readiness_reaches_ready_after_the_settle_count_and_one_closed_window
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_every_two_decimal_temperature_offset_is_sent_as_typed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 286, in test_every_two_decimal_temperature_offset_is_sent_as_typed
+  File "tests/test_asy_scd30_driver.py", line 42, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_scd30_driver.py", line 281, in sweep
+AttributeError: 'SCD30_I2C' object has no attribute '_temp_offset_ticks'
+PASS test_soft_reset_command_matches_datasheet_example
+PASS test_stop_continuous_measurement_matches_datasheet_example
+FAIL test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2139, in test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_setters_return_false_on_bus_nak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1047, in test_reader_setters_return_false_on_bus_nak
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_measurement_interval_matches_datasheet_example
+FAIL test_the_third_failure_clears_the_bus_and_the_fourth_reinitialises_the_controller:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1903, in test_the_third_failure_clears_the_bus_and_the_fourth_reinitialises_the_controller
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_failing_snapshot_fails_every_key_and_writes_nothing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1456, in test_a_failing_snapshot_fails_every_key_and_writes_nothing
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1175, in test_reader_stop_continuous_measurement_false_returns_false_on_bus_fault
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_setup_probe_failure_never_reaches_firmware_read_or_reset
+PASS test_getters_never_touch_the_bus_on_their_own
+FAIL test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs_via_real_print_log:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1757, in test_read_loop_gives_up_after_max_module_error_consecutive_failures_and_logs_via_real_print_log
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_loop_ends_when_init_fails:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1875, in test_read_loop_ends_when_init_fails
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_ambpres_with_contmeas_false_ends_stopped_in_either_key_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1446, in test_ambpres_with_contmeas_false_ends_stopped_in_either_key_order
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_data_ready_command_matches_datasheet_example:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 210, in test_get_data_ready_command_matches_datasheet_example
+AssertionError: 
+PASS test_nak_never_reaches_get_co2_temperature_humidity_pure_cache_reads
+FAIL test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_valid:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1283, in test_set_dict_cfg_dispatches_a_valid_value_to_the_real_setter_and_reports_valid
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_raising_reset_logs_one_chip_set_and_no_recovery_warning:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1891, in test_a_raising_reset_logs_one_chip_set_and_no_recovery_warning
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_read_measurement_data_matches_datasheet_worked_example
+FAIL test_reader_setters_return_true_on_success:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2156, in test_reader_setters_return_true_on_success
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 872, in test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_restart_rearms
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_the_stuck_pin_count_saturates_at_the_threshold:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 984, in test_the_stuck_pin_count_saturates_at_the_threshold
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_loop_recovers_error_counter_after_a_good_read_following_failures:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1786, in test_read_loop_recovers_error_counter_after_a_good_read_following_failures
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_range_checks_raise_before_touching_the_bus
+PASS test_temperature_offset_matches_datasheet_example
+FAIL test_start_asy_read_returns_a_real_task:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1841, in test_start_asy_read_returns_a_real_task
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_contmeas_rejects_an_int_and_a_string:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1236, in test_contmeas_rejects_an_int_and_a_string
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_the_temperature_gate_applies_the_cached_offset:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 588, in test_the_temperature_gate_applies_the_cached_offset
+AssertionError: -45.0
+PASS test_set_ambient_pressure_rejects_nan
+PASS test_the_reader_logger_follows_its_log_config
+PASS test_asc_deactivate_matches_datasheet_example
+PASS test_get_co2_temperature_humidity_all_reflect_one_read_measurement_call
+PASS test_set_ambient_pressure_boundaries
+FAIL test_tempoffset_compares_at_tick_resolution:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1477, in test_tempoffset_compares_at_tick_resolution
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_a_deinitialised_bus_fails_the_read_without_checking_a_stale_buffer
+FAIL test_set_dict_cfg_out_of_range_value_rejected_before_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1347, in test_set_dict_cfg_out_of_range_value_rejected_before_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_dict_cfg_reports_every_schema_field_by_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1490, in test_get_dict_cfg_reports_every_schema_field_by_name
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temperature_offset:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 774, in test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temperature_offset
+AssertionError: 
+FAIL test_reader_init_constructs_a_real_input_pin_and_leaves_timer_unarmed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 801, in test_reader_init_constructs_a_real_input_pin_and_leaves_timer_unarmed
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1696, in test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_getters_return_none_on_bus_nak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1030, in test_reader_getters_return_none_on_bus_nak
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_setter_reports_failed_on_bus_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1379, in test_set_dict_cfg_setter_reports_failed_on_bus_fault
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_temperature_offset_rejects_nan
+FAIL test_set_dict_cfg_wrong_type_value_rejected_before_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1362, in test_set_dict_cfg_wrong_type_value_rejected_before_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_loop_full_iteration_stores_measured_data_and_derived_values:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1650, in test_read_loop_full_iteration_stores_measured_data_and_derived_values
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1295, in test_set_dict_cfg_int_value_for_the_float_typed_tempoffs_field_is_coerced_before_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1370, in test_set_dict_cfg_unknown_key_reported_invalid_without_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_stores_nothing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 524, in test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_stores_nothing
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_forced_recalibration_reference_boundaries
+FAIL test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1561, in test_get_dict_cfg_snapshot_is_atomic_against_a_concurrent_config_write
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_altitude_boundaries
+PASS test_bus_busy_timeout_propagates_as_oserror
+FAIL test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 929, in test_scd_init_irq_sets_irq_trigger_after_enough_consecutive_stuck_ticks
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_temperature_offset_rounds_to_the_nearest_tick
+FAIL test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1331, in test_set_dict_cfg_fractional_value_for_an_int_typed_field_rejected_before_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_cfg_schema_returns_every_settable_field_by_name:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1512, in test_get_cfg_schema_returns_every_settable_field_by_name
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_get_self_calibration_enabled_decodes_1_and_0
+PASS test_set_temperature_offset_boundaries
+FAIL test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1408, in test_a_repeated_put_of_a_stored_chip_value_is_unchanged_and_writes_nothing
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1193, in test_set_dict_cfg_reports_contmeas_true_as_valid_not_failed
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1518, in test_get_dict_cfg_degrades_to_none_per_field_on_bus_fault_not_a_crash
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1642, in test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_stuck_pin_ticks_accumulate_across_a_low_gap:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 991, in test_stuck_pin_ticks_accumulate_across_a_low_gap
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_multiple_fields_in_one_call_including_ambpres_special_sentinel:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1399, in test_set_dict_cfg_multiple_fields_in_one_call_including_ambpres_special_sentinel
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_get_temperature_offset_matches_datasheet_example
+FAIL test_reader_start_timer_arms_periodic_timer_and_pin_irq:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 808, in test_reader_start_timer_arms_periodic_timer_and_pin_irq
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_setters_log_chip_set_on_bus_nak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1086, in test_reader_setters_log_chip_set_on_bus_nak
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_frc_readiness_restarts_on_a_gap_an_interval_change_a_pressure_write_and_a_stop:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2067, in test_frc_readiness_restarts_on_a_gap_an_interval_change_a_pressure_write_and_a_stop
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_coerced_before_dispatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1314, in test_set_dict_cfg_integral_float_value_for_the_int_typed_measint_field_is_coerced_before_dispatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_forced_recalibration_while_settling_is_still_carried_out:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2108, in test_a_forced_recalibration_while_settling_is_still_carried_out
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_read_register_raises_on_crc_mismatch
+FAIL test_reader_stop_continuous_measurement_false_sends_the_real_stop_command:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1168, in test_reader_stop_continuous_measurement_false_sends_the_real_stop_command
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact
+FAIL test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1729, in test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_trigger_continuous_measurement_zero_pressure_matches_datasheet_example
+FAIL test_set_dict_cfg_reports_contmeas_non_bool_as_invalid:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1226, in test_set_dict_cfg_reports_contmeas_non_bool_as_invalid
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_reversed_body_writes_in_the_fixed_order:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1433, in test_a_reversed_body_writes_in_the_fixed_order
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeeds:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1200, in test_set_dict_cfg_reports_contmeas_false_as_valid_when_the_real_stop_succeeds
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_nak_propagates_as_oserror_from_every_register_read
+FAIL test_start_asy_init_returns_a_real_task:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1858, in test_start_asy_init_returns_a_real_task
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_stop_timer_deinits_the_periodic_timer_only:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 912, in test_reader_stop_timer_deinits_the_periodic_timer_only
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_getters_log_chip_get_on_bus_nak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1066, in test_reader_getters_log_chip_get_on_bus_nak
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_read_firmware_version_command_matches_datasheet_example
+FAIL test_a_put_during_the_recovery_completes_after_it:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1934, in test_a_put_during_the_recovery_completes_after_it
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_fault_injected_read_half_failure_after_a_successful_write_half
+FAIL test_a_held_boot_bus_is_reported_once_at_setup:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1917, in test_a_held_boot_bus_is_reported_once_at_setup
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1143, in test_reader_set_then_get_altitude_round_trips_through_real_i2c_frames
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_read_measurement_rejects_a_non_finite_word_in_any_position_and_keeps_the_cache
+FAIL test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 829, in test_reader_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_get_task_starters_and_timer_starters_shape:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 920, in test_reader_get_task_starters_and_timer_starters_shape
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_ambient_pressure_rejects_values_just_inside_the_dead_zone_around_zero
+FAIL test_reader_getters_return_none_on_crc_mismatch:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1122, in test_reader_getters_return_none_on_crc_mismatch
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_never_touches_any_address_but_its_own
+FAIL test_frc_readiness_publishes_not_measuring_after_two_intervals_without_data:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2089, in test_frc_readiness_publishes_not_measuring_after_two_intervals_without_data
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+PASS test_set_ambient_pressure_rejects_fractional_values_that_would_truncate_to_the_special_zero
+PASS test_altitude_matches_datasheet_example
+FAIL test_a_store_interleaved_with_a_republish_keeps_the_fresh_sample:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 2118, in test_a_store_interleaved_with_a_republish_keeps_the_fresh_sample
+  File "tests/test_asy_scd30_driver.py", line 2034, in _frc_reader
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1210, in test_set_dict_cfg_reports_contmeas_false_as_failed_on_bus_fault
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_get_error_counter_forwards_to_the_real_print_log:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1606, in test_get_error_counter_forwards_to_the_real_print_log
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_measurement_command_matches_datasheet_example:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 219, in test_read_measurement_command_matches_datasheet_example
+AssertionError: 
+FAIL test_the_reader_logs_an_out_of_range_frame_as_a_failed_read_and_stores_nothing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 563, in test_the_reader_logs_an_out_of_range_frame_as_a_failed_read_and_stores_nothing
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_stop_continuous_measurement_true_is_a_pure_noop:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1161, in test_reader_stop_continuous_measurement_true_is_a_pure_noop
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no_error:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 1966, in test_a_not_ready_cycle_republishes_the_cached_reading_with_a_fresh_ts_and_no_error
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 857, in test_reader_start_timer_degrades_gracefully_on_a_memory_error_while_arming
+  File "tests/test_asy_scd30_driver.py", line 76, in make_reader
+TypeError: unexpected keyword argument 'cfg_path'
+FAIL test_read_measurement_accepts_each_range_boundary_and_rejects_just_outside:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u15b/tests/microtest.py", line 35, in run
+  File "tests/test_asy_scd30_driver.py", line 546, in test_read_measurement_accepts_each_range_boundary_and_rejects_just_outside
+AssertionError: (0.0, 20.0, 50.0)
+42/124 passed, 82 failed, 0 skipped

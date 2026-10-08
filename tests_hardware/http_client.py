@@ -2,8 +2,6 @@
 mirrors digital_twin/_http_client.py's `HttpResponse`/`fetch()` shape closely enough that a
 shared-behavior function written against one translates directly to the other, though synchronous."""
 
-from __future__ import annotations
-
 import http.client
 import json
 import urllib.error
@@ -25,7 +23,11 @@ class HttpResponse:
         return result
 
 
-def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = 10.0) -> HttpResponse:
+# @tunable l4.http_client_fetch_timeout_s = 10.0
+_FETCH_TIMEOUT_S = 10.0
+
+
+def fetch(host: str, port: int, method: str, path: str, json_body: dict[str, Any] | None = None, timeout_s: float = _FETCH_TIMEOUT_S) -> HttpResponse:
     url = f"http://{host}:{port}{path}"
     data = None
     headers = {}
@@ -55,6 +57,6 @@ HTTP_ERROR = http.client.HTTPException
 
 
 def is_ceiling_close(exc: BaseException) -> bool:
-    """True if exc is a connection-ceiling refusal, not a real transport failure. urllib wraps it
-    in URLError.reason; RemoteDisconnected subclasses ConnectionResetError, so the tuple covers it."""
+    # True if exc is a connection-ceiling refusal, not a real transport failure. urllib wraps it
+    # in URLError.reason; RemoteDisconnected subclasses ConnectionResetError, so the tuple covers it.
     return isinstance(exc, CEILING_CLOSE) or isinstance(getattr(exc, "reason", None), CEILING_CLOSE)

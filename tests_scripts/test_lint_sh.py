@@ -2,6 +2,7 @@
 failure mode is silent: a drifted pattern stops matching and the gate goes green on a real
 violation. Each block is extracted from the live script and run against a fabricated tree."""
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -14,7 +15,7 @@ _BUILDGEN_COLLECT = "gc.collect() in buildgen/"
 
 
 def _guard_block(repo_root: Path, needle: str) -> str:
-    """The one `if grep ...; then ... fi` block of scripts/lint.sh whose message contains `needle`."""
+    # The one `if grep ...; then ... fi` block of scripts/lint.sh whose message contains `needle`.
     text = (repo_root / "scripts" / "lint.sh").read_text()
     blocks = [b for b in re.findall(r"^if grep .*?^fi$", text, re.MULTILINE | re.DOTALL) if needle in b]
     assert len(blocks) == 1, f"expected exactly one lint.sh guard mentioning {needle!r}, found {len(blocks)}"
@@ -34,13 +35,13 @@ def _run_guard(repo_root: Path, tree: Path, needle: str, script_home: Path | Non
 
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
-    """A minimal stand-in repo: both scopes present and both clean, so every case below adds
-    exactly one file and the guard's verdict is attributable to it."""
+    # A minimal stand-in repo: both scopes present and both clean, so every case below adds
+    # exactly one file and the guard's verdict is attributable to it.
     (tmp_path / "src").mkdir()
     (tmp_path / "buildgen").mkdir()
-    (tmp_path / "src" / "system_service.py").write_text("import gc\n\n\nasync def start_and_check_tasks() -> None:\n    gc.collect()\n")
+    (tmp_path / "src" / "asy_system_service.py").write_text("import gc\n\n\nasync def run_setups() -> None:\n    gc.collect()\n\n\nasync def start_tasks() -> None:\n    gc.collect()\n")
     (tmp_path / "src" / "asy_fram_driver.py").write_text("x = 1\n")
-    (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    gc.collect()")\n')
+    (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    sysfunct.run_setups(_collect_setups())")\n')
     (tmp_path / "buildgen" / "driver_registry.py").write_text("y = 2\n")
     return tmp_path
 
@@ -75,27 +76,40 @@ def test_the_same_suppression_outside_src_is_left_alone(repo_root: Path, tree: P
     assert _run_guard(repo_root, tree, _METHOD_ASSIGN).returncode == 0
 
 
-@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "asy_fram_manager.py", _SRC_COLLECT), ("buildgen", "driver_registry.py", _BUILDGEN_COLLECT)])
-def test_a_gc_collect_outside_its_one_allowed_file_fails_the_gate(repo_root: Path, tree: Path, scope: str, filename: str, needle: str) -> None:
-    (tree / scope / filename).write_text("import gc\ngc.collect()\n")
-    result = _run_guard(repo_root, tree, needle)
-    assert result.returncode == 1, f"gc.collect() in {scope}/{filename} must fail the lint gate (SPECIFICATION.md Part I.4(f.1))"
+def test_a_gc_collect_outside_the_allowed_src_file_fails_the_gate(repo_root: Path, tree: Path) -> None:
+    (tree / "src" / "asy_fram_manager.py").write_text("import gc\ngc.collect()\n")
+    result = _run_guard(repo_root, tree, _SRC_COLLECT)
+    assert result.returncode == 1, "gc.collect() in src/asy_fram_manager.py must fail the lint gate (SPECIFICATION.md Part I.4(f.1))"
     assert "I.4(f.1)" in result.stderr
 
 
-@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "not_system_service.py", _SRC_COLLECT), ("src", "system_service_helper.py", _SRC_COLLECT), ("buildgen", "codegen_helpers.py", _BUILDGEN_COLLECT)])
-def test_a_filename_that_merely_contains_the_allowed_one_is_not_excused(repo_root: Path, tree: Path, scope: str, filename: str, needle: str) -> None:
-    # The bite: the exclusion is `grep -v "^src/system_service.py:"`, anchored and with the colon.
+@pytest.mark.parametrize(
+    ("filename", "text"),
+    [("codegen.py", 'lines.append("    gc.collect()")\n'), ("driver_registry.py", "import gc\ngc.collect()\n"), ("sub/leaf.py", "import gc\ngc.collect()\n")],
+)
+def test_a_gc_collect_anywhere_in_buildgen_fails_the_gate(repo_root: Path, tree: Path, filename: str, text: str) -> None:
+    # The generator emits none: the boot lists' collects live in SystemService.run_setups() and
+    # start_tasks(), so codegen.py's own emitted-source string is a violation like any other.
+    (tree / "buildgen" / filename).parent.mkdir(exist_ok=True)
+    (tree / "buildgen" / filename).write_text(text)
+    result = _run_guard(repo_root, tree, _BUILDGEN_COLLECT)
+    assert result.returncode == 1, f"gc.collect( in buildgen/{filename} must fail the lint gate (SPECIFICATION.md Part I.4(f.1))"
+    assert "I.4(f.1)" in result.stderr
+
+
+@pytest.mark.parametrize("filename", ["not_asy_system_service.py", "asy_system_service_helper.py"])
+def test_a_filename_that_merely_contains_the_allowed_one_is_not_excused(repo_root: Path, tree: Path, filename: str) -> None:
+    # The bite: the exclusion is `grep -v "^src/asy_system_service.py:"`, anchored and with the colon.
     # Unanchored, every one of these names would inherit the exception silently.
-    (tree / scope / filename).write_text("import gc\ngc.collect()\n")
-    assert _run_guard(repo_root, tree, needle).returncode == 1, f"{scope}/{filename} must not inherit {needle}'s single-file exception"
+    (tree / "src" / filename).write_text("import gc\ngc.collect()\n")
+    assert _run_guard(repo_root, tree, _SRC_COLLECT).returncode == 1, f"src/{filename} must not inherit {_SRC_COLLECT}'s single-file exception"
 
 
-@pytest.mark.parametrize(("scope", "filename", "needle"), [("src", "system_service.py", _SRC_COLLECT), ("buildgen", "codegen.py", _BUILDGEN_COLLECT)])
-def test_the_allowed_file_may_hold_several_collects(repo_root: Path, tree: Path, scope: str, filename: str, needle: str) -> None:
-    # Both allowed sites genuinely hold two: one before the list and one per unit inside it.
-    (tree / scope / filename).write_text("import gc\ngc.collect()\nfor _ in range(2):\n    gc.collect()\n")
-    assert _run_guard(repo_root, tree, needle).returncode == 0
+def test_the_allowed_file_may_hold_several_collects(repo_root: Path, tree: Path) -> None:
+    # The allowed file genuinely holds several: run_setups() and start_tasks() each collect once before
+    # their list and once after each unit.
+    (tree / "src" / "asy_system_service.py").write_text("import gc\ngc.collect()\nfor _ in range(2):\n    gc.collect()\n")
+    assert _run_guard(repo_root, tree, _SRC_COLLECT).returncode == 0
 
 
 def test_a_subdirectory_of_an_allowed_scope_is_searched_too(repo_root: Path, tree: Path) -> None:
@@ -112,3 +126,53 @@ def test_the_live_tree_satisfies_all_three_guards(repo_root: Path, tmp_path: Pat
     for needle in (_METHOD_ASSIGN, _SRC_COLLECT, _BUILDGEN_COLLECT):
         result = _run_guard(repo_root, repo_root, needle, script_home=tmp_path)
         assert result.returncode == 0, f"the live tree violates lint.sh's {needle!r} guard: {result.stdout}{result.stderr}"
+
+
+# --- the command line and the summary block (SPECIFICATION.md E.10) ---------------------------------
+
+_CHECKS = ("ruff", "shellcheck", "actionlint", "zizmor", "method-assign guard", "gc.collect sites")
+
+
+def _run_lint(repo_root: Path, tmp_path: Path, *args: str, failing_tool: str | None = None) -> subprocess.CompletedProcess[str]:
+    # scripts/lint.sh with its four external tools stubbed on PATH (one may fail); the grep guards
+    # run for real against the live tree, which the test above holds clean.
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir(exist_ok=True)
+    for tool in ("ruff", "shellcheck", "actionlint", "zizmor"):
+        (stub_bin / tool).write_text(f"#!/bin/sh\nexit {1 if tool == failing_tool else 0}\n")
+        (stub_bin / tool).chmod(0o755)
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    return subprocess.run(["/bin/bash", str(repo_root / "scripts" / "lint.sh"), *args], env=env, capture_output=True, text=True, check=False, timeout=120)
+
+
+def test_help_prints_the_usage_and_exits_0(repo_root: Path, tmp_path: Path) -> None:
+    for flag in ("-h", "--help"):
+        result = _run_lint(repo_root, tmp_path, flag, failing_tool="ruff")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.startswith("Usage: scripts/lint.sh - no arguments"), result.stdout
+        assert "== Summary" not in result.stdout, "--help runs no check"
+
+
+def test_any_other_argument_is_a_usage_error(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path, "src/")
+    assert result.returncode == 2
+    assert "Usage: scripts/lint.sh" in result.stderr
+    assert result.stdout == ""
+
+
+def test_a_clean_run_ends_with_the_block_counting_every_check(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    block = result.stdout[result.stdout.index("== Summary: scripts/lint.sh ==") :]
+    assert f"\nCounts (checks): passed {len(_CHECKS)} · failed 0 ·" in block
+    assert block.endswith("Result: PASS\nExit code: 0\n")
+
+
+@pytest.mark.parametrize("tool", ["ruff", "shellcheck", "actionlint", "zizmor"])
+def test_a_failing_check_is_named_in_the_block_and_fails_the_run(repo_root: Path, tmp_path: Path, tool: str) -> None:
+    result = _run_lint(repo_root, tmp_path, failing_tool=tool)
+    assert result.returncode == 1
+    block = result.stdout[result.stdout.index("== Summary: scripts/lint.sh ==") :]
+    assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+    assert f"Failed:\n  - {tool}\n" in block
+    assert block.endswith("Result: FAIL\nExit code: 1\n")

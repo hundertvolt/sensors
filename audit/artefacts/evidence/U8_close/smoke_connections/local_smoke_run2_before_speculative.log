@@ -1,0 +1,49 @@
+SKIP WebKit: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+SKIP Firefox: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+SKIP Edge: binary not found (run scripts/setup_cross_browser_toolchain.sh)
+
+arzi: probing sensors / SCD30 / MeasInt
+connections per page load (arzi Chromium): 2, plus 1 for its data requests
+PASS arzi Chromium (desktop)
+connections per page load (arzi Chromium): 3, plus 0 for its data requests
+FAIL arzi Chromium (mobile)
+the page load opened 3 connection(s) of its own through the proxy; 1 to 2 are registered for it (GET / HTTP/1.1; GET /js/app.js HTTP/1.1; (no request))
+
+--- arzi twin output ---
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=19420 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:19420/ - Ctrl+C to stop
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=0
+digital_twin/run_generic_integration.py: interrupted
+
+
+dev: probing sensors / SCD30 / MeasInt
+connections per page load (dev Chromium): 2, plus 1 for its data requests
+PASS dev Chromium (desktop)
+connections per page load (dev Chromium): 2, plus 1 for its data requests
+PASS dev Chromium (mobile)
+
+grkizi: probing sensors / SCD30 / MeasInt
+connections per page load (grkizi Chromium): 2, plus 1 for its data requests
+PASS grkizi Chromium (desktop)
+connections per page load (grkizi Chromium): 2, plus 1 for its data requests
+PASS grkizi Chromium (mobile)
+
+klkizi: probing sensors / SCD30 / MeasInt
+connections per page load (klkizi Chromium): 2, plus 1 for its data requests
+PASS klkizi Chromium (desktop)
+connections per page load (klkizi Chromium): 2, plus 1 for its data requests
+PASS klkizi Chromium (mobile)
+
+schlafzi: probing sensors / SCD30 / MeasInt
+connections per page load (schlafzi Chromium): 2, plus 1 for its data requests
+PASS schlafzi Chromium (desktop)
+connections per page load (schlafzi Chromium): 2, plus 1 for its data requests
+PASS schlafzi Chromium (mobile)
+
+wozi: probing sensors / SCD30 / MeasInt
+connections per page load (wozi Chromium): 2, plus 1 for its data requests
+PASS wozi Chromium (desktop)
+connections per page load (wozi Chromium): 2, plus 1 for its data requests
+PASS wozi Chromium (mobile)
+
+11/12 cross-browser smoke checks passed.

@@ -2,8 +2,6 @@
 The device cannot read it back - it goes to the platform print, not `sys.stdout` - so the map is
 captured host-side out of `Board.run_isolated()`'s output and measured here."""
 
-from __future__ import annotations
-
 import re
 from typing import NamedTuple
 
@@ -20,7 +18,7 @@ _FREE = "."
 
 
 class HeapMap(NamedTuple):
-    """One parsed `mem_info(1)` dump. Byte figures throughout; `deciles` counts allocated blocks."""
+    # One parsed `mem_info(1)` dump. Byte figures throughout; `deciles` counts allocated blocks.
 
     kinds: str
     block_bytes: int
@@ -39,9 +37,9 @@ class HeapMap(NamedTuple):
         return sum(1 for run in self.free_runs if run >= size)
 
     def placeable(self, size: int) -> int:
-        """How many `size`-byte blocks the heap could still place. Not gaps_at_least(): one 40 KB
-        run is ONE gap but holds nineteen 2 KB buffers, and it is the capacity that has to cover a
-        simultaneous demand (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2)."""
+        # How many `size`-byte blocks the heap could still place. Not gaps_at_least(): one 40 KB
+        # run is ONE gap but holds nineteen 2 KB buffers, and it is the capacity that has to cover a
+        # simultaneous demand (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.2).
         return sum(run // size for run in self.free_runs)
 
     def summary(self) -> str:
@@ -53,13 +51,14 @@ class HeapMap(NamedTuple):
 
 
 class HeapMapError(ValueError):
-    """The captured text is not a usable `mem_info(1)` dump - malformed, truncated, or absent."""
+    # The captured text is not a usable `mem_info(1)` dump - malformed, truncated, or absent.
+    pass
 
 
 def parse(text: str) -> HeapMap:
-    """Parse one `mem_info(1)` dump. Raises HeapMapError rather than returning something plausible:
-    a truncated capture (a dropped USB CDC chunk, say) would otherwise read as a heap with a huge
-    free run at the end, which is exactly the direction that turns a real regression into a pass."""
+    # Parse one `mem_info(1)` dump. Raises HeapMapError rather than returning something plausible:
+    # a truncated capture (a dropped USB CDC chunk, say) would otherwise read as a heap with a huge
+    # free run at the end, which is exactly the direction that turns a real regression into a pass.
     totals: tuple[int, int, int] | None = None
     reported_max_free: int | None = None
     offsets: list[int] = []
@@ -135,21 +134,21 @@ def parse(text: str) -> HeapMap:
 
 
 class HeapDelta(NamedTuple):
-    """What one stretch of code ADDED to the heap: blocks free in `before` and allocated in `after`.
-    Position-independent by construction, and a LOWER bound - a block occupied in both maps is not
-    attributed, even if the first occupant was freed in between (MEASUREMENTS M2.1)."""
+    # What one stretch of code ADDED to the heap: blocks free in `before` and allocated in `after`.
+    # Position-independent by construction, and a LOWER bound - a block occupied in both maps is not
+    # attributed, even if the first occupant was freed in between (MEASUREMENTS M2.1).
 
     block_bytes: int
     heap_blocks: int
     new_offsets: list[int]
 
     def new_above(self, top_bytes: int) -> int:
-        """Newly allocated blocks within the topmost `top_bytes` of the heap."""
+        # Newly allocated blocks within the topmost `top_bytes` of the heap.
         first = self.heap_blocks - top_bytes // self.block_bytes
         return sum(1 for offset in self.new_offsets if offset >= first)
 
     def highest_new_pct(self) -> int:
-        """How far up the heap the highest newly allocated block sits, 0-100; -1 if none."""
+        # How far up the heap the highest newly allocated block sits, 0-100; -1 if none.
         return max(self.new_offsets) * 100 // self.heap_blocks if self.new_offsets else -1
 
     def summary(self) -> str:
@@ -160,9 +159,9 @@ class HeapDelta(NamedTuple):
 
 
 def delta(before: HeapMap, after: HeapMap) -> HeapDelta:
-    """What `after` holds that `before` did not, block position by block position. Both must come
-    from the same interpreter session, or the offsets name different addresses and the answer is
-    meaningless - which is why a mismatch raises rather than comparing what it can."""
+    # What `after` holds that `before` did not, block position by block position. Both must come
+    # from the same interpreter session, or the offsets name different addresses and the answer is
+    # meaningless - which is why a mismatch raises rather than comparing what it can.
     if before.block_bytes != after.block_bytes or before.heap_blocks != after.heap_blocks:
         raise HeapMapError(
             f"the two maps describe different heaps ({before.heap_blocks}x{before.block_bytes} B against "
@@ -176,7 +175,7 @@ def delta(before: HeapMap, after: HeapMap) -> HeapDelta:
 
 
 def parse_labelled(text: str) -> dict[str, HeapMap]:
-    """Every `MAP <label>` ... `ENDMAP <label>` block a device script emitted, keyed by label."""
+    # Every `MAP <label>` ... `ENDMAP <label>` block a device script emitted, keyed by label.
     found: dict[str, HeapMap] = {}
     for match in re.finditer(r"^=== MAP (\S+) ===$(.*?)^=== ENDMAP \1 ===$", text, re.MULTILINE | re.DOTALL):
         found[match.group(1)] = parse(match.group(2))
@@ -184,8 +183,8 @@ def parse_labelled(text: str) -> dict[str, HeapMap]:
 
 
 def parse_churn(text: str) -> dict[str, int]:
-    """allocation_need_per_source.py's CHURN lines: each probe's net mem_alloc() change, in bytes -
-    negative when a collect ran inside it, which a digits-only pattern silently dropped."""
+    # allocation_need_per_source.py's CHURN lines: each probe's net mem_alloc() change, in bytes -
+    # negative when a collect ran inside it, which a digits-only pattern silently dropped.
     return {m.group(1): int(m.group(2)) for m in re.finditer(r"^CHURN (\S+) (-?\d+)", text, re.MULTILINE)}
 
 
@@ -193,9 +192,9 @@ _ALLOCATION_FAILED = re.compile(r"MemoryError|memory allocation failed")
 
 
 def parse_allocation_need(text: str) -> dict[str, int | None]:
-    """allocation_need_per_source.py's output, reduced to the smallest effective largest-free-run (in
-    bytes) at which each probe succeeded cleanly, and at every larger rung too. None if it never did.
-    A caught-and-logged failure between a probe's TRY and RES lines counts as a failure (I.4(e))."""
+    # allocation_need_per_source.py's output, reduced to the smallest effective largest-free-run (in
+    # bytes) at which each probe succeeded cleanly, and at every larger rung too. None if it never did.
+    # A caught-and-logged failure between a probe's TRY and RES lines counts as a failure (I.4(e)).
     block_line = re.search(r"^BLOCK=(\d+)", text, re.MULTILINE)
     if block_line is None:  # without the block size no rung can be sized in bytes
         raise ValueError("no BLOCK= line: the script's output was cut off or its header changed")

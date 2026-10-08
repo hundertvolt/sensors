@@ -34,6 +34,15 @@ def test_a_triggered_periodic_stays_armed() -> None:
     assert fired == [1, 1, 1]
 
 
+def test_a_timer_keeps_only_its_newest_arms() -> None:
+    # A one-shot re-armed every period over a long run must not grow the record without bound.
+    timer = Timer()
+    for k in range(5000):
+        timer.init(period=k, mode=Timer.ONE_SHOT, callback=lambda _t: None)
+    assert len(timer.arms) <= 4096
+    assert timer.arms[-1] == (Timer.clock_ms, 4999, Timer.ONE_SHOT)
+
+
 def test_a_dropped_one_shot_never_fires_but_a_dropped_periodic_fires_next_period() -> None:
     # Part F.1: a soft callback lost to a full scheduler queue. drop() is that lost period.
     one_shot, periodic = [], []

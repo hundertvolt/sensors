@@ -2,16 +2,50 @@
 provoked fault produced the expected error/warning entry, then reset again. Shape: GET /status ->
 {"errcount": {"<ModuleName>": {"counter": int, "history": [...]}}} - see SPECIFICATION.md Part A.7."""
 
-from __future__ import annotations
-
-from typing import Any
+import json
+import sys
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import http_client
 
-# Above the server's own 15.0s outer_cap_s, not below it: a legitimate sweep can never exceed the
-# cap, and the 10.0s this used to be made a slow-but-legitimate reset read as a network fault. The
-# headroom absorbs real WiFi latency the loopback twin has none of. Measurements: BACKLOG item 24.
+# The one catalog lookup every tier shares, re-exported for the bench modules. The repo root is
+# appended, so tests/ resolves as this repository's namespace package and no tests/ fake shadows a host module.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from tests._error_codes import code
+
+if TYPE_CHECKING:
+    from harness import Board
+
+__all__ = [
+    "assert_module_error_log_clean",
+    "assert_module_error_log_contains",
+    "assert_module_error_log_empty",
+    "assert_module_error_log_nonempty",
+    "assert_no_module_logged_a_new_error",
+    "assert_no_new_task_raised",
+    "assert_no_task_ended",
+    "code",
+    "get_errcount",
+    "new_task_raised",
+    "read_live_system_log",
+    "reset_all_error_logs",
+]
+
+# Above the server's 15.0 s outer_cap_s, never below: a legitimate concurrent reset stays under the
+# cap and WiFi latency is absorbed here. Timings: SPECIFICATION.md C.7.
+# @tunable l4.reset_errors_timeout_s = 30.0
 _RESET_ERRORS_TIMEOUT_S = 30.0
+# @tunable l4.error_log_helpers_errcount_timeout_s = 10.0
+_ERRCOUNT_TIMEOUT_S = 10.0
+_TASK_RAISED = code("E", "TASK_RAISED")
+# The flash tier has no network client: the live firmware's own SYSTEM logger read over the REPL, from its RAM copy
+# only (no FRAM access). Entering the REPL interrupts the firmware, so a caller reads outside its observed window.
+_READ_SYSTEM_LOG = (
+    "import asyncio, json, sys\n"
+    "m = [v for k, v in sys.modules.items() if k.startswith('sensortask_') and getattr(v, 'sysfunct', None) is not None]\n"
+    "print('SYSLOG', json.dumps(asyncio.run(m[0].sysfunct.get_error_counter())['SYSTEM'] if m else None))\n"
+)
 
 
 def reset_all_error_logs(dut_ip: str) -> None:
@@ -20,16 +54,16 @@ def reset_all_error_logs(dut_ip: str) -> None:
 
 
 def get_errcount(dut_ip: str) -> dict[str, Any]:
-    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=10.0)
+    res = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_ERRCOUNT_TIMEOUT_S)
     assert res.status_code == 200, f"GET /status failed: {res.status_code} {res.body!r}"
     result: dict[str, Any] = res.json()["errcount"]
     return result
 
 
 def assert_no_task_ended(dut_ip: str, context: str) -> None:
-    """The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
-    a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
-    hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty."""
+    # The supervisor's own record since the test's opening ResetErrors: a task that ended (errno 5/6,
+    # a restart warning) or a budget reboot (errno 4) lands in SYSTEM, which FRAM keeps across a
+    # hard_reset(). A routine fault is handled in place (SPECIFICATION.md C.7.2), so this stays empty.
     entry = get_errcount(dut_ip).get("SYSTEM", {})
     assert entry.get("counter", 0) == 0, f"{context}: a task ended and was restarted (or the budget rebooted the board) - SYSTEM log: {entry!r}"
 
@@ -49,9 +83,9 @@ def assert_module_error_log_nonempty(dut_ip: str, module_name: str) -> None:
 def assert_module_error_log_clean(
     dut_ip: str, module_name: str, allowed_warnings: tuple[int, ...] = (), allowed_errors: tuple[int, ...] = (),
 ) -> None:
-    """Nothing in the log's history beyond the entries named - unlike a zero counter, no race
-    against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
-    test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted)."""
+    # Nothing in the log's history beyond the entries named - unlike a zero counter, no race
+    # against a module whose normal operation logs a legitimate warning. `allowed_errors` is for a
+    # test whose documented outcome is an ERROR (torn writes provoked, then recovery asserted).
     entry = get_errcount(dut_ip).get(module_name, {})
     history = entry.get("history", [])
     unexpected = [
@@ -66,7 +100,7 @@ def assert_module_error_log_clean(
 
 
 def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, kind: str) -> None:
-    """Kind is "E" (err_s()) or "W" (wrn_s())."""
+    # Kind is "E" (err_s()) or "W" (wrn_s()).
     counts = get_errcount(dut_ip)
     entry = counts.get(module_name)
     assert entry is not None, f"{module_name!r} not present in /status errcount at all: {counts!r}"
@@ -75,9 +109,9 @@ def assert_module_error_log_contains(dut_ip: str, module_name: str, num: int, ki
 
 
 def assert_no_module_logged_a_new_error(dut_ip: str, before: dict[str, Any], context: str) -> None:
-    """Every FRAM-backed module's counter, not one named module's. A full-ceiling burst starves the
-    heap for the whole graph, so an allocation failure it provokes can surface in SGP40, SCD30,
-    SYSTEM or any other logger - checking only WEBSERVER would miss exactly the all-sides case."""
+    # Every FRAM-backed module's counter, not one named module's. A full-ceiling burst starves the
+    # heap for the whole graph, so an allocation failure it provokes can surface in SGP40, SCD30,
+    # SYSTEM or any other logger - checking only WEBSERVER would miss exactly the all-sides case.
     after = get_errcount(dut_ip)
     grew = {
         name: (before.get(name, {}).get("counter", 0), entry.get("counter", 0))
@@ -85,3 +119,32 @@ def assert_no_module_logged_a_new_error(dut_ip: str, before: dict[str, Any], con
         if entry.get("counter", 0) > before.get(name, {}).get("counter", 0)
     }
     assert not grew, f"{context}: these modules logged new errors during the burst (before, after): {grew!r}; full log: {after!r}"
+
+
+def read_live_system_log(board: "Board") -> dict[str, Any]:
+    # SYSTEM's log in /status's errcount shape, read off the running firmware over the REPL (see _READ_SYSTEM_LOG).
+    output = board.exec(_READ_SYSTEM_LOG)
+    line = next((ln for ln in output.splitlines() if ln.startswith("SYSLOG ")), None)
+    assert line is not None, f"the board printed no SYSLOG line:\n{output}"
+    entry = json.loads(line[len("SYSLOG ") :])
+    assert entry is not None, f"no running sensortask_* module with a SystemService on the board:\n{output}"
+    return {"SYSTEM": {"counter": entry["ErrCount"], "history": [{"num": n, "type": t} for n, t in zip(entry["ErrNum"], entry["ErrType"], strict=True)]}}
+
+
+def new_task_raised(before: dict[str, Any], after: dict[str, Any]) -> int:
+    # SYSTEM TASK_RAISED entries between two errcount reads. Counted over the newest entries the counter grew by, so a
+    # repeat into the newest slot still counts; reaching past a collapsed repeat into an older entry can only fail a run.
+    old, new = before.get("SYSTEM", {}), after.get("SYSTEM", {})
+    used = [h for h in new.get("history", []) if h.get("type") != "N"]
+    grew = new.get("counter", 0) - old.get("counter", 0)
+    if grew < 0:  # cleared in between: everything in the log is newer than the first read
+        grew = len(used)
+    window = used[len(used) - min(grew, len(used)) :]
+    return sum(1 for h in window if h.get("type") == "E" and h.get("num") == _TASK_RAISED)
+
+
+def assert_no_new_task_raised(before: dict[str, Any], after: dict[str, Any], context: str) -> None:
+    # The console gates' second half: at DebugLevel 0 the firmware's unretrieved-exception report prints nothing, so a
+    # supervised task that died of an exhausted heap shows only here (SPECIFICATION.md Part I.4(e)).
+    found = new_task_raised(before, after)
+    assert found == 0, f"{context}: SYSTEM logged {found} new TASK_RAISED entr(y/ies) - a supervised task ended raising; before {before.get('SYSTEM')!r}, after {after.get('SYSTEM')!r}"

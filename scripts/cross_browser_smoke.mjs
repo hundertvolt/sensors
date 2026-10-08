@@ -1,29 +1,55 @@
-// Standalone (non-Vitest) cross-browser smoke check: drives the real production website through
-// WebKitGTK, real Firefox, real Microsoft Edge, and Playwright Chromium via their own WebDriver
-// servers. Run: `node scripts/cross_browser_smoke.mjs`. See SPECIFICATION.md Part H.7 ("Cross-browser coverage").
+// Standalone (non-Vitest) cross-browser smoke check: boots the twin of every device of devices/*.toml in
+// turn and drives that device's real site through WebKitGTK, Firefox, Edge and Playwright's Chromium.
+// Run: `node scripts/cross_browser_smoke.mjs`. See SPECIFICATION.md Part H.7 ("Cross-browser coverage").
 
 import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, devices } from "playwright";
+import { drainChildOutput } from "../tests_js/_memory_markers.js";
+import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
+import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
+
+/** @typedef {import("./_cross_browser_probe.mjs").Probe} Probe */
+/** @typedef {import("./_cross_browser_probe.mjs").ProbeDefinitions} ProbeDefinitions */
+/** @typedef {import("./_page_load_connections.mjs").CountingProxy} CountingProxy */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-// build/generated_src first: no static src/sensortask_wozi.py exists any more
-// (SPECIFICATION.md Part L.2) - .github/workflows/ci.yml's
-// web-cross-browser-smoke job generates it fresh there, via buildgen, before this spawns.
-const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
+// Every device's module, wiring plan and definitions come from build/generated_src/ and its site from
+// build/generated_html/<device>/ (SPECIFICATION.md Part L.2); `npm run build:site` writes both.
+/** @param {string} device */
+function micropythonPath(device) {
+    return `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
+}
 const HOST = "127.0.0.1";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19481,
 // 19482 already taken by that file and _live_matrix_command.js).
 const PORT = 19420;
+// Every browser loads the site through a counting proxy on the next port up, never the twin directly.
+const PROXY_PORT = 19421;
 const TWIN_URL = `http://${HOST}:${PORT}/`;
+const SITE_URL = `http://${HOST}:${PROXY_PORT}/`;
+// @tunable l0.live_twin_ready_timeout_ms = 20000
 const READY_TIMEOUT_MS = 20000;
+// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 const SHUTDOWN_TIMEOUT_MS = 15000;
+// @tunable l0.smoke_h1_wait_ms = 10000
+const H1_WAIT_MS = 10000;
+// The connections one page load opens for itself (the document and its assets, SPECIFICATION.md H.7), counted
+// per engine at the proxy apart from the data requests that follow: a higher count, or none, fails the check.
+// @tunable web.connections_per_page_load = 2
+const CONNECTIONS_PER_PAGE_LOAD = 2;
+// A Chromium-family engine sometimes opens spare sockets that carry no request (Edge two, Chromium one), counted once the
+// page's first data request went out, so the socket opened for it is not one; they are printed and bounded.
+// @tunable l0.smoke_speculative_connections_max = 2
+const SPECULATIVE_CONNECTIONS_MAX = 2;
+// The count waits for that first data request; this bounds only a page that never sends one.
+// @tunable l0.smoke_first_data_request_wait_ms = 10000
+const FIRST_DATA_REQUEST_WAIT_MS = 10000;
 
 const CROSS_BROWSER_DIR = process.env.CROSS_BROWSER_TOOLCHAIN_DIR || path.join(homedir(), "cross-browser-toolchain");
 const FIREFOX_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff", "bin", "firefox");
@@ -31,6 +57,18 @@ const GECKODRIVER_BIN = path.join(CROSS_BROWSER_DIR, "mamba_root", "envs", "ff",
 const WEBKIT_DRIVER_BIN = "/usr/bin/WebKitWebDriver";
 const EDGE_BIN = "/usr/bin/microsoft-edge-stable";
 const SANDBOX_CHROMIUM = "/opt/pw-browsers/chromium"; // same dev-sandbox path vitest.config.js already special-cases
+
+const USAGE = `Usage: node scripts/cross_browser_smoke.mjs [-h | --help]
+Boots the twin of every device of devices/*.toml in turn and drives its site through every installed
+engine (WebKitGTK, Firefox, Edge, Playwright's Chromium) at two viewports (SPECIFICATION.md H.7).
+Environment:
+  PICO_TOOLCHAIN_DIR           the MicroPython toolchain (default: ~/pico-toolchain)
+  CROSS_BROWSER_TOOLCHAIN_DIR  Firefox and geckodriver (default: ~/cross-browser-toolchain)
+Exit codes: 0 every check passed; 1 a check failed, a twin logged an allocation failure, or nothing ran; 2 a usage error.`;
+
+// Loaded only after the arguments are read, so --help answers on a checkout with no node_modules.
+/** @type {typeof import("playwright")} */
+let playwright;
 
 const WEBKIT_DRIVER_PORT = 4444;
 const GECKODRIVER_PORT = 4445;
@@ -46,7 +84,23 @@ const DESKTOP_VIEWPORT = { width: 1280, height: 900 };
 const MOBILE_VIEWPORT = { width: 393, height: 852 };
 const RESPONSIVE_BREAKPOINT_PX = 640;
 
-const PROBE_FIELD = "MeasInt";
+/** The derived device set: sorted devices/*.toml stems minus the zz_test_ fixtures, as tests_scripts/_devices.py. */
+function derivedDevices() {
+    return readdirSync(path.join(REPO_ROOT, "devices"))
+        .filter((name) => name.endsWith(".toml") && !name.startsWith("zz_test_"))
+        .map((name) => name.slice(0, -".toml".length))
+        .sort();
+}
+
+/** @param {string} device */
+function definitionsPath(device) {
+    return path.join(REPO_ROOT, "build", "generated_src", "definitions", `${device}.json`);
+}
+
+/** @param {string} device */
+function sitePath(device) {
+    return path.join(REPO_ROOT, "build", "generated_html", device, "frozen_html.py");
+}
 
 /** @param {number} ms */
 function sleep(ms) {
@@ -74,6 +128,16 @@ async function waitUntilServing(url, timeoutMs) {
     throw new Error(`nothing answered ${url} within ${timeoutMs}ms`);
 }
 
+/** Fails a check whose page load opened more of its own connections than registered, or none through the proxy. @param {string} device @param {string} engine @param {(string | null)[]} firstRequests */
+function checkPageLoadConnections(device, engine, firstRequests) {
+    const { page, speculative, data } = classifyConnections(firstRequests);
+    console.log(`connections per page load (${device} ${engine}): ${page}, plus ${speculative} speculative and ${data} for its data requests`);
+    if (page === 0 || page > CONNECTIONS_PER_PAGE_LOAD || speculative > SPECULATIVE_CONNECTIONS_MAX) {
+        const seen = firstRequests.map((line) => line ?? "(no request)").join("; ");
+        throw new Error(`the page load opened ${page} connection(s) of its own and ${speculative} speculative through the proxy; 1 to ${CONNECTIONS_PER_PAGE_LOAD} and at most ${SPECULATIVE_CONNECTIONS_MAX} are registered (${seen})`);
+    }
+}
+
 // Every spawned child is tracked from creation until stopProcess() or a signal handler reaps it:
 // Node's synchronous crash on an unhandled ChildProcess 'error' happens outside every try/catch
 // here, skipping the cleanup and leaking whatever else runs. Part H.7 has the overall design.
@@ -89,18 +153,19 @@ function trackProcess(proc, label) {
     return proc;
 }
 
-function spawnTwin() {
+/** @param {string} device */
+function spawnTwin(device) {
     return trackProcess(
         spawn(
             MICROPYTHON_BIN,
             [
                 "digital_twin/run_generic_integration.py",
                 "--module",
-                "sensortask_wozi",
+                `sensortask_${device}`,
                 "--wiring-plan",
-                path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+                path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
                 "--device",
-                "wozi",
+                device,
                 "--host",
                 HOST,
                 "--port",
@@ -110,9 +175,10 @@ function spawnTwin() {
                 "--scd30-state-path",
                 "",
             ],
-            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH, TZ: "UTC" }, stdio: ["ignore", "ignore", "pipe"] },
+            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+            { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH: micropythonPath(device), TZ: "UTC" }, stdio: ["ignore", "pipe", "pipe"] },
         ),
-        "twin",
+        `${device} twin`,
     );
 }
 
@@ -155,7 +221,7 @@ async function waitForVirtualDisplay(display, timeoutMs) {
         if (existsSync(lockFile)) {
             return;
         }
-        // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+        // eslint-disable-next-line no-await-in-loop -- sequential polling
         await sleep(100);
     }
     throw new Error(`Xvfb never created ${lockFile} within ${timeoutMs}ms`);
@@ -181,41 +247,58 @@ async function wdDeleteSession(base, sid) {
 
 /** @param {string} base @param {string} sid @param {string} url */
 async function wdNavigate(base, sid, url) {
-    await fetch(`${base}/session/${sid}/url`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
+    await wdCommand(`${base}/session/${sid}/url`, { url }, "navigation");
 }
 
 /** @param {string} base @param {string} sid @param {number} width @param {number} height */
 async function wdSetWindowRect(base, sid, width, height) {
-    await fetch(`${base}/session/${sid}/window/rect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ width, height }) });
+    await wdCommand(`${base}/session/${sid}/window/rect`, { width, height }, "window resize");
 }
 
 /** @param {string} base @param {string} sid @param {string} script @returns {Promise<unknown>} */
 async function wdExecute(base, sid, script) {
-    const res = await fetch(`${base}/session/${sid}/execute/sync`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script, args: [] }) });
-    const body = /** @type {{value?: unknown}} */ (await res.json());
-    if (body.value && typeof body.value === "object" && "error" in body.value) {
-        throw new Error(`WebDriver script execution failed: ${JSON.stringify(body.value)}`);
+    return await wdCommand(`${base}/session/${sid}/execute/sync`, { script, args: [] }, "script execution");
+}
+
+/** @param {string} url @param {object} payload @param {string} what @returns {Promise<unknown>} */
+async function wdCommand(url, payload, what) {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const body = /** @type {{value?: unknown}} */ (await res.json().catch(() => ({})));
+    const failure = webDriverFailure(res.status, body);
+    if (failure !== null) {
+        throw new Error(`WebDriver ${what} failed: ${failure}`);
     }
     return body.value;
+}
+
+// Every selector is scoped by the probe's card: a page can carry two instances of one driver, whose
+// cards share field keys.
+/** @param {Probe} probe @param {string} attribute */
+function probeSelector(probe, attribute) {
+    return `[data-group-key="${probe.groupKey}"] [${attribute}="${probe.fieldKey}"]`;
 }
 
 // The nav click runs alone, not folded into the field fill: renderSection() swaps the section in
 // asynchronously, so a script that clicks and immediately queries can find the field null on both
 // engines. Its own script/poll pair, since execute/sync cannot await an in-page Promise anyway.
-const NAV_TO_SENSORS_SCRIPT = `
-    document.getElementById("hamburger-button").click();
-    const link = [...document.querySelectorAll("[data-section-key]")].find((a) => a.dataset.sectionKey === "sensors");
-    link.click();
-`;
-
-function fieldPresentScript() {
-    return `return document.querySelector('[data-field-key="${PROBE_FIELD}"]') !== null;`;
+/** @param {Probe} probe */
+function navToProbeSectionScript(probe) {
+    return `
+        document.getElementById("hamburger-button").click();
+        const link = [...document.querySelectorAll("[data-section-key]")].find((a) => a.dataset.sectionKey === "${probe.sectionKey}");
+        link.click();
+    `;
 }
 
-/** @param {number} probeValue */
-function fillAndApplyScript(probeValue) {
+/** @param {Probe} probe */
+function fieldPresentScript(probe) {
+    return `return document.querySelector('${probeSelector(probe, "data-field-key")}') !== null;`;
+}
+
+/** @param {Probe} probe @param {number} probeValue */
+function fillAndApplyScript(probe, probeValue) {
     return `
-        const input = document.querySelector('[data-field-key="${PROBE_FIELD}"]');
+        const input = document.querySelector('${probeSelector(probe, "data-field-key")}');
         input.value = "${probeValue}";
         input.dispatchEvent(new Event("input", { bubbles: true }));
         let el = input, card = null;
@@ -228,10 +311,11 @@ function fillAndApplyScript(probeValue) {
     `;
 }
 
-function readAppliedResultScript() {
+/** @param {Probe} probe */
+function readAppliedResultScript(probe) {
     return `
-        const w = document.querySelector('[data-field-wrapper-key="${PROBE_FIELD}"]');
-        const c = document.querySelector('[data-current-value-for="${PROBE_FIELD}"]');
+        const w = document.querySelector('${probeSelector(probe, "data-field-wrapper-key")}');
+        const c = document.querySelector('${probeSelector(probe, "data-current-value-for")}');
         return { applyStatus: w ? w.dataset.applyStatus : null, caption: c ? c.textContent : null };
     `;
 }
@@ -262,10 +346,10 @@ async function pollUntil(readFn, isReady, timeoutMs, timeoutMessage) {
 }
 
 /**
- * @param {{engine: string, viewport: "desktop" | "mobile", probeValue: number, driverProcessFactory: (display: string) => import("node:child_process").ChildProcess, driverBase: string, driverPort: number, capabilities: object}} opts
+ * @param {{device: string, engine: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy, driverProcessFactory: (display: string) => import("node:child_process").ChildProcess, driverBase: string, driverPort: number, capabilities: object}} opts
  */
-async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessFactory, driverBase, driverPort, capabilities }) {
-    const label = `${engine} (${viewport})`;
+async function runViaRawWebDriver({ device, engine, viewport, probe, probeValue, proxy, driverProcessFactory, driverBase, driverPort, capabilities }) {
+    const label = `${device} ${engine} (${viewport})`;
     const { display, xvfbProc } = spawnVirtualDisplay();
     let driverProc;
     let driverStderr = "";
@@ -282,7 +366,9 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
 
         const target = viewport === "mobile" ? MOBILE_VIEWPORT : DESKTOP_VIEWPORT;
         await wdSetWindowRect(driverBase, sid, target.width, target.height);
-        await wdNavigate(driverBase, sid, TWIN_URL);
+        proxy.reset();
+        await wdNavigate(driverBase, sid, SITE_URL);
+        checkPageLoadConnections(device, engine, await settledPageLoadConnections(proxy, FIRST_DATA_REQUEST_WAIT_MS));
         const readyTitle = await pollUntil(
             () => /** @type {Promise<string>} */ (wdExecute(driverBase, /** @type {string} */ (sid), "return document.title;")),
             (t) => typeof t === "string" && t.includes("Sensor Station"),
@@ -293,10 +379,10 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
             throw new Error(`unexpected page title: ${readyTitle}`);
         }
 
-        await wdExecute(driverBase, sid, NAV_TO_SENSORS_SCRIPT);
-        await pollUntil(() => wdExecute(driverBase, /** @type {string} */ (sid), fieldPresentScript()), (present) => present === true, 5000, `${PROBE_FIELD} field never rendered after navigating to Sensors`);
+        await wdExecute(driverBase, sid, navToProbeSectionScript(probe));
+        await pollUntil(() => wdExecute(driverBase, /** @type {string} */ (sid), fieldPresentScript(probe)), (present) => present === true, 5000, `${probe.groupKey}.${probe.fieldKey} field never rendered after navigating to ${probe.sectionKey}`);
 
-        const fillResult = /** @type {{title: string, innerWidth: number}} */ (await wdExecute(driverBase, sid, fillAndApplyScript(probeValue)));
+        const fillResult = /** @type {{title: string, innerWidth: number}} */ (await wdExecute(driverBase, sid, fillAndApplyScript(probe, probeValue)));
         if (viewport === "mobile" && fillResult.innerWidth >= RESPONSIVE_BREAKPOINT_PX) {
             throw new Error(`requested a mobile viewport but window.innerWidth was ${fillResult.innerWidth}px (>= ${RESPONSIVE_BREAKPOINT_PX}px breakpoint)`);
         }
@@ -306,10 +392,10 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
         // caption during this file's own development, reading the previous check's stale value.
         const expectedCaption = `Current value: ${probeValue}`;
         const applied = await pollUntil(
-            () => /** @type {Promise<{applyStatus: string | null, caption: string | null}>} */ (wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript())),
+            () => /** @type {Promise<{applyStatus: string | null, caption: string | null}>} */ (wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript(probe))),
             (r) => r.applyStatus !== null && r.applyStatus !== undefined && r.caption === expectedCaption,
             10000,
-            `apply status/caption never settled within 10s (last seen: ${JSON.stringify(await wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript()))})`,
+            `apply status/caption never settled within 10s (last seen: ${JSON.stringify(await wdExecute(driverBase, /** @type {string} */ (sid), readAppliedResultScript(probe)))})`,
         );
         if (applied.applyStatus !== "valid") {
             throw new Error(`expected applyStatus "valid", got ${JSON.stringify(applied.applyStatus)}`);
@@ -332,12 +418,15 @@ async function runViaRawWebDriver({ engine, viewport, probeValue, driverProcessF
     }
 }
 
-/** @param {"desktop" | "mobile"} viewport @param {number} probeValue */
-function runWebKit(viewport, probeValue) {
+/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+function runWebKit(device, viewport, probe, probeValue, proxy) {
     return runViaRawWebDriver({
+        device,
         engine: "WebKit",
         viewport,
+        probe,
         probeValue,
+        proxy,
         driverProcessFactory: (display) => trackProcess(spawn(WEBKIT_DRIVER_BIN, [`--port=${WEBKIT_DRIVER_PORT}`], { env: { ...process.env, DISPLAY: display }, stdio: ["ignore", "ignore", "pipe"] }), "WebKitWebDriver"),
         driverBase: `http://127.0.0.1:${WEBKIT_DRIVER_PORT}`,
         driverPort: WEBKIT_DRIVER_PORT,
@@ -345,12 +434,15 @@ function runWebKit(viewport, probeValue) {
     });
 }
 
-/** @param {"desktop" | "mobile"} viewport @param {number} probeValue */
-function runFirefox(viewport, probeValue) {
+/** @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+function runFirefox(device, viewport, probe, probeValue, proxy) {
     return runViaRawWebDriver({
+        device,
         engine: "Firefox",
         viewport,
+        probe,
         probeValue,
+        proxy,
         // Given a real DISPLAY, `-headless` Firefox still uses it rather than requiring it be
         // unset - confirmed directly (harmless either way; kept for consistency with the WebKit
         // path above rather than special-casing Firefox's own process/env setup).
@@ -386,9 +478,10 @@ async function pollForAppliedResult(wrapperLocator, captionLocator, expectedCapt
     throw new Error(`apply status/caption never settled within ${timeoutMs}ms (last seen: status=${JSON.stringify(lastStatus)} caption=${JSON.stringify(lastCaption)})`);
 }
 
-/** @param {"chromium" | "edge"} which @param {"desktop" | "mobile"} viewport @param {number} probeValue */
-async function runChromiumFamily(which, viewport, probeValue) {
-    const label = `${which === "edge" ? "Edge" : "Chromium"} (${viewport})`;
+/** @param {"chromium" | "edge"} which @param {string} device @param {"desktop" | "mobile"} viewport @param {Probe} probe @param {number} probeValue @param {CountingProxy} proxy */
+async function runChromiumFamily(which, device, viewport, probe, probeValue, proxy) {
+    const engine = which === "edge" ? "Edge" : "Chromium";
+    const label = `${device} ${engine} (${viewport})`;
     /** @type {string | undefined} */
     let executablePath;
     if (which === "edge") {
@@ -398,24 +491,26 @@ async function runChromiumFamily(which, viewport, probeValue) {
     }
     let browser;
     try {
-        browser = await chromium.launch(executablePath ? { executablePath } : {});
-        const context = await browser.newContext(viewport === "mobile" ? { ...devices["iPhone 15"] } : {});
+        browser = await playwright.chromium.launch(executablePath ? { executablePath } : {});
+        const context = await browser.newContext(viewport === "mobile" ? { ...playwright.devices["iPhone 15"] } : {});
         const page = await context.newPage();
-        await page.goto(TWIN_URL);
-        await page.waitForSelector("h1", { timeout: 10000 });
+        proxy.reset();
+        await page.goto(SITE_URL);
+        checkPageLoadConnections(device, engine, await settledPageLoadConnections(proxy, FIRST_DATA_REQUEST_WAIT_MS));
+        await page.waitForSelector("h1", { timeout: H1_WAIT_MS });
 
         const clickOrTap = viewport === "mobile" ? "tap" : "click";
         await page.locator("#hamburger-button")[clickOrTap]();
-        await page.locator('[data-section-key="sensors"]').first()[clickOrTap]();
-        const input = page.locator(`[data-field-key="${PROBE_FIELD}"]`);
+        await page.locator(`[data-section-key="${probe.sectionKey}"]`).first()[clickOrTap]();
+        const input = page.locator(probeSelector(probe, "data-field-key"));
         await input.waitFor();
 
         await input.fill(String(probeValue));
         const card = input.locator("xpath=ancestor::*[.//button[contains(@class,'apply-button')]][1]");
         await card.locator(".apply-button")[clickOrTap]();
 
-        const wrapper = page.locator(`[data-field-wrapper-key="${PROBE_FIELD}"]`);
-        const caption = page.locator(`[data-current-value-for="${PROBE_FIELD}"]`);
+        const wrapper = page.locator(probeSelector(probe, "data-field-wrapper-key"));
+        const caption = page.locator(probeSelector(probe, "data-current-value-for"));
         const applyStatus = await pollForAppliedResult(wrapper, caption, `Current value: ${probeValue}`, 10000);
         if (applyStatus !== "valid") {
             throw new Error(`expected applyStatus "valid", got ${JSON.stringify(applyStatus)}`);
@@ -442,65 +537,120 @@ for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
     });
 }
 
+/**
+ * Boots one device's twin and runs every available (engine, viewport) check against it.
+ * @param {string} device
+ * @param {Probe} probe
+ * @param {{name: string, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} engines
+ * @param {{value: number}} counter
+ * @param {{label: string, ok: boolean, detail?: string}[]} results
+ */
+async function smokeDevice(device, probe, engines, counter, results) {
+    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
+    const twin = spawnTwin(device);
+    const output = drainChildOutput(twin);
+    let failed = false;
+    /** @type {CountingProxy | undefined} */
+    let proxy;
+    try {
+        await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
+        proxy = await startCountingProxy(HOST, PROXY_PORT, PORT);
+        for (const engine of engines) {
+            for (const viewport of /** @type {const} */ (["desktop", "mobile"])) {
+                // One counter across every device and check, so no two checks against a twin ever
+                // write the same value and mistake each other's write for their own.
+                const probeValue = probe.min + 1 + (counter.value % (probe.max - probe.min - 1));
+                counter.value += 1;
+                // eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a time
+                const result = await engine.run(device, viewport, probe, probeValue, proxy);
+                results.push(result);
+                console.log(`${result.ok ? "PASS" : "FAIL"} ${result.label}`);
+                if (!result.ok) {
+                    failed = true;
+                    console.error(result.detail);
+                }
+            }
+        }
+    } catch (err) {
+        failed = true;
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ label: `${device} twin`, ok: false, detail: message });
+        console.error(`FAIL ${device} twin: ${message}`);
+    } finally {
+        await proxy?.close();
+        await stopProcess(twin);
+    }
+    // The memory gate (SPECIFICATION.md Part I.4(e)): a marker fails the device even when every check passed.
+    const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);
+    const marked = output.markerLines();
+    if (marked.length > 0 || !drained) {
+        failed = true;
+        const detail = marked.length > 0 ? `logged an allocation failure:\n${marked.join("\n")}` : `output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete`;
+        results.push({ label: `${device} twin`, ok: false, detail });
+        console.error(`FAIL ${device} twin: ${detail}`);
+    }
+    if (failed) {
+        console.error(`\n--- ${device} twin output ---\n${output.text()}`);
+    }
+}
+
 async function main() {
+    const args = process.argv.slice(2);
+    if (args.includes("-h") || args.includes("--help")) {
+        console.log(USAGE);
+        process.exit(0);
+    }
+    if (args.length > 0) {
+        console.error(`error: unknown argument ${JSON.stringify(args[0])}\n${USAGE}`);
+        process.exit(2);
+    }
+    playwright = await import("playwright");
     if (!existsSync(MICROPYTHON_BIN)) {
         console.error(`MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first.`);
         process.exit(1);
     }
 
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-    const twin = spawnTwin();
-    let twinStderr = "";
-    twin.stderr?.on("data", (chunk) => {
-        twinStderr += chunk.toString();
-    });
+    // Every device's probe is picked before any twin boots, so a missing build or a device with no
+    // probe-able field fails the run at once, naming the device.
+    /** @type {{device: string, probe: Probe}[]} */
+    const plan = [];
+    for (const device of derivedDevices()) {
+        if (!existsSync(definitionsPath(device)) || !existsSync(sitePath(device))) {
+            console.error(`${device}: no generated definitions or site under build/ - run 'npm run build:site' first.`);
+            process.exit(1);
+        }
+        plan.push({ device, probe: pickProbe(/** @type {ProbeDefinitions} */ (JSON.parse(readFileSync(definitionsPath(device), "utf8")))) });
+    }
+
+    /** @type {{name: string, available: boolean, run: (device: string, viewport: "desktop" | "mobile", probe: Probe, probeValue: number, proxy: CountingProxy) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
+    const engines = [
+        { name: "WebKit", available: existsSync(WEBKIT_DRIVER_BIN), run: runWebKit },
+        { name: "Firefox", available: existsSync(FIREFOX_BIN) && existsSync(GECKODRIVER_BIN), run: runFirefox },
+        { name: "Edge", available: existsSync(EDGE_BIN), run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("edge", device, viewport, probe, probeValue, proxy) },
+        { name: "Chromium", available: true, run: (device, viewport, probe, probeValue, proxy) => runChromiumFamily("chromium", device, viewport, probe, probeValue, proxy) },
+    ];
+    for (const engine of engines.filter((e) => !e.available)) {
+        console.warn(`SKIP ${engine.name}: binary not found (run scripts/setup_cross_browser_toolchain.sh)`);
+    }
+    const available = engines.filter((e) => e.available);
 
     /** @type {{label: string, ok: boolean, detail?: string}[]} */
     const results = [];
-    try {
-        await waitUntilServing(TWIN_URL, READY_TIMEOUT_MS);
-
-        /** @type {{name: string, available: boolean, run: (viewport: "desktop" | "mobile", probeValue: number) => Promise<{label: string, ok: boolean, detail?: string}>}[]} */
-        const engines = [
-            { name: "WebKit", available: existsSync(WEBKIT_DRIVER_BIN), run: runWebKit },
-            { name: "Firefox", available: existsSync(FIREFOX_BIN) && existsSync(GECKODRIVER_BIN), run: runFirefox },
-            { name: "Edge", available: existsSync(EDGE_BIN), run: (viewport, probeValue) => runChromiumFamily("edge", viewport, probeValue) },
-            { name: "Chromium", available: true, run: (viewport, probeValue) => runChromiumFamily("chromium", viewport, probeValue) },
-        ];
-
-        // Every (engine, viewport) check gets its own probe value, never reused, so two checks
-        // interleaving against the one shared twin backend cannot mistake one another's write
-        // for their own - an earlier version reused one and briefly masked a real timing bug.
-        let nextProbeValue = 30;
-        for (const engine of engines) {
-            if (!engine.available) {
-                console.warn(`SKIP ${engine.name}: binary not found (run scripts/setup_cross_browser_toolchain.sh)`);
-                continue;
-            }
-            for (const viewport of /** @type {const} */ (["desktop", "mobile"])) {
-                nextProbeValue += 1;
-                // eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a time
-                const result = await engine.run(viewport, nextProbeValue);
-                results.push(result);
-                console.log(`${result.ok ? "PASS" : "FAIL"} ${result.label}`);
-                if (!result.ok) {
-                    console.error(result.detail);
-                }
-            }
-        }
-    } finally {
-        await stopProcess(twin);
+    const counter = { value: 0 };
+    for (const { device, probe } of plan) {
+        console.log(`\n${device}: probing ${probe.sectionKey} / ${probe.groupKey} / ${probe.fieldKey}`);
+        // eslint-disable-next-line no-await-in-loop -- one twin at a time: every twin binds the one PORT
+        await smokeDevice(device, probe, available, counter, results);
     }
 
     const ran = results.length;
     const failed = results.filter((r) => !r.ok).length;
     console.log(`\n${ran - failed}/${ran} cross-browser smoke checks passed.`);
     if (ran === 0) {
-        console.error("No engine was available at all - nothing was actually checked.");
+        console.error("No device or no engine was available - nothing was actually checked.");
         process.exit(1);
     }
     if (failed > 0) {
-        console.error(`\n--- twin stderr ---\n${twinStderr}`);
         process.exit(1);
     }
 }

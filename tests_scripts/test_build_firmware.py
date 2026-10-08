@@ -5,22 +5,40 @@ CLI error paths) without the minutes-long ARM compile."""
 # The one test that does run the real ARM build carries its own comment - see
 # test_real_firmware_build_produces_a_valid_uf2.
 
+import contextlib
 import os
 import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
+from buildgen.frozen_modules import compute_frozen_modules
+from buildgen.generate import generate_device
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
+def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "scripts/build_firmware.py", *args],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
 
 @pytest.fixture(scope="session")
 def build_firmware(repo_root: Path) -> ModuleType:
-    """Imports scripts/build_firmware.py as a real module (it's a `uv run`-style standalone
-    script, not a package member) so build_stage_dir()/_MANIFEST_TEMPLATE can be checked
-    directly instead of only through subprocess/CLI behavior."""
+    # Imports scripts/build_firmware.py as a real module (it's a `uv run`-style standalone
+    # script, not a package member) so build_stage_dir()/_MANIFEST_TEMPLATE can be checked
+    # directly instead of only through subprocess/CLI behavior.
     return load_script_module(repo_root / "scripts" / "build_firmware.py", "build_firmware")
 
 
@@ -92,13 +110,10 @@ def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(build_firmwa
     # No longer every src/*.py file: only this device's buildgen-computed dependency closure is
     # staged (Part L.2's dependency-driven selection), a genuinely smaller firmware than this
     # script produced before buildgen.
-    from buildgen.frozen_modules import compute_frozen_modules
-    from buildgen.validate import build_model
-
     build_firmware.build_stage_dir(tmp_path, device)
 
-    model = build_model(repo_root / "devices" / f"{device}.toml", repo_root / "src")
-    expected_modules = compute_frozen_modules(model, repo_root / "src", repo_root / "ext")
+    generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
+    expected_modules = compute_frozen_modules(generated.module_source, repo_root / "src", repo_root / "ext")
     assert expected_modules, "sanity: a real device should need at least one frozen module"
 
     staged = {p.name for p in tmp_path.iterdir()}
@@ -140,21 +155,25 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
     build_firmware.build_stage_dir(tmp_path, device)
 
     generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
-    assert (tmp_path / f"sensortask_{device}.py").read_text() == generated.module_source
-    assert (tmp_path / "main.py").read_text() == generate_boot_entry_source(device)
+    # The generated module carries src/'s own TYPE_CHECKING form, so it is staged stripped like every src/ module.
+    staged = (tmp_path / f"sensortask_{device}.py").read_text()
+    assert "TYPE_CHECKING" in generated.module_source
+    assert "TYPE_CHECKING" not in staged
+    assert staged == build_firmware.strip_type_checking_blocks(generated.module_source)
+    assert (tmp_path / "main.py").read_text() == generated.boot_entry_source == generate_boot_entry_source(device)
     other_device = "dev" if device == "wozi" else "wozi"
     assert (tmp_path / "main.py").read_text() != generate_boot_entry_source(other_device)
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
 def test_build_stage_dir_strips_type_checking_blocks_from_staged_src_files(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, device: str) -> None:
-    # config_manager.py is a known if TYPE_CHECKING: user, so its staged copy must have the
+    # asy_config_manager.py is a known if TYPE_CHECKING: user, so its staged copy must have the
     # guard stripped while the real src/ file keeps it - CLAUDE.md's hard rule against editing
     # src/ for a build-only concern.
     build_firmware.build_stage_dir(tmp_path, device)
-    staged_text = (tmp_path / "config_manager.py").read_text()
+    staged_text = (tmp_path / "asy_config_manager.py").read_text()
     assert "TYPE_CHECKING" not in staged_text
-    assert "TYPE_CHECKING" in (repo_root / "src" / "config_manager.py").read_text()
+    assert "TYPE_CHECKING" in (repo_root / "src" / "asy_config_manager.py").read_text()
 
 
 @pytest.mark.parametrize("device", ["wozi", "dev"])
@@ -165,16 +184,6 @@ def test_build_stage_dir_frozen_html_contains_the_real_website(build_firmware: M
     # /js/app.js.gz marks the real bundled website. No separate definitions or style check: both are
     # inlined into index.html at build time (Part H.7), never staged as their own files.
     assert "/js/app.js.gz" in frozen_html_text
-
-
-def _run_cli(repo_root: Path, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "scripts/build_firmware.py", *args],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=check,
-    )
 
 
 def test_cli_missing_device_toml_fails_fast(repo_root: Path, tmp_path: Path) -> None:
@@ -191,6 +200,79 @@ def test_cli_missing_toolchain_dir_fails_before_attempting_a_build(repo_root: Pa
     assert result.returncode != 0
     assert "no-toolchain-here" in result.stderr or "toolchain" in result.stderr.lower()
     assert not (tmp_path / "out.uf2").exists()
+
+
+def _fake_toolchain(root: Path) -> Path:
+    # A toolchain directory that passes the checkout check: ports/rp2 present, nothing built.
+    (root / "micropython" / "ports" / "rp2").mkdir(parents=True)
+    return root
+
+
+def test_cli_a_toolchain_without_its_record_is_refused_before_building(repo_root: Path, tmp_path: Path) -> None:
+    # setup deletes the record first and writes it last, so a directory without one is an interrupted
+    # setup or a toolchain built before the record existed: neither is built from.
+    toolchain = _fake_toolchain(tmp_path / "toolchain")
+    result = _run_cli(repo_root, ["wozi", "--output", str(tmp_path / "out.uf2"), "--toolchain-dir", str(toolchain)])
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"the toolchain at {toolchain} is incomplete or predates the build record - run `uv run toolchain/setup_toolchain.py setup` first" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not (tmp_path / "out.uf2").exists()
+
+
+def test_cli_a_toolchain_in_use_fails_at_once_naming_the_holder(build_firmware: ModuleType, repo_root: Path, tmp_path: Path) -> None:
+    # A second build (or a setup) on one toolchain directory fails fast with the holder's pid rather than
+    # wiping mpy-cross under the first; this process holds the real lock while the CLI runs.
+    toolchain = _fake_toolchain(tmp_path / "toolchain")
+    with build_firmware.st.toolchain_lock(toolchain):
+        result = _run_cli(repo_root, ["wozi", "--output", str(tmp_path / "out.uf2"), "--toolchain-dir", str(toolchain)])
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"another setup or firmware build (pid {os.getpid()}) is using {toolchain}" in result.stderr
+    assert not (tmp_path / "out.uf2").exists()
+
+
+# A record may carry no built ref (a `test` run with none to carry over); the line then says so, never "None".
+@pytest.mark.parametrize(
+    ("built_ref", "printed"),
+    [("v1.29.0", "MicroPython v1.29.0 (0123abcd)"), (None, "MicroPython v1.29.0 as pinned (built by `test`, ref not recorded) (0123abcd)")],
+)
+def test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_it(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], built_ref: "str | None", printed: str) -> None:
+    # One absolute path for the lock, the record and every path the build writes into generated files;
+    # the lock is held from before the mpy-cross wipe until the image is copied out.
+    monkeypatch.chdir(tmp_path)
+    toolchain = _fake_toolchain(tmp_path / "rel" / "toolchain").resolve()
+    stale_mpy_cross = toolchain / "micropython" / "mpy-cross" / "build" / "stale.o"
+    stale_mpy_cross.parent.mkdir(parents=True)
+    stale_mpy_cross.write_text("")
+    output = tmp_path / "out.uf2"
+    events: list[str] = []
+    seen: dict[str, Path] = {}
+
+    @contextlib.contextmanager
+    def fake_lock(toolchain_dir: Path) -> "Iterator[None]":
+        seen["lock"] = toolchain_dir
+        events.append(f"lock (mpy-cross build present: {stale_mpy_cross.exists()})")
+        yield
+        events.append(f"unlock (image copied: {output.exists()})")
+
+    def fake_build_firmware(micropython_dir: Path, _board: str, _jobs: int, *_args: object, toolchain_dir: Path, **_kwargs: object) -> Path:
+        seen["build"] = toolchain_dir
+        events.append("build_firmware")
+        image = micropython_dir / "firmware.uf2"
+        image.write_bytes(b"UF2\n")
+        return image
+
+    monkeypatch.setattr(build_firmware.st, "toolchain_lock", fake_lock)
+    monkeypatch.setattr(build_firmware.st, "read_toolchain_record", lambda _d: {"pinned_ref": "v1.29.0", "built_ref": built_ref, "micropython_commit": "0123abcd"})
+    monkeypatch.setattr(build_firmware.st, "build_mpy_cross", lambda *_a: events.append(f"build_mpy_cross (wiped: {not stale_mpy_cross.exists()})"))
+    monkeypatch.setattr(build_firmware.st, "build_firmware", fake_build_firmware)
+    monkeypatch.setattr(build_firmware, "build_stage_dir", lambda *_a: events.append("stage"))
+    monkeypatch.setattr(sys, "argv", ["build_firmware.py", "wozi", "--output", str(output), "--toolchain-dir", "rel/toolchain"])
+    assert build_firmware.main() == 0
+    assert seen == {"lock": toolchain, "build": toolchain}, seen
+    assert events == ["lock (mpy-cross build present: True)", "stage", "build_mpy_cross (wiped: True)", "build_firmware", "unlock (image copied: True)"], events
+    toolchain_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("== Toolchain: "))
+    assert printed in toolchain_line, toolchain_line
+    assert "None" not in toolchain_line, toolchain_line
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

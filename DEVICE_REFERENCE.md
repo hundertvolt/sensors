@@ -8,15 +8,21 @@ elsewhere, when a new user-facing behavior needs explaining.
 
 One physical LED serves two independent purposes, arbitrated by `asy_neopixel_driver.py`:
 
-- **WiFi status overlay** — a dim white glow, on/off only, driven by `/networking`'s `LedWifiOn`
-  config field. This is a static preference ("is the indicator enabled"), not a live connectivity
-  signal — it's (re)applied whenever the WiFi service (re)establishes its state, not continuously
-  tied to connection health.
+- **Wi-Fi status overlay** — a dim white glow showing the Wi-Fi state while `/networking`'s
+  `LEDWifiOn` is on (off: the overlay stays dark): searching for the network — toggling every half
+  second; connected — on; disconnected — off; serving the fallback hotspot — on with a short gap
+  every 3 s, an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its
+  hotspot while the client stays; Wi-Fi switched off (a second failure streak after the hotspot ran,
+  or no readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle. Every
+  one of these patterns follows `LEDWifiOn`, the switched-off one included: dark while it is off,
+  shown as soon as it is switched on (owner, 2026-10-02).
 - **Notification signal** — a colored ramp-up/ramp-down flash, triggered per sensor threshold and
   fully overriding the WiFi overlay while it plays (the overlay's own value is restored once the
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
-  configurable via `/notification`; each threshold's own **color** is fixed at build time, not
-  user-configurable:
+  configurable via `/notification`. It flashes only inside the notification window
+  `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual
+  flash (`LightCmdLED`) is refused ("Failed") while another flash is still playing. Each
+  threshold's own **color** is fixed at build time, not user-configurable:
 
   | Threshold | Color |
   |---|---|
@@ -24,17 +30,43 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   | `WarnVOC` | green |
   | `WarnHum` | blue |
 
+## Networking status
+
+`Connected` and `WifiUptime` (`/status`, networking) describe the Wi-Fi link, not internet
+reachability: they count while the unit is joined to a network **or** serving its fallback hotspot
+(owner, 2026-09-29). While the radio's status cannot be read, `Connected` and `WifiUptime` keep
+their last values and the WIFI history counts a warning. Why a unit went offline is in that history
+too: the fallback to the hotspot, the permanent switch-off and a connect attempt that ended without
+a verdict each leave a warning.
+
+`NTPSynced` is true only while the last successful time sync is less than three sync intervals old
+(`NTPInterval`); a failed resync does not extend it, and a change to an NTP setting clears it until
+the next successful sync (owner, 2026-09-29). `DNSFallback` (Networking) lists up to three IPv4 DNS
+servers, comma-separated, tried in order after the one the network hands out (default
+`8.8.8.8,1.1.1.1`); empty means none, set through the API, since the website cannot send an empty
+value.
+
 ## SGP40 VOC baseline FRAM backup
 
-`/sensors`' SGP40 config has two related but independently-meaning "0" values — easy to conflate:
+`/sensors`' SGP40 config has three related but independently-meaning "0" values — easy to conflate:
 
 - **`BackupPeriod`** (minutes, 0–1440): how often the VOC baseline/humidity-compensation state is
-  written to FRAM. **`0` disables periodic backup entirely** — nothing is ever written.
+  written to FRAM. **`0` disables periodic backup entirely** — nothing is ever written. A backup is
+  verified about once an hour, and every backup when they are more than an hour apart.
 - **`BackupMaxAge`** (minutes, 0–10080): on boot, how old a restored FRAM backup is allowed to be
   before it's rejected as stale (falls back to a fresh VOC init instead). **`0` disables this
-  staleness check** — a restored backup is accepted no matter how old it is.
+  staleness check** — a restored backup is accepted no matter how old it is. Under a nonzero limit,
+  a backup stamped later than the unit's clock (the clock was set back) counts as too old.
+- **`WaitTimeNTP`** (seconds, 0–600): how long a boot waits for NTP before restoring a timestamped
+  backup (so its age can be checked). **`0` means never wait**: the backup is restored at once,
+  without an age check. A wait that ends without a sync restores the backup without an age check
+  and logs a warning.
 
-The two `0`s point in opposite directions: one turns a feature off, the other turns a limit off.
+The `0`s point in different directions: `BackupPeriod` turns a feature off, `BackupMaxAge` turns a
+limit off, `WaitTimeNTP` skips a wait.
+
+A restart of the SGP40 task (not a boot) keeps the running VOC state and restores nothing, unless the
+boot's own restore is still waiting for NTP.
 
 ## ISL29125 colour sensor (dev units only)
 
@@ -50,8 +82,8 @@ changed. `Hue`/`Sat`/`Bri` are derived from those same three numbers and inherit
 2000–12500 K and is `—` (nothing) in light too dim to say anything meaningful about. A missing CCT
 is normal in a dark room, not a fault.
 
-**The IR-compensation settings move the brightness, not just the colour.** `IrCompOffset` and
-`IrCompAdjust` exist because the sensor's filters also see infrared, which indoor lighting and
+**The IR-compensation settings move the brightness, not just the colour.** `IRCompOffset` and
+`IRCompAdjust` exist because the sensor's filters also see infrared, which indoor lighting and
 sunlight carry in very different amounts. Changing either one changes the reported **lux** as well
 as the colour balance — they are not a colour-only tint control. Change them deliberately, one at a
 time, and expect the lux scale to shift with them; the defaults (offset off, adjust 40) are a
@@ -65,9 +97,9 @@ changes**. If it does, that is worth reporting. The `AutoRange*` settings tune w
 happens (how full the reading gets before going up, how empty before coming down, how long to
 settle, and a minimum dwell time so it cannot chatter) — the defaults are fine for ordinary use.
 There used to be a fourth, controlling how long a light change must persist before the chip itself
-reacts. It is gone from the settings on purpose: it only worked while it stayed shorter than the
-measurement interval, and raising it past that silently handed every range decision to the unit's
-slower software re-check. The unit now works it out from the measurement interval and the ADC
+reacts. It is gone from the settings (owner, 2026-09-13): it only worked while it stayed shorter
+than the measurement interval, and raising it past that silently handed every range decision to the
+unit's slower software re-check. The unit now works it out from the measurement interval and the ADC
 resolution — always the most transient rejection that still lets the chip react first — so there is
 nothing left to get wrong. A side effect worth knowing: changing the measurement interval now also
 reconfigures the sensor, where before it only retimed the software.
@@ -85,8 +117,10 @@ from the nominal 26.67× ratio between them, and that error is the small step yo
 crosses a range change. The unit will measure the real ratio on *this* chip, but only when you ask
 and it never applies the result by itself.
 
-Set the light so the reading sits in the band where both ranges work — mid-brightness, neither dark
-nor near saturation — and switch **Calibrate Gain Ratio** on. For up to two minutes the unit takes
+Start with the scene dark, let the unit settle on its sensitive range, then raise the light until
+**Calibration Light** reads suitable — mid-brightness, neither dark nor near saturation — and switch
+**Calibrate Gain Ratio** on. (A strongly coloured light can hold the unit on its bright range, where
+its green is too small to calibrate from; starting dark avoids that.) For up to two minutes the unit takes
 readings on both ranges and checks the light held still between them, discarding any pair taken
 while it moved. What it finds appears as **Measured Gain Ratio** among the ISL29125 readings, and
 stays there for ten minutes. If the number looks sensible, type it into **Range Gain Ratio**; that
@@ -97,5 +131,13 @@ Measured Gain Ratio staying blank means no usable pair was obtained — most oft
 bright or too dark for both ranges at once, or it is not holding still. Move the light and run it
 again.
 
-The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor and never
-will (CLAUDE.md).
+The sensor is wired on `dev` only (I2C1, IRQ on GPIO6) — `wozi` carries no colour sensor; a
+device's TOML decides its sensors.
+
+## Clearing the error logs
+
+The Status page's error-log reset (`PUT /status {"ResetErrors": true}`) clears every module's log
+and the dropped-connection count (`HTTPDropped`) at once. It must finish within the device's
+15-second request limit, the same limit the web page waits; on a busy device it can take several
+seconds. A reset that reports "Failed" means one module's log could not be written; the other logs
+are cleared. Read and save the logs before clearing them: the reset cannot be undone.

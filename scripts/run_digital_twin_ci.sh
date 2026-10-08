@@ -18,6 +18,18 @@
 # subprocess over plain HTTP - which drives run_generic_integration.py through $device's own
 # generated module and propagates its exit code straight through.
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/run_digital_twin_ci.sh [device]
+Runs scripts/_digital_twin_ci_suite.py for one devices/<device>.toml at both GC stages (default
+device: wozi) and exits with its result.
+
+Environment:
+  PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1           skip the system-package step of a toolchain build (default: 0)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 device="${1:-wozi}"
@@ -36,7 +48,7 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-# Run 7's captive-portal DNSServer binds the real privileged port 53, which a non-root runner
+# Run 7's CaptiveDNS binds the real privileged port 53, which a non-root runner
 # cannot do without this capability on the interpreter binary. Granted fresh every invocation
 # because a cached toolchain archive does not carry xattrs (digital_twin/README.md has the account).
 echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for Run 7's real port-53 DNS server)"

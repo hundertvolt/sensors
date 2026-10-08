@@ -7,26 +7,26 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 # 2026-09-18; tests_hardware/README.md states it fully, and why the answer is not "spend zero".
 
 import ast
+import json
 import re
+from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
+
+from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# The four route-level dispatch-only fields (asy_webserver_service.py's own PUT handlers act on them
-# and never hand them to ConfigManager) - the rest are derived from the real @web schema tags below,
-# so a driver that stops declaring dispatch=true is caught rather than assumed.
-_ROUTE_DISPATCH_FIELDS = frozenset({"SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"})
-
 # Tests whose only persisting-looking PUT provably writes nothing, with the reason each is exempt.
-# config_manager.py's write_config() short-circuits on `if not changed` BEFORE staging anything, so
+# asy_config_manager.py's write_config() short-circuits on `if not changed` BEFORE staging anything, so
 # a body whose every field is rejected (or unchanged) never reaches _flush_staged()'s json.dump().
 _JUSTIFIED_UNMARKED = {
     "test_put_nonsense_field_values_are_marked_invalid_not_crashed": "every field in the body is rejected as Invalid, so write_config() returns on `not changed` without staging a flash write",
-    "test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap": "its NTP_Host is 1025 characters, ONE over _VAL_NH's own 3..1024 bound, so the field is rejected as Invalid and write_config() returns on `not changed` - at exactly 1024 it would be valid and this would be a real flash write",
+    "test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap": "its NTPHost, the largest string field, is 254 characters, ONE over _VAL_NTP_HOST's own 3..253 bound (RFC 1035), so the field is rejected as Invalid and write_config() returns on `not changed` - at exactly 253 it would be valid and this would be a real flash write",
 }
 
 # Non-test functions (helpers and fixtures) that issue a persisting PUT. Pinned by name so a NEW one
@@ -53,17 +53,31 @@ def _tests_hardware_modules(repo_root: Path) -> list[Path]:
     return sorted(p for p in base.rglob("*.py") if "device_scripts" not in p.parts)
 
 
+@cache
+def _flagged_fields(repo_root: Path, flag: str) -> frozenset[str]:
+    # Every field key carrying `flag: true` in any device's generated definitions, the one source the
+    # website, the mock and this gate all read the two never-"Unchanged" classes from.
+    found = set()
+    for device in DEVICE_NAMES:
+        definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), repo_root / "src")))
+        found |= {f["key"] for s in definitions["sections"] for g in s["groups"] for f in g.get("fields", []) if f.get(flag) is True}
+    return frozenset(found)
+
+
 def _dispatch_only_fields(repo_root: Path) -> frozenset[str]:
-    """Every field a PUT can carry that persists nothing - route-level plus `dispatch=true` schema tags."""
-    tagged = set()
-    for src in sorted((repo_root / "src").glob("*.py")):
-        tagged |= set(re.findall(r"^# @web (\w+) .*\bdispatch=true\b", src.read_text(), re.MULTILINE))
-    assert tagged, "no `dispatch=true` @web tags found in src/ - the derivation broke, and every dispatch-only PUT would now look like a flash write"
-    return frozenset(_ROUTE_DISPATCH_FIELDS | tagged)
+    # Every field a PUT can carry that persists nothing: the definitions' `dispatch` fields.
+    dispatch_only = _flagged_fields(repo_root, "dispatch")
+    assert dispatch_only, "no `dispatch` field in any device's definitions - the derivation broke, and every dispatch-only PUT would now look like a flash write"
+    return dispatch_only
+
+
+def _always_executed_fields(repo_root: Path) -> frozenset[str]:
+    # The fields the chip takes on every PUT (`alwaysExecuted`): each one writes the chip's own store.
+    return _flagged_fields(repo_root, "alwaysExecuted")
 
 
 def _leaf_keys(node: ast.expr) -> set[str]:
-    """Every leaf key of a literal PUT body - {"SGP40": {"BackupPeriod": 1}} is BackupPeriod, not SGP40."""
+    # Every leaf key of a literal PUT body - {"SGP40": {"BackupPeriod": 1}} is BackupPeriod, not SGP40.
     keys: set[str] = set()
     if isinstance(node, ast.Dict):
         for key, value in zip(node.keys, node.values, strict=True):
@@ -75,7 +89,7 @@ def _leaf_keys(node: ast.expr) -> set[str]:
 
 
 class _FetchShape(NamedTuple):
-    """Where fetch() really keeps its method and body arguments, read from its own def below."""
+    # Where fetch() really keeps its method and body arguments, read from its own def below.
 
     method_at: int
     body_at: int
@@ -97,7 +111,7 @@ def _fetch_shape(repo_root: Path) -> _FetchShape:
 
 
 def _fetch_calls(path: Path) -> "Iterator[tuple[str, ast.Call]]":
-    """(enclosing function name, call) for every call named `fetch` in the module."""
+    # (enclosing function name, call) for every call named `fetch` in the module.
     tree = ast.parse(path.read_text())
     for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
         for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
@@ -107,14 +121,14 @@ def _fetch_calls(path: Path) -> "Iterator[tuple[str, ast.Call]]":
 
 
 def _argument(call: ast.Call, index: int, keyword: str) -> ast.expr | None:
-    """One argument of a call, whether it was passed positionally or by keyword."""
+    # One argument of a call, whether it was passed positionally or by keyword.
     if len(call.args) > index:
         return call.args[index]
     return next((kw.value for kw in call.keywords if kw.arg == keyword), None)
 
 
 def _put_body(call: ast.Call, shape: _FetchShape) -> ast.expr | None:
-    """The body a fetch() call PUTs, or None when the call is not a literal-method PUT with a body."""
+    # The body a fetch() call PUTs, or None when the call is not a literal-method PUT with a body.
     method = _argument(call, shape.method_at, "method")
     if not (isinstance(method, ast.Constant) and method.value == "PUT"):
         return None
@@ -122,9 +136,9 @@ def _put_body(call: ast.Call, shape: _FetchShape) -> ast.expr | None:
 
 
 def _non_literal_put_bodies(path: Path, shape: _FetchShape) -> list[str]:
-    """Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it and the
-    detector below never sees them as writers. Enumerated rather than left implicit, or a
-    `payload = {...}` refactor would silently unmark a marked test."""
+    # Function names whose PUT body is not a literal dict, so _leaf_keys() cannot read it and the
+    # detector below never sees them as writers. Enumerated rather than left implicit, or a
+    # `payload = {...}` refactor would silently unmark a marked test.
     offenders = []
     for fn_name, call in _fetch_calls(path):
         body = _put_body(call, shape)
@@ -134,8 +148,8 @@ def _non_literal_put_bodies(path: Path, shape: _FetchShape) -> list[str]:
 
 
 def _forwarded_method_calls(path: Path, shape: _FetchShape) -> list[str]:
-    """Function names calling fetch() with a non-literal method: wrappers no detector here can
-    classify, since deciding whether a call writes at all starts by reading that argument."""
+    # Function names calling fetch() with a non-literal method: wrappers no detector here can
+    # classify, since deciding whether a call writes at all starts by reading that argument.
     offenders = []
     for fn_name, call in _fetch_calls(path):
         method = _argument(call, shape.method_at, "method")
@@ -145,7 +159,7 @@ def _forwarded_method_calls(path: Path, shape: _FetchShape) -> list[str]:
 
 
 def _persisting_put_functions(path: Path, dispatch_only: frozenset[str], shape: _FetchShape) -> dict[str, set[str]]:
-    """Function name -> the persisting fields its own body PUTs, for every function that PUTs one."""
+    # Function name -> the persisting fields its own body PUTs, for every function that PUTs one.
     found: dict[str, set[str]] = {}
     for fn_name, call in _fetch_calls(path):
         # A body argument is required for this to be a write at all, so a bodyless GET - or a PUT
@@ -208,7 +222,7 @@ _JUSTIFIED_FORWARDED_METHODS = {
 
 
 def _positional_parameters(path: Path, name: str) -> list[str]:
-    """The positional parameter names of one top-level function, in order."""
+    # The positional parameter names of one top-level function, in order.
     tree = ast.parse(path.read_text())
     fn = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == name), None)
     assert fn is not None, f"{path}::{name} is gone - drop its _JUSTIFIED_FORWARDED_METHODS entry with it"
@@ -248,7 +262,7 @@ def test_a_synthetic_forwarding_wrapper_is_actually_caught(tmp_path: Path, repo_
         '    return http_client.fetch(ip, 80, method, route, body, timeout_s=10.0)\n'
         '\n'
         'def test_writes() -> None:\n'
-        '    _put(ip, "PUT", "/sensors", {"BMP3XX": {"PressOvers": 4}})\n',
+        '    _put(ip, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}})\n',
     )
     shape = _fetch_shape(repo_root)
     assert _persisting_put_functions(module, _dispatch_only_fields(repo_root), shape) == {}, "the PUT detector cannot see through a wrapper - if it ever can, this guard is redundant, not wrong"
@@ -259,9 +273,9 @@ def test_a_put_body_passed_by_keyword_is_still_seen(tmp_path: Path, repo_root: P
     # The positional-only read missed this outright, and its keyword fallback looked for `body=`
     # while the parameter has always been `json_body` - so the one escape hatch could never fire.
     module = tmp_path / "test_keyword.py"
-    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PressOvers": 4}}, timeout_s=10.0)\n')
+    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
     found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
-    assert found == {"test_writes": {"PressOvers"}}
+    assert found == {"test_writes": {"PresOvers"}}
 
 
 # Modules that issue HTTP without going through fetch(), and why each is not a way to reach a PUT.
@@ -318,14 +332,14 @@ def test_the_set_of_persisting_helpers_is_exactly_the_triaged_one(repo_root: Pat
     assert helpers == _KNOWN_PERSISTING_HELPERS, f"the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.\n  added: {sorted(helpers - _KNOWN_PERSISTING_HELPERS)}\n  gone: {sorted(_KNOWN_PERSISTING_HELPERS - helpers)}"
 
 
-def test_the_dispatch_only_derivation_still_finds_the_real_schema_tags(repo_root: Path) -> None:
-    # If the @web parse silently returned nothing useful, every dispatch-only PUT would read as a
+def test_the_derived_classes_still_hold_every_known_action_and_chip_field(repo_root: Path) -> None:
+    # If the derivation silently returned nothing useful, every dispatch-only PUT would read as a
     # flash write and the guard above would fail noisily - but the reverse (a field wrongly counted
     # as dispatch-only) fails SILENTLY, which is the direction that actually spends wear.
     dispatch_only = _dispatch_only_fields(repo_root)
-    assert {"SGPResetVOC", "ISLCalibrate"} <= dispatch_only, "the dispatch=true schema tags are no longer being picked up"
-    assert dispatch_only >= _ROUTE_DISPATCH_FIELDS
-    for persisting in ("PressOvers", "Resolution", "BackupPeriod", "SSID", "NTP_Host", "WarnCO2"):
+    assert {"ResetVOC", "Calibrate", "SystemCmd", "PauseTime", "LightCmdLED", "ResetErrors"} <= dispatch_only
+    assert {"AmbPres", "ForceCalRef", "ContMeas"} <= _always_executed_fields(repo_root)
+    for persisting in ("PresOvers", "Resolution", "BackupPeriod", "SSID", "NTPHost", "WarnCO2"):
         assert persisting not in dispatch_only, f"{persisting} is a real persisted config field and must never be treated as dispatch-only"
 
 
@@ -333,13 +347,13 @@ def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_roo
     # Proves the detector bites rather than merely agreeing with today's tree: the guard above passes
     # trivially if _persisting_put_functions() ever stops finding anything at all.
     module = tmp_path / "test_synthetic.py"
-    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PressOvers": 4}}, timeout_s=10.0)\n')
+    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
     found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
-    assert found == {"test_writes": {"PressOvers"}}
+    assert found == {"test_writes": {"PresOvers"}}
     assert _marked_functions(module) == set(), "an unmarked writer must not look marked"
 
 
-@pytest.mark.parametrize("body", ['{"SGP40": {"SGPResetVOC": True}}', '{"ResetErrors": True}', '{"SystemCmd": "reboot"}'])
+@pytest.mark.parametrize("body", ['{"SGP40": {"ResetVOC": True}}', '{"ResetErrors": True}', '{"SystemCmd": "reboot"}'])
 def test_a_dispatch_only_put_is_not_flagged(tmp_path: Path, repo_root: Path, body: str) -> None:
     module = tmp_path / "test_dispatch.py"
     module.write_text(f'def test_dispatches() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {body}, timeout_s=10.0)\n')
@@ -354,7 +368,7 @@ def _registered_markers(repo_root: Path) -> set[str]:
 
 
 def _used_markers(repo_root: Path) -> dict[str, set[str]]:
-    """Test function name -> the pytest.mark.* names it carries, across the whole tier."""
+    # Test function name -> the pytest.mark.* names it carries, across the whole tier.
     used: dict[str, set[str]] = {}
     for path in _tests_hardware_modules(repo_root):
         for fn in [n for n in ast.walk(ast.parse(path.read_text())) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:

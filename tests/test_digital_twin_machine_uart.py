@@ -2,6 +2,7 @@
 Re-runs tests/_uart_link_contract.py's shared bodies against the twin backend, so the twin and
 mock link models can differ in fidelity but never in semantics."""
 
+import select
 import sys
 import time
 
@@ -10,7 +11,14 @@ import time
 sys.path.insert(0, "digital_twin")
 
 import _uart_link_contract
+import machine
+import rp2
 from machine import UART, LinkPoller, Pin, UARTLink
+
+# @tunable l2.machine_uart_wire_time_floor_ms = 100
+_WIRE_TIME_FLOOR_MS = 100
+# @tunable l2.machine_uart_pump_deadline_ms = 500
+_PUMP_DEADLINE_MS = 500
 
 
 def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
@@ -55,7 +63,7 @@ def test_delivery_takes_real_wire_time() -> None:
     start = time.ticks_ms()
     link.settle()
     elapsed = time.ticks_diff(time.ticks_ms(), start)
-    assert elapsed > 100, f"delivery took {elapsed}ms, expected real wire time"
+    assert elapsed > _WIRE_TIME_FLOOR_MS, f"delivery took {elapsed}ms, expected real wire time"
     got = b.read()
     assert got is not None
     assert len(got) == 64
@@ -81,7 +89,7 @@ def test_reads_pump_the_wire_without_settle() -> None:
     # never needs settle() - that helper exists only for synchronous assertions.
     a, b, _link = make_link()
     a.write(b"pump")
-    deadline = time.ticks_add(time.ticks_ms(), 500)
+    deadline = time.ticks_add(time.ticks_ms(), _PUMP_DEADLINE_MS)
     got = bytearray()
     while len(got) < 4 and time.ticks_diff(deadline, time.ticks_ms()) > 0:
         part = b.read()  # arrives byte by byte as its wire time elapses, like a real stream
@@ -106,6 +114,40 @@ def test_twin_poller_is_not_a_real_select_poll() -> None:
 
     _a, b, _link = make_link()
     assert type(LinkPoller(b)).__name__ != type(select.poll()).__name__
+
+
+def test_the_finaliser_aborts_the_channel() -> None:
+    # rp2.DMA's __del__ is close() (rp2_dma.c:673): a soft reset stops a running ring and frees it.
+    channel = rp2.DMA()
+    number = channel.channel
+    channel.config(read=bytearray(4), write=bytearray(4), count=4, ctrl=channel.pack_ctrl(treq_sel=21))
+    channel.active(True)
+    assert channel.active()
+    channel.__del__()
+    assert number not in machine._DMA_CHANNELS
+    try:
+        channel.active()
+        raise AssertionError("a finalised channel was usable")
+    except ValueError:
+        pass
+
+
+def test_a_new_wiring_frees_every_dma_channel() -> None:
+    # A new board: channels a previous build claimed are released, as a soft reset's finalisers do.
+    claimed = [rp2.DMA() for _ in range(3)]
+    machine.configure_wiring(machine._current_wiring_plan())
+    assert machine._DMA_CHANNELS == {}
+    assert all(channel.channel == 0xFF for channel in claimed)
+
+
+def test_a_poller_asks_only_for_its_mask() -> None:
+    # The driver registers POLLOUT alone; a bounded poller asking for POLLIN too would count as a receive poll.
+    _a, b, _link = make_link()
+    b.rx_api_calls = 0
+    assert LinkPoller(b, mask=select.POLLOUT).ipoll(0) == [(None, select.POLLOUT)]
+    assert b.rx_api_calls == 0
+    LinkPoller(b).ipoll(0)
+    assert b.rx_api_calls == 1
 
 
 if __name__ == "__main__":

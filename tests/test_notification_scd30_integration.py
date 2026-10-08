@@ -1,5 +1,5 @@
 """Cross-module integration: a real asy_scd30_driver.py.SCD30_Reader (against a fake I2C bus, same
-mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationCoordinator, driving a real asy_neopixel_driver.py.NeopixelDriver.
+mocking boundary as test_asy_scd30_driver.py's own integration-level tests) feeding a real asy_notification_service.py.NotificationService, driving a real asy_neopixel_driver.py.NeopixelDriver.
 Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate into a sibling driver's (NOTIFY's) own error accounting, matching SPECIFICATION.md Part C.7's "each driver owns its own error log" separation of concerns.
 """
 # Each NotificationSignal below holds a direct (source, field) reference to the same scd_reader instance
@@ -12,13 +12,16 @@ Exercises how a genuine hardware fault on one driver (SCD30) does NOT propagate 
 import asyncio
 import struct
 
+from _error_codes import code
 from _tmp_scratch import TmpScratch
 
+import asy_base_classes
+from asy_base_classes import ValueRef
+from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
 from asy_neopixel_driver import NeopixelDriver
-from asy_notification_service import NotificationCoordinator, NotificationSignal
+from asy_notification_service import NotificationService, NotificationSignal
 from asy_scd30_driver import SCD30_Reader
-from crc_checks import CRC8
 
 try:
     from typing import TYPE_CHECKING
@@ -57,10 +60,23 @@ async def _local_time() -> _FakeTime:
     return _FakeTime(12, 0)
 
 
+class _UTCValid:
+    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit: a good
+    # direct read cycle then carries a real TS, as the read loop's own cycles do after the sync.
+    def __enter__(self) -> "_UTCValid":
+        asy_base_classes.set_utc_valid()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_base_classes.set_utc_valid(valid=False)
+
+
 def make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
+    # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot.
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_sec=3, max_module_error=5)
-    return reader, reader.scd.i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir())
+    run(reader.setup())
+    return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]
 
 
 def _last_two_err_nums(log: "dict[str, Any]", name: str) -> "list[int | str]":
@@ -92,31 +108,33 @@ def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
     return bytes(frame)
 
 
-def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
-    # Direct (source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
+def make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationService]":
+    # A ValueRef(source, field) reference (SPECIFICATION.md Part C.14.2), same SCD30_Reader instance
     # backing both WarnCO2 and WarnHum in the real wiring (one sensor, two notification signals off
     # its own .CO2/.Hum fields) - mirrors src/sensortask_wozi.py's own real registration shape.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnCO2", scd_reader, "CO2", (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    notify.register(signal)
-    notify.finalize()
-    run(notify.cfgmgr.setup())
+    signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
+    run(notify.setup())
     return pixel, notify
 
 
-def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationCoordinator]":
+def make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, NotificationService]":
     # Separate stack (own pixel/notify instance) rather than a second signal registered on
     # make_stack()'s own notify - matches WarnCO2's own test scope of one signal per scenario, and
-    # avoids the two signals' ramps overlapping in the same pixel.pixel.writes trace.
-    pixel = NeopixelDriver(0, neopixel_freq=100)
+    # avoids the two signals' ramps overlapping in the same pixel._pixel.writes trace.
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
 
-    notify = NotificationCoordinator(pixel.request_signal, _local_time, cfg_path=_tmp_cfg_dir())
-    signal = NotificationSignal("WarnHum", scd_reader, "Hum", (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
-    notify.register(signal)
-    notify.finalize()
-    run(notify.cfgmgr.setup())
+    signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
+    notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
+    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
+    run(notify.setup())
     return pixel, notify
 
 
@@ -136,20 +154,21 @@ def test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp() -> N
     pixel, notify = make_stack(scd_reader)
 
     async def scenario() -> None:
-        # Exactly what read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
+        # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
         # instead of through the full irq/timer machinery, which is already exhaustively covered by
         # test_asy_scd30_driver.py's own tests and isn't what this file is exercising.
-        results = await scd_reader._read_scd()
+        results, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)
+        await scd_reader._store_scd(results, new_data)
 
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
         await _cancel_all(tasks)
 
-    run(scenario())
-    writes = [w[0] for w in pixel.pixel.writes]
+    with _UTCValid():
+        run(scenario())
+    writes = [w[0] for w in pixel._pixel.writes]
     assert (200, 0, 0) in writes  # scaled by the default FlashBri=200, pure red channel
     assert writes[-1] == (0, 0, 0)
     log = run(scd_reader.get_error_counter())
@@ -167,17 +186,18 @@ def test_real_humidity_reading_above_threshold_flows_through_to_a_real_ramp() ->
     pixel, notify = make_hum_stack(scd_reader)
 
     async def scenario() -> None:
-        results = await scd_reader._read_scd()
+        results, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)
+        await scd_reader._store_scd(results, new_data)
 
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)
         await _cancel_all(tasks)
 
-    run(scenario())
-    writes = [w[0] for w in pixel.pixel.writes]
+    with _UTCValid():
+        run(scenario())
+    writes = [w[0] for w in pixel._pixel.writes]
     assert (0, 0, 200) in writes  # scaled by the default FlashBri=200, pure blue channel (WarnHum's color)
     assert writes[-1] == (0, 0, 0)
     log = run(scd_reader.get_error_counter())
@@ -192,32 +212,32 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
     pixel, notify = make_stack(scd_reader)
 
     async def scenario() -> "tuple[dict[str, Any], dict[str, Any], bool]":
-        results = await scd_reader._read_scd()  # the bus fault happens inside here
+        results, new_data = await scd_reader._read_scd()  # the bus fault happens inside here
         still_running = await scd_reader._error_check(results)
-        await scd_reader._store_scd(results)  # a no-op: results has None fields, nothing committed
+        await scd_reader._store_scd(results, new_data)  # a no-op: results has None fields, nothing committed
 
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
-        await asyncio.sleep(0.2)  # one monitor_loop() pass - nothing to settle, nothing was triggered
+        await asyncio.sleep(0.2)  # one _monitor_loop() pass - nothing to settle, nothing was triggered
         await _cancel_all(tasks)
 
         scd_log = await scd_reader.get_error_counter()
         notify_log = await notify.get_error_counter()
         return scd_log, notify_log, still_running
 
-    scd_log, notify_log, still_running = run(scenario())
+    with _UTCValid():
+        scd_log, notify_log, still_running = run(scenario())
     assert still_running is True  # one failure, well under max_module_error=5 - not a give-up condition
-    # the fault is real and counted, but attributed to SCD30 alone - one faulted cycle logs twice
-    # (asy_scd30_driver.py's own _read_scd() catch, errno=11, then base_classes.py's generic
-    # _error_check() streak-counter increment, errno=1 - see read_loop()'s own two-call sequence).
+    # One faulted cycle persists the driver's read error and the reader's streak step: each layer the fault
+    # reaches keeps its entry (owner, 2026-10-02; SPECIFICATION.md C.7).
     assert scd_log["SCD30"]["ErrCount"] == 2
     # ErrNum is the whole fixed-length history deque (_NO_ERR-padded), not just what was actually
     # recorded - only the trailing entries are this fault's own (see PrintLogHistory.get_log()).
-    assert _last_two_err_nums(scd_log, "SCD30") == [11, 1]
+    assert _last_two_err_nums(scd_log, "SCD30") == [code("E", "READ"), code("E", "STREAK")]
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # neopixel_signal()'s own startup sets a defined (0,0,0) off state once, unconditionally -
+    # _signal_loop()'s own startup sets a defined (0,0,0) off state once, unconditionally -
     # nothing beyond that single boot-time write, since no signal was ever triggered.
-    assert [w[0] for w in pixel.pixel.writes] == [(0, 0, 0)]
+    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0)]
 
 
 def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
@@ -238,30 +258,29 @@ def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:
     frame2 = data_frame(2000.0, 22.0, 45.0)
 
     async def scenario() -> None:
-        faulted = await scd_reader._read_scd()
+        faulted, new_data = await scd_reader._read_scd()
         await scd_reader._error_check(faulted)
-        await scd_reader._store_scd(faulted)
+        await scd_reader._store_scd(faulted, new_data)
 
         i2c.read_queue.append(frame1)
         i2c.read_queue.append(frame2)
-        recovered = await scd_reader._read_scd()
+        recovered, new_data = await scd_reader._read_scd()
         assert await scd_reader._error_check(recovered)
-        await scd_reader._store_scd(recovered)
+        await scd_reader._store_scd(recovered, new_data)
 
-        await notify._set_dict_cfg({"Interv": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
+        await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)
         await _cancel_all(tasks)
 
-    run(scenario())
-    writes = [w[0] for w in pixel.pixel.writes]
+    with _UTCValid():
+        run(scenario())
+    writes = [w[0] for w in pixel._pixel.writes]
     assert (200, 0, 0) in writes  # the prior fault didn't permanently poison later good reads
     scd_log = run(scd_reader.get_error_counter())
-    # the earlier fault's two log entries are still on record - a later success doesn't erase
-    # history, it only decrements the internal consecutive-failure streak (a plain sync pr.err(),
-    # not pr.err_s() - see base_classes.py's _error_check() - so it adds no new history entry).
+    # history keeps the fault; the later success only resets the streak.
     assert scd_log["SCD30"]["ErrCount"] == 2
-    assert _last_two_err_nums(scd_log, "SCD30") == [11, 1]
+    assert _last_two_err_nums(scd_log, "SCD30") == [code("E", "READ"), code("E", "STREAK")]
 
 
 if __name__ == "__main__":

@@ -1,0 +1,49 @@
+PASS test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+PASS test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect
+PASS test_wozi_storage_pause_gates_the_real_twin_chip_and_override_still_reaches_it
+PASS test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it
+PASS test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives
+PASS test_wozi_storage_pause_does_not_survive_a_simulated_reboot
+PASS test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun
+PASS test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+FAIL test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u8cfix/2214141/tests/microtest.py", line 27, in run
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 216, in test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 60, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 212, in scenario
+  File "build/generated_src/sensortask_dev.py", line 178, in build_system
+  File "src/asy_spi_driver.py", line 38, in __init__
+  File "src/asy_spi_driver.py", line 44, in init
+  File "digital_twin/machine.py", line 367, in __init__
+  File "digital_twin/machine.py", line 334, in _wire_spi_device
+  File "digital_twin/_fram_chip.py", line 43, in __init__
+MemoryError: memory allocation failed, allocating 262144 bytes
+PASS test_wozi_fram_recovers_after_an_injected_spi_read_fault
+FAIL test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u8cfix/2214141/tests/microtest.py", line 27, in run
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 244, in test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 60, in run_timed
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 240, in scenario
+  File "build/generated_src/sensortask_dev.py", line 178, in build_system
+  File "src/asy_spi_driver.py", line 38, in __init__
+  File "src/asy_spi_driver.py", line 44, in init
+  File "digital_twin/machine.py", line 367, in __init__
+  File "digital_twin/machine.py", line 334, in _wire_spi_device
+  File "digital_twin/_fram_chip.py", line 43, in __init__
+MemoryError: memory allocation failed, allocating 262144 bytes
+PASS test_wozi_fram_recovers_after_an_injected_spi_write_fault
+10/12 passed, 2 failed, 0 skipped

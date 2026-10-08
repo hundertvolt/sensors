@@ -11,10 +11,16 @@ import asy_i2c_driver
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
+# @tunable l3.bus_concurrency_cross_device_scd30_sgp40_sgp40_cycles = 6
 SGP40_CYCLES = 6
+# @tunable l3.bus_concurrency_cross_device_scd30_sgp40_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every = 10
+_WDT_FEED_EVERY = 10
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
@@ -41,7 +47,7 @@ async def _main() -> None:
             except Exception as e:
                 scd_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
 
     async def sgp_loop() -> None:
@@ -56,7 +62,7 @@ async def _main() -> None:
             wdt.feed()
         stop = True
 
-    await asyncio.wait_for(asyncio.gather(scd_loop(), sgp_loop()), 60.0)
+    await asyncio.wait_for(asyncio.gather(scd_loop(), sgp_loop()), _RUN_BOUND_S)
 
     # For each completed SGP40 window, count SCD30 reads that both started and finished strictly
     # inside it - proof those reads' whole bus transaction ran while SGP40's device-session was

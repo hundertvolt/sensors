@@ -1,15 +1,15 @@
-"""Tests for buildgen.version (SPECIFICATION.md Part L.7) - the product-version constants and
-current_build_date() are well-formed and match the plan's own starting values; no bump mechanism
-is assumed to exist (see that session's own account for why)."""
+"""Tests for buildgen.version (SPECIFICATION.md Part L.7): the two version constants are
+well-formed and the build date is a real UTC timestamp; bumps are by hand."""
 
 import re
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION, current_build_date
 
-# PEP 440-style release[.dev|a|b|rc][N] segment - loose on purpose (this project's own version
-# scheme, not a contract with an external tool), just enough to catch a typo like a stray space or
-# a missing digit before it ships in a real build.
+# <major>.<minor>, optionally a|b|rc<N> (e.g. 2.0b0, 2.1rc1, 2.1): enough to catch a stray space or a
+# missing digit before it ships.
 _VERSION_RE = re.compile(r"^\d+\.\d+(?:(?:a|b|rc)\d+)?$")
 
 
@@ -21,10 +21,23 @@ def test_website_version_is_a_well_formed_version_string() -> None:
     assert _VERSION_RE.match(WEBSITE_VERSION)
 
 
-def test_starting_values_match_the_plan() -> None:
-    # SPECIFICATION.md Part L.7: "firmware + website, both starting at 2.0b0".
-    assert FIRMWARE_VERSION == "2.0b0"
-    assert WEBSITE_VERSION == "2.0b0"
+@pytest.mark.parametrize(
+    ("version", "accepted"),
+    [
+        ("2.0b0", True),
+        ("2.1", True),
+        ("10.12rc3", True),
+        ("2.0a1", True),
+        ("2.0 b0", False),
+        ("2.0.1", False),
+        ("2.0.dev1", False),
+        ("v2.0", False),
+        ("2.0b", False),
+        ("2", False),
+    ],
+)
+def test_the_version_form_accepts_exactly_its_comment(version: str, *, accepted: bool) -> None:
+    assert bool(_VERSION_RE.match(version)) is accepted
 
 
 def test_current_build_date_matches_the_documented_format() -> None:

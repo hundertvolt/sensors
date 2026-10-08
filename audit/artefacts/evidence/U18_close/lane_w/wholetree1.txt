@@ -1,0 +1,80 @@
+== test_decision_vocabulary
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests/test_asy_wifi_service.py: it must never leak a second DNS server task.
+E       assert not [('tests/test_asy_wifi_service.py', 'it must never leak a second DNS server task.')]
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
+E           src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
+E           tests/test_asy_wifi_service.py	Neither WLAN fake ever transitions _status to STAT_GOT_IP for AP mode on its own
+E           tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
+E       assert not [('buildgen/web_tag.py', 'Escaping a literal \'"\' inside a quoted value is deliberately unsupported (see mo'), ('src/...('tests/test_asy_wifi_service.py', "while _run_sta_mode()'s caller has independently decided a retry is needed - the")]
+2 failed, 4 passed in 7.05s
+== test_citations
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E           SPECIFICATION.md: digital_twin/_unix_port_udp_addr_shim.py
+E       assert not [('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py'), ('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py'), ('SPECIFICATION.md', 'digital_twin/_unix_port_udp_addr_shim.py')]
+1 failed, 14 passed in 9.11s
+== test_comment_block_cap
+429 passed in 3.70s
+== test_tunables_register
+E       AssertionError: src/asy_udp_socket.py:32: udp.poll_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_udp_socket.py:34: udp.poll_idle_ms is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:166: wifi.led_hotspot_on_s is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:168: wifi.led_hotspot_off_s is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:170: wifi.led_hotspot_client_on_s is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:172: wifi.led_hotspot_client_off_s is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:174: wifi.led_deactivated_on_s is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_wifi_service.py:176: wifi.led_deactivated_off_s is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:8584: wifi.led_flash_on_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8585: wifi.led_flash_off_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8594: udp.conn_tries_default is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8595: udp.round_trip_tries_default is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:8596: udp.ready_poll_ms is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_udp_socket.py:32: udp.poll_wait_ms is tagged but has no SPECIFICATION.md Part N row', 'src/asy_udp_socket.py...w', 'src/asy_wifi_service.py:172: wifi.led_hotspot_client_off_s is tagged but has no SPECIFICATION.md Part N row', ...]
+== test_legacy_paths
+3 passed in 1.20s
+== test_import_placement
+7 passed in 6.37s
+== test_code_conventions
+23 passed in 7.63s
+== test_error_catalog
+E       AssertionError: src/asy_captive_dns.py: retired _WRN_DNS_TEARDOWN is still used
+E       assert not ['src/asy_captive_dns.py: retired _WRN_DNS_TEARDOWN is still used']
+E       AssertionError: src/asy_captive_dns.py:32 _WRN_DNS_BAD_REQUEST = 42, the catalog gives None
+E         src/asy_captive_dns.py:33 _WRN_DNS_TEARDOWN = 43, the catalog gives None
+E       assert not ['src/asy_captive_dns.py:32 _WRN_DNS_BAD_REQUEST = 42, the catalog gives None', 'src/asy_captive_dns.py:33 _WRN_DNS_TEARDOWN = 43, the catalog gives None']
+E       AssertionError: src/asy_captive_dns.py:33 _WRN_DNS_TEARDOWN = 43 is not a live catalog W code; a non-code constant takes no _WRN_ prefix
+E       assert not ['src/asy_captive_dns.py:33 _WRN_DNS_TEARDOWN = 43 is not a live catalog W code; a non-code constant takes no _WRN_ prefix']
+E       AssertionError: W16 DNS_REPLY_TRUNCATED has no live site (_WRN_DNS_REPLY_TRUNCATED declared and used in src/)
+E         W42 DNS_RECV_FAILED has no live site (_WRN_DNS_RECV_FAILED declared and used in src/)
+E       assert not ['W16 DNS_REPLY_TRUNCATED has no live site (_WRN_DNS_REPLY_TRUNCATED declared and used in src/)', 'W42 DNS_RECV_FAILED has no live site (_WRN_DNS_RECV_FAILED declared and used in src/)']
+4 failed, 27 passed in 19.52s
+== test_fault_or_warning_never_both
+E       AssertionError: a persisted fault and warning on one path, not in _ALLOWED - one occurrence is one or the other:
+E         src/asy_ntp_client.py _fetch_ntp_reply(): W SOCKET_TEARDOWN then E NTP_NO_REPLY
+E         src/asy_wifi_service.py _deactivate_wlan_permanently(): W WLAN_DEACTIVATED then E WLAN_OFF
+E       assert not {('src/asy_ntp_client.py', '_fetch_ntp_reply', ('W', 'SOCKET_TEARDOWN'), ('E', 'NTP_NO_REPLY')), ('src/asy_wifi_service.py', '_deactivate_wlan_permanently', ('W', 'WLAN_DEACTIVATED'), ('E', 'WLAN_OFF'))}
+1 failed, 10 passed in 6.53s
+== test_task_inventory
+E       assert ['asy_wifi_se... (stale row)'] == []
+E         
+E         Left contains 2 more items, first extra item: "asy_wifi_service.py:701 WifiService._run_led_pattern(): a task created outside every starter, and no row of C.9's task table names it"
+E         Use -v to get more diff
+E       AssertionError: assert {('asy_config...ient_absent')} <= {('asy_bmp3xx...rigger'), ...}
+E         
+E         Extra items in the left set:
+E         ('asy_wifi_service.py', 'WifiService', '_hotspot_client_absent')
+E       AssertionError: ["asy_neopixel_driver.py:194 NeopixelDriver.toggle(): a task created outside every starter, and no row of C.9's task t...tspot LED flash' names WifiService._hotspot_client_absent() in asy_wifi_service.py, which creates no task (stale row)"]
+E       assert (3 == 1)
+E        +  where 3 = len(["asy_neopixel_driver.py:194 NeopixelDriver.toggle(): a task created outside every starter, and no row of C.9's task t...tspot LED flash' names WifiService._hotspot_client_absent() in asy_wifi_service.py, which creates no task (stale row)"])
+E       AssertionError: ["asy_neopixel_driver.py:136 NeopixelDriver.start_asy_signal(): a task created outside every starter, and no row of C....tspot LED flash' names WifiService._hotspot_client_absent() in asy_wifi_service.py, which creates no task (stale row)"]
+E       assert (3 == 1)
+E        +  where 3 = len(["asy_neopixel_driver.py:136 NeopixelDriver.start_asy_signal(): a task created outside every starter, and no row of C....tspot LED flash' names WifiService._hotspot_client_absent() in asy_wifi_service.py, which creates no task (stale row)"])
+== test_lock_order
+10 passed in 5.10s
+== test_mypy_any_baseline
+7 passed in 0.07s
+== test_counter_steps
+9 passed in 7.50s

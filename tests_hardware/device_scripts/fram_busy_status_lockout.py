@@ -5,8 +5,8 @@ lock the chunk unreadable until rewritten, intended on a destructive-readout par
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
 
 CHUNK_SIZE = 32
 PATTERN_A = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
@@ -23,9 +23,9 @@ def check(msg: str, *, condition: bool) -> None:
         failures.append(msg)
 
 
-async def _force_both_blocks_busy(fram: AsyFramManager, chunk_size: int, crc_len: int, block_addr: "tuple[int, int]") -> bool:
-    """Writes _STATUS_BUSY into both status bytes of both blocks, through the real driver - the
-    state a read interrupted mid-transfer genuinely leaves behind."""
+async def _force_both_blocks_busy(fram: FRAMManager, chunk_size: int, crc_len: int, block_addr: "tuple[int, int]") -> bool:
+    # Writes _STATUS_BUSY into both status bytes of both blocks, through the real driver - the
+    # state a read interrupted mid-transfer genuinely leaves behind.
     async with fram.fram as dev:
         for base in block_addr:
             st_addr = base + chunk_size + crc_len
@@ -37,13 +37,13 @@ async def _force_both_blocks_busy(fram: AsyFramManager, chunk_size: int, crc_len
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
     crc = CRC8()
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=crc)
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=crc, owner="fram_busy_status_lockout")
     if chunk is None:
         print("RESULT: FAIL get_chunk() returned None")
         return
@@ -51,7 +51,7 @@ async def _main() -> None:
     check("baseline write failed", condition=await chunk.write(PATTERN_A) is True)
     check("baseline read did not return the written pattern", condition=bytes(await chunk.read() or b"") == PATTERN_A)
 
-    if not await _force_both_blocks_busy(fram, CHUNK_SIZE, crc.length(), chunk.block_addr):
+    if not await _force_both_blocks_busy(fram, CHUNK_SIZE, crc.length(), chunk._block_addr):
         print("RESULT: FAIL could not write the BUSY status bytes through the real driver")
         return
 

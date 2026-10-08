@@ -5,7 +5,8 @@ import gc
 
 
 def unwedge_heap_after_interrupt() -> None:
-    """Clear a `GC_COLLECT_FLAG` left stuck in `gc_lock_depth` by an interrupted collection."""
+    # Clear a `GC_COLLECT_FLAG` left stuck in `gc_lock_depth` by an interrupted collection.
+    #
     # gc.collect() is the recovery and the only one that works: gc_collect_start_common() re-sets
     # the flag and gc_collect_end() clears it properly. heap_unlock() is not a substitute - it
     # subtracts a shift from a value holding only the 1-bit flag, leaving the depth negative.

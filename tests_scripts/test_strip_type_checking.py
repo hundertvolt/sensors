@@ -55,11 +55,20 @@ def test_leaves_compound_condition_untouched(strip_module: ModuleType) -> None:
     assert "Z = 1" in output
 
 
-def test_leaves_if_else_untouched(strip_module: ModuleType) -> None:
-    source = "if TYPE_CHECKING:\n    W = 1\nelse:\n    W = 2\n"
+def test_an_if_else_keeps_only_its_runtime_branch(strip_module: ModuleType) -> None:
+    # The import guard goes, so a kept `if TYPE_CHECKING:` would raise NameError at import on the board.
+    source = "try:\n    from typing import TYPE_CHECKING\nexcept ImportError:\n    TYPE_CHECKING = False\nif TYPE_CHECKING:\n    W = 1\nelse:\n    W = 2\n"
     output = strip_module.strip_type_checking_blocks(source)
-    assert "W = 1" in output
+    assert "W = 1" not in output
     assert "W = 2" in output
+    assert "TYPE_CHECKING" not in output
+
+
+def test_an_if_elif_keeps_the_elif_chain(strip_module: ModuleType) -> None:
+    output = strip_module.strip_type_checking_blocks("if TYPE_CHECKING:\n    W = 1\nelif X:\n    W = 2\nelse:\n    W = 3\n")
+    assert "W = 1" not in output
+    assert "if X:" in output
+    assert "W = 3" in output
 
 
 def test_leaves_unrelated_try_except_importerror_untouched(strip_module: ModuleType) -> None:
@@ -90,15 +99,12 @@ def test_strips_multiple_type_checking_blocks_in_one_file(strip_module: ModuleTy
 
 def test_real_src_files_round_trip_to_syntactically_valid_type_checking_free_output(strip_module: ModuleType, repo_root: Path) -> None:
     # End-to-end proof against the real promoted drivers, not just the synthetic snippets above.
-    # Every bare `if TYPE_CHECKING:` block must go; the import guard itself only has to disappear
-    # in the plain two-line D.6 form.
-
-    # Some files extend the except handler with a runtime cast() fallback called outside any
-    # TYPE_CHECKING block, so that body holds more than the matched statement and the transform
-    # correctly leaves it alone rather than guessing.
+    # Every bare `if TYPE_CHECKING:` block must go. The transform only removes the plain two-line
+    # D.6 guard; a guard with any other body is left alone, so every src/ guard must have that form.
     src_files_with_guard = [p for p in (repo_root / "src").glob("*.py") if "TYPE_CHECKING" in p.read_text()]
     assert src_files_with_guard, "sanity: at least one real src/ file should use this pattern"
     for src_file in src_files_with_guard:
         output = strip_module.strip_type_checking_blocks(src_file.read_text())
         assert "if TYPE_CHECKING:" not in output
         ast.parse(output)
+        assert "TYPE_CHECKING" not in output, f"{src_file.name}: its guard is not the plain D.6 form, or a name still uses it"

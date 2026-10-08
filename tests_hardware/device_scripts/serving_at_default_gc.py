@@ -4,12 +4,14 @@ plus a map at the instant any GET route fails. Ends once the load has stopped (P
 
 import asyncio
 import gc
+import sys
 import time
 
+import machine
 import micropython
 import sensortask_dev
 
-from asy_webserver_service import WebserverService
+from asy_webserver_service import WebserverService, _StaticRoutes
 
 try:
     from typing import TYPE_CHECKING
@@ -17,6 +19,7 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from asyncio.events import _Context
     from collections.abc import Awaitable, Callable
 
     _Route = Callable[..., Awaitable[object]]
@@ -24,16 +27,40 @@ if TYPE_CHECKING:
 # Explicit, never inherited: mpremote's raw-REPL soft reset keeps whatever threshold was in force -
 # the boot entry's 32768, or -1 if the attach interrupted main.py first (MEASUREMENTS M3.8).
 gc.threshold(-1)
+# @tunable l3.heap_under_connection_ceiling_boot_wait_s = 20
 _BOOT_S = 20
+# @tunable l3.serving_at_default_gc_poll_ms = 1000
 _POLL_MS = 1000
+# @tunable l3.serving_at_default_gc_dump_every = 5
 _DUMP_EVERY = 5  # polls per dump
-_BUSY_TO_ENTER = 2  # busy polls out of the last 3 before it counts as load, so one probe is not
+# @tunable l3.serving_at_default_gc_busy_to_enter = 2
+_BUSY_TO_ENTER = 2  # busy polls out of the last 3 before it counts as load, so one stray probe is not load
+# @tunable l3.serving_at_default_gc_quiet_to_leave = 10
 _QUIET_TO_LEAVE = 10  # consecutive idle polls; the host's own gaps between levels stay below this
+# @tunable l3.serving_at_default_gc_post_dumps = 3
 _POST_DUMPS = 3
+# @tunable l3.serving_at_default_gc_window_s = 600
 _WINDOW_S = 600  # hard bound, whatever the host does
 _MAX_FAILURE_MAPS = 3  # the first few are the evidence; more would only flood the console
-_ROUTES = ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification", "_get_static_index", "_get_static")
+_ROUTES = (
+    (WebserverService, ("_get_status", "_get_measurements", "_get_sensors", "_get_networking", "_get_system", "_get_notification")),
+    (_StaticRoutes, ("get_index", "get")),
+)
 _failure_maps = [0]
+
+
+def _report_unretrieved(_loop: object, context: "_Context") -> None:
+    # The PC tiers' always-printing report, copied: this board-side script cannot import digital_twin/, the host gate
+    # greps its output for memory markers, and the firmware's own report is silent at DebugLevel 0 (Part I.4(e)).
+    try:
+        try:
+            print("UNRETRIEVED TASK EXCEPTION:", context["message"])
+            sys.print_exception(context["exception"])
+        finally:
+            context["exception"] = None
+            context["future"] = None
+    except Exception:  # an escape would end asyncio.run()
+        pass
 
 
 def _dump(label: str) -> None:
@@ -46,7 +73,7 @@ def _dump(label: str) -> None:
 def _dumping_on_failure(route: "_Route") -> "_Route":
     # Re-raises unchanged, so the served outcome is exactly production's; no collect before the
     # dump - MicroPython already ran one before it raised.
-    async def wrapped(self: "WebserverService", *args: object, **kwargs: object) -> object:
+    async def wrapped(self: object, *args: object, **kwargs: object) -> object:
         try:
             return await route(self, *args, **kwargs)  # kwargs: microdot passes URL parts by name
         except MemoryError:
@@ -58,9 +85,10 @@ def _dumping_on_failure(route: "_Route") -> "_Route":
     return wrapped
 
 
-# On the CLASS, before build_system(): each route binds self._get_* when it is registered.
-for _name in _ROUTES:
-    setattr(WebserverService, _name, _dumping_on_failure(getattr(WebserverService, _name)))
+# On the CLASSES, before build_system(): each route binds its handler when it is registered.
+for _cls, _names in _ROUTES:
+    for _name in _names:
+        setattr(_cls, _name, _dumping_on_failure(getattr(_cls, _name)))
 
 
 async def _observe(webserver: "WebserverService") -> None:
@@ -89,12 +117,16 @@ async def _observe(webserver: "WebserverService") -> None:
 
 
 async def _run() -> None:
+    asyncio.get_event_loop().set_exception_handler(_report_unretrieved)  # before main(): the firmware then keeps it
     print(f"GC_THRESHOLD={gc.threshold()}")
-    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own, as the boot entry arms one: main() takes it
+    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main(watchdog=wdt))
     await asyncio.sleep(_BOOT_S)
     try:
-        assert sensortask_dev.webserver is not None
-        await _observe(sensortask_dev.webserver)
+        webserver = getattr(sensortask_dev, "webserver", None)  # absent until main() has built it
+        assert webserver is not None
+        await _observe(webserver)
     finally:
         main_task.cancel()
     print(f"FAILURE_MAPS={_failure_maps[0]}")

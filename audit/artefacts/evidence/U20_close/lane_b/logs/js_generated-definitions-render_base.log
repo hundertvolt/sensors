@@ -1,0 +1,41 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ✓ |chromium| tests_js/generated-definitions-render.test.js (48 tests) 8454ms
+   ✓ arzi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 390ms
+   ✓ dev's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 337ms
+     ✓ render the notification section's every group, field and errcount row, with no error 334ms
+   ✓ grkizi's generated definitions (8)
+     ✓ render the networking section's every group, field and errcount row, with no error 329ms
+   ✓ klkizi's generated definitions (8)
+     ✓ render the status section's every group, field and errcount row, with no error 432ms
+     ✓ render the notification section's every group, field and errcount row, with no error 425ms
+   ✓ schlafzi's generated definitions (8)
+     ✓ render the sensors section's every group, field and errcount row, with no error 320ms
+     ✓ render the networking section's every group, field and errcount row, with no error 312ms
+     ✓ render the notification section's every group, field and errcount row, with no error 305ms
+   ✓ wozi's generated definitions (8)
+     ✓ render the notification section's every group, field and errcount row, with no error 307ms
+
+ Test Files  1 passed (1)
+      Tests  48 passed (48)
+   Start at  11:25:06
+   Duration  11.84s (tests 90%, worker 5%, import 5%)
+
+== Summary: npm test ==
+Commit: db6ce58 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 48 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

@@ -9,9 +9,12 @@ like it's attached to real hardware, not just satisfy a hand-driven test double.
 SPECIFICATION.md Part A.10 for how this fits into the rest of the architecture, and Part C.11 point 9
 for the per-driver "add a matching chip fake" requirement.
 
-**Not `tests/machine.py`, does not import it, and is never imported by anything in `tests/`.**
-Kept completely separate so nothing here can accidentally affect the deterministic unit-test suite
-`scripts/test.sh` runs by default (`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`).
+**Not `tests/machine.py`, and does not import it.** Kept off the default unit-test path, so nothing
+here can accidentally affect the deterministic unit-test suite `scripts/test.sh` runs by default
+(`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`): a test that needs a twin
+module puts its directory on `sys.path` itself — `digital_twin/` for the `tests/test_digital_twin_*.py`
+files and their scenario libraries, `digital_twin/unixport/` (no fake there) for a test needing only
+the UDP shim (see "Running the twin's own tests" below).
 
 ## What's here
 
@@ -43,36 +46,39 @@ Kept completely separate so nothing here can accidentally affect the determinist
   to the most recent 200 entries (`_LOG_MAXLEN`) - an unbounded list here was a real memory leak,
   found once a run drove enough real transactions for the list's own backing-array growth to need a
   large contiguous reallocation that failed with a genuine `MemoryError` on a fragmented heap.
+  `WDT.feed_times` is bounded the same way: the `ticks_ms()` stamp of each `feed()`, oldest first,
+  so a test can read the gaps between feeds (`feed_count` less its length is how many it dropped).
 - `_sgp40_chip.py` / `_scd30_chip.py` / `_bmp3xx_chip.py` / `_isl29125_chip.py` — one chip fake per
   sensor, each verified against its own datasheet in `datasheets/` for the raw transaction shape and
   sensible value ranges. `_scd30_chip.py`'s RDY pin fires a real rising edge on its own internal
-  measurement-interval cadence, exercising the real driver's normal IRQ-driven path. `_scd30_chip.py`
-  also has explicit `save_state()`/on-construction load JSON persistence for its five NVM-backed
-  settings (see "SCD30 persistence" below) — the same `state_path` design `_fram_chip.py` uses,
-  applied to a handful of scalars instead of the whole memory image. `_isl29125_chip.py` is
-  **dev-only** (`wozi` does not carry this sensor) and is the one fake whose high range's full scale
-  is a deliberately non-nominal multiple of its low range's, so the driver's user-triggered
-  gain-ratio calibration (SPECIFICATION.md Part M.1.5) has something real to converge on instead of
-  the nominal constant it starts from. It also models the destructive `0x08` status read (which
-  clears `RGBTHF`, `CONVENF` and `BOUTF` and releases the INT line — `BOUTF` being read-to-clear
-  contradicts the datasheet and was measured on real silicon, see SPECIFICATION.md Part M.1.2),
-  `BOUTF` high at power-up but **not** after the `0x46` reset command (`simulate_brownout()` is the
-  seam for a supply event, which raises it again), the flat address pointer that walks the whole
-  `0x00`-`0x0E` map in one burst and then pads with zeros, reserved config bits reading back zero,
-  per-resolution clipping at `(1 << bits) - 1`, and `set_illumination(lux, tint=(r, g, b))` so a
-  scene can clip one channel while green stays mid-scale. Every one of those register-map behaviours
-  was measured against the real part — see SPECIFICATION.md Parts C.11.1, M.1.2 and M.1.4 for the
-  divergences those runs found, the subtlest being that the threshold **persistence counter**
-  restarts when `RGBTHF` is cleared, not on every status read, and a fake that reset it on every read
-  makes the interrupt unreachable at the driver's own default sampling rate. Its INT line is
-  **active-low** (`simulate_edge(0)` to assert), the opposite of `_scd30_chip.py`'s RDY.
+  measurement-interval cadence, exercising the real driver's normal IRQ-driven path; it reports its
+  temperature walk less the set temperature offset, as the chip does. `_scd30_chip.py` also has explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12) for its
+  five NVM-backed settings (see "SCD30 persistence" below) — the same `state_path` design
+  `_fram_chip.py` uses, applied to a handful of scalars instead of the whole memory image.
+  `_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is the one fake whose
+  high range's full scale is a deliberately non-nominal multiple of its low range's, so the driver's
+  user-triggered gain-ratio calibration (SPECIFICATION.md Part M.1.5) has something real to converge
+  on instead of the nominal constant it starts from. It also models the destructive `0x08` status
+  read (which clears `RGBTHF`, `CONVENF` and `BOUTF` and releases the INT line — `BOUTF` being
+  read-to-clear contradicts the datasheet and was measured on real silicon, see SPECIFICATION.md
+  Part M.1.2), `BOUTF` high at power-up but **not** after the `0x46` reset command
+  (`simulate_brownout()` is the seam for a supply event, which raises it again), the flat address
+  pointer that walks the whole `0x00`-`0x0E` map in one burst and then pads with zeros, reserved
+  config bits reading back zero, per-resolution clipping at `(1 << bits) - 1`, and
+  `set_illumination(lux, tint=(r, g, b))` so a scene can clip one channel while green stays
+  mid-scale. Every one of those register-map behaviours was measured against the real part — see
+  SPECIFICATION.md Parts C.11.1, M.1.2 and M.1.4 for the divergences those runs found, the subtlest
+  being that the threshold **persistence counter** restarts when `RGBTHF` is cleared, not on every
+  status read, and a fake that reset it on every read makes the interrupt unreachable at the
+  driver's own default sampling rate. Its INT line is **active-low** (`simulate_edge(0)` to assert),
+  the opposite of `_scd30_chip.py`'s RDY.
 - `_fram_chip.py` — the FRAM chip's SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID), plus
-  explicit `save_state()`/on-construction load JSON persistence (see "FRAM persistence" below).
-  Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and dev's 256KB
-  MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) - `machine.py`'s
-  `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real bug (fixed
-  2026-09-04): dev's own `AsyFramManager.setup()` silently failed its device-ID check every twin
-  run, caught and swallowed by its own broad `except Exception`.
+  explicit `save_state()`/on-construction load JSON persistence (owner, 2026-08-12; see "FRAM
+  persistence" below). Models both real chips this project ships: wozi's 8KB MB85RS64V (default) and
+  dev's 256KB MB85RS2MTA (`configure_i2c_wiring("dev")` selects it via `rdid_response=`/`size=`) -
+  `machine.py`'s `_wire_spi_device()` picking the wrong one regardless of wiring profile was a real
+  bug (fixed 2026-09-04): dev's own `FRAMManager.setup()` silently failed its device-ID check
+  every twin run, caught and swallowed by its own broad `except Exception`.
 - `unix_port_poll_prewarm.py` — a workaround for a confirmed, real dangling-pointer bug in the
   pinned MicroPython Unix port's `extmod/modselect.c` (see "Known gaps / follow-ups" below
   for the full account; `extmod/modselect.c` took zero commits between `v1.28.0` and the current
@@ -99,6 +105,14 @@ Kept completely separate so nothing here can accidentally affect the determinist
   SPECIFICATION.md Part F.6, whose amendment records that `toolchain/micropython_overrides.py`'s
   `unix_kbd_intr` override (Part B.14.1) has since closed the root SIGINT-safety gap this quirk
   came from — the calls stay wired in as defense in depth, not because the race is still reachable.
+- `unix_port_unretrieved_report.py` — the PC tiers' asyncio exception handler: every task that ends
+  raising with nobody awaiting it prints a fixed `UNRETRIEVED TASK EXCEPTION:` line and its
+  traceback at every DebugLevel, then the handler releases the dead task from asyncio's context dict.
+  `install()` is the first statement of every launcher's `main()` (`run_generic_integration.py`,
+  `launch.py`, `segfault_stress_repro.py`), of `tests/microtest.py`'s `run()` and of
+  `tests/_boot_contiguity_probe.py`'s `_main()`; the firmware's `start_tasks()` then keeps
+  it instead of installing SYSTEM's level-gated report, so the memory gates still see a task that
+  died of an exhausted heap at level 0 (SPECIFICATION.md Parts F.1 and I.4(e)).
 - `_crc8.py` / `_fault_injection.py` — small shared helpers (CRC-8 for SGP40/SCD30's word protocol;
   a generic op-keyed fault-injection queue, mirroring `tests/machine.py`'s own
   `inject_fault()`/`_maybe_raise()` convention) used by more than one chip fake.
@@ -171,8 +185,8 @@ mechanism this is built on — then builds the real website for the chosen devic
 deployed unit serves — then runs
 `digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan
 build/generated_src/sensortask_<device>_wiring_plan.json --device <device>` — the real orchestrator,
-not the generated boot entry directly, since it also needs to drive the soak/fault-injection/
-`--duration`-forever logic around `<module>.main()`, not just block on it):
+not the generated boot entry (`sensortask_<device>_main.py`) directly, since it also needs to drive
+the soak/fault-injection/`--duration`-forever logic around `<module>.main()`, not just block on it):
 
 ```bash
 MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_wozi --wiring-plan build/generated_src/sensortask_wozi_wiring_plan.json --device wozi [flags]
@@ -207,7 +221,10 @@ no `--soak`/`--soak-cycles` flag any more — the automated HTTP+memory-trend so
 host-side (SPECIFICATION.md's "Driver/DUT process separation" Part): the twin only exposes the one
 piece of itself a host-side driver genuinely cannot get any other way, `gc.mem_free()`, via the
 opt-in `--mem-sample-interval-ms N` flag (prints `MEM_SAMPLE <time.time()> <gc.mem_free()>` lines
-to its own stdout on that cadence; unset by default, no sampling). See
+to its own stdout on that cadence; unset by default, no sampling). `--stop-file PATH` makes
+`--duration` an upper bound: the run ends as soon as `PATH` exists, on the same clean path a finished
+duration takes (`tests_scripts/test_digital_twin_generated_boot.py` writes it once its smoke loop is
+done, rather than idling out the bound) (agent, 2026-10-08). See
 `run_generic_integration.py`'s `parse_args()` for the full flag list, and
 `scripts/_digital_twin_ci_suite.py`'s Run 11 (`_run_11_soak()`) for the actual soak methodology —
 now a plain host-side HTTP-cycling loop parsing those `MEM_SAMPLE` lines back out of the twin's
@@ -217,17 +234,18 @@ counter.
 A second, lighter integration tier also landed alongside the full orchestrator:
 `tests/test_digital_twin_sensortask_integration.py` builds the real `sensortask_wozi` object graph
 against the real twin buses and drives real HTTP traffic against it (never `app.dispatch_request()`
-bypass), but only ever starts the specific tasks each test needs (never the full
-`start_and_check_tasks()` supervisor) — runs under `scripts/test.sh`'s own default loop like any
+bypass), but only ever starts the specific tasks each test needs and never runs the generated
+`main()` (its supervisor tests drive `start_tasks()`/`supervise_tasks()` themselves and cancel what
+they started) — runs under `scripts/test.sh`'s own default loop like any
 other test file (via the same per-file `sys.path.insert(0, "digital_twin")` trick every other
 `tests/test_digital_twin_*.py` file already uses), giving fast, everyday regression coverage of the
 twin+webserver wiring without needing the separate `MICROPYPATH` invocation above. It already found
 and fixed one real, previously-undetected bug this way: `src/asy_webserver_service.py`'s
-`_get_settings_flat()` never flattened `config_manager.make_dict()`'s real `{type_name: {field:
+`_get_settings_flat()` never flattened `asy_config_manager.make_dict()`'s real `{type_name: {field:
 value}}` shape, so `/networking`/`/notification` always returned `{}` and `/system` silently
 dropped its `ntp`-sourced fields — masked by `tests/test_asy_webserver_service.py`'s own uniform
-fakes, which happened to return an already-flat shape. See `_flatten_cfg_values()` in
-`src/asy_webserver_service.py` for the fix.
+fakes, which happened to return an already-flat shape. Every module's config dict now has the one
+nested shape (SPECIFICATION.md C.6), unwrapped by `_cfg_values()` in `src/asy_webserver_service.py`.
 
 ### Booting a generated device
 
@@ -267,6 +285,15 @@ MICROPYPATH="/tmp/twin_boot:src:digital_twin:ext:.frozen" <micropython-unix-port
     --wiring-plan /tmp/twin_boot/wiring_plan.json --device novel_combo --host 127.0.0.1 --port 8080
 ```
 
+The runner stands in for the device's boot entry: it arms the twin `WDT` with the entry's own
+timeout (`_WDT_TIMEOUT_MS`, 8000 ms, a mirror, since the twin cannot import `buildgen/`) and passes it
+as `main(watchdog=..., cfg_path=..., web_host=..., web_port=...)`. The generated `main()` then runs
+the whole boot sequence itself - `build_system()` (construction only), the setup list through
+`run_setups()`, the task starters, the timers, `ntp_force_sync()` and the supervisor - while the
+runner waits for `build_system()`'s last global (`webserver`) and then wires the UART jumper and any
+faults. Its shutdown line reads `would_have_triggered_count` off that same `WDT`; the generated
+module keeps no watchdog global.
+
 `tests_scripts/test_digital_twin_generated_boot.py` does exactly this (via `subprocess.Popen`, the
 same pattern `scripts/_digital_twin_ci_suite.py` already uses for the hand-written wozi module) for
 all 6 real devices (`wozi`, `dev`, `arzi`, `klkizi`, `grkizi`, `schlafzi`) plus both mandatory
@@ -285,13 +312,13 @@ nothing left only they could do — `scripts/run_digital_twin_ci.sh`'s own per-d
 every `tests/test_digital_twin_*.py` file that used to hardcode one of them now drive this file
 instead, for every real device including wozi/dev.
 
-`compute_twin_wiring()`'s plan carries a fourth, optional `"uart"` key (`{"initiator_var",
-"responder_var"}`, the two generated Python variable names — `None`/absent for any device with no
-`uart_link` instance, i.e. every device but `dev`) alongside `"buses"`/`"spi"`. Unlike those two,
-this key is consumed *after* construction, not by `machine.configure_wiring()` itself:
-`_wire_uart_crossover()` (called from `main()` right after `_wait_until_built()`) reads the two
-already-built `UartLinkExerciser` instances off the booted module by name, joins their own
-`asy_uart_driver.UART`'s underlying `machine.UART` fakes with the already-existing
+`compute_twin_wiring()`'s plan carries a fourth, optional `"uart"` key (`{"initiator_bus",
+"responder_bus"}`, the two generated UART bus globals, each named after its `[bus.<id>]` table —
+`None`/absent for any device with no `uart_link` pair, i.e. every device but `dev`) alongside
+`"buses"`/`"spi"`. Unlike those two, this key is consumed *after* construction, not by
+`machine.configure_wiring()` itself: `_wire_uart_crossover()` (called from `main()` right after
+`_wait_until_built()`) reads the two already-built `asy_uart_driver.UART` buses off the booted
+module by name, joins their underlying `machine.UART` fakes with the already-existing
 `attach_crossover_jumper()`, and swaps in the returned bounded `LinkPoller`s — the exact generic,
 wiring-plan-JSON-driven replacement for what `run_dev_integration.py` used to do by hand
 (hardcoded to `sensortask_dev.uart0`/`uart1`) before it was retired above.
@@ -299,9 +326,10 @@ wiring-plan-JSON-driven replacement for what `run_dev_integration.py` used to do
 ### FRAM persistence
 
 The FRAM twin reads back exactly what was written, including across process restarts, but only
-ever writes to disk on an **explicit** call — never automatically, to avoid unnecessary write
-cycles on an SSD-hosted state file. Any entry point that boots a real `sensortask_<device>` object
-graph against the twin (`digital_twin/run_generic_integration.py` is the real example) should:
+ever writes to disk on an **explicit** call — never automatically — the owner's 'don't do
+unnecessary write cycles' for an SSD-hosted state file (owner, 2026-08-12). Any entry point that
+boots a real `sensortask_<device>` object graph against the twin
+(`digital_twin/run_generic_integration.py` is the real example) should:
 
 ```python
 import asyncio
@@ -327,6 +355,13 @@ fragments the heap) even with ~1.5MB of *total* `gc.mem_free()` still available,
 GC coalesces freed blocks but never relocates live ones. Chunked reads/writes only ever need one
 small chunk contiguous at a time.
 
+**The memory itself is held in 4KB pages (`_PagedMemory`), never one bytearray for the whole chip.**
+Same cause, at chip construction: dev's 256KB MB85RS2MTA as one `bytearray` needs a 256KB contiguous
+run, and under the coverage build's inflated allocations `tests/test_digital_twin_bus_hazard_concurrency.py`
+failed to build it with ~15MB of the 16MB heap free, once an unrelated edit reordered the file's tests
+(agent, 2026-10-07). The pages read and write like the bytearray they replace, and a write past the
+chip's end is refused rather than growing the chip.
+
 ### SCD30 persistence
 
 Real SCD30 hardware persists five settings in its own onboard NVM across a power cycle:
@@ -350,6 +385,14 @@ same convention as FRAM. Both `digital_twin/run_generic_integration.py` and `dig
 default to in-memory-only for both FRAM/SCD30 (`--fram-state-path`/`--scd30-state-path` opt in
 explicitly) — `scripts/_digital_twin_ci_suite.py` is the one caller that supplies real, fixed on-disk
 paths, for its own persistence-across-a-real-reboot checks.
+
+The firmware compares a `PUT /sensors` against a fresh chip snapshot and writes only what changed
+(compare-before-write, SPECIFICATION.md Part G.2): an identical TempOffset/MeasInterval/Altitude/SelfCal
+spends no NVM write, `AmbPres`/`ForceCalRef` always do. `Scd30Chip.nvm_writes` counts every
+NVM-writing command `handle_writeto()` receives (0x0010, 0x4600, 0x5102, 0x5204, 0x5306, 0x5403 and
+the stop command 0x0104; Interface Description 1.4.1-1.4.3, 1.4.6-1.4.8), the same frames
+`tests/_write_counters.py`'s `scd30_nvm_writes()` counts on a fake bus. It is a test surface, not
+chip behaviour: a twin test asserts the writes a PUT spends.
 
 **Known limitation: single-chip globals.** `machine.py`'s `_current_scd30_chip`/`flush_scd30()`
 (and the equivalent FRAM pair) each track exactly one chip instance. A device wired with more than
@@ -407,7 +450,7 @@ test phase runs.
 `socket`, not `_http_client.py` — this script runs under CPython, not the twin's own MicroPython
 process), through a sequence of real subprocess runs (14: runs 1-11 plus 5b/5c, sub-runs of run 5, and
 11b; 5c itself spawns one process per bus-attached driver plus one, so the subprocess total is
-device-dependent - 17 for `wozi`, 18 for `dev`, one more if run 11's soak retries) on a fixed port (`18080`, distinct from
+device-dependent - 17 for `wozi`, 18 for `dev`) on a fixed port (`18080`, distinct from
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
 whole 14-run sequence itself runs twice, not just once** — `main()` calls `run_suite()`
 once at `--gc-threshold -1` (MicroPython's own real reactive-only default) and once at `32768` (the
@@ -424,14 +467,14 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
 1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
    `/system`, `/notification`, `/status`, `/`), then `PUT` a setting on each of
    `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
-   (`SCD30.MeasInt=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
+   (`SCD30.MeasInterval=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
    that accepts `PUT`. Shut down cleanly (`SIGINT`, matching the documented Ctrl-C path — a plain
    `SIGTERM`/`terminate()` would skip `run_generic_integration.py`'s own FRAM/SCD30 flush) and confirm
    the state files actually landed on disk.
 2. **Real reboot, settings persistence** — a fresh subprocess against the *same* persisted state
    (no clean step in between — the whole point is testing what survives). Confirms every setting
    from run 1 is still there after a genuine process restart, and that the now-persisted
-   `DebugLevel=5` produces real, multi-module verbose log output (`print_log.py`'s
+   `DebugLevel=5` produces real, multi-module verbose log output (`asy_print_log.py`'s
    `print(name, *args)` convention — checked for known `_NAME` prefixes like `SYSTEM`/`SGP40`/
    `SCD30`/`WEBSERVER`) from the very start of boot, not just after a later `PUT`.
 3. **Reboot with a sustained/high-repeat-count ("permanent") bus-fault matrix** — `--fault` on
@@ -467,10 +510,11 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    the self-healing story run 3 alone can't show: not just "doesn't crash while still broken," but
    "comes back once the fault clears." Confirms the real error count stops climbing once the 3
    queued failures are exhausted (a driver's own "recovered" notice is itself logged as a warning,
-   not an error — this suite counts `"E"`-typed history entries specifically, not the raw combined
-   counter, to avoid mistaking a recovery notice for a new failure) and that measurements resume.
+   not an error — this suite counts failure events, the counter's steps not backed by a `"W"` slot,
+   since `asy_print_log.py`'s newest-entry rule folds the three identical failures into one slot while
+   counting each) and that measurements resume.
    **5b. Reboot straight onto run 5's state, fault-free — the restore is all-or-nothing.** Run 5
-   left exactly three `"E"` entries on a *healthy* chip, write-through (`print_log.py`'s
+   left exactly three failures on a *healthy* chip, write-through (`asy_print_log.py`'s
    `_store_err()` writes on every push — there is no deferred flush to race), so they should come
    back. But run 5 shut down abruptly, and that can catch a chunk write in flight: both status bytes
    go to `_STATUS_BUSY` before the payload is touched, so an interrupted write leaves them there,
@@ -481,7 +525,7 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    unconditionally: the restore is all-or-nothing, never partial and never garbled, which is the
    dual-block + CRC + busy-flag protocol's actual job.
    **5c. A commanded reboot, taken with storage paused — the case that must never lose anything.**
-   Production's own `system_service._reboot()` pauses permanent storage before it resets, precisely
+   Production's own `asy_system_service._reboot()` pauses permanent storage before it resets, precisely
    so no FRAM chunk operation can be in flight across the restart; `PUT /system {"SystemCmd":
    "mempause"}` is that same pause over REST. With it held, none of `_write()`/`_read()`/`clear()`
    can start, no status byte can be left `_STATUS_BUSY`, and the restore is deterministic —
@@ -497,7 +541,7 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
    reboot this run exists to test. The final boot also sweeps every *other* registered error source for loss
    (`SYSTEM`/`NOTIFY`/`NTP`/`WEBSERVER`/`DNSSRV`, every `CFGMGR_*`, `dev`'s two `uart_link`
    instances): a fresh entry from that boot is legitimate, a missing one never is. `FRAM` is the
-   one exemption — `AsyFramManager` builds a plain `PrintLogHistory`, since the store cannot
+   one exemption — `FRAMManager` builds a plain `PrintLogHistory`, since the store cannot
    persist its own failure history through itself, and
    `tests/_sensortask_scenarios.py` pins it as the only one from the real object graph.
    5c also confirms
@@ -510,27 +554,31 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
 6. **Clean boot, configure a real SSID** (persisted) — needed for run 7's genuine STA-connect-
    failure cycle, not the `SSID==""` unconfigured shortcut.
 7. **Reboot with 5 scripted `"no access point found"` WiFi outcomes** — drives the real STA →
-   hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `DNSServer`, and
+   hotspot-fallback state machine (`conn_fail_to_hotspot=5`), starts the real `CaptiveDNS`, and
    confirms it actually answers a real UDP DNS query sent from outside the process — not just that
    the internal state flipped. Only possible because of
-   `digital_twin/_unix_port_udp_addr_shim.py` — see its own module docstring and the "`_unix_port_udp_addr_shim.py`"
-   section below for the three Unix-port-only `socket` quirks it works around, entirely from
-   twin-side code, with `src/` left untouched and correct for real hardware. `src/captive_dns.py`'s
-   `DNSServer` binds the real, privileged port 53 unconditionally (correct for real hardware, which
-   has no user/privilege concept at all) — `scripts/run_digital_twin_ci.sh` grants the built
-   interpreter binary `CAP_NET_BIND_SERVICE` (via `setcap`, fresh on every invocation, since a
-   cached toolchain archive doesn't preserve it) precisely so this run works when the job itself
-   isn't root, e.g. a GitHub Actions runner. Without it, `asy_udp_socket.py`'s own `bind()` retry
-   loop swallows the resulting `PermissionError` and gives up silently — the DNS server never
-   raises, never crashes the process, it just never starts listening, so no amount of waiting fixes
-   it. Confirmed directly: two real CI failures here were a timeout-budget red herring; the actual
-   fix was the capability grant, not a longer wait.
+   `digital_twin/unixport/_unix_port_udp_addr_shim.py` — see its own module docstring and the
+   "`_unix_port_udp_addr_shim.py`" section below for the three Unix-port-only `socket` quirks it
+   works around, entirely from twin-side code, with `src/` left untouched and correct for real
+   hardware. `src/asy_captive_dns.py`'s `CaptiveDNS` binds the real, privileged port 53
+   unconditionally (correct for real hardware, which has no user/privilege concept at all) —
+   `scripts/run_digital_twin_ci.sh` grants the built interpreter binary `CAP_NET_BIND_SERVICE` (via
+   `setcap`, fresh on every invocation, since a cached toolchain archive doesn't preserve it)
+   precisely so this run works when the job itself isn't root, e.g. a GitHub Actions runner. Without
+   it, every `bind()` fails with `PermissionError`, which `asy_udp_socket.py` absorbs (its I/O never
+   raises) — the DNS server never crashes the process and only logs, each backoff round, that it
+   could not bind port 53; it never starts listening, so no amount of waiting fixes it. Confirmed
+   directly: two real CI failures here were a timeout-budget red herring; the actual fix was the
+   capability grant, not a longer wait.
 8. **Reboot fault-free** — WIFI's own persistence-correctness check (FRAM-backed since WP1, same
    all-or-nothing abrupt-restart guarantee as SGP40's run 5b — restored count must be `0` or the
-   full scripted-failure count, never partial), plus configures an unreachable NTP host
+   full count, never partial: the five scripted failures plus the persisted `WLAN_TO_HOTSPOT`
+   fallback warning, six events in two history slots), plus configures an unreachable NTP host
    (`192.0.2.1`, RFC 5737 TEST-NET-1) for run 9.
 9. **Reboot with NTP permanently unreachable** — the other "network connections" real-world case.
-   Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually.
+   Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
+   and that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
+   where it has none (a network namespace holding only `lo`), never both.
 10. **The dedicated watchdog-backstop case** — a real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang inside a chip fake's handler (`--hang sgp40:writeto:12`), genuinely
     freezing the whole interpreter past the 8000ms WDT window. `digital_twin/_fault_injection.py`'s
@@ -540,8 +588,8 @@ from that device's own real wiring plan, never a hardcoded driver list — a dev
     blocking sleep is the only way this twin can reproduce that specific failure mode faithfully.
     Confirms the process survives and exits cleanly, and — the one thing sustained-but-bounded
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
-    (`would_have_triggered_count >= 1`), matching CLAUDE.md's own settled "hardware watchdog is the
-    accepted backstop" rule for a genuinely wedged bus.
+    (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a call that
+    never returns is the watchdog's.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only (no `--soak`/`--soak-cycles` — that
     flag doesn't exist any more); the *host* (this script's own `_run_11_soak()`, plain CPython)
@@ -656,7 +704,7 @@ That is not old data surviving (BMP3XX/SCD30 correctly show 0) and not a defect:
 detecting real torn state is the driver working.
 
 **`_RESET_ERRORS_TIMEOUT_S` is derived, not chosen.** `PUT /status {"ResetErrors": true}` resets
-every registered source in turn, and each FRAM-backed one pays a real chunk write — 10+ of them on
+every registered source at once, and each FRAM-backed one still pays a real chunk write — 10+ of them on
 `dev`, which is why it exceeds `_http()`'s plain 5s default. The first two CI runs on `dev` failed
 on exactly that one call, at both gc thresholds, and nothing else.
 
@@ -666,7 +714,7 @@ since the server aborts first — so the suite observes the server's own diagnos
 a bare "something took too long". The earlier flat 20.0 was inert for that reason, and also sat
 above the 15s the real web UI gives up at. What is still missing is an elapsed-time budget well
 below the cap: this is a backstop, not a performance assertion, and the suite is blind to the whole
-5-15s band (BACKLOG item 24, which carries the real-hardware measurements).
+5-15s band (SPECIFICATION.md C.7).
 
 ### `--hang` (real bus hangs, distinct from `--fault`)
 
@@ -693,7 +741,7 @@ only device that wires the part at all.
 
 A real `--hang` freezes the whole interpreter, so every asyncio task — including `WDT`'s own
 pending `_countdown()` sleep — sits unable to run for the hang's full real duration. Once the
-interpreter unfreezes, `system_service.py`'s periodic `feed()` (its own check interval is
+interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its own check interval is
 deliberately shorter than any real watchdog `timeout`) can win the race to run before
 `_countdown()`'s own already-expired `sleep_ms()` gets its turn, since both became ready at the
 same moment. A plain cancel-and-restart in `_arm()` would silently erase that already-elapsed
@@ -746,11 +794,18 @@ site, and not reaching for a threshold.
 
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 
+The file sits in `digital_twin/unixport/`, a directory holding no `machine`, `network` or
+`neopixel` fake, so a unit test can put it on `sys.path` without the twin's fakes shadowing
+`tests/`' own. Every importer inserts that directory itself,
+`sys.path.insert(0, "digital_twin/unixport")`, `run_generic_integration.py` included, so no
+`MICROPYPATH` needs to name it; and it stays inside `digital_twin/`, so the lint and type scopes
+are unchanged (both mypy passes carry the directory on their `mypy_path`).
+
 `patch_asy_udp_socket_for_unix_port()` — called once, early, as `run_generic_integration.py`'s own
 `main()` does (right after `prewarm_poll_set()`, before anything constructs a socket) — also called
 the same way, module-level before `import sensortask_wozi`, by `tests/
 test_digital_twin_sensortask_integration.py` (its own hotspot/DNS section drives a genuine UDP round
-trip against the real `captive_dns.py` `DNSServer` the same way `run_generic_integration.py`'s run 7
+trip against the real `asy_captive_dns.py` `CaptiveDNS` the same way `run_generic_integration.py`'s run 7
 does — see that test's own comment). That same test also needs the real privileged port 53 itself
 to actually be bindable, same as run 7 — `scripts/test.sh` now grants the built interpreter binary
 `CAP_NET_BIND_SERVICE` unconditionally (mirroring `scripts/run_digital_twin_ci.sh`'s own identical
@@ -759,8 +814,8 @@ grant, see that script's own comment for the full mechanism/rationale), not just
 only the separate digital-twin-e2e job.
 
 > **Two different faults produce the identical message** `"real hotspot activation never started the
-> real DNSServer task"`, and telling them apart costs one command. Running that file directly with
-> the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `DNSServer`'s
+> real CaptiveDNS task"`, and telling them apart costs one command. Running that file directly with
+> the interpreter instead of through `scripts/test.sh` skips the `setcap` grant, so `CaptiveDNS`'s
 > `bind()` to port 53 fails and the task never starts — check `getcap` on the binary before drawing
 > any conclusion from a standalone run. The other cause is plain CPU starvation exhausting the
 > assertion's own budget (README.md's `TEST_PARALLELISM` entry), which needs no missing capability at all. Neither is a
@@ -768,29 +823,31 @@ only the separate digital-twin-e2e job.
 
 Works
 around three confirmed MicroPython-Unix-port-only `socket` quirks that otherwise make a real UDP
-round trip (DNS, NTP) impossible under this harness, entirely from twin-side code:
+round trip (DNS, NTP) impossible under this harness, entirely from twin-side code (the divergence
+and its trigger: SPECIFICATION.md Part F.7):
 
-1. `bind()`/`connect()` reject `AsyUDPSocket`'s own plain `(host: str, port: int)` tuple with
+1. `bind()`/`connect()` reject `UDPSocket`'s own plain `(host: str, port: int)` tuple with
    `TypeError: object with buffer protocol required` — the Unix port's `socket` module
    (`ports/unix/modsocket.c`) requires a pre-resolved buffer-protocol sockaddr instead. The real
    rp2/lwIP module (`extmod/modlwip.c`) accepts the plain tuple directly (confirmed by reading both
    C sources side by side, not just the type stub — see `BACKLOG.md`'s "Real-hardware verification
    gap" entry for the full account), so this is genuinely two different implementations, not one
-   port being stricter about the same contract - the plain-tuple form `AsyUDPSocket` (correctly)
+   port being stricter about the same contract - the plain-tuple form `UDPSocket` (correctly)
    always passes is required for real hardware, not a bug to fix in `src/`.
 2. `sendto()` has this exact same requirement (`micropython/micropython#6924` is specifically about
    this method) — but its destination address is a per-call argument (a DNS/NTP client's ephemeral
    reply address, learned dynamically), not the constructor-time address point 1 already covers.
 3. `recvfrom()` hands back the raw 16-byte packed C `struct sockaddr_in` as a plain `bytes` object,
    not the `(ip: str, port: int)` tuple `lwip_socket_recvfrom()` returns on real hardware and
-   `captive_dns.py`'s own subnet check expects — confirmed directly against a real captured reply,
+   `asy_captive_dns.py`'s own subnet check expects — confirmed directly against a real captured reply,
    not just the C source (this build's actual behavior differs from what a first look at
    `modsocket.c`'s own separate `socket.sockaddr()` utility function would suggest).
 
 The patch pre-resolves via `socket.getaddrinfo()` before `bind()`/`connect()`/`sendto()` (same
 pattern `unix_port_poll_prewarm.py`'s `prewarm_poll_set()` already uses for a different call site)
-and unpacks `recvfrom()`'s raw struct into the shape production code expects. Every real call site
-this project has (`captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
+and unpacks `recvfrom()`'s raw struct into the `(host, port)` tuple production code expects, so
+`src/` only ever sees tuples. Every real call site
+this project has (`asy_captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s already-DNS-resolved NTP
 server IP via `asy_dns_client.py`) already hands over an already-numeric address, so the
 `getaddrinfo()` calls here are always fast and local, never a real DNS lookup.
 
@@ -823,8 +880,9 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
    constructing the new chip fake (the wiring plan itself — which bus, which address — is already
    generic and needs no per-chip code; see "Booting a generated device" above). If the chip's real
    I2C address is hardwired (no TOML `address` field — `buildgen.buildspec.FIXED_ADDRESS_DRIVERS`),
-   add it to `buildgen/twin_wiring.py`'s own `FIXED_ADDRESSES` table too, matching the real driver's
-   own hardcoded default address. Nothing else to wire by hand for `"wozi"`/`"dev"`:
+   the wiring plan reads it from the driver's own module-level `_<DRIVER>_ADDR = const(<int>)`
+   (`buildgen/twin_wiring.py`'s `fixed_address()`), and generation stops with a named error if the
+   driver has none. Nothing else to wire by hand for `"wozi"`/`"dev"`:
    `configure_i2c_wiring()` loads its plan from `devices/wozi.toml`/`dev.toml` via generation, so a
    driver promoted for either device is picked up automatically the next time
    `scripts/_generate_sensortask_modules.py` runs.
@@ -835,11 +893,8 @@ started with. For a new **I2C** sensor this is a small, mechanical addition:
 4. Update this file's "What's here" list (the bus-wiring bullet above) to mention the new chip, and
    consider whether `digital_twin/launch.py`'s own `_sensor_loop()`/`_FAULT_DEVICE_OPS` should read
    from it too.
-5. **Update `html/definitions/<device>.json`** for every device the new driver's fields should
-   appear on (`SPECIFICATION.md` Part H.5/H.7, Part C.11 point 9) — the website has no
-   other place a new sensor's fields get wired in, so skipping this step leaves the driver fully
-   working (real chip fake, real REST endpoint, twin-tested) but permanently invisible on the
-   website until someone remembers to come back and add it by hand.
+5. The new driver's website fields come from its `@web` tags alone (`SPECIFICATION.md` Part H.5/K.4) —
+   nothing to edit here or in any definitions file.
 
 **A new SPI sensor is not automatically supported yet if it would share an already-occupied SPI bus
 id with the FRAM chip.** `_wire_spi_device()`/`machine.SPI` currently wire **one fixed device per
@@ -867,9 +922,10 @@ correctly by the dedicated pass instead - see `digital_twin/typecheck.ini`'s own
 ## Harness pitfalls
 
 - **Unix-port facts that break a harness written by habit** (confirmed against the pinned build):
-  no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr`; `asyncio` offers `Lock`
-  and `Event` but no `Semaphore`; `os.environ` is missing, so read `os.getenv()`; and
-  `micropython.mem_info()` with any argument prints the full block map.
+  no `socket.getsockname()`; `getaddrinfo()` returns a packed `sockaddr` (both: SPECIFICATION.md
+  Part F.7, with their trigger); `asyncio` offers `Lock` and `Event` but no `Semaphore`;
+  `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with any argument
+  prints the full block map.
 
 ## Known gaps / follow-ups for later sessions
 

@@ -1,0 +1,8 @@
+ 16:17:20 up 10:25,  0 user,  load average: 2.02, 6.51, 8.11
+old run1 rc=0 169.397685093 s 42/42 passed, 0 failed, 0 skipped
+new run1 rc=0 444.823299306 s 42/42 passed, 0 failed, 0 skipped
+old run2 rc=0 167.882277316 s 42/42 passed, 0 failed, 0 skipped
+new run2 rc=0 444.688594869 s 42/42 passed, 0 failed, 0 skipped
+ 16:37:47 up 10:46,  0 user,  load average: 8.55, 5.88, 6.05
+
+[exited with code 0]

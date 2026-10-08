@@ -5,6 +5,9 @@ is correct. Same literal-path-string grep technique as test_build_frozen_html_sh
 import subprocess
 from pathlib import Path
 
+import pytest
+from _devices import DEVICE_NAMES
+
 
 def _run_build_website(repo_root: Path, device: str, output_path: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -16,9 +19,9 @@ def _run_build_website(repo_root: Path, device: str, output_path: Path, *, check
     )
 
 
-def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root: Path, tmp_path: Path) -> None:
-    out_file = tmp_path / "frozen_website_wozi.py"
-    _run_build_website(repo_root, "wozi", out_file)
+def test_a_device_stages_the_expected_files_renamed_and_flattened(repo_root: Path, tmp_path: Path) -> None:
+    out_file = tmp_path / "frozen_website.py"
+    _run_build_website(repo_root, DEVICE_NAMES[0], out_file)
 
     text = out_file.read_text()
     for expected in (
@@ -47,48 +50,48 @@ def test_wozi_device_stages_the_expected_files_renamed_and_flattened(repo_root: 
 
 
 def test_prototype_only_files_are_never_staged(repo_root: Path, tmp_path: Path) -> None:
-    out_file = tmp_path / "frozen_website_wozi.py"
-    _run_build_website(repo_root, "wozi", out_file)
+    out_file = tmp_path / "frozen_website.py"
+    _run_build_website(repo_root, DEVICE_NAMES[0], out_file)
 
     text = out_file.read_text()
-    for unexpected in ("/js/mock-server.js.gz", "/definitions/wozi.json.gz", "/definitions/dev.json.gz", "/dev.json.gz"):
+    unexpected_paths = (
+        "/js/mock-server.js.gz",
+        "/definitions.json.gz",
+        *(f"/definitions/{d}.json.gz" for d in DEVICE_NAMES),
+        *(f"/{d}.json.gz" for d in DEVICE_NAMES),
+    )
+    for unexpected in unexpected_paths:
         assert unexpected not in text, unexpected
 
 
-def test_unknown_device_fails_with_no_matching_definitions_file(repo_root: Path, tmp_path: Path) -> None:
+def test_unknown_device_fails_naming_its_missing_toml(repo_root: Path, tmp_path: Path) -> None:
     out_file = tmp_path / "frozen_missing.py"
     result = _run_build_website(repo_root, "no-such-device", out_file, check=False)
 
     assert result.returncode != 0
-    # Both halves of the fallback's own failure message - it's genuinely missing both a
-    # hand-written definitions file AND a devices/<device>.toml to generate one from.
-    assert "html/definitions/no-such-device.json" in result.stderr
+    # The device TOML is the one source the buildgen generation step reads; nothing else is looked for.
     assert "devices/no-such-device.toml" in result.stderr
+    assert "html/definitions" not in result.stderr
     assert not out_file.exists()
 
 
-def test_device_without_a_hand_written_definitions_file_generates_one_via_buildgen(repo_root: Path, tmp_path: Path) -> None:
-    # Four devices have no hand-written definitions.json, so build_website.sh generates one on
-    # the fly through buildgen rather than failing - which is what lets build_firmware.py build
-    # them at all (Part L.4). "arzi" stands in for all four.
-    definitions_file = repo_root / "html" / "definitions" / "arzi.json"
-    assert not definitions_file.exists(), "sanity: this test's whole premise is that arzi has no hand-written definitions.json"
-
-    out_file = tmp_path / "frozen_website_arzi.py"
-    _run_build_website(repo_root, "arzi", out_file)
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_device_inlines_generated_definitions_and_never_stages_them(repo_root: Path, tmp_path: Path, device: str) -> None:
+    # Every device's definitions come from the buildgen generation step and are inlined into
+    # index.html, never staged as their own frozen file: a scratch-directory mix-up once froze
+    # one as a stray /definitions.json.gz.
+    out_file = tmp_path / "frozen_website.py"
+    _run_build_website(repo_root, device, out_file)
 
     text = out_file.read_text()
     assert "/index.html.gz" in text
     assert "/js/app.js.gz" in text
-    # The generated definitions.json must be inlined like the hand-written ones, never staged as
-    # its own frozen file. A regression guard: an earlier fallback wrote it into the served stage
-    # directory rather than a scratch one, and it reappeared here as a stray /definitions.json.gz.
     assert "/definitions.json.gz" not in text
 
 
 def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_root: Path, tmp_path: Path) -> None:
-    # The fallback's other failure surface: a devices/<device>.toml that exists but fails
-    # buildgen's validation, as opposed to neither file existing at all.
+    # The buildgen generation step's other failure surface: a devices/<device>.toml that exists
+    # but fails buildgen's validation, as opposed to no TOML at all.
 
     # build_website.sh always cd's to the repo root, so this needs a real file on disk: the
     # fixture lives in buildgen_fixtures/ and is copied into devices/ under a test-only name,
@@ -133,6 +136,6 @@ def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root: Path,
     # default frozen_modules/frozen_html.py location.
     out_file = tmp_path / "somewhere" / "custom_name.py"
     out_file.parent.mkdir()
-    _run_build_website(repo_root, "wozi", out_file)
+    _run_build_website(repo_root, DEVICE_NAMES[0], out_file)
 
     assert out_file.is_file()

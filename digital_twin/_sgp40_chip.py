@@ -5,6 +5,7 @@ import random as _random_module
 
 from _crc8 import word
 from _fault_injection import FaultInjector
+from _twin_common import Walk
 
 try:
     from typing import TYPE_CHECKING
@@ -23,28 +24,25 @@ if TYPE_CHECKING:
 _CMD_SERIAL_NUMBER = b"\x36\x82"
 _CMD_SELF_TEST = b"\x28\x0e"
 _CMD_MEASURE_RAW = b"\x26\x0f"
+_RAW_WALK_DEFAULT = Walk(26000, 34000, 1000)  # a typical indoor walk inside SRAW_VOC's 0-65535 ticks (Table 1)
 
 
 class Sgp40Chip:
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
-        min_raw: int = 26000,
-        max_raw: int = 34000,
-        raw_step: int = 1000,
+        raw: Walk = _RAW_WALK_DEFAULT,
         *,
         corrupt_next_reply: bool = False,
     ) -> None:
         self._random = random_source if random_source is not None else _random_module
-        self._min_raw = min_raw
-        self._max_raw = max_raw
-        # Not datasheet-derived (min_raw/max_raw are) - see _scd30_chip.py's own *_step comment for
+        # Not datasheet-derived (the walk's lo/hi are) - see _scd30_chip.py's own walk comment for
         # the same judgment-call framing, applied here to per-command VOC tick drift.
-        self._raw_step = raw_step
+        self._min_raw, self._max_raw, self._raw_step = int(raw.lo), int(raw.hi), int(raw.step)
         self._corrupt_next_reply = corrupt_next_reply
         self.fault = FaultInjector()
         self._pending_reply = bytes(3)
-        # Initial value: one draw within [min_raw,max_raw] at construction - every value after this
+        # Initial value: one draw within the walk's [lo,hi] at construction - every value after this
         # one steps from the last instead (see handle_writeto()'s MEASURE_RAW branch below).
         self._raw = self._random.randint(self._min_raw, self._max_raw)
 

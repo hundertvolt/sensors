@@ -1,0 +1,87 @@
+tests/test_asy_webserver_connections.py: note: In function "test_seven_refusals_count_seven_and_spend_one_slot":
+tests/test_asy_webserver_connections.py:460:16: error: Incompatible return
+value type (got
+"tuple[int, int, list[tuple[int, str]], list[_Writer], int | None]", expected
+"tuple[int, int, list[tuple[int, str]], list[_Writer], int]")  [return-value]
+            return await service.get_dropped_count(), count, used, writers...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_webserver_connections.py: note: In function "test_a_connection_closed_before_any_byte_is_no_drop":
+tests/test_asy_webserver_connections.py:579:16: error: Incompatible return
+value type (got "tuple[int, tuple[int, list[tuple[int, str]]], int | None]",
+expected "tuple[int, tuple[int, list[tuple[int, str]]], int]")  [return-value]
+            return await service.get_dropped_count(), await _log(service),...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_webserver_connections.py: note: In function "_serve_all":
+tests/test_asy_webserver_connections.py:600:12: error: Incompatible return
+value type (got
+"tuple[list[tuple[bytes, int, int, int | None]], list[tuple[int, str]]]",
+expected "tuple[list[tuple[bytes, int, int, int]], list[tuple[int, str]]]") 
+[return-value]
+        return results, used
+               ^~~~~~~~~~~~~
+tests/test_asy_webserver_connections.py: note: In function "_refused_or_eof":
+tests/test_asy_webserver_connections.py:843:9: error: "StreamReader" has no
+attribute "write"  [attr-defined]
+            stream.write(_GET_STATUS)
+            ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py:844:15: error: "StreamReader" has no
+attribute "drain"  [attr-defined]
+            await stream.drain()
+                  ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py:849:9: error: "StreamReader" has no
+attribute "close"  [attr-defined]
+            stream.close()
+            ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py: note: In function "test_cancelling_the_serve_task_closes_the_listening_port":
+tests/test_asy_webserver_connections.py:885:13: error: "StreamReader" has no
+attribute "write"  [attr-defined]
+                stream.write(_GET_STATUS)
+                ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py:886:19: error: "StreamReader" has no
+attribute "drain"  [attr-defined]
+                await stream.drain()
+                      ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py:889:13: error: "StreamReader" has no
+attribute "close"  [attr-defined]
+                stream.close()
+                ^~~~~~~~~~~~
+tests/test_asy_webserver_connections.py: note: In function "test_client_faults_print_nothing_at_debug_level_zero":
+tests/test_asy_webserver_connections.py:937:16: error: Incompatible return
+value type (got "tuple[tuple[int, list[tuple[int, str]]], int, int | None]",
+expected "tuple[tuple[int, list[tuple[int, str]]], int, int]")  [return-value]
+            return await _log(service), await service.get_dropped_count(),...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_webserver_connections.py: note: In function "test_sends_the_stack_cannot_queue_end_at_the_per_call_timeout":
+tests/test_asy_webserver_connections.py:1018:16: error: Incompatible return
+value type (got
+"tuple[bytes, list[int], _Writer, tuple[int, list[tuple[int, str]]], int | None]",
+expected
+"tuple[bytes, list[int], _Writer, tuple[int, list[tuple[int, str]]], int]") 
+[return-value]
+            return reference.written, durations[1:], normal, await _log(se...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_webserver_connections.py: note: In function "test_a_send_refused_a_thousand_times_then_accepted_completes":
+tests/test_asy_webserver_connections.py:1036:16: error: Incompatible return
+value type (got "tuple[tuple[int, list[tuple[int, str]]], int | None]", expected
+"tuple[tuple[int, list[tuple[int, str]]], int]")  [return-value]
+            return await _log(service), await service._open_conns.get_valu...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_webserver_connections.py: note: In function "test_slots_held_by_unsendable_responses_come_back":
+tests/test_asy_webserver_connections.py:1060:16: error: Incompatible return
+value type (got
+"tuple[_Writer, _Writer, tuple[int, list[tuple[int, str]]], int | None]",
+expected "tuple[_Writer, _Writer, tuple[int, list[tuple[int, str]]], int]") 
+[return-value]
+            return refused, served, await _log(service), await service._op...
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/allocation_need_per_source.py: note: In function "_sources":
+tests_hardware/device_scripts/allocation_need_per_source.py:92:8: error:
+"WebserverService" has no attribute "_static_mount"  [attr-defined]
+        if ws._static_mount is not None:  # the page the 2026-09-23 sittin...
+           ^~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/allocation_need_per_source.py:93:48: error:
+"WebserverService" has no attribute "_get_static_index"  [attr-defined]
+            probes.append(("route:/", _whole_route(ws._get_static_index)))
+                                                   ^~~~~~~~~~~~~~~~~~~~
+Found 15 errors in 2 files (checked 182 source files)
+noargs exit 1

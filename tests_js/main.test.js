@@ -4,7 +4,7 @@ import { startApp } from "../js/main.js";
 /** @type {import("../js/definitions.js").SiteDefinitions} */
 const DEFS = {
     schemaVersion: "1.0.0",
-    device: { id: "wozi", displayName: "Wozi Test" },
+    device: { id: "fixture-device", displayName: "Fixture Device" },
     landingSection: "measurements",
     defaultPollIntervalMs: 20,
     sections: [
@@ -87,7 +87,7 @@ describe("startApp (production entry)", () => {
         await startApp(elements);
 
         expect(fetchStub).toHaveBeenCalledWith("definitions.json", expect.anything());
-        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
+        expect(elements.deviceNameEl.textContent).toBe("Fixture Device");
         expect(elements.errorBannerEl.classList.contains("hidden")).toBe(true);
         expect(elements.mainEl.querySelector(".section-heading")?.textContent).toBe("Measurements");
     });
@@ -135,7 +135,7 @@ describe("startApp (production entry)", () => {
         await startApp({ ...elements, inlinedDefinitionsEl: inlinedEl });
 
         expect(fetchStub).not.toHaveBeenCalled();
-        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
+        expect(elements.deviceNameEl.textContent).toBe("Fixture Device");
         expect(elements.errorBannerEl.classList.contains("hidden")).toBe(true);
         expect(elements.mainEl.querySelector(".section-heading")?.textContent).toBe("Measurements");
     });
@@ -163,6 +163,6 @@ describe("startApp (production entry)", () => {
         await startApp({ ...elements, inlinedDefinitionsEl: null });
 
         expect(fetchStub).toHaveBeenCalledWith("definitions.json", expect.anything());
-        expect(elements.deviceNameEl.textContent).toBe("Wozi Test");
+        expect(elements.deviceNameEl.textContent).toBe("Fixture Device");
     });
 });

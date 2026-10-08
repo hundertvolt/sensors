@@ -2,8 +2,6 @@
 hand. Python and shell only - JS/CSS keep their own syntax and stay review-enforced. The counting
 convention this encodes is CLAUDE.md's; without it the same tree measures anywhere from 0 to 458."""
 
-from __future__ import annotations
-
 import ast
 import re
 from pathlib import Path
@@ -14,9 +12,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPES = ("src", "buildgen", "digital_twin", "toolchain", "scripts", "tests", "tests_scripts", "tests_hardware")
 CAP = 3
 
-# Data, not commentary, so exempt - CLAUDE.md names the buildgen tags; PEP 723's inline script
-# metadata is the same case, one machine-read line per field, read by `uv run` itself.
-_TAGS = ("@web", "@web-group", "@wiring", "@value-wiring", "@limits", "@requires")
+# Data, not commentary, so exempt - CLAUDE.md names the buildgen tags and the tunable-register tag
+# tests_scripts/test_tunables_register.py reads; PEP 723's inline script metadata is the same case.
+_TAGS = ("@web", "@web-group", "@wiring", "@value-wiring", "@limits", "@requires", "@tunable")
 _PEP723 = re.compile(r"^#\s*(///|requires-python\s*=|dependencies\s*=)")
 # Punctuation between paragraphs, not prose: a banner rule, a bare `#`, and a docstring's own lone
 # delimiter line. Each is why a hand count and a naive line count disagree.
@@ -35,9 +33,9 @@ def _is_punctuation(line: str) -> bool:
 
 
 def _comment_blocks(lines: list[str]) -> list[tuple[int, int]]:
-    """Over-cap runs of comment-ONLY lines. A trailing comment on a code line annotates that line,
-    so it never starts a block - which is what keeps a column of annotated data entries from
-    reading as one long block."""
+    # Over-cap runs of comment-ONLY lines. A trailing comment on a code line annotates that line,
+    # so it never starts a block - which is what keeps a column of annotated data entries from
+    # reading as one long block.
     over: list[tuple[int, int]] = []
     run = start = 0
     for number, raw in enumerate(lines, 1):

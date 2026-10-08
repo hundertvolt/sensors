@@ -4,14 +4,14 @@
  * rather than two hand-kept copies of the same section/group/field-kind filtering.
  */
 
+import { neverUnchanged } from "../js/definitions.js";
+
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-// Dispatch-only fields and the one composite shape (lightCmdLED) have their own Invalid/Failed/
-// Valid semantics, covered by dedicated tests in mock-server.test.js and render.test.js. Excluded
-// here rather than force-fit into categories that do not apply to them.
-export const DISPATCH_ONLY_KEYS = new Set(["SystemCmd", "PauseTime", "lightCmdLED", "ResetErrors"]);
+// Action fields (dispatch) and always-executed fields have their own category: the matrices'
+// never-"Unchanged" category (two identical valid sends both answer Valid).
 
 /**
  * @typedef {{
@@ -60,7 +60,7 @@ export function collectPutFieldCases(device, defs, data) {
                 continue;
             }
             for (const field of group.fields) {
-                if (field.kind === "readonly" || field.kind === "composite" || DISPATCH_ONLY_KEYS.has(field.key)) {
+                if (field.kind === "readonly" || field.kind === "composite" || neverUnchanged(field)) {
                     continue;
                 }
                 const storedConfig =
@@ -80,4 +80,55 @@ export function collectPutFieldCases(device, defs, data) {
         }
     }
     return cases;
+}
+
+/**
+ * The key up to its first `_`: the driver's logger name an instance key extends (`SCD30_primary`).
+ * @param {string} key
+ * @returns {string}
+ */
+function driverBase(key) {
+    const cut = key.indexOf("_");
+    return cut === -1 ? key : key.slice(0, cut);
+}
+
+/**
+ * Keeps the first case per section, driver and identical field definition, so a field every
+ * device shares runs once; a field differing in any attribute runs again.
+ * @template {PutFieldCase} T
+ * @param {T[]} cases
+ * @returns {T[]}
+ */
+export function dedupePutFieldCases(cases) {
+    const seen = new Set();
+    return cases.filter((testCase) => {
+        const signature = `${testCase.sectionKey}|${driverBase(testCase.groupKey)}|${JSON.stringify(testCase.field)}`;
+        if (seen.has(signature)) {
+            return false;
+        }
+        seen.add(signature);
+        return true;
+    });
+}
+
+/**
+ * A valid string of about `length` characters for `field`'s shape: the matrices' "valid" probes.
+ * @param {FieldDef} field
+ * @param {number} length
+ * @returns {string}
+ */
+export function validStringValue(field, length) {
+    if (field.shape === "countryCode") {
+        return "XX"; // cyw43's worldwide code: the one alpha-2 pair valid on every device
+    }
+    if (field.shape === "hostName") {
+        // Every 32nd character a dot (never the last): labels of at most 32 characters, `length` in all.
+        return Array.from({ length }, (_, i) => (i % 32 === 31 && i !== length - 1 ? "." : "x")).join("");
+    }
+    if (field.shape === "ipv4List") {
+        // An address list takes few lengths: the longest of one to three addresses that fits, else one.
+        const lists = ["1.1.1.1", "1.1.1.1,2.2.2.2", "1.1.1.1,2.2.2.2,3.3.3.3", "100.100.100.100,100.100.100.101,100.100.100.102"];
+        return lists.filter((list) => list.length <= length).at(-1) ?? "1.1.1.1";
+    }
+    return "x".repeat(length);
 }

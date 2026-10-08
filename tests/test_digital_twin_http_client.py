@@ -20,8 +20,13 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import _http_client as http_client
 
+# @tunable l2.http_client_run_bound_s = 5.0
+_RUN_BOUND_S = 5.0
+# @tunable l2.http_client_mid_body_pause_ms = 20
+_MID_BODY_PAUSE_MS = 20
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
+
+def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
@@ -341,7 +346,7 @@ def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 async def _canned_server_split_body(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
@@ -357,7 +362,7 @@ async def _canned_server_split_body(reader: "asyncio.StreamReader", writer: "asy
     half = len(body) // 2
     writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body[:half])
     await writer.drain()
-    await asyncio.sleep_ms(20)
+    await asyncio.sleep_ms(_MID_BODY_PAUSE_MS)
     writer.write(body[half:])
     await writer.drain()
     await writer.wait_closed()
@@ -374,7 +379,7 @@ def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 async def _canned_server_no_content_length(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
@@ -407,7 +412,7 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +433,7 @@ def test_fetch_with_read_body_false_drains_a_sized_response_without_materializin
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it() -> None:
@@ -443,7 +448,7 @@ def test_fetch_with_read_body_false_drains_an_unsized_response_without_materiali
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 if __name__ == "__main__":

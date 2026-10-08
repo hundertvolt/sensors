@@ -14,9 +14,9 @@ _BENCH_DEVICE = "dev"  # the only unit ever bench-flashed (CLAUDE.md's hard rule
 
 
 def _conftest_constant(repo_root: Path, name: str) -> object:
-    """The literal value assigned to a module-level constant, read without importing the module
-    (tests_hardware/conftest.py imports pytest plugins and hardware helpers this suite has no
-    business pulling in just to read two strings)."""
+    # The literal value assigned to a module-level constant, read without importing the module
+    # (tests_hardware/conftest.py imports pytest plugins and hardware helpers this suite has no
+    # business pulling in just to read two strings).
     tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
@@ -39,8 +39,8 @@ def _hotspot_password(repo_root: Path) -> str:
 
 
 def _schema_default(repo_root: Path, const_name: str) -> str:
-    """The default (third element) of a one-field _VAL_* schema tuple in src/asy_wifi_service.py.
-    Read as text, not imported: micropython.const() folds the name out at runtime anyway."""
+    # The default (third element) of a one-field _VAL_* schema tuple in src/asy_wifi_service.py.
+    # Read as text, not imported: micropython.const() folds the name out at runtime anyway.
     source = (repo_root / "src" / "asy_wifi_service.py").read_text()
     match = re.search(rf"^{const_name} = const\((\(\(.*?\),\))\)", source, re.MULTILINE)
     assert match is not None, f"src/asy_wifi_service.py no longer declares {const_name} in the expected shape"
@@ -59,7 +59,7 @@ def test_the_last_hostname_candidate_is_still_the_shared_schema_default(repo_roo
     # The fallback exists for a board whose config file predates per-device hostname injection: it
     # still carries the persisted shared default and keeps using it.
     candidates = _hostname_candidates(repo_root)
-    assert candidates[-1] == _schema_default(repo_root, "_VAL_HOST")
+    assert candidates[-1] == _schema_default(repo_root, "_VAL_HOSTNAME")
 
 
 def test_every_hostname_candidate_fits_the_schema_bound_it_will_be_matched_against(repo_root: Path) -> None:

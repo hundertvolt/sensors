@@ -2,8 +2,6 @@
 what the board's heap looks like while a full ceiling of connections is genuinely held open, and
 where its real wall is."""
 
-from __future__ import annotations
-
 import socket
 import threading
 import time
@@ -18,35 +16,59 @@ if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
+
 DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
 # The worst-case body: microdot reads one only when Content-Length > 0, up to max_content_length
 # (2048), contiguously - so it must be PLACEABLE N times over. heap_map.placeable() counts that;
 # gaps_at_least() counts RUNS, so one large free run reads as 1 however many buffers fit in it.
+# @tunable web.max_content_length = 2048
 PER_CONNECTION_ALLOCATION = 2048
 # The script's own window is 90s and it prints READY about 20s in; this bounds the hold, not it.
+# @tunable l4.ceiling_hold_s = 55.0
 _HOLD_S = 55.0
 # No connection can be held past the server's own outer_cap_s (15.0), and one that says nothing is
 # closed after per_call_timeout_s (5.0) - measured on silicon at 5.12-5.16s plain, 15.1s dripping
 # (SPECIFICATION.md Part H.7.1). A full ceiling is therefore SUSTAINED by recycling, never held.
+# @tunable l4.ceiling_drip_interval_s = 2.0
 _DRIP_INTERVAL_S = 2.0
 # Recycled well inside the 15s cap, and STAGGERED: workers started together would also expire
 # together, so the live count would collapse to zero every 15s instead of staying at the ceiling.
+# @tunable l4.ceiling_recycle_s = 10.0
 _RECYCLE_S = 10.0
 # Recycling means one worker is always between connections, so the count sits at ceiling or one
 # below it. What makes the heap dumps a peak reading is that it is at the ceiling nearly always.
+# @tunable l4.ceiling_min_fraction_at_ceiling = 0.55
 _MIN_FRACTION_AT_CEILING = 0.55
 # A refusal is a FIN ~6 ms after connect, or an RST once the request bytes have arrived, so a
 # connection counts as held only once a read of it has stayed silent this long (Part H.7).
+# @tunable l4.ceiling_admission_wait_s = 0.3
 _ADMISSION_WAIT_S = 0.3
 
 
+# @tunable l4.ceiling_holder_socket_timeout_s = 5.0
+_HOLDER_SOCKET_TIMEOUT_S = 5.0
+# @tunable l4.heap_under_connection_ceiling_worker_join_s = 10.0
+_WORKER_JOIN_S = 10.0
+# @tunable l4.heap_under_connection_ceiling_script_timeout_s = 240.0
+_SCRIPT_TIMEOUT_S = 240.0
+# @tunable l4.heap_under_connection_ceiling_hammer_join_s = 30.0
+_HAMMER_JOIN_S = 30.0
+# @tunable l4.ceiling_refused_backoff_s = 0.1
+_REFUSED_BACKOFF_S = 0.1
+# @tunable l4.ceiling_stagger_margin_s = 2.0
+_STAGGER_MARGIN_S = 2.0
+# @tunable l4.ceiling_sample_step_s = 0.25
+_SAMPLE_STEP_S = 0.25
+
+
 def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
-    """Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
-    the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test."""
+    # Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
+    # the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test.
     stop.wait(offset_s)  # stagger, so the whole set does not expire in lockstep
     while not stop.is_set():
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5.0)
+        sock.settimeout(_HOLDER_SOCKET_TIMEOUT_S)
         parked = False
         try:
             sock.connect((dut_ip, port))
@@ -59,7 +81,7 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
             except TimeoutError:
                 pass
             else:
-                stop.wait(0.1)
+                stop.wait(_REFUSED_BACKOFF_S)
                 continue
             sock.setblocking(False)
             with lock:
@@ -75,7 +97,7 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
                     continue  # nothing to read, which is what a parked connection looks like
                 break  # readable at all means the server answered or closed: take a fresh one
         except OSError:
-            stop.wait(0.1)  # refused or reset - back off rather than spinning on a busy board
+            stop.wait(_REFUSED_BACKOFF_S)  # refused or reset - back off rather than spinning on a busy board
         finally:
             if parked:
                 with lock:
@@ -84,9 +106,9 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
 
 
 def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list[int], stop: threading.Event) -> None:
-    """Sustains `ceiling` real connections parked mid-request for the whole window and records the
-    count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
-    so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early."""
+    # Sustains `ceiling` real connections parked mid-request for the whole window and records the
+    # count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
+    # so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early.
     deadline = time.monotonic() + seconds
     if not wait_for_script_server(dut_ip, stop, timeout_s=seconds):  # the script's own boot, not main.py's
         return  # nothing reported: the test's own "did not report" assert names it
@@ -97,8 +119,8 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
     try:
         for worker in workers:
             worker.start()
-        stop.wait(_RECYCLE_S + 2.0)  # one full stagger cycle before the count is evidence
-        while time.monotonic() < deadline and not stop.wait(0.25):
+        stop.wait(_RECYCLE_S + _STAGGER_MARGIN_S)  # one full stagger cycle before the count is evidence
+        while time.monotonic() < deadline and not stop.wait(_SAMPLE_STEP_S):
             with lock:
                 observed.append(live[0])
     finally:
@@ -106,22 +128,22 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
         # of the pytest session, which took down 37 unrelated tests once.
         stop.set()
         for worker in workers:
-            worker.join(timeout=10.0)
+            worker.join(timeout=_WORKER_JOIN_S)
     at_ceiling = sum(1 for count in observed if count >= ceiling)
     held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
 
 
-def test_heap_at_peak_while_a_full_ceiling_is_held(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     ceiling = configured_max_connections()
     held_out: list[int] = []
     stop = threading.Event()
     hammer = threading.Thread(target=_hold_ceiling_open, args=(dut_ip, ceiling, _HOLD_S, held_out, stop), daemon=True)
     hammer.start()
     try:
-        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=240.0)
+        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=_SCRIPT_TIMEOUT_S)
     finally:
         stop.set()  # never leave the load generator running past this test
-        hammer.join(timeout=30.0)
+        hammer.join(timeout=_HAMMER_JOIN_S)
         holder_alive = hammer.is_alive()
         restore_board_to_serving(board, bench, dut_ip)
     assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"

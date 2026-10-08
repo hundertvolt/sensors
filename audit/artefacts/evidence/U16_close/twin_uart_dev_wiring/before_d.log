@@ -1,0 +1,40 @@
+PASS test_every_build_starts_with_every_dma_channel_free
+PASS test_both_instances_are_constructed_and_registered
+PASS test_both_instances_share_one_set_of_protocol_parameters
+PASS test_both_ends_get_their_own_real_fram_chunk
+PASS test_one_sided_silence_forces_a_resync_and_both_sides_recover
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u16int/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_uart_link.py", line 447, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the longest legal transfer logged an error
+FAIL test_a_get_and_a_set_both_complete_with_no_errors_counted:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u16int/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_uart_link.py", line 313, in test_a_get_and_a_set_both_complete_with_no_errors_counted
+AssertionError: UART_init counted an error on a clean link
+PASS test_a_transfer_does_not_starve_other_tasks
+PASS test_the_two_instances_have_distinct_names_and_loggers
+PASS test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact
+PASS test_a_forced_collection_mid_transfer_does_not_break_the_link
+PASS test_the_link_survives_sustained_allocation_pressure
+FAIL test_hammering_the_link_beside_the_graph_holds_at_the_gc_default:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u16int/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_uart_link.py", line 597, in test_hammering_the_link_beside_the_graph_holds_at_the_gc_default
+  File "tests/test_digital_twin_uart_link.py", line 585, in _hammer_with_the_graph_running
+AssertionError: errors logged under hammer at gc.threshold(-1)
+FAIL test_hammering_the_link_beside_the_graph_holds_at_the_chosen_gc_threshold:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u16int/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_uart_link.py", line 602, in test_hammering_the_link_beside_the_graph_holds_at_the_chosen_gc_threshold
+  File "tests/test_digital_twin_uart_link.py", line 585, in _hammer_with_the_graph_running
+AssertionError: errors logged under hammer at gc.threshold(32768)
+PASS test_the_link_keeps_working_while_the_rest_of_the_graph_runs
+PASS test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers
+FAIL test_many_back_to_back_transfers_do_not_degrade_or_leak:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u16int/tests/microtest.py", line 35, in run
+  File "tests/test_digital_twin_uart_link.py", line 487, in test_many_back_to_back_transfers_do_not_degrade_or_leak
+AssertionError: 300 clean transfers logged an error
+12/17 passed, 5 failed, 0 skipped

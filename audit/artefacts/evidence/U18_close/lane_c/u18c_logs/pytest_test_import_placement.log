@@ -1,0 +1,15 @@
+.F.....                                                                  [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_asy_captive_dns.py', 'test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers', 'asy_captive_dns')
+E       assert not [('tests/test_asy_captive_dns.py', 'test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers', 'asy_captive_dns')]
+
+tests_scripts/test_import_placement.py:268: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+1 failed, 6 passed in 7.41s

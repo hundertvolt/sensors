@@ -1,0 +1,13 @@
+diff --git a/src/asy_uart_comm.py b/src/asy_uart_comm.py
+index c098df4..06f876e 100644
+--- a/src/asy_uart_comm.py
++++ b/src/asy_uart_comm.py
+@@ -706,6 +706,8 @@ class UARTComm:
+         )
+         if size == self._frame_size:
+             return True
++        if size is not None:  # a delimited frame that decoded to the wrong length: dropped, so counted (J.6)
++            self._discarded_seen = (self._discarded_seen - size) & COUNTER_CAP
+         if device.rx_overruns != overruns:  # named beside the frame's own code, which the caller logs
+             await self.pr.wrn_s("receive overrun during a frame read", wrnno=_WRN_UART_RX_OVERRUN)
+         return False

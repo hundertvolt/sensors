@@ -1,0 +1,141 @@
+== old_runner 15:51:57
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [900064, 900800, 899520, 898976, 898976, 901376, 901920, 901376, 901376, 901376] span 1856 hits [3580, 3620, 3637, 3642, 3642, 3662, 3662, 3662, 3667, 3671]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== new_runner 15:52:06
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [858944, 859168, 857920, 857376, 857376, 857376, 858656, 858656, 858656, 858656] span 224 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== settrace_notracer 15:52:15
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [770816, 770496, 769216, 768672, 768672, 768672, 769984, 769984, 769984, 769984] span 0 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== old_runner 15:52:24
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [900064, 900800, 899520, 898976, 898944, 899488, 901376, 901376, 901376, 901888] span 1824 hits [3580, 3620, 3637, 3641, 3642, 3642, 3662, 3662, 3667, 3667]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== new_runner 15:52:33
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [858944, 859168, 857920, 857376, 857376, 857376, 858656, 858656, 858656, 858656] span 224 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== settrace_notracer 15:52:41
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [770272, 770528, 769248, 768704, 768704, 768704, 769984, 769984, 769984, 769984] span 256 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== old_runner 15:52:50
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [900064, 900768, 899488, 898976, 898976, 901376, 901920, 901920, 901376, 901376] span 1856 hits [3580, 3620, 3637, 3642, 3642, 3662, 3662, 3662, 3667, 3671]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== new_runner 15:52:59
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [858944, 859168, 858464, 857376, 857376, 857376, 858656, 858656, 859200, 858656] span 256 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== settrace_notracer 15:53:07
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [770272, 770528, 769248, 768704, 768704, 768704, 769984, 769984, 770528, 769984] span 256 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+== standard 15:53:15
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+RuntimeError: injected status fault
+PROBE drift [608768, 609024, 609056, 608192, 607968, 607968, 607968, 607968, 608672, 608672] span 288 hits [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped
+done 15:53:22

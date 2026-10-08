@@ -1,0 +1,46 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests/test_asy_webserver_service.py:15:1
+   |
+13 |   sys.path.insert(0, "ext")
+14 |
+15 | / from _error_codes import code
+16 | | from _shared_rest_roundtrip import drain_json_response_body
+17 | | from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
+18 | | from microdot import Microdot, Request, Response
+19 | |
+20 | | import asy_config_manager as cm
+21 | | from asy_print_log import LogConfig
+22 | | import asy_webserver_service
+23 | | from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+   | |___________________________________________________________________________________________________________________________________________________________________________________________^
+24 |
+25 |   try:
+   |
+help: Organize imports
+   |
+20 | import asy_config_manager as cm
+21 + import asy_webserver_service
+22 | from asy_print_log import LogConfig
+   - import asy_webserver_service
+23 | from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+   |
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.
+ruff rc=1
+Success: no issues found in 171 source files
+Success: no issues found in 49 source files
+Success: no issues found in 175 source files
+== Summary: scripts/typecheck.sh ==
+Commit: d1f3878 (uncommitted changes)
+Counts (checks): passed 7 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+typecheck rc=0

@@ -15,13 +15,15 @@ from buildgen.validate import device_max_connections, webserver_init_default
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC_DIR = _REPO_ROOT / "src"
 _MODULE_URL = (_REPO_ROOT / "tests_js" / "_live_twin_command.js").as_uri()
+# @tunable l0.live_twin_ceiling_parser_timeout_s = 120
+_NODE_TIMEOUT_S = 120
 
 
 def _js_ceiling(device: str, devices_dir: Path) -> int:
     node = shutil.which("node")
     assert node is not None, "node is not on PATH - the browser tier this pins cannot run without it either"
     script = f"import {{ configuredMaxConnections }} from {json.dumps(_MODULE_URL)};\nconsole.log(JSON.stringify(configuredMaxConnections({json.dumps(device)}, {json.dumps(str(devices_dir))})));"
-    done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+    done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=_NODE_TIMEOUT_S)
     assert done.returncode == 0, done.stderr
     value = json.loads(done.stdout.strip().splitlines()[-1])
     assert isinstance(value, int), value
@@ -46,6 +48,7 @@ def test_synthetic_tomls_resolve_as_buildgen_resolves_them(tmp_path: Path, label
     toml = tmp_path / f"{label}.toml"
     toml.write_bytes(text.encode())
     want = device_max_connections(toml, _SRC_DIR)
-    # None: the key is absent from [device], so the build falls back to WebserverService's default.
+    # None: the key is absent from [device], so the build falls back to ServingLimits' max_connections
+    # default, src/'s _DEFAULT_MAX_CONNECTIONS.
     assert want == (webserver_init_default(_SRC_DIR, "max_connections") if expected is None else expected)
     assert _js_ceiling(label, tmp_path) == want

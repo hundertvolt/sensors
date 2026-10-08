@@ -2,18 +2,18 @@
 captive-DNS checks - hand-rolled rather than pulling in dnspython, matching this project's
 preference for small hand-rolled protocol code over a new dependency."""
 
-from __future__ import annotations
-
 import secrets
 import socket
 import struct
 
 _DNS_PORT = 53
+# @tunable l4.dns_probe_query_timeout_s = 5.0
+_QUERY_TIMEOUT_S = 5.0
 
 
 def build_query(hostname: str) -> tuple[bytes, bytes]:
-    """A single-question, standard A-record query - the exact shape src/captive_dns.py's
-    DNSQuery/DNSServer expects."""
+    # A single-question, standard A-record query - the exact shape src/asy_captive_dns.py's
+    # DNSQuery/CaptiveDNS expects.
     txn_id = secrets.token_bytes(2)
     header = txn_id + bytes([0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])  # standard query, 1 question
     question = b""
@@ -24,10 +24,10 @@ def build_query(hostname: str) -> tuple[bytes, bytes]:
     return header + question, txn_id
 
 
-def query(server_ip: str, hostname: str, timeout_s: float = 5.0, raw_query: bytes | None = None) -> bytes | None:
-    """Sends `raw_query` (or a freshly-built one for `hostname`) to `server_ip:53` over UDP,
-    returning the raw response or None on timeout - never raises, since "no response" is itself a
-    real, assertable outcome (a malformed/off-subnet query should be silently dropped)."""
+def query(server_ip: str, hostname: str, timeout_s: float = _QUERY_TIMEOUT_S, raw_query: bytes | None = None) -> bytes | None:
+    # Sends `raw_query` (or a freshly-built one for `hostname`) to `server_ip:53` over UDP,
+    # returning the raw response or None on timeout - never raises, since "no response" is itself a
+    # real, assertable outcome (a malformed/off-subnet query should be silently dropped).
     payload = raw_query if raw_query is not None else build_query(hostname)[0]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.settimeout(timeout_s)
@@ -40,9 +40,9 @@ def query(server_ip: str, hostname: str, timeout_s: float = 5.0, raw_query: byte
 
 
 def extract_answer_ip(response: bytes) -> str | None:
-    """Parses just enough of a standard single-answer A-record response to pull out the answered
-    IPv4 address - src/captive_dns.py always answers with exactly one A record, so this doesn't
-    handle the general multi-answer/multi-type case."""
+    # Parses just enough of a standard single-answer A-record response to pull out the answered
+    # IPv4 address - src/asy_captive_dns.py always answers with exactly one A record, so this doesn't
+    # handle the general multi-answer/multi-type case.
     if len(response) < 12:
         return None
     ancount = struct.unpack(">H", response[6:8])[0]

@@ -4,9 +4,12 @@ here from test_bus_hazard_multi_device.py so both files build identical bytes.""
 
 import asyncio
 import struct
+import time
 
 from machine import I2C as FakeI2C
+from machine import Pin
 
+import asy_i2c_driver
 from asy_bmp3xx_driver import BMP3XX_I2C
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import ISL29125_I2C
@@ -23,6 +26,10 @@ if TYPE_CHECKING:
     from typing import Any
 
 _GENERAL_CALL_ADDR = 0x00
+# asy_i2c_driver's private status bits and pulse count (no module attributes on MicroPython); keep in sync
+_REC_SDA_LOW = 1
+_REC_SDA_STUCK = 2
+_CLEAR_PULSES = 9
 # I2C spec reserved address ranges (0x00-0x07 general call, CBUS, reserved and Hs-mode; 0x78-0x7F 10-bit
 # addressing and reserved) - the generic form of test_bus_hazard_multi_device.py's own reserved-address
 # test, checked against every real occupant's TOML-declared address, not a hand-kept constant table.
@@ -39,7 +46,13 @@ def _is_reserved_i2c_address(address: int) -> bool:
 
 
 def make_i2c(port_id: int = 1) -> I2C:
-    return I2C(port_id, scl_pin=19, sda_pin=18, frequency=50000)
+    # A fresh static bus (the unit tier has no per-test reset), its construction entry dropped so the
+    # log holds only the scenario's own traffic.
+    FakeI2C.reset_id(port_id)
+    Pin.reset_registry()
+    i2c = I2C(port_id, scl_pin=19, sda_pin=18, frequency=50000)
+    fake(i2c).log.clear()
+    return i2c
 
 
 def fake(i2c: I2C) -> FakeI2C:
@@ -94,14 +107,16 @@ def _bmp_data6(adc_p: int, adc_t: int) -> bytes:
     return triplet(adc_p) + triplet(adc_t)
 
 
-def seed_bmp_ready(i2c: I2C, address: int = 0x77) -> None:
-    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear - see test_asy_bmp3xx_driver.py's own
-    # ready_bmp() for the same shape.
-    fake(i2c).registers[(address, 0x03)] = bytearray([0x10 | 0x60])  # _REGISTER_STATUS
-    fake(i2c).registers[(address, 0x02)] = bytearray([0x00])  # _REGISTER_ERR
-    fake(i2c).registers[(address, 0x00)] = bytearray([0x50])  # _REGISTER_CHIPID (BMP388)
+def seed_bmp_ready(i2c: I2C, address: int = 0x77, chip_id: int = 0x50) -> None:
+    # STATUS: cmd_rdy | drdy_press | drdy_temp; ERR_REG clear; EVENT clear - see test_asy_bmp3xx_driver.py's own
+    # ready_bmp() for the same shape. The driver's burst reads ERR_REG, STATUS and the data as one file from 0x02.
+    status = 0x10 | 0x60
+    fake(i2c).registers[(address, 0x03)] = bytearray([status])  # _REGISTER_STATUS
+    fake(i2c).registers[(address, 0x02)] = bytearray([0x00, status]) + _bmp_data6(_BMP_ADC_P, _BMP_ADC_T)  # _REGISTER_ERR to 0x09
+    fake(i2c).registers[(address, 0x10)] = bytearray([0x00])  # _REGISTER_EVENT, por_detected clear
+    # _REGISTER_CHIPID: 0x50 (BMP384/388) by default, 0x60 (BMP390) on request - both documented IDs
+    fake(i2c).registers[(address, 0x00)] = bytearray([chip_id])
     fake(i2c).registers[(address, 0x31)] = bytearray(_BMP_CAL_RAW)  # _REGISTER_CAL_DATA
-    fake(i2c).registers[(address, 0x04)] = bytearray(_bmp_data6(_BMP_ADC_P, _BMP_ADC_T))  # _REGISTER_PRESSUREDATA
 
 
 def seed_isl_ready(i2c: I2C, address: int = 0x44) -> None:
@@ -216,6 +231,7 @@ async def _general_call_sgp40(instance: "Any") -> None:
 async def _exercise_sgp40(instance: "Any") -> None:
     for call in (
         instance.setup,  # includes one initialize() -> _reset() call, hence GENERAL_CALL_ADDR being allowed below
+        instance.turn_heater_off,  # the participant rung's command: the sweep proves it touches 0x59 only
         instance.get_raw,
         lambda: instance.measure_raw(25, 50),
         lambda: instance.measure_index_and_raw(25, 50),
@@ -234,6 +250,10 @@ def _seed_isl29125(fake_bus: FakeI2C, address: int, iterations: int) -> None:
 
 
 async def _read_once_isl29125(instance: "Any") -> None:
+    # The reader's cycle: STATUS, the 3-byte CONFIG snapshot, then the counts, each its own session block.
+    await instance.read_status()
+    config = await instance.get_config_snapshot()
+    assert config == bytes(3), f"a concurrent hazard tore ISL29125's CONFIG snapshot: {config!r}"
     counts = await instance.read_counts()
     assert counts == _ISL_COUNTS, f"a concurrent hazard corrupted ISL29125's own read: {counts!r}, expected {_ISL_COUNTS!r}"
 
@@ -272,6 +292,7 @@ async def _read_once_bmp3xx(instance: "Any") -> None:
     # occupant's own first read, exactly once, same as a real driver caller would do at boot.
     if not hasattr(instance, "_temp_calib"):
         await instance.setup()
+    assert await instance.take_por_detected() is False, "BMP3xx reported a chip reset nobody issued"  # the reader's per-cycle EVENT read
     pressure, temperature = await instance.get_pressure_and_temperature()
     assert abs(pressure - _BMP_EXPECTED_PRESSURE_HPA) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own pressure read: {pressure!r}, expected {_BMP_EXPECTED_PRESSURE_HPA!r}"
     assert abs(temperature - _BMP_EXPECTED_TEMPERATURE) < 1e-6, f"a concurrent hazard corrupted BMP3xx's own temperature read: {temperature!r}, expected {_BMP_EXPECTED_TEMPERATURE!r}"
@@ -290,11 +311,12 @@ async def _exercise_bmp3xx(instance: "Any") -> None:
         instance.get_pressure,
         instance.get_temperature,
         instance.get_pressure_and_temperature,
-        instance.get_altitude,
+        instance.get_pressure_altitude,
         instance.get_pressure_oversampling,
         instance.get_temperature_oversampling,
         instance.get_filter_coefficient,
         instance.get_config_snapshot,
+        instance.take_por_detected,
         lambda: instance.set_pressure_oversampling(2),
         lambda: instance.set_temperature_oversampling(2),
         lambda: instance.set_filter_coefficient(3),
@@ -311,16 +333,17 @@ def _construct_bmp3xx(i2c: I2C, address: int) -> BMP3XX_I2C:
     return bmp
 
 
-def _construct_scd30(i2c: I2C, address: int) -> SCD30_I2C:
-    return SCD30_I2C(i2c, address=address)
+# The three chips with a hard-wired address take none (SPECIFICATION.md K.3); `address` still keys the seeding.
+def _construct_scd30(i2c: I2C, _address: int) -> SCD30_I2C:
+    return SCD30_I2C(i2c)
 
 
-def _construct_sgp40(i2c: I2C, address: int) -> SGP40_I2C:
-    return SGP40_I2C(i2c, address=address)
+def _construct_sgp40(i2c: I2C, _address: int) -> SGP40_I2C:
+    return SGP40_I2C(i2c)
 
 
 def _construct_isl29125(i2c: I2C, address: int) -> ISL29125_I2C:
-    isl = ISL29125_I2C(i2c, address=address)
+    isl = ISL29125_I2C(i2c)
     seed_isl_ready(i2c, address)
     return isl
 
@@ -341,15 +364,16 @@ I2C_HAZARD_CATALOG: "dict[str, I2CHazardAdapter]" = {
 
 class BusOccupant:
     # Plain class, same reasoning as I2CHazardAdapter above.
-    def __init__(self, adapter: I2CHazardAdapter, instance: "Any", address: int) -> None:
+    def __init__(self, adapter: I2CHazardAdapter, instance: "Any", address: int, i2c: I2C) -> None:
         self.adapter = adapter
         self.instance = instance
         self.address = address
+        self.i2c = i2c  # the shared bus wrapper, for a scenario that drives the bus itself (a recovery)
 
 
 def build_bus_occupants(i2c: I2C, attachments: "list[dict[str, Any]]") -> "list[BusOccupant]":
-    """One BusOccupant per `attachments` entry (buildgen.twin_wiring.compute_twin_wiring()'s own
-    per-bus list shape) - fails loud, not silently, if a real occupant has no catalog adapter yet."""
+    # One BusOccupant per `attachments` entry (buildgen.twin_wiring.compute_twin_wiring()'s own
+    # per-bus list shape) - fails loud, not silently, if a real occupant has no catalog adapter yet.
     occupants = []
     for attachment in attachments:
         driver = attachment["driver"]
@@ -357,7 +381,7 @@ def build_bus_occupants(i2c: I2C, attachments: "list[dict[str, Any]]") -> "list[
         if adapter is None:
             raise KeyError(f"no bus-hazard catalog adapter for driver {driver!r} - add one to tests/_bus_hazard_catalog.py's I2C_HAZARD_CATALOG before this driver can get generated cross-sensor coverage")
         address = attachment["address"]
-        occupants.append(BusOccupant(adapter, adapter.construct(i2c, address), address))
+        occupants.append(BusOccupant(adapter, adapter.construct(i2c, address), address, i2c))
     return occupants
 
 
@@ -366,9 +390,9 @@ def _touched_addresses(fake_bus: FakeI2C) -> "set[int]":
 
 
 async def scenario_all_occupants_concurrent_reads_stay_correct(fake_bus: FakeI2C, occupants: "list[BusOccupant]", iterations: int = 6) -> None:
-    """Every real occupant of one bus reads concurrently, not pairwise - the "all sharers at once"
-    half of SPECIFICATION.md Part C.8. Each read_once() already asserts its own correctness; the
-    switch-count floor below additionally rules out silent full serialization."""
+    # Every real occupant of one bus reads concurrently, not pairwise - the "all sharers at once"
+    # half of SPECIFICATION.md Part C.8. Each read_once() already asserts its own correctness; the
+    # switch-count floor below additionally rules out silent full serialization.
     for occ in occupants:
         occ.adapter.seed(fake_bus, occ.address, iterations)
 
@@ -412,9 +436,9 @@ async def scenario_a_write_does_not_disturb_concurrent_sibling_reads(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """One occupant's own config write concurrent with every sibling's read loop - the N-way form
-    of the pairwise cross-device tests. A no-op, not a skip, if nothing here has a safe write.
-    Swept across timing offsets on fresh state per offset: SPECIFICATION.md Part C.8 says why."""
+    # One occupant's own config write concurrent with every sibling's read loop - the N-way form
+    # of the pairwise cross-device tests. A no-op, not a skip, if nothing here has a safe write.
+    # Swept across timing offsets on fresh state per offset: SPECIFICATION.md Part C.8 says why.
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -457,9 +481,9 @@ async def scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read loop must
-    never tear it. Proven through read_once()'s corruption assertion, not a per-driver wire-byte
-    parser, so it stays generic. Offsets swept as above (SPECIFICATION.md Part C.8)."""
+    # Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read loop must
+    # never tear it. Proven through read_once()'s corruption assertion, not a per-driver wire-byte
+    # parser, so it stays generic. Offsets swept as above (SPECIFICATION.md Part C.8).
     offsets = list(range(iterations)) if offsets is None else offsets
     _fake_bus, occupants = build_fresh_bus_and_occupants()
     writers = [occ.adapter.driver for occ in occupants if occ.adapter.write_once is not None]
@@ -504,9 +528,9 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
     iterations: int = 6,
     offsets: "list[int] | None" = None,
 ) -> None:
-    """A real general-call broadcast (SPECIFICATION.md Part C.8's known structural gap) concurrent
-    with every non-broadcasting sibling's read loop, across swept timing offsets.
-    A no-op if no real occupant of this bus ever broadcasts."""
+    # A real general-call broadcast, the general-call reset the owner decided (owner, 2026-09-26; SPECIFICATION.md Part C.8), concurrent
+    # with every non-broadcasting sibling's read loop, across swept timing offsets.
+    # A no-op if no real occupant of this bus ever broadcasts.
     offsets = list(range(iterations)) if offsets is None else offsets
     failures: list[str] = []
     for offset in offsets:
@@ -520,10 +544,149 @@ async def scenario_general_call_does_not_disturb_concurrent_siblings(
     assert not failures, f"{len(failures)}/{len(offsets)} timing offset(s) reproduced a hazard: {failures}"
 
 
+def hold_sda_through_a_stretched_clear(i2c: I2C, pulses: int = 2, stretch_reads: int = 1, host_stall_ms: int = 0) -> None:
+    # A slave holding SDA for `pulses` SCL pulses on a clock it stretches for `stretch_reads` reads per
+    # release: a clear then yields (1 ms each) under the bus lock, where a sibling would cut in unguarded.
+    # `host_stall_ms` blocks the interpreter inside the first SCL read: a host deschedule at the worst instant.
+    scl_pin, sda_pin = i2c._args[1], i2c._args[2]
+    stretch = [-1, 0]
+    stall = [host_stall_ms]
+
+    def scl_level(_pin: int, _log: object) -> int:
+        if stall[0]:
+            time.sleep_ms(stall[0])
+            stall[0] = 0
+        log = Pin.value_log(scl_pin)
+        drives = len(log) + log.dropped  # the value log is a ring: its len() stops at its capacity
+        if drives != stretch[0]:
+            stretch[0], stretch[1] = drives, 0
+        stretch[1] += 1
+        return 1 if stretch[1] > stretch_reads else 0
+
+    def sda_level(_pin: int, _log: object) -> int:
+        return 1 if list(Pin.value_log(scl_pin)).count(1) >= pulses else 0
+
+    Pin.set_external_level(scl_pin, scl_level)
+    Pin.set_external_level(sda_pin, sda_level)
+
+
+class PollRoundClock:
+    # asy_i2c_driver's clock while a planted slave stretches: advanced by each of its sleeps, and 1 us per read so a
+    # wait that never yields still expires. The slave stretches for a count of reads, so on the wall clock a host
+    # stall alone would expire the SCL-release bound and read as a held clock.
+    def __enter__(self) -> "PollRoundClock":
+        real_time, real_asyncio = asy_i2c_driver.time, asy_i2c_driver.asyncio
+        self._saved = (real_time, real_asyncio)
+        now = [0]
+
+        class _Time:
+            ticks_diff = staticmethod(real_time.ticks_diff)
+            sleep_us = staticmethod(real_time.sleep_us)
+
+            @staticmethod
+            def ticks_us() -> int:
+                now[0] += 1
+                return now[0]
+
+        class _Asyncio:
+            Lock = real_asyncio.Lock
+            sleep = staticmethod(real_asyncio.sleep)
+
+            @staticmethod
+            async def sleep_ms(ms: int) -> None:
+                now[0] += ms * 1000
+                await real_asyncio.sleep_ms(ms)
+
+        asy_i2c_driver.time = _Time()  # type: ignore[assignment]
+        asy_i2c_driver.asyncio = _Asyncio()  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        asy_i2c_driver.time, asy_i2c_driver.asyncio = self._saved
+
+
+async def recover_marking_the_clear(i2c: I2C) -> "tuple[int, int]":
+    # i2c.recover() on the poll-round clock, returning its status and the bus-log length when its clear
+    # began (the bus lock held).
+    mark = []
+    real_clear = i2c._clear_locked
+
+    async def marked() -> int:
+        mark.append(len(fake(i2c).log))
+        return await real_clear()
+
+    i2c._clear_locked = marked  # type: ignore[method-assign]
+    try:
+        with PollRoundClock():
+            status = await i2c.recover()
+    finally:
+        i2c._clear_locked = real_clear  # type: ignore[method-assign]
+    return status, mark[0]
+
+
+def assert_no_transfer_inside_the_recovery(fake_bus: FakeI2C, mark: int) -> None:
+    # From the clear's start to the re-construction, the bus log holds only the recovery's own entries.
+    assert not fake_bus.log.dropped, "the bus log dropped entries: the window cannot be checked"
+    after = fake_bus.log[mark:]
+    inits = [i for i, entry in enumerate(after) if entry[0] == "init"]
+    assert inits, "the recovery never re-constructed the controller"
+    assert after[: inits[0]] == [("deinit",)], f"a transfer landed inside the recovery window: {after[: inits[0]]}"
+
+
+async def _run_recovery_vs_siblings_at_offset(fake_bus: FakeI2C, occupants: "list[BusOccupant]", iterations: int, offset: int) -> None:
+    # The recovery starts once every occupant has read once (first reads include setup waits), then
+    # `offset` yields in; SDA stays held through all nine pulses, each release stretched five 1 ms
+    # reads, so the clear spans ~50 ms - longer than any occupant's wait between its transfers.
+    i2c = occupants[0].i2c
+    for occ in occupants:
+        occ.adapter.seed(fake_bus, occ.address, iterations)
+    hold_sda_through_a_stretched_clear(i2c, pulses=_CLEAR_PULSES + 1, stretch_reads=5)
+    marks: list[int] = []
+    warmed = [0]
+
+    async def reader_loop(occ: BusOccupant) -> None:
+        for i in range(iterations):
+            await occ.adapter.read_once(occ.instance)
+            if i == 0:
+                warmed[0] += 1
+            await asyncio.sleep(0)
+
+    async def recovery() -> None:
+        while warmed[0] < len(occupants):
+            await asyncio.sleep(0)
+        for _ in range(offset):
+            await asyncio.sleep(0)
+        status, mark = await recover_marking_the_clear(i2c)
+        assert status == _REC_SDA_LOW | _REC_SDA_STUCK, f"the recovery did not clear the planted held SDA: status {status}"
+        marks.append(mark)
+
+    await asyncio.gather(*(reader_loop(occ) for occ in occupants), recovery())
+    assert_no_transfer_inside_the_recovery(fake_bus, marks[0])
+
+
+async def scenario_bus_recovery_does_not_disturb_concurrent_siblings(
+    build_fresh_bus_and_occupants: "Callable[[], tuple[FakeI2C, list[BusOccupant]]]",
+    iterations: int = 6,
+    offsets: "list[int] | None" = None,
+) -> None:
+    # The bus rungs' hazard (SPECIFICATION.md Part C.8): i2c.recover() - a clear and a controller
+    # re-construction under one bus-lock hold - lands at each timing offset of every occupant's read
+    # loop; every read stays valid and no transfer runs inside the recovery.
+    offsets = list(range(iterations)) if offsets is None else offsets
+    failures: list[str] = []
+    for offset in offsets:
+        fake_bus, occupants = build_fresh_bus_and_occupants()
+        try:
+            await _run_recovery_vs_siblings_at_offset(fake_bus, occupants, iterations, offset)
+        except AssertionError as e:
+            failures.append(f"offset={offset}: {e}")
+    assert not failures, f"{len(failures)}/{len(offsets)} timing offset(s) reproduced a hazard: {failures}"
+
+
 async def scenario_each_occupant_never_touches_an_unexpected_address(attachments: "list[dict[str, Any]]") -> None:
-    """Generic form of each driver's own address sweep: every real bus occupant, constructed alone
-    on its own private fake bus, must touch no address but its own bar a documented general call -
-    and its TOML-declared address must not fall in a reserved I2C range to begin with."""
+    # Generic form of each driver's own address sweep: every real bus occupant, constructed alone
+    # on its own private fake bus, must touch no address but its own bar a documented general call -
+    # and its TOML-declared address must not fall in a reserved I2C range to begin with.
     for attachment in attachments:
         driver = attachment["driver"]
         adapter = I2C_HAZARD_CATALOG.get(driver)

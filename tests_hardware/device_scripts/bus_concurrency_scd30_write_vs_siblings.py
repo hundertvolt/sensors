@@ -13,9 +13,18 @@ from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
 _MODE_RGB = 0x05
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_sibling_step_ms = 15
+_SIBLING_STEP_MS = 15
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_after_write_s = 1.0
+_AFTER_WRITE_S = 1.0
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every = 10
+_WDT_FEED_EVERY = 10
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
     scd = SCD30_I2C(i2c1)
@@ -47,9 +56,9 @@ async def _main() -> None:
             except Exception as e:
                 isl_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(15)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def sgp_loop() -> None:
         nonlocal sgp_reads
@@ -61,9 +70,9 @@ async def _main() -> None:
             except Exception as e:
                 sgp_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             i += 1
-            if i % 10 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
-            await asyncio.sleep_ms(15)
+            await asyncio.sleep_ms(_SIBLING_STEP_MS)
 
     async def writer_loop() -> None:
         nonlocal write_error, write_done, write_window, stop
@@ -77,10 +86,10 @@ async def _main() -> None:
         except Exception as e:
             write_error = f"{type(e).__name__}: {e}"
         write_done = True
-        await asyncio.sleep(1.0)  # keep both siblings running a little longer after the write too
+        await asyncio.sleep(_AFTER_WRITE_S)  # keep both siblings running a little longer after the write too
         stop = True
 
-    await asyncio.wait_for(asyncio.gather(isl_loop(), sgp_loop(), writer_loop()), 60.0)
+    await asyncio.wait_for(asyncio.gather(isl_loop(), sgp_loop(), writer_loop()), _RUN_BOUND_S)
 
     failures = []
     if isl_errors:

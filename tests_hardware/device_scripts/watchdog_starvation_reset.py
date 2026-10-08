@@ -4,9 +4,10 @@ never feeds it; never returns - the reset kills the connection mid-command, obse
 
 import machine
 
-WATCHDOG_TIMEOUT_MS = 1500
+# @tunable l3.starvation_wdt_ms = 1500
+_WATCHDOG_TIMEOUT_MS = 1500
 
-machine.WDT(timeout=WATCHDOG_TIMEOUT_MS)
+machine.WDT(timeout=_WATCHDOG_TIMEOUT_MS)
 print("WDT armed, starving now")
 while True:
     pass

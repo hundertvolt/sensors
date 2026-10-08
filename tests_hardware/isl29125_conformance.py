@@ -2,8 +2,6 @@
 isl29125_mock_conformance_probe.py against digital_twin/_isl29125_chip.py under the MicroPython
 Unix port, and diffs that against the same probe's real-hardware output key by key."""
 
-from __future__ import annotations
-
 import os
 import subprocess
 import tempfile
@@ -43,7 +41,7 @@ def unix_port_binary() -> Path:
 
 
 def parse(output: str) -> dict[str, str]:
-    """KEY=VALUE lines only - a device-side traceback or an mpremote banner is ignored, not parsed."""
+    # KEY=VALUE lines only - a device-side traceback or an mpremote banner is ignored, not parsed.
     parsed: dict[str, str] = {}
     for raw in output.splitlines():
         line = raw.strip()
@@ -53,7 +51,11 @@ def parse(output: str) -> dict[str, str]:
     return parsed
 
 
-def run_probe_against_twin(timeout_s: float = 180.0) -> dict[str, str]:
+# @tunable l3.conformance_twin_probe_timeout_s = 180.0
+_TWIN_PROBE_TIMEOUT_S = 180.0
+
+
+def run_probe_against_twin(timeout_s: float = _TWIN_PROBE_TIMEOUT_S) -> dict[str, str]:
     binary = unix_port_binary()
     if not binary.is_file():
         raise FileNotFoundError(f"MicroPython Unix port not built at {binary} - run scripts/test.sh once first")
@@ -63,6 +65,7 @@ def run_probe_against_twin(timeout_s: float = 180.0) -> dict[str, str]:
     try:
         env = dict(os.environ, TZ="UTC", MICROPYPATH="digital_twin:src:frozen_modules:.frozen:.")
         proc = subprocess.run(  # noqa: S603 - every argument is a repo-controlled path, no shell
+            # @tunable l0.isl29125_conformance_heapsize = 8M
             [str(binary), "-X", "heapsize=8M", entry, str(PROBE)],
             cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s, check=False, env=env,
         )
@@ -75,7 +78,7 @@ def run_probe_against_twin(timeout_s: float = 180.0) -> dict[str, str]:
 
 
 def compare(real: dict[str, str], twin: dict[str, str]) -> list[str]:
-    """Returns one human-readable line per protocol-key divergence; empty means the mock is faithful."""
+    # Returns one human-readable line per protocol-key divergence; empty means the mock is faithful.
     divergences = []
     for key in sorted(set(real) | set(twin)):
         if key in PHYSICAL_KEYS:

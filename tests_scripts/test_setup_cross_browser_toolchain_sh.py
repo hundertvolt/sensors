@@ -12,8 +12,8 @@ _TOLERANCE = ' || echo "== apt-get update reported errors - continuing, the inst
 
 
 def _stub_tree(tmp_path: Path, *, update_rc: int, install_rc: int) -> tuple[Path, Path]:
-    """A PATH whose sudo/apt-get are stubs, plus the Edge and Firefox binaries the script probes
-    for - present so only the WebKit block, the one that reaches apt, actually runs."""
+    # A PATH whose sudo/apt-get are stubs, plus the Edge and Firefox binaries the script probes
+    # for - present so only the WebKit block, the one that reaches apt, actually runs.
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
     calls = tmp_path / "apt-calls.txt"

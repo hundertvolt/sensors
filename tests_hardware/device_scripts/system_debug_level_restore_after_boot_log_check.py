@@ -4,7 +4,7 @@ its backup file, never a hardcoded assumption. Run from a `finally` block in the
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SYS_SCHEMA: "cm.ConfigSchema" = (("DebugLevel", "int", 0, 0, 5, None),)
 _SYS_PATH = "config_SYSTEM.cfg"
@@ -26,7 +26,7 @@ async def _main() -> None:
 
     sys_mgr = cm.ConfigManager(_SYS_PATH, _SYS_SCHEMA, "SYSTEM")
     await sys_mgr.setup()
-    ok, validity = await sys_mgr.write_config({"DebugLevel": previous_level}, _SYS_SCHEMA)
+    ok, validity = await sys_mgr.write_config({"DebugLevel": previous_level})
     await sys_mgr.flush_pending()  # write_config() only stages (Part F.2) - unflushed, the restore
     # reports success while the on-disk DebugLevel keeps whatever the raise phase left there.
     if ok and validity.get("DebugLevel") in ("Valid", "Unchanged"):

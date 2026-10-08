@@ -8,7 +8,7 @@ import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
-from print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory
 
 # Scratch addresses, disjoint from every other device script's own regions (CS-hijack uses
 # 0x9000-0x93ff).
@@ -20,9 +20,12 @@ _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
 _NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the interrupted write attempts, must never land
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
+# @tunable l3.fram_reset_race_during_write_seed_and_race_victim_bound_s = 30.0
+_VICTIM_BOUND_S = 30.0
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
     fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=0x40000)
@@ -58,14 +61,14 @@ async def _main() -> None:
     spidev = fram._spidev
     original_write_sync = spidev.write_sync
 
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> None:
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
         # The command buffers around the payload are 1 or 5 bytes, never its length.
         if len(buf) == len(_NEW_TARGET_PATTERN):
             machine.reset()  # never returns - real RP2040 hardware reset, immediate, CS still asserted
-        original_write_sync(buf)
+        return original_write_sync(buf)
 
     spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
-    await asyncio.wait_for(victim_writer(), 30.0)
+    await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
     spidev.write_sync = original_write_sync  # type: ignore[method-assign]
     # Unreachable in the successful case (machine.reset() halts the runtime first). If this DOES
     # print, the payload transfer never happened - the phase-2 verify script's guard-region check

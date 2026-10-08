@@ -1,0 +1,12 @@
+start 13:38:46
+lint rc=0 13:38:50
+typecheck noargs rc=1 13:40:04
+typecheck ci rc=1 13:41:52
+wozi rc=0 13:52:25
+gc-1 rc=0 13:54:00
+gc32768 rc=0 13:54:02
+dev rc=0 13:54:42
+klkizi rc=0 14:07:03
+grkizi rc=0 14:07:08
+arzi rc=0 14:07:08
+schlafzi rc=0 14:07:09

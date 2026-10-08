@@ -13,11 +13,20 @@ PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
 TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)
 
+# @tunable l3.bmp3xx_same_device_rw_concurrency_read_iterations = 20
 READ_ITERATIONS = 20
+# @tunable l3.bmp3xx_same_device_rw_concurrency_write_iterations = 6
 WRITE_ITERATIONS = 6
+# @tunable l3.bmp3xx_same_device_rw_concurrency_write_spread_s = 0.05
+_WRITE_SPREAD_S = 0.05
+# @tunable l3.bmp3xx_same_device_rw_concurrency_run_bound_s = 60.0
+_RUN_BOUND_S = 60.0
+# @tunable l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every = 5
+_WDT_FEED_EVERY = 5
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
     bmp = BMP3XX_I2C(i2c0)
@@ -40,24 +49,24 @@ async def _main() -> None:
             except Exception as e:
                 read_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             read_completed += 1
-            if i % 5 == 0:
+            if i % _WDT_FEED_EVERY == 0:
                 wdt.feed()
 
     async def writer() -> None:
         nonlocal write_completed
         for i in range(WRITE_ITERATIONS):
-            await asyncio.sleep(0.05)  # spread writes out across the reader's whole run
+            await asyncio.sleep(_WRITE_SPREAD_S)  # spread writes out across the reader's whole run
             oversample = _OSR_SETTINGS[i % len(_OSR_SETTINGS)]
             try:
                 await bmp.set_pressure_oversampling(oversample)
                 readback = await bmp.get_pressure_oversampling()
                 if readback != oversample:
-                    write_errors.append(f"iter {i}: wrote PressOvers={oversample}, read back {readback} - torn/corrupted write")
+                    write_errors.append(f"iter {i}: wrote PresOvers={oversample}, read back {readback} - torn/corrupted write")
             except Exception as e:
                 write_errors.append(f"iter {i}: {type(e).__name__}: {e}")
             write_completed += 1
 
-    await asyncio.wait_for(asyncio.gather(reader(), writer()), 60.0)
+    await asyncio.wait_for(asyncio.gather(reader(), writer()), _RUN_BOUND_S)
 
     # Restore the datasheet/production default (x1, see asy_bmp3xx_driver.py's own _init_bmp()
     # default schema) - this register is volatile anyway (see module docstring), but leaving it

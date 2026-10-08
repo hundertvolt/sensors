@@ -1,0 +1,92 @@
+# git -C wt-u20int log --stat 7efb5f2..HEAD --grep='lane D' (af2d0fc)
+
+commit 8692aef
+subject: U20 lead: merge lane D (SPECIFICATION.md follows the generated boot, the system commands and the build's rules)
+
+
+commit d197da1
+subject: U20 lane D: B.11 names what the firmware build strips (the boot entry and website stay as generated); L.5 states the host-annotation rule and its guard
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 45 +++++++++++++++++++++++++--------------------
+ 1 file changed, 25 insertions(+), 20 deletions(-)
+commit 60308f6
+subject: U20 lane D: H.7's serving-demand table and Part N's margin follow /status's five new fields (+103 B per body, mock tier)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+commit 2c5157d
+subject: U20 lane D: A.7's boot entry paragraph and L.4's twin bullet rewrapped to 100 columns (no meaning change)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 38 ++++++++++++++++++++------------------
+ 1 file changed, 20 insertions(+), 18 deletions(-)
+commit 88947af
+subject: U20 lane D: A.7's boot entry arms the watchdog before any product import (owner tag)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+commit 937592c
+subject: U20 lane D: L.4's generated-boot bullet names the twin runner's own watchdog and main()
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+commit 4fc4aa1
+subject: U20 lane D: L.5 lists every build rule id and the fuzz; the L.3 example names its FRAM part and the owner's wiring tags; prose rewrapped
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 324 +++++++++++++++++++++++++++++++++----------------------
+ 1 file changed, 197 insertions(+), 127 deletions(-)
+commit 3d56b52
+subject: U20 lane D: L.3's key table drops the [device] wiring row ([device.wiring] holds its keys)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 1 -
+ 1 file changed, 1 deletion(-)
+commit 0a23cf9
+subject: U20 lane D: SPEC A.4-A.8, B.11, C.3.1-C.9, E.3, F.1-F.8, G.2, H.5.1, I.2-I.4, J.6, J.8, K.3, L.2-L.6 and Part N follow the generated boot, the system commands and the build's new rules
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 672 ++++++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 491 insertions(+), 181 deletions(-)
+commit bdd93f9
+subject: U20 lane D: WIP - SPEC L.3's checked key table between its markers, the banner and name_ext sentences
+
+The table rows follow buildgen/validate.py's device and bus sets (lane V's branch at 822dc49 for
+the ranges), buildspec.py's per-driver fields and each driver's wiring tags; the closing sentence
+names tests_scripts/test_toml_schema_contract.py, and test_device_tomls.py's sentence states its
+validator-driven end form.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+
+
+ SPECIFICATION.md | 109 +++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 105 insertions(+), 4 deletions(-)

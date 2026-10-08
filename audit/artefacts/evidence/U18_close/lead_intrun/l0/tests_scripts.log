@@ -1,0 +1,115 @@
+........................................................................ [  2%]
+........ssssss.......................................................... [  4%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 17%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+.................................................................F...... [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+.......................................................................s [ 64%]
+.ssss................................................................... [ 66%]
+........................................................................ [ 68%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+..............................................F......................... [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+...............................................F........................ [ 97%]
+.....................................................................    [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           SPECIFICATION.md	Separately, the 60s STA-retry branch holds `wifi_mode_lock` while NTP's sync tas
+E           buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
+E           src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
+E           tests/test_asy_captive_dns.py	A query whose header claims QDCOUNT=2: __init__ only ever parses the first quest
+E           tests/test_asy_captive_dns.py	A real server socket in this Unix-port build is always bound via a resolved sock
+E           tests/test_asy_captive_dns.py	_FakeUDPS lets run()'s actual subnet-membership, malformed-query and error-path
+E           tests/test_asy_dns_client.py	dns_servers deliberately point nowhere real (and aren't even valid literals for
+E           tests/test_asy_ntp_client.py	exactly enough bytes - accepted
+E           tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
+E           tests/test_asy_udp_socket.py	"0.0.0.0", or a deliberately unreachable address - rather than a fresh loopback
+E           tests/test_asy_wifi_service.py	Neither WLAN fake ever transitions _status to STAT_GOT_IP for AP mode on its own
+E           tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
+E           tests/test_ntp_wifi_dns_integration.py	type: ignore[assignment] # deliberate monkeypatch, same as test_asy_ntp_client.p
+E       assert not [('SPECIFICATION.md', "Separately, the 60s STA-retry branch holds `wifi_mode_lock` while NTP's sync tas"), ('buildgen/...ests/test_asy_captive_dns.py', "_FakeUDPS lets run()'s actual subnet-membership, malformed-query and error-path"), ...]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+_____ test_each_ruff_ceiling_sits_at_its_measured_maximum[max-statements] ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18run')
+ceiling = _Ceiling(rule='PLR0915', section='pylint', option='max-statements')
+
+    @pytest.mark.parametrize("ceiling", _CEILINGS, ids=[c.option for c in _CEILINGS])
+    def test_each_ruff_ceiling_sits_at_its_measured_maximum(repo_root: Path, ceiling: _Ceiling) -> None:
+        problem = _ceiling_problem(repo_root, ceiling, _configured(repo_root, ceiling))
+>       assert problem is None, problem
+E       AssertionError: max-statements = 77 sits above the measured maximum: lower it (nothing reaches 77)
+E       assert 'max-statements = 77 sits above the measured maximum: lower it (nothing reaches 77)' is None
+
+tests_scripts/test_lint_ceilings.py:200: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18run')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=700, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/_sensortask_scenarios.py:64: l1.sensortask_locked_status_ms is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['tests/_sensortask_scenarios.py:64: l1.sensortask_locked_status_ms is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18run/tests_hardware/bench/test_bus_concurrency_under_api_load.py:289: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18run/tests_hardware/bench/test_bus_concurrency_under_api_load.py:459: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18run/tests_hardware/bench/test_bus_concurrency_under_api_load.py:548: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_lint_ceilings.py::test_each_ruff_ceiling_sits_at_its_measured_maximum[max-statements]
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+3 failed, 3223 passed, 11 skipped, 3 warnings in 1035.13s (0:17:15)

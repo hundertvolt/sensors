@@ -1,0 +1,72 @@
+=== test=fix_v2 plant=none th=-1
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+PASS test_a_maximum_length_train_completes_and_still_yields
+1/1 passed, 0 failed, 0 skipped
+exit 0
+=== test=fix_v2 plant=none th=32768
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+PASS test_a_maximum_length_train_completes_and_still_yields
+1/1 passed, 0 failed, 0 skipped
+exit 0
+=== test=fix_v2 plant=U1 th=-1
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 436, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the maximum-length train did not complete
+0/1 passed, 1 failed, 0 skipped
+exit 1
+=== test=fix_v2 plant=U1 th=32768
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 436, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the maximum-length train did not complete
+0/1 passed, 1 failed, 0 skipped
+exit 1
+=== test=fix_v2 plant=U2 th=-1
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 436, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the maximum-length train did not complete
+0/1 passed, 1 failed, 0 skipped
+exit 1
+=== test=fix_v2 plant=U2 th=32768
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 436, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the maximum-length train did not complete
+0/1 passed, 1 failed, 0 skipped
+exit 1
+=== test=fix_v2 plant=U3 th=-1
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 441, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the longest legal transfer logged an error
+0/1 passed, 1 failed, 0 skipped
+exit 1
+=== test=fix_v2 plant=U3 th=32768
+catalog: None
+selected: ['test_a_maximum_length_train_completes_and_still_yields']
+FAIL test_a_maximum_length_train_completes_and_still_yields:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u13rc/fix_uart/test_digital_twin_uart_link.py", line 441, in test_a_maximum_length_train_completes_and_still_yields
+AssertionError: the longest legal transfer logged an error
+0/1 passed, 1 failed, 0 skipped
+exit 1

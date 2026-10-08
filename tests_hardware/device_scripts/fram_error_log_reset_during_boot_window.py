@@ -5,22 +5,26 @@ the old history over it. SPECIFICATION.md Part C.7, on the real chip rather than
 import asyncio
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from print_log import make_logger
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 10
-SEEDED_ERRNO = 5
+E_TEST_SEED_A = 125
+E_TEST_SEED_B = 126
+# Alternating test-band codes, so the newest-entry rule keeps three slots and no product code
+# is ever seeded.
+SEEDS = [E_TEST_SEED_A, E_TEST_SEED_B, E_TEST_SEED_A]
 LOG_NAME = "ERRBOOT"
 
 
 async def _main() -> None:
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
 
-    store = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    store = make_logger(LogConfig(fram, HISTORY_LENGTH, None), LOG_NAME)
     await store.setup()
     if not store.initialized:
         print("RESULT: FAIL could not initialize the error-log chunk on the real chip")
@@ -28,22 +32,22 @@ async def _main() -> None:
     # Clear at the START, never at the end (tests_hardware/README.md's own rule): this chunk is
     # real persistent storage, so without this the seeding below stacks on a previous run's ring.
     await store.reset()
-    for _ in range(3):
-        await store.err_s("seeded", errno=SEEDED_ERRNO)
+    for seed in SEEDS:
+        await store.err_s("seeded", errno=seed)
     seeded = (await store.get_log())[LOG_NAME]
     if seeded["ErrType"].count("E") != 3:
         print(f"RESULT: FAIL could not seed a real 3-entry history to reset against ({seeded!r})")
         return
 
     # The boot window itself: a fresh logger over the same chunk, bytes still on the chip, its own
-    # pr.setup() not yet run (on the real system that call lives inside read_loop()'s _init_*()).
+    # pr.setup() not yet run (on the real system the boot batch runs it before the server answers).
     # make_logger() always hands back initialized=False, which is exactly the boot-window state.
-    rebooted = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    rebooted = make_logger(LogConfig(fram, HISTORY_LENGTH, None), LOG_NAME)
     await rebooted.reset()  # the PUT lands here
     if not rebooted.initialized:
         print("RESULT: FAIL the reset write never reached the real chip, so nothing was persisted")
         return
-    await rebooted.setup()  # ... and only now does the task get there
+    await rebooted.setup()  # ... and only now does its setup run
 
     after = (await rebooted.get_log())[LOG_NAME]
     if after["ErrCount"] != 0 or any(t != "N" for t in after["ErrType"]):
@@ -52,7 +56,7 @@ async def _main() -> None:
 
     # Third logger, no reset: proves the cleared state really is what is on the chip now, not just
     # what the second object happens to hold in RAM.
-    verify = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    verify = make_logger(LogConfig(fram, HISTORY_LENGTH, None), LOG_NAME)
     await verify.setup()
     persisted = (await verify.get_log())[LOG_NAME]
     if persisted["ErrCount"] != 0 or any(t != "N" for t in persisted["ErrType"]):

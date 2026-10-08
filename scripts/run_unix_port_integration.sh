@@ -3,9 +3,9 @@
 # digital_twin/run_generic_integration.py against the real twin buses under the real MicroPython
 # Unix-port interpreter, for any real device (--device, default wozi; SPECIFICATION.md Part L.4).
 #
-# Deliberately separate from scripts/test.sh: the twin needs its own MICROPYPATH with no "tests"
-# segment (digital_twin/README.md's "never together" rule), and this run can serve forever with no
-# --duration, which would hang that script's own test-file loop.
+# Deliberately separate from scripts/test.sh (owner, 2026-08-13): the twin needs its own MICROPYPATH
+# with no "tests" segment (digital_twin/README.md's "never together" rule), and this run can serve
+# forever with no --duration, which would hang that script's own test-file loop.
 #
 # That path needs "ext", unlike scripts/test.sh's, because every generated sensortask_<device>.py
 # imports vendored ext/microdot.py - a test file works around the ext-less path with its own
@@ -21,10 +21,23 @@
 # generated module/wiring plan to boot; every other flag goes straight through to
 # run_generic_integration.py's parse_args(), whose docstring has the full list.
 #
-# No flags just launches wozi on localhost:8080 and serves forever. There is no --soak flag any
-# more: the HTTP+memory-trend soak check moved host-side into
-# scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md's "Driver/DUT process separation").
+# No flags just launches wozi on localhost:8080 and serves forever (owner, 2026-08-13:
+# browser-reachable, escalation watchable). No --soak flag: the HTTP+memory-trend soak check is
+# host-side, scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md "Driver/DUT process separation").
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
+Launches digital_twin/run_generic_integration.py for one device (default: wozi) under the real Unix
+port; with no further flags it serves on localhost:8080 until stopped. Every flag but --device goes
+to run_generic_integration.py (its own --help lists them).
+
+Environment:
+  PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1           skip the system-package step of a toolchain build (default: 0)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.
@@ -56,7 +69,7 @@ if [ ! -x "$micropython_bin" ]; then
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
-# The twin's DNSServer binds the real privileged port 53, which a non-root environment cannot do
+# The twin's CaptiveDNS binds the real privileged port 53, which a non-root environment cannot do
 # without this capability on the interpreter binary. Granted fresh every invocation, for the reason
 # scripts/run_digital_twin_ci.sh's identical block gives.
 echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server)"

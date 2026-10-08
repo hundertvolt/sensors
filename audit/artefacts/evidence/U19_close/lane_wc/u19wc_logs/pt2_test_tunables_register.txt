@@ -1,0 +1,21 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u19wc')
+real_tags = [Tag(path='vitest.config.js', line=35, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=754, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_webserver_service.py:150: web.max_header_lines is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_webserver_service.py:152: web.max_head_bytes is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_webserver_service.py:156: web.start_retries is tagged but has no SPECIFICATION.md Part N row
+E         src/asy_webserver_service.py:158: web.start_retry_s is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['src/asy_webserver_service.py:150: web.max_header_lines is tagged but has no SPECIFICATION.md Part N row', 'src/asy_w...md Part N row', 'src/asy_webserver_service.py:158: web.start_retry_s is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 14 passed in 3.14s

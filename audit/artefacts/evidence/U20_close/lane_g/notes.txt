@@ -1,0 +1,23 @@
+G1 eaef77c (on 7efb5f2)
+Seen failing first: test_system_status_lists_its_rows_in_the_published_order[6 devices], test_the_reset_heap_and_config_rows_say_what_they_report,
+ test_the_system_command_offers_its_five_words_in_order (definitions); test_the_reset_reason_table_has_one_row_per_recorded_code (catalog). Bite: test_the_reset_table_check_bites (guard of the check).
+Cross-lane red on G1 tree:
+ - test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[*] (C1's _system_status keys)
+ - test_error_catalog.py::test_the_reset_reason_table_has_one_row_per_recorded_code: "ResetReason 21 has a catalog row but no code" (S1 RR_INTERRUPTED)
+ - ruff RUF100 tests/test_website_build_integration.py:15:55 (I step 129); mypy main pass same line unused-ignore (I)
+ - L0 test_digital_twin_generated_boot status parity (C1), tests_js definitions-mockdata parity (B1 samples) - not run
+Deviation: ResetReason description "Why the device last restarted, as a numeric code." (A.U6.23's "click the code" clause false until U23 clickable codes)
+Catalog texts: no backticks (catalog convention); 11-15 "boot failure in phase p (name)"; 21 per M.GEN.034 (1) (no "and").
+Baselines: test_buildgen_definitions 214 passed 16.33s; test_error_catalog 31 passed 16.97s. After G1: defs 222 (216 pass, 6 C-red) 22.07s; catalog 33 (32+1 S-red) 19.83s.
+Website input changed (definitions) -> lead rebuilds frozen website.
+== Resumed on db6ce58; G2 b977eea
+rule/fix: definitions 17 BuildError all with rule/fix (14 ids), 4 BuildInternalError; api_reference 10 (10 ids), 2 BuildInternalError.
+Blast of JsonDict returns (host pass, files outside G): test_buildgen_generate.py:589-593 (C, +20), tests_hardware/website_identity.py:36,39 (16), test_persistence_write_marker_completeness.py:62-63 (16), test_request_body_cap_headroom.py:101 (13). Fix: read through json.loads(json.dumps(...)) or narrow.
+Base reds not mine: test_buildgen_generate::test_a_stated_rx_ring_reaches_the_uart_constructor, test_buildgen_validate::test_the_watchdog_mirror_matches_the_generated_boot, test_tunables_register (wdt.timeout_ms sites), test_code_conventions::test_the_generated_narrowing_exemption_is_still_needed.
+K-dependent red: test_buildgen_definitions::test_cli_reports_a_build_error_and_exits_nonzero (model.load_device fix).
+Blocked: 48l untagged-schema check (needs K web_tag hidden= + tags for asy_sgp40_driver.py:94-95 Temp/Hum; PauseTime webserver) ; requires_tag baseline section (K).
+Seen failing first: 32 defs tests on G1 definitions; 20 api tests on base api_reference; source agreement (d),(e).
+SPEC sentences for D: SPEC:6080 _WARN_SIGNAL_WEB_CATALOG; :7635, :7818 _SENSOR_DRIVERS checklist.
+Finding: schema_ast parse_source without filename -> raw SyntaxError escapes definitions CLI (src file syntax error). Encoding-less read_text in defaults.py:26, driver_registry.py:48,135, frozen_modules.py:42, validate.py:177,199.
+Finding: scripts/_digital_twin_ci_suite.py:75 _DRIVER_ERRCOUNT_NAME restated logger names.
+FRAM_FULL row absent (no src constant; U16 stage).

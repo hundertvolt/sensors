@@ -2,6 +2,7 @@
 Models the destructive 0x08 status read, the active-low INT line, `BOUTF` high at power-up and a deliberately non-nominal per-instance range ratio; see `digital_twin/README.md`'s "What's here"."""
 
 from _fault_injection import FaultInjector
+from _twin_common import Walk
 
 try:
     from typing import TYPE_CHECKING
@@ -63,16 +64,17 @@ _CYCLE_MS_16BIT = 303  # 3 x tINT, tINT = 101ms typ at 16 bits (p3)
 _CYCLE_MS_12BIT = 19  # 3 x ~6.3ms: p6 makes tINT an n-bit counter on one oscillator, so 101 x 2**-4
 
 _FAULT_INT_STUCK_HIGH = "isl29125:int_stuck_high"
+_LUX_WALK_DEFAULT = Walk(5.0, 9000.0, 400.0)
 
 
 class Isl29125Chip:
+    REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
+
     def __init__(
         self,
         random_source: "_RandomSource | None" = None,
         int_pin: "_IntPin | None" = None,
-        min_lux: float = 5.0,
-        max_lux: float = 9000.0,
-        lux_step: float = 400.0,
+        lux: Walk = _LUX_WALK_DEFAULT,
         gain_ratio: float = 25.9,
         dark_counts: int = 1,
         *,
@@ -83,10 +85,10 @@ class Isl29125Chip:
 
             random_source = _random_module
         self._random = random_source
-        # min/max are datasheet-derived (p1: range 0 reaches 375 lux, range 1 reaches 10000).
-        # lux_step is NOT - a physical-plausibility judgment bounding how far one reading can move
-        # from the last, the same framing _scd30_chip.py's own *_step arguments carry.
-        self._min_lux, self._max_lux, self._lux_step = min_lux, max_lux, lux_step
+        # lo/hi are datasheet-derived (p1: range 0 reaches 375 lux, range 1 reaches 10000). The
+        # step is NOT - a physical-plausibility judgment bounding how far one reading can move
+        # from the last, the same framing _scd30_chip.py's own walk steps carry.
+        self._min_lux, self._max_lux, self._lux_step = lux.lo, lux.hi, lux.step
         # Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-calibration
         # only has something real to learn if this unit's own high-range full scale differs from
         # nominal, which on real silicon it always does.
@@ -108,7 +110,7 @@ class Isl29125Chip:
         self._int_asserted = False
         self._int_stuck_high = False
         self._timer: Timer | None = None
-        # Initial value: one uniform draw within [min,max] at construction - every value after
+        # Initial value: one uniform draw within the walk's [lo,hi] at construction - every value after
         # this one steps from the last instead (see _produce_new_reading() below).
         self._lux = self._random.uniform(self._min_lux, self._max_lux)
         self._tint = (1.0, 1.0, 1.0)  # (red, green, blue) weights; neutral until set_illumination says otherwise

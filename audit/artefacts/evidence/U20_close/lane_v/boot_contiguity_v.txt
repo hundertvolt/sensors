@@ -1,0 +1,43 @@
+......................s.ssss........                                     [100%]
+==================================== PASSES ====================================
+________ test_the_uart_receive_rings_land_with_the_boot_survivors[dev] _________
+----------------------------- Captured stdout call -----------------------------
+dev: 2 receive rings, 1024 B of windows; largest free run 15220096 B before the batch, 15220096 B after
+=========================== short test summary info ============================
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[arzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[grkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[klkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[schlafzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_batch_places_its_survivors_low[wozi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[arzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[grkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[klkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[schlafzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_whole_boot_sequence_places_its_survivors_low[wozi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_suppressing_the_placement_collects_breaks_both_bounds[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_live_arm_places_strictly_deeper_than_the_suppressed_one[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_collects_move_placement_and_not_retention[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[arzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[grkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[klkizi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[schlafzi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_real_boot_fires_exactly_the_collects_the_static_guards_count[wozi]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_setup_list_reader_counts_the_returned_entries
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_uart_receive_rings_land_with_the_boot_survivors[dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_arm_is_never_empty
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_device_batch_creates_enough_firmware_survivors[collects-dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_device_batch_creates_enough_firmware_survivors[suppressed-dev]
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_control_arm_devices_are_real_devices
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_missing_generated_tree_fails_rather_than_skipping
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_a_probe_that_logged_an_allocation_failure_fails_even_when_it_passed
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite
+PASSED tests_scripts/test_digital_twin_boot_contiguity.py::test_the_twin_probe_and_the_board_script_read_at_the_same_positions
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: arzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: grkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: klkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: schlafzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:327: wozi builds no UART link, so it has no receive ring
+31 passed, 5 skipped in 16.27s

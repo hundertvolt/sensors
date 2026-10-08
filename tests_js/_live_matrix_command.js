@@ -10,22 +10,26 @@ import { fileURLToPath } from "node:url";
 // below - see SPECIFICATION.md Part H.8.1 for why this is a DOM-free module, not a
 // js/templates.js import.
 import { formatFieldValue } from "../js/field-format.js";
+import { drainChildOutput } from "./_memory_markers.js";
+import { twinStartFailure } from "./_twin_start_failure.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
 const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-// build/generated_src first: no static src/sensortask_wozi.py exists any more
-// (SPECIFICATION.md Part L.2) - package.json's own "pretest"/
-// "pretest:coverage" hooks generate it fresh there, via buildgen, before this spawns.
-const MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen";
 const HOST = "127.0.0.1";
 // Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
 // this harness's twin runs alongside that file's (19481) in one `npm test` run.
 const PORT = 19482;
+// @tunable l0.live_twin_ready_timeout_ms = 20000
 const READY_TIMEOUT_MS = 20000;
+// @tunable l0.live_twin_shutdown_timeout_ms = 15000
 const SHUTDOWN_TIMEOUT_MS = 15000;
+/** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
+const spawnErrors = new WeakMap();
+// @tunable l0.put_matrix_apply_status_timeout_ms = 5000
 const APPLY_STATUS_TIMEOUT_MS = 5000;
 // Generous bound for pollForText() - see SPECIFICATION.md Part H.8.1 ("Testing an async DOM refresh").
+// @tunable l0.put_matrix_caption_poll_timeout_ms = 3000
 const CAPTION_POLL_TIMEOUT_MS = 3000;
 
 /** @param {number} ms */
@@ -35,10 +39,17 @@ function sleep(ms) {
     });
 }
 
-/** @param {number} timeoutMs */
-async function waitUntilServing(timeoutMs) {
+/**
+ * @param {import("node:child_process").ChildProcess} proc
+ * @param {number} timeoutMs
+ */
+async function waitUntilServing(proc, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+        const failure = twinStartFailure({ spawnError: spawnErrors.get(proc) ?? null, exitCode: proc.exitCode, signalCode: proc.signalCode });
+        if (failure !== null) {
+            throw new Error(failure);
+        }
         try {
             // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
             const res = await fetch(`http://${HOST}:${PORT}/`);
@@ -54,17 +65,23 @@ async function waitUntilServing(timeoutMs) {
     throw new Error(`digital twin never started serving on ${HOST}:${PORT} within ${timeoutMs}ms`);
 }
 
-function spawnTwin() {
+/**
+ * The same launch as tests_js/_live_twin_command.js's spawnTwin(): the device's generated module
+ * from build/generated_src and its own site from build/generated_html/<device>.
+ * @param {string} device
+ */
+function spawnTwin(device) {
+    const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
     const proc = spawn(
         MICROPYTHON_BIN,
         [
             "digital_twin/run_generic_integration.py",
             "--module",
-            "sensortask_wozi",
+            `sensortask_${device}`,
             "--wiring-plan",
-            path.join(REPO_ROOT, "build", "generated_src", "sensortask_wozi_wiring_plan.json"),
+            path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
             "--device",
-            "wozi",
+            device,
             "--host",
             HOST,
             "--port",
@@ -76,15 +93,14 @@ function spawnTwin() {
         ],
         {
             cwd: REPO_ROOT,
-            env: { ...process.env, MICROPYPATH, TZ: "UTC" },
-            // Same reasoning as tests_js/_live_twin_command.js's own stdio choice - see that
-            // file's own comment.
-            stdio: ["ignore", "ignore", "pipe"],
+            env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
+            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+            stdio: ["ignore", "pipe", "pipe"],
         },
     );
-    // See tests_js/_live_twin_command.js's own identical comment: an unhandled 'error' event would
-    // otherwise crash the whole Vitest process, skipping this file's own cleanup entirely.
-    proc.on("error", () => { /* no-op by design, per the comment above */ });
+    // See tests_js/_live_twin_command.js's own identical comment: the listener keeps the error for
+    // waitUntilServing() to name, instead of crashing the whole Vitest process.
+    proc.on("error", (err) => { spawnErrors.set(proc, err); });
     return proc;
 }
 
@@ -117,39 +133,48 @@ async function stopTwin(proc) {
 
 /** @type {import("node:child_process").ChildProcess | null} */
 let twinProc = null;
-let twinStderr = "";
+/** @type {ReturnType<typeof drainChildOutput> | null} */
+let twinOutput = null;
 /** @type {import("playwright").Page | null} */
 let livePage = null;
 
 /**
- * Boots the twin and opens/navigates one real page, once for the whole test file. Every later
- * command in this module operates against that same twin/page until stopLiveMatrix() tears it down.
- * @param {{context: import("playwright").BrowserContext}} ctx
+ * The matrix's run settings, read without booting a twin: whether the interpreter is built, and
+ * which shard $PUT_MATRIX_SHARD selects. It travels back through the Commands API because the test
+ * runs in the browser, where process.env does not exist (SPECIFICATION.md Part H.7).
+ * @returns {{skipped: boolean, reason: string | null, shard: string}}
  */
-export async function startLiveMatrix({ context }) {
+export function getLiveMatrixConfig() {
     if (!existsSync(MICROPYTHON_BIN)) {
         return {
             skipped: true,
             reason: `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`,
+            shard: "",
         };
     }
+    return { skipped: false, reason: null, shard: process.env.PUT_MATRIX_SHARD ?? "" };
+}
+
+/**
+ * Boots `device`'s twin and opens/navigates one real page. Every later command in this module
+ * operates against that same twin/page until stopLiveMatrix() tears it down, so devices run one
+ * after another on PORT.
+ * @param {{context: import("playwright").BrowserContext}} ctx
+ * @param {string} device a devices/<device>.toml stem
+ * @returns {Promise<void>}
+ */
+export async function startLiveMatrix({ context }, device) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
-    twinProc = spawnTwin();
-    twinStderr = "";
-    twinProc.stderr?.on("data", (/** @type {Buffer} */ chunk) => {
-        twinStderr += chunk.toString();
-    });
+    twinProc = spawnTwin(device);
+    const output = drainChildOutput(twinProc);
+    twinOutput = output;
 
     try {
-        await waitUntilServing(READY_TIMEOUT_MS);
+        await waitUntilServing(twinProc, READY_TIMEOUT_MS);
         livePage = await context.newPage();
         await livePage.goto(`http://${HOST}:${PORT}/`);
         await livePage.waitForSelector("[data-section-key]");
-        // $PUT_MATRIX_SHARD travels back through the Commands API rather than a Vite `define`:
-        // the test runs in the browser, where process.env does not exist, and every build-time
-        // route was worse - see this function's own callers and SPECIFICATION.md Part H.7.
-        return { skipped: false, shard: process.env.PUT_MATRIX_SHARD ?? "" };
     } catch (err) {
         // A failure here means the test file's top-level startLiveMatrix() threw before its
         // afterAll(stopLiveMatrix) was ever registered. Without tearing down right here, a slow
@@ -164,8 +189,12 @@ export async function startLiveMatrix({ context }) {
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
             twinProc = null;
         }
+        twinOutput = null;
         const message = err instanceof Error ? err.message : String(err);
-        throw new Error(`startLiveMatrix failed: ${message}\n--- twin stderr ---\n${twinStderr}`, { cause: err });
+        await output.closed(SHUTDOWN_TIMEOUT_MS);
+        const marked = output.markerLines();
+        const markers = marked.length > 0 ? `\n--- the twin also logged an allocation failure ---\n${marked.join("\n")}` : "";
+        throw new Error(`startLiveMatrix failed for ${device}: ${message}${markers}\n--- twin output ---\n${output.text()}`, { cause: err });
     }
 }
 
@@ -182,6 +211,20 @@ export async function stopLiveMatrix() {
         await stopTwin(twinProc);
         // eslint-disable-next-line require-atomic-updates -- see comment above
         twinProc = null;
+    }
+    const output = twinOutput;
+    twinOutput = null;
+    // The run's memory gate (SPECIFICATION.md Part I.4(e)): read once the twin has stopped and its
+    // streams have closed, so the whole matrix fails on a marker even when every field applied.
+    if (output !== null) {
+        const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);
+        const marked = output.markerLines();
+        if (marked.length > 0) {
+            throw new Error(`the live-matrix twin logged an allocation failure:\n${marked.join("\n")}`);
+        }
+        if (!drained) {
+            throw new Error(`the live-matrix twin's output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete`);
+        }
     }
 }
 

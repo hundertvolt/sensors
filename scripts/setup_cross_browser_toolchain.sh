@@ -6,6 +6,17 @@
 # None of the three channels below is the obvious one for its engine; SPECIFICATION.md Part H.7's
 # "Why each engine comes from the channel it does" has the investigation trail for all three.
 set -euo pipefail
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<'EOF'
+Usage: scripts/setup_cross_browser_toolchain.sh
+Installs WebKitGTK's driver and Xvfb, Microsoft Edge and Firefox with geckodriver for
+scripts/cross_browser_smoke.mjs; idempotent. Needs sudo for the apt steps.
+
+Environment:
+  CROSS_BROWSER_TOOLCHAIN_DIR   where Firefox and geckodriver go (default: ~/cross-browser-toolchain)
+EOF
+    exit 0
+fi
 
 # Non-fatal, like toolchain/setup_toolchain.py's own ensure_apt_packages(): an unrelated
 # third-party source (a PPA that 403s or whose key expired) must not stop an install from the main
@@ -36,7 +47,7 @@ else
 fi
 
 # --- Firefox + geckodriver: conda-forge via a standalone micromamba binary ---
-# Deliberately unpinned, unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
+# Unpinned (agent, 2026-08-26), unlike toolchain/versions.toml's MicroPython pin (Part H.7). Delete
 # CROSS_BROWSER_DIR below to force a fresh pull.
 CROSS_BROWSER_DIR="${CROSS_BROWSER_TOOLCHAIN_DIR:-$HOME/cross-browser-toolchain}"
 FIREFOX_BIN="$CROSS_BROWSER_DIR/mamba_root/envs/ff/bin/firefox"

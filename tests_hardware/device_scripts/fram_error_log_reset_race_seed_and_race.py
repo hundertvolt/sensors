@@ -7,20 +7,25 @@ import asyncio
 import machine
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from print_log import make_logger
+from asy_fram_manager import FRAMManager
+from asy_print_log import LogConfig, make_logger
 
 HISTORY_LENGTH = 10
-SEEDED_ERRNO = 5  # what the three settled, fully-written entries carry
-RACED_ERRNO = 6  # the fourth entry, whose write is what the reset interrupts
+E_TEST_SEED_A = 125
+E_TEST_SEED_B = 126
+# The three fully written entries before the race: alternating test-band codes, so the newest-entry rule
+# keeps three slots and no product code is ever seeded.
+SEEDS = [E_TEST_SEED_A, E_TEST_SEED_B, E_TEST_SEED_A]
+E_TEST_SEED_C = 127  # the fourth entry, whose write is what the reset interrupts
 LOG_NAME = "ERRRACE"
+# @tunable wdt.timeout_ms = 8000
 _WDT_TIMEOUT_MS = 8000
 
 
 async def _main() -> None:
     wdt = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
+    fram = FRAMManager(spi0, 5, max_size=0x40000)
     if not await fram.setup():
         print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
         return
@@ -28,7 +33,7 @@ async def _main() -> None:
     # First chunk allocated off a freshly-constructed manager, so it lands at allocation offset 0 -
     # the verify script constructs the same two objects in the same order and therefore addresses
     # the same chunk. Same convention fram_error_log_roundtrip.py already relies on.
-    store = make_logger(fram, history_length=HISTORY_LENGTH, debug=None, name=LOG_NAME)
+    store = make_logger(LogConfig(fram, HISTORY_LENGTH, None), LOG_NAME)
     await store.setup()
     if not store.initialized:
         print("RESULT: FAIL PrintLogHistoryStore.setup() did not initialize - no FRAM chunk")
@@ -43,19 +48,19 @@ async def _main() -> None:
         print(f"RESULT: FAIL could not clear the chunk to a known baseline before seeding ({baseline[LOG_NAME]!r})")
         return
 
-    for _ in range(3):
-        await store.err_s("seeded", errno=SEEDED_ERRNO)
+    for seed in SEEDS:
+        await store.err_s("seeded", errno=seed)
     log = await store.get_log()
     seeded = [n for n, t in zip(log[LOG_NAME]["ErrNum"], log[LOG_NAME]["ErrType"]) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
-    if seeded != [SEEDED_ERRNO] * 3:
+    if seeded != SEEDS:
         print(f"RESULT: FAIL could not seed three settled entries before racing (got {seeded})")
         return
     wdt.feed()
 
     async def victim_writer() -> None:
-        # err_s() is write-through (print_log.py's _store_err()), so this is a real chunk write:
+        # err_s() is write-through (asy_print_log.py's _store_err()), so this is a real chunk write:
         # both status bytes to _STATUS_BUSY, payload + CRC, then both back to _STATUS_IDLE.
-        await store.err_s("raced", errno=RACED_ERRNO)
+        await store.err_s("raced", errno=E_TEST_SEED_C)
 
     async def reset_yanker() -> None:
         # One await asyncio.sleep(0) before acting - next-in-line the instant victim_writer yields,

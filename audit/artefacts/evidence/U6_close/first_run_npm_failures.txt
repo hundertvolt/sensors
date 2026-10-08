@@ -1,0 +1,33 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/PressOvers (enum) > selecting option 1 renders Valid with that option actually shown selected
+ FAIL  |chromium| tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/TempOvers (enum) > selecting option 1 renders Valid with that option actually shown selected
+ FAIL  |chromium| tests_js/live-backend-put-matrix.test.js > live PUT matrix on dev > live PUT sensors/BMP3XX/FiltCoeff (enum) > selecting option 0 renders Valid with that option actually shown selected
+Error: card never got a data-apply-status within 5000ms
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/live-backend-put-matrix.test.js/live-PUT-matrix-on-dev---live-PUT-sensors-BMP3XX-PressOvers--enum----selecting-option-1-renders-Valid-with-that-option-actually-shown-selected.png
+  - .vitest/attachments/failure-screenshots/live-backend-put-matrix.test.js/live-PUT-matrix-on-dev---live-PUT-sensors-BMP3XX-TempOvers--enum----selecting-option-1-renders-Valid-with-that-option-actually-shown-selected.png
+  - .vitest/attachments/failure-screenshots/live-backend-put-matrix.test.js/live-PUT-matrix-on-dev---live-PUT-sensors-BMP3XX-FiltCoeff--enum----selecting-option-0-renders-Valid-with-that-option-actually-shown-selected.png
+
+ ❯ applyAndExpectRendered tests_js/live-backend-put-matrix.test.js:128:44
+    126|             const expectedRemountValue = value;
+    127|
+    128|             const applied = await commands.applyField({ sectionKey, gr…
+       |                                            ^
+    129|             if (expectedStatus === "ValidOrUnchanged") {
+    130|                 expect(["valid", "unchanged"]).toContain(applied.apply…
+ ❯ tests_js/live-backend-put-matrix.test.js:334:23
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=cd88de7c:5294:63
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=cd88de7c:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=cd88de7c:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=cd88de7c:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=cd88de7c:5695:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+
+ Test Files  1 failed | 15 passed (16)
+      Tests  3 failed | 1065 passed | 1 skipped (1069)
+   Start at  19:14:09
+   Duration  790.74s (tests 75%, worker 24%)

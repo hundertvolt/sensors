@@ -5,6 +5,7 @@
  */
 
 /** Default per-request timeout; see SPECIFICATION.md Part H.4's "Poll coordination" row. */
+// @tunable web.outer_cap_s = 15000
 export const DEFAULT_TIMEOUT_MS = 15000;
 
 /**

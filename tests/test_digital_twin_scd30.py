@@ -1,6 +1,7 @@
 """Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic - matches the raw word-register commands src/asy_scd30_driver.py's SCD30_I2C sends.
 Real-time RDY-pin scheduling is exercised only via the synchronous _produce_new_reading() hook here; the real-time-firing check itself lives in test_digital_twin_machine.py."""
 
+import asyncio
 import json
 import os
 import struct
@@ -12,13 +13,23 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
+    from typing import Any, TypeVar
+
+    from asy_config_manager import CfgValue
+
+    T = TypeVar("T")
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
+import machine
 from _crc8 import crc8, word
 from _scd30_chip import Scd30Chip
 from _tmp_scratch import TmpScratch
+from _twin_common import Walk
+
+import asy_i2c_driver
+from asy_scd30_driver import SCD30_Reader
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
@@ -27,6 +38,10 @@ _scratch = TmpScratch("digital_twin_scd30")
 
 def _tmp_path(name: str) -> str:
     return _scratch.path(name)
+
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":
+    return asyncio.run(coro)
 
 
 class _FixedRandom:
@@ -103,6 +118,21 @@ def test_temperature_offset_set_then_get_round_trips_as_raw_centidegrees() -> No
     assert _get(chip, 0x54, 0x03) == word(150)
 
 
+def _reported_temperature(chip: Scd30Chip) -> float:
+    # The temperature word of the measurement the driver reads (its own unpack of bytes 6-11).
+    chip.handle_writeto(b"\x03\x00")
+    raw = chip.handle_readfrom_into(18)
+    return float(struct.unpack(">f", raw[6:8] + raw[9:11])[0])
+
+
+def test_a_reading_reports_the_sensors_temperature_less_the_offset() -> None:
+    for offset_raw in (0, 150, 65535):
+        chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+        _set(chip, 0x54, 0x03, offset_raw)
+        chip._produce_new_reading()
+        assert abs(_reported_temperature(chip) - (22.0 - offset_raw / 100)) < 1e-3, offset_raw
+
+
 def test_forced_recalibration_reference_always_reads_back_400() -> None:
     # Real hardware quirk (asy_scd30_driver.py's own comment): volatile readback always 400
     # regardless of the last value applied - the calibration curve update is permanent, the
@@ -174,37 +204,35 @@ def test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound() -
     # ever passed the wrong (a, b) bound for a step draw (e.g. the full [min,max] range instead of
     # [-step,step]), this test's deliberately-tight scripted delta would fail that assertion.
     chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 50.0, 1.0, 3.0]))
-    chip._produce_new_reading()  # co2_step=50.0, temp_step=1.0, hum_step=3.0 (this chip's defaults)
+    chip._produce_new_reading()  # walk steps co2 50.0, temp 1.0, hum 3.0 (this chip's defaults)
 
 
 def test_produce_new_reading_step_is_clamped_to_the_configured_max() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        max_co2=2000.0,
-        co2_step=50.0,
+        co2=Walk(400.0, 2000.0, 50.0),
         random_source=_FixedRandom(uniform_values=[1980.0, 20.0, 50.0, 50.0, 0.0, 0.0]),
     )
     chip._produce_new_reading()
-    assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to max_co2
+    assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to the co2 walk's hi
 
 
 def test_produce_new_reading_step_is_clamped_to_the_configured_min() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        min_temp=15.0,
-        temp_step=1.0,
+        temp=Walk(15.0, 30.0, 1.0),
         random_source=_FixedRandom(uniform_values=[1000.0, 15.5, 50.0, 0.0, -1.0, 0.0]),
     )
     chip._produce_new_reading()
-    assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to min_temp
+    assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to the temp walk's lo
 
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
-        co2_step=5.0,
-        temp_step=0.1,
-        hum_step=0.5,
+        co2=Walk(400.0, 2000.0, 5.0),
+        temp=Walk(15.0, 30.0, 0.1),
+        hum=Walk(20.0, 70.0, 0.5),
         random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 5.0, 0.1, 0.5]),
     )
     chip._produce_new_reading()  # would violate the default 50.0/1.0/3.0 bounds - proves the override took
@@ -287,6 +315,107 @@ def test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it()
     assert chip._timer.period == 10 * 1000
     assert chip._timer is not first_timer  # re-armed, not just mutated in place
     chip._timer.deinit()  # don't leave a live background task running past this test
+
+
+def test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else() -> None:
+    # The six NVM-writing argument commands and the bare stop (Interface Description 1.4.1-1.4.3,
+    # 1.4.6-1.4.8); register reads, data-ready, read-out, firmware version and soft reset write none.
+    chip = Scd30Chip(auto_refresh=False)
+    assert chip.nvm_writes == 0
+    for reg_hi, reg_lo, arg in ((0x00, 0x10, 1013), (0x46, 0x00, 5), (0x51, 0x02, 250), (0x52, 0x04, 900), (0x53, 0x06, 1), (0x54, 0x03, 150)):
+        _get(chip, reg_hi, reg_lo)  # the register read of the same word is not a write
+        before = chip.nvm_writes
+        _set(chip, reg_hi, reg_lo, arg)
+        assert chip.nvm_writes == before + 1
+    chip.handle_writeto(bytes([0x01, 0x04]))  # stop continuous measurement: its status lives in NVM
+    assert chip.nvm_writes == 7
+    for reg_hi, reg_lo in ((0x02, 0x02), (0x03, 0x00), (0xD1, 0x00), (0xD3, 0x04)):
+        _get(chip, reg_hi, reg_lo)
+    assert chip.nvm_writes == 7
+
+
+def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands() -> None:
+    # The real SCD30_Reader over the twin's bus, driven through _set_dict_cfg() (the config-apply path
+    # the PUT route calls): the second identical body writes NVM only for AmbPres and ForceCalRef.
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8)
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # no measurements needed, and the interval write must not re-arm one
+    body: dict[str, CfgValue] = {"TempOffset": 1.5, "MeasInterval": 10, "AmbPres": 1000, "Altitude": 200, "ForceCalRef": 450, "SelfCal": True}
+    assert run(reader._set_dict_cfg(body, reader.get_cfg_schema())) == dict.fromkeys(body, "Valid")
+    assert chip.nvm_writes == 6
+    second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
+    assert second == {"TempOffset": "Unchanged", "MeasInterval": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
+    assert chip.nvm_writes == 8
+
+
+def test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset() -> None:
+    # The driver's range gate adds the offset back to the reported temperature: at the largest offset the twin's
+    # reading still passes, and the reader reports the sensor's own temperature less 655.35 degC.
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8, cfg_path=_scratch.dir())
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # the test produces the measurement itself
+
+    async def scenario() -> "tuple[float | None, bool, float, int]":
+        assert await reader.setup() is True
+        body: dict[str, CfgValue] = {"TempOffset": 655.35}
+        assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == {"TempOffset": "Valid"}
+        chip._produce_new_reading()
+        results, new_data = await reader._read_scd()
+        return results[1], new_data, chip._temp, (await reader.get_error_counter())["SCD30"]["ErrCount"]
+
+    temperature, new_data, sensed, errors = run(scenario())
+    assert new_data is True
+    assert errors == 0  # no "Reading rejected"
+    assert temperature is not None and abs(temperature - (sensed - 655.35)) < 0.01
+
+
+def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings() -> None:
+    # The real SCD30_Reader over the twin's bus, set up and initialised as at boot; the read cycles are driven
+    # in-process, one chip measurement each, with the walks held still (CO2 and temperature step 0).
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8, cfg_path=_scratch.dir())
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # the test produces each measurement itself
+    chip._co2_step = chip._temp_step = 0.0  # a twin-only knob: a constant CO2, a steady temperature
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_seconds: float) -> None:
+        await real_sleep(0)
+
+    async def scenario() -> "tuple[list[int | None], dict[str, CfgValue]]":
+        assert await reader.setup() is True
+        assert await reader._init_scd() is True  # the chip answers its interval: 2 s, so 180 samples settle
+        states = []
+        for _ in range(180):
+            chip._produce_new_reading()
+            results, new_data = await reader._read_scd()
+            assert await reader._error_check(results, condition=results[0] is None)
+            await reader._store_scd(results, new_data)
+            states.append((await reader.get_data()).FRCState)
+        body: dict[str, CfgValue] = {"FRCNoise": 25.0, "FRCRate": 5.0, "FRCWindow": 90}
+        assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == dict.fromkeys(body, "Valid")
+        return states, (await reader.get_dict_cfg())["SCD30"]
+
+    asyncio.sleep = fast_sleep  # type: ignore[assignment]
+    try:
+        states, cfg = run(scenario())
+    finally:
+        asyncio.sleep = real_sleep
+    assert states[:-1] == [1] * 179
+    assert states[-1] == 4
+    assert (cfg["FRCNoise"], cfg["FRCRate"], cfg["FRCWindow"]) == (25.0, 5.0, 90)
+    assert chip.nvm_writes == 0  # the FRC settings never reach the chip
 
 
 def test_fault_injection_on_writeto_and_readfrom_into() -> None:

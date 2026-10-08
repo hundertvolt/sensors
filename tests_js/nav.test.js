@@ -4,7 +4,7 @@ import { initNav } from "../js/nav.js";
 /** @type {import("../js/definitions.js").SiteDefinitions} */
 const DEFS = {
     schemaVersion: "1.0.0",
-    device: { id: "wozi", displayName: "wozi" },
+    device: { id: "fixture-device", displayName: "Fixture Device" },
     landingSection: "measurements",
     defaultPollIntervalMs: 3000,
     sections: [

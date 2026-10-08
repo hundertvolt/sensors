@@ -28,6 +28,14 @@ _OTHER_RESERVED = [a for lo, hi in RESERVED_RANGES for a in range(lo, hi + 1) if
 # This bench's own real pin assignments (sensortask_dev.py's own construction comments) - scanned,
 # never assumed populated.
 _BUSES = ((0, 13, 12, 50000, None), (1, 15, 14, 50000, 200000))
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcast_step_s = 0.2
+_BROADCAST_STEP_S = 0.2
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_run_bound_s = 30.0
+_RUN_BOUND_S = 30.0
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_self_reads = 8
+_SELF_READS = 8
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcasts = 3
+_BROADCASTS = 3
 
 
 async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
@@ -90,9 +98,9 @@ async def _read_isl29125_once(isl: "ISL29125_I2C") -> "str | None":
 
 
 async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: int) -> "list[str]":
-    """A lone known device on a bus, read repeatedly while general-call broadcasts race those
-    reads. A module-level function rather than an inline block so no closure here captures the
-    caller's bus-loop variables (ruff B023) - everything it needs is a parameter."""
+    # A lone known device on a bus, read repeatedly while general-call broadcasts race those
+    # reads. A module-level function rather than an inline block so no closure here captures the
+    # caller's bus-loop variables (ruff B023) - everything it needs is a parameter.
     name = KNOWN_ADDRESSES[address]
     # Constructed and set up once, outside the read loop: a fresh object per call never runs
     # setup(), and then crashes on its own cached calibration state (BMP3xx's _temp_calib/
@@ -100,18 +108,18 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
     read_once = None
     try:
         if address == 0x61:
-            scd = SCD30_I2C(i2c, address=address)
+            scd = SCD30_I2C(i2c)
             read_once = lambda: _read_scd30_once(scd)  # noqa: E731
         elif address == 0x77:
             bmp = BMP3XX_I2C(i2c, address=address)
             await bmp.setup()
             read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
         elif address == 0x59:
-            sgp = SGP40_I2C(i2c, address=address)
+            sgp = SGP40_I2C(i2c)
             await sgp.setup()
             read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
         elif address == 0x44:
-            isl = ISL29125_I2C(i2c, address=address)
+            isl = ISL29125_I2C(i2c)
             await isl.setup()
             read_once = lambda: _read_isl29125_once(isl)  # noqa: E731
     except Exception as e:
@@ -122,25 +130,26 @@ async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: i
     self_errors: list[str] = []
 
     async def reads() -> None:
-        for i in range(8):
+        for i in range(_SELF_READS):
             err = await read_once()
             if err is not None:
                 self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
             await asyncio.sleep(0)
 
     async def broadcasts() -> None:
-        for _ in range(3):
+        for _ in range(_BROADCASTS):
             try:
                 i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
             except OSError:
                 pass
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(_BROADCAST_STEP_S)
 
-    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), 30.0)
+    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), _RUN_BOUND_S)
     return self_errors
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     findings: list[str] = []
     all_discovered: dict[int, dict[int, str]] = {}

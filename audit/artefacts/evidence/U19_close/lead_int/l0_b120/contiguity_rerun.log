@@ -1,0 +1,8 @@
+.....................s.ssss........                                      [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:301: arzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:301: grkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:301: klkizi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:301: schlafzi builds no UART link, so it has no receive ring
+SKIPPED [1] tests_scripts/test_digital_twin_boot_contiguity.py:301: wozi builds no UART link, so it has no receive ring
+30 passed, 5 skipped in 15.38s

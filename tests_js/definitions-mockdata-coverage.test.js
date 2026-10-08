@@ -1,13 +1,12 @@
 /**
- * Every readonly field a shipped definitions.json names must resolve against that device's own
- * mockdata.json, using the site's own resolvers rather than a second implementation of them.
+ * Every readonly field a device's generated definitions name must resolve against that device's
+ * composed mock data, through the site's own resolver.
  */
 import { describe, expect, it } from "vitest";
-import wozi from "../html/definitions/wozi.json";
-import dev from "../html/definitions/dev.json";
-import woziData from "../mockdata/wozi.json";
-import devData from "../mockdata/dev.json";
+import samples from "../mockdata/samples.json";
 import { resolveFieldValue } from "../js/definitions.js";
+import { composeMockData } from "../js/mock-server.js";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
@@ -41,6 +40,15 @@ function groupValuesFrom(section, group, data) {
     return data;
 }
 
+/**
+ * A list whose every item is a string, number, boolean or null: String() renders it as text, never as an object.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isScalarList(value) {
+    return Array.isArray(value) && value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
+}
+
 // Which mockdata top-level object backs each definitions section, matching what js/mock-server.js
 // serves for that section's own GET.
 const SECTION_DATA_KEY = {
@@ -70,8 +78,7 @@ function unrenderableReadonlyFields(defs, data) {
         for (const group of section.groups) {
             const values = groupValuesFrom(section, group, sectionData);
             for (const field of group.fields ?? []) {
-                // Only readonly fields: a writable one legitimately falls back to defaultValue, and
-                // a command-only trigger is never echoed in a GET at all.
+                // Only readonly fields: a command-only trigger is never echoed in a GET.
                 if (field.kind !== "readonly") {
                     continue;
                 }
@@ -82,8 +89,8 @@ function unrenderableReadonlyFields(defs, data) {
                 }
                 // A `path` naming a GROUP rather than a leaf resolves to the sub-object, which
                 // renders as "[object Object]" - a value, so the check above cannot see it.
-                // gmtimestruct is the one format whose value legitimately is a struct.
-                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null) {
+                // gmtimestruct's struct and a list of scalars (ConfigFaults) are leaves.
+                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
                     missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
             }
@@ -93,15 +100,11 @@ function unrenderableReadonlyFields(defs, data) {
 }
 
 describe("definitions and mockdata agree", () => {
-    // The gap this catches happened twice in one branch, in both directions: UARTLINK_* reached
-    // dev's definitions with no mockdata behind them, and GainMeas reached both while the real
-    // device body never carried it. Each rendered as a blank row, not as a defect.
-    it("every readonly field dev's definitions name resolves in dev's mockdata", () => {
-        expect(unrenderableReadonlyFields(dev, devData)).toEqual([]);
-    });
-
-    it("every readonly field wozi's definitions name resolves in wozi's mockdata", () => {
-        expect(unrenderableReadonlyFields(wozi, woziData)).toEqual([]);
+    // A blank row is not a defect the renderer reports, so an unresolvable readonly field fails here.
+    it.each(DEVICE_IDS)("every readonly field %s's definitions name resolves in its composed mock data", (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const data = composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples));
+        expect(unrenderableReadonlyFields(defs, data)).toEqual([]);
     });
 
     // Guards the check itself: a resolver that silently returned a value for everything would make
@@ -122,5 +125,14 @@ describe("definitions and mockdata agree", () => {
         };
         const data = { measurements: { ISL29125: { RGB: { R: 0.5, G: 0.25, B: 0.125 } } } };
         expect(unrenderableReadonlyFields(defs, data)).toEqual(["measurements/ISL29125/R (an object, not a leaf)"]);
+    });
+
+    it("takes a list of names as a leaf and still reports a list that holds a sub-object", () => {
+        const defs = {
+            sections: [{ key: "status", groups: [{ key: "system", fields: [{ key: "ConfigFaults", label: "Config Faults", kind: "readonly" }] }] }],
+        };
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [] } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: ["SCD30", "WIFI"] } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [{ Module: "SCD30" }] } } })).toEqual(["status/system/ConfigFaults (an object, not a leaf)"]);
     });
 });

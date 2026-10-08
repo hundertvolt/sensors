@@ -10,7 +10,7 @@ import asyncio
 import machine
 
 import asy_uart_driver
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, UART_Comm
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, TransferLimits, UARTComm
 
 try:
     from typing import TYPE_CHECKING
@@ -26,16 +26,21 @@ if TYPE_CHECKING:
 PAYLOAD_SIZE = 48
 TIMEOUT_MS = 1000
 BAUDRATE = 115200
+# @tunable dev.uart_poll_wait_ms = 2
 POLL_WAIT_MS = 2
 # Mirrors sensortask_dev.py's own pair: 2ms while a transaction is in flight, 50ms while the line
 # is idle. A bench run that used one rate would not be exercising the shipped configuration.
+# @tunable dev.uart_poll_idle_ms = 50
 POLL_IDLE_MS = 50
+# @tunable dev.uart_rxbuf = 512
 BUF_BYTES = 512
 _CMD_ECHO = 0x02
 # Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
 # uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so an injected
 # fault resets the board instead of naming the failing check (measured on unjumpered pins).
+# @tunable l3.uart_crossover_exchange_join_step_ms = 100
 JOIN_STEP_MS = 100
+# @tunable l3.uart_crossover_exchange_join_budget_ms = 2000
 JOIN_BUDGET_MS = 2000
 
 
@@ -72,17 +77,17 @@ def set_callback(cmd_id: int) -> "tuple[bool, int | None]":
     return (cmd_id == _CMD_ECHO), None
 
 
-def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UART_Comm, UART_Comm]":
+def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTComm, UARTComm]":
     uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
     uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    initiator = UART_Comm(uart0, ROLE_INITIATOR, payload_size=PAYLOAD_SIZE, timeout=TIMEOUT_MS, name="UART_INIT")
-    responder = UART_Comm(
+    limits_a = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    limits_b = TransferLimits(payload_size_b, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
+    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits_a, name="UART_INIT")
+    responder = UARTComm(
         uart1,
         ROLE_RESPONDER,
-        payload_size=payload_size_b,
-        timeout=TIMEOUT_MS,
-        get_callback=get_callback,
-        set_callback=set_callback,
+        limits=limits_b,
+        callbacks=ResponderCallbacks(get_callback, set_callback, None),
         name="UART_RESP",
     )
     return uart0, uart1, initiator, responder
@@ -99,7 +104,7 @@ async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bo
     return task.done()
 
 
-async def _exchange(wdt: "machine.WDT", responder: UART_Comm, work: "Coroutine[Any, Any, T]") -> "T":
+async def _exchange(wdt: "machine.WDT", responder: UARTComm, work: "Coroutine[Any, Any, T]") -> "T":
     listener = asyncio.create_task(responder.uart_listen())
     try:
         return await work
@@ -115,6 +120,7 @@ async def _exchange(wdt: "machine.WDT", responder: UART_Comm, work: "Coroutine[A
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
     wdt = machine.WDT(timeout=8000)
     failures = []
 

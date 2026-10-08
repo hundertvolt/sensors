@@ -34,7 +34,7 @@ def base_doc() -> TomlDoc:
                 "spi0": {"sck_pin": 2, "mosi_pin": 3, "miso_pin": 4},
             },
             "instance": [
-                {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_sec": 3, "wiring": {"fram_target": "fram"}},
+                {"driver": "scd30", "name_ext": "", "bus": "i2c0", "irq_pin": 8, "trigger_s": 3, "wiring": {"fram_target": "fram"}},
                 {
                     "driver": "sgp40",
                     "name_ext": "",
@@ -65,6 +65,11 @@ def _dump_scalar(v: object) -> str:
         return "true" if v else "false"
     if isinstance(v, str):
         return json.dumps(v)
+    if isinstance(v, list):
+        return "[" + ", ".join(_dump_scalar(x) for x in v) + "]"
+    if isinstance(v, dict):
+        # An inline table, for a value a negative-path test plants where a scalar belongs.
+        return ("{ " + ", ".join(f"{k} = {_dump_scalar(x)}" for k, x in v.items()) + " }") if v else "{}"
     return str(v)
 
 
@@ -73,10 +78,9 @@ def dump_toml(doc: TomlDoc) -> str:
     device = doc.get("device")
     if device is not None:
         lines.append("[device]")
-        for k, v in device.items():
-            if k != "wiring":
-                lines.append(f"{k} = {_dump_scalar(v)}")
-        if "wiring" in device:
+        # A non-table wiring is written as the plain value it is, for the check that refuses it.
+        lines += [f"{k} = {_dump_scalar(v)}" for k, v in device.items() if k != "wiring" or not isinstance(v, dict)]
+        if isinstance(device.get("wiring"), dict):
             lines += ["", "[device.wiring]"]
             lines += [f"{k} = {_dump_scalar(v)}" for k, v in device["wiring"].items()]
 
@@ -87,8 +91,8 @@ def dump_toml(doc: TomlDoc) -> str:
     for inst in doc.get("instance", []):
         lines += ["", "[[instance]]"]
         wiring = inst.get("wiring")
-        lines += [f"{k} = {_dump_scalar(v)}" for k, v in inst.items() if k != "wiring"]
-        if wiring is not None:
+        lines += [f"{k} = {_dump_scalar(v)}" for k, v in inst.items() if k != "wiring" or not isinstance(v, dict)]
+        if isinstance(wiring, dict):
             lines += ["", "[instance.wiring]"]
             subtables = {k: v for k, v in wiring.items() if isinstance(v, dict)}
             lines += [f"{k} = {_dump_scalar(v)}" for k, v in wiring.items() if not isinstance(v, dict)]

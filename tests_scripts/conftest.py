@@ -20,9 +20,9 @@ sys.path.insert(0, str(REPO_ROOT))
 
 @pytest.fixture(scope="session", autouse=True)
 def _reclaim_leaked_device_fixtures() -> None:
-    """Reclaims any `devices/zz_test_*.toml` a KILLED earlier run left behind, once, before any test
-    runs - race-free by construction, since nothing has created one yet at session start (a test
-    globbing the live tree could only tell leak from legitimate fixture by racing it)."""
+    # Reclaims any `devices/zz_test_*.toml` a KILLED earlier run left behind, once, before any test
+    # runs - race-free by construction, since nothing has created one yet at session start (a test
+    # globbing the live tree could only tell leak from legitimate fixture by racing it).
     for stale in sorted((REPO_ROOT / "devices").glob("zz_test_*.toml")):
         stale.unlink()
         print(f"reclaimed leaked live-tree device fixture: {stale.name}")
@@ -35,9 +35,9 @@ def repo_root() -> Path:
 
 @pytest.fixture(scope="session")
 def ci_suite(repo_root: Path) -> ModuleType:
-    """scripts/_digital_twin_ci_suite.py as a real module - a standalone `uv run`-style script, not a
-    package member, so its pure helpers are only reachable through the loader. Session-scoped and
-    shared, so the three test files exercising it execute the module once between them, not once each."""
+    # scripts/_digital_twin_ci_suite.py as a real module - a standalone `uv run`-style script, not a
+    # package member, so its pure helpers are only reachable through the loader. Session-scoped and
+    # shared, so the three test files exercising it execute the module once between them, not once each.
     return load_script_module(repo_root / "scripts" / "_digital_twin_ci_suite.py", "_digital_twin_ci_suite")
 
 
@@ -52,10 +52,10 @@ def micropython_dir() -> Path:
 
 @pytest.fixture(scope="session")
 def micropython_bin(micropython_dir: Path) -> Path:
-    # Same path scripts/run_digital_twin_ci.sh's own $micropython_bin resolves to. A test that needs
-    # to actually spawn it (e.g. test_digital_twin_generated_boot.py) skips itself when it isn't
-    # built yet, rather than failing the whole suite - building it is scripts/test.sh's/CI's job.
+    # Same path scripts/run_digital_twin_ci.sh's own $micropython_bin resolves to. A missing build
+    # fails every test that needs it, never skips it: a skip reads as a pass, and building the
+    # interpreter is scripts/test.sh's/CI's job before this suite runs.
     path = micropython_dir / "ports" / "unix" / "build-standard" / "micropython"
     if not path.is_file():
-        pytest.skip(f"MicroPython Unix port not built at {path} - run toolchain/setup_toolchain.py setup first")
+        pytest.fail(f"MicroPython Unix port not built at {path} - run toolchain/setup_toolchain.py setup first")
     return path

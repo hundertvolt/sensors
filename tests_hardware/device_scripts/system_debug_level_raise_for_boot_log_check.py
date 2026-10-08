@@ -4,13 +4,13 @@ the real prior value first (never a hardcoded restore target) so its restore-pha
 
 import asyncio
 
-import config_manager as cm
+import asy_config_manager as cm
 
 _SYS_SCHEMA: "cm.ConfigSchema" = (("DebugLevel", "int", 0, 0, 5, None),)
 _SYS_PATH = "config_SYSTEM.cfg"
 _BACKUP_SCHEMA: "cm.ConfigSchema" = (("PrevLevel", "int", 0, 0, 5, None),)
 _BACKUP_PATH = "config_HWTEST_DEBUGLEVEL_BACKUP.cfg"
-_VERBOSE_LEVEL = 3  # print_log.py's _LOG_ONCE - the level pr.one() itself is gated on
+_VERBOSE_LEVEL = 3  # asy_print_log.py's _LOG_ONCE - the level pr.one() itself is gated on
 
 
 async def _main() -> None:
@@ -27,7 +27,7 @@ async def _main() -> None:
 
     backup_mgr = cm.ConfigManager(_BACKUP_PATH, _BACKUP_SCHEMA, "HWTEST")
     await backup_mgr.setup()
-    backup_ok, _validity = await backup_mgr.write_config({"PrevLevel": previous_level}, _BACKUP_SCHEMA)
+    backup_ok, _validity = await backup_mgr.write_config({"PrevLevel": previous_level})
     if not backup_ok:
         print(f"RESULT: FAIL could not back up the current DebugLevel={previous_level} before changing it")
         return
@@ -40,7 +40,7 @@ async def _main() -> None:
         print(f"RESULT: PASS DebugLevel already {previous_level} (>= {_VERBOSE_LEVEL}) - nothing to raise")
         return
 
-    ok, validity = await sys_mgr.write_config({"DebugLevel": _VERBOSE_LEVEL}, _SYS_SCHEMA)
+    ok, validity = await sys_mgr.write_config({"DebugLevel": _VERBOSE_LEVEL})
     await sys_mgr.flush_pending()  # same reason as the backup write above
     if ok and validity.get("DebugLevel") in ("Valid", "Unchanged"):
         print(f"RESULT: PASS DebugLevel raised from {previous_level} to {_VERBOSE_LEVEL}")

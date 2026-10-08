@@ -1,0 +1,20 @@
+.F....                                                                   [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...r'): 1, ('tsconfig.node.json', 'skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           buildgen/web_tag.py	Escaping a literal '"' inside a quoted value is deliberately unsupported (see mo
+E           src/asy_wifi_service.py	A new getter picks one shape deliberately, never by copying its nearest neighbou
+E           tests/test_asy_wifi_service.py	while _run_sta_mode()'s caller has independently decided a retry is needed - the
+E           tests/test_ntp_wifi_dns_integration.py	type: ignore[assignment] # deliberate monkeypatch, same as test_asy_ntp_client.p
+E       assert not [('buildgen/web_tag.py', 'Escaping a literal \'"\' inside a quoted value is deliberately unsupported (see mo'), ('src/...test_ntp_wifi_dns_integration.py', 'type: ignore[assignment] # deliberate monkeypatch, same as test_asy_ntp_client.p')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+1 failed, 5 passed in 6.29s

@@ -1,9 +1,10 @@
-"""Isolated-driver device script: WP4/Topic 6's real-hardware capacity check - after a full
-build_system(), every module that should hold a real FRAM chunk does, rather than a silently
+"""Isolated-driver device script: WP4/Topic 6's real-hardware capacity check - after build_system()
+and its setup list, every module that should hold a real FRAM chunk does, rather than a silently
 degraded RAM-only fallback. mpremote-only by design; tests_hardware/README.md has both reasons."""
 
 import asyncio
 
+import machine
 import sensortask_dev
 
 failures: list[str] = []
@@ -26,10 +27,14 @@ def _check_fram_backed(label: str, pr: object) -> None:
 
 
 async def _main() -> None:
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, run_setups() feeds it
     try:
-        await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
+        await sensortask_dev.build_system(watchdog=wdt, cfg_path="", web_host="127.0.0.1", web_port=8080)
+        # main()'s next step, so the check reads the system as a real boot leaves it.
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
     except Exception as e:
-        print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
+        print(f"RESULT: FAIL build_system() or its setup list raised on real hardware: {e!r}")
         return
 
     assert sensortask_dev.fram is not None
@@ -47,7 +52,7 @@ async def _main() -> None:
         return
     print(
         f"RESULT: PASS every FRAM-wired module's own chunk allocated successfully "
-        f"(fram.allocated_size={sensortask_dev.fram.allocated_size}, fram.size={sensortask_dev.fram.size})",
+        f"(fram._allocated_size={sensortask_dev.fram._allocated_size}, fram.size={sensortask_dev.fram.size})",
     )
 
 

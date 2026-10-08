@@ -1,0 +1,6 @@
+before test_asy_system_service.py std rc=0 7.793151198 s 123/123 passed, 0 failed, 0 skipped
+before test_asy_system_service.py thr rc=0 9.749021514 s 123/123 passed, 0 failed, 0 skipped
+before test_asy_system_service.py cov rc=0 10.746941863 s 123/123 passed, 0 failed, 0 skipped
+before test_ntp_fram_system_integration.py std rc=0 12.196223056 s 12/12 passed, 0 failed, 0 skipped
+before test_ntp_fram_system_integration.py thr rc=0 12.569956449 s 12/12 passed, 0 failed, 0 skipped
+before test_ntp_fram_system_integration.py cov rc=0 12.926034955 s 12/12 passed, 0 failed, 0 skipped

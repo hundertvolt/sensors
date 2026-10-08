@@ -1,4 +1,4 @@
-"""Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()` — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
+"""Minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`: real HTTP over real sockets (owner, 2026-08-13) — no HTTP client library is frozen into the pinned MicroPython Unix-port build, so the twin's integration run hand-rolls one instead.
 Every response it sees carries `Connection: close`, so no keep-alive support is needed. See `digital_twin/README.md`'s "What's here" section."""
 
 import asyncio
@@ -46,9 +46,10 @@ def build_request(method: str, path: str, host: str, json_body: "dict[str, objec
 
 
 class CeilingRefusedError(OSError):
-    """The server closed without writing any response at all - asy_webserver_service.py's
-    reject-when-full branch. An OSError subclass because that is what a refusal is to every caller,
-    and whether the peer sees FIN or RST is kernel TCP state that src/ does not choose."""
+    # The server closed without writing any response at all - asy_webserver_service.py's
+    # reject-when-full branch. An OSError subclass because that is what a refusal is to every caller,
+    # and whether the peer sees FIN or RST is kernel TCP state that src/ does not choose.
+    pass
 
 
 def parse_status_line(line: bytes) -> int:

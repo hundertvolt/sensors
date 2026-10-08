@@ -1,0 +1,10 @@
+tests/test_ntp_fram_system_integration.py: note: In function "test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_up":
+tests/test_ntp_fram_system_integration.py:696:23: error: Argument 1 to "append"
+of "list" has incompatible type "Task[None]"; expected "Task[bool]"  [arg-type]
+            starts.append(t)
+                          ^
+tests/test_ntp_fram_system_integration.py:697:16: error: Incompatible return
+value type (got "Task[None]", expected "Task[bool]")  [return-value]
+            return t
+                   ^
+Found 2 errors in 1 file (checked 165 source files)

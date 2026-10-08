@@ -14,6 +14,10 @@ import ast
 from pathlib import Path
 
 import pytest
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
+
+from buildgen.web_tag import parse_web_tags
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 
@@ -31,7 +35,7 @@ def _literal_tuple(node: ast.AST) -> tuple[str, ...] | None:
 
 
 def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...] | None]:
-    """Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any."""
+    # Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any.
     tuples: dict[str, tuple[str, ...]] = {}
     fields: tuple[str, ...] | None = None
     for node in ast.parse(path.read_text()).body:
@@ -46,6 +50,29 @@ def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ..
             if declared is not None:
                 tuples[name] = declared
     return tuples, fields
+
+
+def _keyword_tuple(path: Path, function: str, keyword: str) -> "list[tuple[str, ...] | None]":
+    # The literal tuple passed as `keyword=` to `function(...)`, once per call in the module.
+    return [
+        _literal_tuple(k.value) for node in ast.walk(ast.parse(path.read_text()))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == function
+        for k in node.keywords if k.arg == keyword
+    ]
+
+
+def _a_device_with(driver: str) -> str:
+    # The device name only labels a parse error, so any device whose TOML wires the driver will do.
+    return next(d for d in DEVICE_NAMES if any(i.get("driver") == driver for i in tomllib.loads(device_toml(d).read_text()).get("instance", [])))
+
+
+def test_scd30_always_written_keys_equal_its_always_executed_tags() -> None:
+    # The firmware never reads @web tags, so its own always= tuple is pinned to them: ContMeas is a
+    # dispatch-only key handled apart from compare_before_write().
+    path = _SRC / "asy_scd30_driver.py"
+    tagged = {t.field_name for t in parse_web_tags(path, _a_device_with("scd30"), "scd30") if t.always_executed} - {"ContMeas"}
+    (always,) = _keyword_tuple(path, "compare_before_write", "always")
+    assert always is not None and set(always) == tagged, f"always={always}, tagged alwaysExecuted={sorted(tagged)}"
 
 
 _MODULES_WITH_FIELDS = sorted(p.name for p in _SRC.glob("*.py") if _declarations(p)[1] is not None)

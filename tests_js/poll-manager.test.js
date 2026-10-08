@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pollManager, startPolling } from "../js/poll-manager.js";
 
+// @tunable l0.poll_manager_poll_ms = 20
+const STUB_DELAY_MS = 20;
+
 describe("pollManager", () => {
     const originalFetch = window.fetch;
 
@@ -18,7 +21,7 @@ describe("pollManager", () => {
             active += 1;
             concurrentPeak = Math.max(concurrentPeak, active);
             await new Promise((resolve) => {
-                setTimeout(resolve, 20);
+                setTimeout(resolve, STUB_DELAY_MS);
             });
             active -= 1;
             activeAt.push(Date.now());

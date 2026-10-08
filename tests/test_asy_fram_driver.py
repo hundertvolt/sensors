@@ -1,11 +1,13 @@
 import asyncio
 
+from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 
+import asy_fram_driver
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
+from asy_print_log import PrintLogHistory
 from asy_spi_driver import SPI
-from print_log import PrintLogHistory
 
 # Swaps the stateful MB85RS64V chip fake in for the whole process (one test file per scripts/test.sh
 # invocation, SPECIFICATION.md Part E.3): asy_spi_driver.SPI.init() resolves `_SPI` as a module global at
@@ -28,6 +30,10 @@ def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to complet
     return asyncio.run(coro)
 
 
+# @tunable l1.asy_fram_driver_lock_wait_s = 1.0
+_LOCK_WAIT_S = 1.0
+
+
 def make_bus() -> SPI:
     return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
@@ -44,7 +50,30 @@ def make_fram(
 
 
 async def setup_fram(fram: FRAM_SPI) -> None:
-    await fram.setup()
+    assert await fram.setup() is True
+
+
+def _driver_const(name: str) -> int:
+    # A const() is not a module attribute on MicroPython: the shipped literal, read from the source.
+    with open("src/asy_fram_driver.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                return int(line.split("const(", 1)[1].split(")", 1)[0], 0)
+    raise AssertionError(name + " not found in src/asy_fram_driver.py")
+
+
+async def _write_one(fram: FRAM_SPI, data: bytes = b"ok", addr: int = 0x20) -> bool:
+    async with fram:
+        return await fram.set_values(data, addr)
+
+
+async def _read_then_write(fram: FRAM_SPI) -> "tuple[bool, bool]":
+    async with fram:
+        return await fram.get_values(bytearray(2), 0), await fram.set_values(b"x", 0)
+
+
+def _count(fram: FRAM_SPI, entry: int) -> int:
+    return list(fram.pr.history).count(entry)
 
 
 # ---------------------------------------------------------------------------
@@ -68,10 +97,10 @@ def test_setup_raises_on_wrong_manufacturer_id() -> None:
     chip.rdid_response = bytes([0x05, 0x7F, 0x03, 0x02])
     try:
         run(setup_fram(fram))
-        raised = False
-    except OSError:
-        raised = True
-    assert raised
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "FRAM SPI device not found"
     assert fram.initialized is False
 
 
@@ -259,6 +288,69 @@ def test_verify_present_false_for_the_256kb_chip_after_id_changes() -> None:
     assert fram.initialized is False
 
 
+def test_a_chip_that_never_identifies_is_asked_id_attempts_times_before_setup_raises() -> None:
+    fram, chip = make_fram()
+    chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
+    try:
+        run(setup_fram(fram))
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "FRAM SPI device not found"
+    assert chip.rdid_count == _driver_const("_ID_ATTEMPTS")  # each attempt its own CS cycle
+    assert fram.initialized is False
+    assert not fram.session_lock.locked()
+    assert not fram._bus_lock.locked()
+
+
+def test_setup_succeeds_when_the_chip_answers_garbage_once_then_its_id() -> None:
+    fram, chip = make_fram()
+    chip.rdid_once = bytes([0xFF, 0xFF, 0xFF, 0xFF])
+    run(setup_fram(fram))
+    assert fram.initialized is True
+    assert chip.rdid_count == 2
+    assert _count(fram, 0x80 + code("W", "FRAM_ID_RETRIED")) == 1
+    assert fram.pr._err_count == 1
+
+
+def test_a_first_time_identification_logs_nothing() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    assert chip.rdid_count == 1
+    assert fram.pr._err_count == 0
+
+
+def test_a_partly_protected_status_register_is_reported_and_writes_refused() -> None:
+    # BP1/BP0 01, 10 and 11 protect part or all of the array (MB85RS64V p.11): any of them reads as
+    # protected. WPEN alone protects only the status register, so the array stays writable.
+    for status in (0x04, 0x08, 0x0C, 0x84):
+        fram, chip = make_fram()
+        chip.status = status
+        run(setup_fram(fram))
+        assert run(fram.get_write_protected()) is True, hex(status)
+        assert _count(fram, code("E", "FRAM_WP_PARTIAL")) == 1, hex(status)
+        assert run(_write_one(fram)) is False, hex(status)
+        assert list(fram.pr.history)[-1] == 0x80 + code("W", "FRAM_WRITE_PROTECTED")
+        assert bytes(chip.memory[0x20:0x22]) == b"\x00\x00"
+    fram, chip = make_fram()
+    chip.status = 0x80
+    run(setup_fram(fram))
+    assert run(fram.get_write_protected()) is False
+    assert _count(fram, code("E", "FRAM_WP_PARTIAL")) == 1
+    assert run(fram.set_write_protected(value=False)) is True
+    assert chip.status == 0x00
+    assert run(_write_one(fram)) is True
+    assert bytes(chip.memory[0x20:0x22]) == b"ok"
+
+
+def test_a_fully_set_or_clear_status_register_is_not_reported_as_partial() -> None:
+    for status in (0x8C, 0x00):
+        fram, chip = make_fram()
+        chip.status = status
+        run(setup_fram(fram))
+        assert fram.pr._err_count == 0, hex(status)
+
+
 # ---------------------------------------------------------------------------
 # get_values / set_values - guards (initialized, lock, range) and real data
 # ---------------------------------------------------------------------------
@@ -416,6 +508,161 @@ def test_write_reports_data_written_even_if_wrdi_stays_stuck_after_retry() -> No
     assert ok is True
     assert bytes(chip.memory[0x00:0x04]) == b"ok!!"
     assert chip.wel is True  # left stuck, but reported (not silently dropped)
+
+
+def record_events(fram: FRAM_SPI) -> "list[tuple[object, ...]]":
+    recorded: list[tuple[object, ...]] = []
+    original = fram.pr.evt
+
+    def capture(*args: object, sep: str = " ", end: str = "\n") -> None:
+        recorded.append(args)
+        original(*args, sep=sep, end=end)
+
+    fram.pr.evt = capture  # type: ignore[method-assign]
+    return recorded
+
+
+def test_a_write_lands_when_only_the_first_wren_is_dropped() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_next_wren = 1
+    chip.opcodes = []
+    events = record_events(fram)
+    assert run(_write_one(fram)) is True
+    assert bytes(chip.memory[0x20:0x22]) == b"ok"
+    assert chip.opcodes == [0x06, 0x05, 0x06, 0x05, 0x02, 0x04, 0x05]  # WREN, RDSR, WREN, RDSR, WRITE, WRDI, RDSR
+    assert events == [("FRAM write enable latch set on the second WREN",)]
+    assert fram.pr._err_count == 0  # a recovered transient spends no slot
+
+
+def test_a_write_is_refused_when_both_wrens_are_dropped() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_next_wren = 2
+    assert run(_write_one(fram)) is False
+    assert chip.drop_next_wren == 0  # the one retry was made
+    assert bytes(chip.memory[0x20:0x22]) == b"\x00\x00"
+    assert _count(fram, 0x80 + code("W", "FRAM_WEL_NOT_SET")) == 1
+
+
+def test_set_write_protected_retries_a_dropped_wren_once() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_next_wren = 1
+    assert run(fram.set_write_protected(value=True)) is True
+    assert chip.status & 0x8C == 0x8C
+    assert fram.pr._err_count == 0
+
+
+def _assert_lost_and_quiet(fram: FRAM_SPI, chip: FakeMB85RS64V) -> None:
+    assert fram.initialized is False
+    assert fram.lost.is_set()
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
+    assert list(fram.pr.history)[-1] == code("E", "FRAM_CHIP_LOST")
+    chip.opcodes = []
+    logged = len(chip.log)
+    assert run(_read_then_write(fram)) == (False, False)
+    assert chip.opcodes == []  # no transfer reaches a lost chip
+    assert len(chip.log) == logged
+    assert not fram.session_lock.locked()
+    assert not fram._bus_lock.locked()
+
+
+def test_a_chip_gone_silent_mid_run_is_probed_once_and_marked_lost() -> None:
+    # SO stuck low reads WEL clear, so each write's latch "did not set" (refused, w26): a status byte a
+    # live chip could send, so it takes two anomalies in a row before the one ID probe.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.silent = 0x00
+    rdids = chip.rdid_count
+    assert run(_write_one(fram)) is False
+    assert chip.rdid_count == rdids  # one anomaly does not probe
+    assert not fram.lost.is_set()
+    assert run(_write_one(fram)) is False
+    assert chip.rdid_count == rdids + 1
+    _assert_lost_and_quiet(fram, chip)
+
+
+def test_the_first_write_to_a_chip_whose_so_reads_high_reports_the_loss_not_a_success() -> None:
+    # SO stuck high reads 0xFF: WEL looks set, so the latch "did not clear" and the write would pass as
+    # stored. Status bit 0 is fixed at 0 on both parts (datasheets p.6), so no live chip sends this byte.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.silent = 0xFF
+    rdids = chip.rdid_count
+    assert run(_write_one(fram)) is False
+    assert chip.rdid_count == rdids + 1  # probed at once
+    assert _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK")) == 0
+    assert fram.pr._err_count == 1
+    _assert_lost_and_quiet(fram, chip)
+
+
+def test_set_write_protected_on_a_chip_whose_so_reads_high_reports_the_loss() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.silent = 0xFF
+    assert run(fram.set_write_protected(value=True)) is False
+    assert _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK")) == 0
+    assert fram.pr._err_count == 1
+    _assert_lost_and_quiet(fram, chip)
+
+
+def test_a_real_stuck_latch_on_a_live_chip_still_warns_and_succeeds() -> None:
+    # Guard: a live chip's stuck latch reads a legal status byte, so the write keeps today's behaviour -
+    # stored, one warning, no probe until a second anomaly in a row, whose ID then matches.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.disturb_write_autoclear = True
+    rdids = chip.rdid_count
+    for expected_rdids in (rdids, rdids + 1):
+        chip.drop_next_wrdi = 2
+        assert run(_write_one(fram)) is True
+        assert bytes(chip.memory[0x20:0x22]) == b"ok"
+        assert chip.rdid_count == expected_rdids
+        assert list(fram.pr.history)[-1] == 0x80 + code("W", "FRAM_WEL_STUCK")
+    assert fram.initialized is True
+    assert not fram.lost.is_set()
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 0
+
+
+def test_an_anomaly_with_a_matching_id_keeps_the_chip_up() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wren = True  # a latch problem, not a lost chip: the ID still answers
+    rdids = chip.rdid_count
+    for _ in range(4):
+        assert run(_write_one(fram)) is False
+    assert chip.rdid_count == rdids + 2  # one probe per two anomalies: the match resets the count
+    assert fram.initialized is True
+    assert not fram.lost.is_set()
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 0
+
+
+def test_a_clean_write_between_two_anomalies_resets_the_count() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    rdids = chip.rdid_count
+    chip.drop_next_wren = 2
+    assert run(_write_one(fram)) is False
+    assert run(_write_one(fram)) is True
+    chip.drop_next_wren = 2
+    assert run(_write_one(fram)) is False
+    assert chip.rdid_count == rdids  # never two anomalies in a row, so never a probe
+
+
+def test_setup_after_a_loss_clears_it_and_the_chip_works_again() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.silent = 0x00
+    run(_write_one(fram))
+    run(_write_one(fram))
+    assert fram.lost.is_set()
+    chip.silent = None
+    run(setup_fram(fram))
+    assert fram.initialized is True
+    assert not fram.lost.is_set()
+    assert run(_write_one(fram)) is True
+    assert bytes(chip.memory[0x20:0x22]) == b"ok"
 
 
 # ---------------------------------------------------------------------------
@@ -604,6 +851,82 @@ def test_wp_pin_restored_to_prior_asserted_level_when_wrsr_readback_fails() -> N
     assert (chip.status & 0x8C) == 0x8C  # hardware genuinely still protected
 
 
+async def _while_held(fram: FRAM_SPI, lock: "asyncio.Lock", call: "Coroutine[Any, Any, bool]", chip: FakeMB85RS64V) -> "tuple[int, int, bool]":
+    # Holds `lock` on a gate while `call` runs in a second task: returns the chip's status and RDID
+    # count seen while held, then the call's result once the gate opens.
+    gate = asyncio.Event()
+
+    async def holder() -> None:
+        async with lock:
+            await gate.wait()
+
+    held = asyncio.create_task(holder())
+    await asyncio.sleep(0)
+    task = asyncio.create_task(call)
+    for _ in range(5):
+        await asyncio.sleep(0)
+    seen = (chip.status, chip.rdid_count)
+    gate.set()
+    await held
+    return seen[0], seen[1], await task
+
+
+def test_set_write_protected_and_setup_wait_for_a_held_driver_lock() -> None:
+    # The driver lock guards the scratch buffers both use (C.8), so neither may touch the chip while
+    # another holder has it - not only while the bus is held.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    status, _rdids, ok = run(_while_held(fram, fram.session_lock, fram.set_write_protected(value=True), chip))
+    assert status & 0x8C == 0x00  # untouched while the driver lock was held
+    assert ok is True
+    assert chip.status & 0x8C == 0x8C
+    rdids = chip.rdid_count
+    _status, seen_rdids, ok = run(_while_held(fram, fram.session_lock, fram.setup(), chip))
+    assert seen_rdids == rdids
+    assert ok is True
+    assert chip.rdid_count == rdids + 1
+
+
+def test_set_write_protected_waits_for_a_held_fram_session() -> None:
+    # Guard: `async with fram:` holds the bus too, which set_write_protected() already waited for.
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+
+    async def scenario() -> "tuple[int, bool]":
+        gate = asyncio.Event()
+
+        async def holder() -> None:
+            async with fram:
+                await gate.wait()
+
+        held = asyncio.create_task(holder())
+        await asyncio.sleep(0)
+        task = asyncio.create_task(fram.set_write_protected(value=True))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        seen = chip.status
+        gate.set()
+        await held
+        return seen, await task
+
+    seen, ok = run(scenario())
+    assert seen & 0x8C == 0x00
+    assert ok is True
+    assert chip.status & 0x8C == 0x8C
+
+
+def test_a_stuck_latch_with_a_mismatched_readback_persists_only_the_fault() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.drop_wrsr = True  # the readback keeps the old WP bits
+    chip.disturb_wrsr_autoclear = True
+    chip.drop_next_wrdi = 2  # and the latch stays set through both WRDIs
+    assert run(fram.set_write_protected(value=True)) is False
+    assert _count(fram, code("E", "FRAM_WP_MISMATCH")) == 1
+    assert _count(fram, 0x80 + code("W", "FRAM_WEL_STUCK")) == 0
+    assert fram.pr._err_count == 1
+
+
 # ---------------------------------------------------------------------------
 # verify_present() - the post-setup re-probe / self-healing entry point
 # ---------------------------------------------------------------------------
@@ -634,7 +957,22 @@ def test_verify_present_false_reverts_to_uninitialized_and_blocks_further_access
     verified, still_readable = run(scenario())
     assert verified is False
     assert fram.initialized is False
+    assert fram.lost.is_set()  # the manager's watch task learns of it
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
     assert still_readable is False  # every other method now safely refuses, as if never set up
+
+
+def test_verify_present_on_a_dead_chip_persists_chip_lost_once() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    chip.silent = 0xFF
+    assert run(fram.verify_present()) is False
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
+    assert fram.pr._err_count == 1
+    assert run(fram.verify_present()) is False  # refused at its guard: the same loss, no second E54
+    assert _count(fram, code("E", "FRAM_CHIP_LOST")) == 1
+    assert not fram.session_lock.locked()
+    assert not fram._bus_lock.locked()
 
 
 def test_setup_again_after_verify_present_failure_recovers() -> None:
@@ -645,28 +983,48 @@ def test_setup_again_after_verify_present_failure_recovers() -> None:
     assert run_result_1 is False
     chip.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # disturbance cleared up
 
+    assert fram.lost.is_set()
     run(setup_fram(fram))  # the same task-death-and-respawn "fresh setup()" pattern every driver uses
     assert fram.initialized is True
+    assert not fram.lost.is_set()
+
+
+class _RecordingWaitFor:
+    # Stands in for asy_fram_driver's asyncio: wait_for_ms() records the bound it is given, then runs
+    # the real mechanism on a 1 ms bound so the lock-busy case costs no real second.
+    def __init__(self) -> None:
+        self.timeouts_ms: list[int] = []
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    def wait_for_ms(self, aw: "Coroutine[Any, Any, T]", timeout_ms: int) -> "Coroutine[Any, Any, T]":
+        self.timeouts_ms.append(timeout_ms)
+        return asyncio.wait_for_ms(aw, 1)
 
 
 def test_verify_present_bounded_wait_returns_false_instead_of_hanging_when_lock_already_held() -> None:
-    # verify_present() self-acquires the outer Lockable lock, unlike get_values()/set_values(), which
-    # require the caller to hold it - calling it inside an existing `async with fram:` would hang forever,
-    # asyncio.Lock not being reentrant.
-    #
-    # _VERIFY_PRESENT_LOCK_TIMEOUT_S is a real const() and cannot be monkeypatched, so this test sits out
-    # the real ~1s timeout rather than shortening it.
+    # verify_present() takes the driver lock itself: inside an existing `async with fram:` it waits
+    # out its bounded timeout instead of hanging (asyncio.Lock is not reentrant).
     fram, _chip = make_fram()
     run(setup_fram(fram))
+    recorder = _RecordingWaitFor()
 
     async def scenario() -> bool:
         async with fram:
             return await fram.verify_present()
 
-    result = run(scenario())
+    asy_fram_driver.asyncio = recorder  # type: ignore[assignment]
+    try:
+        result = run(scenario())
+    finally:
+        asy_fram_driver.asyncio = asyncio
     assert result is False
+    assert recorder.timeouts_ms == [1000]  # one wait_for_ms() around the acquire, bounded at 1000 ms
     assert fram.initialized is True  # a lock-busy timeout isn't a device-identification failure
-    assert 97 in fram.pr.history
+    assert not fram.lost.is_set()
+    assert list(fram.pr.history).count(code("E", "LOCK_TIMEOUT")) == 1
+    assert run(fram.verify_present()) is True  # the cancelled acquire left the lock usable
 
 
 # ---------------------------------------------------------------------------
@@ -792,7 +1150,8 @@ def test_verify_present_before_setup_returns_false_not_a_raised_runtimeerror() -
 
 
 # ---------------------------------------------------------------------------
-# Deliberately-allowed exception paths - inherited from asy_spi_driver.py, never caught here
+# Construction errors raise at boot (asy_spi_driver.py's contract); a bus that goes down later is
+# reported by status, never raised.
 # ---------------------------------------------------------------------------
 
 
@@ -820,27 +1179,71 @@ def test_construction_with_an_out_of_range_spi_cs_raises_uncaught_at_boot() -> N
     assert raised
 
 
-def test_bus_deinit_mid_operation_raises_uncaught_runtimeerror() -> None:
-    # The other deliberately-allowed path: if the underlying bus is deinitialized out from under an in-
-    # flight FRAM_SPI, SPIDevice.__aenter__'s configure() call raises RuntimeError, uncaught here, matching
-    # asy_spi_driver.py's signed-off precedent that this is the caller's responsibility.
-    #
-    # Not a hardware disturbance: a real electrical fault never touches this Python-level lifecycle state,
-    # only an explicit deinit()/init() call elsewhere does.
-    fram, _chip = make_fram()
+def _bus_down_entries(fram: FRAM_SPI) -> int:
+    log = run(fram.pr.get_log())[fram.pr.name]
+    nums, kinds = log["ErrNum"], log["ErrType"]
+    return sum(1 for i in range(len(nums)) if kinds[i] == "E" and nums[i] == code("E", "FRAM_BUS_DOWN"))
+
+
+def test_bus_deinit_mid_operation_returns_false_and_logs_bus_down() -> None:
+    # A deinitialised bus is reported as bus-down by the driver (bool SPI results, C.3), not raised.
+    fram, chip = make_fram()
     run(setup_fram(fram))
     fram._spidev.spi.deinit()
+    logged = len(chip.log)
 
     async def scenario() -> bool:
         async with fram:
             return await fram.get_values(bytearray(1), 0)
 
+    assert run(scenario()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert len(chip.log) == logged  # no transfer was made
+
+
+def test_set_values_on_a_bus_that_went_down_returns_false_and_logs_bus_down() -> None:
+    fram, chip = make_fram()
+    run(setup_fram(fram))
+    before = bytes(chip.memory[0:2])
+    fram._spidev.spi.deinit()
+
+    async def scenario() -> bool:
+        async with fram:
+            return await fram.set_values(b"\x5a\xa5", 0)
+
+    assert run(scenario()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert bytes(chip.memory[0:2]) == before
+
+
+def test_verify_present_and_set_write_protected_report_a_bus_down_after_setup() -> None:
+    fram, _chip = make_fram()
+    run(setup_fram(fram))
+    fram._spidev.spi.deinit()
+    assert run(fram.verify_present()) is False
+    assert _bus_down_entries(fram) == 1
+    assert fram.pr._err_count == 1
+    assert run(fram.set_write_protected(value=True)) is False
+    assert _bus_down_entries(fram) == 1  # the same code again shares the newest slot (C.7.1)
+    assert fram.pr._err_count == 2  # one count per call
+    assert fram.initialized is True  # a bus that is down is not a lost chip
+    assert not fram.session_lock.locked()
+    assert not fram._bus_lock.locked()
+
+
+def test_setup_raises_when_the_bus_is_down() -> None:
+    fram, chip = make_fram()
+    fram._spidev.spi.deinit()
     try:
-        run(scenario())
-        raised = False
-    except RuntimeError:
-        raised = True
-    assert raised
+        run(setup_fram(fram))
+        message = ""
+    except OSError as e:
+        message = str(e)
+    assert message == "SPI bus not initialized"
+    assert fram.initialized is False
+    assert not [entry for entry in chip.log if entry[0] != "deinit"]  # no RDID was clocked
 
 
 # ---------------------------------------------------------------------------
@@ -866,12 +1269,12 @@ def test_corrupted_write_payload_bytes_are_undetectable_at_this_layer_by_design(
 
 
 # ---------------------------------------------------------------------------
-# Integration - real print_log.PrintLogHistory, real base_classes.Lockable concurrency/cancellation
+# Integration - real asy_print_log.PrintLogHistory, real asy_base_classes.Lockable concurrency/cancellation
 # ---------------------------------------------------------------------------
 
 
 def test_works_correctly_with_the_real_printloghistory_logger_used_in_production() -> None:
-    # AsyFramManager passes its own real PrintLogHistory as logger in production, shared with every chunk it
+    # FRAMManager passes its own real PrintLogHistory as logger in production, shared with every chunk it
     # owns - this confirms doing so does not interfere with FRAM_SPI's behavior. The `logger` parameter is
     # typed PrintLogHistory rather than the narrower PrintLog precisely because it calls err_s()/wrn_s().
     bus = make_bus()
@@ -905,8 +1308,8 @@ def test_get_write_protected_before_setup_logs_a_persisted_error() -> None:
         return await fram.get_write_protected()
 
     assert run(scenario()) is False
-    assert fram.pr.err_count == 1
-    assert list(fram.pr.history)[-1] == 89
+    assert fram.pr._err_count == 1
+    assert list(fram.pr.history)[-1] == code("E", "NOT_INIT")
 
 
 def test_get_values_before_setup_logs_a_persisted_error() -> None:
@@ -916,8 +1319,8 @@ def test_get_values_before_setup_logs_a_persisted_error() -> None:
         return await fram.get_values(bytearray(4), 0)
 
     assert run(scenario()) is False
-    assert fram.pr.err_count == 1
-    assert 90 in fram.pr.history
+    assert fram.pr._err_count == 1
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_get_values_out_of_range_logs_a_persisted_error() -> None:
@@ -929,8 +1332,8 @@ def test_get_values_out_of_range_logs_a_persisted_error() -> None:
             await fram.get_values(bytearray(4), -1)
 
     run(scenario())
-    assert fram.pr.err_count == 1
-    assert 91 in fram.pr.history
+    assert fram.pr._err_count == 1
+    assert code("E", "BAD_ARG") in fram.pr.history
 
 
 def test_set_values_before_setup_logs_a_persisted_error() -> None:
@@ -940,8 +1343,8 @@ def test_set_values_before_setup_logs_a_persisted_error() -> None:
         return await fram.set_values(b"x", 0)
 
     assert run(scenario()) is False
-    assert fram.pr.err_count == 1
-    assert 92 in fram.pr.history
+    assert fram.pr._err_count == 1
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_set_values_out_of_range_logs_a_persisted_error() -> None:
@@ -953,8 +1356,8 @@ def test_set_values_out_of_range_logs_a_persisted_error() -> None:
             await fram.set_values(b"x", -1)
 
     run(scenario())
-    assert fram.pr.err_count == 1
-    assert 93 in fram.pr.history
+    assert fram.pr._err_count == 1
+    assert code("E", "BAD_ARG") in fram.pr.history
 
 
 def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
@@ -964,8 +1367,8 @@ def test_set_write_protected_before_setup_logs_a_persisted_error() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert fram.pr.err_count == 1
-    assert 94 in fram.pr.history
+    assert fram.pr._err_count == 1
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
@@ -977,7 +1380,7 @@ def test_write_protected_readback_mismatch_logs_a_persisted_error() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert 95 in fram.pr.history
+    assert code("E", "FRAM_WP_MISMATCH") in fram.pr.history
 
 
 def test_verify_present_before_setup_logs_a_persisted_error() -> None:
@@ -987,7 +1390,7 @@ def test_verify_present_before_setup_logs_a_persisted_error() -> None:
         return await fram.verify_present()
 
     assert run(scenario()) is False
-    assert 96 in fram.pr.history
+    assert code("E", "NOT_INIT") in fram.pr.history
 
 
 def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1000,7 +1403,7 @@ def test_write_wel_did_not_set_logs_a_persisted_warning() -> None:
             return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
-    assert 0x80 + 82 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
@@ -1012,7 +1415,7 @@ def test_set_write_protected_wel_did_not_set_logs_a_persisted_warning() -> None:
         return await fram.set_write_protected(value=True)
 
     assert run(scenario()) is False
-    assert 0x80 + 83 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_NOT_SET") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
@@ -1027,34 +1430,33 @@ def test_wrdi_stuck_after_retry_logs_a_persisted_warning() -> None:
 
     ok = run(scenario())
     assert ok is True  # the payload write itself still succeeded, only WEL housekeeping is stuck
-    assert 0x80 + 81 in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
+    assert 0x80 + code("W", "FRAM_WEL_STUCK") in fram.pr.history  # wrn_s()'s history entries are offset by _NO_WRN (0x80)
 
 
 def test_write_protected_and_access_not_locked_are_now_persisted() -> None:
-    # WP8: "currently write protected" (a benign, expected refusal, matching AsyFramManager's own
-    # "communication paused" wrn_s precedent) and "access not locked" (a caller contract violation, so errno
-    # rather than wrnno) both now persist, replacing the print-only degrade this test previously pinned.
+    # "Currently write protected" (a benign, expected refusal, as the manager's "communication paused") and "access
+    # not locked" (a caller contract violation, so an errno) both persist.
     fram, _chip = make_fram()
     run(setup_fram(fram))
     assert run(fram.set_write_protected(value=True)) is True
 
     async def scenario() -> tuple[bool, bool]:
-        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - errno=99
+        no_lock = await fram.get_values(bytearray(1), 0)  # no `async with fram:` wrapper - CONTRACT
         async with fram:
-            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - wrnno=84
+            still_protected = await fram.set_values(b"x", 0)  # locked, so this reaches _write() - FRAM_WRITE_PROTECTED
         return no_lock, still_protected
 
     no_lock, still_protected = run(scenario())
     assert no_lock is False
     assert still_protected is False
-    assert fram.pr.err_count == 2
+    assert fram.pr._err_count == 2
     log = run(fram.pr.get_log())[fram.pr.name]
-    assert log["ErrNum"][-2:] == [99, 84]
+    assert log["ErrNum"][-2:] == [code("E", "CONTRACT"), code("W", "FRAM_WRITE_PROTECTED")]
     assert log["ErrType"][-2:] == ["E", "W"]
 
 
 def test_two_operations_on_the_same_fram_never_run_concurrently() -> None:
-    # FRAM_SPI's own outer Lockable lock (base_classes.py), not the SPI bus's - test_asy_spi_driver.py
+    # FRAM_SPI's own outer Lockable lock (asy_base_classes.py), not the SPI bus's - test_asy_spi_driver.py
     # already proves the bus-level lock serializes; this proves the same one level up, for the lock every
     # real caller actually wraps chunk operations in.
     fram, _chip = make_fram()
@@ -1093,13 +1495,13 @@ def test_task_cancelled_while_holding_frams_own_lock_still_releases_it() -> None
         task = asyncio.create_task(holder())
         while not started:
             await asyncio.sleep(0)
-        assert fram.asy_lock.locked()
+        assert fram.session_lock.locked()
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        assert not fram.asy_lock.locked()
+        assert not fram.session_lock.locked()
 
     run(scenario())
 
@@ -1125,6 +1527,7 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
     reads_completed = 0
     write_completed = False
     read_mismatches: list[str] = []
+    first_read_done = asyncio.Event()
 
     async def reader() -> None:
         nonlocal reads_completed
@@ -1134,11 +1537,14 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
             if not ok or bytes(buf) != _HAZARD_SEED_PATTERN:
                 read_mismatches.append(f"iter {i}: ok={ok} got={bytes(buf).hex()} expected={_HAZARD_SEED_PATTERN.hex()}")
             reads_completed += 1
+            first_read_done.set()
 
     async def writer() -> None:
         nonlocal write_completed
-        await asyncio.sleep(0)  # let the reader get partway into its run first
-        ok = await fram.set_values(_HAZARD_WRITE_PATTERN, addr_start=_HAZARD_WRITE_REGION[0])
+        # A completed read gates the write, outside the lock: a writer holding it would block that read.
+        await first_read_done.wait()
+        async with fram:
+            ok = await fram.set_values(_HAZARD_WRITE_PATTERN, addr_start=_HAZARD_WRITE_REGION[0])
         assert ok, "FRAM write failed outright under concurrent read load"
         write_completed = True
 
@@ -1147,7 +1553,7 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
             await coro
 
     async def scenario() -> None:
-        await asyncio.gather(locked_call(reader()), locked_call(writer()))
+        await asyncio.gather(locked_call(reader()), writer())
 
     run(scenario())
 
@@ -1165,7 +1571,7 @@ def test_same_device_concurrent_read_and_write_never_corrupt_each_other() -> Non
 def count_bus_lock_holds(fram: FRAM_SPI) -> "list[int]":
     # Counts acquisitions of the SPI *bus* lock (the innermost of the three), not FRAM_SPI's own.
     holds = [0]
-    bus_lock = fram._spidev.spi.async_lock
+    bus_lock = fram._spidev.spi.bus_lock
     original = bus_lock.acquire
 
     async def counting_acquire() -> bool:
@@ -1186,7 +1592,7 @@ async def passes_during(coro: "Coroutine[Any, Any, Any]") -> int:
             await asyncio.sleep(0)
 
     other = asyncio.create_task(competitor())
-    await asyncio.sleep(0)  # let it start and park, so the baseline below is stable
+    await asyncio.sleep(0)  # one yield lets the competitor start and park (a limit, not an interleaving claim)
     before = passes[0]
     await coro
     during = passes[0] - before
@@ -1201,7 +1607,7 @@ async def passes_during(coro: "Coroutine[Any, Any, Any]") -> int:
 def test_a_write_command_is_issued_under_one_bus_lock_hold() -> None:
     # A one-byte write is a five-CS envelope (WREN, RDSR, WRITE, WRDI, RDSR); the chip needs every
     # cycle, the bus lock does not need taking five times. One hold per command keeps a shared bus
-    # interleavable between commands while making the envelope indivisible - PLAN A.1.4.
+    # interleavable between commands while making the envelope indivisible (SPECIFICATION.md Part C.8).
     fram, _chip = make_fram()
     run(setup_fram(fram))
     holds = count_bus_lock_holds(fram)
@@ -1260,9 +1666,9 @@ def record_warnings(fram: FRAM_SPI) -> "list[tuple[tuple[object, ...], int]]":
     recorded: list[tuple[tuple[object, ...], int]] = []
     original = fram.pr.wrn_s
 
-    async def capture(*args: object, wrnno: int = 0, **kwargs: "Any") -> None:  # noqa: ANN401 - must mirror wrn_s()'s own signature exactly, kwargs included
+    async def capture(*args: object, wrnno: int = 0, sep: str = " ", end: str = "\n") -> None:
         recorded.append((args, wrnno))
-        await original(*args, wrnno=wrnno, **kwargs)
+        await original(*args, wrnno=wrnno, sep=sep, end=end)
 
     fram.pr.wrn_s = capture  # type: ignore[method-assign]
     return recorded
@@ -1279,7 +1685,7 @@ def test_write_protected_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"x", 0)
 
     assert run(scenario()) is False
-    assert recorded == [(("FRAM currently write protected.",), 84)]
+    assert recorded == [(("FRAM currently write protected.",), code("W", "FRAM_WRITE_PROTECTED"))]
 
 
 def test_write_enable_latch_warning_keeps_its_number_and_message() -> None:
@@ -1293,7 +1699,7 @@ def test_write_enable_latch_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"bad!", 0x00)
 
     assert run(scenario()) is False
-    assert recorded == [(("FRAM write enable latch did not set, aborting write.",), 82)]
+    assert recorded == [(("FRAM write enable latch did not set, aborting write.",), code("W", "FRAM_WEL_NOT_SET"))]
 
 
 def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
@@ -1308,7 +1714,7 @@ def test_wrdi_stuck_warning_keeps_its_number_and_message() -> None:
             return await fram.set_values(b"ok!!", 0x00)
 
     assert run(scenario()) is True  # the payload landed; only the WEL housekeeping is stuck
-    assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), 81)]
+    assert recorded == [(("FRAM write enable latch did not clear after WRDI retry.",), code("W", "FRAM_WEL_STUCK"))]
 
 
 # ---------------------------------------------------------------------------
@@ -1338,7 +1744,7 @@ def test_aenter_releases_its_own_lock_if_the_bus_lock_cannot_be_acquired() -> No
             return False
 
     assert run(scenario()) is True
-    assert not fram.asy_lock.locked(), "the driver's own lock leaked when the bus lock failed"
+    assert not fram.session_lock.locked(), "the driver's own lock leaked when the bus lock failed"
 
 
 def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> None:
@@ -1371,7 +1777,7 @@ def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> 
         pass
     # Bounded, not a bare await: a leaked lock makes the second entry wait forever, and a hanging
     # test is never an acceptable failure mode here (CLAUDE.md's standing backstop).
-    assert run(asyncio.wait_for(second(), 1.0)) is True
+    assert run(asyncio.wait_for(second(), _LOCK_WAIT_S)) is True
 
 
 def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:
@@ -1385,7 +1791,7 @@ def test_aexit_tolerates_a_bus_lock_that_was_already_released() -> None:
             fram._bus_lock.release()  # released early by hand
 
     run(scenario())  # must not raise
-    assert not fram.asy_lock.locked(), "the driver's own lock leaked after the inner double release"
+    assert not fram.session_lock.locked(), "the driver's own lock leaked after the inner double release"
     assert not fram._bus_lock.locked()
 
 

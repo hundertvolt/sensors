@@ -3,6 +3,7 @@ The smoke test reuses the hand-written sensortask_wozi module plus wozi's own bu
 
 import asyncio
 import sys
+import time
 
 try:
     from typing import TYPE_CHECKING
@@ -22,11 +23,21 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import machine
 import network
 import run_generic_integration
+from _tmp_scratch import TmpScratch
+from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, Pin
-from run_generic_integration import RunConfig, _apply_fault, _apply_hang, _collect_chips, main, parse_args
+from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, _serve_until, main, parse_args
+
+# @tunable l2.run_generic_integration_run_bound_s = 5.0
+_RUN_BOUND_S = 5.0
+# @tunable l2.run_generic_integration_main_run_bound_s = 15.0
+_MAIN_RUN_BOUND_S = 15.0
 
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
+_scratch = TmpScratch("rgi")
+
+
+def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
     return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
@@ -55,6 +66,18 @@ def test_parse_args_minimal_valid_config() -> None:
     config = parse_args(["--module", "sensortask_novel_combo", "--wiring-plan", "plan.json"])
     assert config == RunConfig("sensortask_novel_combo", "plan.json")
     assert config.device == "sensortask_novel_combo"  # defaults to the module name, unset --device
+    assert config.state == StatePaths(None, None)
+    assert config.injections == Injections(None, [], [], [])
+    # @tunable gc.threshold_bytes = 32768
+    assert config.run == RunLimits(None, 32768, None, None)
+
+
+def test_run_config_compares_and_prints_its_grouped_fields() -> None:
+    faulted = RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1)], [], []))
+    assert faulted != RunConfig("m", "p.json")
+    assert faulted == RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1)], [], []))
+    text = repr(faulted)
+    assert "state=" in text and "injections=" in text and "run=" in text, text
 
 
 def test_parse_args_device_label_overrides_the_module_name() -> None:
@@ -70,7 +93,7 @@ def test_parse_args_host_and_port() -> None:
 
 def test_parse_args_empty_fram_state_path_means_in_memory_only() -> None:
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--fram-state-path", ""])
-    assert config.fram_state_path is None
+    assert config.state.fram is None
 
 
 def test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers() -> None:
@@ -82,9 +105,9 @@ def test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers() -> N
             "--wifi-outcome", "no_ap",
         ],
     )
-    assert config.faults == [("sgp40", "writeto", 2)]
-    assert config.hangs == [("scd30", "readfrom_into", 0.5, 1)]
-    assert len(config.wifi_outcomes) == 1
+    assert config.injections.faults == [("sgp40", "writeto", 2)]
+    assert config.injections.hangs == [("scd30", "readfrom_into", 0.5, 1)]
+    assert len(config.injections.wifi_outcomes) == 1
 
 
 def test_parse_args_rejects_an_unrecognized_flag() -> None:
@@ -109,7 +132,8 @@ def test_parse_args_gc_threshold_defaults_to_matching_real_firmware() -> None:
     # an ordinary twin run should model production's real memory-safety configuration by default,
     # not just its allocation code. See _GC_THRESHOLD_DEFAULT's own module-level comment.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
-    assert config.gc_threshold == 32768
+    # @tunable gc.threshold_bytes = 32768
+    assert config.run.gc_threshold == 32768
 
 
 def test_parse_args_gc_threshold_is_overridable() -> None:
@@ -117,7 +141,7 @@ def test_parse_args_gc_threshold_is_overridable() -> None:
     # reactive-only default - Part I.4(e)'s standing rule that the suite must pass there before it is ever
     # run with a chosen threshold.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--gc-threshold", "-1"])
-    assert config.gc_threshold == -1
+    assert config.run.gc_threshold == -1
 
 
 def test_parse_args_mem_sample_interval_ms_defaults_to_disabled() -> None:
@@ -125,12 +149,57 @@ def test_parse_args_mem_sample_interval_ms_defaults_to_disabled() -> None:
     # scripts/_digital_twin_ci_suite.py's own Run 11 soak-trend check; an ordinary twin run has no
     # reason to pay for it.
     config = parse_args(["--module", "m", "--wiring-plan", "p.json"])
-    assert config.mem_sample_interval_ms is None
+    assert config.run.mem_sample_interval_ms is None
 
 
 def test_parse_args_mem_sample_interval_ms_is_settable() -> None:
     config = parse_args(["--module", "m", "--wiring-plan", "p.json", "--mem-sample-interval-ms", "25"])
-    assert config.mem_sample_interval_ms == 25
+    assert config.run.mem_sample_interval_ms == 25
+
+
+def test_parse_args_stop_file_is_settable_and_empty_means_none() -> None:
+    assert parse_args(["--module", "m", "--wiring-plan", "p.json", "--stop-file", "s"]).run.stop_file == "s"
+    assert parse_args(["--module", "m", "--wiring-plan", "p.json", "--stop-file", ""]).run.stop_file is None
+
+
+# ---------------------------------------------------------------------------
+# _serve_until() - the duration as an upper bound a caller done early ends with a file
+# ---------------------------------------------------------------------------
+
+
+def test_serving_ends_at_once_when_the_stop_file_already_exists() -> None:
+    stop = _scratch.path("stop_present")
+    with open(stop, "w"):
+        pass
+    start = time.ticks_ms()
+    run_timed(_serve_until(30.0, stop))
+    assert time.ticks_diff(time.ticks_ms(), start) < 1000  # a 30 s bound, left on the first look
+
+
+def test_serving_ends_once_the_stop_file_appears() -> None:
+    stop = _scratch.path("stop_later")
+
+    async def scenario() -> int:
+        async def write_later() -> None:
+            await asyncio.sleep_ms(300)
+            with open(stop, "w"):
+                pass
+
+        writer = asyncio.create_task(write_later())
+        start = time.ticks_ms()
+        await _serve_until(30.0, stop)
+        await writer
+        return time.ticks_diff(time.ticks_ms(), start)
+
+    elapsed = run_timed(scenario())
+    assert 300 <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
+
+
+def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
+    for stop in (None, _scratch.path("stop_never")):
+        start = time.ticks_ms()
+        run_timed(_serve_until(0.4, stop))
+        assert time.ticks_diff(time.ticks_ms(), start) >= 400, stop
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +218,8 @@ class _FakeBusWrapper:
 
 
 class _FakeModule:
-    # Class-level attribute declarations defaulting to None - the shape a real generated module's globals
-    # take before build_system() assigns them (buildgen/codegen.py's _emit_globals) - letting test functions
+    # Class-level attribute declarations defaulting to None, standing in for a generated module's globals that
+    # build_system() has not assigned (_collect_chips() reads them with getattr()) - letting test functions
     # assign whichever subset a plan wires without mypy flagging the rest as undeclared.
     i2c0: "_FakeBusWrapper | None" = None
     i2c1: "_FakeBusWrapper | None" = None
@@ -236,17 +305,16 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
         "build/generated_src/sensortask_wozi_wiring_plan.json",  # buildgen-generated - see this file's own module docstring
         host="127.0.0.1",
         port=19099,
-        fram_state_path=None,
-        scd30_state_path=None,
-        duration=0.0,  # boot, arm the fault, then shut down immediately - no soak driving here any more
-        faults=[("sgp40", "writeto", 2)],
+        state=StatePaths(None, None),
+        injections=Injections(None, [("sgp40", "writeto", 2)], [], []),
+        run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
     )
-    run_timed(main(config), timeout_s=15.0)
-    # _booted_module is set by main() itself and read the same way _print_wdt_status()'s own two
-    # call sites do - the real watchdog must never have starved just from this ordinary boot.
-    booted = run_generic_integration._booted_module
-    assert booted is not None
-    assert booted.watchdog.would_have_triggered_count == 0
+    run_timed(main(config), timeout_s=_MAIN_RUN_BOUND_S)
+    # The WDT the runner built and passed to the booted module's main(), read as _print_wdt_status()
+    # reads it: an ordinary boot never starves it.
+    watchdog = run_generic_integration._watchdog
+    assert watchdog is not None
+    assert watchdog.would_have_triggered_count == 0
 
 
 # ---------------------------------------------------------------------------

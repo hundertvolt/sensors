@@ -1,0 +1,364 @@
+tests/test_asy_udp_socket.py: note: In function "test_init_accepts_every_valid_mode_and_conn_tries_combination":
+tests/test_asy_udp_socket.py:127:20: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+                sock = UDPSocket(("127.0.0.1", 12345), mode=mode, conn_tri...
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:127:20: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:129:20: error: "UDPSocket" has no attribute
+"_conn_tries"  [attr-defined]
+                assert sock._conn_tries == conn_tries
+                       ^~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:185: error: Unused "type: ignore" comment 
+[unused-ignore]
+                UDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py: note: In function "test_init_rejects_non_int_conn_tries":
+tests/test_asy_udp_socket.py:185:13: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+                UDPSocket(("127.0.0.1", 12345), mode="client", conn_tries=...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:185:13: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:185:13: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_init_rejects_multiple_invalid_parameters_at_once":
+tests/test_asy_udp_socket.py:195:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(("bad", "addr", "shape"), mode="bogus", conn_tries=N...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:195:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:195:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:201:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(12345, mode="client", conn_tries="nope")  # type: ig...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:201:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:201:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py:207:9: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            UDPSocket(None, mode=42, conn_tries=1.5)  # type: ignore[arg-t...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:207:9: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:207:9: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_survives_a_concurrent_disconnect_mid_poll_loop":
+tests/test_asy_udp_socket.py:857:26: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                return await sock.ready(select.POLLIN, timeout_ms=_RECV_TI...
+                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:857:26: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_conn_tries_retries_within_a_single_connect_call":
+tests/test_asy_udp_socket.py:881:21: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            contender = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:881:21: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_connect_self_heals_after_conn_tries_exhausted":
+tests/test_asy_udp_socket.py:906:21: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            contender = UDPSocket(bad_addr, mode="server", conn_tries=1)
+                        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:906:21: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_wait_time_ms_is_milliseconds_not_seconds":
+tests/test_asy_udp_socket.py:1018:28: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                result = await sock.ready(select.POLLIN, timeout_ms=_MS_CH...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1018:28: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_async_context_manager_disconnects_on_exit":
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+"__aenter__"  [attr-defined]
+            async with UDPSocket(addr, mode="server") as sock:
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1105:20: error: "UDPSocket" has no attribute
+"__aexit__"  [attr-defined]
+            async with UDPSocket(addr, mode="server") as sock:
+                       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: In function "test_async_context_manager_disconnects_even_on_exception":
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+"__aenter__"  [attr-defined]
+                async with sock:
+                           ^~~~
+tests/test_asy_udp_socket.py:1125:24: error: "UDPSocket" has no attribute
+"__aexit__"  [attr-defined]
+                async with sock:
+                           ^~~~
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_end_to_end_success":
+tests/test_asy_udp_socket.py:1169:30: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, add = await cli.write_and_recvfrom(ntp_request, 1024,...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1169:30: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_no_server_reachable":
+tests/test_asy_udp_socket.py:1200:30: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, add = await cli.write_and_recvfrom(ntp_request, 1024,...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1200:30: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected":
+tests/test_asy_udp_socket.py:1234:28: error: Missing named argument "tries" for
+"write_and_recvfrom" of "UDPSocket"  [call-arg]
+                msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, t...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1234:28: note: "write_and_recvfrom" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:1361: error: Unused "type: ignore" comment 
+[unused-ignore]
+        sock._conn_tries = None  # type: ignore[assignment]
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py: note: In function "test_connect_self_heals_when_conn_tries_mutated_to_a_non_int":
+tests/test_asy_udp_socket.py:1361:5: error: "UDPSocket" has no attribute
+"_conn_tries"  [attr-defined]
+        sock._conn_tries = None  # type: ignore[assignment]
+        ^~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1361:5: note: Error code "attr-defined" not covered by "type: ignore[assignment]" comment
+tests/test_asy_udp_socket.py: note: In function "test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry":
+tests/test_asy_udp_socket.py:1435:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1435:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_concurrent_caller_joins_an_in_flight_connect_instead_of_a_premature_none":
+tests/test_asy_udp_socket.py:1461:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1461:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_cancelling_a_task_that_holds_the_connect_lock_releases_it":
+tests/test_asy_udp_socket.py:1491:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=5)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1491:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_cancelling_a_task_waiting_on_the_connect_lock_leaves_it_healthy":
+tests/test_asy_udp_socket.py:1520:16: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            sock = UDPSocket(bad_addr, mode="server", conn_tries=3)
+                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_udp_socket.py:1520:16: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: At top level:
+tests/test_asy_udp_socket.py:1670: error: Unused "type: ignore" comment 
+[unused-ignore]
+                return await sock.ready(select.POLLIN, timeout_ms=200, wai...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py: note: In function "test_ready_returns_false_sentinel_for_a_malformed_wait_time_ms":
+tests/test_asy_udp_socket.py:1670:26: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                return await sock.ready(select.POLLIN, timeout_ms=200, wai...
+                             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1670:26: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_asy_udp_socket.py:1670:26: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_udp_socket.py: note: In function "test_ready_cancellation_still_propagates_through_the_new_try_except":
+tests/test_asy_udp_socket.py:1704:40: error: Unexpected keyword argument
+"wait_time_ms" for "ready" of "UDPSocket"  [call-arg]
+                task = asyncio.create_task(sock.ready(select.POLLIN, timeo...
+                                           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_udp_socket.py:1704:40: note: "ready" defined in "asy_udp_socket"
+tests/test_asy_dns_client.py:7:1: error: Module "asy_dns_client" has no
+attribute "_is_ipv4_literal"  [attr-defined]
+    from asy_dns_client import _build_query, _is_ipv4_literal, _parse_resp...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py: note: In member "__init__" of class "_ResolvingAsyUDPSocket":
+tests/test_asy_dns_client.py:76:22: error: Unexpected keyword argument
+"conn_tries" for "UDPSocket"  [call-arg]
+            self._real = _RealAsyUDPSocket(_resolved(addr[0], addr[1]), mo...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:76:22: note: "UDPSocket" defined in "asy_udp_socket"
+tests/test_asy_dns_client.py: note: At top level:
+tests/test_asy_dns_client.py:95:1: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+    asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_FALLBACK
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_literal_ip_returns_immediately_without_touching_the_network":
+tests/test_asy_dns_client.py:347:18: error: Missing named argument "pr" for
+"resolve_ipv4"  [call-arg]
+        result = run(resolve_ipv4("192.168.1.50", dns_servers=("not-an-ip"...
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:347:18: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_success_via_a_real_fake_dns_server":
+tests/test_asy_dns_client.py:407:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4("pool.ntp.org", dns_servers=(_...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:407:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_no_server_reachable_returns_none":
+tests/test_asy_dns_client.py:420:22: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+            return await resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,)...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:420:22: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_garbage_reply_returns_none_not_an_exception":
+tests/test_asy_dns_client.py:432:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4("pool.ntp.org", dns_servers=(_...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:432:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_nxdomain_returns_none":
+tests/test_asy_dns_client.py:451:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4("bogus.invalid", dns_servers=(...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:451:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_falls_back_to_the_second_server_when_the_first_is_unreachable":
+tests/test_asy_dns_client.py:470:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4(
+                               ^~~~~~~~~~~~~
+tests/test_asy_dns_client.py:470:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py:485:5: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+        asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py:489:9: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+            asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_F...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_skips_unset_and_malformed_dns_server_entries":
+tests/test_asy_dns_client.py:501:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4(
+                               ^~~~~~~~~~~~~
+tests/test_asy_dns_client.py:501:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py:513:5: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+        asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py:517:9: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+            asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_F...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_no_servers_at_all_and_no_reachable_fallback_returns_none":
+tests/test_asy_dns_client.py:527:22: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+            return await resolve_ipv4("pool.ntp.org", dns_servers=(), port...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:527:22: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py:529:5: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+        asy_dns_client._FALLBACK_DNS_SERVERS = (_HOST,)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py:533:9: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+            asy_dns_client._FALLBACK_DNS_SERVERS = _UNREACHABLE_LOOPBACK_F...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_memoryerror_building_the_query_returns_none":
+tests/test_asy_dns_client.py:545:22: error: Missing named argument "pr" for
+"resolve_ipv4"  [call-arg]
+            result = run(resolve_ipv4("pool.ntp.org", dns_servers=(), time...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:545:22: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_overlong_dns_label_returns_none_not_an_exception":
+tests/test_asy_dns_client.py:554:18: error: Missing named argument "pr" for
+"resolve_ipv4"  [call-arg]
+        result = run(resolve_ipv4("a" * 300, dns_servers=(), timeout_ms=50...
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:554:18: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_malformed_port_construction_returns_none_not_an_exception":
+tests/test_asy_dns_client.py:579:22: error: Missing named argument "pr" for
+"resolve_ipv4"  [call-arg]
+            result = run(resolve_ipv4("pool.ntp.org", dns_servers=(_HOST,)...
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:579:22: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_parse_response_raising_bounds_error_returns_none":
+tests/test_asy_dns_client.py:604:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4("pool.ntp.org", dns_servers=(_...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:604:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_asy_dns_client.py: note: In function "test_resolve_ipv4_cname_chain_end_to_end":
+tests/test_asy_dns_client.py:628:28: error: Unexpected keyword argument "port"
+for "resolve_ipv4"  [call-arg]
+                result = await resolve_ipv4("time.example.org", dns_server...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_dns_client.py:628:28: note: "resolve_ipv4" defined in "asy_dns_client"
+tests/test_ntp_wifi_dns_integration.py: note: In function "test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated":
+tests/test_ntp_wifi_dns_integration.py:209:18: error: Missing positional
+argument "fallback" in call to "_resolve_ntp_server" of "NTPClient"  [call-arg]
+        result = run(ntp._resolve_ntp_server("127.0.0.1", dns_server))
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_ntp_wifi_dns_integration.py: note: In function "__enter__":
+tests/test_ntp_wifi_dns_integration.py:290:30: error: Unexpected keyword
+argument "conn_tries"  [call-arg]
+                    self._real = real_cls(resolved, mode=mode, conn_tries=...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_ntp_wifi_dns_integration.py:290:30: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_ntp_wifi_dns_integration.py:290:30: note: Called function defined in "asy_udp_socket"
+tests/test_ntp_wifi_dns_integration.py: note: In function "test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12":
+tests/test_ntp_wifi_dns_integration.py:449:25: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+        original_fallback = asy_dns_client._FALLBACK_DNS_SERVERS
+                            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_ntp_wifi_dns_integration.py:450:5: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+        asy_dns_client._FALLBACK_DNS_SERVERS = ("not-an-ip",)
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_ntp_wifi_dns_integration.py:459:9: error: Module has no attribute
+"_FALLBACK_DNS_SERVERS"  [attr-defined]
+            asy_dns_client._FALLBACK_DNS_SERVERS = original_fallback
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:825: error: Unused "type: ignore" comment 
+[unused-ignore]
+        ntpmod.resolve_ipv4 = recorder  # type: ignore[assignment]  # deli...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_ntp_client.py: note: In member "redirect_resolution" of class "FakeNtpServer":
+tests/test_asy_ntp_client.py:2240:38: error: Function
+"_udp_port_redirect.redirect_udp_port" is not valid as a type  [valid-type]
+        def redirect_resolution(self) -> redirect_udp_port:
+                                         ^
+tests/test_asy_ntp_client.py:2240:38: note: Perhaps you need "Callable[...]" or a callback protocol?
+tests/test_asy_ntp_client.py: note: In function "test_integration_full_task_reaches_synced_state_on_a_real_successful_reply":
+tests/test_asy_ntp_client.py:2276:18: error: redirect_udp_port? has no
+attribute "__enter__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2276:18: error: redirect_udp_port? has no
+attribute "__exit__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: In function "test_integration_full_task_stays_not_synced_on_a_malformed_reply":
+tests/test_asy_ntp_client.py:2326:18: error: redirect_udp_port? has no
+attribute "__enter__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2326:18: error: redirect_udp_port? has no
+attribute "__exit__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: In function "test_integration_recovers_on_retry_after_one_dropped_request":
+tests/test_asy_ntp_client.py:2364:18: error: redirect_udp_port? has no
+attribute "__enter__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2364:18: error: redirect_udp_port? has no
+attribute "__exit__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: At top level:
+tests/test_asy_ntp_client.py:2541: error: Unused "type: ignore" comment 
+[unused-ignore]
+        ntpmod.resolve_ipv4 = _RecordingResolver(None)  # type: ignore[ass...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_asy_ntp_client.py: note: In function "test_integration_self_heals_after_an_outage_through_the_real_task_and_socket":
+tests/test_asy_ntp_client.py:2664:18: error: redirect_udp_port? has no
+attribute "__enter__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2664:18: error: redirect_udp_port? has no
+attribute "__exit__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py: note: In function "test_integration_a_successful_exchange_persists_nothing":
+tests/test_asy_ntp_client.py:2696:18: error: redirect_udp_port? has no
+attribute "__enter__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_ntp_client.py:2696:18: error: redirect_udp_port? has no
+attribute "__exit__"  [attr-defined]
+                with server.redirect_resolution():
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_ntp_fram_system_integration.py: note: In function "__enter__":
+tests/test_ntp_fram_system_integration.py:218:30: error: Unexpected keyword
+argument "conn_tries"  [call-arg]
+                    self._real = real_cls(resolved, mode=mode, conn_tries=...
+                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_ntp_fram_system_integration.py:218:30: note: Error code "call-arg" not covered by "type: ignore[arg-type]" comment
+tests/test_ntp_fram_system_integration.py:218:30: note: Called function defined in "asy_udp_socket"
+Found 68 errors in 5 files (checked 168 source files)

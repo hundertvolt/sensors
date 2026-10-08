@@ -2,13 +2,13 @@
 setup. The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and its own
 `flash_cycle` marker - a deliberate re-provisioning flash, never triggered by a routine run."""
 
-from __future__ import annotations
-
 import subprocess
 import time
 
 import pytest
 from harness import REPO_ROOT, Board, HardwareTestFailureError, wait_until
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ()
 
 # ---------------------------------------------------------------------------
 # Item 23 - scripts/mpremote_connect.sh connection-stability baseline. Cheap, run first: every
@@ -16,9 +16,23 @@ from harness import REPO_ROOT, Board, HardwareTestFailureError, wait_until
 # ---------------------------------------------------------------------------
 
 
+# @tunable l3.toolchain_flash_boot_env_setup_timeout_s = 1200
+_ENV_SETUP_TIMEOUT_S = 1200
+# @tunable l3.toolchain_flash_boot_build_timeout_s = 600
+_BUILD_TIMEOUT_S = 600
+# @tunable l3.toolchain_flash_boot_load_timeout_s = 120
+_LOAD_TIMEOUT_S = 120
+# @tunable l3.toolchain_flash_boot_load_retry_backoff_s = 2.0
+_LOAD_RETRY_BACKOFF_S = 2.0
+# @tunable l3.toolchain_flash_boot_picotool_load_attempts = 5
+_PICOTOOL_LOAD_ATTEMPTS = 5
+# @tunable l3.toolchain_flash_boot_reachability_calls = 5
+_REACHABILITY_CALLS = 5
+
+
 def test_mpremote_connection_is_stable_across_repeated_calls(board: Board) -> None:
-    failures = [i for i in range(5) if not board.is_reachable()]
-    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of 5 consecutive calls to {board.device}"
+    failures = [i for i in range(_REACHABILITY_CALLS) if not board.is_reachable()]
+    assert not failures, f"mpremote connection failed on attempt(s) {failures} out of {_REACHABILITY_CALLS:g} consecutive calls to {board.device}"
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +50,7 @@ def test_env_tier_flash_recurring_run_is_idempotent(board: Board) -> None:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=1200,
+        timeout=_ENV_SETUP_TIMEOUT_S,
         check=False,
     )
     assert proc.returncode == 0, f"env --tier flash re-run failed (exit {proc.returncode}):\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
@@ -62,7 +76,7 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=_BUILD_TIMEOUT_S,
         check=False,
     )
     assert build.returncode == 0, f"scripts/build_firmware.py failed (exit {build.returncode}):\n{build.stdout}\n{build.stderr}"
@@ -73,20 +87,20 @@ def test_real_uf2_reflash_and_boot_smoke_test(board: Board, request: pytest.Fixt
     # enter_bootloader() can race it, failing with exit 249) - bounded retry here instead of one
     # fixed sleep, since the real enumeration delay varies by run.
     load: subprocess.CompletedProcess[str] | None = None
-    for _attempt in range(5):
+    for _attempt in range(_PICOTOOL_LOAD_ATTEMPTS):
         load = subprocess.run(
             ["sudo", "picotool", "load", "-x", "-v", str(uf2_path)],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=_LOAD_TIMEOUT_S,
             check=False,
         )
         if load.returncode == 0:
             break
-        time.sleep(2.0)
+        time.sleep(_LOAD_RETRY_BACKOFF_S)
     assert load is not None
     if load.returncode != 0:
-        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after 5 attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
+        raise HardwareTestFailureError(f"picotool load -x -v {uf2_path} failed after {_PICOTOOL_LOAD_ATTEMPTS:g} attempts (exit {load.returncode}):\n{load.stdout}\n{load.stderr}")
 
     wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after real UF2 reflash")

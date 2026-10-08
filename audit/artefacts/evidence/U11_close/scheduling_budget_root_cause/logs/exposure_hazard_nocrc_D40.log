@@ -1,0 +1,49 @@
+ok   test_a_bad_argument_reports_bad_arg_before_anything_reaches_the_wire_nocrc 0/16 sleeps=16 clean=21ms
+FLIP test_a_break_like_run_of_nulls_recovers_to_a_working_exchange_nocrc 10/124 k=[104, 105, 107, 109, 110, 113, 114, 116, 117, 118] first=AssertionError: the link never recovered from a break-like null run
+FLIP test_a_corrupted_byte_stream_recovers_to_a_working_exchange_nocrc 8/183 k=[163, 172, 173, 174, 176, 178, 179, 180] first=AssertionError: 
+ok   test_a_corrupted_header_byte_is_caught_by_structural_validation_nocrc 0/132 sleeps=132 clean=95ms
+ok   test_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc_nocrc 0/73 sleeps=73 clean=46ms
+ok   test_a_disconnect_then_reconnect_mid_frame_recovers_nocrc 0/156 sleeps=311 clean=241ms
+FLIP test_a_dropped_byte_mid_frame_recovers_to_a_working_exchange_nocrc 10/239 k=[219, 225, 226, 229, 230, 231, 232, 233, 234, 235] first=AssertionError: the link never recovered after a dropped byte
+FLIP test_a_frame_delivered_in_two_fragments_still_assembles_nocrc 15/39 k=[18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] first=AssertionError: 
+ok   test_a_legal_frame_is_acknowledged_on_the_wire_nocrc 0/17 sleeps=17 clean=25ms
+ok   test_a_listener_whose_frame_never_arrives_reports_a_read_timeout_nocrc 0/54 sleeps=54 clean=79ms
+ok   test_a_long_run_of_transactions_retains_no_memory_nocrc 0/156 sleeps=3879 clean=1130ms
+FLIP test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 12/176 k=[40, 41, 42, 44, 45, 46, 48, 49, 56, 57, 59, 61] first=AssertionError: 
+ok   test_a_payload_size_mismatch_never_delivers_wrong_data_nocrc 0/161 sleeps=161 clean=102ms
+FLIP test_a_peer_initiating_mid_transaction_is_detected_and_both_recover_nocrc 6/118 k=[105, 108, 109, 112, 114, 115] first=AssertionError: 
+ok   test_a_peer_initiating_mid_transaction_reports_peer_initiated_nocrc 0/58 sleeps=58 clean=62ms
+ok   test_a_peer_that_never_produces_a_valid_frame_is_diagnosed_nocrc 0/177 sleeps=707 clean=520ms
+ok   test_a_peer_that_resets_mid_transaction_converges_once_it_returns_nocrc 0/155 sleeps=310 clean=245ms
+ok   test_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction_nocrc 0/0 sleeps=0 clean=0ms
+FLIP test_a_receive_overrun_recovers_to_a_working_exchange_nocrc 9/203 k=[189, 192, 194, 195, 196, 197, 198, 199, 203] first=AssertionError: 
+ok   test_a_reentrant_call_reports_its_own_errno_nocrc 0/86 sleeps=86 clean=94ms
+FLIP test_a_second_call_during_a_transaction_is_refused_with_a_sentinel_nocrc 10/35 k=[18, 19, 20, 23, 24, 25, 26, 28, 29, 30] first=AssertionError: 
+ok   test_a_silent_peer_reports_no_ack_not_a_generic_failure_nocrc 0/86 sleeps=86 clean=94ms
+FLIP test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc 9/145 k=[17, 18, 19, 23, 24, 25, 28, 29, 30] first=AssertionError: 
+ok   test_a_train_whose_chunks_total_changes_is_rejected_before_the_data_is_kept_nocrc 0/60 sleeps=60 clean=63ms
+ok   test_a_train_with_a_stale_data_chunk_uid_is_rejected_nocrc 0/60 sleeps=60 clean=62ms
+FLIP test_a_truncated_frame_recovers_to_a_working_exchange_nocrc 6/207 k=[197, 201, 202, 205, 206, 207] first=AssertionError: 
+ok   test_an_oversized_payload_reports_payload_too_large_nocrc 0/16 sleeps=16 clean=17ms
+ok   test_clear_racing_a_transaction_leaves_it_completed_or_cleanly_failed_nocrc 0/113 sleeps=113 clean=70ms
+ok   test_clear_terminates_even_while_a_listener_is_parked_forever_nocrc 0/23 sleeps=23 clean=23ms
+ok   test_corruption_plus_dropped_bytes_still_converges_nocrc 0/214 sleeps=427 clean=355ms
+FLIP test_duplicated_bytes_on_the_wire_recover_to_a_working_exchange_nocrc 6/244 k=[198, 224, 229, 230, 231, 233] first=AssertionError: the link never recovered after duplicated bytes
+ok   test_faults_in_both_directions_at_once_still_converges_nocrc 0/184 sleeps=552 clean=428ms
+FLIP test_hammering_a_faulted_link_never_raises_and_still_recovers_nocrc 1/155 k=[723] first=AssertionError: 832 bytes over 30 failures = 27.7 B/failure
+FLIP test_injected_noise_before_a_real_frame_is_recovered_from_nocrc 7/184 k=[171, 172, 176, 177, 178, 179, 181] first=AssertionError: 
+ok   test_no_ack_is_emitted_for_any_rejected_frame_nocrc 0/172 sleeps=514 clean=562ms
+FLIP test_one_sided_silence_recovers_once_the_direction_returns_nocrc 7/210 k=[199, 200, 201, 202, 203, 205, 206] first=AssertionError: 
+ok   test_overrun_plus_duplication_still_converges_nocrc 0/175 sleeps=698 clean=536ms
+ok   test_silence_then_corruption_then_clean_still_converges_nocrc 0/205 sleeps=409 clean=337ms
+ok   test_sustained_hammering_never_degrades_or_grows_the_heap_nocrc 0/152 sleeps=9668 clean=2980ms
+ok   test_the_chunks_field_sweep_rejects_zero_and_one_for_a_set_nocrc 0/14 sleeps=14 clean=22ms
+ok   test_the_command_field_sweep_accepts_only_the_expected_command_nocrc 0/14 sleeps=14 clean=19ms
+ok   test_the_crc_appears_on_the_wire_big_endian_after_the_payload_nocrc 0/0 sleeps=0 clean=0ms
+ok   test_the_current_chunk_field_sweep_matches_only_the_expected_index_nocrc 0/15 sleeps=15 clean=19ms
+ok   test_the_first_chunk_size_field_sweep_accepts_only_one_nocrc 0/15 sleeps=15 clean=20ms
+ok   test_the_middle_chunk_size_field_sweep_accepts_only_a_full_payload_nocrc 0/16 sleeps=16 clean=22ms
+ok   test_the_probed_payload_offset_lands_on_a_frames_payload_start_nocrc 0/34 sleeps=34 clean=21ms
+ok   test_the_uid_field_sweep_stops_at_0xfe_nocrc 0/15 sleeps=15 clean=20ms
+ok   test_truncation_plus_noise_still_converges_nocrc 0/172 sleeps=685 clean=488ms
+ok   test_two_tasks_initiating_at_once_never_interleave_frames_nocrc 0/30 sleeps=30 clean=26ms

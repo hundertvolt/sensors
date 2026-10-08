@@ -1,0 +1,5 @@
+PASS test_redirected_round_trip
+PASS test_redirect_maps_only_the_real_port_and_restores
+PASS test_redirect_restores_on_exception
+3/3 passed, 0 failed, 0 skipped
+rc=0 elapsed=.069502680s mode=e file=/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u18u/t_redirect.py

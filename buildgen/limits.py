@@ -2,14 +2,15 @@
 tags - a field's own unconditional domain, either a range (`*` on either side means that side is
 unchecked, and `min == max` an exact value) or an enumerated set of legal ints."""
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
-from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens, specs_for
 
-_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "limits")
+_SPECS = specs_for("limits")
 
 # Past the field name the payload is interpreted by hand below, so a broken bound reports which
 # half is wrong rather than failing to match at all. It must still carry range or choice-set
@@ -33,9 +34,13 @@ def _number(raw: str, path: Path, lineno: int, device: str, driver: str, what: s
     except ValueError:
         pass
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError:
-        raise BuildError(device, f"{path}:{lineno}: @limits {what} {raw!r} is not a number", instance=driver) from None
+        raise BuildError(device, f"{path}:{lineno}: @limits {what} {raw!r} is not a number", rule="tag.not-a-number", fix="write it as an int, a float or a 0x hex literal", instance=driver) from None
+    if not math.isfinite(value):
+        # float() reads nan/inf, and every range comparison with one is silently false or true.
+        raise BuildError(device, f"{path}:{lineno}: @limits {what} {raw!r} is not a finite number", rule="tag.non-finite-number", fix="write a finite number", instance=driver)
+    return value
 
 
 def _parse_payload(payload: str, path: Path, lineno: int, device: str, driver: str, field: str) -> "LimitField":
@@ -43,12 +48,26 @@ def _parse_payload(payload: str, path: Path, lineno: int, device: str, driver: s
     if set_match is not None:
         raw_values = [v.strip() for v in set_match.group("values").split(",") if v.strip()]
         if not raw_values:
-            raise BuildError(device, f"{path}:{lineno}: @limits {field} declares an empty choice set - no value could ever be legal", instance=driver, field=field)
+            raise BuildError(
+                device,
+                f"{path}:{lineno}: @limits {field} declares an empty choice set - no value could ever be legal",
+                rule="limits.empty-choice-set",
+                fix="list at least one legal value, or drop the tag",
+                instance=driver,
+                field=field,
+            )
         choices = set()
         for raw in raw_values:
             value = _number(raw, path, lineno, device, driver, "choice")
             if not isinstance(value, int):
-                raise BuildError(device, f"{path}:{lineno}: @limits {field} choice {raw!r} must be an int, not a float", instance=driver, field=field)
+                raise BuildError(
+                    device,
+                    f"{path}:{lineno}: @limits {field} choice {raw!r} must be an int, not a float",
+                    rule="limits.choice-not-int",
+                    fix="list only int values in the choice set, or write a range",
+                    instance=driver,
+                    field=field,
+                )
             choices.add(value)
         return LimitField(field, frozenset(choices))
 
@@ -57,18 +76,41 @@ def _parse_payload(payload: str, path: Path, lineno: int, device: str, driver: s
         raise BuildError(
             device,
             f"{path}:{lineno}: @limits {field} payload {payload!r} is neither a range (<min>..<max>, '*' for unbounded) nor a choice set (in {{a, b}})",
+            rule="limits.payload-shape",
+            fix="write <min>..<max> ('*' for an unbounded side) or in {a, b}",
             instance=driver,
             field=field,
         )
     low_raw, high_raw = (p.strip() for p in parts)
     if not low_raw or not high_raw:
-        raise BuildError(device, f"{path}:{lineno}: @limits {field} range {payload!r} is missing one of its bounds - use '*' for an unbounded side", instance=driver, field=field)
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: @limits {field} range {payload!r} is missing one of its bounds",
+            rule="limits.missing-bound",
+            fix="write both bounds, '*' for an unbounded side",
+            instance=driver,
+            field=field,
+        )
     low = None if low_raw == "*" else _number(low_raw, path, lineno, device, driver, "min")
     high = None if high_raw == "*" else _number(high_raw, path, lineno, device, driver, "max")
     if low is None and high is None:
-        raise BuildError(device, f"{path}:{lineno}: @limits {field} declares '*..*', which checks nothing - drop the tag instead", instance=driver, field=field)
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: @limits {field} declares '*..*', which checks nothing",
+            rule="limits.checks-nothing",
+            fix="bound at least one side, or drop the tag",
+            instance=driver,
+            field=field,
+        )
     if low is not None and high is not None and low > high:
-        raise BuildError(device, f"{path}:{lineno}: @limits {field} range {low}..{high} is inverted - no value could ever be legal", instance=driver, field=field)
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: @limits {field} range {low}..{high} is inverted - no value could ever be legal",
+            rule="limits.inverted-range",
+            fix="write the lower bound first",
+            instance=driver,
+            field=field,
+        )
     return LimitField(field, None, low, high)
 
 
@@ -85,13 +127,22 @@ def parse_limits(path: Path, device: str, driver: str) -> "tuple[LimitField, ...
             raise BuildError(
                 device,
                 f"{path}:{tok.lineno}: @limits tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                rule="tag.not-module-level",
+                fix="move the tag to module level, beside the driver's schema",
                 instance=driver,
             )
         fields.append(_parse_payload(m.group("payload"), path, tok.lineno, device, driver, m.group("field")))
     seen: set[str] = set()
     for f in fields:
         if f.toml_field in seen:
-            raise BuildError(device, f"{path}: declares two @limits tags for {f.toml_field!r} - one domain per field", instance=driver, field=f.toml_field)
+            raise BuildError(
+                device,
+                f"{path}: declares two @limits tags for {f.toml_field!r}",
+                rule="tag.duplicate-field",
+                fix="keep one @limits tag per field",
+                instance=driver,
+                field=f.toml_field,
+            )
         seen.add(f.toml_field)
     check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)

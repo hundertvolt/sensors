@@ -3,7 +3,7 @@ scripts/build_website.sh's staged, recursive merge - html/ + the production js/ 
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
 # The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_html.py ->
-# `import frozen_html` (mount on import) -> WebserverService(static_mount=...). scripts/test.sh builds it
+# `import frozen_html` (mount on import) -> WebserverService(..., static=StaticSite(...)). scripts/test.sh builds it
 # first; the import mounts /html once per process. The prototype-only files are confirmed absent.
 
 import asyncio
@@ -12,10 +12,10 @@ import sys
 
 sys.path.insert(0, "ext")
 
-import frozen_html  # type: ignore[import-not-found]  # noqa: F401  # mounts /html on import
-from microdot import Microdot, Request  # type: ignore[import-not-found]
+import frozen_html  # mounts /html on import
+from microdot import Microdot, Request
 
-from asy_webserver_service import WebserverService
+from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
 
 try:
     from typing import TYPE_CHECKING
@@ -50,13 +50,39 @@ def _decompress(body: "_ResponseBody") -> bytes:
     return d.read()  # type: ignore[no-any-return]
 
 
+class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
 def _make_request(app: "Microdot", method: str, path: str) -> Request:
-    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"")
+    sock = (_NoopHolder(), _NoopHolder())
+    return Request(app, ("127.0.0.1", 12345), method, path, "1.1", {"Content-Length": "0"}, body=b"", sock=sock)  # type: ignore[arg-type]  # the stub types sock as asyncio's stream pair; the product reads only _Holder.hold() off it
+
+
+def _src_const(name: str) -> str:
+    # The shipped default's literal, read from the source: a const() is not a module attribute on MicroPython.
+    with open("src/asy_webserver_service.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                literal: str = line.split("const(", 1)[1].split(")", 1)[0]
+                return literal
+    raise AssertionError(name + " not found in src/asy_webserver_service.py")
+
+
+async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no connection is counted here
+    return 0
 
 
 def _make_app() -> "tuple[WebserverService, Microdot]":
     app = Microdot()
-    service = WebserverService(app, static_mount="/html")
+    # Dispatch only, no server starts: backlog, host and port are never used here.
+    serving = ServingLimits(
+        int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
+        None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
+    )
+    routes = RouteSources([], None, None, None, None, None, None, [], [])
+    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
     return service, app
 
 

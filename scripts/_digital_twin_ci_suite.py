@@ -6,8 +6,6 @@
 CPython/stdlib-only (the code under test still only ever runs under the real MicroPython Unix-port interpreter); invoked by `scripts/run_digital_twin_ci.sh` (which owns "clean"/"build", and the per-device `buildgen` generation step this suite's own `--device` depends on) as its "test" phase, once per device via CI's own `strategy.matrix` (see `.github/workflows/ci.yml`'s `digital-twin-e2e` job).
 Full walkthrough and rationale: `digital_twin/README.md`'s "Automated CI suite" section."""
 
-from __future__ import annotations
-
 import argparse
 import http.client
 import json
@@ -24,6 +22,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+# The repo root is appended, so tests/ resolves as a namespace package and no tests/ fake shadows a host module.
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from scripts._summary_block import Summary
+from tests._error_codes import code
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = REPO_ROOT / "digital_twin"
 FRAM_STATE_PATH = STATE_DIR / "fram_state.json"
@@ -37,7 +40,9 @@ MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
 HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.
-DNS_PORT = 53  # captive_dns.py's DNSServer binds ("0.0.0.0", 53) unconditionally, real port only.
+DNS_PORT = 53  # asy_captive_dns.py's CaptiveDNS binds ("0.0.0.0", 53) unconditionally, real port only.
+_NTP_UNREACHABLE_HOST = "192.0.2.1"  # RFC 5737 TEST-NET-1, never answers: Run 8 configures it, Run 9 watches it
+_NTP_PORT = 123
 
 # Per-module PrintLog `name=` values. A verbose log line is `print(name, *args)`, so a line
 # starting with one of these plus a space is real module output, not the runner's own banners.
@@ -58,17 +63,18 @@ _BUS_FAULT_OPS = {  # the real bus-level call each driver's own bus access goes 
     "isl29125": "readfrom_mem",  # every periodic read is get_register_struct() -> readfrom_mem
     "fram": "write",
 }
+# @tunable l2.ntp_unreachable_watch_s = 90.0
 _NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9 - past the old NTP give-up (~60s), see that run
-_NTP_ERRNO_NO_REPLY = 21  # asy_ntp_client.py's own no-reply errno (SPECIFICATION.md C.7.1)
+# @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source. They all happen to
-# equal driver.upper() here, which is NOT a general rule - NotificationCoordinator's is "NOTIFY",
+# equal driver.upper() here, which is NOT a general rule - NotificationService's is "NOTIFY",
 # not "NOTIFICATION" (Part L.3). A verified narrow table, never generic _NAME resolution.
 _DRIVER_ERRCOUNT_NAME = {"scd30": "SCD30", "sgp40": "SGP40", "bmp3xx": "BMP3XX", "isl29125": "ISL29125", "fram": "FRAM"}
-# The one registered error source deliberately not FRAM-backed: AsyFramManager builds a plain
-# PrintLogHistory, the store being unable to persist its own failure history through itself. Run
-# 5c's loss sweep exempts it; _sensortask_scenarios.py pins the set from the real object graph.
-_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM"})
+# The registered error sources not FRAM-backed, exempt from Run 5c's loss sweep: FRAMManager's own log (the store
+# cannot persist its failures through itself) and CFGMGR_SCD30 (RAM-only, owner, 2026-09-29: 'no extra FRAM chunk').
+# _sensortask_scenarios.py pins the same set from the real object graph.
+_IN_MEMORY_ONLY_ERROR_SOURCES = frozenset({"FRAM", "CFGMGR_SCD30"})
 # Which bus-attached drivers produce a real /measurements reading (Run 4's "came back after being
 # faulted" check) vs which Run 4 asserts came back at 0.
 #
@@ -96,23 +102,28 @@ _TEST_DEBUG_LEVEL = 5
 _TEST_WARN_CO2 = 1800
 _TEST_SCD30_MEAS_INT = 4
 _MIN_VERBOSE_LOG_LINES = 5
+# @tunable l2.bounded_fault_count = 3
 _BOUNDED_FAULT_COUNT = 3  # injected bus failures per bounded-fault run - SGP40's alone in Run
 # 5/5b, then one link per bus-attached driver in Run 5c. Not device- or driver-specific, and
 # deliberately small: each one ends the driver's read task, and three is the supervisor's budget.
+# @tunable l2.wifi_scripted_failures = 5
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot - the failure count that trips hotspot fallback
-# All five are the same verdict, so the episode rule spends ONE history slot on them while still
-# counting all five (asy_wifi_service.py's _episode_wrn(), SPECIFICATION.md Part C.7.1). Counter
-# and slot count are therefore different numbers here, deliberately - SPECIFICATION.md Part C.7.1.
-_WIFI_PERSISTED_WARNINGS = 1
+# The five identical verdicts spend ONE history slot (the newest-entry rule, asy_print_log.py) and count five;
+# the fifth's fallback to the hotspot persists its own WLAN_TO_HOTSPOT warning in a second slot (Part C.7.1).
+_WIFI_PERSISTED_WARNINGS = 2
+_WIFI_PERSISTED_EVENTS = _WIFI_SCRIPTED_FAILURES + 1  # the counter: five failures, then the fallback
 
-# ResetErrors resets every source in turn, each FRAM-backed one paying a real chunk write, so it
-# far exceeds _http()'s 5s default. The value below is DERIVED from the server's own cap;
-# README.md has the derivation and BACKLOG item 24 the real-hardware measurements.
-_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's own outer_cap_s default - keep in sync
+# ResetErrors resets every source at once, each FRAM-backed one still paying its own chunk write, so it
+# far exceeds _http()'s 5s default. The value below is derived from the server's own _DEFAULT_OUTER_CAP_S;
+# README.md has the derivation and SPECIFICATION.md Part C.7 the real-hardware measurements.
+# @tunable web.outer_cap_s = 15.0
+_SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
+# @tunable l2.reset_errors_timeout_margin_s = 2.0
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
 # The BUDGET rather than the timeout above, which only catches a call that never finished. Sized
 # from both datasets - twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of
 # the cap sits ~45% above anything legitimate, and dev needs ~10 more sources to breach it.
+# @tunable l2.reset_errors_budget_ratio = 0.8
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
 # Run 11 (soak), moved host-side from the twin's own retired _soak() ("Driver/DUT process
@@ -122,7 +133,9 @@ _SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/noti
 # 100, not wozi's original 40: dev's two extra uart_link instances mean more one-time post-boot
 # settling, so the trend check would otherwise measure an in-progress settle rather than a
 # plateau. digital_twin/README.md has the measurement.
+# @tunable l2.soak_warmup_cycles = 100
 _SOAK_WARMUP_CYCLES = 100
+# @tunable l2.soak_cycles = 20
 _SOAK_CYCLES = 20
 # The one thing that move could not take host-side: gc.mem_free() lives in the twin's heap and
 # has no REST route, so --mem-sample-interval-ms prints a MEM_SAMPLE line per interval and this
@@ -130,25 +143,66 @@ _SOAK_CYCLES = 20
 
 # 25ms is dense enough that even a fast pass yields plenty of samples for a quarter split, and
 # one gc.collect()+print() per interval costs nothing measurable.
+# @tunable l2.mem_sample_interval_ms = 25
 _MEM_SAMPLE_INTERVAL_MS = 25
-# The tolerance is grounded in each attempt's own observed noise rather than a historical
+# The tolerance is grounded in each run's own observed noise rather than a historical
 # constant scaled by a law that does not hold here - consecutive 25ms gc.mem_free() samples are
 # heavily autocorrelated. digital_twin/README.md has the measurement and what it replaced.
+# @tunable l2.mem_trend_tolerance_sd_multiplier = 3.0
 _MEM_TREND_TOLERANCE_SD_MULTIPLIER = 3.0
 
-# A fixed, recognizable DNS transaction ID, so a real answer from the captive DNSServer can be told
+# Wait budgets and poll steps, one per purpose. Each wait polls for its condition and returns early;
+# the two fixed sleeps wait for an absence, which no probe can observe.
+# @tunable l2.error_count_wait_s = 30.0
+_ERROR_COUNT_WAIT_S = 30.0  # an error-log entry a fault or a restore has to land
+# @tunable l2.first_fault_wait_s = 45.0
+_FIRST_FAULT_WAIT_S = 45.0  # a faulted driver's first "E" entry after its boot
+# @tunable l2.long_wait_s = 90.0
+_LONG_WAIT_S = 90.0  # a bounded fault settling, and WiFi falling back to the hotspot and its DNS
+# @tunable l2.mem_paused_wait_s = 15.0
+_MEM_PAUSED_WAIT_S = 15.0
+# @tunable l2.hang_run_exit_wait_s = 45.0
+_HANG_RUN_EXIT_WAIT_S = 45.0  # Run 10's --duration 15 run, hung bus call included
+# @tunable l2.failed_run_exit_wait_s = 5.0
+_FAILED_RUN_EXIT_WAIT_S = 5.0
+# @tunable l2.past_exhaustion_wait_s = 3.0
+_PAST_EXHAUSTION_WAIT_S = 3.0  # a few read cycles past a bounded fault, for errors that must not climb
+# @tunable l2.in_flight_settle_s = 2.0
+_IN_FLIGHT_SETTLE_S = 2.0  # lets work already in flight finish once storage is paused
+# @tunable l2.errcount_poll_s = 1.0
+_ERRCOUNT_POLL_S = 1.0
+# @tunable l2.mem_paused_poll_s = 0.5
+_MEM_PAUSED_POLL_S = 0.5
+# @tunable l2.serving_poll_s = 0.25
+_SERVING_POLL_S = 0.25
+# @tunable l2.serving_probe_timeout_s = 1.0
+_SERVING_PROBE_TIMEOUT_S = 1.0
+# @tunable l2.dns_poll_s = 0.5
+_DNS_POLL_S = 0.5
+# @tunable l2.kill_reap_timeout_s = 5.0
+_KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
+# @tunable l2.concurrent_get_join_margin_s = 5.0
+_JOIN_MARGIN_S = 5.0  # past a burst's own timeout, so a thread is joined only once its request gave up
+# @tunable l2.slot_release_wait_s = 1.0
+_SLOT_RELEASE_WAIT_S = 1.0  # a readiness probe would occupy a max_connections slot, the property under test
+
+# A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
 _DNS_QUERY_ID = 0x1234
 _DNS_RESPONSE_HEADER_LEN = 4
 
 _FAILURES: list[str] = []
+# Every check also lands in the SPECIFICATION.md E.10 summary block main() prints, named with its
+# pass label; a pass that recorded no check at all is counted as having checked nothing.
+_SUMMARY = Summary("scripts/_digital_twin_ci_suite.py", unit="checks")
+_CHECKS_PER_PASS: dict[str, int] = {}
 
 
 @dataclass(frozen=True)
 class RunContext:
-    """Everything one device's run of this suite needs, computed once in main(): which Unix-port
-    binary to launch, which generated module/wiring-plan pair to boot, and which bus-attached
-    drivers that device declares - so the fault matrix never hardcodes who has a bmp3xx."""
+    # Everything one device's run of this suite needs, computed once in main(): which Unix-port
+    # binary to launch, which generated module/wiring-plan pair to boot, and which bus-attached
+    # drivers that device declares - so the fault matrix never hardcodes who has a bmp3xx.
 
     micropython_bin: str
     logs_dir: Path
@@ -168,9 +222,15 @@ class RunContext:
 _CURRENT_PASS_LABEL = ""
 
 
+def _record(kind: str, full_msg: str) -> None:
+    _SUMMARY.add(kind, full_msg)
+    _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
+
+
 def _fail(msg: str) -> None:
     full_msg = f"{_CURRENT_PASS_LABEL}{msg}"
     _FAILURES.append(full_msg)
+    _record("failed", full_msg)
     print(f"FAIL: {full_msg}", file=sys.stderr)
 
 
@@ -178,6 +238,7 @@ def _check(*, condition: bool, msg: str) -> None:
     if not condition:
         _fail(msg)
     else:
+        _record("passed", f"{_CURRENT_PASS_LABEL}{msg}")
         print(f"OK: {_CURRENT_PASS_LABEL}{msg}")
 
 
@@ -185,6 +246,7 @@ def _check(*, condition: bool, msg: str) -> None:
 # allocation failure prints "memory allocation failed, ..." (py/runtime.c:1692/1696) with no
 # "MemoryError" anywhere - the class name alone only ever sees an UNCAUGHT traceback.
 _MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
+# @tunable l2.ceiling_rounds = 3
 _CEILING_ROUNDS = 3  # back-to-back, so a leaked slot or a pool that only fills over time shows up
 
 
@@ -192,7 +254,11 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     # Part I.4(e): zero MemoryErrors, caught-and-logged included, a caught allocation failure
     # being a design defect rather than a passing result. Checked on every run's log, not only
     # the soak's, since src/'s catch-and-degrade handlers can log one during any run.
-    log_text = _read_log(log_path)
+    try:
+        log_text = log_path.read_text(errors="replace")
+    except OSError as exc:  # fails closed: a log it cannot read is no verdict, never a clean one
+        _fail(f"{run_label}: log {log_path} missing or unreadable, no memory verdict ({exc!r})")
+        return
     _check(
         condition=not any(marker in log_text for marker in _MEMORY_ERROR_MARKERS),
         msg=f"{run_label}: log contains zero MemoryErrors (caught-and-logged counts as a failure too)",
@@ -200,8 +266,8 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
 
 
 def _configured_max_connections(device: str) -> int:
-    """The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
-    a device's ceiling makes this run drive more concurrency instead of a stale literal."""
+    # The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
+    # a device's ceiling makes this run drive more concurrency instead of a stale literal.
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))  # buildgen sits beside scripts/, as for _generate_sensortask_modules.py
     from buildgen.validate import device_max_connections  # noqa: PLC0415 - needs the path entry above
@@ -210,8 +276,8 @@ def _configured_max_connections(device: str) -> int:
 
 
 def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
-    """One real socket per request, all in flight together from THIS process, behind a barrier so the
-    burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr."""
+    # One real socket per request, all in flight together from THIS process, behind a barrier so the
+    # burst is truly simultaneous. Each result is (status, parsed JSON body), or the error's repr.
     results: list[object] = [None] * len(paths)
     barrier = threading.Barrier(len(paths))
 
@@ -226,7 +292,7 @@ def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join(timeout=timeout + 5.0)
+        thread.join(timeout=timeout + _JOIN_MARGIN_S)
     return results
 
 
@@ -291,6 +357,42 @@ def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
     return sum(1 for item in history if isinstance(item, dict) and item.get("type") == type_char)
 
 
+def _failure_events(entry: dict[str, Any]) -> int:
+    # asy_print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts
+    # every call, so a failure is a counter step not backed by a "W" slot (exact while no warning repeats).
+    counter = entry.get("counter", 0)
+    return (counter if isinstance(counter, int) else 0) - _error_type_count(entry, "W")
+
+
+def _link_failures(before: dict[str, Any], after: dict[str, Any]) -> int:
+    # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
+    return _failure_events(after) - _failure_events(before)
+
+
+def _non_empty_slots(entry: dict[str, Any]) -> list[tuple[Any, Any]]:
+    return [(item.get("type"), item.get("num")) for item in entry.get("history", []) if isinstance(item, dict) and item.get("type") != "N"]
+
+
+def _restore_is_all_or_nothing(written: dict[str, Any], restored: dict[str, Any]) -> bool:
+    # Whole: the written ring and at least its count came back, newer slots only after it (this boot's
+    # own). Nothing: no "E" slot survived, only what this boot logged itself. Else partial or garbled.
+    slots, kept = _non_empty_slots(restored), _non_empty_slots(written)
+    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and restored.get("counter", 0) >= written.get("counter", 0)
+    return whole or all(kind != "E" for kind, _ in slots)
+
+
+def _wait_for_failure_events(name: str, target: int, timeout_s: float) -> dict[str, Any]:
+    # _wait_for_error_type_count()'s poll, keyed on failure events rather than history slots.
+    deadline = time.monotonic() + timeout_s
+    entry: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        entry = _errcount(name)
+        if _failure_events(entry) >= target:
+            return entry
+        time.sleep(_ERRCOUNT_POLL_S)
+    return entry
+
+
 def _errcount(name: str) -> dict[str, Any]:
     # TOLERANT: answers {} for a /status it could not parse, since the polling helpers call it in
     # a loop and a transient non-200 during boot must retry. Assertions take _errcount_required()
@@ -326,7 +428,7 @@ def _errcount_all() -> dict[str, dict[str, Any]]:
 
 
 def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples: int = 3, interval_s: float = 2.0) -> dict[str, int]:
-    # A bounded fault is exhausted when its drivers stop adding "E" entries - observable, not a
+    # A bounded fault is exhausted when its drivers stop adding failures - observable, not a
     # wall-clock guess - so this samples until consecutive reads agree for every name. A snapshot
     # taken mid-fault would read as a persistence failure when nothing was lost.
     deadline = time.monotonic() + timeout_s
@@ -335,7 +437,7 @@ def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples
     current: dict[str, int] = {}
     while time.monotonic() < deadline:
         table = _errcount_all()
-        current = {name: _error_type_count(table.get(name, {})) for name in names}
+        current = {name: _failure_events(table.get(name, {})) for name in names}
         agreed = agreed + 1 if current == previous else 0
         if agreed >= samples - 1:
             return current
@@ -345,7 +447,7 @@ def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples
 
 
 def _mem_paused() -> bool | None:
-    # system_service.py's own permanent-storage pause, as GET /status reports it. None means the
+    # asy_system_service.py's own permanent-storage pause, as GET /status reports it. None means the
     # field wasn't readable at all, which is not the same answer as False.
     status, body = _http("GET", "/status")
     if status != _HTTP_OK or not isinstance(body, dict):
@@ -361,7 +463,7 @@ def _wait_for_mem_paused(*, expected: bool, timeout_s: float) -> bool:
     while time.monotonic() < deadline:
         if _mem_paused() is expected:
             return True
-        time.sleep(0.5)
+        time.sleep(_MEM_PAUSED_POLL_S)
     return False
 
 
@@ -375,7 +477,7 @@ def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[st
         entry = _errcount(name)
         if entry.get("counter", 0) > floor:
             return entry
-        time.sleep(1.0)
+        time.sleep(_ERRCOUNT_POLL_S)
     return entry
 
 
@@ -389,7 +491,7 @@ def _wait_for_error_type_count(name: str, target: int, timeout_s: float, type_ch
         entry = _errcount(name)
         if _error_type_count(entry, type_char) >= target:
             return entry
-        time.sleep(1.0)
+        time.sleep(_ERRCOUNT_POLL_S)
     return entry
 
 
@@ -399,12 +501,12 @@ def _wait_until_serving(proc: subprocess.Popen[str], timeout_s: float = 20.0) ->
         if proc.poll() is not None:
             raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving")
         try:
-            status, _ = _http("GET", "/", timeout=1.0)
+            status, _ = _http("GET", "/", timeout=_SERVING_PROBE_TIMEOUT_S)
             if status == _HTTP_OK:
                 return
         except OSError:
             pass
-        time.sleep(0.25)
+        time.sleep(_SERVING_POLL_S)
     raise TimeoutError(f"digital twin never started serving on {HOST}:{PORT} within {timeout_s}s")
 
 
@@ -509,7 +611,7 @@ def _shutdown(proc: subprocess.Popen[str], run_label: str, timeout_s: float = 15
             if tail:
                 print(f"DIAG: {run_label}: last 20 log lines before SIGKILL:\n{tail}")
             proc.kill()
-            proc.wait(timeout=5.0)
+            proc.wait(timeout=_KILL_REAP_TIMEOUT_S)
     ec = proc.returncode if proc.returncode is not None else -1
     _close_log_and_check_memory_safety(proc, run_label)
     return ec
@@ -521,7 +623,7 @@ def _wait_exit(proc: subprocess.Popen[str], run_label: str, timeout_s: float) ->
         ec = proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
         proc.kill()
-        proc.wait(timeout=5.0)
+        proc.wait(timeout=_KILL_REAP_TIMEOUT_S)
         ec = -1
     _close_log_and_check_memory_safety(proc, run_label)
     return ec
@@ -602,12 +704,32 @@ def _try_dns_query(host: str, timeout: float = 1.0) -> bool:
         sock.close()
 
 
+def _route_leaves_host(host: str, port: int) -> bool:
+    # A UDP connect() sends nothing: it is the route lookup the twin's own UDPSocket makes on this same host, and
+    # it fails (ENETUNREACH) where no route leaves - a network namespace holding only lo, for one.
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        try:
+            probe.connect((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _ntp_unreachable_verdict(nums: list[Any], *, route: bool) -> tuple[bool, str]:
+    # Run 9's check: a request that leaves this host goes unanswered (NTP_NO_REPLY); with no route out the send
+    # itself fails (NTP_NOT_SENT). Exactly the one the route predicts is logged, never the other.
+    expected, other = ("NTP_NO_REPLY", "NTP_NOT_SENT") if route else ("NTP_NOT_SENT", "NTP_NO_REPLY")
+    why = "a route to it leaves this host, so the request goes out unanswered" if route else "no route to it leaves this host, so the request is never sent"
+    ok = code("E", expected) in nums and code("E", other) not in nums
+    return ok, f"Run 9: NTP logged errno {code('E', expected)} ({expected}), not {other}, for {_NTP_UNREACHABLE_HOST}: {why} (history {nums})"
+
+
 def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if _try_dns_query(host):
             return True
-        time.sleep(0.5)
+        time.sleep(_DNS_POLL_S)
     return False
 
 
@@ -647,8 +769,8 @@ def _run_1_baseline(ctx: RunContext) -> None:
         status, body = _http("PUT", "/notification", {"WarnCO2": _TEST_WARN_CO2})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("WarnCO2") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /notification WarnCO2={_TEST_WARN_CO2} accepted")
 
-        status, body = _http("PUT", "/sensors", {"SCD30": {"MeasInt": _TEST_SCD30_MEAS_INT}})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SCD30", {}).get("MeasInt") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInt={_TEST_SCD30_MEAS_INT} accepted")
+        status, body = _http("PUT", "/sensors", {"SCD30": {"MeasInterval": _TEST_SCD30_MEAS_INT}})
+        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SCD30", {}).get("MeasInterval") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInterval={_TEST_SCD30_MEAS_INT} accepted")
 
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
         _check(condition=status == _HTTP_OK and body.get("result", {}).get("Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
@@ -674,7 +796,7 @@ def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
         status, body = _http("GET", "/notification")
         _check(condition=status == _HTTP_OK and body.get("WarnCO2") == _TEST_WARN_CO2, msg="Run 2: WarnCO2 survived a real process restart")
         status, body = _http("GET", "/sensors")
-        _check(condition=status == _HTTP_OK and body.get("SCD30", {}).get("MeasInt") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInt survived a real process restart")
+        _check(condition=status == _HTTP_OK and body.get("SCD30", {}).get("MeasInterval") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInterval survived a real process restart")
         status, body = _http("GET", "/networking")
         _check(condition=status == _HTTP_OK and body.get("Hostname") == "ci-digital-twin", msg="Run 2: Hostname survived a real process restart")
         time.sleep(3.0)  # let a bootup/sensor-read cycle actually happen under the now-persisted DebugLevel=5
@@ -703,7 +825,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
         # guess: a fixed sleep encodes the host-speed assumption that made the old Run 4 flaky.
         # Keyed on "E" entries, never the raw counter, which a "W" recovery notice also bumps.
         errcount_names = [_DRIVER_ERRCOUNT_NAME[d] for d in fault_drivers]
-        faulted = {name: _wait_for_error_type_count(name, 1, timeout_s=45.0) for name in errcount_names}
+        faulted = {name: _wait_for_error_type_count(name, 1, timeout_s=_FIRST_FAULT_WAIT_S) for name in errcount_names}
         for path in ("/measurements", "/sensors", "/status"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 3: GET {path} still returns 200 under a sustained bus-fault matrix (graceful degradation)")
@@ -762,24 +884,25 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
         _check(condition=ec == 0, msg=f"Run 4: clean shutdown (exit code {ec})")
 
 
-def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
+def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> dict[str, Any]:
     # ---- Run 5: clean boot with a small BOUNDED fault, proving recovery - the half Run 3 cannot
     # show, since it only proves the system survives while still broken. SGP40 is on every real
     # device (Part L.3), so this needs no device-conditional logic. ----
     _clean_state()
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
     proc = _spawn(ctx, ["--fault", f"sgp40:writeto:{_BOUNDED_FAULT_COUNT}"], log5)
+    entry2: dict[str, Any] = {}
     try:
         _wait_until_serving(proc)
-        # Poll rather than sleep a guessed interval: the fault is exhausted when the third "E"
+        # Poll rather than sleep a guessed interval: the fault is exhausted when the third failure
         # lands, which is a real event to wait for, not a wall-clock duration to assume.
-        entry = _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
-        errors_after_exhaustion = _error_type_count(entry)
+        entry = _wait_for_failure_events("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=_ERROR_COUNT_WAIT_S)
+        errors_after_exhaustion = _failure_events(entry)
         _check(condition=errors_after_exhaustion == _BOUNDED_FAULT_COUNT, msg=f"Run 5: SGP40's bounded fault ({_BOUNDED_FAULT_COUNT} failures) was fully recorded, no more ({entry!r})")
-        time.sleep(3.0)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
-        # (a "W" recovery notice may legitimately appear here - see _error_type_count()'s own comment)
+        time.sleep(_PAST_EXHAUSTION_WAIT_S)  # a few more cycles past exhaustion - real ("E") errors should NOT keep climbing
+        # (a "W" recovery notice may legitimately appear here - _failure_events() discounts it)
         entry2 = _errcount("SGP40")
-        _check(condition=_error_type_count(entry2) == errors_after_exhaustion, msg=f"Run 5: SGP40's real error count stopped climbing once the fault cleared (recovery) ({entry2!r})")
+        _check(condition=_failure_events(entry2) == errors_after_exhaustion, msg=f"Run 5: SGP40's real error count stopped climbing once the fault cleared (recovery) ({entry2!r})")
         status, body = _http("GET", "/measurements")
         sgp40_reading = body.get("SGP40", {}) if status == _HTTP_OK and isinstance(body, dict) else {}
         _check(condition=status == _HTTP_OK and bool(sgp40_reading), msg=f"Run 5: SGP40 measurements resumed after recovery ({sgp40_reading!r})")
@@ -788,11 +911,12 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> None:
     finally:
         ec = _shutdown(proc, "Run 5")
         _check(condition=ec == 0, msg=f"Run 5: clean shutdown (exit code {ec})")
+    return entry2
 
 
-def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
+def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: dict[str, Any]) -> None:
     # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 left exactly
-    # _BOUNDED_FAULT_COUNT "E" entries on a healthy chip, written through on every push, so they
+    # _BOUNDED_FAULT_COUNT failures on a healthy chip, written through on every push, so they
     # SHOULD come back.
 
     # But Run 5 shut down abruptly, which can catch a chunk write in flight: both status bytes go
@@ -814,11 +938,8 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext) -> None:
             # The webserver answers well before the FRAM-backed loggers finish their own setup(),
             # and that setup() IS the restore - so poll for it rather than sampling immediately,
             # the same host-speed trap the old Run 4 check fell into, one layer down.
-            entry = _wait_for_error_type_count(name, _BOUNDED_FAULT_COUNT, timeout_s=30.0)
-            restored = _error_type_count(entry)
-            _check(condition=restored in (0, _BOUNDED_FAULT_COUNT), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
-            if restored:
-                _check(condition=entry.get("counter", 0) >= restored, msg=f"Run 5b: {name}'s restored error COUNT is consistent with the {restored} restored entries, not left behind ({entry!r})")
+            entry = _wait_for_error_type_count(name, _error_type_count(written), timeout_s=_ERROR_COUNT_WAIT_S)
+            _check(condition=_restore_is_all_or_nothing(written, entry), msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - Run 5's ring and count or no error at all, never a partial remnant (wrote {written!r}, restored {entry!r})")
     except Exception as exc:
         _fail(f"Run 5b (error-log restore is all-or-nothing): {exc!r}")
     finally:
@@ -846,6 +967,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     snapshot_table: dict[str, dict[str, Any]] = {}
     for driver in drivers:
         name = _DRIVER_ERRCOUNT_NAME[driver]
+        before_link = snapshot_table.get(name, {})
         log5c_a = ctx.logs_dir / f"run5c_a_{driver}_record_then_pause_storage.log"
         proc = _spawn(ctx, ["--fault", f"{driver}:{_BUS_FAULT_OPS[driver]}:{_BOUNDED_FAULT_COUNT}"], log5c_a)
         try:
@@ -853,23 +975,25 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             for earlier, expected in recorded.items():
                 found = _error_type_count(_errcount_required(earlier))
                 _check(condition=found == expected, msg=f"Run 5c: {earlier}'s {expected} chip-healthy error(s) were still on the chip when {name}'s own fault link booted ({found} found)")
-            _wait_for_error_type_count(name, 1, timeout_s=45.0)
+            _wait_for_error_type_count(name, 1, timeout_s=_FIRST_FAULT_WAIT_S)
             # Snapshot only once the bounded fault has stopped producing entries. Taken mid-fault,
             # it would be compared after the reboot against entries that landed after it, and a run
             # that lost nothing at all would read as a persistence failure.
-            settled = _wait_for_error_counts_to_settle([name], timeout_s=90.0)
+            settled = _wait_for_error_counts_to_settle([name], timeout_s=_LONG_WAIT_S)
             _check(condition=settled[name] > 0, msg=f"Run 5c: {name}'s bounded fault was recorded as a real error against a HEALTHY store ({settled!r})")
             if name == "SGP40":
-                _check(condition=settled[name] == _BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_BOUNDED_FAULT_COUNT} bounded failures and no more before the commanded reboot ({settled!r})")
+                sgp40 = _errcount_required(name)
+                _check(condition=_link_failures(before_link, sgp40) == _BOUNDED_FAULT_COUNT, msg=f"Run 5c: SGP40 recorded all {_BOUNDED_FAULT_COUNT} bounded failures and no more before the commanded reboot (before {before_link!r}, after {sgp40!r})")
             snapshot_table = _errcount_all()
+            snapshot_errors = _error_type_count(snapshot_table.get(name, {}))
             status, _ = _http("PUT", "/system", {"SystemCmd": "mempause"})
             _check(condition=status == _HTTP_OK, msg=f"Run 5c: PUT /system mempause accepted before {name}'s reboot (status {status})")
-            paused = _wait_for_mem_paused(expected=True, timeout_s=15.0)
+            paused = _wait_for_mem_paused(expected=True, timeout_s=_MEM_PAUSED_WAIT_S)
             _check(condition=paused, msg=f"Run 5c: storage actually reported paused before {name}'s shutdown, not just a 200")
-            time.sleep(2.0)  # let anything already in flight finish - nothing new can start while paused
+            time.sleep(_IN_FLIGHT_SETTLE_S)  # let anything already in flight finish - nothing new can start while paused
             at_pause = _error_type_count(_errcount_required(name))
-            _check(condition=at_pause == settled[name], msg=f"Run 5c: nothing more was logged for {name} between the snapshot and the storage pause, so the snapshot is what the chip actually holds ({settled[name]} snapshot, {at_pause} at the pause)")
-            recorded[name] = settled[name]
+            _check(condition=at_pause == snapshot_errors, msg=f"Run 5c: nothing more was logged for {name} between the snapshot and the storage pause, so the snapshot is what the chip actually holds ({snapshot_errors} snapshot, {at_pause} at the pause)")
+            recorded[name] = snapshot_errors
         except Exception as exc:
             _fail(f"Run 5c ({driver}: record then pause storage): {exc!r}")
         finally:
@@ -880,7 +1004,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     proc = _spawn(ctx, [], log5c_b)
     try:
         _wait_until_serving(proc)
-        _wait_for_error_type_count("SGP40", _BOUNDED_FAULT_COUNT, timeout_s=30.0)
+        _wait_for_error_type_count("SGP40", recorded.get("SGP40", 1), timeout_s=_ERROR_COUNT_WAIT_S)
         restored_table = _errcount_all()
         for name, expected in recorded.items():
             entry = restored_table.get(name, {})
@@ -888,7 +1012,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             _check(condition=restored == expected, msg=f"Run 5c: {name}'s {expected} chip-healthy error(s) survived a reboot taken with storage paused - the one case that must never lose them ({restored} found, {entry!r})")
             _check(condition=entry.get("counter", 0) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
         # Every OTHER registered source in the same breath - the ones with no fault-injection seam
-        # (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every CFGMGR_*, dev's two uart_link instances). A
+        # (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every FRAM-backed CFGMGR_*, dev's two uart_link instances). A
         # fresh entry from THIS boot is legitimate, so the claim is "nothing was lost", not equality.
         for name, before in snapshot_table.items():
             if name in recorded or name in _IN_MEMORY_ONLY_ERROR_SOURCES:
@@ -938,7 +1062,7 @@ def _run_6_configure_ssid(ctx: RunContext) -> None:
 
 def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     # ---- Run 7: reboot with scripted repeated STA-connect failures. Drives the real hotspot
-    # fallback state machine, then confirms the real DNSServer answers a real UDP query rather
+    # fallback state machine, then confirms the real CaptiveDNS answers a real UDP query rather
     # than merely that internal state flipped. Mandatory infrastructure, so no device logic.
 
     # Only possible because of _unix_port_udp_addr_shim.py, which works around three Unix-port
@@ -953,20 +1077,20 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         # Waits for the FULL scripted failure count, not just the first: hotspot activation, and
-        # so the DNSServer, only starts on the fifth. Waiting for all five and then giving DNS
+        # so the CaptiveDNS, only starts on the fifth. Waiting for all five and then giving DNS
         # its own budget beats one guessed timeout covering both phases, as a real runner showed.
-        entry = _wait_for_errcount_above("WIFI", _WIFI_SCRIPTED_FAILURES - 1, timeout_s=90.0)
-        _check(condition=entry.get("counter", 0) >= _WIFI_SCRIPTED_FAILURES, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback and were recorded in WIFI's error counter ({entry!r})")
+        entry = _wait_for_errcount_above("WIFI", _WIFI_PERSISTED_EVENTS - 1, timeout_s=_LONG_WAIT_S)
+        _check(condition=entry.get("counter", 0) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
         logged = _error_type_count(entry, type_char="W")
-        _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent {_WIFI_PERSISTED_WARNINGS} history slot, not one each - the ring still holds what preceded the outage ({entry!r})")
+        _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         # 30s timed out twice on real runners even after the errcount-wait fix, and the cause
         # was a red herring: the interpreter lacked CAP_NET_BIND_SERVICE, so the bind to port 53
         # silently failed and no timeout would have helped (README.md's run 7 entry).
 
         # Left at 90s with the real fix in: this is a fallback path, not a hot one, so the slack
         # costs nothing when the answer arrives early.
-        answered = _wait_for_dns_answer(HOST, timeout_s=90.0)
-        _check(condition=answered, msg="Run 7: the real captive DNSServer answered a real UDP DNS query after WiFi hotspot fallback")
+        answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
+        _check(condition=answered, msg="Run 7: the real CaptiveDNS answered a real UDP DNS query after WiFi hotspot fallback")
         status, _ = _http("GET", "/status")
         _check(condition=status == _HTTP_OK, msg="Run 7: webserver stayed reachable throughout the WiFi hotspot-fallback transition")
     except Exception as exc:
@@ -992,15 +1116,15 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         # Poll tolerantly, then re-read STRICTLY before asserting: this is the one check whose
         # expected set admits 0, so the poller's own {}-on-unreadable return would satisfy it.
-        _wait_for_error_type_count("WIFI", _WIFI_PERSISTED_WARNINGS, timeout_s=30.0, type_char="W")
+        _wait_for_error_type_count("WIFI", _WIFI_PERSISTED_WARNINGS, timeout_s=_ERROR_COUNT_WAIT_S, type_char="W")
         entry = _errcount_required("WIFI")
         restored = _error_type_count(entry, type_char="W")
         _check(condition=restored in (0, _WIFI_PERSISTED_WARNINGS), msg=f"Run 8: WIFI's FRAM-backed history came back all-or-nothing after an abrupt restart - never a partial {restored}-entry remnant ({entry!r})")
-        _check(condition=entry.get("counter", 0) in (0, _WIFI_SCRIPTED_FAILURES), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts rather than the one slot they share ({entry!r})")
-        # 192.0.2.1: RFC 5737 TEST-NET-1, guaranteed non-routable - a deliberate, reproducible
-        # "unreachable" address rather than relying on incidental CI sandbox network policy.
-        status, body = _http("PUT", "/networking", {"NTP_Host": "192.0.2.1"})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTP_Host") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTP_Host (unreachable) accepted")
+        _check(condition=entry.get("counter", 0) in (0, _WIFI_PERSISTED_EVENTS), msg=f"Run 8: and the counter came back with it, still naming all {_WIFI_SCRIPTED_FAILURES} attempts and the fallback rather than the slots they share ({entry!r})")
+        # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
+        # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
+        status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})
+        _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTPHost") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTPHost (unreachable) accepted")
     except Exception as exc:
         _fail(f"Run 8 (WIFI persistence check + configure unreachable NTP): {exc!r}")
     finally:
@@ -1024,7 +1148,8 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         ntp = _errcount_required("NTP")
         nums = [item.get("num") for item in ntp.get("history", []) if isinstance(item, dict)]
-        _check(condition=_NTP_ERRNO_NO_REPLY in nums, msg=f"Run 9: NTP logged errno {_NTP_ERRNO_NO_REPLY} (no reply) for the unreachable host (history {nums})")
+        ok, msg = _ntp_unreachable_verdict(nums, route=_route_leaves_host(_NTP_UNREACHABLE_HOST, _NTP_PORT))
+        _check(condition=ok, msg=msg)
         system_after = _errcount_required("SYSTEM").get("counter", 0)
         _check(condition=system_after == system_before, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
@@ -1046,11 +1171,11 @@ def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     log10 = ctx.logs_dir / "run10_watchdog_hang_backstop.log"
     proc = _spawn(ctx, ["--hang", "sgp40:writeto:12", "--duration", "15"], log10)
     try:
-        ec = _wait_exit(proc, "Run 10", timeout_s=45.0)
+        ec = _wait_exit(proc, "Run 10", timeout_s=_HANG_RUN_EXIT_WAIT_S)
         _check(condition=ec == 0, msg=f"Run 10: process survived a genuinely wedged bus and exited cleanly (exit code {ec})")
     except Exception as exc:
         _fail(f"Run 10 (watchdog hang backstop): {exc!r}")
-        _wait_exit(proc, "Run 10", timeout_s=5.0)
+        _wait_exit(proc, "Run 10", timeout_s=_FAILED_RUN_EXIT_WAIT_S)
     wdt10 = _would_have_triggered_count(_read_log(log10))
     _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"Run 10: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
 
@@ -1076,7 +1201,7 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
             # A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the
             # response the client already holds (Part H.7.1) - round 0's too: the readiness probe's own
             # connection is still counted right after _wait_until_serving(), refusing one of a full burst.
-            time.sleep(1.0)
+            time.sleep(_SLOT_RELEASE_WAIT_S)
             results = _concurrent_get([endpoints[i % len(endpoints)] for i in range(ceiling)])
             # Every one of them, with a parsed JSON object: this burst IS the ceiling, so anything
             # short means the device cannot serve what its own config admits.
@@ -1096,9 +1221,8 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 @dataclass
-class _SoakAttempt:
-    """One independent boot's worth of Run 11 raw results - http_failures/wdt/shutdown_ec are
-    never retried on (see _run_11_soak() below), only trend_result's own tolerance check is."""
+class _SoakRun:
+    # One boot's Run 11 raw results.
 
     http_failures: list[str]
     wdt_count: int | None
@@ -1107,7 +1231,7 @@ class _SoakAttempt:
     trend_result: tuple[float, float, int, float, float] | None
 
 
-def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) -> _SoakAttempt:
+def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     # ---- Run 11: a fresh clean boot for the soak check, driven entirely from THIS process like
     # Runs 1-10 ("Driver/DUT process separation") - warmup and cycle requests go over real HTTP,
     # never through the twin's own client.
@@ -1130,22 +1254,22 @@ def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) ->
                     # A real soak run must record a genuine allocation/transport failure as one
                     # more failure, never let it abort the whole run before every other endpoint
                     # and cycle has had its own chance to run.
-                    http_failures.append(f"{attempt_label} warmup: GET {path} -> {e!r}")
+                    http_failures.append(f"warmup: GET {path} -> {e!r}")
         cycles_start = time.time()
         for cycle in range(_SOAK_CYCLES):
             for path in _SOAK_ENDPOINTS:
                 try:
                     status, _ = _http("GET", path)
                 except (OSError, http.client.HTTPException) as e:
-                    http_failures.append(f"{attempt_label} cycle {cycle}: GET {path} -> {e!r}")
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {e!r}")
                     continue
                 if status != _HTTP_OK:
-                    http_failures.append(f"{attempt_label} cycle {cycle}: GET {path} -> {status}")
+                    http_failures.append(f"cycle {cycle}: GET {path} -> {status}")
         cycles_end = time.time()
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
-        http_failures.append(f"{attempt_label}: {exc!r}")
+        http_failures.append(repr(exc))
     finally:
-        ec = _shutdown(proc, f"Run 11 ({attempt_label})")
+        ec = _shutdown(proc, "Run 11")
 
     wdt_count = _would_have_triggered_count(_read_log(log_path))
     samples: list[int] = []
@@ -1155,65 +1279,30 @@ def _run_11_soak_attempt(ctx: RunContext, log_path: Path, attempt_label: str) ->
         samples = [free for ts, free in _parse_mem_samples(log_text) if cycles_start <= ts <= cycles_end]
         if len(samples) // 4 >= 1:
             trend_result = _mem_trend(samples)
-    return _SoakAttempt(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result)
-
-
-def _report_soak_attempt(attempt: _SoakAttempt, label: str) -> bool:
-    """Reports one attempt except the trend-vs-tolerance verdict, which the caller owns because it
-    is the only thing _run_11_soak() may retry past. False means it must NOT retry: an HTTP,
-    watchdog or shutdown failure is never the environment noise that retry absorbs (Part E.7/E.8)."""
-    for failure in attempt.http_failures:
-        print(f"FAIL: Run 11: {failure}")
-    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
-    _check(condition=not attempt.http_failures, msg=f"Run 11 ({label}): {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(attempt.http_failures)} found)")
-    _check(condition=attempt.wdt_count == 0, msg=f"Run 11 ({label}): watchdog never starved across the soak (would_have_triggered_count={attempt.wdt_count!r})")
-    _check(condition=attempt.shutdown_ec == 0, msg=f"Run 11 ({label}): clean shutdown (exit code {attempt.shutdown_ec})")
-    _check(condition=len(attempt.samples) // 4 >= 1, msg=f"Run 11 ({label}): enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(attempt.samples)} samples)")
-    return not attempt.http_failures and attempt.wdt_count == 0 and attempt.shutdown_ec == 0 and attempt.trend_result is not None
+    return _SoakRun(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result)
 
 
 def _run_11_soak(ctx: RunContext) -> None:
-    # Defense in depth on top of the self-calibrated tolerance, not a substitute: a live
-    # reactive-GC-paced heap sampled on a timer and correlated by timestamp stays noisy even
-    # when correctly calibrated.
-
-    # One retry, a second fully independent boot, separates a residual bad draw from a real leak:
-    # a transient reading essentially never repeats past tolerance twice, an unbounded leak
-    # reliably does. Never retries an HTTP, watchdog or shutdown failure - not this noise source.
-    attempt1 = _run_11_soak_attempt(ctx, ctx.logs_dir / "run11_soak.log", "attempt 1")
-    clean1 = _report_soak_attempt(attempt1, "attempt 1")
-    if not clean1 or attempt1.trend_result is None:
-        return  # a real HTTP/watchdog/shutdown/sample-count failure - already reported, no retry
-    trend1, tolerance1, quarter1, early1, late1 = attempt1.trend_result
+    # One boot, one verdict: a second boot never covers this one's failing trend (owner, 2026-09-26:
+    # 'A retry or a longer timeout never counts as a race fix'). The self-calibrated tolerance is
+    # what separates a leak from a noisy reactive-GC heap sampled on a timer.
+    run = _run_11_soak_boot(ctx, ctx.logs_dir / "run11_soak.log")
+    for failure in run.http_failures:
+        print(f"FAIL: Run 11: {failure}")
+    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
+    _check(condition=not run.http_failures, msg=f"Run 11: {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(run.http_failures)} found)")
+    _check(condition=run.wdt_count == 0, msg=f"Run 11: watchdog never starved across the soak (would_have_triggered_count={run.wdt_count!r})")
+    _check(condition=run.shutdown_ec == 0, msg=f"Run 11: clean shutdown (exit code {run.shutdown_ec})")
+    _check(condition=len(run.samples) // 4 >= 1, msg=f"Run 11: enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(run.samples)} samples)")
+    if run.trend_result is None:
+        return  # too few samples - the check above already failed it
+    trend, tolerance, quarter, early, late = run.trend_result
     print(
-        f"Run 11 (attempt 1) memory trend: min={min(attempt1.samples)} max={max(attempt1.samples)} "
-        f"early_avg={early1:.0f} late_avg={late1:.0f} trend={trend1:.0f} tolerance={tolerance1:.0f} "
-        f"quarter_size={quarter1} samples={len(attempt1.samples)}",
+        f"Run 11 memory trend: min={min(run.samples)} max={max(run.samples)} "
+        f"early_avg={early:.0f} late_avg={late:.0f} trend={trend:.0f} tolerance={tolerance:.0f} "
+        f"quarter_size={quarter} samples={len(run.samples)}",
     )
-    if trend1 <= tolerance1:
-        _check(condition=True, msg=f"Run 11: gc.mem_free() trend ({trend1:.0f} bytes decline) within the {tolerance1:.0f}-byte tolerance (quarter_size={quarter1})")
-        return
-
-    print(f"Run 11: attempt 1's memory trend ({trend1:.0f} bytes) exceeded its {tolerance1:.0f}-byte tolerance - retrying once with a fresh, independent boot before failing (Part E.7/E.8's documented per-runner noise vs. a genuine leak)")
-    attempt2 = _run_11_soak_attempt(ctx, ctx.logs_dir / "run11_soak_retry.log", "attempt 2 (retry)")
-    clean2 = _report_soak_attempt(attempt2, "attempt 2 (retry)")
-    if not clean2 or attempt2.trend_result is None:
-        return  # a real HTTP/watchdog/shutdown/sample-count failure on the retry - already reported
-    trend2, tolerance2, quarter2, early2, late2 = attempt2.trend_result
-    print(
-        f"Run 11 (attempt 2 (retry)) memory trend: min={min(attempt2.samples)} max={max(attempt2.samples)} "
-        f"early_avg={early2:.0f} late_avg={late2:.0f} trend={trend2:.0f} tolerance={tolerance2:.0f} "
-        f"quarter_size={quarter2} samples={len(attempt2.samples)}",
-    )
-    _check(
-        condition=trend2 <= tolerance2,
-        msg=(
-            f"Run 11: gc.mem_free() trend within tolerance on a fresh independent boot after attempt 1's own "
-            f"{trend1:.0f}-byte reading exceeded its {tolerance1:.0f}-byte tolerance (attempt 2: {trend2:.0f} bytes "
-            f"decline, {tolerance2:.0f}-byte tolerance, quarter_size={quarter2}) - a real leak reproduces on both "
-            f"independent boots, this one didn't"
-        ),
-    )
+    _check(condition=trend <= tolerance, msg=f"Run 11: gc.mem_free() trend ({trend:.0f} bytes decline) within the {tolerance:.0f}-byte tolerance (quarter_size={quarter})")
 
 
 def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
@@ -1228,7 +1317,7 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
     early_avg = sum(early) / len(early)
     late_avg = sum(late) / len(late)
     trend = early_avg - late_avg  # positive: memory declined between quarters
-    # Tolerance is this attempt's own noise level, not a historical constant. Each quarter's
+    # Tolerance is this run's own noise level, not a historical constant. Each quarter's
     # INTERNAL spread stands in for the trend's true standard error - never the early-vs-late
     # difference, which a genuine leak inflates, loosening the tolerance just when it must hold.
     quarter_noise = max(statistics.pstdev(early), statistics.pstdev(late)) if quarter > 1 else 0.0
@@ -1242,22 +1331,30 @@ def run_suite(ctx: RunContext) -> None:
     # main() prints one combined report naming every failure from either pass.
     global _CURRENT_PASS_LABEL
     _CURRENT_PASS_LABEL = f"[gc.threshold={ctx.gc_threshold}] "
+    _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = 0
     ctx.logs_dir.mkdir(parents=True, exist_ok=True)
 
-    _run_1_baseline(ctx)
-    _run_2_reboot_settings_persistence(ctx)
-    _run_3_sustained_bus_fault_matrix(ctx)
-    _run_4_bus_fault_persistence_sweep(ctx)
-    _run_5_recovery_after_bounded_fault(ctx)
-    _run_5b_error_log_restore_is_all_or_nothing(ctx)
-    _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx)
-    _run_6_configure_ssid(ctx)
-    _run_7_wifi_hotspot_dns(ctx)
-    _run_8_wifi_persistence_and_configure_ntp(ctx)
-    _run_9_ntp_unreachable(ctx)
-    _run_10_watchdog_hang_backstop(ctx)
-    _run_11_soak(ctx)
-    _run_11b_full_ceiling_concurrency(ctx)
+    # An exception that ends a pass early is recorded in the block before it propagates.
+    try:
+        _run_1_baseline(ctx)
+        _run_2_reboot_settings_persistence(ctx)
+        _run_3_sustained_bus_fault_matrix(ctx)
+        _run_4_bus_fault_persistence_sweep(ctx)
+        run5_entry = _run_5_recovery_after_bounded_fault(ctx)
+        _run_5b_error_log_restore_is_all_or_nothing(ctx, run5_entry)
+        _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx)
+        _run_6_configure_ssid(ctx)
+        _run_7_wifi_hotspot_dns(ctx)
+        _run_8_wifi_persistence_and_configure_ntp(ctx)
+        _run_9_ntp_unreachable(ctx)
+        _run_10_watchdog_hang_backstop(ctx)
+        _run_11_soak(ctx)
+        _run_11b_full_ceiling_concurrency(ctx)
+    except BaseException as exc:
+        _SUMMARY.add("failed", f"{_CURRENT_PASS_LABEL}suite aborted: {type(exc).__name__}: {exc}")
+        raise
+    if _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] == 0:
+        _SUMMARY.add("vacuous", f"pass {_CURRENT_PASS_LABEL.strip()}")
 
 
 def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
@@ -1274,20 +1371,30 @@ def _drivers_in_plan(plan: dict[str, Any]) -> frozenset[str]:
 
 
 def main() -> int:
+    global _SUMMARY
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--micropython-bin", required=True, help="path to the built MicroPython Unix-port binary")
     parser.add_argument("--device", default="wozi", help="which devices/<device>.toml-generated module to drive this suite against (default: wozi)")
     parser.add_argument("--logs-dir", default=str(REPO_ROOT / "digital_twin_ci_logs"), help="directory to write per-run subprocess logs into")
     args = parser.parse_args()
 
+    # The block is printed on every exit, an exception's included; its code is the one returned.
+    _SUMMARY = Summary("scripts/_digital_twin_ci_suite.py", unit="checks", levels=f"L2 ({args.device})", gc_stage="both")
+    exit_code = 1
+    try:
+        exit_code = _run_both_passes(args)
+    finally:
+        exit_code = _SUMMARY.print(exit_code)
+    return exit_code
+
+
+def _run_both_passes(args: argparse.Namespace) -> int:
     module = f"sensortask_{args.device}"
     wiring_plan_path = GENERATED_SRC_DIR / f"{module}_wiring_plan.json"
     if not wiring_plan_path.exists():
-        print(
-            f"error: {wiring_plan_path} not found - run scripts/_generate_sensortask_modules.py "
-            f"first (scripts/run_digital_twin_ci.sh already does this)",
-            file=sys.stderr,
-        )
+        hint = "run scripts/_generate_sensortask_modules.py first (scripts/run_digital_twin_ci.sh already does this)"
+        print(f"error: {wiring_plan_path} not found - {hint}", file=sys.stderr)
+        _SUMMARY.add("failed", f"wiring plan {wiring_plan_path} missing", hint)
         return 1
     plan = json.loads(wiring_plan_path.read_text())
 
@@ -1307,19 +1414,14 @@ def main() -> int:
 
     # Order matters, -1 first, and each pass logs into its own subdirectory so a failure's logs
     # are never overwritten by the other.
+    # @tunable gc.threshold_bytes = 32768
     for gc_threshold, subdir in ((-1, "gc_threshold_neg1"), (32768, "gc_threshold_32768")):
         ctx = replace(base_ctx, logs_dir=base_ctx.logs_dir / subdir, gc_threshold=gc_threshold)
         _clean_state()
         run_suite(ctx)
 
     print()
-    if _FAILURES:
-        print(f"== digital-twin CI suite FAILED ({args.device}): {len(_FAILURES)} check(s) failed")
-        for msg in _FAILURES:
-            print(f"  - {msg}")
-        return 1
-    print(f"== digital-twin CI suite PASSED ({args.device}): every check succeeded at both gc.threshold(-1) and gc.threshold(32768)")
-    return 0
+    return 1 if _FAILURES or _SUMMARY.failed else 0
 
 
 if __name__ == "__main__":

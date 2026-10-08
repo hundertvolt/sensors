@@ -1,0 +1,10 @@
+MODE wall D 150 fails {}
+MODE wall D 150 fails {}
+MODE wall D 150 fails {}
+MODE wall D 150 fails {}
+FLIP test_a_clean_write_round_trip_is_acknowledged 25 AssertionError()
+MODE wall D 150 fails {'test_a_clean_write_round_trip_is_acknowledged': [25]}
+MODE wall D 150 fails {}
+FLIP test_a_stall_the_test_declares_is_not_a_failure 19 AssertionError()
+FLIP test_a_stall_the_test_declares_is_not_a_failure 25 AssertionError()
+MODE wall D 150 fails {'test_a_stall_the_test_declares_is_not_a_failure': [19, 25]}

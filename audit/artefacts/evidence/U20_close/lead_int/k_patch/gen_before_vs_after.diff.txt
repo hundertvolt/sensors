@@ -1,0 +1,31 @@
+# diff -r gen_before gen_after in u20/lead_evidence/k_patch: the six devices' generated files before and after lane K's last patch differ only in the build date (computed at evidence assembly; the two generated copies are left out as generated source)
+diff -r gen_before/arzi/sensortask_arzi.py gen_after/arzi/sensortask_arzi.py
+46c46
+< _BUILD_DATE = const('2026-10-08T13:17:54Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:00Z')
+diff -r gen_before/dev/sensortask_dev.py gen_after/dev/sensortask_dev.py
+50c50
+< _BUILD_DATE = const('2026-10-08T13:17:55Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:02Z')
+diff -r gen_before/grkizi/sensortask_grkizi.py gen_after/grkizi/sensortask_grkizi.py
+46c46
+< _BUILD_DATE = const('2026-10-08T13:17:56Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:03Z')
+diff -r gen_before/klkizi/sensortask_klkizi.py gen_after/klkizi/sensortask_klkizi.py
+46c46
+< _BUILD_DATE = const('2026-10-08T13:17:57Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:04Z')
+diff -r gen_before/schlafzi/sensortask_schlafzi.py gen_after/schlafzi/sensortask_schlafzi.py
+46c46
+< _BUILD_DATE = const('2026-10-08T13:17:58Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:05Z')
+diff -r gen_before/wozi/sensortask_wozi.py gen_after/wozi/sensortask_wozi.py
+47c47
+< _BUILD_DATE = const('2026-10-08T13:17:59Z')
+---
+> _BUILD_DATE = const('2026-10-08T13:18:06Z')

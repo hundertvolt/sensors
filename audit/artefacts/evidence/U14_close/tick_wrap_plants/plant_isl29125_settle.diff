@@ -1,0 +1,11 @@
+--- src/asy_isl29125_driver.py@f351490
++++ bite_isl/asy_isl29125_driver.py
+@@ -1442,7 +1442,7 @@
+         return True
+ 
+     def time_to_settle_ms(self) -> int:
+-        return max(0, time.ticks_diff(self._settle_until_ms, time.ticks_ms()))
++        return max(0, self._settle_until_ms - time.ticks_ms())
+ 
+     async def verify_device_id(self) -> None:
+         # Raising rather than returning a verdict, so setup() fails loudly on the wrong part and

@@ -14,39 +14,53 @@ if one you need isn't there rather than falling back to web search/training memo
 
 ## Platform target
 
-**The concrete facts** — MicroPython 1.26/RP2040 specifics, what the 1.29 pin changed (Part F.5),
-the WDT 8388ms cap, RP2040 hardware specs, the soft-Timer-callback-drop gotcha, the `[x] * n`
-segfault range, `Timer.init()`'s `OSError(ENOMEM)` case, the
-`MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation — **live in
-`SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F before
-any platform-facing code work; don't rely on memory of it, and don't re-derive these from training
-memory or general Python knowledge — they were confirmed against real MicroPython source, not
-assumed.
+**The concrete facts** — MicroPython 1.29.0/RP2040 specifics (the legacy units run 1.24.1), what the
+audit of the `v1.29.0` pin found (Part F.5), the WDT 8388ms cap, RP2040 hardware specs, the
+soft-Timer-callback-drop gotcha, the `[x] * n` segfault range, `Timer.init()`'s `OSError(ENOMEM)`
+case, the `MemoryError`-isn't-an-`OSError`-subclass rule, `struct.pack()`'s silent truncation —
+**live in `SPECIFICATION.md`'s Part F (Platform Target & MicroPython Runtime Facts).** Read Part F
+before any platform-facing code work; don't rely on memory of it, and don't re-derive these from
+training memory or general Python knowledge — they were confirmed against real MicroPython source,
+not assumed.
 
-Two standing AI-session practices (not facts, kept here since they're instructions, not
+Three standing AI-session practices (not facts, kept here since they're instructions, not
 information):
 
 - **Always check current MicroPython and Microdot documentation before asserting how an API
   behaves** — do not rely on training-data memory for either. This has already caught real
   discrepancies once; treat it as a standing requirement for every session, not a one-time step.
-- **Whenever the pinned MicroPython version changes (and periodically otherwise), re-check every
-  MicroPython-facing code construct against the current pinned version's own source, the current
-  rp2 port documentation, and MicroPython developer-forum/issue-tracker findings** — not just "is
-  this still correct," but specifically "is there now a newer/better/more-complete way to do this
-  that a stale construct is missing out on." Examples of the kind of thing this is meant to catch:
-  a newly widened set of types accepted by `micropython.const()`, or real `asyncio`-level
-  timeout/cancellation support being added to something that previously had none (e.g.
-  `socket.getaddrinfo()` — see SPECIFICATION.md Part F.2 for its current
-  can't-be-timeout-wrapped status, which is exactly the kind of fact a version bump could change
-  and silently invalidate). This is a standing practice, not a one-time pass — repeat it every time
-  `toolchain/versions.toml`'s MicroPython `ref` moves. **Last run: 1.28.0 → 1.29.0, 2026-09-10;
-  results in SPECIFICATION.md Part F.5** — including what it found (`I2C`/`SPI` `deinit()` are
-  no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads) and what it ruled out
-  (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s status is unchanged).
+- **Whenever the owner moves the pinned MicroPython version (owner, 2026-09-26: the pin moves only on
+  the owner's call), and periodically otherwise, re-check every MicroPython-facing code construct
+  against the current pinned version's own source, the current rp2 port documentation, and
+  MicroPython developer-forum/issue-tracker findings** — not just "is this still correct," but
+  specifically "is there now a newer/better/more-complete way to do this that a stale construct is
+  missing out on." Examples of the kind of thing this is meant to catch: a newly widened set of
+  types accepted by `micropython.const()`, or real `asyncio`-level timeout/cancellation support
+  being added to something that previously had none (e.g. `socket.getaddrinfo()` — see
+  SPECIFICATION.md Part F.2 for its current can't-be-timeout-wrapped status, which is exactly the
+  kind of fact a version bump could change and silently invalidate). This is a standing practice,
+  not a one-time pass — repeat it every time `toolchain/versions.toml`'s MicroPython `ref` moves.
+  **Last run: 2026-10-06, no newer stable MicroPython release than `v1.29.0`.** The last pin move,
+  1.28.0 → 1.29.0 (2026-09-10), is recorded in SPECIFICATION.md Part F.5 — including what it found
+  (`I2C`/`SPI` `deinit()` are no-ops on rp2, a new `OSError(EIO)` raise site on 32+ byte SPI reads)
+  and what it ruled out (`extmod/asyncio/` byte-identical between the tags, so `getaddrinfo()`'s
+  status is unchanged).
   This same pass also covers `toolchain/micropython_overrides.py`'s own anchor checks (SPECIFICATION.md
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
-  matches) is still part of this practice, the same as everything else it covers.
+  matches) is still part of this practice, the same as everything else it covers. For the
+  `modlwip_eagain` override it also asks whether the new pin carries a real upstream fix for
+  micropython issue 19704 (PRs 19705/19708) — if so the override is removed, not re-anchored (owner,
+  2026-09-30).
+- **Every external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30:
+  "Check all external dependencies for updates - both modules, repos and tooling, just
+  everything."): the vendored `ext/` code (only as an unmodified upstream tag or commit), the stub
+  packages, every Python and npm tool with its lock, Node, the GitHub Actions pins and every other
+  fetched source. Read each update's changelog and the diff of the parts this repo uses; fix what
+  breaks with no regression at every level and both GC stages; take the fixes the project profits
+  from; and re-check every standing workaround in SPECIFICATION.md Part F.9, removing it for the
+  clean form where upstream fixed it. Pins stay pinned; the bullet above runs whenever the
+  MicroPython ref moves.
 
 ## Hard rules
 
@@ -63,8 +77,9 @@ information):
   owner exception" rule no longer has anything to apply to; the one precedent it set (the
   `ConfigManager`/`LockedValue` wrong-module-import fix) stays as a precedent for any future
   severity-justified exception to a similar "don't touch this WIP/vendored code" rule elsewhere in
-  this file (see the `python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring rule and the
-  `modules/_boot.py` rule below), not something that needs a live `improved-quality/` to reapply.
+  this file (see the `legacy/firmware/python/CommonDrivers/microdot.py`/`ext/microdot.py` vendoring
+  rule and the `legacy/firmware/modules/_boot.py` rule below), not something that needs a live
+  `improved-quality/` to reapply.
 - **`src/` is where files land once they're fully reviewed and tested** — formula/logic
   correctness checked, input validation and exception-safety audited, unit tests written and
   passing (see "Code quality tooling" below and SPECIFICATION.md Part E). **SPECIFICATION.md Part D
@@ -85,159 +100,182 @@ information):
   logging, and — for anything website-facing — the `src/`↔`js/` cross-language mirror obligation):
   before writing any new function/module, check Part G's catalog first for an existing primitive to
   reuse or model on, and re-run Part G.3's grep-for-the-shape check across the codebase as part of
-  this same scan, not as a separate pass. **If the scan surfaces a discrepancy — one file diverging
-  from another, or from a guideline — do not silently fix it.** Report it and discuss how to resolve
-  it before changing anything, the same "flag, don't silently change" treatment Part D.1 already
-  gives formula/behavior discrepancies, applied here to cross-file consistency instead.
-- **Do not "fix" `modules/_boot.py`'s `import sensortask.py`** (literal `.py` in the import
-  statement) without testing on real hardware first. It works reliably today, yet the import
-  machinery says it should not: traced through the pinned source at 1.28 and re-verified at 1.29.0,
-  a plain `import sensortask` is unambiguously the correct form and the dotted one should raise,
-  because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace). **That
-  does not make the file safe to change** — the trace is against 1.28/1.29, while these units run
-  1.26, whose own import machinery was never separately verified and never will be (the legacy tree
-  gets no work, below). So the *mechanism* is answered and the *rule* stands unchanged: changing it
-  blind risks breaking every deployed unit's autostart, and extrapolating from a different version's
-  source is exactly the blind change this rule exists to prevent.
-- **`python/CommonDrivers/microdot.py` is vendored third-party code.** Don't restyle or "clean
-  up" it; if you need to change its behavior, treat that as a deliberate fork decision, not
-  routine editing. **It is not, however, current** — an earlier note here claimed it matched
-  current upstream exactly; re-checked against every upstream tag on 2026-09-10, it's an
-  *untagged snapshot between `v2.0.1` and `v2.1.0`* (it carries v2.1.0's `functools.partial`
-  dispatch, `max_age is not None`, `.gz` extension handling and the `URLPattern`
-  `segments`/`regex` rewrite, but not the rest), leaving it ~441 lines behind the `v2.6.2` that
-  `ext/microdot.py` pins. Unmodified relative to that snapshot, as far as can be told — no local
-  fork, just old. Bringing the *deployed* tree forward is a reflash-campaign decision, not a
-  drive-by edit (BACKLOG.md). **`ext/microdot.py` is the same policy applied to the refactor
-  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.6.2` and
-  verified byte-identical to it on 2026-09-10), replacing the
+  this same scan, not as a separate pass. A consistency discrepancy (naming, ordering, signatures,
+  uniform behaviour) is fixed directly and logged (owner, 2026-09-25: 'Change, don't flag, if not
+  according.'); a formula or behaviour discrepancy follows Part D.1's flag-first path.
+- **Do not "fix" `legacy/firmware/modules/_boot.py`'s `import sensortask.py`** (literal `.py` in
+  the import statement) without testing on real hardware first. It works reliably today, yet the
+  import machinery says it should not: traced through the pinned source at 1.28 and re-verified at
+  1.29.0, a plain `import sensortask` is unambiguously the correct form and the dotted one should
+  raise, because it requires "sensortask" to resolve as a package (BACKLOG.md #1 has the trace).
+  **That does not make the file safe to change** — the trace is against 1.28/1.29, while the legacy
+  units run 1.24.1, whose import machinery was never separately verified. So the *mechanism* is
+  answered and the *rule* stands unchanged: changing it blind risks breaking every deployed unit's
+  autostart, and extrapolating from a different version's source is exactly the blind change this
+  rule exists to prevent. The dev bench never flashes the legacy build, so any such test runs on one
+  of the owner's own legacy units, as the owner's operation (owner, 2026-09-26).
+- **`legacy/firmware/python/CommonDrivers/microdot.py` is vendored third-party code.** Part of
+  the reference-only legacy tree: never edited (legacy rule below). It is upstream commit `482ab6d`
+  (#251), byte-identical to it: an untagged snapshot four commits after `v2.0.6`, before `v2.0.7` —
+  unmodified, just old (agent, 2026-09-30, compared against the upstream repository). A legacy unit
+  moves forward only by the owner's reflash with fresh setup, following the reflash runbook, never
+  by editing this copy. **`ext/microdot.py` is the same policy applied to the refactor
+  target**: a plain, unmodified vendored copy of upstream Microdot (pinned to tag `v2.7.0` and
+  verified byte-identical to it on 2026-10-06), with upstream's own stubs vendored byte-identical at
+  `ext/typings/microdot/` under the same policy (owner, 2026-10-01), replacing the
   `improved-quality/microdot.py` copy that had drifted into an unintentional fork (removed). No
-  edits, no restyling, ever — any behavior change needed is handled by wrapping/calling it from our
-  own code (see "Microdot / REST layer" below), never by touching this file. `src/` and `ext/` are
-  copied flat into one directory and frozen together for the refactored firmware build, which is why
-  they live at the same directory depth in the repo.
+  edits, no restyling, ever (owner, 2026-09-25) — any behavior change needed is handled by
+  wrapping/calling it from our own code (see "Microdot / REST layer" below), never by touching these
+  files. `src/` and `ext/` are copied flat into one directory and frozen together for the refactored
+  firmware build, which is why they live at the same directory depth in the repo.
 - **The UART message protocol (`src/asy_uart_comm.py`, promoted) has a second
   implementation in C on the Arduino peer — so its wire format, accept/reject rules and recovery
   timings are a two-implementation contract, not this repo's to change unilaterally.** The protocol
   itself is specified in SPECIFICATION.md Part J; **every change made to it gets an entry in
-  `UART_C_PORT_CHANGELOG.md`** (a temporary file, deleted once the C side is reconciled — its source is in the repo since
-  2026-09-13, `arduino/libraries/Async_UART_Comm/`, but reconciling it is outside this project's
-  scope, owner, 2026-09-24), classified as protocol-level ("must be mirrored in C") or Python-internal ("no C
-  impact") — the second class is logged too, so a future session doesn't re-derive it. Prefer a
+  `UART_C_PORT_CHANGELOG.md`** (kept until the post-audit C reconciliation, and deleted there; its
+  source is in the repo since 2026-09-13, `arduino/libraries/Async_UART_Comm/`, and reconciling it
+  is post-audit only (owner, 2026-09-25: 'the C port stays out of scope, anything there is
+  post-audit only')), classified as protocol-level ("must be mirrored in C") or Python-internal ("no
+  C impact") — the second class is logged too, so a future session doesn't re-derive it; the
+  protocol module and the layers below it where a change could reach the wire are in scope, and a
+  changed `const()` wire constant or recovery timing is Class A by definition. Prefer a
   protocol-level change that only tightens *receiver* validation over one that alters emitted bytes:
-  the former keeps a mixed-version pair working, the latter is a coordinated flag-day needing the
-  owner's decision. **The C side's conformance is expected but unverified** — it mirrors the Python
-  implementation's intended behavior, but may not share every known flaw and may have its own, so
-  every Class A entry must be re-verified against that C source whenever it is reconciled. **It is, however,
+  the former keeps a mixed-version pair working, the latter is a coordinated flag-day, which the
+  Python side may lead (owner, 2026-09-11, `6a2d43e`, paraphrase); until the C reconciliation the
+  wire format is not touched (owner, 2026-09-25: 'the UART wire format is not touched'). **The C
+  side's conformance is expected but unverified** — it mirrors the Python implementation's intended
+  behavior, but may not share every known flaw and may have its own, so every Class A entry must be
+  re-verified against that C source whenever it is reconciled. **It is, however,
   prototypical — exactly like this repo's legacy Python — with no device in the field running it**
   (owner, 2026-09-11), so no change recorded in the changelog can break a live pair: both sides are
   reflashed together at reconciliation, and the flag-day framing above describes an obligation to
   record, not a deployment risk to weigh. Real hardware running the C side exists and can be
   connected to the dev board, making the promoted module testable against the genuine second
   implementation rather than only against itself over the bench crossover jumper. **The protocol's
-  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — owner
-  decision, 2026-09-11: no version or capability negotiation is to be added, so a mismatched pair
-  is diagnosed (it looks like a dead link that nonetheless carries bytes), never negotiated. Two
-  further standing facts: the module is **standalone/self-contained** (its BME688/BSEC first use case is out
-  of scope and constrains nothing), and it is **strictly initiator/responder, never a symmetric
-  peer** — there is no collision arbitration, so simultaneous initiation is out of contract.
-  **`dev` carries two instances across its permanent crossover jumper and `wozi` carries none** —
-  wozi is never physically flashed, so wiring it there would add an untestable peripheral. The
-  protocol's own wire constants and recovery timings live in `src/asy_uart_comm.py` as `const()`
-  values; a change to any of them is Class A by definition. **Construction is buildgen-driven, like
-  every other driver**: `devices/dev.toml` declares the two instances as `driver = "uart_link"`
-  (`role = "initiator"`/`"responder"`, one on each of `[bus.uart0]`/`[bus.uart1]`) — `src/
-  asy_uart_link_driver.py`'s `UartLinkExerciser` wraps one role's `UART_Comm` plus the bench-only
-  banner/echo application logic and transfer/failure counters (none of which belong in the
-  standalone protocol module itself); resolved via `buildgen/driver_registry.py`'s `_OVERRIDES`
-  table like `fram`/`neopixel`/`notification`, since it isn't a `SensorReader`/`SensorReaderConfig`
-  subclass either — but unlike those three it is not a singleton (`SINGLETON_SERVICE_DRIVERS`
-  excludes it), since a device wires exactly one initiator + one responder.
-- **`dev` config is a bench rig only** — its quirks (e.g. LED/Neopixel REST routes referencing an
-  object that's never instantiated) are explicitly out of scope. Don't fix them as if they were
-  bugs.
+  parameters (`payload_size`, `timeout`, baud) stay fixed by out-of-band agreement** — no version
+  or capability negotiation, now or at the C reconciliation (owner, 2026-09-11; reconciliation
+  clause confirmed 2026-09-26), so a mismatched pair is diagnosed (it looks like a dead link that
+  nonetheless carries bytes), never negotiated. Two further standing facts: the module is
+  **standalone/self-contained** (its BME688/BSEC first use case is out of scope and constrains
+  nothing) (owner, 2026-08-20, `b6cb852`; 2026-09-11, `32b136f`), and it is **strictly
+  initiator/responder, never a symmetric peer** — there is no collision arbitration, so simultaneous
+  initiation is out of contract. Each link receives through a DMA ring, so a flash write holding
+  interrupts off loses no frame (owner, 2026-10-05; SPECIFICATION.md F.5.8). **`dev` carries two
+  instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
+  variant. dev, two instances') **and `wozi` carries none** — wozi is never flashed, so the
+  peripheral would be untestable there (agent, 2026-09-11). The protocol's own wire constants and
+  recovery timings live in `src/asy_uart_comm.py` as `const()` values. **Construction is
+  buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
+  `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
+  `[bus.uart0]`/`[bus.uart1]`) — `src/asy_uart_link_driver.py`'s `UARTLinkDriver` wraps one role's
+  `UARTComm` plus the bench-only banner/echo application logic and transfer/failure counters (none
+  of which belong in the standalone protocol module itself); resolved via
+  `buildgen/driver_registry.py`'s `_OVERRIDES` table like `fram`/`neopixel`/`notification`, since it
+  isn't a `SensorReader`/`SensorReaderConfig` subclass either — but unlike those three it is not a
+  singleton (`SINGLETON_SERVICE_DRIVERS` excludes it), since a device wires exactly one initiator +
+  one responder.
+- **`dev` meets every device's bar**: its generated config is held to the same standard as every
+  device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
   it is never physically flashed or bench-tested; only the dev board is, and only ever will be.**
-  WoZi's own correctness is established entirely through the mock/twin/unit-test suite (`tests/`),
-  which stays the source of truth for it and is unaffected by any real-hardware work. The dev bench
-  exists solely to physically validate the underlying shared mechanisms (I2C/SPI/WiFi/webserver/
-  etc.) that wozi's own code also uses — **a passing dev-bench result is treated as valid for wozi
-  too**, provided the code actually under test is genuinely dev-native (dev's own correct pins/
-  config via its own entry point), never wozi's own hardcoded build forced onto dev hardware. That
-  specific mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded pins — flashed onto the dev
-  bench) produced two false "bugs" once — it
-  isn't a shortcut for testing wozi, it's testing nothing at all, and must not be repeated.
-- **The legacy tree is reference-only, forever — it never gets work of any kind** (project owner,
-  2026-09-11). `python/`, `modules/` and the four `build-*.sh` scripts exist to be *read*: to check
-  what the deployed system actually does, and how a driver behaved in the field. Nothing in this
-  repo's quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage,
-  no shellcheck cleanup, no tests, no refactor. A finding *about* legacy code is worth recording
+  (owner, 2026-09-03, `a19691c`) WoZi's own correctness is established entirely through the
+  mock/twin/unit-test suite (`tests/`), which stays the source of truth for it and is unaffected by
+  any real-hardware work. The dev bench exists solely to physically validate the underlying shared
+  mechanisms (I2C/SPI/WiFi/webserver/etc.) that wozi's own code also uses — **a passing dev-bench
+  result is treated as valid for wozi too**, provided the code actually under test is genuinely
+  dev-native (dev's own correct pins/config via its own entry point), never wozi's own hardcoded
+  build forced onto dev hardware. That mismatch (`scripts/build_firmware.py wozi` — wozi's hardcoded
+  pins — flashed onto the dev bench) is an invalid test by construction (owner, 2026-09-03,
+  `5730e72`, paraphrase) — it tests nothing, and must not be repeated; dev's own firmware covers the
+  shared SCD30/SGP40 bus (owner, 2026-09-26: 'dev is different hardware, wozi cannot run on it and
+  never will').
+- **The legacy tree is reference-only, forever — it never gets work of any kind** (owner,
+  2026-09-11). `legacy/firmware/` (the legacy units' firmware tree: `legacy/firmware/python/`,
+  `legacy/firmware/modules/`, `legacy/firmware/html_raw/`, the four `legacy/firmware/build-*.sh`,
+  `legacy/firmware/update_and_install.txt`) and `legacy/dev_drivers/` (the dev unit's 2026-08-27
+  snapshot), described in `legacy/README.md`, exist to be *read*: what the owner's legacy units
+  (MicroPython 1.24.1) actually do, and how a driver behaved in the field. Nothing in this repo's
+  quality apparatus is ever extended to them — no lint/typecheck scope, no CI build stage, no
+  shellcheck cleanup, no tests, no refactor. The one change it ever got is its byte-identical move
+  into `legacy/` (owner, 2026-09-25). It may run in a scratch directory as a published-value
+  reference, nothing committed (owner, 2026-09-26). A finding *about* legacy code is worth recording
   only when it explains current behavior; it is never a to-do. Don't propose closing any of these
-  gaps — the gap is the decision. `modules/_boot.py`'s `import sensortask.py` (above) is this same
-  rule applied to one specific file, not an exception to it.
+  gaps — the gap is the decision. `legacy/firmware/modules/_boot.py`'s `import sensortask.py`
+  (above) is this same rule applied to one specific file, not an exception to it.
+  `tests_scripts/test_legacy_paths.py` fails on any current file naming a pre-move path.
   **On tests specifically**, since that half predates the rest: the agreed plan is to understand
   the current system first, confirm what is already promoted into `src/`, and write tests as part
   of that refactor. This does **not** contradict SPECIFICATION.md Part E's testing requirements —
   those describe what the *refactored* code must eventually have, and `src/math_helpers.py` +
   `tests/test_math_helpers.py` were the first instance of exactly that. The rule is "never test
-  the old `python/`/`modules/` code", not "defer all tests".
+  the legacy code (`legacy/`)", not "defer all tests".
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
   stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
-  password, present in both `python/CommonDrivers/async_connect.py` (deployed, pre-refactor) and
-  `src/asy_wifi_service.py` (promoted) — accepted risk (only exploitable by someone in physical
-  WiFi range of a unit that's already lost its real WiFi), not something to "fix" by
-  rotating/removing without the project owner's direction. `improved-quality/async_connect.py`
-  itself was removed once its functionality was fully promoted to `src/asy_wifi_service.py`/
-  `asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo referenced it anymore.
-- **For a genuinely wedged I2C bus/sensor, the hardware watchdog is the accepted backstop, not a
-  software fix to chase** — settled, don't re-propose an I2C-level timeout mechanism; full
-  reasoning (including why `socket.getaddrinfo()` belongs in this same bucket, and which calls
-  genuinely *can* be timeout-wrapped) is in SPECIFICATION.md Part F.2.
+  password, present in both `legacy/firmware/python/CommonDrivers/async_connect.py` (deployed,
+  pre-refactor) and `src/asy_wifi_service.py` (promoted) — accepted permanently as a known
+  limitation under the trusted-home-LAN threat model (owner, 2026-09-26; first accepted 'for now',
+  owner 2026-07-13, `b64857d`). `improved-quality/async_connect.py` itself was removed once its
+  functionality was fully promoted to
+  `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo
+  referenced it anymore.
+- **A wedged I2C bus or sensor recovers through the recovery ladder, smallest blast radius first —
+  retry, the participant's own reset, bus clear and controller re-init, task restart, reboot, the
+  hardware watchdog last** (owner, 2026-09-30); a transfer in flight cannot be interrupted, so the
+  ladder acts after it returns an error, and a call that never returns is the watchdog's — the
+  current state, until a genuine non-blocking alternative reliably exists (owner, 2026-07-24; BACKLOG
+  deferred goal). Full ladder and which waits can be timeout-wrapped: SPECIFICATION.md Part F.2.
 - **The same backstop applies to a WiFi link stuck in a CYW43-firmware-level `isconnected()` false
-  positive — a power cycle/`hard_reset()` is a deliberately stable, intended recovery feature, not
-  a fallback to fix away.** Confirmed inherently safe: every real flash write is reachable only
+  positive — a power cycle/`hard_reset()` stays the recovery, because the owner judged an
+  independent reachability probe not worth its complexity (owner, 2026-09-04, `655e4f9`, paraphrase;
+  confirmed 2026-09-26).** Confirmed inherently safe: every real flash write is reachable only
   through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
-  in flight. Settled, don't propose an independent reachability-probe mechanism; full reasoning and
-  real bench-hardware timing data are in SPECIFICATION.md Part F.2 (BACKLOG.md keeps only a closed
-  pointer, open question 6).
+  in flight. Full reasoning and real bench-hardware timing data are in SPECIFICATION.md Part F.2
+  (BACKLOG.md keeps only a closed pointer, open question 6).
 - **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
-  `MemoryError` as a blanket policy** — see SPECIFICATION.md Part F.2 for the full rule and its
-  narrow exception.
-- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution) —
-  unlike `python/CommonDrivers/microdot.py`/`ext/microdot.py`, which stay hands-off/vendored (see
-  above). Full note: SPECIFICATION.md Part F.4.
+  `MemoryError` as a blanket policy** — worth closing only where a real graceful-degradation
+  alternative exists (owner, 2026-09-25: 'if the function has a true alternative flow for graceful
+  degradation on expectable memory errors, this indeed shall be implemented'); see
+  SPECIFICATION.md Part F.2 for the full rule and its narrow exception.
+- **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution)
+  (owner, 2026-07-13, `b64857d`) — unlike `legacy/firmware/python/CommonDrivers/microdot.py`/
+  `ext/microdot.py`, which stay hands-off/vendored (see above). Full note: SPECIFICATION.md
+  Part F.4.
 - **Long-blocking operations must not stall timing-sensitive work** — standing design principle
   for all new code; full reasoning (including the retired `get_long_block_lock()` mechanism) is in
   SPECIFICATION.md Part F.3.
-- **Boot latency is not a metric to optimise for its own sake** (WP6, owner-established
-  requirement). These devices run for months between reboots, and a short period of API
-  unavailability right after one is normal for any networked device — a multi-second one-time delay
-  at boot is not itself a problem. What *is* a problem is approaching the hardware watchdog's own
-  timeout while the one-time boot `setup()` batch runs, which is what `SystemService.feed_watchdog()`
-  exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a slow boot by trimming that batch,
-  reordering it for speed, or otherwise treating its wall-clock cost as a defect — the accepted
-  target is "does not starve the watchdog," not "boots fast."
+- **Boot latency is not a metric to optimise for its own sake** (owner, 2026-09-16, the owner's
+  background as migrated by `abe4009f`, paraphrase). These devices run for months between reboots,
+  and a short period of API unavailability right after one is normal for any networked device — a
+  multi-second one-time delay at boot is not itself a problem. What *is* a problem is approaching
+  the hardware watchdog's own timeout while the one-time boot `setup()` batch runs, which is what
+  `SystemService.feed_watchdog()` exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a
+  slow boot by trimming that batch, reordering it for speed, or otherwise treating its wall-clock
+  cost as a defect — the accepted target is "does not starve the watchdog," not "boots fast."
 - **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
   wait state.** They may time out and handle it; they may not wait synchronously (project owner,
   2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:
   `machine.UART.read()/readinto()` wait out `timeout_char` for every byte asked for that has not
   arrived yet, inside `mp_event_handle_nowait()`, which never yields — so a plain "read the whole
   frame after `POLLIN`" holds the loop for the frame's entire wire time (measured: 4.4ms per
-  53-byte frame at 115200 baud). The fix needs **both** a clamp to `uart.any()` on every read and a
-  real yield between rounds; the clamp alone is *worse*, because `ready()` returns `True` with no
-  `await` and the block simply moves into a Python loop. The yield lives in `ready()` itself, which
-  every read loop goes through, so the invariant is one guarantee in one place rather than a
-  per-call-site obligation. **The mirror-image failure is just as forbidden**: `ready()` polls, so a
+  53-byte frame at 115200 baud), which is why the driver never calls `machine.UART`'s receive side.
+  The fix needs **both** a clamp to the bytes already received on every read — the DMA receive
+  ring's fill level (owner, 2026-10-05) — and a real yield between rounds; the clamp alone is
+  *worse*, because `ready()` returns `True` with no `await` and the block simply moves into a Python
+  loop. The yield lives in `ready()` itself, which every read loop goes through, so the invariant is
+  one guarantee in one place rather than a per-call-site obligation. **The mirror-image failure is
+  just as forbidden** (agent, 2026-09-11, extending the owner's rule): `ready()` polls, so a
   listener waiting on traffic that may never come must not idle at the transaction rate — an
   instance takes a second, slower `poll_idle_ms` for a wait with no deadline (Part F.5.9). Full
   account and the measured before/after: SPECIFICATION.md Parts F.5.8 and F.5.9 — F.5.8 also states
   why this must **not** be generalised to `asy_i2c_driver.py`/`asy_spi_driver.py`, whose peripherals
   expose no partial-read API to clamp to (that case stays F.2's watchdog backstop).
-- **A new bus-facing (I2C/SPI) device gets bus-hazard test coverage across all four test tiers that
-  apply to it — never forget this** (project owner's explicit, standing direction): same-device
-  read-vs-write concurrency, cross-device interleaving if it shares a bus in either variant, and an
-  address/command sweep, in `tests/test_bus_hazard_multi_device.py` (mock), `tests/
+- **A new device on a shared resource — an I2C/SPI bus and every other shared resource (locks, FRAM,
+  the config file, sockets, the heap) — gets hazard test coverage across all four test tiers that
+  apply to it — never forget this** (owner, 2026-09-03, `da3a5b5`: 'note down to never forget this';
+  every shared resource, owner, 2026-09-26): same-device read-vs-write concurrency, cross-device
+  interleaving if it shares a bus in either variant, and an address/command sweep, in
+  `tests/test_bus_hazard_multi_device.py` (mock), `tests/
   test_digital_twin_bus_hazard_concurrency.py` (digital twin), `tests_hardware/flash/
   test_bus_concurrency.py` + `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py`
   (real hardware, dev bench — that script is what the flash-tier sweep actually runs; the old
@@ -247,26 +285,30 @@ information):
   NVM or the RP2040's own flash filesystem must respect: SPECIFICATION.md Part C.8's own standing
   rule, right after its general-call hazard finding.
 - **No test may inflict avoidable wear on real hardware — the host's own SSD included, not just the
-  target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). On the *target*
-  this is already institutionalized and stays that way: every operation that spends a
-  limited-endurance write cycle is a default-off, explicitly-opted-into marker with a tracked budget
-  — `flash_cycle` ("counts against the 'no extra flash cycles' constraint"), `persistence_write`
+  target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). FRAM writes are
+  not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the *target* this is already
+  institutionalized and stays that way: every operation that spends a limited-endurance write cycle
+  is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle` ("counts
+  against the 'no extra flash cycles' constraint"), `persistence_write`
   (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
-  writes through `config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
+  writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
   `scd30_extra_write` AND-gated on top for a *second* SCD30 NVM write beyond the routine
   per-session one, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
-  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, a gated run is
-  invisible to `scripts/_require_clean_hardware_run.sh`'s own skip check, which is why its verdict
-  names the deselected count: "clean" there means "everything that ran, passed", not "everything
+  `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, the hardware verdict
+  (`scripts/_hardware_verdict.py`, reading the run record) lists every deselected test with the gate
+  flag that deselected it: "clean" there means "everything that ran, passed", not "everything
   ran". **The gate covers the write a test OWNS, not one it is merely reached through** (owner's
   clarification, 2026-09-18): a persisting write that *is* the thing under test is optional and
   belongs behind the marker, while one that is a shared **prerequisite** — a fixture forcing a mode
   many tests then exercise, a recovery path — stays unmarked and allowed, since gating it would
-  deselect the very tests it exists to enable. The choice the flag offers is therefore "test
-  everything and accept the higher wear" versus "test everything that matters and keep wear as low
-  as it can go", never "spend zero"; `tests_scripts/test_persistence_write_marker_completeness.py`
+  deselect the very tests it exists to enable. A boot on a fresh filesystem writes each config
+  file once with its defaults; a test that boots one reaches those writes as a prerequisite, never
+  as the write under test, so they stay unmarked (owner, 2026-10-01). The choice the flag offers is
+  therefore "test everything and accept the higher wear" versus "test everything that matters and
+  keep wear as low as it can go", never "spend zero";
+  `tests_scripts/test_persistence_write_marker_completeness.py`
   pins the prerequisite set by name so a new one is triaged against that rule rather than joining it
   silently. **The same lens applies to host I/O, where it had been missing**: a
   test must not generate mass filesystem churn, and an invariant gets proven *structurally* — assert
@@ -282,7 +324,7 @@ information):
   exactly that regression). When a test seems to need brute-force scale, that is the signal to find
   the invariant instead.
 - **A session needs the project owner's go-ahead, given directly in that session's own
-  conversation, before running anything against real hardware** (any `mpremote` command, `nmcli`/
+  conversation (owner, 2026-09-25), before running anything against real hardware** (any `mpremote` command, `nmcli`/
   `iw`/`iptables` call, `picotool`, or `tests_hardware/`'s own suite runners) — a go-ahead given to
   a different session, or to an earlier session that already ended, does not carry over; if there's
   any doubt whether the current conversation actually has it, ask first rather than assume. Once
@@ -294,16 +336,19 @@ information):
   this rule is just the standing gate for whether to start at all.
 - **A destructive test of the bench host's own network/access config (tearing down `br0`/its
   slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
-  the host) must keep a recovery dead-man's-switch continuously armed for the entire risk window —
-  never touch live network state with none armed.** Confirmed the hard way (2026-09-04): a one-shot
-  timer consumed by an earlier dry run gave zero protection to the real run that followed, costing
-  the bench Pi4's own SSH access. Full incident account, the recovery script, and the validated
-  arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
+  the host) must keep a recovery dead-man's-switch continuously armed (owner, 2026-09-26) for the
+  entire risk window — never touch live network state with none armed.** Confirmed the hard way
+  (2026-09-04): a one-shot timer consumed by an earlier dry run gave zero protection to the real run
+  that followed, costing the bench Pi4's own SSH access. `env --tier bench` arms one itself around
+  every bridge change it makes: verified armed before the change, disarmed only once `br0` has an
+  address and the default route, left armed when the change fails. Full incident account, the
+  recovery script, and the validated arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
 - **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
   NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
-  creation.** A synthesized bridge MAC can drift across the bridge's own lifetime, silently
-  orphaning the router's static DHCP reservation. Full incident account and the fix (both in
-  `ensure_bench_bridge()` and `dev_legacy/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
+  creation.** (agent, 2026-09-04, `28c5d8e`: MAC drift observed on the bench) A synthesized bridge
+  MAC can drift across the bridge's own lifetime, silently orphaning the router's static DHCP
+  reservation. Full incident account and the fix (both in `ensure_bench_bridge()` and
+  `tests_hardware/README.md`'s manual recipe): SPECIFICATION.md Part B.13.
 - **Memory-safety discipline: design for zero `MemoryError`s first, catch→degrade→restart→watchdog
   as a last-resort backstop, `gc`-default-first, always applied — not only once something has
   already broken.** Any new function/module that holds, builds, or grows an allocation whose size
@@ -314,31 +359,35 @@ information):
   unavoidable, uncontrollable conditions, not an accepted outcome of ordinary or hammering load — a
   caught `MemoryError` that merely didn't crash anything is still a design defect to fix at its
   source, never a passing test result; never let it bubble into an unguarded crash of an otherwise-
-  healthy request/task; trust `system_service.py`'s task supervisor to restart a task that still
+  healthy request/task; trust `asy_system_service.py`'s task supervisor to restart a task that still
   dies (already confirmed to catch `MemoryError` too — it's a direct `Exception` subclass, not
   nested under `OSError`); let the hardware watchdog be the final backstop once restarts alone
   aren't keeping up. **Standing rule, every test, not only new stress/hammer ones, digital-twin runs
-  and real hardware alike**: the whole suite must pass with `gc.threshold(-1)` (MicroPython's own
-  real default) and with zero `MemoryError`s — caught-and-logged included — and with no
-  `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or the
-  test's own setup propping the result up, *before* it's ever run again with the project's chosen
-  `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both halves are
-  machine-checked, not left to whoever reads the log**: the twin tier checks each run's log
-  (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own output
-  and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
-  about. Don't relax that to "only on a failing file". **There are FOUR such gates — the unit tier,
-  the twin tier and the flash/bench real-hardware soak gates — and all four match `MemoryError` OR
-  `memory allocation failed`, the second being the half that matters** — `src/` logs `str(e)`, not
+  and real hardware alike (owner, 2026-09-26: 'The firmware must be rock solid without the
+  threshold, and the threshold is finally applied to move it even further into the stable region,
+  but must be tested and verified by itself.')**: the whole suite must pass with `gc.threshold(-1)`
+  (MicroPython's own real default) and with zero `MemoryError`s — caught-and-logged included — and
+  with no `gc.collect()` calls or other nonstandard `gc` settings anywhere in the business logic or
+  the test's own setup propping the result up, *before* it's ever run again with the project's
+  chosen `gc.threshold(32768)` enabled (which the full suite must then also still pass). **Both
+  halves are machine-checked, not left to whoever reads the log**: the twin tier checks each run's
+  log (`scripts/_digital_twin_ci_suite.py`) and `scripts/test.sh` searches each test file's own
+  output and fails the run, a passing file included — a degrade-and-pass is the silent case the bar is
+  about. Don't relax that to "only on a failing file". **Every memory gate — the unit tier, the twin
+  tier, the `tests_scripts` twin boots, the JS live twins and cross-browser smoke, and the flash and
+  bench real-hardware gates — matches `MemoryError` OR `memory allocation failed`, the second being
+  the half that matters** — `src/` logs `str(e)`, not
   the class, so a real caught-and-degraded allocation failure never contains the word
   "MemoryError" at all (SPECIFICATION.md Part I.4(e) has the full account and the `py/runtime.c`
   citation). Matching the class name alone catches only crashes, which is the case the bar is
   *not* about; don't narrow any gate back to it. The hardware pair reads one shared
-  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS`, and
-  `tests_scripts/test_memory_error_gate_agreement.py` keeps all four agreeing — and keeps the
+  `tests_hardware/harness.py` `MEMORY_ERROR_MARKERS` (the JS gates `tests_js/_memory_markers.js`), and
+  `tests_scripts/test_memory_error_gate_agreement.py` keeps them all agreeing — and keeps the
   suite's own deliberate injections worded clear of what they grep for, since a message borrowing
   the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
-  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  `gc.collect()` between the units of the two one-time lists, both run by `SystemService`
+  (`run_setups()` and `start_tasks()`'s starter loop), and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
   `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
   devices and asserts the survivors still land low, with a suppressed control arm asserting the
@@ -370,34 +419,35 @@ information):
   layout — WIFI/NTP/WEBSERVER joined this list under WP1's implicit-FRAM-wiring rule; every
   `CFGMGR_<name>` logger joined it too under WP2, the same rule applied to `ConfigManager` — a
   FRAM-wired `SensorReaderConfig`-based module's own config-write failure history now survives a
-  reboot exactly like the module's own history already did; `dev`-only, its two `uart_link`
+  reboot exactly like the module's own history already did, except `CFGMGR_SCD30`, which stays RAM-only (owner, 2026-09-29, on the
+  FRC settings: 'no extra FRAM chunk'; SPECIFICATION.md Part A.7); `dev`-only, its two `uart_link`
   instances (`UART_init`/`UART_resp`) joined under WP3, once `devices/dev.toml` wired
   `fram_target = "fram"` onto each — `wozi` has no UART instances, so this addition is `dev`-only)
-  BEFORE issuing
-  any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** This is the one piece
-  of real
-  diagnostic evidence a reboot itself doesn't erase, and clearing it is irreversible — confirmed the
-  hard way (2026-09-08): a single real `WDT_RESET` was investigated down to "GC ruled out, cause
-  otherwise undetermined" and closed as a singular, not-systematically-reproducible event without
-  ever checking whether a FRAM-backed module had logged something right before it — by the time
-  this was thought of, ordinary bench cleanup (`ResetErrors`, run several times since as routine
-  hygiene) had already overwritten every FRAM-backed log's history, permanently losing whatever
-  evidence might have existed. The same check applies inside the digital twin
-  (`digital_twin/_fram_chip.py` models the same chunked FRAM layout) — check before clearing there
-  too, not just on real hardware. **One caveat, found the hard way (2026-09-11): this rule assumes
-  a board that has been running normally.** An isolated-driver device script builds its own
-  `AsyFramManager` over the same chip, and the allocator is deterministic, so its first chunk *is*
-  production's first chunk — a flash/bench-tier run overwrites the real error logs, and a script
-  leaving a well-formed chunk behind fabricates a plausible-looking one (a seeded `errno=5` read
-  back as SYSTEM's `"Task N ended with exception"`, chased down as if real). Before treating a
-  FRAM-backed log as evidence, check what has been run against that board;
-  `tests_hardware/README.md` has the full mechanism.
+  BEFORE issuing any `PUT /status {"ResetErrors": true}` call or otherwise clearing state.** (owner,
+  2026-09-25 and 2026-09-26) This is the one piece of real diagnostic evidence a reboot itself
+  doesn't erase, and clearing it is irreversible — confirmed the hard way (2026-09-08): a single
+  real `WDT_RESET` was investigated down to "GC ruled out, cause otherwise undetermined" and closed
+  as a singular, not-systematically-reproducible event without ever checking whether a FRAM-backed
+  module had logged something right before it — by the time this was thought of, ordinary bench
+  cleanup (`ResetErrors`, run several times since as routine hygiene) had already overwritten every
+  FRAM-backed log's history, permanently losing whatever evidence might have existed. The same
+  check applies inside the digital twin (`digital_twin/_fram_chip.py` models the same chunked FRAM
+  layout) — check before clearing there too, not just on real hardware. **One caveat, found the hard
+  way (2026-09-11): this rule assumes a board that has been running normally.** An isolated-driver
+  device script builds its own `FRAMManager` over the same chip, and the allocator is
+  deterministic, so its first chunk *is* production's first chunk — a flash/bench-tier run
+  overwrites the real error logs, and a script leaving a well-formed chunk behind under the
+  production owner's name fabricates a plausible-looking one (a seeded entry read back as a
+  plausible SYSTEM task end (test data, not firmware evidence), chased down as if real). Before
+  treating a FRAM-backed log as evidence, check what has been run against that board; `tests_hardware/README.md` has the full mechanism.
 
 ## Working agreements
 
 - Long-term goal: fully understand the current (production) system in detail, then check what's
-  already been addressed/promoted well into `src/`. The refactor should end up
-  with the *same top-level features*, just more consistent/stable — not a feature change.
+  already been addressed/promoted well into `src/`. The refactor should end up with the *same
+  top-level features* (owner, 2026-07-13; restated 2026-09-25: 'My expectation is that the current
+  features remains across the changes done here'), just more consistent/stable — not a feature
+  change.
 - When a fact in this file or BACKLOG.md turns out to be stale (version drift, changed upstream
   API, etc.), update the doc in the same session rather than silently working around the
   discrepancy.
@@ -409,6 +459,21 @@ information):
   value. This already had to be corrected once (a merge re-accumulated ~800 lines of per-file
   "bug found, fixed" narrative in BACKLOG.md) — treat pruning history back out as routine
   maintenance whenever an item resolves, not a one-off cleanup.
+- **Decision records (owner, 2026-09-26: the five prevention rules, answered '4. yes')**: (1) every
+  decision statement names actor and date, "(owner, YYYY-MM-DD)" or "(agent, YYYY-MM-DD)"; decision
+  vocabulary without an actor is not written; (2) an owner decision quotes the owner's words and the
+  question, in the commit message and the doc; a paraphrase is marked "paraphrase"; an agent
+  recommendation stays the agent's even when accepted; (3) compaction, migration, proofreading and
+  comment-cap edits never change actor, qualifier ("for now", "until …"), scope or foreclosure — the
+  commit says "no meaning change" or names the change; (4) an owner question is asked in session or
+  entered in BACKLOG.md's one owner-question list with its date, numbered, a decision in at most 10
+  words, then its options each with its consequence, describing effects per device and bus;
+  "flagged for the owner", "owner's call" and "revisit" appear nowhere else, and nothing cites a
+  temporary plan by section or number; (5) `tests_scripts/test_decision_vocabulary.py` and
+  `tests_scripts/test_citations.py` fail on actorless decision vocabulary and on citations to
+  missing files, headings or numbered decisions (existing text allow-listed until rewritten; the
+  list only shrinks). No owner trace never means the owner did not decide; the most recent owner
+  decision wins (owner, 2026-09-26: 'in case of changes by myself take my most recent decision').
 - **Every module gets exactly one header comment block — module/function/class `"""..."""`
   docstrings in Python, the equivalent leading `/** ... */`/`//` block in JS — capped at 3 lines,
   prefer fewer: a concise header, not an essay. This applies to all code in the repo, not just
@@ -425,7 +490,8 @@ information):
   short comment right next to the code it explains otherwise — never dropped outright. **Machine-read
   tag lines are data, not commentary, and are exempt**: `# @web`, `# @web-group`, `# @wiring`,
   `# @value-wiring`, `# @limits` and `# @requires` are buildgen's input, one line per field by
-  construction (SPECIFICATION.md Part L.6.4) — the prose introducing them is not exempt. **JSDoc
+  construction (SPECIFICATION.md Part L.6.4), and `# @tunable` (`// @tunable` in JS) is the
+  tunable register's (Part N) — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
   checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
@@ -441,27 +507,26 @@ information):
   at zero for Python and shell in all eight scopes; JS (JSDoc `@param`/`@returns` continuation lines
   not being commentary), CSS and the config files stay review-enforced (a titled `# ---- X ----`
   banner counts as a prose line; only a bare rule is punctuation).
-- Prefer flagging genuinely ambiguous/architecturally significant decisions to the project owner
-  over guessing — several open questions in BACKLOG.md exist precisely because the code's actual
-  intent wasn't obvious from reading it alone.
 - When changing a sensor driver's behavior, verify against the legacy driver's own actually-proven
   field behavior, not just judged correct against internal code-review logic in isolation.
-- **Step-session workflow, standing practice for any substantial unit of refactor/audit work**
-  (originated during the `improved-quality/` → `src/` wiring effort's five-plus-one step sessions,
-  still the expected shape for a comparable future unit of work — a new driver promotion, a new
-  audit pass, etc.): (1) refine the task's own scope into a detailed list — goals, doc links, and
-  the criteria that make the branch/session done — doing real research first (datasheets, current
-  MicroPython/Microdot docs, legacy driver code) rather than restating a one-line ask; (2) ask up to
-  10 top-level clarifying questions (what needs deciding, the realistic options, the consequences of
-  each), resolving as much as possible from project context/internal docs/legacy code first, but
-  raising a genuinely blocking or architecturally significant decision at any point, not only in
-  this round; (3) write the full set of unit tests first (TDD) against the criteria the refined
-  scope settled on; (4) write the implementation against those tests, refining until every test
-  passes and the result is lean, not just "technically satisfies the tests"; (5) add unit tests for
-  the resulting functional code, maximizing coverage; (6) stop and report back to the project owner
-  before doing anything more — merging, starting the next unit of work, or any scope beyond what was
-  just built is not the session's own call. A session can come back with a blocking question at any
-  point in this sequence, not only at the end.
+- **Workflow for substantial work** (owner, 2026-09-26: 'superseded by the workflow description
+  recorded in this session earlier, but quite close to option a'; paraphrase of the workflow
+  recorded 2026-09-25/26): research and cross-check first — code, docs, datasheets, external
+  sources, harvest (owner, 2026-09-25: 'cross-check them … very important with external sources like
+  repos, documentation, datasheets'); owner questions only at requirement recording and in a
+  consolidation run, never during execution (owner, 2026-09-25: 'at the recording of the
+  requirements … or at the pre-work consolidation and extension run'); tests first, then the
+  implementation, then coverage tests; a 'pause' is a self-set sync point — commit, push, the full
+  local suite at both GC stages, CI green watched through event hooks only, a status note — not a
+  wait for the owner (owner, 2026-09-25; owner, 2026-09-26: 'stop timed checks. Do hooks only.'); no
+  owner stop-points inside a unit, the report comes at its end (owner, 2026-09-26); an unforeseen
+  decision during execution is never asked: take the more conservative, more easily reversible
+  option grounded in sources, and log it as decided on the owner's behalf for review; hardware and
+  out-of-scope items are parked (owner, 2026-09-25); an apparent contradiction with an owner
+  requirement is a fine-tuning question, not a conflict (owner, 2026-09-25: 'they surely are not.
+  Such cases always mean that there is a topic to be fine tuned'); a CI failure is a flake only if
+  the provider confirms an outage and one re-run with no code change passes (owner, 2026-09-25: 'Do
+  not ignore any test or run failures').
 
 ## Code quality tooling
 
@@ -495,8 +560,9 @@ information):
   Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
   identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
   deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
-  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied; revisit
-  when actionlint learns it. **Adding a SHA-pinned third-party action means bumping that SHA by
+  actionlint 1.7.12 rejects that as invalid, so the two gates cannot both be satisfied (agent,
+  2026-09-10, `bfaf4c6`): re-enable when actionlint accepts `uses: $/…` (checked at each actionlint
+  pin bump). **Adding a SHA-pinned third-party action means bumping that SHA by
   hand** — no Dependabot is configured.
 - **Scope is eight directories**: `src/`, `tests/`, `digital_twin/`, `buildgen/` (the
   device-TOML-to-firmware-module generator, SPECIFICATION.md Part L.4), `toolchain/`,
@@ -504,31 +570,34 @@ information):
   `device_scripts/` subtree (real MicroPython code pushed to the board, checked alongside
   `src/`/`tests/` in the main mypy pass) for mypy, since the rest of `tests_hardware/`
   is host-side pytest code that goes through `host_typecheck.ini`'s dedicated pass below instead
-  (see that file's own docstring). `buildgen/` follows the same split as `digital_twin/`: ruff
+  (see that file's own docstring). A new file in a scope joins ruff and mypy (and, if
+  MicroPython-target, the Unix-port tests) from its first commit (agent, 2026-07-22), and so does
+  every new generator, validator or host module (owner, 2026-09-10, `fc6afbe`: 'add all build
+  scripts to the full CI'). `buildgen/` follows the same split as `digital_twin/`: ruff
   checks it directly, but mypy needs `host_typecheck.ini`'s own separate invocation (below) since
   it's genuinely CPython-target host tooling — it parses TOML via the real stdlib `tomllib` and
   walks driver source via the real stdlib `ast`, never imports `src/` itself (real MicroPython-only
-  names like `machine`/`neopixel` aren't available under plain CPython there). The pre-refactor
-  deployed codebase (`python/`, `modules/`) has no lint/type config yet; extending scope there is a
-  separate future decision, not assumed by this setup. All eight are expected to stay fully clean — every
-  scope in this setup is fully-reviewed, freely-editable code (see "Hard rules" above), not WIP;
-  there's no tracked-debt scope left to compare `digital_twin/` against since `improved-quality/`
-  was deleted (see "Hard rules" above). `digital_twin/`'s own
+  names like `machine`/`neopixel` aren't available under plain CPython there). The legacy tree
+  (`legacy/`) is never in any lint, type or CI scope (legacy rule above). All eight are expected to
+  stay fully clean — every scope in this setup is fully-reviewed, freely-editable code (see "Hard
+  rules" above), not WIP; there's no tracked-debt scope left to compare `digital_twin/` against
+  since `improved-quality/` was deleted (see "Hard rules" above). `digital_twin/`'s own
   type-check is a **separate** mypy invocation (`digital_twin/typecheck.ini`, run unconditionally by
   `scripts/typecheck.sh` regardless of its own args — as is `host_typecheck.ini`'s
   build-chain pass) rather than folded into the main
   `[tool.mypy]` pass — mypy resolves each bare `machine`/`network`/`neopixel` module name to exactly
   one file per run, so this package's own hardware fakes and the real `typings/` board stubs can
   never both be checked correctly in one invocation. `digital_twin/machine.py`/`network.py`/
-  `neopixel.py` (a straight `Duplicate module named "machine"` collision with `tests/machine.py`
-  otherwise — confirmed directly, not the softer resolution-priority hijack `tests/network.py`'s own
-  exclude guards against) and `digital_twin/launch.py`/`run_generic_integration.py`/
-  `segfault_stress_repro.py`/every `tests/test_digital_twin_*.py` (attr-
-  defined noise on every twin-only API the real board stub doesn't declare, e.g.
-  `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` — confirmed directly, including
-  one real `mypy src tests`-only finding this design caught that a from-scratch `mypy` run missed)
-  are therefore excluded from the main `[tool.mypy]` pass and checked correctly by the dedicated
-  pass instead — SPECIFICATION.md Part B.15 has the full account of all three passes.
+  `neopixel.py`/`rp2.py` (a straight `Duplicate module named "machine"` collision with
+  `tests/machine.py` otherwise, and the same for `rp2` against `tests/rp2.py` — confirmed directly,
+  not the softer resolution-priority hijack `tests/network.py`'s own exclude guards against) and
+  `digital_twin/launch.py`/`run_generic_integration.py`/ `segfault_stress_repro.py`/every
+  `tests/test_digital_twin_*.py` (attr- defined noise on every twin-only API the real board stub
+  doesn't declare, e.g. `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` —
+  confirmed directly, including one real `mypy src tests`-only finding this design caught that a
+  from-scratch `mypy` run missed) are therefore excluded from the main `[tool.mypy]` pass and
+  checked correctly by the dedicated pass instead — SPECIFICATION.md Part B.15 has the full account
+  of all three passes.
 - **Unit tests run under a real MicroPython Unix-port interpreter, not pytest/CPython** — "as close
   to the real environment as possible" means the actual runtime, not CPython plus MicroPython-
   flavored stubs — see SPECIFICATION.md Part E.1 ("Why not pytest"). `scripts/test.sh` builds that
@@ -547,8 +616,8 @@ information):
   Part E.1 has the current account, including the `devices/*.toml` ordering constraint that
   concurrency creates). `tests_scripts/` — together with `scripts/`, `toolchain/` and `buildgen/`,
   the host-side build chain it exercises, plus `tests_hardware/`'s own host-CPython pytest code —
-  **is** linted and type-checked (project owner's direction: "add all build scripts to the full
-  CI"), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
+  **is** linted and type-checked (owner, 2026-09-10, `fc6afbe`: 'add all build scripts to the full
+  CI'), but through `host_typecheck.ini`'s dedicated mypy pass rather than the main `[tool.mypy]`
   one: all of it is genuinely CPython-target host tooling needing mypy's real bundled typeshed, not
   the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
   doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
@@ -563,15 +632,20 @@ information):
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline, which README.md's own "Test coverage" section also points at rather than restating.
-  **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21): `build-standard`,
-  built **without** `MICROPY_PY_SYS_SETTRACE`, is the test rig every plain run uses, while
-  `build-settrace` carries the flag and is `--coverage`'s alone; `ports/rp2`'s firmware build never
-  gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
-  `toolchain/setup_toolchain.py` builds both. **Why the flag cannot simply stay compiled in, the
-  measured 4-5x allocation inflation it causes, and why the build directory's name no longer
-  identifies its variant: SPECIFICATION.md Part E.5.2** — the operational consequences are that
-  `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds on a mismatch,
-  so don't re-diagnose a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
+  **Three Unix-port binaries are built, not one.** The first two split on
+  `MICROPY_PY_SYS_SETTRACE` (owner decision, 2026-09-21): `build-standard`, built **without** it, is
+  the test rig every plain run uses, while `build-settrace` carries the flag and is `--coverage`'s
+  alone; `ports/rp2`'s firmware build never gets it either way. The third, `build-lwip` (owner,
+  2026-09-30), is the settrace-free standard variant built over loopback lwIP with the firmware's
+  own patched `modlwip.c` (SPECIFICATION.md B.14.4); it runs `tests/lwip_host/` alone, and not under
+  `--coverage`. `scripts/test.sh` picks by mode and directory, and `build_unix_port()` and
+  `build_unix_lwip_port()` in `toolchain/setup_toolchain.py` build all three. **Why the flag cannot
+  simply stay compiled in, the measured 4-5x allocation inflation it causes, and why the build
+  directory's name no longer identifies its variant: SPECIFICATION.md Part E.5.2** — the operational
+  consequences are that `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and
+  rebuilds on a mismatch, on a missing `toolchain-record.json`, and on a plain run without a plain
+  `build-lwip` (every toolchain dir set up before the third binary lacks both), so don't re-diagnose
+  a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
   any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
   **That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided and done**, and the
   allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
@@ -596,20 +670,21 @@ information):
   `uv sync` with three attempts **before** `scripts/test.sh`, which then finds the environment
   current and rebuilds nothing. Same reasoning as the `if: !cancelled()` edge below — a lint tool's
   problem must not erase the answer the tests give — applied to the dependency build rather than to
-  the job graph. Don't "simplify" the retry away; and if a test lane ever goes red with no test
-  named in the summary, read the `uv`/build output before the test output.
+  the job graph. Don't "simplify" the retry away (owner, 2026-09-26); and if a test lane ever goes
+  red with no test named in the summary, read the `uv`/build output before the test output.
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
   hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
   `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
-  follow fails.** `needs:` alone also implies success-gating, which was never chosen here (that
-  job's own comment says the sequencing "isn't required" for the hang) and is actively harmful: a
-  red `lint-and-typecheck` silently SKIPS every Python test lane. That is not hypothetical — it is
-  why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had never once run on the branch
-  that introduced `select = ["ALL"]`, and it concealed that for the branch's whole life. Keep the
-  sequencing; never restore the gating. `digital-twin-e2e` is the deliberate exception — its
-  `needs: unit-tests` comment states fail-fast as the actual intent, so it stays gated.
+  follow fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also implies success-gating, which
+  was never chosen here (that job's own comment says the sequencing "isn't required" for the hang)
+  and is actively harmful: a red `lint-and-typecheck` silently SKIPS every Python test lane. That is
+  not hypothetical — it is why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had
+  never once run on the branch that introduced `select = ["ALL"]`, and it concealed that for the
+  branch's whole life. Keep the sequencing; never restore the gating. `digital-twin-e2e` is the
+  exception — its `needs: unit-tests` comment states fail-fast as the actual intent, so it stays
+  gated.
 - **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
   non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
   readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
@@ -620,7 +695,7 @@ information):
   object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
 - **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
-  `sensortask_wozi.build_system()`/`start_and_check_tasks()` task graph to a clean, non-cancelled
+  `sensortask_wozi.build_system()`/`start_tasks()` task graph to a clean, non-cancelled
   completion (e.g. the digital twin's now-retired `--soak` flag finishing normally, not via
   timeout — the soak check itself has since moved host-side, SPECIFICATION.md's "Driver/DUT
   process separation" Part, but any other run reaching a clean non-cancelled completion hits the
@@ -634,24 +709,25 @@ information):
   asyncio has no parent/child task tracking. `tests/test_*.py` files run one Unix-port process per
   file (see `scripts/test.sh`'s own comment) sharing one process-wide task queue across every test
   function in that file, so this only ever surfaced as the *whole process* hanging at exit after the
-  last test's own "N/N passed" line printed — not a per-test symptom, and easy to mistake for an
+  closing "P/T passed, F failed, S skipped" line printed — not a per-test symptom, and easy to mistake for an
   unrelated infra issue. Fixed in `tests/microtest.py`: `run()` now always calls `sys.exit()`
   (0 on an all-pass run, 1 on any failure) instead of only exiting on failure — this forces the
   process down immediately regardless of what's still parked in the task/IO queue, rather than
   relying on the interpreter's own idle-detection ever reaching zero pending tasks. This is exactly
   the same "explicit tracked-task-list + cancel-all in `finally`" shape `digital_twin/launch.py`'s
   own `main()` already used for its own (much smaller, self-spawned) task list — the one difference
-  is the generic entry point drives the real, much larger `system_service.py`-supervised task
+  is the generic entry point drives the real, much larger `asy_system_service.py`-supervised task
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
-  the `system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
-  hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
-  existed to leak — the soak test's own bounded-completion path was previously unreachable.
+  the `asy_system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
+  hung forever, and the task starters then ran only after it, so they never even got called and no
+  sibling tasks ever existed to leak — the soak test's own bounded-completion path was previously unreachable.
 - **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
   in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
   `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
-  installs a fresh event loop and task queue; the outer loop's already-queued tasks then belong to
-  the replaced queue, and resuming the outer loop walks freed pointers. Reduced to a 12-line
+  is `run_until_complete(create_task(coro))` on the same task queue — no fresh loop is installed
+  (mechanism: SPECIFICATION.md Part F.1) — so the nested call re-enters the scheduler under the task
+  that is still running. Reduced to a 12-line
   reproducer (`create_task()` a parked sleeper, then `asyncio.run()` inside the running coroutine),
   and **not** load-, heap-size- or timing-dependent: it is deterministic and uncatchable, so
   `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no
@@ -661,7 +737,7 @@ information):
   scope, never from inside a coroutine** - build the fixture at the top of the test, then pass it
   into the one coroutine `run()` drives. Audited across `tests/`, `digital_twin/` and `src/`: no
   other call site does this. Don't re-diagnose a test file that segfaults partway through with no
-  `N/N passed` line as a memory bug in the code under test.
+  closing `P/T passed` line as a memory bug in the code under test.
 - **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
   `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
@@ -702,10 +778,11 @@ information):
   value is not fixed and has moved with the suite's own shape** (8M → 32M when WP1+WP2 made the
   monolithic `test_sensortask.py` build all 6 devices' graphs in one process, then back down to
   today's 16M once that file was split per device — root-caused, not overridden);
-  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here.
-  Don't re-diagnose a flaky `MemoryError` in a heavy test file as a new code bug before checking the
-  flag is still in place — and don't raise it as the fix, which that history is a standing example
-  against.
+  SPECIFICATION.md Part E.3.1 is the authoritative history, kept there rather than duplicated here,
+  and Part N's `l1.unix_heapsize` row holds the value. Don't re-diagnose a flaky `MemoryError` in a
+  heavy test file as a new code bug before checking the flag is still in place — and don't raise it
+  as a fix (agent, 2026-09-17); a per-file heap override hiding a symptom is never used (owner,
+  2026-09-17, `1e2c001`, paraphrase).
 - **Local test runs pin `$TZ=UTC` (Unix port only).** The Unix port's `time.mktime()`
   (`ports/unix/modtime.c`) calls the host's real libc `mktime()`, which interprets its input as
   **local time** per the process's `$TZ` — unlike the deployed rp2 firmware, whose
@@ -729,7 +806,9 @@ information):
   (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
   53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
   boot (`asy_udp_socket.py`), so the two tiers overlap safely.
-- **`ruff format` is deliberately not used anywhere** — line breaks are hand-chosen throughout this
+- **Tuned values carry `@tunable` and a Part N row, both changed in the same change** (owner,
+  2026-09-25: 'updated on changing parameters or whenever such parameter is added').
+- **`ruff format` is not used anywhere** (agent, 2026-07-13) — line breaks are hand-chosen throughout this
   codebase; `line-length = 320` (ruff's own ceiling) plus an `E501` ignore keep this a non-issue even
   if `format` is ever run by accident. Lint rule selection is `select = ["ALL"]` — every non-preview
   rule ruff ships, narrowed only by an explicitly justified `ignore` list (`pyproject.toml`'s
@@ -737,11 +816,12 @@ information):
   choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
   chose.
 - **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
-  — the project owner wants ruff to flag existing bare excepts as a tracked to-do, not silence them
-  before they're fixed (test-driven-development framing, confirmed directly).
+  — the project owner wants ruff to flag existing bare excepts (owner, 2026-07-13) as a tracked
+  to-do, not silence them before they're fixed (test-driven-development framing, confirmed
+  directly).
 - **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
-  Confirmed safe at runtime on both the deployed 1.26 pin and the refactor's 1.29.0 target by
-  testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
+  Confirmed safe at runtime on 1.26 and on the refactor's 1.29.0 target (the legacy units run
+  1.24.1; not tested there) by testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed
   annotation works with no import needed) — MicroPython parses but never evaluates annotation
   expressions at all, so this isn't even a runtime-support question, just a style one. `typing.Union`
   needs `from typing import Union`, which isn't guarded by `TYPE_CHECKING` in every file that still
@@ -749,9 +829,9 @@ information):
   `|` is strictly better here, not just newer. This is already machine-enforced: ruff's `UP007` rule
   (part of the enabled `UP` selection) flags every `Union[...]` as a finding. `src/` and `tests/`
   are already 100% `|`-style with zero `Union[...]` occurrences. The
-  `Union[...]` usages that do exist today are confined to `python/` (deployed, frozen, no lint
-  config at all) — leave those alone under the usual out-of-scope-editing hard rule; don't drive-by
-  "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
+  `Union[...]` usages that do exist today are confined to the legacy tree (`legacy/`;
+  reference-only, never linted) — leave those alone under the usual out-of-scope-editing hard
+  rule; don't drive-by "fix" `Union` → `|` in a file you're not otherwise promoting/refactoring.
 - **mypy runs full `--strict`, minus exactly one flag.** All three configs set `strict = true`
   (spelled that way, not as the individual flags, so a deliberate mypy version bump surfaces any
   newly added strict check as a finding to decide on), plus `no_implicit_optional`/`warn_unreachable`
@@ -768,8 +848,8 @@ information):
   decorators make every handler they wrap "untyped" no matter how well the handler itself is
   annotated. Does **not** disable the `assignment` error code — the old `improved-quality/mypy.ini`
   did, though that was never a deliberate choice.
-- **`method-assign` stays globally enabled, and `src/` must never suppress it** (project owner's
-  direction). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
+- **`method-assign` stays globally enabled, and `src/` must never suppress it** (owner,
+  2026-09-10). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
   mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
   its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
   exemption, deliberately: a scope-wide override would stop marking the individual real sites.
@@ -810,8 +890,10 @@ information):
   `[micropython] ref` (the single source of truth for the firmware version target) and installs
   the matching `<major>.<minor>.<patch>.*` stub release, failing with a clear, actionable error
   (not a silent fallback) if `ref` isn't a plain `vX.Y.Z` tag or no matching stub release exists
-  upstream yet (stub releases can lag a new MicroPython release). Installed into `typings/`
-  (gitignored) — **deliberately not** a
+  upstream yet (stub releases can lag a new MicroPython release). The version uv resolved is printed
+  (`== MicroPython stubs: <version> (for firmware <X.Y.Z>)`) and recorded in `typings/.stub-spec`
+  under the requested spec; a missing or different record wipes `typings/` before the install.
+  Installed into `typings/` (gitignored) — **deliberately not** a
   `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
   typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
   — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also
@@ -822,9 +904,9 @@ information):
   project-wide to `tests/machine.py`'s fake module, not the real `typings/machine.pyi` board stub**
   — confirmed directly by running `mypy src` alone (no `tests` in scope): the real stub's `Timer`
   class has no zero-argument constructor overload (every overload requires a positional `id: int`
-  first argument), so an `src`-only run raises 12 `call-overload` errors across `system_service.py`
-  (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2), `asy_sgp40_driver.py`,
-  `asy_scd30_driver.py` and `asy_bmp3xx_driver.py` that never surface in the actual, documented
+  first argument), so an `src`-only run raises 13 `call-overload` errors (stubs `1.29.0.post1`, re-checked
+  2026-10-06) across `asy_system_service.py` (4), `asy_ntp_client.py` (3), `asy_wifi_service.py` (2),
+  `asy_sgp40_driver.py`, `asy_scd30_driver.py`, `asy_bmp3xx_driver.py` and `asy_isl29125_driver.py` that never surface in the actual, documented
   `mypy src tests` invocation. Bare `Timer()` allocate-now/`init()`-later **is** valid runtime
   usage, so this one is a genuine **gap in the third-party `micropython-rp2-rpi_pico_w-stubs`
   package**, not a bug in any promoted driver, and `tests/machine.py`'s fake models it correctly.
@@ -854,7 +936,7 @@ information):
   cases, and `warn_unused_ignores = true` would then fail the day the stubs are fixed.
 - **`improved-quality/microdot.py` no longer exists** — it was a confirmed *unintentional* fork of
   vendored Microdot, removed and replaced with a fresh, unmodified sync at `ext/microdot.py`
-  (pinned to tag `v2.6.2`; see "Hard rules" above and "Microdot / REST layer" below).
+  (pinned to tag `v2.7.0`; see "Hard rules" above and "Microdot / REST layer" below).
 
 ## Build-environment verification (clean chroot: Ubuntu 24.04 **and** Debian trixie)
 
@@ -870,9 +952,10 @@ unchanged; only the "before pushing, always" framing is.
 For any change to `pyproject.toml`, `scripts/`, `toolchain/versions.toml`, or
 anything else touching the dev-tooling/build-environment setup, the verification is end-to-end inside a
 genuinely clean chroot — not just in whatever sandbox a session happens to be running in.
-**Two targets, both required**: Ubuntu 24.04 "noble" (GCC 13.x, the OS the project's docs target)
-and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The trixie target" below
-for why one is not enough. A session sandbox typically already has Python 3.11+, `uv`, build tools, etc.
+**Two targets, both required** (owner, 2026-09-11): Ubuntu 24.04 "noble" (GCC 13.x, the OS the
+project's docs target) and Debian trixie (GCC 14.x, what the bench Pi4 actually runs) — see "The
+trixie target" below for why one is not enough. A session sandbox typically already has Python
+3.11+, `uv`, build tools, etc.
 pre-installed, which can mask real gaps. **This already caught a real bug once**: a
 `requires-python = ">=3.10"` that let `uv sync` build a venv without `tomllib` (stdlib only since
 3.11), invisible in a sandbox whose default Python happened to already be 3.11+, and only found by
@@ -939,9 +1022,10 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # failure lands minutes in. Confirmed by hitting it (2026-09-10).
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
-# apt_packages, used by both its `setup`/`test` subcommands) - without it, `scripts/test.sh`
-# fails with "sudo: command not found" even though a real dev machine (where the calling user has
-# sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
+# apt_packages, used by its `setup` subcommand, which `scripts/test.sh` runs when it finds no built
+# toolchain; `test` runs no apt) - without it, `scripts/test.sh` fails with "sudo: command not
+# found" even though a real dev machine (where the calling user has sudo rights but isn't already
+# root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
 # libcap2-bin is the same class of gap, found the same way (a real run, 2026-09-10): it provides
@@ -978,8 +1062,8 @@ rm -rf "$CHROOT"
 
 **The trixie target, and why noble alone is not enough.** The noble chroot above pins GCC 13.x,
 so a compiler-version-sensitive build break is invisible to it — confirmed the hard way: the
-mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around
-by `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
+mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, suppressed for
+`ctr_drbg.c` alone by the build files `toolchain/micropython_overrides.py` generates) is a GCC >= 14
 diagnostic, and the build treats any `warning:` as a hard failure — so noble never saw it. It was
 found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced:
 it is the documented target OS, and a gap appearing only on the *older* compiler would be just as
@@ -1042,8 +1126,8 @@ what a passing run must show and Part B.7 ("Evidence this actually works") for w
   (owner decision, 2026-09-18); don't rely solely on the sandbox's own successful run either way.
 - **The project owner has explicitly authorized creating pull requests proactively, at any time,
   without asking first** — this is a standing exception to any general "don't open a PR unless the
-  user explicitly asks" caution an operator/harness prompt might otherwise apply. Confirmed
-  directly by the project owner; don't re-ask in future sessions.
+  user explicitly asks" caution an operator/harness prompt might otherwise apply (owner,
+  2026-07-13, `dddaafa`); don't re-ask.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right
@@ -1060,7 +1144,7 @@ Read Part A.4 for anything needing that level of detail — nothing below duplic
 ## Microdot / REST layer
 
 **Moved to `SPECIFICATION.md` Part A.5.** Covers what Microdot's own `ext/microdot.py` (vendored,
-v2.6.2, see "Hard rules" above for the vendoring policy) already guarantees per-request — the
+v2.7.0, see "Hard rules" above for the vendoring policy) already guarantees per-request — the
 blanket exception catch, its one real gap (exceptions during response writing), connection-task
 isolation, and the `errorhandler()` status-code-vs-exception-class distinction — versus what this
 project's own REST layer still has to add. Read Part A.5 before touching the REST/error-handling

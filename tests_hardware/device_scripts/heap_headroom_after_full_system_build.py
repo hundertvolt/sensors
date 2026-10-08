@@ -5,6 +5,7 @@ where the survivors sit (the block map, measured host-side by heap_map.py). SPEC
 import asyncio
 import gc
 
+import machine
 import micropython
 import sensortask_dev
 
@@ -15,10 +16,13 @@ gc.threshold(-1)
 # Doubling/halving search bounds for the largest contiguous block. 64 B is below anything worth
 # reporting; 192 KB is already above the RP2040's whole 264 KB SRAM, so the search always converges
 # from a real failure rather than running off the top.
+# @tunable l3.heap_headroom_after_full_system_build_probe_min = 64
 _PROBE_MIN = 64
+# @tunable l3.heap_headroom_after_full_system_build_probe_max_kib = 192
 _PROBE_MAX = 192 * 1024
 # Rereads allowed when the probe pins its own buffer (see _report_checked). Three is generous: one
 # has always been enough on the twin, at every heap size tried.
+# @tunable l3.heap_headroom_after_full_system_build_probe_retries = 3
 _PROBE_RETRIES = 3
 
 # The largest contiguous allocation this firmware could be asked to make when these floors were
@@ -30,12 +34,15 @@ _WORST_CASE_ALLOCATION = 16_384
 # requirement, so lowering them would only cost sensitivity.
 
 # Requirement, not a fitted floor: room for the worst case twice over. 32,768 B is 12% of the
-# RP2040's 264 KB SRAM, where the retired 80,000 B floor was 30% - a third of physical memory, which
-# is what the owner retired it for on 2026-09-19. Nothing here may be raised to fit a reading.
-_MIN_LARGEST_BLOCK = 2 * _WORST_CASE_ALLOCATION
+# RP2040's 264 KB SRAM; the retired 80,000 B floor was 30%, which is why the owner retired it on
+# 2026-09-19. Nothing here may be raised to fit a reading (agent, 2026-09-19).
+# @tunable l3.heap_headroom_after_full_system_build_worst_case_factor = 2
+_WORST_CASE_FACTOR = 2
+_MIN_LARGEST_BLOCK = _WORST_CASE_FACTOR * _WORST_CASE_ALLOCATION
 # Survivor volume. Every [HW] reading of a fully built dev graph is 87,760-87,968 B, so this is
 # ~14% over the measured cost of the object graph itself, and catches a regression that adds
 # permanent objects rather than one that scatters them.
+# @tunable l3.heap_headroom_after_full_system_build_max_used = 100_000
 _MAX_USED = 100_000
 
 
@@ -101,10 +108,14 @@ async def _main() -> None:
     # comparing against what was already there, which is what makes that check independent of the
     # suite position (MEASUREMENTS M3.9, M2.4).
     _dump_map("baseline")
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, run_setups() feeds it
     try:
-        await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
+        await sensortask_dev.build_system(watchdog=wdt, cfg_path="", web_host="127.0.0.1", web_port=8080)
+        # main()'s next step: the measured graph is the one a real boot leaves, setup survivors included.
+        await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
     except Exception as e:
-        print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
+        print(f"RESULT: FAIL build_system() or its setup list raised on real hardware: {e!r}")
         return
     # Deliberately measured at MicroPython's own reactive-only default first: a headroom figure that
     # only holds with a proactive threshold isn't headroom (CLAUDE.md's memory-safety ladder).
@@ -114,6 +125,7 @@ async def _main() -> None:
     # Control first at the unchanged threshold, so the next line's difference cannot be confused
     # with a difference between two probe runs at the same position (MEASUREMENTS M2.2).
     _report_checked("after_build_system_control")
+    # @tunable gc.threshold_bytes = 32768
     gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
     print(f"GC_THRESHOLD={gc.threshold()}")
     _report_checked("after_build_system_production_threshold")

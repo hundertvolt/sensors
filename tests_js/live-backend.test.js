@@ -3,12 +3,22 @@
 // the MicroPython toolchain/frozen website aren't built yet, rather than failing the suite.
 import { commands } from "vitest/browser";
 import { describe, expect, test } from "vitest";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
-describe("live digital-twin backend", () => {
+/**
+ * The display name the device's own generated definitions give its page.
+ * @param {string} device
+ * @returns {string}
+ */
+function displayNameOf(device) {
+    return /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)).device.displayName;
+}
+
+describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
     test(
         "the real website, driven by a real browser, round-trips a real PUT against a live twin",
         async () => {
-            const result = await commands.runLiveBackendSmoke();
+            const result = await commands.runLiveBackendSmoke(device);
 
             if (result.skipped) {
                 console.warn(`Skipping live-backend smoke check: ${result.reason}`);
@@ -16,7 +26,7 @@ describe("live digital-twin backend", () => {
             }
 
             expect(result.titleHasSensorStation).toBe(true);
-            expect(result.deviceName).toContain("wozi");
+            expect(result.deviceName).toContain(displayNameOf(device));
             // "Valid" or "Unchanged" both mean the backend accepted the write, matching every
             // other tier's acceptance predicate for this field (the twin suite's Run 1, Part
             // H.4's PUT-result vocabulary as the controller lowercases it on the wire).
@@ -32,11 +42,11 @@ describe("live digital-twin backend", () => {
 // teardown, with exit code 0 and no leftover twin. Opening a second page through the Commands
 // API's raw BrowserContext appears to miss Vitest's fast path; no other file here opens one.
 
-describe("live digital-twin backend, concurrent browser sessions", () => {
+describe.each(DEVICE_IDS)("live digital-twin backend, concurrent browser sessions: %s", (device) => {
     test(
         "several real browser tabs load the real website at once against one live twin",
         async () => {
-            const result = await commands.runLiveBackendConcurrentTabs();
+            const result = await commands.runLiveBackendConcurrentTabs(device);
 
             if (result.skipped) {
                 console.warn(`Skipping live-backend concurrent-tab check: ${result.reason}`);
@@ -47,7 +57,7 @@ describe("live digital-twin backend, concurrent browser sessions", () => {
             // own max_connections, so this bites harder the moment that ceiling is raised.
             expect(result.loaded).toBe(result.tabs);
             for (const name of result.deviceNames) {
-                expect(name).toContain("wozi");
+                expect(name).toContain(displayNameOf(device));
             }
         },
         90000, // real subprocess boot plus several real browser navigations in parallel - the

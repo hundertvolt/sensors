@@ -1,6 +1,6 @@
 # grkizi.toml - one of three "ArZi neu" units (own file for expected future hardware divergence
 # from klkizi/schlafzi), no bmp3xx.
-# Wiring sourced from modules/sensortask-neu.py (legacy, read-only reference).
+# Wiring sourced from legacy/firmware/modules/sensortask-neu.py (legacy, read-only reference).
 
 [device]
 name = "Grkizi"
@@ -13,8 +13,10 @@ hotspot_time_min = 8
 # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin - SPECIFICATION.md Part H.7. backlog
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
 max_connections = 6
+# A label only the tests read: its devices differ only in name and hostname (agent, 2026-09-14).
+hardware_family = "arzi-neu"
 
-# Mandatory-infra-to-instance links; each field optional, absence disables that feature.
+# Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
 [device.wiring]
 led_target = "neopixel"
 fram_target = "fram"
@@ -36,14 +38,14 @@ sck_pin = 18
 mosi_pin = 19
 miso_pin = 16
 
-# --- sensor drivers ---------------------------------------------------------------------------
+# --- sensor drivers -------------------------------------------------------------------------------
 
 [[instance]]
 driver = "scd30"
 name_ext = ""
 bus = "i2c0"
 irq_pin = 8
-trigger_sec = 3
+trigger_s = 3
 
 [instance.wiring]
 fram_target = "fram"
@@ -64,12 +66,13 @@ field = "Temp"
 source = "scd30"
 field = "Hum"
 
-# --- singleton services ------------------------------------------------------------------------
+# --- singleton services ---------------------------------------------------------------------------
 
 [[instance]]
 driver = "fram"
 bus = "spi0"
 cs_pin = 17
+# MB85RS64V, 8KB.
 max_size = 0x2000
 
 [[instance]]
@@ -86,7 +89,7 @@ driver = "notification"
 signal_sink = "neopixel"
 fram_target = "fram"
 
-# Per-signal getters - each optional; absence disables that specific warning signal.
+# Per-signal getters - each optional; absence disables that warning signal (owner, 2026-09-09).
 [instance.wiring.warn_co2]
 source = "scd30"
 field = "CO2"

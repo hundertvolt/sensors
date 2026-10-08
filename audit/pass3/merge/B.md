@@ -1,0 +1,36 @@
+# Pass 3 merge ledger — agent B (G3, G4)
+
+- P001 | G4/R15 | applied | State: generated `UtcTime` gated on `ntp_issynced()` (U18/U6); `codegen.py:588`, rp2 `main.c:141-145` checked
+- P004 | G4/R30 | applied | Req list gains the float `time.time()`/`gmtime()` and qstr-hash-width divergences; Unix `modtime.c` range corrected 65-74 → 63-73
+- P005 | G4/R26 | applied | State "holds" → the SCD30 dict-order site; unit U15 → U4 and "reject the combination" dropped, since owner-ranked G3/R36 already fixes the command order (U4) for a body carrying both
+- P035 | G3/R62 | applied | State: LED.S03 settled, no code change; legacy `neopixel_signal.py:170-185` and `Interv` ≥ 60 s checked
+- P036 | G3/R16 | applied | Req: power-on CS level; corrected the chip figures: MB85RS2MTA pull-up is 18-80 kΩ (not 28-180), needs CS > VDD × 0.7, tpu ≥ 250 µs (p.14, p.18); State: hardware in C
+- P040 | G3/R14 | applied | Req: optional probe message naming ENODEV/ETIMEDOUT; probe site `asy_i2c_driver.py:268-269` and v1.29.0 sources checked
+- P045 | G3/R21 | applied | State: NTP stop hooks take the OR46.a (2) verdict; UART entry-point order (U17, logged as Python-internal per the UART changelog rule); sites checked
+- P062 | G3/R03 | applied | State: CRC32 kept inside small ints (U12); "no table" added to stay with G4/R57's table decline
+- P065 | G4/R55 | applied | State: the two `continue` branches join the 16-byte yield (U13/U17); `asy_uart_driver.py:171-176` checked
+- P069 | G4/R44 | applied | State: negative `Content-Length` proof added; `stream.py:41-51`, `stream.c` checked
+- P073 | G3/R64 | not applied | overridden by LEAD_MERGE (replaced by L06)
+- P073 | G3/R36 | not applied | overridden by LEAD_MERGE (replaced by L04)
+- P073 | G4/R22 | not applied | overridden by LEAD_MERGE (replaced by L11)
+- P088 | G3/R03 | applied | Rank: controlled raise relabelled owner (H2.20); State: SPEC D.2 doc item in U14
+- P098 | G4/R46 | applied | Rank: L10 split into the owner's per-file heap-override rule and the agent's general flag rule
+- P101 | G3/R03 | not applied | overridden by LEAD_MERGE (becomes L15)
+- P108 | G4/R51 | applied | State: merged into the existing U25 clause for the same script; `import sensortask_dev` at :10 checked
+- P109 | G4/R03 | applied | State: `scheduler_saturation_drop.py` ADAPT, three KEEPs; unit U26 inferred (the line names none); `vm.c`, `machine_timer.c` checked
+- P110 | G4/R55 | applied | State: raw UART script folded and deleted; unit U26 inferred (the line names none)
+- P111 | G4/R64 | applied | State: A6 script clause replaced; U16 kept from the replaced text
+- P119 | G3/R29 | applied | State: added to the U26 doc list; line range corrected 764-765 → 763-765
+- P128 | G4/R41 | applied | State: per-store vs per-operation decision in U16; archive lines checked against the scratch copy of the `12640c2` archive
+- P129 | G4/R42 | applied | State: declined synchronous status-byte option recorded; archive lines checked
+- P131 | G3/R60 | applied | Req: checklist step; raise set corrected to HEAD: `SPIDevice` raises only `RuntimeError` (`asy_spi_driver.py:64, 66, 131, 157`), the `ValueError`/`NotImplementedError` of `a5fe9fd` are gone
+- L03 | G3/R06 | applied | Rank: fix approved (D4.64)
+- L03 | G3/R09 | applied | Rank: fix approved (D4.37)
+- L03 | G3/R23 | applied | Rank: fix approved (D4.62, D4.65)
+- L03 | G3/R38 | applied | Rank: fix approved (D4.53)
+- L03 | G3/R40 | applied | Rank: fix approved (D4.55)
+- L03 | G3/R51 | applied | Rank: fix approved (D4.66)
+- L04 | G3/R36 | applied | Req: TempOffs round-to-nearest; State: test in U15; `asy_scd30_driver.py:570` checked
+- L06 | G3/R64 | applied | title, Req and State as written; Rank also notes the owner row for the busy refusal; `asy_neopixel_driver.py:145-153` checked
+- L11 | G4/R22 | applied | State: SPEC F.2 doc item, hardware row, no boot-time bus clear
+- L15 | G3/R03 | applied | Req: CRC as a standing feature; Rank notes owner-confirmed
