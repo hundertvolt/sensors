@@ -43,12 +43,19 @@ run) and closing every finding in `RESULTS.md`.
   QoS 1 retransmission, the link check and every deadline.
 - **Reader** — `_reader_loop()`, created by the keeper after CONNACK, one per connection (a C.9 task-table
   row). It blocks on `Stream.readinto()` with no timeout, parses into the preallocated receive buffer,
-  answers PUBACK for inbound QoS 1 and dispatches. It never logs and never raises: its top records the
+  queues the PUBACK for inbound QoS 1 and dispatches. It never logs and never raises: its top records the
   reason in a field the keeper reads on its next tick, and the keeper persists it.
 - **The cancellation rule.** Exactly two things cancel a socket waiter: the keeper's teardown (which
-  cancels then awaits the reader, then closes the socket) and a `wait_for_ms()` timeout on a drain,
-  which is itself a teardown reason handled in the same tick. Nothing cancels the reader on a live
-  connection. A unit test pins it: a drain timeout always ends the connection.
+  cancels the reader, then closes the socket) and a `wait_for_ms()` timeout on a drain, which is itself
+  a teardown reason handled in the same tick. Nothing cancels the reader on a live connection. A unit
+  test pins it: a drain timeout always ends the connection. The teardown never awaits the cancelled
+  reader: MicroPython cannot tell the reader's cancellation from the keeper's own, so an `except
+  CancelledError` around that await swallowed a supervisor's cancel and left the keeper running (found
+  by the unit tier, 2026-10-08). `cancel()` takes the reader out of the poll set at once, and a
+  cancelled task's end is never reported, so nothing needs the await.
+- **PUBACKs are queued, not written by the reader**: the keeper writes them on its next tick, so every
+  write has one author and no PUBACK can land inside a running drain (which resets the stream's
+  pending output when it finishes).
 - **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Every
   `MQTTPubInterval` seconds it reads each source's `get_dict_data()` and enqueues one QoS 0 message per
   module; it never touches the socket.
@@ -57,11 +64,12 @@ run) and closing every finding in `RESULTS.md`.
   closes it with `wait_closed()` in a `finally` on every exit path (`Stream.close()` is a no-op).
   `asyncio.open_connection()` is never used: its `getaddrinfo()` and its untimed connect wait both
   leave a socket to the GC finaliser on a timeout (RESEARCH.md §4 fact 4). The CONNECT packet is
-  written before the TCP handshake completes (lwIP's `tcp_write()` accepts `SYN_SENT`); the drain
-  that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
-- **Writes** are `Stream.write()` calls from the keeper's tick and the reader's PUBACKs. Both are
-  synchronous, so packets never interleave; a partial socket write leaves the rest in the stream's
-  `out_buf`, which the keeper drains under `mqtt.drain_timeout_ms`.
+  written at once; a connecting socket refuses it with EAGAIN (`modlwip.c` `lwip_tcp_send()`, and
+  the Unix port alike), so it waits in the stream's buffer and the drain that follows is the connect
+  wait, bounded by `mqtt.connect_timeout_ms`.
+- **Writes** are `Stream.write()` calls from the keeper's tick alone, synchronous, so packets never
+  interleave; a partial socket write leaves the rest in the stream's `out_buf`, which the keeper
+  drains under `mqtt.drain_timeout_ms`.
 - **No lock of its own.** Every shared field is touched only between awaits. `wifi_mode_lock` is taken
   only around the `network_available_locked()` call and never across broker I/O; the DNS server is read
   before it (the NTP ordering).
