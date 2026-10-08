@@ -586,3 +586,19 @@ def test_cli_env_rejects_unknown_tier(repo_root: Path) -> None:
     result = _run_cli(repo_root, ["env", "--tier", "nope"])
     assert result.returncode != 0
     assert "invalid choice" in result.stderr
+
+
+# --- apt against a stalled mirror ----------------------------------------------------------------
+
+
+def test_every_apt_call_times_out_and_retries_a_stalled_fetch(setup_toolchain: ModuleType, recorded_run: list[list[str]]) -> None:
+    # A stalled mirror held CI's firmware jobs in this step until their 15-minute limit; each fetch now gives up after
+    # the timeout and is retried, the attempt count the one every retried network step shares.
+    setup_toolchain.ensure_apt_packages(["gcc-arm-none-eabi"], skip=False)
+    timeout = str(setup_toolchain.APT_ACQUIRE_TIMEOUT_S)
+    expected = ["-o", f"Acquire::Retries={setup_toolchain.UV_SYNC_ATTEMPTS - 1}", "-o", f"Acquire::http::Timeout={timeout}", "-o", f"Acquire::https::Timeout={timeout}"]
+    apt_calls = [cmd for cmd in recorded_run if "apt-get" in cmd]
+    assert len(apt_calls) == 2, recorded_run
+    for cmd in apt_calls:
+        at = cmd.index("apt-get") + 1
+        assert cmd[at : at + len(expected)] == expected, cmd

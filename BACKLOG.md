@@ -572,6 +572,9 @@ gates, traps).
   **2026-10-07, `scripts/test.sh`, shell only, no build impact**: a `--coverage` run takes one test file per
   usable core (`_coverage_parallelism()`), since the settrace binary makes the suite CPU-bound; a chroot run of
   `--coverage` is slower in wall clock and otherwise unchanged.
+  **2026-10-08, `toolchain/setup_toolchain.py`, the installer leg**: `ensure_apt_packages()` passes apt a 30 s fetch
+  timeout and two retries on both its `update` and its `install`, so a stalled mirror fails within about a minute
+  instead of holding the step; a chroot run's apt calls carry the same options, with no other change.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
