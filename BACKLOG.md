@@ -321,6 +321,10 @@ plan (on its own branch) cite them. **Nothing here authorizes anything**: CLAUDE
 applies, and `tests_hardware/README.md` is the reference for how any of it runs (flags, wear
 gates, traps).
 
+- **The MQTT PoC's scoped bench run** (branch `claude/whole-project-audit-plan-followup` only, until it
+  merges): `mqtt_poc/BENCH_HANDOVER.md` is its run sheet, `--scope mqtt` with writes scoped to
+  `networking/mqtt` and `networking/ntp` (owner, 2026-10-08: "include the ntp tests too, allow
+  networking/ntp"); its section 4 says where the results go.
 - **How a sitting runs.** D1 and D2 are the owner's standing answers (owner, 2026-09-22, `00f3eac`,
   paraphrase — the commit records no owner words): D1, spend flash/NVM writes, but only after a
   clean default run, so a gated failure is the gated test's own; D2, the NeoPixel-aimed-at-ISL29125

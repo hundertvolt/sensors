@@ -308,44 +308,14 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 
 ### 11.1 Bench runbook (a session on the Pi4, owner's go-ahead in that session)
 
-1. `git fetch` and check out `claude/whole-project-audit-plan-followup`; `uv run
-   toolchain/setup_toolchain.py env --tier bench` (installs `mosquitto` with the rest of `apt_packages`).
-2. Build and flash the `dev` image from this branch — the session's one allowed flash (E.6.3): `uv run
-   scripts/build_firmware.py dev`, then `picotool load -x -v` with a USB-capable picotool.
-3. Read the board's FRAM error logs (`GET /status` errcount) before anything clears them (CLAUDE.md); the
-   module's fixture also prints every non-empty log before its own `ResetErrors`.
-4. Run the `mqtt` scope, never the whole bench yet (owner, 2026-10-08: "you shall not run the whole bench at
-   this time (will happen lateron when mqtt as such is running)"):
-   `scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt`. It runs
-   L0-L2 first, then only the flash and bench tests `tests_hardware/run_scopes.py` lists: this module plus
-   the tests the branch reaches beside it (the resolver, the connection ceiling and body cap, the heap with
-   the client resident, boot and reboot, the website, the FRAM chunk layout and the `env --tier flash`
-   rerun), with the reason for each. The write permission is scoped to `networking/mqtt`, so no other
-   group, the SCD30's NVM least of all, can be written; the runner refuses the global
-   `--allow-persistence-writes` with a scope, and reports a passing scoped run NOT CLEAN, since the rest of
-   both tiers waits for the full run. The module starts its own mosquitto on the Pi4's `br0` address and
-   port 18883 and enables the client over REST once (a shared prerequisite write). In order it covers:
-   - connect, `online`, and strict-JSON measurements per sensor;
-   - an inbound command;
-   - broker SIGKILL and restart;
-   - SIGSTOP stall and silent path loss (`iptables` DROP), both detected within 35 s;
-   - a reset path (REJECT);
-   - a client-id takeover bounded by the backoff;
-   - the broker found by the Pi4's own `.local` name through its Avahi (this one writes `MQTTHost` twice, so
-     it runs only with `--allow-persistence-writes-to=networking/mqtt`);
-   - a 3000-message QoS 0 flood with REST timed under it, a 500-message QoS 1 burst and an oversized message;
-   - a checkpoint (no task ended, only the expected `MQTT` codes);
-   - an AP outage through `BenchBridge`;
-   - a hard reset;
-   - the faults again under `device_scripts/mqtt_at_default_gc.py` at `gc.threshold(-1)`;
-   - switching the client off, which must publish a retained `offline`.
-
-   Every `iptables` rule matches only the DUT's address and port 18883 and is removed in a `finally`; none
-   touches `br0` or the session's own path (`tests_hardware/README.md` has the account).
-5. Report: the run record's `result_note`s (detection and reconnect times, the flood's REST latency, the
-   largest payload, the default-gc heap minimum), which are the measurements Part N's `mqtt.*` and
-   `l4.mqtt_*` rows owe, and the module's verdict. The client ends switched off, so later bench tests see the
-   old baseline.
+`mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
+before the flash, the one flash, the scoped run
+(`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/mqtt,networking/ntp`),
+what each of its 3 flash and 41 bench tests covers, where the results go and which Part N rows they settle.
+The scope (`tests_hardware/run_scopes.py`) is the MQTT module plus what the branch reaches beside it: NTP and
+the resolver, the connection ceiling and body cap, the heap with the client resident, boot and reboot, the
+website, the FRAM chunk layout and the `env --tier flash` rerun; the hotspot role reversal and every SCD30
+write wait for the full bench run.
 
 ## 12. Where the rules land when the PoC merges
 
@@ -377,9 +347,8 @@ Each the more conservative, more easily reversible choice, for review:
     gets values at once, and a changed interval applies at once instead of after the old one ran out.
 11. A passing scoped bench run (`--scope mqtt`) is reported NOT CLEAN, the precedent `--skip-lower-levels`
     set: everything that ran passed, but it never stands in for an L3/L4 pass. Its scope also carries the
-    tests the branch reaches outside the client (§11.1), and two candidates were left to the full run: the
-    NTP tests that write `NTPHost` (`networking/ntp`), and the hotspot role reversal, which never enables
-    the client.
+    tests the branch reaches outside the client (§11.1); the hotspot role reversal, which never enables the
+    client, is left to the full run.
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 
@@ -396,4 +365,4 @@ Each the more conservative, more easily reversible choice, for review:
   MQTT (and whatever is affected by your changes) on the bench. you shall not run the whole bench at this
   time (will happen lateron when mqtt as such is running)'. And its writes are scoped per group: 'it makes
   absolutely no sense globally enable persistence writes, as writing the scd30 for mqtt tests is nonsense,
-  so scope it correctly'. §11.1 step 4 has the command.
+  so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp'. §11.1 has the command.

@@ -54,8 +54,9 @@ def test_a_scopes_writes_are_exactly_what_its_marked_tests_name(repo_root: Path,
 
 
 def test_the_mqtt_scope_runs_the_whole_client_module_and_writes_only_its_settings(repo_root: Path) -> None:
+    # Owner, 2026-10-08: "include the ntp tests too, allow networking/ntp" - and nothing beyond the two groups.
     scope = SCOPES["mqtt"]
     assert "tests_hardware/bench/test_mqtt_broker_faults.py" in _nodes(scope, "bench")
-    assert scope.writes == ("networking/mqtt",), "the MQTT scope permits a write to no other group, the SCD30's least of all"
+    assert scope.writes == ("networking/mqtt", "networking/ntp"), "the MQTT scope permits a write to no other group, the SCD30's least of all"
     gated = _collect(repo_root, _nodes(scope, "bench"))
     assert "test_the_broker_is_found_by_the_bench_hosts_local_name" not in gated, "without the scoped permission its own write stays deselected"

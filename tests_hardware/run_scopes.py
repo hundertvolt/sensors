@@ -18,11 +18,12 @@ _FLASH = "tests_hardware/flash/"
 _BENCH = "tests_hardware/bench/"
 _RESOLVER = "the resolver the client shares with NTP changed: its query build and answer parse"
 _CEILING = "the build's connection ceiling moved 6 -> 5 for the client's own socket"
+_NTP = "NTP resolves its host through the changed resolver"
 
 SCOPES: dict[str, Scope] = {
     # The MQTT client PoC (SPECIFICATION.md Part A.11) and what its branch changed beside it (owner, 2026-10-08:
     # "only test MQTT (and whatever is affected by your changes) on the bench. you shall not run the whole bench
-    # at this time (will happen lateron when mqtt as such is running)").
+    # at this time (will happen lateron when mqtt as such is running)"; "include the ntp tests too, allow networking/ntp").
     "mqtt": Scope(
         flash=(
             (f"{_FLASH}test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build", "the FRAM layout gains the MQTT and CFGMGR_MQTT chunks"),
@@ -33,7 +34,13 @@ SCOPES: dict[str, Scope] = {
             (f"{_BENCH}test_mqtt_broker_faults.py", "the client itself, against a real broker"),
             (f"{_BENCH}test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp", _RESOLVER),
             (f"{_BENCH}test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp", _RESOLVER),
+            (f"{_BENCH}test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing", _NTP),
             (f"{_BENCH}test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response", _RESOLVER),
+            (f"{_BENCH}test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot", _NTP),
+            (f"{_BENCH}test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response", _NTP),
+            (f"{_BENCH}test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source", _NTP),
+            (f"{_BENCH}test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly", "an unresolvable NTPHost goes through the changed resolver"),
+            (f"{_BENCH}test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry", _NTP),
             (f"{_BENCH}test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly", _CEILING),
             (f"{_BENCH}test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures", _CEILING),
             (f"{_BENCH}test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body", _CEILING),
@@ -48,7 +55,7 @@ SCOPES: dict[str, Scope] = {
             (f"{_BENCH}test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot", "the hammer load's heap, the client resident"),
             (f"{_BENCH}test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network", "the device's website gains the MQTT settings group"),
         ),
-        writes=("networking/mqtt",),
+        writes=("networking/mqtt", "networking/ntp"),
     ),
 }
 

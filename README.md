@@ -724,7 +724,8 @@ When a new doc is added, add it here too instead of letting the map go stale aga
   the framework requires of the service, and the owner's answers), the six raw, unverified research
   reports under `research/` it was built from, `prototype/`: a first client prototype with its dev
   digital-twin torture harness and `prototype/RESULTS.md`, and `mqtt_poc/DESIGN.md` (2026-10-08): the
-  detailed design of the `src/` client, its `dev` wiring, its tests per tier and the bench runbook. Like
+  detailed design of the `src/` client, its `dev` wiring, its tests per tier and the bench runbook, with
+  `mqtt_poc/BENCH_HANDOVER.md`, the run sheet for the bench session and where its results go. Like
   `audit/`, outside the doc gates' scan; deleted once the PoC's outcomes are migrated.
 
 A handover file, when one exists, is a per-effort throwaway, owned by the session named in its first
