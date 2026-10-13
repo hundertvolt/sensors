@@ -149,6 +149,9 @@ def _bench_device(repo_root: Path) -> str:
     tree = ast.parse((repo_root / "tests_hardware" / "harness.py").read_text())
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "configured_max_connections")
     default = fn.args.defaults[-1]
+    if isinstance(default, ast.Name):  # a module-level constant: harness.py's _BENCH_DEVICE
+        name = default.id
+        default = next((n.value for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)), default)
     assert isinstance(default, ast.Constant) and isinstance(default.value, str), "configured_max_connections() lost its device default"
     return default.value
 

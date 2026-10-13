@@ -2,8 +2,6 @@
 on any device, as the device definitions key it, plus HWTEST_FILE. The vocabulary of
 @pytest.mark.persistence_write's arguments and of --allow-persistence-writes-to (tests_hardware/README.md)."""
 
-from __future__ import annotations
-
 import json
 import sys
 from functools import cache
@@ -41,16 +39,16 @@ def persistence_groups() -> frozenset[str]:
     return frozenset(found)
 
 
-def parse_groups(values: Iterable[str]) -> frozenset[str]:
+def parse_groups(values: "Iterable[str]") -> frozenset[str]:
     # --allow-persistence-writes-to's values, each one group or a comma-separated list.
     return frozenset(group.strip() for value in values for group in value.split(",") if group.strip())
 
 
-def allowed_groups(config: pytest.Config) -> frozenset[str]:
+def allowed_groups(config: "pytest.Config") -> frozenset[str]:
     return parse_groups(config.getoption(SCOPED_FLAG) or ())
 
 
-def deselected_by(groups: Iterable[str], config: pytest.Config) -> str | None:
+def deselected_by(groups: "Iterable[str]", config: "pytest.Config") -> str | None:
     # The flag that would permit a write to these groups, None when one already does. A marker naming no
     # group needs the global flag; without any scoped flag the advice stays the global one.
     if config.getoption(GLOBAL_FLAG):
@@ -65,5 +63,5 @@ def deselected_by(groups: Iterable[str], config: pytest.Config) -> str | None:
     return f"{SCOPED_FLAG}={','.join(missing)}"
 
 
-def writes_permitted(groups: Iterable[str], config: pytest.Config) -> bool:
+def writes_permitted(groups: "Iterable[str]", config: "pytest.Config") -> bool:
     return deselected_by(groups, config) is None

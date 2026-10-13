@@ -285,12 +285,12 @@ def _all_loggers(module: "Any") -> "list[Any]":
     if _has(module, "isl29125"):
         loggers += [module.isl29125.pr, module.isl29125.cfgmgr.pr]
     loggers += [module.notification.pr, module.notification.cfgmgr.pr]
+    if _has(module, "mqtt"):
+        loggers += [module.mqtt.pr, module.mqtt.cfgmgr.pr]
     if _has_uart_link(module):
         # No cfgmgr - UARTComm has no config schema (its parameters are an out-of-band wire
         # contract, never runtime-writable, SPECIFICATION.md Part J.6), one entry per instance.
         loggers += [module.uart_link_init.pr, module.uart_link_resp.pr]
-    if _has(module, "mqtt"):
-        loggers += [module.mqtt.pr, module.mqtt.cfgmgr.pr]
     loggers.append(module.webserver.pr)
     return loggers
 
@@ -318,10 +318,10 @@ def _expected_fram_chunk_owners(module: "Any") -> "list[str]":
             if attr == "sgp40":
                 owners.append(reader.name + "_VOC")  # the VOC backup's owner, read from the built reader
     owners += ["NOTIFY", "CFGMGR_NOTIFY"]
-    if _has_uart_link(module):
-        owners += ["UART_init", "UART_resp"]  # no config store: the link's parameters are a wire contract
     if _has(module, "mqtt"):
         owners += ["MQTT", "CFGMGR_MQTT"]
+    if _has_uart_link(module):
+        owners += ["UART_init", "UART_resp"]  # no config store: the link's parameters are a wire contract
     owners.append("WEBSERVER")
     return owners
 

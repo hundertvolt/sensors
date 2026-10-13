@@ -2,8 +2,6 @@
 test owns, on its own port and config, and Probe, a small MQTT 3.1.1 client recording every message it receives, so a
 test drives and watches the device's broker traffic with no MQTT CLI tool (SPECIFICATION.md Part A.11)."""
 
-from __future__ import annotations
-
 import os
 import shutil
 import signal
@@ -48,7 +46,7 @@ def mosquitto_binary() -> str | None:
 class Mosquitto:
     # A broker this test starts, signals and stops itself: no persistence, logging to the work dir; anonymous, or with
     # `users` only those name/password pairs, written through mosquitto_passwd.
-    def __init__(self, workdir: Path, port: int, bind: str = "127.0.0.1", users: dict[str, str] | None = None) -> None:
+    def __init__(self, workdir: "Path", port: int, bind: str = "127.0.0.1", users: dict[str, str] | None = None) -> None:
         binary = mosquitto_binary()
         if binary is None:
             raise FileNotFoundError("mosquitto is not installed - toolchain/versions.toml's apt_packages carries it (setup_toolchain.py setup)")
@@ -280,7 +278,7 @@ class Probe:
         with self._lock:
             return [m for m in self.messages if topic is None or m.topic == topic]
 
-    def start(self) -> Probe:
+    def start(self) -> "Probe":
         self._thread.start()
         return self
 
@@ -288,7 +286,7 @@ class Probe:
         return self._connected.wait(timeout_s)
 
 
-def wait_for(predicate: Callable[[], bool], timeout_s: float, poll_s: float = 0.25) -> bool:
+def wait_for(predicate: "Callable[[], bool]", timeout_s: float, poll_s: float = 0.25) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if predicate():

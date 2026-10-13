@@ -2,8 +2,6 @@
 reaches, each with the reason, run on their own until the whole of both tiers runs, and the settings groups
 their own writes need (--allow-persistence-writes-to). `run_scopes.py NAME flash|bench|writes` lists one."""
 
-from __future__ import annotations
-
 import sys
 from typing import NamedTuple
 

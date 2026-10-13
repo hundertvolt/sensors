@@ -3,6 +3,7 @@ survives the bench runner's own marker floor, and a scope's writes are exactly t
 name, so --allow-persistence-writes-to with them selects the whole scope and permits nothing beyond it."""
 
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -15,12 +16,18 @@ from persistence_groups import persistence_groups
 from run_scopes import SCOPES, Scope
 
 _FLOOR = "not long_soak and not multi_day_rollover"  # scripts/run_bench_hardware_suite.sh's own -m
+_SOAKS = "long_soak or multi_day_rollover"  # what that floor leaves to the soak runners
 
 
-def _collect(repo_root: Path, nodes: "list[str]", *extra: str) -> str:
-    result = subprocess.run([sys.executable, "-m", "pytest", *nodes, "--collect-only", "-q", "-m", _FLOOR, *extra], cwd=repo_root, capture_output=True, text=True, check=False)
-    assert result.returncode == 0, f"collection failed:\n{result.stdout}\n{result.stderr}"
+def _collect(repo_root: Path, nodes: "list[str]", *extra: str, marks: str = _FLOOR) -> str:
+    result = subprocess.run([sys.executable, "-m", "pytest", *nodes, "--collect-only", "-q", "-m", marks, *extra], cwd=repo_root, capture_output=True, text=True, check=False)
+    assert result.returncode == 0 or (marks == _SOAKS and result.returncode == 5), f"collection failed:\n{result.stdout}\n{result.stderr}"  # 5: none collected
     return result.stdout
+
+
+def _deselected(output: str) -> int:
+    match = re.search(r"\((\d+) deselected\)", output)
+    return int(match.group(1)) if match else 0
 
 
 def _nodes(scope: Scope, part: str) -> "list[str]":
@@ -36,8 +43,12 @@ def test_every_listed_node_collects_in_its_tier_and_nothing_is_deselected(repo_r
     assert all(node.startswith(f"tests_hardware/{part}/") for node in nodes), nodes
     assert len(set(nodes)) == len(nodes), f"scope {name} lists a {part} node twice"
     assert all(reason.strip() for _node, reason in (scope.flash if part == "flash" else scope.bench)), "every entry says why the change reaches it"
-    output = _collect(repo_root, nodes, *(f"--allow-persistence-writes-to={g}" for g in scope.writes))
-    assert "deselected" not in output, f"scope {name}'s {part} list loses a test to the floor or its own write permission:\n{output}"
+    writes = [f"--allow-persistence-writes-to={g}" for g in scope.writes]
+    output = _collect(repo_root, nodes, *writes)
+    # A whole-module entry may hold a soak test, which the floor leaves to the soak runner; a listed test may not.
+    soaks = {line for line in _collect(repo_root, nodes, *writes, marks=_SOAKS).splitlines() if "::" in line}
+    assert not soaks & set(nodes), f"scope {name} lists a {part} test the floor never runs: {sorted(soaks & set(nodes))}"
+    assert _deselected(output) == len(soaks), f"scope {name}'s {part} list loses a test to the floor or its own write permission:\n{output}"
     for node in nodes:
         assert node in output, f"{node} collected nothing:\n{output}"
 
@@ -48,10 +59,11 @@ def test_a_scopes_writes_are_exactly_what_its_marked_tests_name(repo_root: Path,
     scope = SCOPES[name]
     assert set(scope.writes) <= persistence_groups(), scope.writes
     nodes = _nodes(scope, "flash") + _nodes(scope, "bench")
+    floor = _deselected(_collect(repo_root, nodes, *(f"--allow-persistence-writes-to={g}" for g in scope.writes)))
     for group in scope.writes:
         others = [f"--allow-persistence-writes-to={g}" for g in scope.writes if g != group]
         output = _collect(repo_root, nodes, *others) if others else _collect(repo_root, nodes)
-        assert "deselected" in output, f"scope {name} lists {group}, but no test of it needs that group"
+        assert _deselected(output) > floor, f"scope {name} lists {group}, but no test of it needs that group"
 
 
 def _tier_position(repo_root: Path, node: str) -> "tuple[str, int]":
