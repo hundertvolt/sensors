@@ -43,10 +43,6 @@ describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
     );
 });
 
-// Known harmless quirk: this file prints "close timed out after 10000ms" from Vitest's own
-// teardown, with exit code 0 and no leftover twin. Opening a second page through the Commands
-// API's raw BrowserContext appears to miss Vitest's fast path; no other file here opens one.
-
 describe.each(DEVICE_IDS)("live digital-twin backend, concurrent browser sessions: %s", (device) => {
     it(
         "a full ceiling of browser tabs against one live twin all load, directly or on one reload",

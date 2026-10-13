@@ -479,6 +479,55 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
 }
 
 /**
+ * Starts recording every page's requests in flight, for the reset probe: a reload reset at the twin's ceiling is reported
+ * with what the other tabs had open at that moment. Diagnostic only; the check reads nothing else from it.
+ * @param {import("playwright").Page[]} pages
+ * @returns {(except: number) => string[]} each other tab's requests still in flight, with their age
+ */
+function trackInFlight(pages) {
+    /** @type {Map<import("playwright").Request, number>[]} */
+    const open = pages.map(() => new Map());
+    for (const [index, page] of pages.entries()) {
+        const mine = /** @type {Map<import("playwright").Request, number>} */ (open[index]);
+        page.on("request", (request) => mine.set(request, Date.now()));
+        page.on("requestfinished", (request) => mine.delete(request));
+        page.on("requestfailed", (request) => mine.delete(request));
+    }
+    return (except) => open.flatMap((mine, index) => (index === except ? [] : [...mine].map(([request, since]) => `tab ${index + 1} ${request.method()} ${new URL(request.url()).pathname} (${Date.now() - since}ms)`)));
+}
+
+/**
+ * The first value under `key` anywhere in `value`, or undefined.
+ * @param {unknown} value
+ * @param {string} key
+ * @returns {unknown}
+ */
+function findKey(value, key) {
+    if (typeof value !== "object" || value === null) {
+        return undefined;
+    }
+    if (key in value) {
+        return /** @type {Record<string, unknown>} */ (value)[key];
+    }
+    return Object.values(value).map((inner) => findKey(inner, key)).find((found) => found !== undefined);
+}
+
+/**
+ * The twin's own count of connections it dropped (GET /status's HTTPDropped), for the reset probe: one read within a
+ * section wait, its failure reported in place of the count.
+ * @returns {Promise<string>}
+ */
+async function droppedCount() {
+    try {
+        const response = await fetch(`http://${HOST}:${PORT}/status`, { signal: AbortSignal.timeout(SECTION_WAIT_MS) });
+        const dropped = findKey(await response.json(), "HTTPDropped");
+        return dropped === undefined ? `(no HTTPDropped in GET /status, HTTP ${response.status})` : String(dropped);
+    } catch (err) {
+        return `(GET /status failed: ${err instanceof Error ? err.message : String(err)})`;
+    }
+}
+
+/**
  * Opens the page and waits for its shell, within `timeoutMs`.
  * @param {import("playwright").Page} page
  * @param {number} timeoutMs
@@ -533,20 +582,33 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
             pages.push(await own.newPage());
         }
         clock.step("loading every tab at once");
-        const firstPass = await Promise.all(pages.map((page) => loadPage(page, OUTER_CAP_MS + 5000)));
+        const inFlight = trackInFlight(pages);
+        /** @type {number[]} */
+        const firstPassEnded = pages.map(() => 0);
+        const firstPass = await Promise.all(pages.map((page, index) => loadPage(page, OUTER_CAP_MS + 5000).then((reason) => {
+            firstPassEnded[index] = Date.now();
+            return reason;
+        })));
         const failures = firstPass.flatMap((reason, index) => (reason === null ? [] : [`tab ${index + 1}: ${reason}`]));
         let loadedAfterRetry = firstPass.filter((reason) => reason === null).length;
+        let reloadsFailed = 0;
         for (const [index, reason] of firstPass.entries()) {
             if (reason !== null) {
                 clock.step(`reloading tab ${index + 1}`);
+                const reloadAt = Date.now();
                 // eslint-disable-next-line no-await-in-loop -- one reload at a time: recovery, not another burst
                 const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), TAB_WAIT_MS);
                 if (retry === null) {
                     loadedAfterRetry += 1;
                 } else {
-                    failures.push(`tab ${index + 1} on its reload: ${retry}`);
+                    reloadsFailed += 1;
+                    const open = inFlight(index).join(", ") || "none";
+                    failures.push(`tab ${index + 1} on its reload: ${retry} [reset probe: the reload began ${reloadAt - (firstPassEnded[index] ?? 0)}ms after its first-pass failure and failed after ${Date.now() - reloadAt}ms; the other tabs' requests in flight then: ${open}]`);
                 }
             }
+        }
+        if (reloadsFailed > 0) {
+            failures.push(`[reset probe: the twin's HTTPDropped after the check: ${await droppedCount()}]`);
         }
         return { skipped: false, tabs, loadedFirstPass: firstPass.filter((reason) => reason === null).length, loadedAfterRetry, failures };
     }
