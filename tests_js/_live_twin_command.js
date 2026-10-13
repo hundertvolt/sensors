@@ -271,35 +271,36 @@ function checkClock(testTimeoutMs) {
             }
         },
         /**
-         * @param {import("playwright").BrowserContext} context
-         * @returns {Promise<import("playwright").Page>} a new page, closed at once when the check ended while it opened
+         * @param {import("playwright").BrowserContext} context the Commands API's context, whose browser opens the check's own
+         * @returns {Promise<import("playwright").BrowserContext>} the check's own context, closed at once if the check ended first
          */
-        async newPage(context) {
-            const page = await context.newPage();
-            if (over) {
-                await page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
-                throw new Error("the check ended while this page opened");
+        async newContext(context) {
+            const browser = context.browser();
+            if (browser === null) {
+                throw new Error("the Commands API's context has no browser to open the check's own context in");
             }
-            return page;
+            const own = await browser.newContext();
+            if (over) {
+                await own.close().catch(() => { /* best-effort teardown - a context already gone is fine */ });
+                throw new Error("the check ended while its browser context opened");
+            }
+            return own;
         },
     };
 }
 
 /**
- * Closes `pages` within one twin stop, a page already gone counting as closed.
- * @param {import("playwright").BrowserContext} context the pages' context, asked for Chromium's view of a hang
- * @param {import("playwright").Page[]} pages
- * @returns {Promise<Error | null>} why a close was still pending at that bound, or null
+ * Closes the check's own browser context within one twin stop. Closing the context disposes it with every page in it, where a
+ * page's own close waits for its target to detach: Chrome 153's headless shell never detaches a page closed just as a second
+ * failed navigation commits its error page, and the check's pages then kept loading the next twin.
+ * @param {import("playwright").BrowserContext[]} contexts the check's own context, once it has opened
+ * @param {import("playwright").Page[]} pages its pages, named when the close outlasts the bound
+ * @returns {Promise<Error | null>} why the close was still pending at that bound, or null
  */
-async function closePages(context, pages) {
+async function closeContext(contexts, pages) {
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let timer;
-    const started = Date.now();
-    /** @type {(number | null)[]} */
-    const closedAfter = pages.map(() => null);
-    const closed = Promise.all(pages.map((page, index) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ }).then(() => {
-        closedAfter[index] = Date.now() - started;
-    }))).then(() => null);
+    const closed = Promise.all(contexts.map((own) => own.close().catch(() => { /* best-effort teardown - a context already gone is fine */ }))).then(() => null);
     /** @type {Promise<"late">} */
     const late = new Promise((resolve) => {
         timer = setTimeout(() => {
@@ -313,8 +314,8 @@ async function closePages(context, pages) {
     } finally {
         clearTimeout(timer);
     }
-    const tabs = pages.map((page, index) => `tab ${index + 1} ${closedAfter[index] === null ? `still closing (${page.url()}, isClosed ${page.isClosed()})` : `closed after ${closedAfter[index]}ms`}`);
-    return new Error(`its pages were still closing ${SHUTDOWN_TIMEOUT_MS}ms after the check ended: ${tabs.join("; ")}; Chromium's page targets then: ${await pageTargets(context)}`);
+    const tabs = pages.map((page, index) => `tab ${index + 1} (${page.url()}, isClosed ${page.isClosed()})`);
+    return new Error(`its browser context was still closing ${SHUTDOWN_TIMEOUT_MS}ms after the check ended: ${tabs.join("; ")}; Chromium's page targets then: ${await pageTargets(/** @type {import("playwright").BrowserContext} */ (contexts[0]))}`);
 }
 
 /**
@@ -407,6 +408,8 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     const proc = spawnTwin(device);
     const output = drainChildOutput(proc);
 
+    /** @type {import("playwright").BrowserContext[]} */
+    const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
     /** @returns {Promise<{skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>} */
@@ -422,7 +425,9 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         const value = system.DebugLevel < field.max ? system.DebugLevel + 1 : system.DebugLevel - 1;
 
         clock.step("loading its page");
-        const page = await clock.newPage(context);
+        const own = await clock.newContext(context);
+        contexts.push(own);
+        const page = await own.newPage();
         pages.push(page);
         const consoleMessages = [];
         page.on("console", (msg) => consoleMessages.push(`[console:${msg.type()}] ${msg.text()}`));
@@ -463,7 +468,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         for (const page of pages) {
             page.removeAllListeners();
         }
-        const [unclosed] = await Promise.all([closePages(context, pages), stopTwin(proc)]);
+        const [unclosed] = await Promise.all([closeContext(contexts, pages), stopTwin(proc)]);
         failure ??= unclosed;
     }
     twinVerdict(`live-backend smoke check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
@@ -512,6 +517,8 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
     const proc = spawnTwin(device);
     const output = drainChildOutput(proc);
 
+    /** @type {import("playwright").BrowserContext[]} */
+    const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
     /** @returns {Promise<{skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>} */
@@ -519,9 +526,11 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         clock.step("booting its twin");
         await waitUntilServing(proc, READY_TIMEOUT_MS);
         clock.step("opening its tabs");
+        const own = await clock.newContext(context);
+        contexts.push(own);
         for (let i = 0; i < tabs; i += 1) {
             // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
-            pages.push(await clock.newPage(context));
+            pages.push(await own.newPage());
         }
         clock.step("loading every tab at once");
         const firstPass = await Promise.all(pages.map((page) => loadPage(page, OUTER_CAP_MS + 5000)));
@@ -552,7 +561,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         failure = err;
     } finally {
         clock.end();
-        const [unclosed] = await Promise.all([closePages(context, pages), stopTwin(proc)]);
+        const [unclosed] = await Promise.all([closeContext(contexts, pages), stopTwin(proc)]);
         failure ??= unclosed;
     }
     twinVerdict(`live-backend concurrent-tab check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
@@ -585,6 +594,8 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
     await assertPortFree(device, "before starting");
     const procs = [spawnTwin(device)];
     const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
+    /** @type {import("playwright").BrowserContext[]} */
+    const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
     /** @returns {Promise<{skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean}>} */
@@ -592,7 +603,9 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
         clock.step("booting its twin");
         await waitUntilServing(/** @type {import("node:child_process").ChildProcess} */ (procs[0]), READY_TIMEOUT_MS);
         clock.step("loading its page");
-        const page = await clock.newPage(context);
+        const own = await clock.newContext(context);
+        contexts.push(own);
+        const page = await own.newPage();
         pages.push(page);
         const firstPoll = settledLater(page.waitForResponse(answered, { timeout: SECTION_WAIT_MS }));
         await page.goto(`http://${HOST}:${PORT}/`);
@@ -634,7 +647,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
         failure = err;
     } finally {
         clock.end();
-        const [unclosed] = await Promise.all([closePages(context, pages), ...procs.map((proc) => stopTwin(proc))]);
+        const [unclosed] = await Promise.all([closeContext(contexts, pages), ...procs.map((proc) => stopTwin(proc))]);
         failure ??= unclosed;
     }
     const drained = await Promise.all(outputs.map((output) => output.closed(SHUTDOWN_TIMEOUT_MS)));
