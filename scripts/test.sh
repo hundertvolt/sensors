@@ -579,6 +579,27 @@ tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap ca
 source scripts/_summary_block.sh
 summary_unit files
 
+# _failing_tests <tag> <failed>, the deciding attempt on stdin: " (FAIL <test>: <its first failure line>; ...)" in
+# microtest's own FAIL line form, at most five, then "+N more" for the closing line's failures left unnamed.
+# Prints nothing when no FAIL line is found, so the count alone stands as before.
+_failing_tests() {
+    awk -v p="[$1] " -v failed="$2" -v cap=5 '
+        function keep(detail) { if (pending != "") { n++; if (n <= cap) out = out (n > 1 ? "; " : "") pending (detail != "" ? " " detail : ""); pending = "" } }
+        index($0, p) != 1 { next }
+        { line = substr($0, length(p) + 1); sub(/[ \t\r]+$/, "", line) }
+        line ~ /^FAIL [A-Za-z_][A-Za-z0-9_]*:$/ { keep(""); pending = line; next }
+        pending == "" { next }
+        line ~ /^(PASS|SKIP) / || line ~ /^[0-9]+\/[0-9]+ passed, / { keep(""); next }
+        line == "Traceback (most recent call last):" || line ~ /^  File / { next }
+        { keep(line) }
+        END {
+            keep("")
+            shown = n < cap ? n : cap
+            if (shown > 0 && failed - shown > 0) out = out "; +" (failed - shown) " more"
+            if (shown > 0) printf " (%s)", out
+        }'
+}
+
 _join_reasons() {
     local out="$1" reason
     shift
@@ -624,6 +645,9 @@ for test_file in "${test_files[@]}"; do
         tests_failed=$((tests_failed + BASH_REMATCH[3]))
         tests_skipped=$((tests_skipped + BASH_REMATCH[4]))
         file_failed_tests="${BASH_REMATCH[3]} of ${BASH_REMATCH[2]} tests failed"
+        if [ "${BASH_REMATCH[3]}" -gt 0 ]; then
+            file_failed_tests+="$(_failing_tests "$tag" "${BASH_REMATCH[3]}" <<<"$deciding")"
+        fi
     else
         file_failed_tests="failed"
         reasons+=("no test count (crashed or killed)")
