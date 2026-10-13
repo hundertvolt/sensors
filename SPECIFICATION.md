@@ -1307,7 +1307,9 @@ refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), `MQTTHost` throu
 `NTPHost` uses, `asy_dns_client.py`'s `host_name_ok()`, which the website's mock mirrors (agent,
 2026-10-08). A stored value that fails at use keeps the client off with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
 an empty string (owner, 2026-08-22), so an empty host alone could never switch the client off from
-the UI (agent, 2026-10-08).
+the UI (agent, 2026-10-08). "Reset to defaults" deletes `config_MQTT.cfg` with every schema-backed file
+(A.8), so the unit comes back with the client off. A system command's shutdown cancels the keeper (A.8
+step 4); its teardown closes a connected socket with no DISCONNECT, so the broker publishes the will.
 
 **Status** joins `GET /status`'s `networking` object on a device carrying the client: `MQTTState`,
 `MQTTConnected`, `MQTTBroker`, `MQTTUptime`, `MQTTConnects`, `MQTTTeardowns`, `MQTTLastReason`,

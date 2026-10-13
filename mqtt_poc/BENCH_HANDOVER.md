@@ -68,7 +68,8 @@ And on 2026-10-08:
 
 - **Branch** `claude/whole-project-audit-plan-followup`, draft PR hundertvolt/sensors#110. It is stacked on the
   whole-project audit branch `claude/whole-project-audit-plan` (PR hundertvolt/sensors#107) at its head
-  `f5c8255` (U19, the REST layer). It merges only after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
+  `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
+  after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
 - **Verified on the host** (`43b5373`, the bench findings' fixes):
   - lint and all three typecheck passes;
@@ -84,9 +85,11 @@ And on 2026-10-08:
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
   100,000 B tripwire. That bound holds for the final version and is a topic for after the audit (owner,
   2026-10-08, DESIGN.md §14). Changed after both runs, so the next run is the first to see them on the board:
-  the publish cadence and the `online` timing (`43b5373`, section 8), and the memory layout (DESIGN.md §5:
+  the publish cadence and the `online` timing (`43b5373`, section 8), the memory layout (DESIGN.md §5:
   one stream per outbound slot, each measurement written into its slot a key or scalar at a time, the
-  settings and topics born at boot).
+  settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
+  for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
+  override (SPECIFICATION.md B.14.4). The client is now built before the UART links.
 
 ### 1.4 The client in brief
 
@@ -187,7 +190,8 @@ bench tests were written before that, and each still ends by asserting an empty 
    `discover_max_connections()` holds connections until one is refused (W60).
 6. `test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status`:
    its storm is meant to go past the ceiling (W60).
-7. `test_hotspot_role_reversal.py`, lines 394-396: "NOT A REAL HTTP REQUEST" is now refused (W61). This
+7. `test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly`: "NOT A REAL
+   HTTP REQUEST" is now refused (W61). This
    one is the audit's open finding OF-101, which its U26 fixes before any L4 run; the audit's scan does not
    name 4 to 6.
 
@@ -256,12 +260,14 @@ CLAUDE.md is the authority; these are the rules this run meets.
    and check it out. Create the results directory, named by today's date and the commit
    (`git rev-parse --short HEAD`): `mqtt_poc/bench_results/<YYYY-MM-DD>_<commit>/` (section 7).
 2. **Provision the host**: `uv run toolchain/setup_toolchain.py env --tier bench`. It installs `mosquitto`
-   and `avahi-daemon` when missing. Check `systemctl is-active avahi-daemon`: the `.local` test needs the
+   and `avahi-daemon` when missing, and since the audit's U21 it checks passwordless sudo for the commands the
+   bench runs unattended (`tests_hardware/README.md`, Prerequisites). Check `systemctl is-active avahi-daemon`: the `.local` test needs the
    Pi4 to answer for its own host name. The Debian package also starts a system mosquitto on port 1883,
    which no test uses (they start their own on 18883).
 3. **Save the FRAM-backed logs from the image running now, before the flash.**
-   - Why before: the new image puts the `MQTT` chunks ahead of `WEBSERVER`'s, so `WEBSERVER`'s old chunk
-     is no longer found after the flash.
+   - Why before: the new image builds the client before the UART links, so its `MQTT` and `CFGMGR_MQTT`
+     chunks come ahead of `UART_init`'s, `UART_resp`'s and `WEBSERVER`'s, whose old chunks are no longer found
+     after the flash.
    - Find the board's address with `ip neigh show dev br0`, or the router's lease for `SensorStationDev`.
    - Save `GET /status` and `GET /system` (its `build` group names the running image) as
      `fram_before_flash.json` and `system_before_flash.json` in the results directory.
@@ -290,7 +296,7 @@ before the board (section 6).
 - The full-build heap headroom, with the client's buffers resident.
 - The `env --tier flash` rerun, about 8 minutes, since `mosquitto` joined the apt packages.
 
-**The bench step: 66 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
+**The bench step: 75 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
 estimates.
 
 - **The client** (`tests_hardware/bench/test_mqtt_broker_faults.py`, roughly 20 to 30 minutes). It starts
