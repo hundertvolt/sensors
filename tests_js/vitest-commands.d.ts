@@ -25,15 +25,15 @@ export {};
 
 declare module "vitest/browser" {
     interface BrowserCommands {
-        runLiveBackendSmoke: (device: string) => Promise<
+        runLiveBackendSmoke: (device: string, testTimeoutMs: number) => Promise<
             | { skipped: true; reason: string }
             | { skipped: false; titleHasSensorStation: boolean; deviceName: string; firstStatus: string | null; resubmitStatus: string | null }
         >;
-        runLiveBackendConcurrentTabs: (device: string) => Promise<
+        runLiveBackendConcurrentTabs: (device: string, testTimeoutMs: number) => Promise<
             | { skipped: true; reason: string }
             | { skipped: false; tabs: number; loadedFirstPass: number; loadedAfterRetry: number; failures: string[] }
         >;
-        runLiveBackendRestartRecovery: (device: string) => Promise<
+        runLiveBackendRestartRecovery: (device: string, testTimeoutMs: number) => Promise<
             | { skipped: true; reason: string }
             | { skipped: false; bannerShown: boolean; recovered: boolean; reloaded: boolean }
         >;

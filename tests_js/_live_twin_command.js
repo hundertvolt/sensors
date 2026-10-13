@@ -232,6 +232,82 @@ function settledLater(promise) {
 }
 
 /**
+ * A live check's own clock. Vitest never cancels a command whose test timed out, so a check that outlived its test
+ * kept its twin on the port into the next tests; a check's waits end one twin stop before its test's timeout instead.
+ * @param {number} testTimeoutMs the calling test's own timeout
+ */
+function checkClock(testTimeoutMs) {
+    const deadline = Date.now() + testTimeoutMs - SHUTDOWN_TIMEOUT_MS;
+    let at = "starting";
+    let over = false;
+    return {
+        /** @param {string} step what the check does next, named when its time runs out */
+        step(step) {
+            at = step;
+        },
+        /** Marks the check's teardown begun: a step still running after it opens nothing new. */
+        end() {
+            over = true;
+        },
+        isOver: () => over,
+        /**
+         * @template T
+         * @param {Promise<T>} body the check's steps
+         * @returns {Promise<T>} `body`, or a rejection naming the step it was in once its time is up
+         */
+        async within(body) {
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let timer;
+            /** @type {Promise<never>} */
+            const late = new Promise((_resolve, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`still ${at} when its test's ${testTimeoutMs}ms were up, less the ${SHUTDOWN_TIMEOUT_MS}ms kept for stopping its twin`));
+                }, Math.max(0, deadline - Date.now()));
+            });
+            try {
+                return await Promise.race([settledLater(body), late]);
+            } finally {
+                clearTimeout(timer);
+            }
+        },
+        /**
+         * @param {import("playwright").BrowserContext} context
+         * @returns {Promise<import("playwright").Page>} a new page, closed at once when the check ended while it opened
+         */
+        async newPage(context) {
+            const page = await context.newPage();
+            if (over) {
+                await page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
+                throw new Error("the check ended while this page opened");
+            }
+            return page;
+        },
+    };
+}
+
+/**
+ * Closes `pages` within one twin stop, a page already gone counting as closed.
+ * @param {import("playwright").Page[]} pages
+ * @returns {Promise<Error | null>} why a close was still pending at that bound, or null
+ */
+async function closePages(pages) {
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    const closed = Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ }))).then(() => null);
+    /** @type {Promise<Error>} */
+    const late = new Promise((resolve) => {
+        timer = setTimeout(() => {
+            resolve(new Error(`its pages were still closing ${SHUTDOWN_TIMEOUT_MS}ms after the check ended`));
+        }, SHUTDOWN_TIMEOUT_MS);
+    });
+    try {
+        return await Promise.race([closed, late]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
  * Applies `value` to the System page's DebugLevel and waits for the Apply to settle (the button enabled again: the
  * PUT and its post-write GET done), returning the field's result status.
  * @param {import("playwright").Page} page
@@ -272,9 +348,11 @@ export function configuredMaxConnections(device, devicesDir = path.join(REPO_ROO
  * "valid", the identical resubmit exactly "unchanged" (a stored field, SPECIFICATION.md Part H.4).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem, booted from its own generated module and site
+ * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>}
  */
-export async function runLiveBackendSmoke({ context }, device) {
+export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
+    const clock = checkClock(testTimeoutMs);
     if (!existsSync(MICROPYTHON_BIN)) {
         return { skipped: true, reason: MISSING_INTERPRETER };
     }
@@ -288,13 +366,13 @@ export async function runLiveBackendSmoke({ context }, device) {
     const proc = spawnTwin(device);
     const output = drainChildOutput(proc);
 
-    let livePage;
-    /** @type {{skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null} | undefined} */
-    let checked;
-    /** @type {unknown} */
-    let failure = null;
-    try {
+    /** @type {import("playwright").Page[]} */
+    const pages = [];
+    /** @returns {Promise<{skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>} */
+    async function check() {
+        clock.step("booting its twin");
         await waitUntilServing(proc, READY_TIMEOUT_MS);
+        clock.step("reading GET /system");
         const system = /** @type {{DebugLevel?: unknown}} */ (await (await fetch(`http://${HOST}:${PORT}/system`)).json());
         const field = definitionsOf(device).sections.flatMap((section) => section.groups).flatMap((group) => group.fields ?? []).find((candidate) => candidate.key === "DebugLevel");
         if (typeof system.DebugLevel !== "number" || typeof field?.max !== "number") {
@@ -302,39 +380,50 @@ export async function runLiveBackendSmoke({ context }, device) {
         }
         const value = system.DebugLevel < field.max ? system.DebugLevel + 1 : system.DebugLevel - 1;
 
-        livePage = await context.newPage();
+        clock.step("loading its page");
+        const page = await clock.newPage(context);
+        pages.push(page);
         const consoleMessages = [];
-        livePage.on("console", (msg) => consoleMessages.push(`[console:${msg.type()}] ${msg.text()}`));
-        livePage.on("pageerror", (err) => consoleMessages.push(`[pageerror] ${err.message}`));
-        const gotoRes = await livePage.goto(`http://${HOST}:${PORT}/`);
+        page.on("console", (msg) => consoleMessages.push(`[console:${msg.type()}] ${msg.text()}`));
+        page.on("pageerror", (err) => consoleMessages.push(`[pageerror] ${err.message}`));
+        const gotoRes = await page.goto(`http://${HOST}:${PORT}/`);
         consoleMessages.push(`[goto] status=${gotoRes?.status()} url=${gotoRes?.url()}`);
         try {
-            await livePage.waitForSelector('[data-section-key="system"]', { timeout: SECTION_WAIT_MS });
+            await page.waitForSelector('[data-section-key="system"]', { timeout: SECTION_WAIT_MS });
         } catch (err) {
-            const html = await livePage.content();
+            const html = await page.content();
             throw new Error(`${err instanceof Error ? err.message : String(err)}\n--- console ---\n${consoleMessages.join("\n")}\n--- html (first 2000 chars) ---\n${html.slice(0, 2000)}`, { cause: err });
         }
 
-        const titleHasSensorStation = (await livePage.title()).includes("Sensor Station");
-        const deviceName = (await livePage.locator("#device-name").textContent())?.trim() ?? "";
+        const titleHasSensorStation = (await page.title()).includes("Sensor Station");
+        const deviceName = (await page.locator("#device-name").textContent())?.trim() ?? "";
 
+        clock.step("applying DebugLevel");
         // The nav is a slide-in drawer (SPECIFICATION.md Part H.4): its links take a click only once the
         // hamburger has opened it.
-        await livePage.locator("#hamburger-button").click();
-        await livePage.locator('[data-section-key="system"]').click();
-        await livePage.locator('[data-field-key="DebugLevel"]').waitFor();
-        const firstStatus = await applyDebugLevel(livePage, value);
-        const resubmitStatus = await applyDebugLevel(livePage, value);
+        await page.locator("#hamburger-button").click();
+        await page.locator('[data-section-key="system"]').click();
+        await page.locator('[data-field-key="DebugLevel"]').waitFor();
+        const firstStatus = await applyDebugLevel(page, value);
+        const resubmitStatus = await applyDebugLevel(page, value);
+        return { skipped: false, titleHasSensorStation, deviceName, firstStatus, resubmitStatus };
+    }
 
-        checked = { skipped: false, titleHasSensorStation, deviceName, firstStatus, resubmitStatus };
+    /** @type {Awaited<ReturnType<typeof check>> | undefined} */
+    let checked;
+    /** @type {unknown} */
+    let failure = null;
+    try {
+        checked = await clock.within(check());
     } catch (err) {
         failure = err;
     } finally {
-        if (livePage) {
-            livePage.removeAllListeners();
-            await livePage.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
+        clock.end();
+        for (const page of pages) {
+            page.removeAllListeners();
         }
-        await stopTwin(proc);
+        const [unclosed] = await Promise.all([closePages(pages), stopTwin(proc)]);
+        failure ??= unclosed;
     }
     twinVerdict(`live-backend smoke check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
     if (checked === undefined) {
@@ -367,9 +456,11 @@ async function loadPage(page, timeoutMs) {
  * on one reload of its own (SPECIFICATION.md Part H.7).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem; its own ceiling sizes the tab count
+ * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>}
  */
-export async function runLiveBackendConcurrentTabs({ context }, device) {
+export async function runLiveBackendConcurrentTabs({ context }, device, testTimeoutMs) {
+    const clock = checkClock(testTimeoutMs);
     if (!existsSync(MICROPYTHON_BIN)) {
         return { skipped: true, reason: MISSING_INTERPRETER };
     }
@@ -382,21 +473,22 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
 
     /** @type {import("playwright").Page[]} */
     const pages = [];
-    /** @type {{skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]} | undefined} */
-    let checked;
-    /** @type {unknown} */
-    let failure = null;
-    try {
+    /** @returns {Promise<{skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>} */
+    async function check() {
+        clock.step("booting its twin");
         await waitUntilServing(proc, READY_TIMEOUT_MS);
+        clock.step("opening its tabs");
         for (let i = 0; i < tabs; i += 1) {
             // eslint-disable-next-line no-await-in-loop -- pages are CREATED sequentially and NAVIGATED together below; that is what makes the loads concurrent rather than the setup
-            pages.push(await context.newPage());
+            pages.push(await clock.newPage(context));
         }
+        clock.step("loading every tab at once");
         const firstPass = await Promise.all(pages.map((page) => loadPage(page, OUTER_CAP_MS + 5000)));
         const failures = firstPass.flatMap((reason, index) => (reason === null ? [] : [`tab ${index + 1}: ${reason}`]));
         let loadedAfterRetry = firstPass.filter((reason) => reason === null).length;
         for (const [index, reason] of firstPass.entries()) {
             if (reason !== null) {
+                clock.step(`reloading tab ${index + 1}`);
                 // eslint-disable-next-line no-await-in-loop -- one reload at a time: recovery, not another burst
                 const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), TAB_WAIT_MS);
                 if (retry === null) {
@@ -406,12 +498,21 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
                 }
             }
         }
-        checked = { skipped: false, tabs, loadedFirstPass: firstPass.filter((reason) => reason === null).length, loadedAfterRetry, failures };
+        return { skipped: false, tabs, loadedFirstPass: firstPass.filter((reason) => reason === null).length, loadedAfterRetry, failures };
+    }
+
+    /** @type {Awaited<ReturnType<typeof check>> | undefined} */
+    let checked;
+    /** @type {unknown} */
+    let failure = null;
+    try {
+        checked = await clock.within(check());
     } catch (err) {
         failure = err;
     } finally {
-        await Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ })));
-        await stopTwin(proc);
+        clock.end();
+        const [unclosed] = await Promise.all([closePages(pages), stopTwin(proc)]);
+        failure ??= unclosed;
     }
     twinVerdict(`live-backend concurrent-tab check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
     if (checked === undefined) {
@@ -426,9 +527,11 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
  * retry wait; `reloaded` is true when the page reloaded instead (the build did not change, so it must not).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem
+ * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
  * @returns {Promise<{skipped: true, reason: string} | {skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean}>}
  */
-export async function runLiveBackendRestartRecovery({ context }, device) {
+export async function runLiveBackendRestartRecovery({ context }, device, testTimeoutMs) {
+    const clock = checkClock(testTimeoutMs);
     if (!existsSync(MICROPYTHON_BIN)) {
         return { skipped: true, reason: MISSING_INTERPRETER };
     }
@@ -441,15 +544,15 @@ export async function runLiveBackendRestartRecovery({ context }, device) {
     await assertPortFree(device, "before starting");
     const procs = [spawnTwin(device)];
     const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
-    /** @type {import("playwright").Page | undefined} */
-    let page;
-    /** @type {{skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean} | undefined} */
-    let checked;
-    /** @type {unknown} */
-    let failure = null;
-    try {
+    /** @type {import("playwright").Page[]} */
+    const pages = [];
+    /** @returns {Promise<{skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean}>} */
+    async function check() {
+        clock.step("booting its twin");
         await waitUntilServing(/** @type {import("node:child_process").ChildProcess} */ (procs[0]), READY_TIMEOUT_MS);
-        page = await context.newPage();
+        clock.step("loading its page");
+        const page = await clock.newPage(context);
+        pages.push(page);
         const firstPoll = settledLater(page.waitForResponse(answered, { timeout: SECTION_WAIT_MS }));
         await page.goto(`http://${HOST}:${PORT}/`);
         await firstPoll;
@@ -458,26 +561,40 @@ export async function runLiveBackendRestartRecovery({ context }, device) {
         });
         const urlBefore = page.url();
 
+        clock.step("stopping its twin");
         await stopTwin(/** @type {import("node:child_process").ChildProcess} */ (procs[0]));
         await assertPortFree(device, "after stopping");
+        clock.step("waiting for the banner");
         const bannerShown = await page.locator(banner("true")).waitFor({ timeout: SECTION_WAIT_MS }).then(() => true, () => false);
 
         const recoveredPoll = settledLater(page.waitForResponse(answered, { timeout: READY_TIMEOUT_MS + POLL_BACKOFF_MAX_MS }));
+        if (clock.isOver()) {
+            throw new Error("the check ended before its twin's restart"); // a step that outlasted the check starts no twin
+        }
+        clock.step("restarting its twin");
         const restarted = spawnTwin(device);
         procs.push(restarted);
         outputs.push(drainChildOutput(restarted));
         await waitUntilServing(restarted, READY_TIMEOUT_MS);
+        clock.step("waiting for the page to recover");
         // A hidden banner is display: none, so it is waited for as attached, never as visible.
-        const recovered = await recoveredPoll.then(() => page?.locator(banner("false")).waitFor({ state: "attached", timeout: SECTION_WAIT_MS })).then(() => true, () => false);
+        const recovered = await recoveredPoll.then(() => page.locator(banner("false")).waitFor({ state: "attached", timeout: SECTION_WAIT_MS })).then(() => true, () => false);
         const marker = await page.evaluate(() => /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (globalThis)).liveRestartMarker);
-        checked = { skipped: false, bannerShown, recovered, reloaded: page.url() !== urlBefore || marker !== "kept" };
+        return { skipped: false, bannerShown, recovered, reloaded: page.url() !== urlBefore || marker !== "kept" };
+    }
+
+    /** @type {Awaited<ReturnType<typeof check>> | undefined} */
+    let checked;
+    /** @type {unknown} */
+    let failure = null;
+    try {
+        checked = await clock.within(check());
     } catch (err) {
         failure = err;
     } finally {
-        if (page) {
-            await page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ });
-        }
-        await Promise.all(procs.map((proc) => stopTwin(proc)));
+        clock.end();
+        const [unclosed] = await Promise.all([closePages(pages), ...procs.map((proc) => stopTwin(proc))]);
+        failure ??= unclosed;
     }
     const drained = await Promise.all(outputs.map((output) => output.closed(SHUTDOWN_TIMEOUT_MS)));
     twinVerdict(`live-backend restart-recovery check for ${device}`, outputs, failure, drained.every(Boolean));

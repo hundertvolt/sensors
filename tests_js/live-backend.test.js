@@ -5,6 +5,9 @@ import { commands } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
+// Real subprocess boot + real HTTP + real browser navigation, well past the suite's 20000ms backstop (vitest.config.js).
+// Each command takes its test's timeout and ends its own waits one twin stop before it: Vitest never cancels a command.
+const SMOKE_TIMEOUT_MS = 45000;
 // Boot 20 s, the first pass within the page's 15 s request cap plus 5 s, one 20 s reload per tab of the six, the stop.
 // @tunable l0.live_concurrent_tabs_timeout_ms = 200000
 const CONCURRENT_TABS_TIMEOUT_MS = 200000;
@@ -25,7 +28,7 @@ describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
     it(
         "the real website, driven by a real browser, round-trips a real PUT against a live twin",
         async () => {
-            const result = await commands.runLiveBackendSmoke(device);
+            const result = await commands.runLiveBackendSmoke(device, SMOKE_TIMEOUT_MS);
 
             if (result.skipped) {
                 console.warn(`Skipping live-backend smoke check: ${result.reason}`);
@@ -36,9 +39,7 @@ describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
             expect(result.deviceName).toContain(displayNameOf(device));
             expect([result.firstStatus, result.resubmitStatus]).toEqual(["valid", "unchanged"]);
         },
-        45000, // real subprocess boot + real HTTP + real browser navigation - well past the
-        // suite's default 20000ms backstop (vitest.config.js), same reasoning as that backstop's
-        // own comment, scaled up for a real external process instead of an in-page fetch.
+        SMOKE_TIMEOUT_MS,
     );
 });
 
@@ -50,7 +51,7 @@ describe.each(DEVICE_IDS)("live digital-twin backend, concurrent browser session
     it(
         "a full ceiling of browser tabs against one live twin all load, directly or on one reload",
         async () => {
-            const result = await commands.runLiveBackendConcurrentTabs(device);
+            const result = await commands.runLiveBackendConcurrentTabs(device, CONCURRENT_TABS_TIMEOUT_MS);
 
             if (result.skipped) {
                 console.warn(`Skipping live-backend concurrent-tab check: ${result.reason}`);
@@ -71,7 +72,7 @@ describe.each(DEVICE_IDS)("live digital-twin backend, device restart: %s", (devi
     it(
         "the page recovers from a device restart without reloading",
         async () => {
-            const result = await commands.runLiveBackendRestartRecovery(device);
+            const result = await commands.runLiveBackendRestartRecovery(device, RESTART_RECOVERY_TIMEOUT_MS);
 
             if (result.skipped) {
                 console.warn(`Skipping live-backend restart-recovery check: ${result.reason}`);
