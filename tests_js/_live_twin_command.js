@@ -479,21 +479,95 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
 }
 
 /**
- * Starts recording every page's requests in flight, for the reset probe: a reload reset at the twin's ceiling is reported
- * with what the other tabs had open at that moment. Diagnostic only; the check reads nothing else from it.
+ * Records every page's requests in flight. A reload waits on `settled()` until the other tabs have nothing left on the
+ * network (agent, 2026-10-13; SPECIFICATION.md Part H.7.1: a follow-up into a full ceiling is refused until it has
+ * drained), and the reset probe names what they had open when a reload still fails.
  * @param {import("playwright").Page[]} pages
- * @returns {(except: number) => string[]} each other tab's requests still in flight, with their age
  */
 function trackInFlight(pages) {
     /** @type {Map<import("playwright").Request, number>[]} */
     const open = pages.map(() => new Map());
+    /** @type {(() => boolean)[]} */
+    let waiters = [];
+    const notify = () => {
+        waiters = waiters.filter((settle) => !settle());
+    };
     for (const [index, page] of pages.entries()) {
         const mine = /** @type {Map<import("playwright").Request, number>} */ (open[index]);
-        page.on("request", (request) => mine.set(request, Date.now()));
-        page.on("requestfinished", (request) => mine.delete(request));
-        page.on("requestfailed", (request) => mine.delete(request));
+        page.on("request", (request) => {
+            mine.set(request, Date.now());
+            notify();
+        });
+        page.on("requestfinished", (request) => {
+            mine.delete(request);
+            notify();
+        });
+        page.on("requestfailed", (request) => {
+            mine.delete(request);
+            notify();
+        });
     }
-    return (except) => open.flatMap((mine, index) => (index === except ? [] : [...mine].map(([request, since]) => `tab ${index + 1} ${request.method()} ${new URL(request.url()).pathname} (${Date.now() - since}ms)`)));
+    /**
+     * @param {number} except the reloading tab
+     * @param {Set<import("playwright").Request>} held requests kept in the browser, never sent to the twin
+     */
+    const quiet = (except, held) => open.every((mine, index) => index === except || [...mine.keys()].every((request) => held.has(request)));
+    return {
+        notify,
+        /**
+         * @param {number} except
+         * @param {Set<import("playwright").Request>} held
+         * @returns {string[]} each other tab's requests still in flight, with their age, the held ones marked
+         */
+        describe: (except, held) => open.flatMap((mine, index) => (index === except ? [] : [...mine].map(([request, since]) => `tab ${index + 1} ${request.method()} ${new URL(request.url()).pathname} (${Date.now() - since}ms${held.has(request) ? ", held" : ""})`))),
+        /**
+         * @param {number} except
+         * @param {Set<import("playwright").Request>} held
+         * @returns {Promise<void>} once every request the other tabs still have in flight is a held one
+         */
+        settled(except, held) {
+            return new Promise((resolve) => {
+                const settle = () => {
+                    if (!quiet(except, held)) {
+                        return false;
+                    }
+                    resolve();
+                    return true;
+                };
+                if (!settle()) {
+                    waiters.push(settle);
+                }
+            });
+        },
+    };
+}
+
+/**
+ * Keeps every new request of `pages` in the browser until `release()`, so those tabs open no connection while another
+ * tab reloads: Playwright's routing, not Chromium's frozen lifecycle state, which left a headless page's timers running
+ * (agent, 2026-10-13).
+ * @param {import("playwright").Page[]} pages
+ * @param {() => void} onHeld called after each request it holds
+ */
+async function holdRequests(pages, onHeld) {
+    /** @type {import("playwright").Route[]} */
+    const routes = [];
+    /** @type {Set<import("playwright").Request>} */
+    const held = new Set();
+    /** @param {import("playwright").Route} route */
+    const hold = (route) => {
+        routes.push(route);
+        held.add(route.request());
+        onHeld();
+    };
+    await Promise.all(pages.map((page) => page.route("**/*", hold)));
+    return {
+        held,
+        async release() {
+            await Promise.all(pages.map((page) => page.unroute("**/*", hold).catch(() => { /* a closed page holds nothing */ })));
+            await Promise.all(routes.map((route) => route.continue().catch(() => { /* its page closed or its request was aborted */ })));
+        },
+    };
 }
 
 /**
@@ -547,8 +621,8 @@ async function loadPage(page, timeoutMs) {
 
 /**
  * A full connection ceiling of real-browser tabs against one live twin, all navigating at once: each load completes
- * or fails at the connection level within the page's own request cap, and every tab that did not load then loads
- * on one reload of its own (SPECIFICATION.md Part H.7).
+ * or fails at the connection level within the page's own request cap, and every tab that did not load then loads on one
+ * reload of its own, made after the others drain and while they are held (SPECIFICATION.md Parts H.7, H.7.1; agent, 2026-10-13).
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem; its own ceiling sizes the tab count
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
@@ -582,7 +656,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
             pages.push(await own.newPage());
         }
         clock.step("loading every tab at once");
-        const inFlight = trackInFlight(pages);
+        const tracker = trackInFlight(pages);
         /** @type {number[]} */
         const firstPassEnded = pages.map(() => 0);
         const firstPass = await Promise.all(pages.map((page, index) => loadPage(page, OUTER_CAP_MS + 5000).then((reason) => {
@@ -594,16 +668,27 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         let reloadsFailed = 0;
         for (const [index, reason] of firstPass.entries()) {
             if (reason !== null) {
-                clock.step(`reloading tab ${index + 1}`);
-                const reloadAt = Date.now();
-                // eslint-disable-next-line no-await-in-loop -- one reload at a time: recovery, not another burst
-                const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), TAB_WAIT_MS);
-                if (retry === null) {
-                    loadedAfterRetry += 1;
-                } else {
-                    reloadsFailed += 1;
-                    const open = inFlight(index).join(", ") || "none";
-                    failures.push(`tab ${index + 1} on its reload: ${retry} [reset probe: the reload began ${reloadAt - (firstPassEnded[index] ?? 0)}ms after its first-pass failure and failed after ${Date.now() - reloadAt}ms; the other tabs' requests in flight then: ${open}]`);
+                clock.step(`waiting for the other tabs to drain before reloading tab ${index + 1}`);
+                const drainFrom = Date.now();
+                // eslint-disable-next-line no-await-in-loop -- one reload at a time, each with the other tabs held
+                const hold = await holdRequests(pages.filter((_, other) => other !== index), tracker.notify);
+                try {
+                    // eslint-disable-next-line no-await-in-loop -- the drain this reload waits for
+                    await tracker.settled(index, hold.held);
+                    clock.step(`reloading tab ${index + 1}`);
+                    const reloadAt = Date.now();
+                    // eslint-disable-next-line no-await-in-loop -- one reload at a time: recovery, not another burst
+                    const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), TAB_WAIT_MS);
+                    if (retry === null) {
+                        loadedAfterRetry += 1;
+                    } else {
+                        reloadsFailed += 1;
+                        const open = tracker.describe(index, hold.held).join(", ") || "none";
+                        failures.push(`tab ${index + 1} on its reload: ${retry} [reset probe: the reload began ${reloadAt - (firstPassEnded[index] ?? 0)}ms after its first-pass failure, ${reloadAt - drainFrom}ms of them waiting for the drain, and failed after ${Date.now() - reloadAt}ms; the other tabs' requests in flight then: ${open}]`);
+                    }
+                } finally {
+                    // eslint-disable-next-line no-await-in-loop -- released before the next reload holds again
+                    await hold.release();
                 }
             }
         }
