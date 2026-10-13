@@ -354,9 +354,9 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   `fram_target = "fram"`.
 - `js/mock-server.js` masks `MQTTPW` like `PW`; `mockdata/samples.json` gains the MQTT config, status
   and errcount samples.
-- `toolchain/versions.toml` `apt_packages` gains `mosquitto` and `mosquitto-clients` (owner, 8.8: "apt
-  package (Recommended)"); the digital-twin CI job installs the list; BACKLOG.md's chroot list gets the
-  entry.
+- `toolchain/versions.toml` `apt_packages` gains `mosquitto` (owner, 8.8: "apt package (Recommended)");
+  CI's `digital-twin-e2e` and three unit-test jobs install that one entry through
+  `.github/actions/install-mosquitto`; BACKLOG.md's chroot list gets the entry.
 
 ## 11. Tests by tier, and the bench runbook
 

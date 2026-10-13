@@ -1,0 +1,23 @@
+name: Install mosquitto
+description: >
+  Installs the one `mosquitto` entry of toolchain/versions.toml's apt_packages, the broker the MQTT client's
+  tests start on a port of their own (owner, 2026-10-07: 'mosquitto in CI', 'apt package (Recommended)').
+  Shared by digital-twin-e2e (Run 12) and the three unit-test jobs (tests_scripts/test_mqtt_probe.py), so no
+  job installs the ARM compiler for it.
+
+runs:
+  using: composite
+  steps:
+    - name: Install mosquitto from versions.toml
+      shell: bash
+      run: |
+        python3 - <<'PYEOF'
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, "toolchain")
+        import setup_toolchain as st
+        versions = st.load_versions(Path("toolchain/versions.toml"))
+        wanted = [p for p in versions["toolchain"]["apt_packages"] if p == "mosquitto"]
+        assert wanted, "toolchain/versions.toml's apt_packages no longer lists mosquitto"
+        st.ensure_apt_packages(wanted, skip=False)
+        PYEOF
