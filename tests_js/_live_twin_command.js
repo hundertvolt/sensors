@@ -523,21 +523,40 @@ function trackInFlight(pages) {
         /**
          * @param {number} except
          * @param {Set<import("playwright").Request>} held
-         * @returns {Promise<void>} once every request the other tabs still have in flight is a held one
+         * @param {number} timeoutMs
+         * @returns {Promise<boolean>} true once every request the other tabs still have in flight is a held one, false
+         * if that is not so within `timeoutMs`
          */
-        settled(except, held) {
-            return new Promise((resolve) => {
-                const settle = () => {
+        async settled(except, held, timeoutMs) {
+            /** @type {ReturnType<typeof setTimeout> | undefined} */
+            let timer;
+            /** @type {(() => boolean) | undefined} */
+            let settle;
+            /** @type {Promise<boolean>} */
+            const drained = new Promise((resolve) => {
+                settle = () => {
                     if (!quiet(except, held)) {
                         return false;
                     }
-                    resolve();
+                    resolve(true);
                     return true;
                 };
                 if (!settle()) {
                     waiters.push(settle);
                 }
             });
+            /** @type {Promise<boolean>} */
+            const late = new Promise((resolve) => {
+                timer = setTimeout(() => {
+                    resolve(false);
+                }, Math.max(0, timeoutMs));
+            });
+            try {
+                return await Promise.race([drained, late]);
+            } finally {
+                clearTimeout(timer);
+                waiters = waiters.filter((waiter) => waiter !== settle);
+            }
         },
     };
 }
@@ -620,6 +639,40 @@ async function loadPage(page, timeoutMs) {
 }
 
 /**
+ * Reloads tab `index` once the other tabs have drained, holding them meanwhile. Drain and reload share one TAB_WAIT_MS
+ * slot; the drain gets at most its first TAB_WAIT_MS - SECTION_WAIT_MS, so the reload keeps at least one section wait,
+ * and a drain still open then fails naming every request the other tabs had in flight (agent, 2026-10-13).
+ * @param {import("playwright").Page[]} pages
+ * @param {number} index the tab to reload
+ * @param {ReturnType<typeof trackInFlight>} tracker
+ * @param {ReturnType<typeof checkClock>} clock
+ * @param {number} firstPassEnded when the tab's first pass failed
+ * @returns {Promise<string | null>} null once loaded, else why not
+ */
+async function reloadAfterDrain(pages, index, tracker, clock, firstPassEnded) {
+    clock.step(`waiting for the other tabs to drain before reloading tab ${index + 1}`);
+    const drainFrom = Date.now();
+    const slotEnd = drainFrom + TAB_WAIT_MS;
+    const hold = await holdRequests(pages.filter((_, other) => other !== index), tracker.notify);
+    try {
+        const drained = await tracker.settled(index, hold.held, slotEnd - SECTION_WAIT_MS - Date.now());
+        if (!drained) {
+            return `tab ${index + 1}: not reloaded, the other tabs had not drained ${Date.now() - drainFrom}ms into its ${TAB_WAIT_MS}ms reload slot; their requests in flight then: ${tracker.describe(index, hold.held).join(", ")}`;
+        }
+        clock.step(`reloading tab ${index + 1}`);
+        const reloadAt = Date.now();
+        const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), slotEnd - reloadAt);
+        if (retry === null) {
+            return null;
+        }
+        const open = tracker.describe(index, hold.held).join(", ") || "none";
+        return `tab ${index + 1} on its reload: ${retry} [reset probe: the reload began ${reloadAt - firstPassEnded}ms after its first-pass failure, ${reloadAt - drainFrom}ms of them waiting for the drain, and failed after ${Date.now() - reloadAt}ms; the other tabs' requests in flight then: ${open}]`;
+    } finally {
+        await hold.release();
+    }
+}
+
+/**
  * A full connection ceiling of real-browser tabs against one live twin, all navigating at once: each load completes
  * or fails at the connection level within the page's own request cap, and every tab that did not load then loads on one
  * reload of its own, made after the others drain and while they are held (SPECIFICATION.md Parts H.7, H.7.1; agent, 2026-10-13).
@@ -668,27 +721,13 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         let reloadsFailed = 0;
         for (const [index, reason] of firstPass.entries()) {
             if (reason !== null) {
-                clock.step(`waiting for the other tabs to drain before reloading tab ${index + 1}`);
-                const drainFrom = Date.now();
                 // eslint-disable-next-line no-await-in-loop -- one reload at a time, each with the other tabs held
-                const hold = await holdRequests(pages.filter((_, other) => other !== index), tracker.notify);
-                try {
-                    // eslint-disable-next-line no-await-in-loop -- the drain this reload waits for
-                    await tracker.settled(index, hold.held);
-                    clock.step(`reloading tab ${index + 1}`);
-                    const reloadAt = Date.now();
-                    // eslint-disable-next-line no-await-in-loop -- one reload at a time: recovery, not another burst
-                    const retry = await loadPage(/** @type {import("playwright").Page} */ (pages[index]), TAB_WAIT_MS);
-                    if (retry === null) {
-                        loadedAfterRetry += 1;
-                    } else {
-                        reloadsFailed += 1;
-                        const open = tracker.describe(index, hold.held).join(", ") || "none";
-                        failures.push(`tab ${index + 1} on its reload: ${retry} [reset probe: the reload began ${reloadAt - (firstPassEnded[index] ?? 0)}ms after its first-pass failure, ${reloadAt - drainFrom}ms of them waiting for the drain, and failed after ${Date.now() - reloadAt}ms; the other tabs' requests in flight then: ${open}]`);
-                    }
-                } finally {
-                    // eslint-disable-next-line no-await-in-loop -- released before the next reload holds again
-                    await hold.release();
+                const retry = await reloadAfterDrain(pages, index, tracker, clock, firstPassEnded[index] ?? 0);
+                if (retry === null) {
+                    loadedAfterRetry += 1;
+                } else {
+                    reloadsFailed += 1;
+                    failures.push(retry);
                 }
             }
         }
