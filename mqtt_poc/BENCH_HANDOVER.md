@@ -71,14 +71,18 @@ And on 2026-10-08:
   `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
   after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host** (`45e3748`, after the U19 fix to U22 merge), each tier run on its own:
+- **Verified on the host** (`98ae981`, the will and the persistent session), each tier run on its own:
   - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 96 files, 4,960 MicroPython tests, zero memory errors;
+  - `scripts/test.sh` at both GC stages: 96 files, 4,977 MicroPython tests, zero memory errors. At
+    `32768` one base test missed its wall-clock bound, `tests/lwip_host/test_modlwip_eagain.py`'s spin
+    round (25 ms against 20 ms); alone it failed 1 of 3 runs. Neither it nor its lwIP binary is in this
+    branch's diff;
   - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
   - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
-    flood): 346 of 346 checks across both stages;
-  - `npm test`, the website's settings matrix with it: 1,289 passed, 7 skipped.
-- **CI**: green on `45e3748`, every lane run, the web lanes included; the PR's checks show the current head.
+    flood, the will, a persistent session across a restart, the retire): 368 of 368 checks across both stages;
+  - `npm test` under the `.nvmrc` Node 24, the website's settings matrix with it: 1,347 passed, 8 skipped.
+- **CI**: green on `98ae981`, all 27 checks, and on `41b28e3` (DESIGN.md only), whose one `unit-tests`
+  failure, a base wozi test's CaptiveDNS bind, passed on its re-run; the PR's checks show the current head.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
@@ -89,8 +93,8 @@ And on 2026-10-08:
   settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
   for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
   override (SPECIFICATION.md B.14.4). The client is now built before the UART links. Since 2026-10-13 the will
-and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
-three bench tests of their own (section 5).
+  and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
+  three bench tests of their own (section 5).
 
 ### 1.4 The client in brief
 
