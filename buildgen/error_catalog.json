@@ -79,7 +79,7 @@
       "62": {"owner": "wifi", "name": "WLAN_STA_START", "text": "starting a STA connect raised"},
       "63": {"owner": "wifi", "name": "WLAN_STA_POLL", "text": "polling the STA status raised"},
       "64": {"owner": "wifi", "name": "WLAN_STA_DISCONNECT", "text": "the STA disconnect raised"},
-      "65": {"owner": "wifi", "name": "WLAN_OFF", "text": "permanently deactivating the WLAN raised"},
+      "65": {"owner": "wifi", "name": "WLAN_OFF", "text": "permanently deactivating the WLAN raised", "retired": true},
       "66": {"owner": "wifi", "name": "WLAN_GIVE_UP", "text": "repeated WLAN hardware failures; the task gives up and restarts"},
       "67": {"owner": "ntp", "name": "NTP_DNS", "text": "the NTP server name did not resolve"},
       "68": {"owner": "ntp", "name": "NTP_IMPLAUSIBLE", "text": "the reply's time is implausible"},
@@ -184,15 +184,33 @@
       "71": {"owner": "bmp3xx", "name": "BMP_CHIP_RESET", "text": "a chip self-reset was read (EVENT por_detected); the stored configuration is re-applied"},
       "73": {"owner": "scd30", "name": "SCD_NOT_READY", "text": "five consecutive data-ready signals brought no new measurement (a data-ready line stuck high?)"},
       "75": {"owner": "isl29125", "name": "ISL_CAL_TIMEOUT", "text": "a gain-ratio calibration window closed without a stable reading"},
-      "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read; the hotspot timer is left as it was"},
+      "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read (the query raised, or the chip-down 32-entry answer); counted as no client"},
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
-      "80": {"owner": "wifi", "name": "WLAN_DEACTIVATED", "text": "a second STA failure streak after the hotspot ran; the WLAN is deactivated until a power cycle"},
+      "80": {"owner": "wifi", "name": "WLAN_SILENT", "text": "a second STA failure streak after the hotspot ran; Wi-Fi goes silent: no hotspot, the LED dark, one connect attempt every hotspot_time_min until a link"},
       "81": {"owner": "wifi", "name": "WLAN_NO_VERDICT", "text": "a STA connect poll ended without a verdict (still connecting, or joined without an IP address)"},
       "82": {"owner": "mqtt", "name": "MQTT_SHORT_SESSIONS", "text": "MQTT sessions keep ending right after they start (another client with the same client id?)"}
     }
   },
   "status": {
+    "ResetReason": {
+      "0": {"text": "unknown (the record's magic or check word is wrong)"},
+      "1": {"text": "power-on (also the RUN pin, RP2040 datasheet §4.7.4)"},
+      "2": {"text": "watchdog without a record (a starvation, machine.reset() from outside the firmware, mpremote reset)"},
+      "3": {"text": "reboot command"},
+      "4": {"text": "bootloader command"},
+      "5": {"text": "supervisor escalation (task-error budget)"},
+      "6": {"text": "watchdog starve after the reset timer could not be armed"},
+      "7": {"text": "reboot after \"Reset to defaults\""},
+      "8": {"text": "reboot after \"Erase FRAM\""},
+      "9": {"text": "reboot after either command whose purpose did not complete"},
+      "11": {"text": "boot failure in phase 1 (construction)"},
+      "12": {"text": "boot failure in phase 2 (setup batch)"},
+      "13": {"text": "boot failure in phase 3 (task starts)"},
+      "14": {"text": "boot failure in phase 4 (timer starts)"},
+      "15": {"text": "boot failure in phase 5 (first NTP sync)"},
+      "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed"}
+    },
     "VOCState": {
       "0": {"text": "blackout (first 46 samples, index 0)"},
       "1": {"text": "learning (fresh start, first 24 h)"},
@@ -211,6 +229,13 @@
       "1": {"text": "suitable for Calibrate Gain Ratio"},
       "2": {"text": "too dark"},
       "3": {"text": "too bright"}
+    },
+    "NotifyState": {
+      "0": {"text": "every signal evaluated"},
+      "1": {"text": "not evaluated by setting (AutoOn off, paused, or outside the window)"},
+      "2": {"text": "not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed)"},
+      "3": {"text": "evaluated in part (a value unavailable, stale or not numeric)"},
+      "4": {"text": "the service's own configuration unreadable"}
     }
   }
 }

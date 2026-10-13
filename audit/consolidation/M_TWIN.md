@@ -1315,6 +1315,7 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   A.U36.544 (`:137` "A.4" → F.1), A.U28.27 (ruff S104's per-file reason names "the fake's unset `ifconfig()` address" —
   TOOL), A.U6.30 Blast (`country()` unchanged — holds), A.U6.29 Blast (no twin entry), A.U27.28 (header over the cap),
   A.U25.63 (the file's five explicit `Any`: `:18` import, `:63`, `:65`, `:66`, `:136`; A-C3 S-09)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `digital_twin/network.py:1-151` (whole file)
 - **Change**: header → "Twin fake of the rp2 network module (the Unix port has none): WLAN fakes connection state only
   - real NTP/DNS/HTTP traffic uses the host's sockets. Per-interface singletons with cyw43's status rules and a 0.7 s
@@ -1357,6 +1358,20 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   filter (`("stations",)`), so the stations query can fail while the link status answers; `script_connect_outcomes()`
   accepts 2 (joined, no IP: a DHCP server that never answers) and holds it for the whole poll. Pins M.SRC_NET.093 (1),
   .089 (1); U25.
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, on HEAD's per-construction
+  model, with M.SRC_NET.223/.224: two twin-only knobs. A module-level access-point switch, `set_access_point_up(up:
+  bool)` over `_access_point_up = [True]`: while it is down, a completed `_run_connect()` ends `STAT_NO_AP_FOUND` with
+  the unconfigured address and consumes no scripted outcome. It is module-level because the service constructs
+  `WLAN(mode)` anew on every mode switch (`src/asy_wifi_service.py:734`), and a per-object `script_connect_outcomes()`
+  queue does not survive that; comment "# twin-only test knob: the home network's access point is down for every
+  interface object until switched back". A per-object `stations_chip_down = False`: while set, `status("stations")`
+  returns 32 one-element tuples of 6 zero bytes. That is rp2's answer when `cyw43_ensure_up()` fails: the count stays at
+  the 32-entry buffer size and the bytes are never filled (`extmod/network_cyw43.c:371-388`,
+  `lib/cyw43-driver/src/cyw43_ctrl.c:717-723`, v1.29.0). The twin's zero bytes stand in for that unfilled memory, and
+  the service reads only the count; comment "# twin-only test knob: rp2's stations answer with the radio down
+  (network_cyw43.c:371-388)". The U25 form above carries both: the flag onto the singletons, both names into `TEST_API`
+  and the switch's reset into `reset_test_state()`. Fidelity rows → M.TWIN.059 (5); fake cases → M.TWIN.132 (2); system
+  cases → M.TWIN.144 (19).
 - **Resolved**: A.U25.27 writes `raise_on[method] = (exc, times)` with one exception instance; G7/R16 ("faults …
   raise a fresh exception each time", OR21.a (1)) and A.U25.70's reason (a re-raised MicroPython instance grows its
   traceback — with `times=None` without bound, against OR110.a's no-growth rule) settle the stored form as a type and
@@ -1365,8 +1380,9 @@ facts are re-read at the refreshed pin (A.SDEP.08 `:48, :250, :368, :836`; A.SDE
   state once, so A.U25.72's AP state and A.U25.33's STA address live on the singletons — one model. A.U18.27 and A.U24.09
   each leave a twin follow-up to U25 that no U25 action writes; both are closed here as their Blasts state (the seeds'
   values from A.U24.09's cited sources; the status constants cited and pinned).
-- **Unit**: U25
-- **Depends**: M.TWIN.001; A.U18.33, A.U18.32 (service reads and budget constant), A.U18.R01 (re-init rung user)
+- **Unit**: U25. Stage U22 ((2), on HEAD's model; the U25 rewrite carries it).
+- **Depends**: M.TWIN.001; M.SRC_NET.223, M.SRC_NET.224 ((2), the behaviour its knobs exercise); A.U18.33, A.U18.32
+  (service reads and budget constant), A.U18.R01 (re-init rung user)
 - **Blast carried by**: `src/asy_wifi_service.py` mode switches get the same objects (product, SRC_NET — no change); the
   AP-mode rssi / STA-mode stations paths reach the raise at L2 — the executor records whether a service path logs it
   (then A.U18.33's, SRC_NET); `captive_dns` reads `192.168.4.1` (SRC_NET — no change); runners' `_apply_fault()` for
@@ -2080,6 +2096,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   (`unplug`/`plug` named), A.U14.28 (shim bullet keeps its pointer), A.U7.01 (level wording follows SPEC E.6), A.SDEP.08
   (`:78` re-read at the pin), A.U25.71 / M.TWIN.019 (`_wall_clock.py` bullet, gap: no action writes it), M.TWIN.001,
   M.TWIN.053, M.TWIN.054 (new modules' bullets), M.TWIN.167 (the responder's bullet, OR140.a (13); A-C review fold)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `digital_twin/README.md:1-147`
 - **Change**: intro `:1-14`: "— any real device of `devices/*.toml`, or a synthetic fixture —"; the real-time Timers and
   bounded random values carry "(owner, 2026-08-12)"; `:12-14` keeps the separation sentence and names
@@ -2096,7 +2113,8 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   `rdid_once`, `silent` — the "real bug (fixed 2026-09-04)" history goes); `_twin_common.py`; `_crc8.py` /
   `_fault_injection.py`; `_wall_clock.py`; `network.py` / `neopixel.py` (owner tag `:105`; connect phase "moves through a
   real `STAT_CONNECTING` phase and connects after `_CONNECT_DELAY_S` (0.7 s), under `_poll_sta_connect_status()`'s 5 s
-  budget"; STA address in TEST-NET-1 so no twin run reaches a public resolver; AP singletons answer `192.168.4.1`; the
+  budget"; STA address in TEST-NET-1 so no twin run reaches a public resolver; AP singletons answer `192.168.4.1`;
+  the twin-only access-point switch and the chip-down stations answer (fidelity table); the
   NeoPixel stores a GRB bytearray; owner tag `:104-112` "reaching the host's real network through every connect phase");
   `_http_client.py` (real HTTP over real sockets, owner tag; refusal → `CeilingRefusedError`, incomplete →
   `IncompleteResponseError`, both `OSError`; strict JSON check, the lazy import's reason "so `_http_client` imports without
@@ -2112,10 +2130,16 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   only for one command word, register or opcode; `pending(op)` counts what is queued; `inject_hang()` is a real blocking
   sleep (see `--hang`). Faults the rp2 port cannot produce are refused (fidelity table). `I2C.unplug(address)`/
   `plug(address)` model a sensor pulled and re-seated; off/clean by default (owner, 2026-08-12)."
+  (1) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22 (HEAD's `network.py`
+  bullet, `digital_twin/README.md:119-130`), with M.TWIN.040 (2): one sentence after its `ifconfig()` sentence — "Two
+  twin-only knobs model what the WiFi service has to ride out: `set_access_point_up(False)` takes the home network's
+  access point away from every interface object until it is switched back, and `stations_chip_down` makes a hotspot's
+  `status("stations")` answer 32 entries, as rp2 does when its radio cannot be brought up." The U25 restructure carries
+  it into the bullet above.
 - **Resolved**: A.U36.040 (U36) turns A.U25.43 (4)'s README account (U25) into a pointer — the later action's end state
   (SPEC F.7 is the fact's one home, both actions agree). A.U25.71 adds `_wall_clock.py` with no README line; the bullet
   is added here (gap closed).
-- **Unit**: U36 (U25 restructures)
+- **Unit**: U36 (U25 restructures). Stage U22 ((1), HEAD's `network.py` bullet).
 - **Depends**: M.TWIN.001-057, M.TWIN.167
 - **Blast carried by**: SPEC A.10/E.6.5 point to the fidelity table → A.U25.01 (SPEC); root README recipe pointers →
   A.U36.547 (DOCS)
@@ -2135,6 +2159,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   constants" subsection lists `tests/test_digital_twin_rp2_constants.py`), adherence additions of this merge (below);
   gap pass G3: A.U26.58 (the scheduler-queue row, M.HW_DEV.106's blast), A.U30.19 (the `stack` knob row), A.U35.28 (the
   FRAM write counter is a test surface)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `digital_twin/README.md` new `## Fidelity table` after "What's here", before "Swapping the twin in"
 - **Change**: A.U25.01's table verbatim in structure and rows (its Change text is the content spec), with these
   end-state adjustments: (1) the RTC row reads "RTC: no constructor argument, an 8-tuple, weekday recomputed, setter
@@ -2166,6 +2191,12 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   (4) `[src: …]` notes are not written into the permanent README (G9/R12, C5): the table's Evidence column cites the
   source line, datasheet page or test, never an audit ID — A.U25.01's own "register and action IDs go only in `[src: …]`
   notes beside each row" is replaced by this, see Resolved.
+  (5) (A-C fold, owner requirements 2026-10-08, OR151/OR152) Rows for M.TWIN.040 (2)'s knobs, with the table: "the
+  access-point switch takes the home network's access point away from every interface object; a completed connect ends
+  `STAT_NO_AP_FOUND` (twin-only knob; fixed, `tests/test_digital_twin_network_neopixel.py`)"; "the chip-down stations
+  answer: 32 one-element tuples of 6 bytes, rp2's answer when `cyw43_ensure_up()` fails
+  (`extmod/network_cyw43.c:371-388`, `lib/cyw43-driver/src/cyw43_ctrl.c:717-723`); silicon leaves the bytes unfilled,
+  the twin zeroes them, and the service reads only the count (twin-only knob; fixed, same file)".
 - **Resolved**: A.U25.01 keeps `[src: A.U…]` notes "beside each row, never in the table"; G9/R12 / AC_NOTES 4 forbid
   temporary audit IDs in permanent text, and the README is permanent — the notes are dropped (adherence fix; the
   provenance stays in the audit files). A.U0.59 tags `:354`; A.U25.01 turns `:354-358` into a pointer — A.U0.59 is void
@@ -3087,6 +3118,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   ends on the twin fake's `raise_on_write` restarts and leaves the pixel dark with the overlay restored; carried by no
   TWIN
   change — gap pass G3)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests/test_digital_twin_network_neopixel.py` (whole file)
 - **Change**: every isolated `WLAN(...)` test starts `network.reset_interfaces()`; `raise_on` set with
   `(OSError, (errno.EIO, "m"), times)`; the cases listed under From; the seed test asserts `network.country() == "XX"` and
@@ -3101,9 +3133,19 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   task's refresh wait advanced through the driven clock the L1 tier installs (M.TEST_HELP.065) — `displayed()` shows the
   overlay colour again; if the in-process tier cannot drive that wait, the driver half rests on M.TEST_UNIT.079 (1) and
   the decision is logged at execution. Pins M.SRC_SENS.025 (1); stage U25 for the fake case; the driver case Stage U35, with M.TEST_HELP.065 (the driven clock; until then M.TEST_UNIT.079 (1) carries the driver half).
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22 (HEAD's file and
+  per-construction model), with M.TWIN.040 (2):
+  `test_a_downed_access_point_fails_every_interface_object_until_switched_back` — with the switch down, a connect on a
+  fresh `WLAN(STA_IF)` and on one constructed after it each end `STAT_NO_AP_FOUND` with the unconfigured address, and a
+  scripted outcome stays queued; switched up, the next connect reaches `STAT_GOT_IP`; the switch restored in `finally`.
+  `test_a_chip_down_stations_answer_is_32_unfilled_entries` — with the flag set, `status("stations")` is 32 one-element
+  tuples of 6 bytes; cleared, it reads the station list again. The U25 rewrite carries both onto the singletons, with
+  `reset_test_state()` in place of the `finally`. A.U18.30's L2 case reaches the deactivated pattern through a missing
+  configuration, its one route since U22 (the second streak goes silent, M.SRC_NET.223).
 - **Resolved**: A.U35.14 removes the wall-clock waits `:149`, `:251` that A.U8C.29's row `l2.network_neopixel_never_connects_
   wait_s` tags — the later action wins and the row closes (C3, A.U8C.120's Dependant note with it).
-- **Unit**: U35 (stages: U8C tags, U25 the fake cases and the A.U22.01 case — its product half is U22's)
+- **Unit**: U35 (stages: U8C tags, U22 (2) the knobs' cases, U25 the fake cases and the A.U22.01 case — its product half
+  is U22's)
 - **Depends**: M.TWIN.040, M.TWIN.042
 - **Blast carried by**: `pyproject.toml` S106 per-file reason → A.U28.28/A.U28.29 (TOOL)
 - **Kind**: test
@@ -3274,6 +3316,7 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   date), A.U8.08 (`:461` `l2.wdt_overrun_wait_s`), A.U8C.32 / A.U8C2.11 / A.U8C.24 / A.U8C.120 (tags; rows of moved code
   withdrawn, C3), A.U15.41 (its L2 boot lives in M.TWIN.152 — this file's mention holds), OR141.a (5) (the 100 ms idle
   poll rate stays with its measurement owed in the twin and on the bench; A-C review fold), C1, C2, C4, C5
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests/test_digital_twin_sensortask_integration.py` (whole file)
 - **Change**: header (≤ 3 lines) "In-process twin tier for the device named by TEST_DEVICE: its generated graph booted on
   the twin buses with no HTTP (requests are driven host-side by scripts/_digital_twin_scenarios.py). Driver-specific
@@ -3377,18 +3420,40 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   (15) (A-C fold, silent-failure scan SF-M2-01, 2026-10-06)
   `test_a_factory_state_unit_returns_to_the_hotspot_after_every_window` (device-generic): no SSID, two hotspot windows
   ended from outside (the service's hotspot timeout fired through the twin Timer, M.TWIN.030, or the window's configured
-  minimum): the AP comes back each time and the phase never reaches DEACTIVATED. Pins M.SRC_NET.088 (1).
+  minimum): the AP comes back each time and the phase never reaches the silent mode (the second streak's state since
+  U22, owner, 2026-10-08). Pins M.SRC_NET.088 (1).
   (16) (A-C fold, silent-failure scan SF-M2-03, 2026-10-06)
   `test_a_dhcp_server_that_never_answers_leaves_a_persisted_trace` (device-generic): `script_connect_outcomes([2] * n)`
   (M.TWIN.040 (1)): WIFI's log holds `code("W", "WLAN_NO_VERDICT")` (one slot) and, after the streak, `code("W",
   "WLAN_TO_HOTSPOT")`. Pins M.SRC_NET.088 (2), .089 (1).
-  (17) (A-C fold, silent-failure scan SF-B6, 2026-10-06) In test 5's hotspot boot: the AP's `status("stations")` raising
-  (M.TWIN.040 (1)) leaves the hotspot timer as it was and persists one `code("W", "WLAN_STATIONS_UNKNOWN")`. Pins
-  M.SRC_NET.093 (1).
+  (17) (A-C fold, silent-failure scan SF-B6, 2026-10-06) In test 5's hotspot boot: once a listed client has stopped the
+  window's timer, the AP's `status("stations")` raising (M.TWIN.040 (1)) counts as no client, so the timer runs again
+  (the legacy rule, owner, 2026-10-08), and persists one `code("W", "WLAN_STATIONS_UNKNOWN")`. Pins M.SRC_NET.224.
   (18) (A-C fold, silent-failure scan SF-A08, 2026-10-06) Test 10 gains a burst: six DNS queries sent within one
   `_POLL_IDLE_MS` are all answered, back to back (the listener's `ready()` rounds during the burst at most burst + 1),
   printed as `MEASURE dnssrv.burst_answered=<n>/6`; the host socket queues more than lwIP's 4, so the drop beyond 4
   shows only on the bench (M.PROC.038). Pins M.SRC_NET.007 (1).
+  (19) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, on HEAD's file and seams
+  (`sensortask_wozi`, the `_connection_failures` shortcut, the window's end fired through the twin Timer's stored
+  callback, `conn._hotspot_timer.callback(conn._hotspot_timer)`), with M.SRC_NET.223/.224 and M.TWIN.040 (2); the U25
+  rewrite carries them into the per-device form (driver-specific: `neopixel`, test 5's hotspot boot), real failure
+  cycles replacing the shortcut as in test 5. Each bounded by condition waits, never a fixed sleep; the access-point
+  switch restored in `finally`.
+  (a) `test_a_second_failed_streak_goes_silent_dark_and_links_on_a_later_attempt` (OR151): `SSID` written, `LEDWifiOn`
+  on, the access point switched down; the boot streak opens the hotspot; its window ended; the second streak fails, and
+  from then on no hotspot runs (`is_hotspot_active()` false, the DNS task gone, the service's interface the STA one) and
+  every frame the pixel receives is dark. One silent period fired through the same callback: the attempt fails and the
+  phase stays silent, with no hotspot. WIFI's history holds one `WLAN_SILENT` slot. The access point switched up and one
+  more period fired: the attempt links, the phase is STA-established, the window's timer is stopped and the pixel shows
+  the link as `LEDWifiOn` says.
+  (b) `test_a_settings_change_in_the_hotspot_reopens_it_once_more` (OR152): in the boot hotspot, the access point still
+  down, a credentials change through the identity group's config-apply path (its `post_fct` `reconnect_wifi()`): the
+  fresh streak fails and the hotspot opens again, where at HEAD that streak ended deactivated; WIFI's history holds a
+  second `WLAN_TO_HOTSPOT` slot and no `WLAN_SILENT`; the window then ended: one more streak, then the silent mode.
+  (c) `test_a_chip_down_stations_answer_counts_as_no_client` (OR152): in the hotspot, a client listed in the fake's
+  station list stops the window's timer at the next check; `stations_chip_down` set: the next check counts no client —
+  the timer runs again — and WIFI's history holds one `WLAN_STATIONS_UNKNOWN` slot, still one after a further check. The
+  raising query stays (17), whose parameter filter is U25's.
 - **Resolved**: (a) A.U9.01 ("`OnH`/`OffH` PUT over HTTP … `/status` `notification.Triggered`"), A.U15.17 ("reports
   `RestoreTS` … in `/status`") and A.U18.R01 write in-DUT request driving or REST reads; G7/R19 and A.U25.46 put request
   driving host-side while the pixel frames, the WLAN construction count and `ntp._set_synced()` are reachable only
@@ -3405,14 +3470,14 @@ unit; the end state below is the text after U36 (the latest constituent unit); U
   the harness asserts `MemPaused` true after `PUT /system {"SystemCmd": "mempause"}`, and the immediate-unpause branch is
   proven in-process by M.TWIN.104's A.U25.57 cases and at L1 — settled by A.U25.46 (4) ("replaced by a CLI flag or REST,
   never a new product hook").
-- **Unit**: U35 (stages: U24 harness/allocator/`Any` (C2); U25 the move, per-device form, C4, tests 1 and 3-10 — test 10
-  is A.U18.05's twin measurement, which needs the in-process hotspot boot born here, so it follows the rate's U18
-  landing (reason recorded); U30 the
-  `gc.collect()` props go (A.U30.15's own unit; until then they stay in tests 3, 6, 7); U35 test 2 per A.U35.31)
+- **Unit**: U35 (stages: U22 (19), on HEAD's file; U24 harness/allocator/`Any` (C2); U25 the move, per-device form, C4,
+  tests 1 and 3-10 — test 10 is A.U18.05's twin measurement, which needs the in-process hotspot boot born here, so it
+  follows the rate's U18 landing (reason recorded); U30 the `gc.collect()` props go (A.U30.15's own unit; until then
+  they stay in tests 3, 6, 7); U35 test 2 per A.U35.31)
   A-C2 step order: A.U24.70's part lands in U25, not U24 (it follows A.U24.70's own change, which lands in U25).
-- **Depends**: M.TWIN.017, M.TWIN.019, M.TWIN.031, M.TWIN.035, M.TWIN.040, M.TWIN.042, M.TWIN.053, M.TWIN.108 (marker
-  form); M.TEST_HELP.047, .055, .056, .060; SRC_CORE supervisor split (A.U20.06) and `_supervisor_task`; A.U25.46's harness
-  (SCR) for the moved half
+- **Depends**: M.SRC_NET.223, M.SRC_NET.224 ((19)); M.TWIN.017, M.TWIN.019, M.TWIN.031, M.TWIN.035, M.TWIN.040,
+  M.TWIN.042, M.TWIN.053, M.TWIN.108 (marker form); M.TEST_HELP.047, .055, .056, .060; SRC_CORE supervisor split
+  (A.U20.06) and `_supervisor_task`; A.U25.46's harness (SCR) for the moved half
 - **Blast carried by**: the 8 moved tests, each with goal and assertions, into `scripts/_digital_twin_scenarios.py`
   → SCR gap (A.U25.46), carrying: `:211` comment (A.U10.36, nested `get_dict_cfg()` shape), `:219` `NTPHost` round trip
   (A.U25.33 holds; A.U10.40 key), `:300-320` reset-errors boot window (A.U10.11 re-read; A.U2.13 seed 99 stays),
@@ -4360,3 +4425,14 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | R54 | M.TWIN.104 (the damaged-config case: the boot repairs the corrupt file and it stays listed; test renamed `…_is_repaired_listed_then_deleted_and_rewritten_once`) | amended |
 | R54 | M.TWIN.170 (the stall is one config flush with the erase and program counts `_FLASH_HOLD_MAX_MS` is derived from; at the maxima it equals that hold; `longest_ms`), .171 (verdict: the longest stall within `_FLASH_HOLD_MAX_MS` read from source, zero overruns, a stall past `timeout` a counted failure and resync; `flash_stall_longest_ms` on the shutdown line), .158 (U17 stage: the banner answer compared through `copied_out()`) | amended |
 | R54 | M.TWIN.154, .156 (a received result compared through `copied_out()`) | amended |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.TWIN.040 (2), .058 (main text, (1)), .059 (5), .132 (2), .144 (15), (19) (a) | amended |
+| OR152 | M.TWIN.040 (2), .059 (5), .132 (2), .144 (17), (19) (b), (c) | amended |

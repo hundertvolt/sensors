@@ -12,34 +12,49 @@ worth knowing before trusting a run's results.
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
 on this. Once granted, this file has everything else needed: prerequisites below, environment
 variables, the critical safety facts folded into "Known assumptions and open findings" (the
-`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
+`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the role reversal's stage-6
+fallback, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 
 1. `uv run toolchain/setup_toolchain.py env --tier flash` (real USB board attached) or `--tier
-   bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table
-   and `toolchain/setup_toolchain.py`'s own docstring for the full recipe (dialout group, device
-   auto-detection, `br0-wifi-ap` bridge creation via `ensure_bench_bridge()`).
-2. The board must already be running the real `dev` firmware
+   bench` (also needs a WiFi adapter for the bridge) - see README.md's own environment-tiers table.
+   Each tier checks the commands it runs and, unless `--skip-apt`, installs the missing ones'
+   packages; the table of commands and packages is `_TIER_COMMANDS` in
+   `toolchain/setup_toolchain.py`. Flash adds the `dialout` group and resolves the board (USB vendor
+   `2e8a` plus its MicroPython `/dev/serial/by-id` name, SPECIFICATION.md Part B.12); bench creates
+   the `br0-wifi-ap` bridge through `ensure_bench_bridge()` ("Host network" below).
+2. **Passwordless sudo for every command the bench tier runs unattended.** `env --tier bench`
+   writes no sudoers file: it probes each command with `sudo -k -n <path> <version argument>` and
+   names every one refused, including one whose rule allows only other arguments (the probe fails
+   there though the real call would run). A sample `/etc/sudoers.d/` line, each `<command>` the
+   absolute path `which <command>` prints on the bench host:
+
+   ```
+   <user> ALL=(root) NOPASSWD: <nmcli>, <iw>, <iptables>, <tc>, <tee>, <picotool>, <timeout>, <systemd-run>, <systemctl>
+   ```
+
+   Why each: `nmcli` for the bridge and its AP, `iw` for the AP's station kick, `iptables` and `tc`
+   for fault injection, `tee` for the USB unbind/rebind, `picotool` for flashing, `timeout` for the
+   `tcpdump` capture it wraps, and `systemd-run`/`systemctl` for the bridge's recovery timer. Root
+   passes the probe as it is. Unrestricted, `tee`, `timeout` and `systemd-run` each run or write
+   anything as root, so this line grants as much as `NOPASSWD: ALL`.
+3. The board must already be running the real `dev` firmware
    (SPECIFICATION.md Part E.6.3's "one allowed flash" - `uv run scripts/build_firmware.py dev` +
    `picotool load -x -v`, or the manual BOOTSEL-button first flash for a genuinely blank board, see
    `tests_hardware/manual/manual_toolchain.py`). **Never `scripts/build_firmware.py wozi` against
    this bench** - `wozi` is never physically flashed, only `dev` is (CLAUDE.md's hard rule); `wozi`'s
    own hardcoded pins don't match this bench's real wiring.
-3. **`picotool` needs real USB support to actually flash anything.** The toolchain build this
-   session ran (`uv run toolchain/setup_toolchain.py setup`) produced a `picotool` explicitly
-   compiled *without* USB support (confirmed directly: its own `--help` output prints "This version
-   of picotool was compiled without USB support. Some commands are not available." - this sandbox
-   had no real USB device for the build to detect/link against). Before running anything that calls
-   `picotool load` (`tests_hardware/flash/test_toolchain_flash_boot.py`'s
-   `test_real_uf2_reflash_and_boot_smoke_test`, `tests_hardware/manual/manual_toolchain.py`),
-   rebuild picotool on the bench host itself (or confirm the apt-packaged `picotool` there already
-   has USB support - check for the same warning line) rather than assuming a sandbox-cached build
-   works. A `picotool` reporting "Requires version X, you have version Y" is a stale system-wide
-   install shadowing the toolchain's own build: rerun `uv run toolchain/setup_toolchain.py setup`
-   rather than working around it.
-4. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
+4. **`picotool` needs real USB support to actually flash anything.** `env --tier flash` and
+   `--tier bench` refuse a `picotool` built without it (its `picotool version` output then says
+   "compiled without USB support"; install `libusb-1.0-0-dev`, in `toolchain/versions.toml`'s
+   `apt_packages`, and re-run setup), while `setup` and `--tier generic`, which flash nothing, only
+   warn. picotool is rebuilt only when its tag changed or the installed binary no longer reports it,
+   and a different `picotool` earlier on the installer's `PATH` is reported with both paths. A
+   `picotool` reporting "Requires version X, you have version Y" is a stale system-wide install
+   shadowing the toolchain's own build: rerun `uv run toolchain/setup_toolchain.py setup` rather
+   than working around it.
+5. **The NeoPixel sweep rig** - only for `--allow-neopixel-sweep`, and not provisioned by any
    `setup_toolchain.py` tier because it is physical, not software. The board's own WS2812 (GP18 on
    this bench) has to be aimed at the ISL29125's window at a fixed, recorded distance, with ambient
    light excluded (an enclosure or a darkened room). Two flash-tier tests depend on it -
@@ -128,6 +143,11 @@ remedy `env --tier bench` prints - runs with SPECIFICATION.md Part B.13's recove
 its recovery script recreated fresh in the session scratchpad and never committed, armed per step
 or once around a sequence whose timing was measured, the outcome polled, then disarmed, following
 B.13's arm/verify/disarm steps rather than a copy of them here (CLAUDE.md's hard rule).
+`env --tier bench` arms its own recovery timer around every bridge change it makes - the creation
+and the channel re-pin: a `systemd-run` timer whose script tears the bridge down (and, around a
+creation, brings back the uplink's own profile, read at run time); verified active before the first
+change, stopped only once `br0` holds an address and the default route, and left armed when the
+change fails, the log naming when it fires.
 
 ```sh
 sudo modprobe br_netfilter
@@ -162,11 +182,14 @@ is there:
 - `br_netfilter` with `bridge-nf-call-iptables=1` makes iptables see bridged traffic; without it
   `bench_control.py`'s fault injection is a silent no-op (SPECIFICATION.md Part B.13).
 
-Credentials: a new bridge gets random ones (`generate_bench_ap_credentials()`), an existing one
-keeps its own, and real ones are never committed (CLAUDE.md). An existing bridge is reported, not
-recreated; its MAC is compared with the uplink's, and a mismatch is only reported with the manual
-remedy, never repaired live. The comparison reads `nmcli --escape no`, since plain `nmcli -g`
-escapes every `:` in a MAC; SPECIFICATION.md Part B.13 says why a live repair is out.
+Credentials: a new bridge gets random ones (`generate_bench_ap_credentials()`) unless `--ssid` and
+`$BENCH_AP_PASSWORD` name them, an existing one keeps its own, and real ones are never committed
+(CLAUDE.md). The AP's PSK is a throwaway password used once, passed plainly to the one
+`nmcli connection modify` on its command line, as in the recipe above (owner, 2026-10-02); the
+installer keeps it out of the command it echoes and shows a generated one once. An existing bridge
+is reported, not recreated; its MAC is compared with the uplink's, and a mismatch is only reported
+with the manual remedy, never repaired live. The comparison reads `nmcli --escape no`, since plain
+`nmcli -g` escapes every `:` in a MAC; SPECIFICATION.md Part B.13 says why a live repair is out.
 
 To force a new bridge (new credentials, another adapter), delete the bridge and both its slave
 connections with the switch armed, then rerun `env --tier bench` or the recipe above. The host's
@@ -189,7 +212,7 @@ sudo nmcli connection delete br0-wifi-ap br0-eth0 br0
 ### Testing a driver by hand over mpremote
 
 One driver, or a partial closure, at a time, against the `dev` image already on the board
-(Prerequisites item 2):
+(Prerequisites item 3):
 
 - **Mount, never copy.** `scripts/mpremote_connect.sh mount <dir> run <script>.py` makes `<dir>`
   importable with no flash write. A mounted module shadows the frozen one of the same name, since
@@ -218,14 +241,16 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
 
 - `MPREMOTE_DEVICE` (or `--device` on any `pytest tests_hardware` invocation) - serial device path
   for the flash-tier board. With neither set, `harness.resolve_board_device()` identifies the board
-  by USB vendor ID - `toolchain/setup_toolchain.py`'s own `detect_pico_serial_devices()`, so the two
-  cannot disagree - and returns its `/dev/serial/by-id/...` symlink, which is named by USB serial
-  number and so survives the re-enumeration a hard reset causes. Two boards attached is a hard error
-  naming both rather than a silent pick; none attached returns a path that cannot exist, so the
-  `board` fixture skips without mpremote opening some other device's port to find that out. Either
-  variable pins the path outright, and a pinned path is never re-resolved.
-  `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry point a
-  re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
+  by USB vendor ID through `toolchain/setup_toolchain.py`'s `detect_pico_serial_devices()` and
+  returns its `/dev/serial/by-id/...` symlink, which is named by USB serial number and so survives
+  the re-enumeration a hard reset causes. Two boards attached is a hard error naming both rather
+  than a silent pick; none attached returns a path that cannot exist, so the `board` fixture skips
+  without mpremote opening some other device's port to find that out. Either variable pins the path
+  outright, and a pinned path is never re-resolved. The installer's own resolver
+  (`setup_toolchain.py board`, `env --tier flash|bench`) also requires the MicroPython by-id name
+  (SPECIFICATION.md Part B.12), so a debug probe sharing vendor `2e8a` is a candidate here but not
+  there. `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry
+  point a re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
 - `BENCH_AP_PASSWORD` - **optional, not required for a normal run** (fixed 2026-09-08 - see
   BACKLOG.md open question 9 for the full incident this used to cause).
   `tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values`
@@ -234,9 +259,10 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
   tier already has for everything else (the same mechanism `conftest.py`'s own
   `_recover_stale_dut_credentials()` already relied on). This env var only matters if you need to
   override that with a different password (e.g. testing against a non-bench AP `nmcli` can't read
-  secrets back from) - set it and it takes priority over the automatic lookup. **Do not rely on this
-  test skipping cleanly if you deliberately want to skip stage 6/7** - it no longer skips on its own;
-  a real bench (`ensure_bench_bridge()`-created `br0-wifi-ap`) always has a readable password.
+  secrets back from) - set it and it takes priority over the automatic lookup. `env --tier bench`
+  reads the same variable when it creates a bridge. **Do not rely on this test skipping cleanly if
+  you deliberately want to skip stage 6/7** - it no longer skips on its own; a real bench
+  (`ensure_bench_bridge()`-created `br0-wifi-ap`) always has a readable password.
 
 ## Running
 
@@ -644,7 +670,9 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early
   attach is the likely, unconfirmed cause of one dead run.
 - An attach within ~1 s of boot (before `main.py` arms the watchdog) parks the board at the REPL
-  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25).
+  with no watchdog: no WiFi, no output, no self-recovery until the next reset (bench, 2026-09-25,
+  when the device module armed it; the boot entry's first statement arms it now, so the window is
+  shorter and unmeasured).
   A test that polls `is_reachable()` right after a reset must end with `hard_reset()`, as
   `flash/test_watchdog_starvation.py` does.
 - After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
@@ -788,16 +816,23 @@ a live question:
   `nmcli device wifi connect`'s own syntax, which *was* confirmed directly against real `nmcli
   --help` output (installed in that sandbox specifically to check it). See
   `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
-- **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
-  second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
-  DUT has necessarily already been in hotspot mode since stage 0 (`_hotspot_started_once == True`),
-  so a failed real credential PUT (5 failed STA attempts) leads to `_PHASE_DEACTIVATED` - a terminal
-  state only a real power-cycle clears (SPECIFICATION.md Part A.4; owner, 2026-07-13, `368fa83`) -
-  NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario would.
-  `test_hotspot_role_reversal.py`'s `joined_hotspot` fixture already recovers from this via a
-  `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
-  recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
-  surprised by it.
+- **What a failed stage-6 credential does**: a credentials change lands in the fresh-boot state
+  (owner, 2026-10-08, paraphrase), so a failed real-credential PUT reopens the DUT's hotspot once
+  more although it has run since stage 0; with no client its window ends in one more streak and then
+  the silent mode, which retries once per `hotspot_time_min` (SPECIFICATION.md Part A.4). Nothing is
+  terminal; `test_hotspot_role_reversal.py`'s `joined_hotspot` still recovers with
+  `board.hard_reset()` rather than waiting that out. Two stage-6 cases pin this path:
+  `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (`persistence_write`: it owns one
+  flash write, a well-formed wrong password, which the real-credentials test after it restores) and
+  `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, about 20 min on `dev` (two
+  `hotspot_time_min` windows). That second case writes nothing and runs on the real-credentials
+  test's write: `persistence_write` is only its AND-gate on that write and `long_soak` gates its
+  length, so it needs the whole module in one run with `--soak-tier` and
+  `--allow-persistence-writes`. The bench runner excludes `long_soak`, and the soak runner's own
+  `-m long_soak` with `--allow-persistence-writes` selects the case without the write it needs,
+  which then fails its precondition check. A candidate invocation, not yet run on hardware:
+  `scripts/run_bench_soak_tests.sh --tier short --allow-persistence-writes -m role_reversal` (pytest
+  takes the last `-m`). Both cases compare WIFI's history before and after and never clear it.
 - ~~Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
   verification status: NEVER ACTUALLY RUN under a valid configuration.~~ — **resolved: confirmed
   working on real hardware (2026-09-03), on the real `dev` build via
@@ -925,9 +960,9 @@ a live question:
   and hanging forever. `scripts/run_flash_hardware_suite.sh`/`run_bench_hardware_suite.sh` are
   scoped to avoid this either way, but the naming is the structural backstop.
 - **Reusable real-hardware GC/fragmentation-instrumentation technique**: a temporary async probe
-  task added to the boot entry (`boot_entry/<device>_boot.py` at the time this was written; that
-  directory is retired now - SPECIFICATION.md Part L.4 - so add it to the staged `main.py`
-  a build produces, before flashing, and never commit the edit), printing a fixed-format
+  task added to the boot entry (generated as `sensortask_<device>_main.py`, SPECIFICATION.md Part
+  L.4, and staged as `main.py` by a build - add it to that staged `main.py` before flashing, and
+  never commit the edit), printing a fixed-format
   line every N ms/every real event, captured via direct `pyserial` reads (`Board.tail_log()`, never
   `mpremote exec()` against a live system - that soft-resets it, wiping the very state being
   measured). Used for `gc.mem_free()` sampling + collection detection, real per-collection pause
@@ -1072,8 +1107,8 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   never increments `_connection_failures` and never reaches the hotspot-fallback path at all. This is
   a structurally *different, safer* branch than the one SPECIFICATION.md Part E.6.4's role-reversal
   scenario exercises (a never-yet-connected DUT) - confirmed by reading the real source before
-  designing these tests, specifically to rule out accidentally tripping that scenario's own disclosed
-  permanent-WLAN-deactivation risk. "WiFi available but no internet access" is treated as equivalent
+  designing these tests, specifically to stay off that scenario's hotspot fallback. "WiFi available
+  but no internet access" is treated as equivalent
   to "NTP/DNS unreachable" for this device: it has no other internet-dependent feature (no outbound
   fetch of remote content) to distinguish a general internet outage from an NTP/DNS-specific one -
   the pre-existing `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` already
@@ -1240,9 +1275,10 @@ here in full since the code comment that used to carry them had to shrink to a p
 1. Early WiFi reconnection flakiness on this bench unit was undiagnosed; a single bad boot used to
    fail this session-scoped fixture outright, cascading into every other bench test. Fixed with one
    bounded `hard_reset()` retry.
-2. A real STA IP does not mean the webserver is serving: `sensortask_wozi.main()` starts the
-   webserver task only after `ntp_force_sync()` (bounded by a 20s `asyncio.wait_for()`), so up to
-   ~20s can pass with a connected IP but nothing on port 80. Fixed by waiting for real HTTP
+2. A real STA IP does not mean the webserver is serving: the generated `main()` starts the WiFi
+   connect loop and the webserver as separate tasks of one staggered starter list
+   (`start_tasks()`), so the link can come up before port 80 answers - up to ~20s back when the
+   first NTP sync still held the boot ahead of every task. Fixed by waiting for real HTTP
    reachability, not just link connectivity.
 3. Polling for an IP via `board.exec()` in a loop is self-defeating: `mpremote`'s raw-REPL entry
    always performs an implicit `machine.soft_reset()` (confirmed against `transport_serial.py`'s
@@ -1499,12 +1535,13 @@ substituted with a software-only one) turned up, but several real tier-parity ga
   coverage with its own bench-vs-flash split never written down anywhere**, unlike storage-pause
   gating's own explicitly-documented split. Confirmed structural (E.6.6 row `fram-write-protect-no-rest`:
   neither method has a REST route at all, by grep) and now stated as such directly in `test_fram_storage.py`.
-- **`SystemService.start_and_check_tasks()`'s own real restart-a-dead-task mechanism had no
-  real-hardware test at all** - the exact recovery rung CLAUDE.md's memory-safety-discipline rule
-  leans on ("trust `asy_system_service.py`'s task supervisor to restart a task that still dies"), proven
-  only at the mock/twin tiers. New: `device_scripts/system_service_restarts_a_real_dead_task.py` +
+- **`SystemService.supervise_tasks()`'s own real restart-a-dead-task mechanism (over the tasks
+  `start_tasks()` started) had no real-hardware test at all** - the exact recovery rung CLAUDE.md's
+  memory-safety-discipline rule leans on ("trust `asy_system_service.py`'s task supervisor to
+  restart a task that still dies"), proven only at the mock/twin tiers. New:
+  `device_scripts/system_service_restarts_a_real_dead_task.py` +
   `tests_hardware/flash/test_task_supervisor.py`'s
-  `test_start_and_check_tasks_restarts_a_real_dead_task` - a starter that dies immediately, checked
+  `test_the_supervisor_restarts_a_real_dead_task` - a starter that dies immediately, checked
   called at least twice within one real `_TASK_CHECK_TIME` (2s) cycle. Deliberately stops at ~3.6s
   real time (task_errors capped at 200): a task that dies immediately adds `_TASK_FAIL_INCREMENT`
   (100) per cycle, and `_TASK_FAIL_MAX` (300) would otherwise trip a real reboot around the 4th
@@ -1671,23 +1708,27 @@ there means "everything that ran, passed", not "everything ran".
   dependent test makes this unreachable via the collection-time deselection above, but a future test
   that forgets the marker fails hard here instead of silently spending a real write.
 
-## WP4/Topic 6 - FRAM capacity check, real-hardware tier
+## FRAM capacity check, real-hardware tier
 
 `test_fram_storage.py::test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build`
 (device script `fram_capacity_after_full_system_build.py`) closes the real-hardware leg of
 CLAUDE.md's implicit-FRAM-wiring rule's own capacity backstop: a shipped firmware asking for more
 FRAM than its own chip has must be a hard, automatic, pre-flash test failure, not a silent
 boot-time console print nobody's watching. Builds the real `dev` object graph
-(`sensortask_dev.build_system()`) on the real board, then checks that every module which should
-have inherited a real FRAM chunk (its own `pr`, plus its own `cfgmgr` where one exists) actually
-got one rather than silently degrading to RAM-only.
+(`sensortask_dev.build_system()`, then its setup list as `main()` runs it) on the real board, then
+checks that every module which should have inherited a real FRAM chunk (its own `pr`, plus its own
+`cfgmgr` where one exists) actually got one rather than silently degrading to RAM-only.
 
 **Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chunk()` checks
 capacity *before* incrementing `_allocated_size`, never after, so that comparison can never be
 false by construction and would be a tautology, not a check. A `None` chunk reference on a module
 that should have gotten one is the real, observable signal that capacity ran out; the mock-tier
 equivalent (`tests/_sensortask_scenarios.py`'s `fram_chunks_are_all_successfully_allocated_not_out_of_memory`,
-run for every real device) uses the same shape, and
+run for every real device) uses the same shape, with its module list derived from the build's
+facts rather than listed by hand: the `fram_wired` list of
+`build/generated_src/sensortask_<device>_expected.json` (every instance whose TOML sets
+`fram_target`, plus `conn`, `ntp`, `sysfunct` and `webserver` when `[device.wiring]` sets it), so a
+new driver's chunks are checked with no test edit and a module off the list must hold none; and
 `tests/test_asy_base_classes.py`'s `test_sensorreaderconfig_fram_allocation_failure_and_missing_config_file_together`
 is the negative case proving it can actually fail.
 
@@ -1697,7 +1738,7 @@ build-validity fact (`FRAMManager` is a bump-pointer allocator with no deallocat
 everything fit" is fully decided once construction finishes, and stays true for that build's entire
 life), not live operational state a client needs to query.
 
-**Extended by WP3**: `_CANDIDATE_MODULE_NAMES` now also checks `uart_link_init`/`uart_link_resp` -
+**The UART links too**: `_CANDIDATE_MODULE_NAMES` also checks `uart_link_init`/`uart_link_resp` -
 `dev.toml`'s only two `uart_link` instances, both wired with `fram_target = "fram"` - so this same
 real-hardware check covers the UART crossover link's own errno/wrnno history getting a real chunk,
 not just the sensor/infra modules it already covered. `UARTLinkDriver`'s own `log=`/`logger=`
@@ -1705,5 +1746,6 @@ forwarding is otherwise covered by `tests/test_asy_uart_link_driver.py` (mock ti
 the RAM-only default `log`, the allocation-failure fallback, the `logger=` reach-through, and a
 simulated-reboot roundtrip) and `tests/test_digital_twin_uart_link.py`'s
 `test_both_ends_get_their_own_real_fram_chunk` (twin tier) - real-hardware visibility through
-`/status` was already covered pre-WP3 by `tests_hardware/bench/test_uart_link_under_api_load.py`'s
-own `get_errcount()` calls, since that was never conditional on RAM-vs-FRAM backing.
+`/status` was already covered before the links had chunks, by
+`tests_hardware/bench/test_uart_link_under_api_load.py`'s own `get_errcount()` calls, since that
+was never conditional on RAM-vs-FRAM backing.

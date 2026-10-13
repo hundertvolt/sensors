@@ -4832,12 +4832,14 @@ session lock names, and the fake's rp2 probe/scan semantics.
   `_cancel`), A.U24.76 (`FakeLED` → `_FakeLED`, `make_*` → `_make_*`), A.U24.73 (13 `Any` lines), A.U10.35 (`.wlan` →
   `._wlan`, `hw_op_failed` → `_hw_op_failed`, the other privatised names), A.U10.37 (`print_log` → `asy_print_log`),
   A.U28.28 (read: the `S106` per-file entry with its reason), A.U29.03 (read: the 19 `12345678` lines point at A.11).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests/test_asy_wifi_service.py:1-222`; every attribute read the renames reach.
 - **Change**: imports `from asy_wifi_service import WIFI, WifiConfig, WifiService`, `from asy_udp_socket import
   UDPSocket`, `from _async_harness import run, cancel`, `from _fake_timer_arm import RaiseOnArm`, `from _fast_sleep import
   FastAsyncSleep`, `from _src_const import src_const`, `from _error_codes import code`, `from asy_print_log import
   LogConfig`. `:14-29` → `_WIFI = "src/asy_wifi_service.py"`; `_PHASE_STA_SEEKING = src_const(_WIFI,
-  "_PHASE_STA_SEEKING")` … (the four), `_VAL_SSID`, `_VAL_PW`, `_VAL_COUNTRY`, `_VAL_HOSTNAME`, `_VAL_LED_WIFI_ON`,
+  "_PHASE_STA_SEEKING")` … (the five, `_PHASE_SILENT` among them since U22, M.TEST_UNIT.346), `_STATIONS_UNSET`,
+  `_VAL_SSID`, `_VAL_PW`, `_VAL_COUNTRY`, `_VAL_HOSTNAME`, `_VAL_LED_WIFI_ON`,
   `_VAL_HOTSPOT_PW` read the same way, one comment line "# Read from source: const() folds them out of the module
   (tests/_src_const.py)." `_wlan(client)` returns `client._wlan` (its comment kept in substance). `_make_client(
   conn_fail_to_hotspot=5, ext_led=None, hotspot_time_min=5, max_module_error=5, cfg_path=None, debug=None)` builds
@@ -4854,7 +4856,8 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Resolved**: A.U24.45 (2) asks for `led_pin` L1s; the merged constructor has no `led_pin` (M.SRC_NET.078, ruling
   V.U18.D) — those tests are void; the stale-comment half applies.
 - **Unit**: U24 (stages U5, U10, U18, U31).
-- **Depends**: M.SRC_NET.072, .077, .078, .079; M.TEST_HELP.043, .044, .052, .053.
+- **Depends**: M.SRC_NET.072, .077, .078, .079; M.TEST_UNIT.346 (the U22 tests it carries); M.TEST_HELP.043, .044, .052,
+  .053.
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -5111,15 +5114,116 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Kind**: test
 
 ### M.TEST_UNIT.221 Cancellation at each await of the WiFi tasks
-- **From**: A.U35.48.
+- **From**: A.U35.48; OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: new test.
 - **Change**: `test_cancelling_a_wifi_task_at_each_await_leaves_the_mode_lock_free` drives `cancel_at_each_await()` from
-  synchronous scope over `_run_sta_mode()` and the LED flash task (`FastAsyncSleep` inside the coroutine); invariants:
-  `wifi_mode_lock` unlocked, `_ledflash` either `None` or done, the LED state a canceller set.
+  synchronous scope over `_run_sta_mode()`, the silent mode's attempt (M.SRC_NET.223 (2)) and the LED flash task
+  (`FastAsyncSleep` inside the coroutine); invariants: `wifi_mode_lock` unlocked, `_ledflash` either `None` or done, the
+  LED state a canceller set, and the LED dark while the phase is silent.
 - **Resolved**: —
 - **Unit**: U35.
-- **Depends**: M.TEST_HELP.067.
+- **Depends**: M.TEST_HELP.067; M.SRC_NET.223.
 - **Blast carried by**: —
+- **Kind**: test
+
+### M.TEST_UNIT.346 The silent mode and the fresh-boot reconnect, every test type; the stations check counts only a confirmed client
+- **From**: OR151 (owner requirement, 2026-10-08: "add extensive unit tests, of all types (function, error handling,
+  resilience, self-healing, non-blocking, regression) as specified in our rules"), OR152 (owner requirement, 2026-10-08)
+  (U22 start fold, execution-time deltas); the HEAD tests M.TEST_UNIT.216 (1), M.TEST_UNIT.217 (1), (2) landed in U18,
+  the end-to-end hotspot test in U19.
+- **Site**: `tests/test_asy_wifi_service.py` — new tests beside their sections; the HEAD tests named under (7).
+- **Change**: HEAD's idioms throughout (`make_client()`, `make_client_with_json(_VALID_JSON, …)`, `_wlan()`,
+  `_FastAsyncSleep`, `_HotspotRadio`, `_ParkedFlag`, `_RaiseOnArm`, `_used_slots()`, `code()`, `FakeLED`, the fake
+  `Timer`'s `trigger()`/`drop()`/`arms`); `_PHASE_SILENT` and `_STATIONS_UNSET` read with `_src_const()` beside the
+  other phases. Every wait is bounded by yields or `run_timed`, never a wall-clock sleep. The new members' names follow
+  what M.SRC_NET.223 (7) decides at execution.
+  (1) Function. `test_a_second_streak_enters_the_silent_mode_once`: `_hotspot_started_once` true, the streak at its
+  limit: `_register_sta_connection_failure()` gives `_PHASE_SILENT`, the fake records no `disconnect`, `active(False)`
+  or `deinit`, the flash task is cancelled and one `code("W", "WLAN_SILENT")` slot is persisted; further failures in the
+  mode register nothing and log nothing new. `test_a_silent_period_runs_one_attempt_and_a_link_is_a_normal_connection`:
+  silent, the period armed `PERIODIC` at `hotspot_time_min` × 60,000 ms and fired once: exactly one `connect` call with
+  the stored settings; the fake answering `STAT_GOT_IP` gives `_PHASE_STA_ESTABLISHED`, `_connection_failures == 0` and
+  the timer deinit'd, and a later loss takes the 60 s retry (`_on_sta_disconnected()` reports it due), never the
+  hotspot. `test_a_failed_silent_attempt_stays_silent_without_a_streak`: the fake answering `STAT_NO_AP_FOUND`: the
+  phase silent, `_connection_failures` unchanged, the attempt's `WLAN_NO_AP` verdict persisted, one slot over several
+  periods with `ErrCount` rising. `test_no_attempt_runs_between_periods`: twelve loop iterations without a fire make no
+  `connect` call. `test_the_identity_hook_lands_in_the_fresh_boot_state`, per source state (the hotspot, the silent
+  mode, an established link): after `reconnect_wifi()` and one loop iteration, `_connection_failures == 0`,
+  `_hotspot_started_once is False`, `_PHASE_STA_SEEKING`, the silent period's timer deinit'd; a streak then failing
+  opens the hotspot, not the silent mode. `test_the_window_end_keeps_its_meaning`: the watcher woken in the hotspot sets
+  the reconnect without the fresh-boot flag, `_hotspot_started_once` stays true, and the next failed streak gives
+  `_PHASE_SILENT`. `test_a_settings_trigger_beside_a_window_end_wins`: both pending give the fresh-boot state.
+  `test_the_watcher_dispatches_by_phase`: in the silent mode a wake marks one attempt due and sets no reconnect, a
+  second wake while one is due adding none; in the hotspot, and in any other phase as at HEAD, it calls the window-end
+  trigger (the reconnect set, the fresh-boot flag not; M.SRC_NET.087 (2)).
+  `test_get_hotspot_stations_reads_the_unfilled_answer_as_a_failed_check`: `_STATIONS_UNSET` entries → `None`, 31
+  entries → the list, `[]` → `[]`, a raise → `None`. `test_an_unconfirmed_stations_check_counts_as_no_client`: the raise
+  and the 32-entry answer each run `_hotspot_client_absent()` (arming the window when none runs), never
+  `_hotspot_client_connected()`; three of them leave one `code("W", "WLAN_STATIONS_UNKNOWN")` slot with `ErrCount` 3; an
+  empty list arms the window with no warning; a listed client stops it.
+  (2) Error handling. The period's arm raising `OSError(ENOMEM)` and, separately, `MemoryError` (`_RaiseOnArm`): one
+  `code("E", "TIMER")` per failure, retried on the next iteration, the mode kept. The silent attempt's `connect()`
+  raising: `_hw_op_failed` and `code("E", "WLAN_STA_START")` as for every attempt, the mode kept, the `_error_check()`
+  hardware streak counting it; the streak's give-up and the task restart keep the mode (M.SRC_NET.223 (4)). The stations
+  query raising while a client is listed: counted as no client, the window armed; the next good check with the client
+  stops it.
+  (3) Resilience. `test_500_silent_periods_stay_silent_and_bounded`: 500 periods fired against a radio that never links:
+  exactly 500 attempts, the phase silent throughout, no AP selected, the WIFI history adding one `WLAN_NO_AP` slot after
+  the `WLAN_SILENT` one and nothing more while `ErrCount` rises by 500; no retained growth, proven structurally
+  (CLAUDE.md's rule): the period armed once and never re-armed while it runs (the fake `Timer`'s `arms` stays 1),
+  `_ledflash` and `_dns_server_task` `None`, the history's used slots the same after period 500 as after period 1. A
+  task restart in the silent mode (`_reset_wlan_connect_state()`, then the loop) keeps `_PHASE_SILENT` and the LED dark,
+  and the next iteration re-arms the period; a restart in the window-end streak still clears `_hotspot_started_once`, as
+  at HEAD. A dropped period fire (`drop()`) is recovered by the next period.
+  (4) Self-healing, end to end, under `_HotspotRadio` and `_FastAsyncSleep` with the loop and the watcher running as
+  tasks (`make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1, hotspot_time_min=1)`, `_ParkedFlag`, the captive
+  DNS stubbed as the U19 test does).
+  `test_integration_a_unit_goes_silent_after_its_second_streak_and_rejoins_when_the_router_returns`: the router down:
+  the boot streak opens the hotspot, the window's end (`timer.trigger()`) leaves it, the second streak fails and the
+  unit is silent — no AP constructed after it, `_ap_selected` false, no DNS task; two periods fired: two attempts, still
+  silent; `radio.router_up = True` and one period: `_PHASE_STA_ESTABLISHED` with the stored settings, on the same loop
+  task, `machine.reset_count` unchanged; the history holds `WLAN_TO_HOTSPOT` and `WLAN_SILENT` and no `WLAN_GIVE_UP`.
+  `test_integration_new_credentials_over_the_hotspot_reopen_it_once_more`: the router down, in the hotspot after the
+  boot streak, new settings written through `cfgmgr.write_config()` and `reconnect_wifi()` called, as the request path
+  does: the fresh streak fails and a new AP is constructed, the phase the hotspot; its window's end: one more streak,
+  then silent. `test_integration_an_unfilled_stations_answer_never_holds_the_hotspot`: after a listed client stopped the
+  window, `radio.stations` filled to 32 entries: the next check arms the window and its end leaves the hotspot.
+  (5) Non-blocking. `test_the_wifi_service_never_scans`: no `.scan(` in `src/asy_wifi_service.py` read as text, and a
+  `scan` on the radio for a silent run that fails the test if called; one comment line "# WLAN.scan() holds the VM up to
+  10 s (extmod/network_cyw43.c:236-246), past the watchdog." `test_the_silent_wait_holds_no_lock_and_yields`: between
+  periods a second task acquires `wifi_mode_lock` within one iteration and a counting task advances on every iteration;
+  the attempt holds the lock only for its connect and poll, as every attempt does.
+  (6) LED. With `LEDWifiOn` on (`FakeLED`): entering the silent mode turns the LED off once; through the attempt's poll
+  and the wait no `on` or `toggle` reaches it; `set_wifi_led(status=True)` while silent records the setting and lights
+  nothing; at the link the LED is on. With `LEDWifiOn` off: dark before and after the link. The no-configuration state
+  keeps its own pattern (HEAD's `test_deactivated_with_the_led_enabled_blinks_100_on_2900_off` holds).
+  (7) Regression: HEAD's tests rewritten in place.
+  `test_register_sta_connection_failure_deactivates_when_hotspot_already_tried` →
+  `…_goes_silent_when_hotspot_already_tried` (`_PHASE_SILENT`);
+  `test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_raises` goes with the function (E65 is
+  retired); `test_an_unconfigured_unit_never_deactivates_over_two_hotspot_windows` → `…never_goes_silent_…`;
+  `test_a_configured_ssid_whose_second_streak_fails_still_deactivates` → `…goes_silent`, its comment naming the silent
+  mode (owner, 2026-10-08); `test_the_first_streak_persists_its_fallback_and_the_second_its_deactivation_once` →
+  `…the_second_its_silent_entry_once` (`code("W", "WLAN_SILENT")`; further iterations without a fire persist nothing);
+  `test_get_hotspot_stations_answers_none_for_a_failed_query_and_an_empty_list_for_no_client` gains the 32-entry case;
+  `test_a_failed_stations_query_leaves_the_hotspot_timer_as_it_was` → `test_a_failed_stations_query_counts_as_no_client`
+  (`_failed_stations_case()` observes one `absent` per failed check, and with the timer stopped by a client the failed
+  check arms it); `test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping` also asserts the fresh-boot
+  flag; `test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken` → `…ends_the_window_when_woken` (the
+  reconnect set, the fresh-boot flag not), and the comments at `:1747-1749`, `:1776` and `:1805` name the window-end
+  trigger; the U19 test's `code("W", "WLAN_DEACTIVATED")` → `code("W", "WLAN_SILENT")`;
+  `test_reset_wlan_connect_state_preserves_deactivated_phase_across_a_restart` gains its silent sibling, its comment
+  naming the no-configuration state; the `is_hotspot_active()` dynamic case and its section comment gain `_PHASE_SILENT`
+  (false). HEAD's other deactivated tests drive the no-configuration state, which stays (M.SRC_NET.223 Resolved), and
+  hold.
+- **Resolved**: The owner's six types are the parts (1)-(5) and (7); (6) is the owner's LED rule ("It should look like
+  turned off."). Retained growth is proven structurally, not by a heap reading after a collection: the test suite
+  carries no `gc.collect()` prop (CLAUDE.md's memory-safety rule).
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223, M.SRC_NET.224; M.SRC_NET.077, M.SRC_NET.081, M.SRC_NET.087 (their U22 stages); M.GEN.034
+  (its U22 stage).
+- **Blast carried by**: the U24 header and shared doubles carry these tests → M.TEST_UNIT.210; the cancellation sweep →
+  M.TEST_UNIT.221; the request path → M.TEST_UNIT.296 (1); the real pixel → M.TEST_UNIT.347.
 - **Kind**: test
 
 ## tests/test_base_classes.py (→ `tests/test_asy_base_classes.py`)
@@ -6298,6 +6402,24 @@ session lock names, and the fake's rp2 probe/scan semantics.
 - **Blast carried by**: SPEC C.14 seam-proof line → A.U9.10 (SPEC).
 - **Kind**: test
 
+### M.TEST_UNIT.347 A real NeopixelDriver stays dark through the silent mode and lights at the link
+- **From**: OR151 (owner requirement, 2026-10-08: "The WiFi LED stays dark, even if it is activated, being completely
+  silent in that mode. It should look like turned off.") (U22 start fold, execution-time delta).
+- **Site**: new test in `tests/test_neopixel_wifi_integration.py`.
+- **Change**: `test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link`, beside the hotspot-pattern tests
+  and in their form (`NeopixelDriver(0)`, `_hotspot_conn()`, `_FlashSleeps`, `_frames()`, `_yields()`): the overlay
+  running, `LEDWifiOn` on, the hotspot pattern blinking (`_hotspot_client_absent()`); then the second streak's last
+  failure (`_hotspot_started_once` true, the streak one below its limit, `_register_sta_connection_failure()`): the
+  flash task ends and every frame from that write on is `_OFF` across `_PATTERN_YIELDS` yields, through the LED calls a
+  silent attempt makes (`_led_toggle()`, `_led_on()`) and through `set_wifi_led(status=True)`; then
+  `_on_sta_connected()` (a link): the pixel's next frame is `_ON`. Bounded by yields; the overlay task cancelled in the
+  end.
+- **Resolved**: —
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223.
+- **Blast carried by**: —
+- **Kind**: test
+
 ## tests/test_notification_neopixel_integration.py
 
 ### M.TEST_UNIT.276 Construction-time signals, value references, driven ramps
@@ -6847,6 +6969,7 @@ session lock names, and the fake's rp2 probe/scan semantics.
   (`:193` "Final project decision:" → "(owner, 2026-09-26):"), A.U19.01 (`:193-199` an unknown key "Invalid", never a
   whole-request refusal), A.U4.02 + A.U11.24 (read: the setters run on the store's own schema; unchanged PUT schedules
   no flush), A.U10.40 (`LEDWifiOn`), A.U10.35 (`reconn_wifi` → the private flag M.SRC_NET.078 names).
+  OR152 (owner requirement, 2026-10-08; U22 start fold, execution-time delta).
 - **Site**: `tests/test_setter_microdot_integration.py:136-283`.
 - **Change**: each HEAD case on `PUT /networking` with a sparse body: fine data → `res` "OK", code 0, the four results
   "Valid", the reconnect flag set, `get_dict()` the stored values; partial → mixed results, the reconnect still fires,
@@ -6857,9 +6980,18 @@ session lock names, and the fake's rp2 probe/scan semantics.
   reconnect; `{"Hostname": "NewHost", "LEDWifiOn": false}` → both "Valid", one reconnect (the Wi-Fi group changed);
   `{"SSID": "Hacked"}` reaches the Wi-Fi group only. The two "missing/unrecognized `cmd`" tests go with the envelope
   (no `cmd` exists; guard: the unknown-key case).
+  (1) (A-C fold, owner requirement 2026-10-08, execution-time delta OR152) Stage U22, on HEAD's
+  `_simulated_set_network_endpoint()`/`_grouped_set()` form, with M.SRC_NET.223 (5): new
+  `test_an_identity_change_lands_the_unit_in_the_fresh_boot_state` — a real `WifiService` in each state a request can
+  reach, the hotspot after its boot streak (`_hotspot_started_once` true) and an established link: an identity request
+  (`SSID`, `PW`) through the group's `post_fct` sets the reconnect flag and the fresh-boot flag, and the trigger's
+  handling (`_handle_reconnect_trigger()` under `_FastAsyncSleep`, the radio's mode switch stubbed as
+  `tests/test_asy_wifi_service.py`'s `_end_hotspot_window()` stubs it) leaves `_connection_failures == 0`,
+  `_hotspot_started_once is False` and `_PHASE_STA_SEEKING`; a `LEDWifiOn`-only request sets neither flag. The U27
+  rewrite above carries it onto `PUT /networking`'s sparse body.
 - **Resolved**: A.U27.07 retires `cmd` envelopes (OR58.a); A.U19.01's `:193-199` rewire is the same lines — one test.
-- **Unit**: U27.
-- **Depends**: M.TEST_UNIT.295; M.SRC_NET webserver `_body_as_dict()`, unknown-key result (A.U19).
+- **Unit**: U27. Stage U22 ((1), on HEAD's form).
+- **Depends**: M.SRC_NET.223 ((1)); M.TEST_UNIT.295; M.SRC_NET webserver `_body_as_dict()`, unknown-key result (A.U19).
 - **Blast carried by**: —
 - **Kind**: test
 
@@ -8806,3 +8938,16 @@ action. `[fold Fnn M_FILE]` tokens in Depends/Blast name changes other fold agen
 | R54 | M.TEST_UNIT.345 ((c) refusal: no destination built and no retained growth against an ambient control; (e) `copy_into()` returns `False` into a smaller destination; (f) the floor holds a config flush, below it refused by `UART_RXBUF`; (g) the file's module-allocated results compared through `copied_out()`), .344 (`test_a_read_retains_nothing`: collect-bracketed, against an ambient control awaiting a no-op coroutine as often), .167, .315, .178 (U17 copy-out stages) | amended |
 | R54 | M.TEST_UNIT.155 (the floor test renamed `test_the_ring_floor_covers_a_config_flush`: one config flush's hold, the peer's re-initiations `4 × timeout` apart; refused by `UART_RXBUF`) | amended |
 | R55 | M.TEST_UNIT.154 (U17 stage: `make_comm()` and every direct `UARTComm(…)` pass one `limits=transfer_limits(…)`), .178 (U17: the local `Pair` passes each `UARTLinkDriver` one `limits=`), .182 (the refused exerciser built with `limits=transfer_limits(payload_size=0)`), .317 (U17 stage: the four direct constructions pass one `TransferLimits`), .345 (non-default `chunk_bytes`/`max_transfer_bytes` through `transfer_limits()`) | amended |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.TEST_UNIT.346, M.TEST_UNIT.347 | added |
+| OR151 | M.TEST_UNIT.210 (`_PHASE_SILENT`), .221 (the silent attempt, the dark LED) | amended |
+| OR152 | M.TEST_UNIT.346 ((1), (4), (7): the fresh-boot state and the stations check) | added |
+| OR152 | M.TEST_UNIT.210 (`_STATIONS_UNSET`), .296 (1) | amended |

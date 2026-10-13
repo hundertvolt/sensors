@@ -2,8 +2,6 @@
 source before it's frozen/mpy-cross-compiled - `mpy-cross` doesn't dead-code-eliminate these
 (SPECIFICATION.md Part B.11), so they'd otherwise survive into the .mpy bytecode as dead weight."""
 
-from __future__ import annotations
-
 import ast
 
 

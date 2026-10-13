@@ -102,7 +102,8 @@ And on 2026-10-08:
   - a name goes through the project's bounded, cooperative resolver, asking the DHCP-provided DNS server
     only (`DNSFallback` is NTP's own list);
   - the client never has more than 2,000 B written that no PINGRESP confirmed, its share of lwIP's TCP
-    memory, so lwIP's 10 s write retry can never be what it hits.
+    memory; a write that still meets a full arena answers `EAGAIN` under the audit's U21 override instead
+    of lwIP's 10 s retry (SPECIFICATION.md B.14.4).
 - **Hotspot mode**: the client is off there (owner, 2026-10-08: 'Generally, when the device is in hotspot
   mode, the MQTT client is off.'): no socket, no DNS query, no log.
 - **Recovery**: a dead transport is found by the PINGRESP deadline (15 s ping, 10 s deadline); reconnects
@@ -239,14 +240,15 @@ CLAUDE.md is the authority; these are the rules this run meets.
   - the MQTT module enables the client once and switches it off at the end;
   - the hotspot module clears the board's SSID to force hotspot mode and restores it when it ends;
   - if the board cannot rejoin the bench AP, `dut_ip` pushes the bench SSID and password to it.
-- **The hotspot module's stage 6 can deactivate the board's WLAN until a power cycle.** By then the board
-  has run its hotspot since stage 0, so a failed credential handoff ends in a terminal state, not a
-  fallback. The module's fixture recovers with a hard reset; `tests_hardware/README.md` ("A
-  permanent-WLAN-deactivation risk") has the account. Do not interrupt the run inside that module. If it
-  was interrupted anyway, the next run's `dut_ip` recovery joins the board's hotspot and pushes the bench
+- **The hotspot module's stage 6 takes the board through a failed credential.** Since the audit's U22 a
+  credentials change lands in the fresh-boot state: a failed one reopens the board's hotspot once more, and a
+  second failed streak turns the Wi-Fi silent, one connect attempt per `hotspot_time_min`; nothing is
+  terminal. The module's fixture recovers with a hard reset; `tests_hardware/README.md` ("What a failed
+  stage-6 credential does") has the account. Do not interrupt the run inside that module. If it was
+  interrupted anyway, the next run's `dut_ip` recovery joins the board's hotspot and pushes the bench
   credentials back.
 - **Read first in `tests_hardware/README.md`**: Prerequisites, Running, "The MQTT client on the bench",
-  "Persistence-write gating", and the stage-6 finding.
+  "Persistence-write gating", and "What a failed stage-6 credential does".
 
 ## 4. Preparation, in this order
 
@@ -322,7 +324,8 @@ estimates.
 - **Boot and website**: cold boot to the first response, reboot over REST, the website being dev's own.
 - **The hotspot role reversal** (last, roughly 10 to 15 minutes): the board's hotspot, DHCP, captive DNS,
   every GET endpoint's shape over it (`/networking` and `/status` now carry the MQTT fields), a
-  representative settings round trip, invalid and then the real credentials (stage 6), and the flip back.
+  representative settings round trip, invalid credentials, a wrong password that reopens the hotspot and then
+  the real credentials (stage 6), and the flip back.
 
 **The result.** A passing scoped run ends `Result: NOT CLEAN (scope mqtt: ...)` with exit code 4: everything
 that ran passed, but the rest of both tiers did not run. Exit 1 is a failure. One test is an expected skip:

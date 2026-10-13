@@ -4,6 +4,7 @@
 import errno
 import io
 import select
+import time
 from array import array
 
 try:
@@ -1108,9 +1109,11 @@ class WDT:
         self.id = id
         self.timeout = timeout
         self.feed_count = 0
+        self.feed_times = _CallLog()  # time.ticks_ms() at each feed, the newest _LOG_MAXLEN: gaps between feeds read back
 
     def feed(self) -> None:
         self.feed_count += 1
+        self.feed_times.append(time.ticks_ms())
 
 
 class _Mem32:

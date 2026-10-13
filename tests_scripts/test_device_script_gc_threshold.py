@@ -2,8 +2,6 @@
 mpremote's raw-REPL soft reset keeps the boot entry's threshold (rp2 runs gc_init() once, outside that
 loop), so an unset one is inherited silently - a result not naming its threshold is void (MEASUREMENTS M3.8)."""
 
-from __future__ import annotations
-
 import ast
 from pathlib import Path
 

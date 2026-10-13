@@ -2,8 +2,6 @@
 connected-socket source-address-filtering check (see dns_probe.py for the same hand-rolled-over-
 imported-dependency approach)."""
 
-from __future__ import annotations
-
 import struct
 
 _NTP_EPOCH_DELTA = 2208988800  # 1900 -> 1970, matches src/asy_ntp_client.py's own const of the same name

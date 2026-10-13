@@ -462,6 +462,39 @@ def test_spi_log_stays_bounded_across_many_transactions() -> None:
     assert spi.log[-1] == ("write", bytes([0x00]))
 
 
+def test_bounded_log_reads_oldest_first_before_and_after_it_wraps() -> None:
+    # Every read sees the entries oldest first once the oldest are overwritten in place, the head back at slot 0 included.
+    for appended in (3, 4, 6, 8, 9):
+        log = machine._BoundedLog(4)
+        for entry in range(appended):
+            log.append(entry)
+        expected = list(range(max(0, appended - 4), appended))
+        assert list(log) == expected, (appended, list(log))
+        assert [log[i] for i in range(len(log))] == expected
+        assert [log[-i] for i in range(1, len(log) + 1)] == expected[::-1]
+        assert log[1:3] == expected[1:3]
+        assert log == expected
+        assert (len(log), log.dropped) == (len(expected), appended - len(expected))
+        assert expected[0] in log and expected[0] - 1 not in log
+        for outside in (len(log), -len(log) - 1):
+            try:
+                log[outside]
+            except IndexError:
+                pass
+            else:
+                raise AssertionError(f"index {outside} of {appended} read {log[outside]!r}")
+
+
+def test_bounded_log_clear_starts_over_at_slot_zero() -> None:
+    log = machine._BoundedLog(4)
+    for entry in range(6):
+        log.append(entry)
+    log.clear()
+    for entry in (10, 11, 12):
+        log.append(entry)
+    assert (list(log), log[0], log[-1]) == ([10, 11, 12], 10, 12)
+
+
 def test_wdt_feed_increments_count() -> None:
     wdt = WDT(timeout=8000)
     wdt.feed()

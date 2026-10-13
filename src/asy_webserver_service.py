@@ -22,6 +22,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from asyncio import StreamReader, StreamWriter
     from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
     from typing import NamedTuple, NoReturn, Protocol, TypeVar
 
@@ -37,16 +38,19 @@ if TYPE_CHECKING:
 
     _Named = TypeVar("_Named", bound=_HasName)
 
-    class _ModuleLike(Protocol):
-        # Structural stand-in for a registered sensor/settings module - every SensorReaderConfig
-        # subclass and SystemService satisfy it (SPECIFICATION.md Part C.10). Error sources are
-        # typed by ErrorSource instead. Only the subset a registration group calls is ever used.
+    class _SettingsModule(Protocol):
+        # Structural stand-in for a settings group's module - every SensorReaderConfig subclass and SystemService
+        # satisfy it (SPECIFICATION.md Part C.10). Read-only result types, so each module's own dict types fit.
         name: str
 
-        async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> dict[str, str]: ...
+        async def _set_dict_cfg(self, data: "JsonMapping", cfg_vals: "cm.ConfigSchema") -> "Mapping[str, str]": ...
         def get_cfg_schema(self) -> "cm.ConfigSchema": ...
-        async def get_dict_cfg(self) -> "dict[str, JsonDict]": ...
-        async def get_dict_data(self) -> "dict[str, JsonDict]": ...
+        async def get_dict_cfg(self) -> "Mapping[str, Mapping[str, JsonValue]]": ...
+
+    class _ModuleLike(_SettingsModule, Protocol):
+        # A registered sensor: a settings module with measurements and an error log. Error sources are typed by
+        # ErrorSource instead. Only the subset a registration group calls is ever used.
+        async def get_dict_data(self) -> "Mapping[str, object]": ...  # merged and streamed whole, never read
         async def get_error_counter(self) -> "ErrorLog": ...
         async def reset_error_counter(self) -> bool: ...
 
@@ -70,21 +74,20 @@ if TYPE_CHECKING:
         async def readexactly(self, n: int) -> bytes: ...
 
     # What this module registers: a route takes the request, and a static file route also its url_arg; an
-    # after-request hook rewrites the response; an error handler answers a status, or an exception too.
+    # after-request hook rewrites the response; an error handler answers a status, or an exception too. The
+    # hook and handler types take the stub's Request, so the real Microdot satisfies _MicrodotApp below.
     RouteHandler = Callable[[_RequestLike], Awaitable[object]] | Callable[[_RequestLike, str], Awaitable[object]]
-    AfterRequestHook = Callable[[_RequestLike, Response], Response]
-    ErrorHandler = Callable[[_RequestLike], object] | Callable[[_RequestLike, Exception], Awaitable[object]]
+    AfterRequestHook = Callable[[Request, Response], Response]
+    ErrorHandler = Callable[[Request], object] | Callable[[Request, Exception], Awaitable[object]]
 
     class _MicrodotApp(Protocol):
-        # The subset of the Microdot instance routes are registered onto; the vendored stub
-        # (ext/typings/microdot/) leaves get/put/route unannotated (v2.7.0).
+        # The subset of the Microdot instance routes are registered onto, in the vendored stub's own parameter types
+        # (ext/typings/microdot/, v2.7.0), which leaves get/put/route unannotated.
         def after_error_request(self, f: "AfterRequestHook") -> object: ...
         def after_request(self, f: "AfterRequestHook") -> object: ...
-        async def dispatch_request(self, req: "_RequestLike | None") -> Response: ...  # not called
-        # from this module - part of the surface because tests drive routes through it directly.
         def errorhandler(self, status_code_or_exception_class: int | type[Exception]) -> "Callable[[ErrorHandler], object]": ...
         def get(self, url_pattern: str) -> "Callable[[RouteHandler], object]": ...
-        async def handle_request(self, reader: "_TimeoutStreamProxy", writer: "_TimeoutStreamProxy") -> None: ...
+        async def handle_request(self, reader: "StreamReader", writer: "StreamWriter") -> None: ...
         def put(self, url_pattern: str) -> "Callable[[RouteHandler], object]": ...
 
     StatusSourceFct = Callable[[], Awaitable[JsonDict]]
@@ -115,7 +118,7 @@ _WRN_HTTP_START_FAILED = const(62)
 # The only values ever forwarded to system_cmd(), matched as whole strings: the exact action word is what
 # runs a command, so no alias, prefix or case variant does (owner, 2026-09-30). mempause's fixed 300 s lives in
 # the callback (Part A.8).
-_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause"))
+_SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))
 _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
 # set_override_led() clamp ceiling (_MAX_OVERRIDE_TIME), kept here as its own constant (not
@@ -123,7 +126,12 @@ _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied Pau
 
 # Dispatch-only fields validate through the per-kind validators against synthetic schemas, as schema-backed fields do
 # (SPECIFICATION.md A.8); LightCmdLED's are legacy's own led_cmd() bounds, never schema-backed.
+# @web PauseTime hidden="validation record; the page field comes from the notification catalog in buildgen/definitions.py"
 _PAUSE_TIME_FIELD: "cm.FieldSchema" = ("PauseTime", "int", 0, 0, _PAUSE_TIME_MAX, None)
+# @web R hidden="validation record; the page field comes from the notification catalog in buildgen/definitions.py"
+# @web G hidden="validation record; the page field comes from the notification catalog in buildgen/definitions.py"
+# @web B hidden="validation record; the page field comes from the notification catalog in buildgen/definitions.py"
+# @web T hidden="validation record; the page field comes from the notification catalog in buildgen/definitions.py"
 _LIGHT_CMD_FIELDS: "tuple[cm.FieldSchema, ...]" = (
     ("R", "int", None, 0, 255, None),
     ("G", "int", None, 0, 255, None),
@@ -189,7 +197,7 @@ def _body_as_dict(request: "_RequestLike") -> "dict[str, JsonValue] | None":
     return data if isinstance(data, dict) else None
 
 
-def _cfg_values(values: "Mapping[str, JsonDict]") -> "JsonDict":
+def _cfg_values(values: "Mapping[str, Mapping[str, JsonValue]]") -> "Mapping[str, JsonValue]":
     # Every module's get_dict_cfg() returns make_dict()'s {name: {field: value}}; this takes the one inner dict.
     for inner in values.values():
         return inner
@@ -258,7 +266,7 @@ def _index_pairs(items: "Iterable[tuple[str, StatusSourceFct]]") -> "dict[str, S
     return dict(items)
 
 
-def _mark_connection_close(_request: "_RequestLike", response: Response) -> Response:
+def _mark_connection_close(_request: object, response: Response) -> Response:
     # ext/microdot.py speaks HTTP/1.0, whose default is already non-persistent, but RFC 7230 SS6.6
     # recommends saying so explicitly - added through Microdot's own supported hook, never by
     # editing the vendored file.
@@ -269,7 +277,7 @@ def _mark_connection_close(_request: "_RequestLike", response: Response) -> Resp
 class SettingsGroup:
     def __init__(
         self,
-        module: "_ModuleLike",
+        module: "_SettingsModule",
         fields: "Sequence[str]",
         post_fct: "Callable[[], None] | None" = None,
         post_asy_fct: "AsyncCallback | None" = None,
@@ -603,7 +611,7 @@ class WebserverService:
         # Plain for-loop, not a dict comprehension - MicroPython doesn't support `await` inside one.
         # .update(), not result[name] = ... - see SPECIFICATION.md Part A.8 for the real
         # double-wrap production bug this avoids.
-        result: dict[str, JsonValue] = {}
+        result: dict[str, object] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_data())
         return await _stream_dict_response(result, self._chunk_bytes)
@@ -618,13 +626,13 @@ class WebserverService:
 
     async def _get_sensors(self, _request: "_RequestLike") -> Response:
         # .update(), not result[name] = ... - see _get_measurements()'s own comment above.
-        result: dict[str, JsonValue] = {}
+        result: dict[str, object] = {}
         for module in self._sensors.values():
             result.update(await module.get_dict_cfg())
         return await _stream_dict_response(result, self._chunk_bytes)  # see _get_measurements()'s own comment above
 
-    async def _get_settings_flat(self, endpoint: str) -> "JsonDict":
-        result: JsonDict = {}
+    async def _get_settings_flat(self, endpoint: str) -> dict[str, object]:
+        result: dict[str, object] = {}
         for group in self._settings.get(endpoint, []):
             values = _cfg_values(await group.module.get_dict_cfg())
             for field in group.fields:
@@ -759,7 +767,7 @@ class WebserverService:
                 return await self._run_system_cmd(name)
         return INVALID
 
-    async def _handle_unhandled_exception(self, _request: "_RequestLike", exc: Exception) -> "tuple[ResponseEnvelope, int]":
+    async def _handle_unhandled_exception(self, _request: object, exc: Exception) -> "tuple[ResponseEnvelope, int]":
         # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
         # into FRAM history - never to shape the reply. The 500 status-code handler already does
         # that on its own, whether or not this one is registered (Part A.5).
@@ -808,7 +816,7 @@ class WebserverService:
                 # An unknown sensor, or a sensor entry that is not an object, answers "Invalid" in place of its field map.
                 results[name] = INVALID
             else:
-                # A field-to-word map is JSON, but dict is invariant: no JsonValue member takes a dict[str, str].
+                # A field-to-word map is JSON, but JsonValue holds dicts only: no member takes the module's Mapping[str, str].
                 results[name] = await module._set_dict_cfg(fields, module.get_cfg_schema())  # type: ignore[assignment]
         return ar.make_response(0, result=results)
 
@@ -868,7 +876,9 @@ class WebserverService:
             proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
             logged = False  # an arm below persisted this connection's one entry, so no drop trace follows it (C.7)
             try:
-                await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)
+                # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
+                # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
+                await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)  # type: ignore[arg-type]
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
             except asyncio.TimeoutError as e:
@@ -1011,14 +1021,14 @@ def _shape_errcount_entry(raw: "ErrorLog", name: str) -> "JsonDict":
     }
 
 
-def _shaped_error_handler(status_code: int) -> "Callable[[_RequestLike], tuple[ResponseEnvelope, int]]":
-    def handler(_request: "_RequestLike") -> "tuple[ResponseEnvelope, int]":
+def _shaped_error_handler(status_code: int) -> "Callable[[object], tuple[ResponseEnvelope, int]]":
+    def handler(_request: object) -> "tuple[ResponseEnvelope, int]":
         return ar.make_response(status_code), status_code
 
     return handler
 
 
-async def _stream_dict_response(result: "JsonMapping", chunk_bytes: int) -> Response:
+async def _stream_dict_response(result: "Mapping[str, object]", chunk_bytes: int) -> Response:
     # Memory-bounded streaming for any GET route whose response scales with device configuration
     # (SPECIFICATION.md Part I.3): the same bytes the old per-key json.dumps() fragments produced,
     # written value by value, so no allocation is a whole key's value, let alone the response.

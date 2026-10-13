@@ -10,12 +10,12 @@
    "rev": 2
   }
  },
- "changes": 1909,
- "steps": 6571,
- "edges": 74949,
+ "changes": 1917,
+ "steps": 6599,
+ "edges": 75008,
  "edge_kinds": {
   "action": 60760,
-  "dep-M": 8328,
+  "dep-M": 8387,
   "dep-A": 3020,
   "blast": 5737,
   "sweep": 445

@@ -1,5 +1,5 @@
 """The PC tiers' asyncio exception handler: prints every unretrieved task exception at every DebugLevel, so a task that died of an exhausted heap still reaches the memory gates (SPECIFICATION.md Part I.4(e)); the firmware's own report stays silent at level 0.
-Call `install()` first in any entry point that runs the firmware - tests/microtest.py's run() and every twin launcher; `SystemService.start_and_check_tasks()` then keeps it rather than installing its own.
+Call `install()` first in any entry point that runs the firmware - tests/microtest.py's run() and every twin launcher; `SystemService.start_tasks()` then keeps it rather than installing its own.
 Same allocation-free, never-raising body as `PrintLog.report_unretrieved()` (SPECIFICATION.md Part F.1); only the level gate differs."""
 
 import asyncio

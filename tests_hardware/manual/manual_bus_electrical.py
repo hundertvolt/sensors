@@ -1,7 +1,5 @@
 """Manual tests: real bus/electrical timing that needs a human's hands on the breadboard."""
 
-from __future__ import annotations
-
 from harness import Board
 from runner import confirm, confirm_pass, countdown, print_instruction, register, state_expected_outcome
 

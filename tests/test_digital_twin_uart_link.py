@@ -29,7 +29,7 @@ import sensortask_dev  # noqa: E402
 from _error_codes import code  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402
-from machine import LinkPoller, UARTLink, configure_i2c_wiring  # noqa: E402
+from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  # noqa: E402
 
 import asy_uart_comm  # noqa: E402
 from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm  # noqa: E402
@@ -100,10 +100,16 @@ _NOISE_STEP_MS = 1
 _COEXIST_NOISE_TASKS = 4
 
 
+async def _boot_dev(cfg_path: str) -> None:
+    # The generated main()'s first two steps: build_system() with the watchdog a boot entry arms, then the setup list.
+    await sensortask_dev.build_system(watchdog=WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=cfg_path)
+    await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
+
+
 def _build_dev() -> None:
     configure_i2c_wiring("dev")  # dev's own chips: wozi's default plan puts an 8 KB FRAM under dev's 256 KB manager
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
-    run(sensortask_dev.build_system(cfg_path=_tmp_cfg_dir()))
+    run(_boot_dev(_tmp_cfg_dir()))
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
@@ -329,7 +335,7 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
     assert dev.uart0 is not None and dev.uart1 is not None
     fake_a, fake_b = fakes()
     assert fake_a.id != fake_b.id
-    frame_size = dev.uart_link_init._comm._frame_size  # type: ignore[union-attr]
+    frame_size = dev.uart_link_init._comm._frame_size
     for driver in (dev.uart0, dev.uart1):
         assert driver.rxbuf >= frame_size
         assert driver.poll_wait_ms < 10  # single-digit, or poll latency dominates throughput
@@ -462,7 +468,7 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
     initiator = dev.uart_link_init._comm
 
     async def scenario() -> "list[Any]":
-        noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]  # type: ignore[union-attr]
+        noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]
         results = [await exchange(initiator.uart_get(0x01))]
         for task in noise:
             await task

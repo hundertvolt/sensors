@@ -218,8 +218,8 @@ class _FakeBusWrapper:
 
 
 class _FakeModule:
-    # Class-level attribute declarations defaulting to None - the shape a real generated module's globals
-    # take before build_system() assigns them (buildgen/codegen.py's _emit_globals) - letting test functions
+    # Class-level attribute declarations defaulting to None, standing in for a generated module's globals that
+    # build_system() has not assigned (_collect_chips() reads them with getattr()) - letting test functions
     # assign whichever subset a plan wires without mypy flagging the rest as undeclared.
     i2c0: "_FakeBusWrapper | None" = None
     i2c1: "_FakeBusWrapper | None" = None
@@ -310,11 +310,11 @@ def test_main_boots_arms_a_fault_and_shuts_down_cleanly() -> None:
         run=RunLimits(0.0, run_generic_integration._GC_THRESHOLD_DEFAULT, None, None),  # boot, arm the fault, then shut down immediately - no soak driving here any more
     )
     run_timed(main(config), timeout_s=_MAIN_RUN_BOUND_S)
-    # _booted_module is set by main() itself and read the same way _print_wdt_status()'s own two
-    # call sites do - the real watchdog must never have starved just from this ordinary boot.
-    booted = run_generic_integration._booted_module
-    assert booted is not None
-    assert booted.watchdog.would_have_triggered_count == 0
+    # The WDT the runner built and passed to the booted module's main(), read as _print_wdt_status()
+    # reads it: an ordinary boot never starves it.
+    watchdog = run_generic_integration._watchdog
+    assert watchdog is not None
+    assert watchdog.would_have_triggered_count == 0
 
 
 # ---------------------------------------------------------------------------

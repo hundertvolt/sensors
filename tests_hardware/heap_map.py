@@ -2,8 +2,6 @@
 The device cannot read it back - it goes to the platform print, not `sys.stdout` - so the map is
 captured host-side out of `Board.run_isolated()`'s output and measured here."""
 
-from __future__ import annotations
-
 import re
 from typing import NamedTuple
 

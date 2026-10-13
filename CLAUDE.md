@@ -48,7 +48,10 @@ information):
   This same pass also covers `toolchain/micropython_overrides.py`'s own anchor checks (SPECIFICATION.md
   Part B.14) — each `verify_*()` there already fails loudly on its own if its anchor text drifted,
   but re-reading the real mechanism behind each anchor (not just whether the literal string still
-  matches) is still part of this practice, the same as everything else it covers.
+  matches) is still part of this practice, the same as everything else it covers. For the
+  `modlwip_eagain` override it also asks whether the new pin carries a real upstream fix for
+  micropython issue 19704 (PRs 19705/19708) — if so the override is removed, not re-anchored (owner,
+  2026-09-30).
 - **Every external dependency is refreshed as one step, not only MicroPython** (owner, 2026-09-30:
   "Check all external dependencies for updates - both modules, repos and tooling, just
   everything."): the vendored `ext/` code (only as an unmodified upstream tag or commit), the stub
@@ -331,15 +334,18 @@ information):
   turns doesn't need to be re-confirmed turn by turn. `tests_hardware/README.md` is the durable
   technical reference (prerequisites, environment variables, safety facts like the
   `--allow-flash-cycle`/long-soak opt-in gates and the hotspot role-reversal scenario's stage-6
-  permanent-WLAN-deactivation risk) for what a session with that go-ahead actually needs to know —
-  this rule is just the standing gate for whether to start at all.
+  fallback (a failed credential reopens the DUT's hotspot once, then its silent mode)) for what a
+  session with that go-ahead actually needs to know — this rule is just the standing gate for
+  whether to start at all.
 - **A destructive test of the bench host's own network/access config (tearing down `br0`/its
   slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
   the host) must keep a recovery dead-man's-switch continuously armed (owner, 2026-09-26) for the
   entire risk window — never touch live network state with none armed.** Confirmed the hard way
   (2026-09-04): a one-shot timer consumed by an earlier dry run gave zero protection to the real run
-  that followed, costing the bench Pi4's own SSH access. Full incident account, the recovery script,
-  and the validated arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
+  that followed, costing the bench Pi4's own SSH access. `env --tier bench` arms one itself around
+  every bridge change it makes: verified armed before the change, disarmed only once `br0` has an
+  address and the default route, left armed when the change fails. Full incident account, the
+  recovery script, and the validated arm/verify/disarm pattern: SPECIFICATION.md Part B.13.
 - **The bench Pi4's `br0` bridge must always present `eth0`'s own real hardware MAC, never a
   NetworkManager-synthesized one — pin it via `bridge.mac-address`, always, on every bridge
   creation.** (agent, 2026-09-04, `28c5d8e`: MAC drift observed on the bench) A synthesized bridge
@@ -383,7 +389,8 @@ information):
   suite's own deliberate injections worded clear of what they grep for, since a message borrowing
   the interpreter's own wording would fail every file it runs in on a healthy tree. **One structural
   exception, added 2026-09-18 with the owner's approval: the boot-confined placement reset** —
-  `gc.collect()` between the units of the two one-time setup lists and nowhere else, mechanically
+  `gc.collect()` between the units of the two one-time lists, both run by `SystemService`
+  (`run_setups()` and `start_tasks()`'s starter loop), and nowhere else, mechanically
   confined by `scripts/lint.sh` and `tests_scripts/test_gc_collect_sites.py` on the *sites* and by
   `tests_scripts/test_digital_twin_boot_contiguity.py` on the *effect* (it boots all six generated
   devices and asserts the survivors still land low, with a suppressed control arm asserting the
@@ -629,15 +636,20 @@ information):
   self-contained `uv run` script, under CPython) are two separate stages glued together through
   `coverage.py`'s own `CoverageData` API — see SPECIFICATION.md Part E.5 ("Coverage") for the full
   pipeline, which README.md's own "Test coverage" section also points at rather than restating.
-  **Two Unix-port binaries are built, not one** (owner decision, 2026-09-21): `build-standard`,
-  built **without** `MICROPY_PY_SYS_SETTRACE`, is the test rig every plain run uses, while
-  `build-settrace` carries the flag and is `--coverage`'s alone; `ports/rp2`'s firmware build never
-  gets it either way. `scripts/test.sh` picks by mode, and `build_unix_port()` in
-  `toolchain/setup_toolchain.py` builds both. **Why the flag cannot simply stay compiled in, the
-  measured 4-5x allocation inflation it causes, and why the build directory's name no longer
-  identifies its variant: SPECIFICATION.md Part E.5.2** — the operational consequences are that
-  `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and rebuilds on a mismatch,
-  so don't re-diagnose a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
+  **Three Unix-port binaries are built, not one.** The first two split on
+  `MICROPY_PY_SYS_SETTRACE` (owner decision, 2026-09-21): `build-standard`, built **without** it, is
+  the test rig every plain run uses, while `build-settrace` carries the flag and is `--coverage`'s
+  alone; `ports/rp2`'s firmware build never gets it either way. The third, `build-lwip` (owner,
+  2026-09-30), is the settrace-free standard variant built over loopback lwIP with the firmware's
+  own patched `modlwip.c` (SPECIFICATION.md B.14.4); it runs `tests/lwip_host/` alone, and not under
+  `--coverage`. `scripts/test.sh` picks by mode and directory, and `build_unix_port()` and
+  `build_unix_lwip_port()` in `toolchain/setup_toolchain.py` build all three. **Why the flag cannot
+  simply stay compiled in, the measured 4-5x allocation inflation it causes, and why the build
+  directory's name no longer identifies its variant: SPECIFICATION.md Part E.5.2** — the operational
+  consequences are that `scripts/test.sh` asks the binary itself (`hasattr(sys, "settrace")`) and
+  rebuilds on a mismatch, on a missing `toolchain-record.json`, and on a plain run without a plain
+  `build-lwip` (every toolchain dir set up before the third binary lacks both), so don't re-diagnose
+  a long-lived toolchain dir rebuilding its Unix ports once as a bug; and that
   any allocation figure taken under `--coverage` is inflated, coverage being line coverage only.
   **That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided and done**, and the
   allocation-heavy files got faster with the flag gone (`test_sensortask_wozi.py` 24.6s → 9.3s)
@@ -687,7 +699,7 @@ information):
   object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
   re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
 - **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
-  `sensortask_wozi.build_system()`/`start_and_check_tasks()` task graph to a clean, non-cancelled
+  `sensortask_wozi.build_system()`/`start_tasks()` task graph to a clean, non-cancelled
   completion (e.g. the digital twin's now-retired `--soak` flag finishing normally, not via
   timeout — the soak check itself has since moved host-side, SPECIFICATION.md's "Driver/DUT
   process separation" Part, but any other run reaching a clean non-cancelled completion hits the
@@ -712,8 +724,8 @@ information):
   graph, which isn't reachable/trackable from outside that module, making a blanket forced-exit the
   more robust fix than trying to enumerate and cancel every sibling task individually. Surfaced by
   the `asy_system_service.py` `_timer_sequencer()` Timer-GC fix above: before that fix, `start_timers()`
-  hung forever, so `start_and_check_tasks()` never even got called and no sibling tasks ever
-  existed to leak — the soak test's own bounded-completion path was previously unreachable.
+  hung forever, and the task starters then ran only after it, so they never even got called and no
+  sibling tasks ever existed to leak — the soak test's own bounded-completion path was previously unreachable.
 - **Known segfault cause, fixed**: a **nested `asyncio.run()` while any other task is still parked
   in the shared task queue segfaults the MicroPython Unix port** - it does not raise the
   `RuntimeError: asyncio.run() cannot be called from a running event loop` CPython would. `run()`
@@ -882,8 +894,10 @@ information):
   `[micropython] ref` (the single source of truth for the firmware version target) and installs
   the matching `<major>.<minor>.<patch>.*` stub release, failing with a clear, actionable error
   (not a silent fallback) if `ref` isn't a plain `vX.Y.Z` tag or no matching stub release exists
-  upstream yet (stub releases can lag a new MicroPython release). Installed into `typings/`
-  (gitignored) — **deliberately not** a
+  upstream yet (stub releases can lag a new MicroPython release). The version uv resolved is printed
+  (`== MicroPython stubs: <version> (for firmware <X.Y.Z>)`) and recorded in `typings/.stub-spec`
+  under the requested spec; a missing or different record wipes `typings/` before the install.
+  Installed into `typings/` (gitignored) — **deliberately not** a
   `pyproject.toml` `[dependency-groups]` entry, because these stubs must fully replace mypy's
   typeshed for MicroPython/CPython stdlib-name collisions (`time`, `math`, `select`, `errno`, ...
   — see `[tool.mypy]`'s `custom_typeshed_dir`), and doing that against the same venv that also
@@ -1012,9 +1026,10 @@ chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-
 # failure lands minutes in. Confirmed by hitting it (2026-09-10).
 # sudo is not part of debootstrap --variant=minbase, but toolchain/setup_toolchain.py's
 # ensure_apt_packages() unconditionally shells out to it (see toolchain/versions.toml's
-# apt_packages, used by both its `setup`/`test` subcommands) - without it, `scripts/test.sh`
-# fails with "sudo: command not found" even though a real dev machine (where the calling user has
-# sudo rights but isn't already root) never hits this. A plain chroot session runs as root, where
+# apt_packages, used by its `setup` subcommand, which `scripts/test.sh` runs when it finds no built
+# toolchain; `test` runs no apt) - without it, `scripts/test.sh` fails with "sudo: command not
+# found" even though a real dev machine (where the calling user has sudo rights but isn't already
+# root) never hits this. A plain chroot session runs as root, where
 # apt-get wouldn't need sudo at all, but the script always prepends it regardless - so installing
 # the package is the correct fix here, not stripping sudo from the script for a root-only case.
 # libcap2-bin is the same class of gap, found the same way (a real run, 2026-09-10): it provides
@@ -1051,8 +1066,8 @@ rm -rf "$CHROOT"
 
 **The trixie target, and why noble alone is not enough.** The noble chroot above pins GCC 13.x,
 so a compiler-version-sensitive build break is invisible to it — confirmed the hard way: the
-mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, worked around
-by `_MBEDTLS_GCC14_ARRAY_BOUNDS_WORKAROUND` in `toolchain/setup_toolchain.py`) is a GCC >= 14
+mbedtls `mbedtls_xor()` `-Warray-bounds` false positive (SPECIFICATION.md Part B.7.1, suppressed for
+`ctr_drbg.c` alone by the build files `toolchain/micropython_overrides.py` generates) is a GCC >= 14
 diagnostic, and the build treats any `warning:` as a hard failure — so noble never saw it. It was
 found by building on a real Debian trixie host, outside this recipe. Noble is kept, not replaced:
 it is the documented target OS, and a gap appearing only on the *older* compiler would be just as

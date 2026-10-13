@@ -450,7 +450,7 @@ def test_system_service_and_a_fram_backup_chunk_share_one_real_ntp_client_indepe
 
 # ---------------------------------------------------------------------------
 # Task-supervision seam: an unreachable NTP server is routine, handled inside the task (Part C.7.2), so
-# the real start_and_check_tasks() must see a live task and spend none of its reboot budget on it -
+# the real supervisor (supervise_tasks()) must see a live task and spend none of its reboot budget on it -
 # each restart costs 100 of 300 there, which is how an outage used to reboot the device.
 # ---------------------------------------------------------------------------
 
@@ -464,8 +464,7 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
 
     def spy_starter() -> "asyncio.Task[None]":
         # Wraps the real starter (not a synthetic one) so this test can observe how many times the
-        # real supervisor actually (re)started the real task, without needing to reach into
-        # start_and_check_tasks()'s own function-local task list.
+        # real supervisor actually (re)started the real task, without reaching into its task list.
         t = ntp.start_asy_sync()
         starts.append(t)
         return t
@@ -479,14 +478,15 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
     try:
 
         async def scenario() -> int:
-            svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
-            await asyncio.sleep(0)  # let start_and_check_tasks()'s own initial _start_task run
+            await svc.start_tasks([spy_starter])
             assert len(starts) == 1
+            svc_task = asyncio.create_task(svc.supervise_tasks())
+            await asyncio.sleep(0)  # one yield: the supervisor's first pass (a limit, not an interleaving claim)
             for _ in range(20):  # four times the old five-failure give-up streak
                 ntp._ntp_sync_trigger_event.set()
                 await asyncio.sleep(0)
                 await asyncio.sleep(0)
-            await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
+            await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for the supervisor's next 2 s pass
             assert not starts[0].done()  # the real _sync_loop() task is still the one running
             await _cancel(svc_task)
             return len(starts)
@@ -551,11 +551,23 @@ def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_ti
 # audit found had never been called at all before.
 #
 # But nothing proves the same starter still works once wired through the real, generic
-# start_and_check_tasks() every device actually uses - the seam the NTP-task test above proves for
+# start_tasks()/supervise_tasks() every device actually uses - the seam the NTP-task test above proves for
 # NTPClient, generalized here to a sensor driver.
 # ---------------------------------------------------------------------------
 
 _BMP_ADDR = 0x77
+
+
+async def _one_supervisor_pass(svc: SystemService, starts: "list[asyncio.Task[None]]") -> int:
+    # The supervisor's first pass restarts the dead task at once; its next pass is 2 s away, so the count is read
+    # before that one can restart the task a second time, with the same bounded real-time poll as the start.
+    svc_task = asyncio.create_task(svc.supervise_tasks())
+    for _ in range(_START_POLL_TRIES):
+        if len(starts) > 1:
+            break
+        await asyncio.sleep(_START_POLL_S)
+    await _cancel(svc_task)
+    return len(starts)
 
 
 def make_bmp_reader(cfg_path: str, max_module_error: int = 1) -> BMP3XX_Reader:
@@ -584,7 +596,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
         return t
 
     async def scenario() -> int:
-        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        await svc.start_tasks([spy_starter])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): asy_i2c_driver.py's _probe_for_device() awaits two real
             # 0.1s sleeps regardless of outcome, and sleep(0) never advances wall-clock time on this
@@ -593,9 +605,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
                 break
             await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real _read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
-        await _cancel(svc_task)
-        return len(starts)
+        return await _one_supervisor_pass(svc, starts)
 
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
@@ -648,16 +658,14 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
         return t
 
     async def scenario() -> int:
-        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        await svc.start_tasks([spy_starter])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break
             await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real _read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
-        await _cancel(svc_task)
-        return len(starts)
+        return await _one_supervisor_pass(svc, starts)
 
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor
@@ -679,16 +687,14 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
         return t
 
     async def scenario() -> int:
-        svc_task = asyncio.create_task(svc.start_and_check_tasks([spy_starter]))
+        await svc.start_tasks([spy_starter])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
                 break
             await asyncio.sleep(_START_POLL_S)
         assert starts[0].done()  # the real _read_loop() genuinely returned on its own (init failed)
-        await asyncio.sleep(_SCAN_WAIT_S)  # real wall-clock wait for start_and_check_tasks()'s own 2s poll
-        await _cancel(svc_task)
-        return len(starts)
+        return await _one_supervisor_pass(svc, starts)
 
     call_count = run(scenario())
     assert call_count == 2  # the initial real start, plus one genuine restart by the real supervisor

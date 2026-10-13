@@ -2,8 +2,6 @@
 concurrency/locking model, a regression test for the SGP40 general-call reset hazard, same-device
 read/write concurrency per sensor, and a live-topology address/reserved-range/self-hazard sweep."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 

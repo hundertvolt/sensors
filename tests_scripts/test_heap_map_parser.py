@@ -2,8 +2,6 @@
 hardware assertion, and its dangerous failure mode is silent: a truncated capture reads as a heap
 with an enormous free run at the end, turning a regression into a pass."""
 
-from __future__ import annotations
-
 import re
 import sys
 from pathlib import Path

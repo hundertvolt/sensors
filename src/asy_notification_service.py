@@ -20,14 +20,14 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, Protocol
+    from collections.abc import Awaitable, Callable
+    from typing import Protocol
 
     # The stubs model a ticks_ms() value as an opaque type, not a plain int, precisely so it can
     # only ever reach time.ticks_diff() - _next_sleep_s()'s t0 is exactly such a value.
     from _mpy_shed.time_mp import _TicksMs
 
-    from asy_base_classes import TimerStarter, ValueRef
+    from asy_base_classes import TaskStarter, TimerStarter, ValueRef
     from asy_config_manager import ConfigSchema
     from asy_print_log import ErrorLog
 
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
         # Structural stand-in for a NotificationSignal's producer (SPECIFICATION.md Part C.10's
         # typing convention) - any *_Reader exposing the same get_data() -> NamedTuple contract
         # every driver already has (C.4.2). Only get_data() is used here.
-        async def get_data(self) -> "Any": ...
+        async def get_data(self) -> object: ...
 
 # Codes from the global catalog (buildgen/error_catalog.json; SPECIFICATION.md Part C.7.1).
 _ERR_CALLBACK = const(14)
@@ -63,6 +63,16 @@ _LOOP_TICK_S = const(1)  # _pause_loop()'s round: how late a measured pause can 
 _MIN_SLEEP_S = const(0.1)  # floor of _monitor_loop()'s sleep to its next cycle
 # @tunable notify.cfg_fail_interval_s = 600.0
 _CFG_FAIL_INTERVAL_S = const(600.0)  # cycle interval while the own configuration cannot be read
+# Three times the longest configurable producer interval (BMP3XX SampleInterval 3600 s): a slow
+# producer is never cut off (agent, 2026-10-06).
+# @tunable notify.sample_max_age_s = 10800
+_SAMPLE_MAX_AGE_S = const(10800)
+# State: 0 evaluated, 1 off by setting, 2 no clock, 3 a value unavailable, 4 own config unreadable (SPECIFICATION.md A.4).
+_STATE_EVALUATED = const(0)
+_STATE_OFF = const(1)
+_STATE_NO_CLOCK = const(2)
+_STATE_PARTIAL = const(3)
+_STATE_CFG_UNREADABLE = const(4)
 
 # This driver's live cross-instance dependencies (Parts C.14 and L.4): the LED it signals through,
 # required, in "attr" mode - the resolved NeopixelDriver's own request_signal bound method is passed
@@ -119,10 +129,10 @@ _VAL_BOOL_FIELDS = _VAL_AUTO_ON
 _VAL_OWN_SCHEMA = _VAL_INT_FIELDS + _VAL_FLOAT_FIELDS + _VAL_BOOL_FIELDS
 
 # Minimal but real measurement snapshot in C.4.2's get_data() shape, like every other Reader:
-# whether anything was triggered as of the last completed poll cycle. Kept as a literal tuple, not
-# `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
-NOTIFY = namedtuple("NOTIFY", ("Triggered", "TS"))
-_FIELDS = const(("Triggered", "TS"))  # kept in sync with NOTIFY's own fields above
+# whether anything was triggered as of the last completed poll cycle, and why not if nothing was evaluated.
+# A literal tuple, not `_FIELDS`: mypy's namedtuple plugin infers field names only from a literal at the call site.
+NOTIFY = namedtuple("NOTIFY", ("Triggered", "State", "TS"))
+_FIELDS = const(("Triggered", "State", "TS"))  # kept in sync with NOTIFY's own fields above
 
 
 def _in_window(on_min: int, off_min: int, cur_min: int) -> bool:
@@ -149,9 +159,6 @@ class NotificationSignal:
         self.field_schema = field_schema
         self.color = color  # per-channel weight (0/1), scaled by FlashBri at trigger time
         self.above = above
-        # Only ever touched by the coordinator's single poll-loop task - no lock needed.
-        self.last_value: int | float | None = None
-        self.triggered = False
 
 
 def _refusal(notif: NotificationSignal, taken: set[str]) -> tuple[str, int]:
@@ -167,8 +174,8 @@ def _refusal(notif: NotificationSignal, taken: set[str]) -> tuple[str, int]:
 class NotificationService(SensorReaderConfig):
     def __init__(
         self,
-        request_signal_cb: "Callable[[int, int, int, float], Coroutine[Any, Any, bool]]",
-        local_time_callback: "Callable[[], Coroutine[Any, Any, _LocalTime | None]]",
+        request_signal_cb: "Callable[[int, int, int, float], Awaitable[bool]]",
+        local_time_callback: "Callable[[], Awaitable[_LocalTime | None]]",
         signals: tuple[NotificationSignal, ...],
         cfg_path: str = "",
         log: LogConfig = DEFAULT_LOG,
@@ -189,7 +196,7 @@ class NotificationService(SensorReaderConfig):
                 combined = combined + notif.field_schema
         self._registered = tuple(accepted)
         super().__init__(
-            NOTIFY(Triggered=False, TS=None),
+            NOTIFY(Triggered=False, State=None, TS=None),
             _NAME,
             combined,
             max_module_error=0,  # no failure streak: a restart re-reads nothing _monitor_loop() doesn't (Part C.7.2)
@@ -205,41 +212,38 @@ class NotificationService(SensorReaderConfig):
         self._pause = TickSeconds(count_down=True)
         self._auto_active = True
 
-    async def _check_one(self, notif: NotificationSignal) -> bool:
+    async def _check_one(self, notif: NotificationSignal) -> bool | None:
         # Direct read of the producer's own get_data() (SPECIFICATION.md Part C.14) - get_data()
         # never raises, but the specific field can legitimately be None (not yet measured, or the
-        # producer's own error streak gave up) - a normal, expected input here, not exceptional.
+        # producer's own error streak gave up). None: the signal could not be evaluated.
         value: object
         source: _ValueSource = notif.value.source  # the annotated local narrows the namedtuple field (C.4.2)
         try:
             data = await source.get_data()
             value = getattr(data, notif.value.field, None)
+            ts = getattr(data, "TS", None)
+            now = utc_now()
+            # Older than the bound, a sample is unavailable like a missing one; one without a TS (before the
+            # first sync) counts as current - the same rule as asy_sgp40_driver.py's compensation input.
+            if now is not None and isinstance(ts, int) and now - ts > _SAMPLE_MAX_AGE_S:
+                value = None
         except Exception as e:
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             value = None
         if value is None:
-            notif.last_value = None
-            notif.triggered = False
-            return False
+            return None
         if not isinstance(value, (int, float, bool)):  # bool listed: MicroPython's bool is no int subclass
             await self.pr.err_s(notif.name, "Value not numeric:", type(value).__name__, errno=_ERR_SOURCE)
-            notif.last_value = None
-            notif.triggered = False
-            return False
-        notif.last_value = value
-        if value != value:  # NaN never triggers
-            notif.triggered = False
-            return False
+            return None
+        if value != value:  # NaN is never evaluated
+            return None
         thresholds = await self.cfgmgr.get_float_values(notif.field_schema)  # works for an "int" schema field too - float(cached_int) never raises
         if thresholds is None:
             await self.pr.err_s(notif.name, "Threshold config read failed!", errno=_ERR_CFG_READ)
-            notif.triggered = False
-            return False
+            return None
         threshold = thresholds[0]  # exactly one field - the constructor refuses any other shape
         numeric_value = float(value)  # float() cannot raise here: value is numeric.
-        triggered = (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
-        notif.triggered = triggered
-        return triggered
+        return (numeric_value >= threshold) if notif.above else (numeric_value <= threshold)
 
     async def _monitor_loop(self) -> None:
         # No self._auto_active = True here, unlike __init__/_pause_loop() which own it - this
@@ -261,24 +265,32 @@ class NotificationService(SensorReaderConfig):
                 interv = _CFG_FAIL_INTERVAL_S
                 # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
                 await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
+                await self._store_notif_data(any_triggered=False, state=_STATE_CFG_UNREADABLE)
             else:
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
                 auto_on = cfg_bool[0]
                 any_triggered = False
+                state = _STATE_OFF
                 if auto_on and self._auto_active:
                     cur_time = await self._safe_local_time()
-                    if cur_time is not None:  # no NTP sync, missing config, or a raising callback
+                    if cur_time is None:  # no NTP sync, missing config, or a raising callback
+                        state = _STATE_NO_CLOCK
+                    else:
                         on_min_of_day = (on_h * 60) + on_m
                         off_min_of_day = (off_h * 60) + off_m
                         cur_min_of_day = (cur_time.hour * 60) + cur_time.minute
                         if _in_window(on_min_of_day, off_min_of_day, cur_min_of_day):
+                            state = _STATE_EVALUATED
                             for notif in self._registered:
-                                if await self._check_one(notif):
+                                triggered = await self._check_one(notif)
+                                if triggered is None:
+                                    state = _STATE_PARTIAL
+                                elif triggered:
                                     any_triggered = True
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
                                     await asyncio.sleep(2 * flash_dur)
-                await self._store_notif_data(any_triggered=any_triggered)
+                await self._store_notif_data(any_triggered=any_triggered, state=state)
             await asyncio.sleep(self._next_sleep_s(interv, t0))
 
     def _next_sleep_s(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
@@ -307,8 +319,8 @@ class NotificationService(SensorReaderConfig):
             await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
-    async def _store_notif_data(self, *, any_triggered: bool) -> None:
-        await self._set_meas_data(NOTIFY(any_triggered, utc_now()))
+    async def _store_notif_data(self, *, any_triggered: bool, state: int) -> None:
+        await self._set_meas_data(NOTIFY(any_triggered, state, utc_now()))
 
     async def _trigger_signal(self, notif: NotificationSignal, flash_bri: int, flash_dur: float) -> None:
         r, g, b = notif.color
@@ -319,7 +331,7 @@ class NotificationService(SensorReaderConfig):
         except Exception as e:
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
 
-    def get_task_starters(self) -> "list[Callable[[], asyncio.Task[Any]]]":
+    def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_monitor, self.start_asy_pause]
 
     def get_timer_starters(self) -> "list[TimerStarter]":

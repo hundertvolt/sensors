@@ -2,8 +2,6 @@
 only persistence tests - neither reset mechanism can reproduce a torn mid-flight write or what the
 real MB85RS64V/SCD30 preserve across a genuine supply-voltage loss."""
 
-from __future__ import annotations
-
 from runner import confirm, countdown, print_instruction, register, state_expected_outcome
 
 _DUT_IP_HINT = "the DUT's IP (see tests_hardware/README.md for how to find it without disturbing the running system)"

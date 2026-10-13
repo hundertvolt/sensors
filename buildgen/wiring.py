@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
-from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens, specs_for
 
-_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "wiring")
+_SPECS = specs_for("wiring")
 
 # Every element is its own capture group with its own alternation, so dropping any one of the five
 # leaves the line matching no tag at all - which check_for_near_miss_tags() then reports as a
@@ -43,12 +43,21 @@ def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ..
             raise BuildError(
                 device,
                 f"{path}:{tok.lineno}: @wiring tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                rule="tag.not-module-level",
+                fix="move the tag to module level, beside the driver's schema",
                 instance=driver,
             )
         fields.append(WiringField(m.group("toml_field"), m.group("producer_class"), m.group("target"), m.group("required") == "required", m.group("mode")))
     duplicate = _first_duplicate([f.toml_field for f in fields])
     if duplicate is not None:
-        raise BuildError(device, f"{path}: declares two @wiring tags for {duplicate!r} - each TOML field is wired exactly once", instance=driver, field=duplicate)
+        raise BuildError(
+            device,
+            f"{path}: declares two @wiring tags for {duplicate!r}",
+            rule="tag.duplicate-field",
+            fix="keep one @wiring tag per TOML field: each is wired exactly once",
+            instance=driver,
+            field=duplicate,
+        )
     check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)
 

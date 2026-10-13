@@ -17,6 +17,8 @@ from unix_port_poll_prewarm import prewarm_poll_set
 prewarm_poll_set()
 
 import _http_client  # noqa: E402
+import machine  # noqa: E402
+import run_generic_integration  # noqa: E402
 import sensortask_wozi  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -65,7 +67,9 @@ def _next_test_port() -> int:
 
 
 async def _boot(port: int) -> None:
-    await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    # The generated main()'s first two steps: build_system() with the watchdog a boot entry arms, then the setup list.
+    await sensortask_wozi.build_system(watchdog=machine.WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    await sensortask_wozi.sysfunct.run_setups(sensortask_wozi._collect_setups())
 
 
 async def _start_webserver() -> "asyncio.Task[None]":

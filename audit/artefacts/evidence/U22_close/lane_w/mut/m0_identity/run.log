@@ -1,0 +1,4 @@
+PASS test_no_flash_pattern_starts_while_silent
+PASS test_the_silent_mode_keeps_the_led_dark_until_a_link
+PASS test_a_second_streak_enters_the_silent_mode_once
+selected: 3 failed: 0

@@ -2,8 +2,6 @@
 isl29125_mock_conformance_probe.py against digital_twin/_isl29125_chip.py under the MicroPython
 Unix port, and diffs that against the same probe's real-hardware output key by key."""
 
-from __future__ import annotations
-
 import os
 import subprocess
 import tempfile

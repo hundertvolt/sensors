@@ -1,11 +1,11 @@
 # Pin for the build-environment installer (toolchain/setup_toolchain.py).
 #
 # Only the MicroPython ref is pinned by hand. pico-sdk is derived from MicroPython's own
-# lib/pico-sdk submodule at this ref, picotool as the newest tag matching its major.minor
-# (SPECIFICATION.md Part B.3).
+# lib/pico-sdk submodule at this ref, picotool as the newest tag sharing its major.minor (inside
+# pico-sdk's same-major rule, SPECIFICATION.md B.1).
 #
-# To move: change `ref` (or run the installer with --latest to write back the newest stable tag),
-# then re-run the installer.
+# A move is the owner's call (owner, 2026-09-26) and the platform re-check follows (SPECIFICATION.md
+# Part F): change `ref`, or run the installer with --latest, then re-run the installer.
 [micropython]
 ref = "v1.29.0"
 

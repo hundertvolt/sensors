@@ -6,6 +6,7 @@ import asyncio
 import gc
 import sys
 
+import machine
 import micropython
 import sensortask_dev
 from microdot import Microdot
@@ -32,6 +33,8 @@ _BLOCK = 32 if sys.maxsize > 2**32 else 16  # GC block: 16 B on the RP2040, 32 B
 # twin's fake allocates, so there it runs once per rung, off the sieve (a rung is well under 8 s).
 _FEED_PER_PROBE = sys.platform == "rp2"
 _sieve: "list[Any]" = [None, None]  # the two chains' heads: holes, blockers
+# @tunable wdt.timeout_ms = 8000
+_wdt = machine.WDT(timeout=8000)  # the script's own: build_system() takes it, run_setups() and _feed() feed it
 
 
 class _NoopHolder:  # a request's sock half: the static route hands its opened file to hold()
@@ -47,8 +50,7 @@ _PROBE_REQUEST = _ProbeRequest()
 
 
 def _feed() -> None:
-    if sensortask_dev.watchdog is not None:
-        sensortask_dev.watchdog.feed()
+    _wdt.feed()
 
 
 def _build_sieve(hole_blocks: int) -> None:
@@ -124,7 +126,8 @@ def _whole_route(handler: "Callable[[Any], Awaitable[Any]]") -> "Callable[[], Aw
 
 async def _run() -> None:
     print(f"GC_THRESHOLD={gc.threshold()}")
-    await sensortask_dev.build_system(web_host="127.0.0.1", web_port=8080)
+    await sensortask_dev.build_system(watchdog=_wdt, web_host="127.0.0.1", web_port=8080)
+    await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())  # main()'s next step: the sources as a boot leaves them
     ws = sensortask_dev.webserver
     assert ws is not None
     probes = _sources(ws)

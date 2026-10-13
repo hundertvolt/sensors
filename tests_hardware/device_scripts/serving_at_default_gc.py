@@ -7,6 +7,7 @@ import gc
 import sys
 import time
 
+import machine
 import micropython
 import sensortask_dev
 
@@ -118,11 +119,14 @@ async def _observe(webserver: "WebserverService") -> None:
 async def _run() -> None:
     asyncio.get_event_loop().set_exception_handler(_report_unretrieved)  # before main(): the firmware then keeps it
     print(f"GC_THRESHOLD={gc.threshold()}")
-    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main())
+    # @tunable wdt.timeout_ms = 8000
+    wdt = machine.WDT(timeout=8000)  # the script's own, as the boot entry arms one: main() takes it
+    main_task = asyncio.get_event_loop().create_task(sensortask_dev.main(watchdog=wdt))
     await asyncio.sleep(_BOOT_S)
     try:
-        assert sensortask_dev.webserver is not None
-        await _observe(sensortask_dev.webserver)
+        webserver = getattr(sensortask_dev, "webserver", None)  # absent until main() has built it
+        assert webserver is not None
+        await _observe(webserver)
     finally:
         main_task.cancel()
     print(f"FAILURE_MAPS={_failure_maps[0]}")

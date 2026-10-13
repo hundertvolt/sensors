@@ -613,6 +613,38 @@ def test_mock_histories_hold_only_their_loggers_catalog_codes() -> None:
     assert not problems, "\n".join(problems)
 
 
+# ---- (11) the ResetReason status table -------------------------------------------------------------
+
+_SYSTEM_SERVICE = "src/asy_system_service.py"
+# The record's own words, and the boot-failure base that begin_boot() adds a phase to: no code of their own.
+_RR_NON_CODES = frozenset({"_RR_MAGIC", "_RR_CHECK", "_RR_BOOT_FAILURE"})
+
+
+def _module_ints(tree: ast.Module) -> "dict[str, int]":
+    ints: dict[str, int] = {}
+    for stmt in tree.body:
+        target, value = _binding(stmt)
+        number = _int_value(value)
+        if isinstance(target, ast.Name) and number is not None:
+            ints[target.id] = number
+    return ints
+
+
+def _reset_table_problems(catalog: "dict[str, Any]", tree: ast.Module) -> "list[str]":
+    # begin_boot() returns a recorded RR_ code, or the base plus a phase it decodes (BOOT_CONSTRUCTION <= p < BOOT_DONE).
+    ints = _module_ints(tree)
+    codes = {value for name, value in ints.items() if name.lstrip("_").startswith("RR_") and name not in _RR_NON_CODES}
+    codes |= {ints["_RR_BOOT_FAILURE"] + phase for phase in range(ints["BOOT_CONSTRUCTION"], ints["BOOT_DONE"])}
+    table = {int(num) for num in catalog.get("status", {}).get("ResetReason", {})}
+    return [f"ResetReason {n} can be recorded but has no catalog row" for n in sorted(codes - table)] + [f"ResetReason {n} has a catalog row but no code" for n in sorted(table - codes)]
+
+
+def test_the_reset_reason_table_has_one_row_per_recorded_code() -> None:
+    tree = next(m.tree for m in _src() if m.path == _SYSTEM_SERVICE)
+    problems = _reset_table_problems(_catalog(), tree)
+    assert not problems, "\n".join(problems)
+
+
 # ---- planted violations: each check above bites ---------------------------------------------------
 
 
@@ -746,3 +778,12 @@ def test_the_history_check_bites() -> None:
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 30))})  # another logger's code
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("E", 20))})  # an adjacent repeat
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), counter=0)})  # counter below its slots
+
+
+def test_the_reset_table_check_bites() -> None:
+    source = "_RR_MAGIC = const(7)\n_RR_UNKNOWN = const(0)\n_RR_BOOT_FAILURE = const(10)\nRR_INTERRUPTED = const(21)\nBOOT_CONSTRUCTION = const(1)\nBOOT_DONE = const(3)\n"
+    tree = ast.parse(source)
+    table = {str(n): {"text": f"t{n}"} for n in (0, 11, 12, 21)}
+    assert not _reset_table_problems({"status": {"ResetReason": table}}, tree)
+    assert _reset_table_problems({"status": {"ResetReason": {k: v for k, v in table.items() if k != "21"}}}, tree)  # a code without a row
+    assert _reset_table_problems({"status": {"ResetReason": {**table, "13": {"text": "t13"}}}}, tree)  # a row without a code

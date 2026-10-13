@@ -2,8 +2,6 @@
 can reproduce, via isolated-driver `mpremote run` scripts. The clock-stretch check needs
 `--soak-tier`; the ticks_ms rollover check needs `--allow-multi-day-rollover-wait` (~12.4-day wait)."""
 
-from __future__ import annotations
-
 import re
 import time
 from pathlib import Path
@@ -37,7 +35,7 @@ def _parse_result(output: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-def test_soft_timer_callback_drop_self_heals_under_scheduler_saturation(board: Board) -> None:
+def test_soft_timer_callback_drop_self_heals_under_scheduler_saturation(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "scheduler_saturation_drop.py")
     ok, detail = _parse_result(output)
     assert ok, f"scheduler saturation probe failed: {detail}\nfull output:\n{output}"
@@ -48,7 +46,7 @@ def test_soft_timer_callback_drop_self_heals_under_scheduler_saturation(board: B
 # ---------------------------------------------------------------------------
 
 
-def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: Board) -> None:
+def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "timer_alarm_pool_exhaustion.py")
     ok, detail = _parse_result(output)
     assert ok, f"alarm-pool exhaustion probe failed: {detail}\nfull output:\n{output}"
@@ -61,7 +59,7 @@ def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: Board
 # ---------------------------------------------------------------------------
 
 
-def test_scd30_real_irq_edge_drives_a_real_read(board: Board) -> None:
+def test_scd30_real_irq_edge_drives_a_real_read(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "scd30_real_irq_edge.py", timeout_s=_IRQ_SCRIPT_TIMEOUT_S)
     ok, detail = _parse_result(output)
     assert ok, f"SCD30 real IRQ-edge probe failed: {detail}\nfull output:\n{output}"
@@ -72,7 +70,7 @@ def test_scd30_real_irq_edge_drives_a_real_read(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_single_precision_float_boundary_at_2pow24(board: Board) -> None:
+def test_single_precision_float_boundary_at_2pow24(board: "Board") -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / "float_boundary_2pow24.py")
     ok, detail = _parse_result(output)
     assert ok, f"float boundary probe failed: {detail}\nfull output:\n{output}"
@@ -86,7 +84,7 @@ def test_single_precision_float_boundary_at_2pow24(board: Board) -> None:
 
 
 @pytest.mark.long_soak
-def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Board, request: pytest.FixtureRequest) -> None:
+def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: "Board", request: pytest.FixtureRequest) -> None:
     tier = request.config.getoption("--soak-tier")
     if tier is None:
         pytest.skip("real SCD30 clock-stretch events are opportunistic (~once/day) - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long} to actually watch for one")
@@ -119,7 +117,7 @@ _ROLLOVER_POLL_INTERVAL_S = 3600.0
 
 
 @pytest.mark.multi_day_rollover
-def test_ticks_ms_real_2pow30_rollover(board: Board, request: pytest.FixtureRequest) -> None:
+def test_ticks_ms_real_2pow30_rollover(board: "Board", request: pytest.FixtureRequest) -> None:
     # Deliberately its own separate marker/flag, never bundled with the long_soak/--soak-tier system
     # above - this wait is fixed by the real hardware counter's own current value (~12.4 days from
     # whenever it happens to run), not something any duration tier could meaningfully shorten.

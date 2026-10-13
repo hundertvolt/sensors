@@ -34,7 +34,6 @@ runs:
       uses: actions/cache@v6
       with:
         path: ~/pico-toolchain
-        # Hashes setup_toolchain.py too, not just versions.toml: the Unix port's build flags live
-        # there, and a versions.toml-only key once kept a stale binary alive (B.10). Shared by every
-        # caller: first job builds, later ones hit.
-        key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py') }}
+        # Hashes every file whose content is compiled into the cached binaries: the pin, the build
+        # flags and the build overrides (SPECIFICATION.md B.10).
+        key: unix-port-${{ runner.os }}-${{ hashFiles('toolchain/versions.toml', 'toolchain/setup_toolchain.py', 'toolchain/micropython_overrides.py') }}

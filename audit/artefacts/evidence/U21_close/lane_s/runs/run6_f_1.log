@@ -1,0 +1,12 @@
+lwIP host pool: 4 connection pairs admitted (MEMP_NUM_TCP_PCB 9, two pcbs per pair)
+PASS test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound
+intact-data run: 3 writing phases, each ended in EAGAIN, over 32768 B
+PASS test_a_reading_peer_receives_every_byte_intact
+PASS test_capacity_returns_after_the_peers_close
+PASS test_repeated_rounds_stay_stable
+EAGAIN spin: slowest round 6534 us, largest allocation 32 B over 1000 rounds
+PASS test_the_eagain_spin_round_is_bounded
+PASS test_the_queue_limit_edge
+PASS test_the_segment_pool_edge
+7/7 passed, 0 failed, 0 skipped
+rc=0 wall=24.110118528s

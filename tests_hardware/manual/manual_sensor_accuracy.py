@@ -2,8 +2,6 @@
 tests_hardware/flash/test_sensor_accuracy.py's automated, plausibility-only (sane bounds, not
 exact reference) check."""
 
-from __future__ import annotations
-
 from runner import confirm, print_instruction, register, state_expected_outcome
 
 _DUT_IP_HINT = "the DUT's IP (see tests_hardware/README.md for how to find it)"

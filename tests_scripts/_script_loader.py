@@ -16,9 +16,8 @@ def load_script_module(module_path: Path, name: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"couldn't build an import spec for {module_path}")
     module = importlib.util.module_from_spec(spec)
-    # Registered in sys.modules BEFORE exec_module(): a @dataclass under `from __future__ import
-    # annotations` resolves its string annotations through sys.modules[cls.__module__] while the
-    # class body still runs, and raises AttributeError otherwise.
+    # Registered in sys.modules BEFORE exec_module(): a @dataclass resolves its string annotations
+    # through sys.modules[cls.__module__] while the class body still runs.
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module

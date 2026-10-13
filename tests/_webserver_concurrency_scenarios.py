@@ -33,6 +33,7 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _generated_module import boot_generated
 from _tmp_scratch import TmpScratch
 from microdot import Request  # type: ignore[import-not-found]
 
@@ -98,7 +99,7 @@ async def _boot(port: int, device: str) -> "Any":
     # build_system(), not once at import, several devices being booted in one process here.
     machine.configure_wiring(_wiring_plan(device))
     module = __import__(f"sensortask_{device}")
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
     return module
 
 

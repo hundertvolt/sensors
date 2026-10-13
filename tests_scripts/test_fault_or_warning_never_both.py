@@ -45,7 +45,6 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_BAD_HEAD")): _ARM_OR_DROP_TRACE,
     ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_PEER_RESET")): _ARM_OR_DROP_TRACE,
     ("src/asy_ntp_client.py", "_fetch_ntp_reply", ("W", "SOCKET_TEARDOWN"), ("E", "NTP_NO_REPLY")): "the socket's teardown and the exchange's outcome (a silent server) are two occurrences",
-    ("src/asy_wifi_service.py", "_deactivate_wlan_permanently", ("W", "WLAN_DEACTIVATED"), ("E", "WLAN_OFF")): "the permanent switch-off is persisted first, then a raise in its teardown (disconnect/active/deinit) is a second occurrence",
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_UNREADABLE"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,

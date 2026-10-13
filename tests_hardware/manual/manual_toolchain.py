@@ -2,8 +2,6 @@
 a blank board has no running firmware to trigger machine.bootloader() from, so its first flash
 needs a human holding BOOTSEL. Every later flash is test_toolchain_flash_boot.py's automated path."""
 
-from __future__ import annotations
-
 import subprocess
 
 from harness import REPO_ROOT

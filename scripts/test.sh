@@ -4,7 +4,7 @@
 # tests_scripts/ pytest tier. Builds the toolchain on first run and reuses the cache after.
 #
 # PICO_TOOLCHAIN_DIR relocates that cache; SKIP_APT=1 skips the system-package step. The build is
-# `setup_toolchain.py setup`, which verifies all four artifacts together - there is no lighter
+# `setup_toolchain.py setup`, which builds and verifies every artifact together - there is no lighter
 # Unix-port-only entry point (SPECIFICATION.md Part B).
 #
 # --coverage runs the same tests under build-settrace, the only variant compiled with
@@ -136,6 +136,10 @@ else
     micropython_bin="$unix_dir/build-standard/micropython"
     want_variant="plain"
 fi
+# The third build, the plain variant over loopback lwIP with the patched modlwip, runs the lwIP host
+# files on a plain run only (SPECIFICATION.md Part B.14). setup writes the record last, after every build.
+lwip_bin="$unix_dir/build-lwip/micropython"
+toolchain_record="$toolchain_dir/toolchain-record.json"
 
 skip_apt_flag=()
 if [ "${SKIP_APT:-0}" = "1" ]; then
@@ -161,7 +165,14 @@ elif [ "$(unix_port_variant "$micropython_bin")" != "$want_variant" ]; then
     # The path stopped identifying the variant when the two builds split: a toolchain dir predating
     # that has a build-standard still carrying settrace, and it is executable - so an existence
     # check passes and the plain suite would silently measure on the 4-5x inflated binary.
-    echo "== $micropython_bin is not the '$want_variant' variant - rebuilding both Unix ports" >&2
+    echo "== $micropython_bin is not the '$want_variant' variant - rebuilding the Unix ports" >&2
+    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
+elif [ ! -f "$toolchain_record" ]; then
+    # setup deletes the record first and writes it last: none means an interrupted or older setup.
+    echo "== no toolchain record at $toolchain_record - rebuilding the Unix ports" >&2
+    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
+elif [ "$coverage" = "0" ] && [ "$(unix_port_variant "$lwip_bin")" != "plain" ]; then
+    echo "== the lwIP host build $lwip_bin is missing or not the 'plain' variant - rebuilding the Unix ports" >&2
     uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
 fi
 
@@ -172,6 +183,14 @@ fi
 got_variant="$(unix_port_variant "$micropython_bin")"
 if [ "$got_variant" != "$want_variant" ]; then
     echo "error: $micropython_bin reports itself as '$got_variant', not the '$want_variant' variant this run needs - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
+    exit 1
+fi
+if [ ! -f "$toolchain_record" ]; then
+    echo "error: setup left no toolchain record at $toolchain_record - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
+    exit 1
+fi
+if [ "$coverage" = "0" ] && [ "$(unix_port_variant "$lwip_bin")" != "plain" ]; then
+    echo "error: the lwIP host build $lwip_bin is still missing or not the 'plain' variant after setup - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
     exit 1
 fi
 
@@ -418,12 +437,13 @@ _flag_memory_errors() {
     fi
 }
 
-# Runs one test file's timeout+retry loop and writes PASS, RETRIED-PASS <k>/<n> or FAIL to
-# status_file. Never returns nonzero itself - failure travels through the status file - so
+# run_test_file <test_file> <status_file> [<binary>] (default $micropython_bin): one file's timeout+retry
+# loop, writing PASS, RETRIED-PASS <k>/<n> or FAIL to status_file. Never returns nonzero itself, so
 # backgrounding it and reaping with `wait`/`wait -n` can never trip this script's own `set -e`.
 run_test_file() {
     local test_file="$1"
     local status_file="$2"
+    local binary="${3:-$micropython_bin}"
     local tag cmd file_timeout_s attempt ec log_file
     tag="$(basename "$test_file" .py)"
     log_file="$results_dir/$tag.log"
@@ -455,7 +475,7 @@ run_test_file() {
         # own, so sed can never mask a real 124/1 from the command it pipes.
         # @tunable runner.kill_after_s = 10
         # @tunable l1.unix_heapsize = 16M
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$micropython_bin" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$binary" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
@@ -522,6 +542,17 @@ for test_file in "${all_test_files[@]}"; do
         _dispatched[$test_file]=1
     fi
 done
+# The lwIP host files go last, each on $lwip_bin; --coverage runs none of them (they exercise C code,
+# which line coverage cannot see) and lists them as skipped instead.
+lwip_host_files=()
+for test_file in tests/lwip_host/test_*.py; do
+    if [ -f "$test_file" ]; then
+        lwip_host_files+=("$test_file")
+    fi
+done
+if [ "$coverage" = "0" ]; then
+    test_files+=(${lwip_host_files[@]+"${lwip_host_files[@]}"})
+fi
 
 for test_file in "${test_files[@]}"; do
     # Bound concurrency at max_parallel: reap one finished job before starting another. `|| true`
@@ -531,7 +562,11 @@ for test_file in "${test_files[@]}"; do
         wait -n || true
     done
     status_file="$results_dir/$(basename "$test_file" .py).status"
-    run_test_file "$test_file" "$status_file" &
+    binary="$micropython_bin"
+    if [[ "$test_file" == tests/lwip_host/* ]]; then
+        binary="$lwip_bin"
+    fi
+    run_test_file "$test_file" "$status_file" "$binary" &
 done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
@@ -636,6 +671,11 @@ for test_file in "${test_files[@]}"; do
         fi
     done < <(printf '%s\n' "$deciding" | grep -F "[$tag] SKIP " || true)
 done
+if [ "$coverage" = "1" ]; then
+    for test_file in ${lwip_host_files[@]+"${lwip_host_files[@]}"}; do
+        summary_add skipped "$test_file" "not run under --coverage (the plain pass runs them)"
+    done
+fi
 
 # The backgrounded tests_scripts/ job is reaped by the same unqualified `wait` above. Its status
 # file is written in both branches, and its run record (scripts/_pytest_run_record.py) carries the

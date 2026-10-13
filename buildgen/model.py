@@ -2,9 +2,10 @@
 failure wrapped into the same fail-loud `BuildError`), and `InstanceSpec`/`DeviceModel` carry each
 `[[instance]]` entry and its later-resolved facts through validation, sorting and codegen."""
 
+import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeAlias
 
 import tomllib
 
@@ -17,20 +18,14 @@ if TYPE_CHECKING:
     from buildgen.value_wiring import ValueWiringField
     from buildgen.wiring import WiringField
 
-# A parsed TOML table (tomllib.load()'s own return shape, and every [[instance]]/[bus.*]/[device]
-# sub-table sliced out of it) - str keys, arbitrarily nested str/int/float/bool/list/dict values.
-TomlDoc = dict[str, Any]
+# One parsed TOML value: every type tomllib.load() returns (its conversion table), arrays and
+# tables nested. TomlDoc is a table: the whole file or any [[instance]]/[bus.*]/[device] in it.
+TomlValue: TypeAlias = str | int | float | bool | datetime.date | datetime.time | datetime.datetime | list["TomlValue"] | dict[str, "TomlValue"]
+TomlDoc: TypeAlias = dict[str, TomlValue]
 
 # The /status maintenance block's key for a driver publishing one per device (an SGP40 publishes one per
 # instance, under its resolved_name), read by the definitions generator and codegen alike so they cannot drift.
 MAINTENANCE_NAMES = {"uart_link": "UARTLINK"}
-
-
-def instance_key(inst: "TomlDoc") -> tuple[str, str]:
-    # The TOML's own driver/name_ext identity, never instance_name()/_NAME - a separate naming
-    # space (Part C.14.1). Part L.5 records the real bug the distinction closes:
-    # NotificationService's _NAME is "NOTIFY", not "NOTIFICATION".
-    return (inst["driver"], inst.get("name_ext", ""))
 
 
 def instance_label(key: tuple[str, str]) -> str:
@@ -68,6 +63,7 @@ class DeviceModel:
     doc: "TomlDoc"
     instances: "dict[tuple[str, str], InstanceSpec]" = field(default_factory=dict)
     construction_order: "list[str | tuple[str, str]]" = field(default_factory=list)  # "conn"/"ntp"/"sysfunct" or an instance key
+    device_wiring: "dict[str, dict[str, WiringField]]" = field(default_factory=dict)  # consumer label -> TOML field -> its @wiring tag, filled by validate.py
 
 
 def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
@@ -91,12 +87,12 @@ def load_device(path: Path) -> DeviceModel:
         with open(path, "rb") as f:
             doc = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
-        raise BuildError(device, f"{path} is not valid TOML: {e}") from e
+        raise BuildError(device, f"{path} is not valid TOML: {e}", rule="toml.syntax", fix="correct the TOML at the line and column named") from e
     except OSError as e:
-        raise BuildError(device, f"could not read {path}: {e}") from e
+        raise BuildError(device, f"could not read {path}: {e}", rule="toml.unreadable", fix="check that the device TOML exists and is readable") from e
 
     if not isinstance(doc, dict):
-        raise BuildError(device, f"{path} did not parse to a table at the top level")
+        raise BuildError(device, f"{path} did not parse to a table at the top level", rule="toml.not-a-table", fix="write the device TOML as tables of key = value pairs")
 
     instances: dict[tuple[str, str], InstanceSpec] = {}
     raw_instances = doc.get("instance", [])
@@ -104,25 +100,61 @@ def load_device(path: Path) -> DeviceModel:
         # A single-bracket [instance] table parses to a dict, whose iteration yields its keys -
         # so such a device used to fail as "entry #0 is missing a 'driver' field", naming the
         # wrong mistake entirely. Name the real one.
-        raise BuildError(device, "[instance] is a single table - instances are an array of tables, so each one needs double brackets: [[instance]]")
+        raise BuildError(
+            device,
+            "[instance] is a single table - instances are an array of tables",
+            rule="instance.single-table",
+            fix="write each instance header with double brackets: [[instance]]",
+        )
     if not isinstance(raw_instances, list):
-        raise BuildError(device, f"[[instance]] must be an array of tables, got {raw_instances!r}")
+        raise BuildError(device, f"[[instance]] must be an array of tables, got {raw_instances!r}", rule="instance.not-an-array", fix="declare each instance as an [[instance]] table")
     for i, inst in enumerate(raw_instances):
         if not isinstance(inst, dict) or "driver" not in inst:
-            raise BuildError(device, f"[[instance]] entry #{i} is missing a 'driver' field")
-        if not isinstance(inst["driver"], str) or not inst["driver"]:
-            raise BuildError(device, f"[[instance]] entry #{i}'s 'driver' field must be a non-empty string, got {inst['driver']!r}")
-        if "name_ext" in inst and not isinstance(inst["name_ext"], str):
+            raise BuildError(device, f"[[instance]] entry #{i} is missing a 'driver' field", rule="instance.driver-missing", fix='add driver = "<name>" to this [[instance]]')
+        driver = inst["driver"]
+        if not isinstance(driver, str) or not driver:
+            raise BuildError(
+                device,
+                f"[[instance]] entry #{i}'s 'driver' field must be a non-empty string, got {driver!r}",
+                rule="instance.driver-not-a-string",
+                fix='write the driver as a non-empty string, e.g. driver = "scd30"',
+            )
+        name_ext = inst.get("name_ext", "")
+        if not isinstance(name_ext, str):
             # Left unvalidated, a non-string name_ext crashes downstream as a raw TypeError (e.g.
             # validate._instance_name()'s `base_name + "_" + name_ext` string concatenation) instead
             # of this package's own fail-loud BuildError contract.
-            raise BuildError(device, f"{inst['driver']!r} instance's 'name_ext' field must be a string, got {inst['name_ext']!r}", instance=inst["driver"])
+            raise BuildError(
+                device,
+                f"{driver!r} instance's 'name_ext' field must be a string, got {name_ext!r}",
+                rule="instance.name-ext-not-a-string",
+                fix='write name_ext as a string, e.g. name_ext = "a"',
+                instance=driver,
+            )
+        # The TOML's own driver/name_ext identity, never instance_name()/_NAME - a separate naming
+        # space (Part C.14.1). Part L.5 records the real bug the distinction closes:
+        # NotificationService's _NAME is "NOTIFY", not "NOTIFICATION".
+        key = (driver, name_ext)
         wiring = inst.get("wiring", {})
+        if not isinstance(wiring, dict):
+            raise BuildError(
+                device,
+                f"{instance_label(key)}'s wiring must be a table, got {wiring!r}",
+                rule="instance.wiring-not-table",
+                fix="write it as a [instance.wiring] table under this [[instance]]",
+                instance=instance_label(key),
+                field="wiring",
+            )
         fields_only = {k: v for k, v in inst.items() if k != "wiring"}
-        key = instance_key(inst)
         if key in instances:
-            raise BuildError(device, f"duplicate [[instance]] entry for {instance_label(key)!r} (driver+name_ext must be unique)", instance=instance_label(key))
-        instances[key] = InstanceSpec(inst["driver"], inst.get("name_ext", ""), fields_only, wiring, i)
+            raise BuildError(
+                device,
+                f"duplicate [[instance]] entry for {instance_label(key)!r} (driver+name_ext must be unique)",
+                rule="instance.duplicate",
+                fix="give one of them a distinct name_ext",
+                instance=instance_label(key),
+            )
+        instances[key] = InstanceSpec(driver, name_ext, fields_only, wiring, i)
 
     return DeviceModel(device, path, doc, instances)
 
@@ -137,8 +169,20 @@ def lwip_macros(path: Path = VERSIONS_PATH) -> "dict[str, int]":
         with path.open("rb") as f:
             table = tomllib.load(f)["lwip"]
     except (KeyError, OSError, tomllib.TOMLDecodeError) as e:
-        raise BuildError("<toolchain>", f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections", field="max_connections") from e
+        raise BuildError(
+            "<toolchain>",
+            f"cannot read the [lwip] table from {path} ({e}) - it is what bounds every device's max_connections",
+            rule="toolchain.lwip-table",
+            fix="restore the [lwip] table in toolchain/versions.toml",
+            field="max_connections",
+        ) from e
     if not isinstance(table, dict):
-        raise BuildError("<toolchain>", f"[lwip] in {path} must be a table, got {table!r}", field="max_connections")
+        raise BuildError(
+            "<toolchain>",
+            f"[lwip] in {path} must be a table, got {table!r}",
+            rule="toolchain.lwip-table",
+            fix="restore the [lwip] table in toolchain/versions.toml",
+            field="max_connections",
+        )
     return dict(table)
 

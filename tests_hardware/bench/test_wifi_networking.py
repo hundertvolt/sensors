@@ -2,8 +2,6 @@
 over genuine lwIP/UDP (real captive-DNS/bind(53) lives in test_hotspot_role_reversal.py instead).
 Uses passive observation (Board.tail_log()), not exec()/run_isolated() - see run_isolated()."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import http_client
@@ -39,7 +37,7 @@ _READY_PROBE_TIMEOUT_S = 5.0
 _ASSOCIATION_ATTEMPTS = 2
 
 
-def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: BenchBridge, dut_ip: str, result_note: Callable[..., None]) -> None:
+def test_real_sta_connect_reaches_established_after_a_hard_reset(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "Callable[..., None]") -> None:
     # dut_ip (session-scoped) already proves a real STA connection was reached once this session -
     # this test's own value is confirming it happens again, cleanly, from a cold boot.
     #
@@ -96,7 +94,7 @@ def test_real_dns_resolution_succeeds_over_genuine_udp(board: Board) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
     # This tier's real-hardware proof for BACKLOG open question 6: only UDP 123 is blocked, not
     # the AP, so the STA link stays up - "isconnected()==True but one downstream operation is
     # unreachable", which tests/test_ntp_wifi_dns_integration.py proves at the mock level.

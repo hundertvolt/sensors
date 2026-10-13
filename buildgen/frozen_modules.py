@@ -1,34 +1,12 @@
 """Dependency-driven frozen-module selection (SPECIFICATION.md Part L.2): the
-transitive `import`/`from...import` closure, AST-scanned, seeded from the device's declared drivers
-plus a fixed core set. Computes *which* modules; feeding them to freeze() is Session 6's job."""
+transitive `import`/`from...import` closure, AST-scanned, seeded from the generated device module's
+own imports. Computes *which* modules; `scripts/build_firmware.py` stages them."""
 
 import ast
 from pathlib import Path
 
-from buildgen.model import DeviceModel
+from buildgen.errors import BuildError
 from buildgen.source_ast import parse_source
-
-# Always-included core (every device needs all of these regardless of which optional drivers it
-# declares - mandatory infra plus the modules build_system() itself always imports directly, not
-# necessarily transitively reachable from any one driver).
-CORE_MODULES = frozenset(
-    {
-        "asy_config_manager",
-        "asy_base_classes",
-        "asy_print_log",
-        "asy_api_response",
-        "asy_i2c_driver",
-        "asy_spi_driver",
-        "asy_uart_driver",
-        "asy_webserver_service",
-        "asy_wifi_service",
-        "asy_ntp_client",
-        "asy_dns_client",
-        "asy_captive_dns",
-        "asy_system_service",
-        "asy_crc_checks",
-    },
-)
 
 
 def _is_type_checking_test(test: ast.expr) -> bool:
@@ -38,41 +16,54 @@ def _is_type_checking_test(test: ast.expr) -> bool:
 
 
 def _collect_imports(node: ast.AST, out: "set[str]") -> None:
+    if isinstance(node, ast.Import):
+        out.update(alias.name.split(".")[0] for alias in node.names)
+        return
+    if isinstance(node, ast.ImportFrom):
+        if node.module and node.level == 0:  # level>0 (relative) doesn't occur in this flat layout
+            out.add(node.module.split(".")[0])
+        return
+    if isinstance(node, ast.If) and _is_type_checking_test(node.test):
+        # The body never executes on-device, so it is no frozen-module dependency; its else: does.
+        for stmt in node.orelse:
+            _collect_imports(stmt, out)
+        return
     for child in ast.iter_child_nodes(node):
-        if isinstance(child, ast.If) and _is_type_checking_test(child.test):
-            continue  # never executes on-device - not a real frozen-module dependency
-        if isinstance(child, ast.Import):
-            for alias in child.names:
-                out.add(alias.name.split(".")[0])
-        elif isinstance(child, ast.ImportFrom):
-            if child.module and child.level == 0:  # level>0 (relative) doesn't occur in this flat layout
-                out.add(child.module.split(".")[0])
-        else:
-            _collect_imports(child, out)
+        _collect_imports(child, out)
 
 
-def _local_imports_of(module: str, roots: "tuple[Path, ...]") -> "set[str]":
+def _local_imports_of(module: str, roots: "tuple[Path, ...]", device: str = "<src>") -> "set[str]":
     for root in roots:
         path = root / f"{module}.py"
         if path.is_file():
-            tree = parse_source(path.read_text(), str(path))
+            try:
+                tree = parse_source(path.read_text(encoding="utf-8"), str(path))
+            except SyntaxError as e:
+                raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=module) from e
             names: set[str] = set()
             _collect_imports(tree, names)
-            return {n for n in names if any((root2 / f"{n}.py").is_file() for root2 in roots)}
+            return _with_a_file(names, roots)
     return set()
 
 
-def compute_frozen_modules(model: DeviceModel, src_dir: Path, ext_dir: "Path | None" = None) -> "frozenset[str]":
-    roots = (src_dir,) if ext_dir is None else (src_dir, ext_dir)
-    seed = set(CORE_MODULES) | {spec.driver_info.module for spec in model.instances.values() if spec.driver_info is not None}
+def _with_a_file(names: "set[str]", roots: "tuple[Path, ...]") -> "set[str]":
+    return {n for n in names if any((root / f"{n}.py").is_file() for root in roots)}
+
+
+def compute_frozen_modules(module_source: str, src_dir: Path, ext_dir: Path, *, device: str = "<src>") -> "frozenset[str]":
+    # The seed is what the generated module imports that has a file in either root (every declared
+    # driver and the mandatory services; built-ins and the build-time frozen_html drop out).
+    roots = (src_dir, ext_dir)
+    seed: set[str] = set()
+    _collect_imports(ast.parse(module_source), seed)
 
     closure: set[str] = set()
-    frontier = set(seed)
+    frontier = _with_a_file(seed, roots)
     while frontier:
         module = frontier.pop()
         if module in closure:
             continue
         closure.add(module)
-        frontier |= _local_imports_of(module, roots) - closure
+        frontier |= _local_imports_of(module, roots, device) - closure
 
     return frozenset(closure)

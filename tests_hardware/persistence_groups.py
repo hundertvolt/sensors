@@ -4,6 +4,7 @@ on any device, as the device definitions key it, plus HWTEST_FILE. The vocabular
 
 from __future__ import annotations
 
+import json
 import sys
 from functools import cache
 from pathlib import Path
@@ -31,7 +32,7 @@ def persistence_groups() -> frozenset[str]:
     for toml in sorted((REPO_ROOT / "devices").glob("*.toml")):
         if toml.stem.startswith("zz_test_"):  # a leaked live-tree fixture, never a device
             continue
-        for section in definitions_for_toml(toml, REPO_ROOT / "src")["sections"]:
+        for section in json.loads(json.dumps(definitions_for_toml(toml, REPO_ROOT / "src")))["sections"]:  # plain JSON, as read
             if "put" not in section.get("rest", {}):
                 continue
             for group in section["groups"]:

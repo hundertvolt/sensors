@@ -1,0 +1,75 @@
+| `[[instance]] bmp3xx` | `address` | no | | |
+| `[[instance]] bmp3xx` | `bus` | yes | | |
+| `[[instance]] bmp3xx` | `driver` | yes | | |
+| `[[instance]] bmp3xx` | `name_ext` | yes | | |
+| `[[instance]] bmp3xx` | `trigger_s` | no | | |
+| `[[instance]] fram` | `bus` | yes | | |
+| `[[instance]] fram` | `cs_pin` | yes | | |
+| `[[instance]] fram` | `driver` | yes | | |
+| `[[instance]] fram` | `max_size` | yes | | |
+| `[[instance]] fram` | `name_ext` | no | | |
+| `[[instance]] isl29125` | `bus` | yes | | |
+| `[[instance]] isl29125` | `driver` | yes | | |
+| `[[instance]] isl29125` | `irq_pin` | yes | | |
+| `[[instance]] isl29125` | `irq_pull_up` | no | | |
+| `[[instance]] isl29125` | `name_ext` | yes | | |
+| `[[instance]] isl29125` | `trigger_s` | no | | |
+| `[[instance]] neopixel` | `driver` | yes | | |
+| `[[instance]] neopixel` | `name_ext` | no | | |
+| `[[instance]] neopixel` | `pin` | yes | | |
+| `[[instance]] notification` | `driver` | yes | | |
+| `[[instance]] notification` | `name_ext` | no | | |
+| `[[instance]] scd30` | `bus` | yes | | |
+| `[[instance]] scd30` | `driver` | yes | | |
+| `[[instance]] scd30` | `irq_pin` | yes | | |
+| `[[instance]] scd30` | `name_ext` | yes | | |
+| `[[instance]] scd30` | `trigger_s` | no | | |
+| `[[instance]] sgp40` | `bus` | yes | | |
+| `[[instance]] sgp40` | `driver` | yes | | |
+| `[[instance]] sgp40` | `name_ext` | yes | | |
+| `[[instance]] uart_link` | `bus` | yes | | |
+| `[[instance]] uart_link` | `crc` | no | | |
+| `[[instance]] uart_link` | `driver` | yes | | |
+| `[[instance]] uart_link` | `max_transfer_bytes` | no | | |
+| `[[instance]] uart_link` | `name_ext` | yes | | |
+| `[[instance]] uart_link` | `role` | yes | | |
+| `[bus.i2cN]` | `frequency` | yes | | |
+| `[bus.i2cN]` | `scl_pin` | yes | | |
+| `[bus.i2cN]` | `sda_pin` | yes | | |
+| `[bus.i2cN]` | `timeout` | no | | |
+| `[bus.spiN]` | `miso_pin` | yes | | |
+| `[bus.spiN]` | `mosi_pin` | yes | | |
+| `[bus.spiN]` | `sck_pin` | yes | | |
+| `[bus.uartN]` | `baudrate` | yes | | |
+| `[bus.uartN]` | `poll_idle_ms` | no | | |
+| `[bus.uartN]` | `poll_wait_ms` | no | | |
+| `[bus.uartN]` | `rx_pin` | yes | | |
+| `[bus.uartN]` | `rx_ring` | no | | |
+| `[bus.uartN]` | `rxbuf` | no | | |
+| `[bus.uartN]` | `tx_pin` | yes | | |
+| `[bus.uartN]` | `txbuf` | no | | |
+| `[device.wiring]` | `fram_target` | no | | |
+| `[device.wiring]` | `led_target` | no | | |
+| `[device]` | `backlog` | no | | |
+| `[device]` | `conn_fail_to_hotspot` | yes | | |
+| `[device]` | `hardware_family` | no | | |
+| `[device]` | `hostname` | yes | | |
+| `[device]` | `hotspot_password` | yes | | |
+| `[device]` | `hotspot_time_min` | yes | | |
+| `[device]` | `max_connections` | no | | |
+| `[device]` | `name` | yes | | |
+| `[device]` | `ntp_retry_max_s` | no | | |
+| `[device]` | `ntp_retry_s` | no | | |
+| `[instance.wiring] bmp3xx` | `fram_target` | no | | |
+| `[instance.wiring] isl29125` | `fram_target` | no | | |
+| `[instance.wiring] neopixel` | `fram_target` | no | | |
+| `[instance.wiring] notification` | `fram_target` | no | | |
+| `[instance.wiring] notification` | `signal_sink` | yes | | |
+| `[instance.wiring] notification` | `warn_co2` | no | | |
+| `[instance.wiring] notification` | `warn_hum` | no | | |
+| `[instance.wiring] notification` | `warn_voc` | no | | |
+| `[instance.wiring] scd30` | `fram_target` | no | | |
+| `[instance.wiring] sgp40` | `fram_target` | no | | |
+| `[instance.wiring] sgp40` | `humidity_source` | yes | | |
+| `[instance.wiring] sgp40` | `temperature_source` | yes | | |
+| `[instance.wiring] uart_link` | `fram_target` | no | | |

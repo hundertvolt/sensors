@@ -629,6 +629,7 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   A.U32.01 (the runbook pointer), A.U19.14 (linked section); OR138.a (1)-(2) (`ConfigFaults` and the reset that deletes
   damaged files), OR136.a (1) (each file written once with its defaults), F21 tag form (operator-actions-one-place) (A-C
   review fold)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `DEVICE_REFERENCE.md`, new "## Commissioning and operating: what needs a person" after the header (`:1-5`),
   before "## Neopixel LED"
 - **Change**: A.U36.531's section verbatim, its decision tag in the review form "(agent, 2026-09-27; owner-reviewed,
@@ -651,6 +652,13 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   factory settings with a SYSTEM "config file absent" warning in its history had its filesystem reformatted or wiped
   (agent, 2026-10-06)." Labels as the definitions carry them at landing. U36; the Config Unpersisted half does not land
   if U11's check drops the key (M.SRC_CORE.044 (1)).
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Item 1's last sentence (A.U36.531's
+  "If the unit then fails again after the hotspot has run once, it switches Wi-Fi off until it is power-cycled
+  (SPECIFICATION.md A.4).") reads: "New settings start over as after a reboot (owner, 2026-10-08: 'Any change of
+  credentials, no matter from which side, lands in the same mode as "initial connection attempt after a fresh boot".'):
+  if they fail, the unit opens its hotspot once more; if nobody corrects them in that window, it tries again and then
+  goes silent — LED dark, no hotspot, one quiet attempt every `hotspot_time_min` minutes, so it connects by itself once
+  the network accepts it. Unplug and replug it to get the hotspot back (SPECIFICATION.md A.4)." U36, with the section.
 - **Resolved**: —
 - **Unit**: U36
 - **Depends**: A.U6.18, A.U6.23 (labels; GEN/WEB), A.U15.12 (`FRCState`, SRC_SENS), A.U14.17 (SPEC F.2 text), A.U32.01 (README
@@ -663,18 +671,22 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 - **From**: A.U36.546 (4) (the overlay bullet checked against the firmware), A.U18.30 (deactivated pattern), A.U10.40
   (`LedWifiOn` → `LEDWifiOn`), A.U9.01 (window bullet), A.U9.03 (manual flash refusal); OR140.a (17) (the Wi-Fi-off pattern
   follows the Wi-Fi LED setting), OR140.a (5) (the refusal tells the caller to retry later) (A-C review fold)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `DEVICE_REFERENCE.md:7-25`
 - **Change**: `:11-14` (WiFi status overlay bullet; "on/off only … not a live connectivity signal" contradicts the
   service, which blinks the overlay per link state) → "- **Wi-Fi status overlay** — a dim white glow showing the Wi-Fi
   state while `/networking`'s `LEDWifiOn` is on (off: the overlay stays dark): searching for the network — toggling
   every half second; connected — on; disconnected — off; serving the fallback hotspot — on with a short gap every 3 s,
-  steadily on once a client has joined; Wi-Fi switched off (a second failure streak after the hotspot ran, or no
-  readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle. Every one of these patterns
-  follows `LEDWifiOn`, the switched-off one included: dark while it is off, shown as soon as it is switched on (owner,
-  2026-10-02)." The notification bullet `:15-19` gains, after the brightness/duration sentence: "It flashes only inside
-  the notification window `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual
-  flash (`LightCmdLED`) is refused ("Failed") while another flash is still playing — try again later; a notification the
-  unit raises itself waits for the playing flash and then queues, since the unit's own notifications are few and spaced
+  steadily on once a client has joined; no readable Wi-Fi configuration — off with a short blink every 3 s, until a
+  reboot. Every one of these patterns follows `LEDWifiOn`, the no-configuration one included: dark while it is off,
+  shown as soon as it is switched on (owner, 2026-10-02). After a second failed connection streak following its hotspot
+  the unit goes silent: no hotspot, the LED dark even while `LEDWifiOn` is on, and one quiet attempt to join the stored
+  network every `hotspot_time_min` minutes; once an attempt connects it is a normal connection and the LED shows it
+  again (owner, 2026-10-08: 'It should look like turned off.'). Unplug and replug a silent unit to get its hotspot
+  back." The notification bullet `:15-19` gains, after the brightness/duration sentence: "It flashes only inside the
+  notification window `OnH:OnM`–`OffH:OffM`; an On time later than Off spans midnight (e.g. 22:00–06:00). A manual flash
+  (`LightCmdLED`) is refused ("Failed") while another flash is still playing — try again later; a notification the unit
+  raises itself waits for the playing flash and then queues, since the unit's own notifications are few and spaced
   (owner, 2026-10-02)." Table unchanged.
   (1) (A-C fold, silent-failure scan SF-M2-04, 2026-10-06) The overlay bullet's "steadily on once a client has joined"
   becomes "an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its hotspot while the
@@ -687,11 +699,16 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
   (`AutoOn` off, paused, outside the window); 2 no local time yet (no NTP sync since boot); 3 a sensor value unavailable
   or older than three hours; 4 the notification's own settings unreadable. Once the clock was set, the window keeps
   working through a network outage. A flash dropped because the LED was busy leaves a NOTIFY warning." Stage U36 (the code lands in U9/U18/U22).
+  (4) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22: HEAD's overlay bullet
+  (`DEVICE_REFERENCE.md:11-18`) takes the no-configuration and silent clauses above in place of its "Wi-Fi switched off
+  (a second failure streak after the hotspot ran, or no readable Wi-Fi configuration) — off with a short blink every 3
+  s, until a power cycle" and its "the switched-off one included"; the U36 rewrite keeps them.
 - **Resolved**: the pattern list is read from the service at landing (A.U36.546 (4): the executor checks the text against
   `asy_wifi_service.py`/`asy_neopixel_driver.py` and corrects any mismatch); `LightCmdLED` per A.U10.40.
 - **Unit**: U36. Stages: U9 (window and refusal sentences, old key names), U10 (`LEDWifiOn`, `LightCmdLED`), U18 (the
-  deactivated pattern clause and the fold's "follows `LEDWifiOn`" sentence, with M.SRC_NET.077/.100), U36 (the bullet's
-  full rewrite, the fold's retry/queue sentence with it).
+  deactivated pattern clause and the fold's "follows `LEDWifiOn`" sentence, with M.SRC_NET.077/.100), U22 ((4), the
+  silent and no-configuration clauses, with M.SRC_NET.223), U36 (the bullet's full rewrite, the fold's retry/queue
+  sentence with it).
 - **Depends**: M.SRC_NET (WiFi LED patterns, `_LED_DEACTIVATED_*_MS`; M.SRC_NET.077/.100 as the fold amends them),
   A.U9.01/A.U9.03 (SRC_SENS/GEN); M.SRC_NET.122 (the refusal's retry wording)
 - **Blast carried by**: SPEC A.4 WiFi, H, A.8 → A.U18.30, A.U9.03 (SPEC); field help → A.U9.01 (GEN)
@@ -807,6 +824,20 @@ labels are the ones the definitions carry when the text lands (A.U36.531 Blast).
 - **Resolved**: —
 - **Unit**: U36 (last DEVICE_REFERENCE edit)
 - **Depends**: M.DOCS.026-.032
+- **Blast carried by**: —
+- **Kind**: doc
+
+### M.DOCS.110 The networking-status section names the silent mode, not a switch-off
+- **From**: OR151 (owner requirement, 2026-10-08) (U22 start fold, execution-time delta); the sentence M.DOCS.028 (1)
+  landed in U18.
+- **Site**: `DEVICE_REFERENCE.md:34-40` ("## Networking status").
+- **Change**: "Why a unit went offline is in that history too: the fallback to the hotspot, the permanent switch-off and
+  a connect attempt that ended without a verdict each leave a warning." → "Why a unit went offline is in that history
+  too: the fallback to the hotspot, the change to the silent mode (the Wi-Fi status overlay above) and a connect attempt
+  that ended without a verdict each leave a warning, and a silent unit's quiet attempts leave theirs."
+- **Resolved**: —
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223.
 - **Blast carried by**: —
 - **Kind**: doc
 
@@ -1065,6 +1096,7 @@ place unchanged.
   file); adherence: CLAUDE.md credential rule (the runbook's legacy hotspot password); OR140.a (18) (no device but `dev`
   is special: the WoZi wording of the flashing rule and the runbook lead goes; A.U32 open point 3 superseded), F21 tag
   form (reflash-runbook-erase) (A-C review fold)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `README.md:263-327` ("Building real firmware", "Flashing a real board"), new `#### Moving a legacy unit to this
   firmware (reflash runbook)` after it
 - **Change**: build: `uv run scripts/build_firmware.py <device>` (→ `build/firmware-<device>.uf2` and its image record
@@ -1090,6 +1122,17 @@ place unchanged.
   hotspot password, `legacy/firmware/python/CommonDrivers/async_connect.py`)". Where the runbook names the test that pins the TOML hostname rule, it cites it by name,
   `tests_scripts/test_device_tomls.py::test_hostname_is_sensorstation_plus_name` (M.TSC.079 rewrites the file; a line
   number does not survive — M_TSC gap 2).
+  (1) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152; the empty-SSID rule of 2026-10-06
+  with them) The runbook's step (8) is written in this end state, not in A.U32.01's words, which predate the empty-SSID
+  rule and both requirements: "With no Wi-Fi settings the unit opens its hotspot at once: SSID = the TOML's `hostname`,
+  password = the TOML's `hotspot_password`, address 192.168.4.1, where every name resolves to the device's pages; with
+  no SSID stored it opens the hotspot again at the end of every window, so there is no deadline to join. Enter Wi-Fi &
+  Identity with "Apply & Reconnect": the unit tries the network as after a fresh boot (owner, 2026-10-08). If the
+  settings are wrong it tries five times and opens its hotspot once more; if nobody corrects them in that window, it
+  tries five times again and then goes silent — the status LED dark, no hotspot, one quiet connection attempt every
+  `hotspot_time_min` minutes, connecting by itself once the network accepts it (owner, 2026-10-08). Unplug and replug it
+  to get the hotspot back." Step (14) (the legacy firmware, which still switches Wi-Fi off until power-cycled) stays.
+  With the runbook's own stage.
 - **Resolved**: A.U36.010 and A.U32.01 both rewrite `:299-301` — combined (A.U36.010's reasons, A.U32.01's closing
   clause); OR140.a (18) (owner, 2026-10-02) removes their WoZi-specific reasons: the rule is stated for `dev` alone. The literal legacy hotspot password is not copied into README: it is the one accepted credential (CLAUDE.md
   credentials rule), and a new copy in a doc is a new commit of it (agent, adherence — OR2.c list).
@@ -1344,6 +1387,7 @@ place unchanged.
   `legacy/README.md` entries); A.U36.543 (`.claude/skills/integrate-module/`); A.U36.545 (4) (`datasheets/`); A.U37.15
   (plan and `audit/` entries go); A.U37.03/A.U37.04 (6) (every doc listed; close check); A.U32.01 (runbook named under
   README's own recipes, no separate map entry)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `README.md:641-782`
 - **Change**: end state: "## Further reading\n\nEvery supporting document, licence file and reference text; a new one joins
   this map in the same change (`tests_scripts/test_readme_reference.py` checks it)." then, one line per entry —
@@ -1368,14 +1412,17 @@ place unchanged.
   2026-09-25); the protocol itself is SPECIFICATION.md Part J"); PROJECT_AUDIT_PLAN.md and `audit/` while they exist. Then
   the handover sentence (`:710-712`) kept. Every provenance paragraph goes (`:643-645`, `:651-654`, `:672-690`, `:760-776`,
   `:778-782`).
+  (1) (A-C fold, owner requirements 2026-10-08, OR151/OR152) Stage U22 (HEAD's map): `README.md:779`'s parenthesis names
+  "the role reversal's stage-6 fallback" in place of "the stage-6 permanent-WLAN-deactivation risk", and `:801`'s list
+  drops that item (that paragraph goes with the other provenance paragraphs in U36).
 - **Resolved**: A.U17.08 moves the changelog out of "Temporary docs" to a note; A.U36.547 (U36, later) and A.U37.15 keep
   it under **Temporary** — the map lists it there, with A.U17.08's lifecycle words. A.U36.546 (3)'s and A.U37.06's
   BACKLOG lines are combined (both true). `legacy/README.md`'s entry is A.U1.13's, with A.U36.547's mention of
   `update_and_install.txt`.
 - **Unit**: U37. Stages: U0 (`:697-698` V01 wording; `:734-735` sentence deleted, A.U0.42), U1 (A.U1.13's two entries;
-  `dev_legacy/README.md` entry replaced), U8 (Part N named in the SPEC line), U17 (changelog lifecycle wording in place),
-  U34 (licence bullet), U36 (the map rewrite with every U36 constituent), U37 (BACKLOG line per A.U37.06; phase D drops
-  the plan and `audit/` entries, A.U37.15).
+  `dev_legacy/README.md` entry replaced), U8 (Part N named in the SPEC line), U17 (changelog lifecycle wording in
+  place), U22 ((1), the two stage-6 mentions), U34 (licence bullet), U36 (the map rewrite with every U36 constituent),
+  U37 (BACKLOG line per A.U37.06; phase D drops the plan and `audit/` entries, A.U37.15).
 - **Depends**: A.U1.03 (`legacy/README.md`), A.U36.543 (skill), A.U28.35 (submodule), M.DOCS.001
 - **Blast carried by**: map completeness → `test_readme_reference.py` (TSC); CLAUDE.md `:3-6` pointer stays true
 - **Kind**: doc
@@ -2169,6 +2216,20 @@ merged per bullet; a bullet edited by several actions gets one block naming ever
 - **Unit**: U0
 - **Depends**: —
 - **Blast carried by**: `tests_hardware/README.md` "How a round runs" cites it (A.U36.001, HW_BENCH)
+- **Kind**: rule
+
+### M.DOCS.111 The go-ahead rule's safety facts name the stage-6 fallback
+- **From**: OR151, OR152 (owner requirements, 2026-10-08) (U22 start fold, execution-time deltas); the bullet M.DOCS.087
+  tagged in U0.
+- **Site**: `CLAUDE.md:328-337` (the go-ahead bullet's parenthesis, `:333-335`).
+- **Change**: "the hotspot role-reversal scenario's stage-6 permanent-WLAN-deactivation risk" → "the hotspot
+  role-reversal scenario's stage-6 fallback (a failed credential reopens the DUT's hotspot once, then its silent mode)".
+  The rest word for word; the commit names this as the one meaning change, following the owner's requirements of
+  2026-10-08 (decision-records rule (3)).
+- **Resolved**: —
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223.
+- **Blast carried by**: `tests_hardware/README.md`'s matching facts → M.HW_BENCH.124 (1), M.HW_BENCH.110 (1).
 - **Kind**: rule
 
 ### M.DOCS.088 The two bench-network rules: rule, one reason, B.13
@@ -3159,3 +3220,16 @@ sits in an action's text the change quotes and takes the convention's form at la
 **OR144 (lead ruling):** OR144.a (owner, 2026-10-05: standing push permission to `hundertvolt/datasheets`) satisfies
 the owner precondition of M.DOCS.014's Unit and M.DOCS.047's and M.DOCS.068's slots (and M.SPEC.005/.019); each now
 states it as satisfied.
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.DOCS.110, M.DOCS.111 | added |
+| OR151 | M.DOCS.026 (2), .027 (main text, (4)), .048 (1), .060 (1) | amended |
+| OR152 | M.DOCS.111 | added |
+| OR152 | M.DOCS.026 (2), .048 (1), .060 (1) | amended |

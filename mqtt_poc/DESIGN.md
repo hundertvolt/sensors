@@ -113,12 +113,13 @@ run) and closing every finding in `RESULTS.md`.
   `mqtt.qos1_max_tries` (counted, never a teardown — the `mqtt_as` A9 self-inflicted reconnect).
 - **Stalled broker**: the stream's pending output past `mqtt.max_out_backlog` bytes, or a drain not done
   within `mqtt.drain_timeout_ms` → teardown (E `MQTT_STALLED`). Small packets keep each `tcp_write()`
-  small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed only by the audit's U21 override.
+  small; the `ERR_MEM` 10 s stall (RESEARCH.md §4 fact 6) is closed by the audit's U21 `modlwip_eagain`
+  override (SPECIFICATION.md B.14.4): the send answers `EAGAIN` and its rest waits in the stream's buffer.
 - **Unconfirmed bytes** (§14 item 2): at most `mqtt.unconfirmed_max_bytes` written that no PINGRESP has
   confirmed, the connection's 2,000 B share of lwIP's `MEM_SIZE`. A PINGRESP confirms everything up to
   its PINGREQ (TCP is in order). A PUBLISH that would pass the cap waits in the ring and the next tick
-  pings early; PUBACKs and PINGREQs are never held. MQTT then cannot be what exhausts `MEM_SIZE` and
-  trips the `ERR_MEM` loop.
+  pings early; PUBACKs and PINGREQs are never held. MQTT then cannot be what exhausts `MEM_SIZE`, which
+  since U21 costs the other connections an `EAGAIN` rather than a 10 s `ERR_MEM` loop.
 - **Inbound**: packets up to `mqtt.rx_buf_bytes` are parsed in place; a larger one is read and discarded
   in buffer-sized chunks (counted `RxDropped`, never allocated). A remaining length past four bytes, an
   unexpected packet type, a QoS 2 PUBLISH or a PUBLISH whose topic overruns it → teardown

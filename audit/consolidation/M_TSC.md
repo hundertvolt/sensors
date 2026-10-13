@@ -1772,7 +1772,8 @@ where a test pins an SCR product, the constituent action is cited and the depend
 ### M.TSC.088 One catalog, every logging call, every mirror of it
 - **From**: A.U2.02 (1)-(9), A.U2.25 + A.U6.06 (mockdata pass reads `mockdata/samples.json`), A.U3.15 (no adjacent
   duplicate code in a mock history), A.U36.537 (marked SPEC tables equal the catalog), TEST_UNIT GAP-U2 (the keyword
-  scan's non-vacuity floor, M.TEST_UNIT.157); read: A.U2.01 (catalog file), A.U2.22 (SPEC C.7.1 names this check).
+  scan's non-vacuity floor, M.TEST_UNIT.157); read: A.U2.01 (catalog file), A.U2.22 (SPEC C.7.1 names this check);
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold).
 - **Site**: new `tests_scripts/test_error_catalog.py`.
 - **Change**: one function per check: (1) catalog shape (ints 1-127; each owner's codes in its band; bands disjoint per
   type; names and texts unique per type; a `retired` code has no live site); (2) every `err_s`/`wrn_s` call in `src/`
@@ -1793,9 +1794,12 @@ where a test pins an SCR product, the constituent action is cited and the depend
   (11) (A-C fold, silent-failure scan SF-B12, SF-M1-03, SF-M1-01, SF-A14, SF-B2, SF-B6, SF-B7, SF-B9, SF-B10, SF-B11,
   SF-B15, SF-M2-03, SF-M3-02, 2026-10-06) The checks cover the fold's new codes as they land, each needing its catalog
   row and its `src/` constant together: `FRAM_FULL`, `LOG_RAM_ONLY`, `CONFIG_LOST`, ResetReason 21,
-  `NOTIFY_SIGNAL_DROPPED`, `WLAN_STATIONS_UNKNOWN`, `WLAN_STATUS_UNREADABLE`, `WLAN_TO_HOTSPOT`, `WLAN_DEACTIVATED`,
-  `WLAN_NO_VERDICT`, `DNS_REPLY_TRUNCATED`, `BMP_CHIP_RESET`, `SCD_NOT_READY`, `ISL_CAL_TIMEOUT`, `READ_RANGE`; no new
-  check. Pins M.GEN.034 (1).
+  `NOTIFY_SIGNAL_DROPPED`, `WLAN_STATIONS_UNKNOWN`, `WLAN_STATUS_UNREADABLE`, `WLAN_TO_HOTSPOT`, `WLAN_SILENT` (W80,
+  `WLAN_DEACTIVATED` until U22, M.GEN.034 (2)), `WLAN_NO_VERDICT`, `DNS_REPLY_TRUNCATED`, `BMP_CHIP_RESET`,
+  `SCD_NOT_READY`, `ISL_CAL_TIMEOUT`, `READ_RANGE`; no new check. Pins M.GEN.034 (1).
+  (12) (A-C fold, owner requirements 2026-10-08, OR151/OR152) E65 `WLAN_OFF` is retired in U22 with its one site
+  (M.GEN.034 (2), M.SRC_NET.223): check (1)'s retired-code rule and (5) cover it, and the renamed W80 passes (4) with
+  its `_WRN_WLAN_SILENT` constant; this file needs no edit for them, its checks being generic.
 - **Resolved**: A.U2.25's check reads the retired `mockdata/{dev,wozi}.json` at U2; A.U6.06 moves the rule to
   `samples.json` — staged.
 - **Unit**: U36 (stages U2 checks (1)-(9) and the mockdata pass, U3 adjacency, U6 samples file).
@@ -2282,6 +2286,22 @@ where a test pins an SCR product, the constituent action is cited and the depend
   M.SRC_CORE.105, M.SRC_CORE.088 (U16 stage).
 - **Blast carried by**: SPEC C.7 names the check and its rule (fault or warning, never both; one entry per layer) →
   M.SPEC.058.
+- **Kind**: test
+
+### M.TSC.231 The permanent deactivation's fault-or-warning pair leaves the allow-list
+- **From**: OR151 (owner requirement, 2026-10-08) (U22 start fold, execution-time delta); the allow-list M.TSC.111 wrote
+  in U3.
+- **Site**: `tests_scripts/test_fault_or_warning_never_both.py:48` (the `_deactivate_wlan_permanently` entry).
+- **Change**: The entry `("src/asy_wifi_service.py", "_deactivate_wlan_permanently", ("W", "WLAN_DEACTIVATED"), ("E",
+  "WLAN_OFF"))` and its reason go with the function (M.SRC_NET.223 (1)); the exact-list check would otherwise fail it as
+  stale (M.TSC.111). The silent entry persists W80 alone in `_register_sta_connection_failure()`, and the silent
+  period's timer failure is persisted in the connect loop (M.SRC_NET.223 (2)), so no new mixed pair arises; if the scan
+  pairs one at landing, it joins the list with its reason ("entering the silent mode, then a failed period-timer arm:
+  separate occurrences").
+- **Resolved**: —
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223.
+- **Blast carried by**: —
 - **Kind**: test
 
 ## tests_scripts/test_readiness_gates.py
@@ -5026,3 +5046,15 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | R54 | M.TSC.111 (persisting-wrapper resolution, so UART `_resync()`'s `self._err()` pair is seen; U15 and U16 stages for the allow-list edits) | amended |
 | R54 | M.TSC.057 (the ring floor row: one config flush's hold read from source as `_FLASH_HOLD_MAX_MS`, the peer's re-initiations `4 × timeout` apart; `dev`'s 8,192 built) | amended |
 | R55 | M.TSC.057 (the timeout-ceiling source-copy case edits `asy_uart_comm`'s `_DEFAULT_TIMEOUT_MS`, where the build reads the link default from U17), M.TSC.144 (`con.uart_reply` recomputed from `_DEFAULT_TIMEOUT_MS`) | amended |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.TSC.231 | added |
+| OR151 | M.TSC.088 (11), (12) | amended |
+| OR152 | — | none in this file (W77 keeps its name; only its text changes, M.GEN.034 (2)) |

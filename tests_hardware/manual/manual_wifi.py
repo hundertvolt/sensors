@@ -2,8 +2,6 @@
 to end, and observing whether OS-level captive-portal auto-detection fires against
 src/asy_captive_dns.py's DNS-only spoof (no HTTP redirect exists - genuinely unknown until tried)."""
 
-from __future__ import annotations
-
 from runner import confirm, confirm_pass, print_instruction, register, state_expected_outcome
 
 

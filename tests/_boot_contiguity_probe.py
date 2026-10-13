@@ -1,5 +1,5 @@
 # Boots one real generated device and prints a labelled micropython.mem_info(1) map at each end of
-# the two one-time boot lists, with the emitted gc.collect() calls either live or suppressed.
+# the two one-time boot lists, with SystemService's gc.collect() calls either live or suppressed.
 # Not a test_*.py file, so scripts/test.sh's glob never runs it - see the header of its own consumer.
 #
 # Its consumer is tests_scripts/test_digital_twin_boot_contiguity.py, which spawns this under the
@@ -20,6 +20,7 @@ import time
 import machine
 import micropython
 import uctypes
+from _generated_module import boot_generated
 from _sensortask_scenarios import fram_fake_class
 
 import asy_spi_driver
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import Any
 
+    from asy_base_classes import SetupFct
     from asy_system_service import SystemService
 
     _Starter = Callable[[], asyncio.Task[Any]]
@@ -43,7 +45,6 @@ if TYPE_CHECKING:
 # twin reading and a board reading are taken at the same positions of the same sequence.
 # @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_timeout_ms = 20000
 _STARTER_LOOP_TIMEOUT_MS = 20000
-_STARTER_LOOP_GRACE_MS = 250
 # @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
 
@@ -88,31 +89,32 @@ def _rings(label: str, module: "ModuleType") -> None:
 
 
 class _ProbeGc:
-    # Stands in for the `gc` module at the emitted collect sites: dumps a map at the positions
-    # asked for, then forwards to the real collect only on the live arm. Module-attribute
-    # reassignment is this project's mocking mechanism (MicroPython has no unittest.mock).
+    # Stands in for asy_system_service's `gc` at both boot lists' collect sites: dumps a map at the positions
+    # asked for, then forwards to the real collect only on the live arm. Its label names the list running,
+    # "batch" inside SystemService.run_setups(), else "starter"; reassigning the module attribute is the mock.
 
     # A dumped position collects on BOTH arms, via _dump() - the seam map has to be post-collect or
     # the two arms anchor at different places and nothing is comparable. So the suppressed arm keeps
     # the leading collect and loses the per-module ones, which makes it a conservative control.
 
-    def __init__(self, tag: str, *, live: bool, dump_at: "tuple[int, ...]") -> None:
-        self.tag = tag
+    def __init__(self, *, live: bool, dump_at: "dict[str, tuple[int, ...]]") -> None:
         self.live = live
         self.dump_at = dump_at
-        self.calls = 0
+        self.label = "starter"
+        self.calls = {"batch": 0, "starter": 0}
 
     def collect(self) -> None:
-        if self.calls in self.dump_at:
-            _dump(f"{self.tag}_{self.calls:02d}")
+        n = self.calls[self.label]
+        if n in self.dump_at.get(self.label, ()):
+            _dump(f"{self.label}_{n:02d}")
         if self.live:
             gc.collect()
-        self.calls += 1
+        self.calls[self.label] = n + 1
 
 
 async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Callable[[], None]]", timer_starters: "list[Callable[[], None]]") -> bool:
-    # main()'s own next step. tests/machine.py's Timer fake never fires by itself, so each armed stagger
-    # wait is fired with the same _sequencer_timer.trigger() tests/test_asy_system_service.py uses.
+    # main()'s step after the task starts. tests/machine.py's Timer fake never fires by itself, so each armed
+    # stagger wait is fired with the same _sequencer_timer.trigger() tests/test_asy_system_service.py uses.
     task = asyncio.create_task(sysfunct.start_timers(trigger_starters, timer_starters))
     deadline = time.ticks_add(time.ticks_ms(), int(_TIMERS_TIMEOUT_S * 1000))
     while not task.done() and time.ticks_diff(deadline, time.ticks_ms()) > 0:
@@ -127,30 +129,14 @@ async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Calla
 
 
 async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]") -> bool:
-    # start_and_check_tasks() never returns - it hands over to the supervisor task - so the loop's own
-    # end is only observable by counting the starters as they land.
-    started: list[int] = []
-    inner = sysfunct._start_task
-
-    async def counting(starter: "_Starter", n: int) -> "asyncio.Task[Any] | None":
-        task = await inner(starter, n)
-        started.append(n)
-        return task
-
-    sysfunct._start_task = counting  # type: ignore[method-assign]
-    supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(task_starters))
-    deadline = time.ticks_add(time.ticks_ms(), _STARTER_LOOP_TIMEOUT_MS)
-    while len(started) < len(task_starters) and time.ticks_diff(deadline, time.ticks_ms()) > 0:
-        await asyncio.sleep_ms(20)
-    if len(started) < len(task_starters):
-        print(f"NOTE only {len(started)} of {len(task_starters)} starters ran within {_STARTER_LOOP_TIMEOUT_MS} ms")
-        supervisor.cancel()
+    # main()'s step after the setup list. start_tasks() returns after its final collect, so the map follows at
+    # once; the supervisor is never entered.
+    try:
+        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters), _STARTER_LOOP_TIMEOUT_MS)
+    except asyncio.TimeoutError:
+        print(f"NOTE start_tasks did not return within {_STARTER_LOOP_TIMEOUT_MS} ms")
         return False
-    # The last starter has landed but the loop has not: its final sleep and its final collect are
-    # still to come, and that collect is part of what is being measured.
-    await asyncio.sleep_ms(1000 // max(len(task_starters), 1) + _STARTER_LOOP_GRACE_MS)
     _dump("after_starter_loop_end")
-    supervisor.cancel()
     return True
 
 
@@ -164,33 +150,42 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
     module: Any = __import__(f"sensortask_{device}")
     import asy_system_service
 
-    batch_gc = _ProbeGc("batch", live=live, dump_at=(0,))
-    starter_gc = _ProbeGc("starter", live=live, dump_at=())
-    module.gc = batch_gc
-    asy_system_service.gc = starter_gc  # type: ignore[assignment]
+    probe_gc = _ProbeGc(live=live, dump_at={"batch": (0,)})
+    asy_system_service.gc = probe_gc  # type: ignore[assignment]
+    real_run_setups = asy_system_service.SystemService.run_setups
+
+    async def labelled_run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
+        probe_gc.label = "batch"
+        try:
+            await real_run_setups(self, setups)
+        finally:
+            probe_gc.label = "starter"
+
+    asy_system_service.SystemService.run_setups = labelled_run_setups  # type: ignore[method-assign]
 
     _dump("baseline")
     started_ms = time.ticks_ms()
-    await module.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
+    module, _watchdog = await boot_generated(module, device, cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
     build_ms = time.ticks_diff(time.ticks_ms(), started_ms)
     _dump("after_batch")
     _rings("after_batch", module)
 
-    sysfunct = module.sysfunct
+    sysfunct = getattr(module, "sysfunct", None)
     if sysfunct is None:
         print("RESULT: FAIL build_system() completed but left sysfunct unset")
         return 1
     task_starters = module._collect_task_starters()
     trigger_starters = module._collect_trigger_starters()
     timer_starters = module._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
+    print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)} batch_collects={probe_gc.calls['batch']}")
 
-    if not await _drive_timers(sysfunct, trigger_starters, timer_starters):
-        return 1
+    # main()'s order: the task starts, then the timers; the supervisor is never entered.
     if not await _run_starter_loop(sysfunct, task_starters):
         return 1
     _rings("after_starter_loop_end", module)
-    print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")
+    if not await _drive_timers(sysfunct, trigger_starters, timer_starters):
+        return 1
+    print(f"COUNTS batch_collects={probe_gc.calls['batch']} starter_collects={probe_gc.calls['starter']}")
 
     if settle_ms > 0:  # reported, never asserted on: the run phase undoes most of it (MEASUREMENTS M3.9)
         await asyncio.sleep_ms(settle_ms)

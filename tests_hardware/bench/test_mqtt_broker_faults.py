@@ -119,7 +119,7 @@ def _mqtt_device() -> str:
 
 def _sensor_names(device: str) -> list[str]:
     # The modules the client publishes: every sensor, the same set as the website's measurements cards.
-    definitions = definitions_for_toml(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+    definitions = json.loads(json.dumps(definitions_for_toml(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")))
     section = next(s for s in definitions["sections"] if s["key"] == "measurements")
     return [str(g["key"]) for g in section["groups"]]
 

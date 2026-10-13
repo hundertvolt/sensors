@@ -1,0 +1,16 @@
+FAIL test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 3222, in test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check
+AssertionError: 
+FAIL test_integration_an_unfilled_stations_answer_never_holds_the_hotspot
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 4272, in test_integration_an_unfilled_stations_answer_never_holds_the_hotspot
+  File "tests/test_asy_wifi_service.py", line 100, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_wifi_service.py", line 4263, in scenario
+AssertionError: the unfilled answer must arm the window
+selected: 2 failed: 2

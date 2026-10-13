@@ -1,0 +1,91 @@
+src/asy_system_service.py: note: In member "_flush_config_stores" of class "SystemService":
+src/asy_system_service.py:267:24: error: "ConfigManager" has no attribute
+"owner_lock"  [attr-defined]
+                    lock = store.owner_lock
+                           ^~~~~~~~~~~~~~~~
+src/asy_system_service.py: note: In member "_request_shutdown" of class "SystemService":
+src/asy_system_service.py:354:17: error: Statement is unreachable 
+[unreachable]
+                    refusal = "a reset is already armed"
+                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py: note: In function "_install":
+tests_hardware/device_scripts/unretrieved_task_exception_handler.py:100:38: error:
+"SystemService" has no attribute "start_and_check_tasks"  [attr-defined]
+        supervisor = asyncio.create_task(svc.start_and_check_tasks([_parke...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: note: In function "_main":
+tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py:37:38: error:
+"SystemService" has no attribute "start_and_check_tasks"  [attr-defined]
+        supervisor = asyncio.create_task(sysfunct.start_and_check_tasks([_...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_forwards_web_host_port":
+tests/_sensortask_scenarios.py:433:28: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+        real_start_and_check = SystemService.start_and_check_tasks
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py: note: At top level:
+tests/_sensortask_scenarios.py:446: error: Unused "type: ignore" comment 
+[unused-ignore]
+        SystemService.start_and_check_tasks = _fake_start_and_check  # typ...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_forwards_web_host_port":
+tests/_sensortask_scenarios.py:446:5: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+        SystemService.start_and_check_tasks = _fake_start_and_check  # typ...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:446:5: note: Error code "attr-defined" not covered by "type: ignore[method-assign]" comment
+tests/_sensortask_scenarios.py: note: At top level:
+tests/_sensortask_scenarios.py:454: error: Unused "type: ignore" comment 
+[unused-ignore]
+            SystemService.start_and_check_tasks = real_start_and_check  # ...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_forwards_web_host_port":
+tests/_sensortask_scenarios.py:454:9: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+            SystemService.start_and_check_tasks = real_start_and_check  # ...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:454:9: note: Error code "attr-defined" not covered by "type: ignore[method-assign]" comment
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_call_order":
+tests/_sensortask_scenarios.py:1409:28: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+        real_start_and_check = SystemService.start_and_check_tasks
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py: note: At top level:
+tests/_sensortask_scenarios.py:1429: error: Unused "type: ignore" comment 
+[unused-ignore]
+        SystemService.start_and_check_tasks = _fake_start_and_check  # typ...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_call_order":
+tests/_sensortask_scenarios.py:1429:5: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+        SystemService.start_and_check_tasks = _fake_start_and_check  # typ...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:1429:5: note: Error code "attr-defined" not covered by "type: ignore[method-assign]" comment
+tests/_sensortask_scenarios.py: note: At top level:
+tests/_sensortask_scenarios.py:1437: error: Unused "type: ignore" comment 
+[unused-ignore]
+            SystemService.start_and_check_tasks = real_start_and_check  # ...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_call_order":
+tests/_sensortask_scenarios.py:1437:9: error: "type[SystemService]" has no
+attribute "start_and_check_tasks"  [attr-defined]
+            SystemService.start_and_check_tasks = real_start_and_check  # ...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:1437:9: note: Error code "attr-defined" not covered by "type: ignore[method-assign]" comment
+tests/_boot_contiguity_probe.py: note: In function "_run_starter_loop":
+tests/_boot_contiguity_probe.py:141:38: error: "SystemService" has no attribute
+"start_and_check_tasks"  [attr-defined]
+        supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(ta...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: note: In function "_main":
+tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py:205:38: error:
+"SystemService" has no attribute "start_and_check_tasks"  [attr-defined]
+        supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(ta...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests_hardware/device_scripts/sgp40_sample_cadence.py: note: In function "_main":
+tests_hardware/device_scripts/sgp40_sample_cadence.py:53:38: error:
+"SystemService" has no attribute "start_and_check_tasks"  [attr-defined]
+        supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(de...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 17 errors in 7 files (checked 184 source files)
+rc=1

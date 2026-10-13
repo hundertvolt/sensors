@@ -2,8 +2,6 @@
 Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
 See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
 
-from __future__ import annotations
-
 import http.client
 import json
 import os
@@ -26,6 +24,8 @@ from buildgen.twin_wiring import compute_twin_wiring
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from buildgen.model import DeviceModel
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
@@ -182,6 +182,17 @@ def _status_field_parity_failures(definitions: dict[str, Any], status_body: obje
     return [f"Status page fields GET /status does not publish (each renders blank): {missing}"] if missing else []
 
 
+def _maintenance_key_failures(model: "DeviceModel", status_body: object) -> list[str]:
+    # One maintenance entry per SGP40 instance, keyed by its REST identity (resolved_name, SPECIFICATION.md
+    # Part C.14.1) and read from that instance: a source reading the wrong global answers the error marker.
+    sensors = status_body.get("sensors") if isinstance(status_body, dict) else None
+    if not isinstance(sensors, dict):
+        return ["GET /status carried no sensors object, so no maintenance claim would mean anything"]
+    expected = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    unserved = [name for name in expected if not isinstance(sensors.get(name), dict) or "error" in sensors[name]]
+    return [f"SGP40 maintenance entries GET /status does not serve: {unserved} of {expected} (served: {sorted(sensors)})"] if unserved else []
+
+
 def _system_path_failures(definitions: dict[str, Any], system_body: object) -> list[str]:
     # Every readonly System field reads GET /system through its `path` (the build information).
     unresolved = [f"{group_key}.{field['key']}" for group_key, field in _readonly_fields(definitions, "system") if "path" in field and not _resolves(system_body, field["path"])]
@@ -198,7 +209,7 @@ def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
     return failures
 
 
-def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: Callable[[subprocess.Popen[str]], list[str]], shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
+def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: "Callable[[subprocess.Popen[str]], list[str]]", shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
     # Runs `session` against the spawned twin, then its exit and output verdicts; returns the
     # failures and the twin's whole merged output.
     proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -277,6 +288,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
                 # and inherit this test's own generic device/fixture coverage for free.
                 failures.extend(_errcount_parity_failures(definitions, body))
                 failures.extend(_status_field_parity_failures(definitions, body))
+                failures.extend(_maintenance_key_failures(generated.model, body))
             elif path == "/system":
                 failures.extend(_system_path_failures(definitions, body))
         stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
@@ -297,6 +309,19 @@ def test_an_allocation_failure_in_a_clean_exiting_twin_is_a_failure() -> None:
     assert "memory allocation failed, allocating 2048 bytes" in failures[0]
     assert _twin_output_failures(0, "serving\nshutdown complete\n") == []
     assert _twin_output_failures(1, "Traceback\n")[0].startswith("subprocess exited with code 1")
+
+
+def test_every_sgp40_instance_needs_its_own_served_maintenance_entry(src_dir: Path, ext_dir: Path, fixtures_dir: Path) -> None:
+    # The multi-instance fixture's two SGP40s each need an entry under their own name; a missing one or the
+    # error marker in place of one is reported, an extra non-SGP40 entry (dev's UARTLINK shape) is not.
+    model = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir).model
+    names = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    assert len(names) == 2, names
+    served = {name: {"BackupTS": None, "RestoreTS": None} for name in names}
+    assert _maintenance_key_failures(model, {"sensors": {**served, "UARTLINK": {}}}) == []
+    assert names[1] in _maintenance_key_failures(model, {"sensors": {names[0]: served[names[0]]}})[0]
+    assert names[0] in _maintenance_key_failures(model, {"sensors": {**served, names[0]: {"error": "unavailable"}}})[0]
+    assert _maintenance_key_failures(model, {})[0].startswith("GET /status carried no sensors object")
 
 
 def test_a_twin_printing_more_than_a_pipe_buffer_is_drained_while_it_runs(tmp_path: Path) -> None:

@@ -1266,6 +1266,7 @@ actions only where they name a product line.
 - **From**: A.U8.10 (names, tags), A.U31.15 (milliseconds), A.U18.30 (LED pattern names, deactivated pair), A.U18.40
   (`_WIFI_REFRESH_S`), OR140.a (7) and (17) (A-C review fold), A.U18.27 (`_STAT_JOINED_NO_IP`, `_PM_NO_POWERSAVE`), A.U2.04 + A.U2.14 + A.U18.24 + A.U10.20 +
   A.U6.29 (codes), A.U10.39 (names in comments)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `src/asy_wifi_service.py:110-129` and a new code block after the imports
 - **Change**: `_STA_DISCONNECT_WAIT_ITERS = const(20)` with comment "# 20 × 500 ms = 10 s max wait for isconnected() to
   clear -" (second line unchanged); new, each with its `# @tunable wifi.<id> = <v>` tag: `_STA_DISCONNECT_POLL_MS =
@@ -1298,6 +1299,21 @@ actions only where they name a product line.
   M.SRC_NET.089 (1)). The LED constants gain `_LED_HOTSPOT_CLIENT_ON_MS = const(1500)` and `_LED_HOTSPOT_CLIENT_OFF_MS
   = const(1500)` (basis "a station on the hotspot: an even slow blink, unlike the hotspot, deactivated and steady-link
   patterns (agent, 2026-10-06)"; M.SRC_NET.087 (1)). All land in Stage U18.
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, with M.SRC_NET.223 and
+  .224. The code block loses `_ERR_WLAN_OFF` (its one site, the permanent deactivation, goes; E65 is retired, M.GEN.034
+  (2)), and `_WRN_WLAN_DEACTIVATED` becomes `_WRN_WLAN_SILENT`, W80 keeping its number: the same condition, a second
+  failed STA streak after a hotspot phase, which now enters the silent mode. Phase constants: new `_PHASE_SILENT =
+  const(4)` (the next free value, so every test mirror of 0-3 still holds) with the comment "# Silent after a second
+  failed streak: no hotspot, the LED dark, one connect attempt per hotspot_time_min; survives a task restart";
+  `_PHASE_DEACTIVATED` keeps its name and value and is reached only with no readable Wi-Fi configuration (legacy's own
+  name for that state, `wlan_deactivated`, `legacy/firmware/python/CommonDrivers/async_connect.py:178, 188`), its
+  comment → "# terminal - no readable Wi-Fi configuration: the radio stays unused until a reboot; survives a task
+  restart". The deactivated LED pair keeps its names, values and tags (the no-configuration pattern: owner, 2026-09-29;
+  2026-10-02), its comment → "# no readable Wi-Fi configuration: the hotspot pattern inverted, a short blink every 3 s".
+  Beside `_STAT_JOINED_NO_IP` a new CYW43 value, a platform fact left untagged (N.1): `_STATIONS_UNSET = const(32)` with
+  the trailing comment "# status("stations") with a chip that cannot come up: the binding's 32-entry buffer, unfilled
+  (network_cyw43.c:377-380, cyw43_ctrl.c:719-723, v1.29.0)". The U31 stage converts this end state and writes no
+  `_ERR_WLAN_OFF`.
 - **Resolved**: (1) A.U8.10's `_LED_FLASH_ON_S`/`_OFF_S` (2.9/0.1) → A.U18.30's `_LED_HOTSPOT_*` → A.U31.15's `_MS`: each
   later action names the earlier as its Depends; the last stands, Part N rows renamed once. (2) `wifi_refresh_sec`: A.U8.10
   tags it at A.U5.09's `WifiConfig` constant, A.U5.09 groups it, A.U31.15 turns the loop sleep into
@@ -1308,7 +1324,7 @@ actions only where they name a product line.
   goes). (3) A.U8.10 sets `wifi.sta_disconnect_poll_s`/`wifi.sta_connect_poll_s` and `wifi.hotspot_stations_settle_s`;
   A.U31.15 renames them `_ms` (the later action).
 - **Unit**: U31 (A.U31.15 latest; staged: U2 codes, U8 names/tags in seconds, U18 new LED pair/refresh constant/CYW43
-  names/timer and unexpected codes, U31 milliseconds)
+  names/timer and unexpected codes, U22 the silent mode's constants ((2)), U31 milliseconds)
   A-C2 step order: A.U2.14's part lands in U3, not U2 (it needs A.U3.02, which lands in U3).
 - **Depends**: A.U8.02 (grammar), A.U2.01 (+ U18 register fix 9: WIFI uses shared 17)
 - **Blast carried by**: Part N rows (renames and new rows) → A.U8.10/A.U18.30/A.U31.15 (docs); tests' comments quoting
@@ -1317,6 +1333,8 @@ actions only where they name a product line.
   A.U18.27 (tests/TWIN); SPEC F "CYW43 values this code names" list → A.U18.27 (docs); twin `_CONNECT_DELAY_S` Dependant
   row → A.U8.10 (TWIN/docs); catalog rows for WIFI (17 owner note, 36 text) → A.U2.01 + U18 register fix 9 (catalog)
   (SF-B6, SF-B7, SF-M2-03, SF-M2-04: test in M_TEST_UNIT/M_TWIN per phase 2)
+  (OR151/OR152, (2): the no-configuration pair's Part N text and the stations value in F.1 → M.SPEC.163; the catalog's
+  W80, E65 and W77 → M.GEN.034 (2); the tests' source mirrors → M.TEST_UNIT.346)
 - **Kind**: code
 
 ### M.SRC_NET.078 WifiService constructor: one config object, construction-time LED, private state
@@ -1410,6 +1428,7 @@ actions only where they name a product line.
 - **From**: A.U10.18 (`async with`; `_release_wifi_lock()` goes), A.U18.43 (1) (settle comment, suppression reason),
   A.U28.30 (4) (removal trigger), A.SDEP.15 (W11, conditional), A.U18.44 (return type), A.U31.15 (`sleep_ms`), A.U8.10
   (constant), A.U1.01 (legacy path in the comment)
+  OR152 (owner requirement, 2026-10-08; U22 start fold, execution-time delta).
 - **Site**: `src/asy_wifi_service.py:225-246` `_locked_wlan_status()`, `_get_hotspot_stations()`
 - **Change**: `_locked_wlan_status()`: `async with self.wifi_mode_lock: return self._wlan_status_or_none()`.
   `_get_hotspot_stations(self) -> "list[tuple[bytes]]"`: `async with self.wifi_mode_lock:` then the comment "# Legacy's
@@ -1425,9 +1444,18 @@ actions only where they name a product line.
   the observation arm returns `None` (unknown) instead of `[]` (no client), its console line kept, and its comment
   becomes "# A failed query is unknown, never 'no client': None leaves the hotspot timer as it is (the caller
   persists it)." The `else:` arm unchanged. Stage U18.
+  (2) (A-C fold, owner requirement 2026-10-08, execution-time delta OR152) Stage U22, with M.SRC_NET.224.
+  `_get_hotspot_stations()` answers `None` for a failed check: the query raising, as in (1), or an answer of exactly
+  `_STATIONS_UNSET` entries — a chip that cannot be brought up leaves the binding's count at its buffer size over
+  unfilled MAC bytes (`lib/cyw43-driver/src/cyw43_ctrl.c:717-730`, `extmod/network_cyw43.c:371-388`, v1.29.0); any other
+  list is returned as read, an empty one included (a failed radio command already reads as one, `cyw43_ctrl.c:725-728`).
+  (1)'s comment on the `except` arm becomes "# A failed check confirms no client: the caller counts it as none and
+  persists it (owner, 2026-10-08)."; one comment line at the count test: "# A chip that cannot come up leaves the
+  binding's 32-entry buffer unfilled: a failed check, never 32 clients." The U31 stage keeps both.
 - **Resolved**: A.U18.43 (1) and A.U28.30 (4) both edit the `:244` suppression reason (A.U28.30: "A-C merges") — merged
   above (reason on the line above the suppression, the form A.U28.30's check accepts).
-- **Unit**: U31 (the `sleep_ms` form; staged: U10 `async with`, U18 comments, U28 the trigger line)
+- **Unit**: U31 (the `sleep_ms` form; staged: U10 `async with`, U18 comments, U22 the failed-check answer ((2)), U28
+  the trigger line)
 - **Depends**: M.SRC_NET.077
 - **Blast carried by**: BACKLOG real-hardware row "stations query without the 100 ms settle" → A.U18.43 (docs); tests
   (`tests/test_asy_wifi_service.py:1833-1848` stations tests unchanged) → A.U18.43
@@ -1527,6 +1555,7 @@ actions only where they name a product line.
   persisted, errno 17), A.U18.30 (flash call), A.U31.15 (ms constants), A.U10.44 (`_watch_hotspot_timeout()` →
   `_hotspot_timeout_loop()`), A.U10.45 (except order), A.U10.35 (names), A.U18.40 (`wifi_refresh_sec` gone from the
   comment)
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `src/asy_wifi_service.py:396-430`
 - **Change**: `_hotspot_client_connected()`: deinit and flag as today; `if self._ledflash is not None:
   self._ledflash.cancel(); self._ledflash = None`; then `self._led_on()` unconditionally; the event line.
@@ -1551,8 +1580,15 @@ actions only where they name a product line.
   _LED_HOTSPOT_OFF_MS)`. The pattern obeys the Wi-Fi LED setting like every pattern (`_led_on()`/`_led_off()`,
   M.SRC_NET.100). Whether a client may hold the AP indefinitely is not changed here (the owner question this row
   names, BACKLOG owner-question list). Stage U18.
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, with M.SRC_NET.223.
+  `_hotspot_timeout_loop()` dispatches each wake by phase: in the silent mode it marks one silent connect attempt due (a
+  flag the connect loop consumes, so a fire while one is due adds none); in every other phase it calls the private
+  window-end trigger (M.SRC_NET.223 (6)), which keeps the hotspot-used-once state — no longer the public
+  `reconnect_wifi()`, which is now the settings hook's fresh-boot reconnect. The window's `PERIODIC` timer is the silent
+  mode's period too (M.SRC_NET.223 (2)). `_hotspot_client_absent()` and `_hotspot_client_connected()` are unchanged. The
+  U31 stage keeps this body.
 - **Resolved**: —
-- **Unit**: U31 (staged: U10 name, U18 behaviour, U31 constants)
+- **Unit**: U31 (staged: U10 name, U18 behaviour, U22 the watcher's dispatch ((2)), U31 constants)
 - **Depends**: M.SRC_NET.077, M.SRC_NET.092
 - **Blast carried by**: tests (`:1363-1378` gain one errno-17 entry; flash-cancel test inverted) → A.U18.24, A.U18.31
   (tests)
@@ -1864,18 +1900,136 @@ actions only where they name a product line.
 - **Kind**: code
 
 ### M.SRC_NET.104 Every broad handler records a C-stack overflow (WiFi)
-- **From**: A.U30.19 (2)
+- **From**: A.U30.19 (2); OR151 (owner requirement, 2026-10-08; U22 start fold)
 - **Site**: `src/asy_wifi_service.py` HEAD `:208, 215, 239, 254, 261, 268, 291, 312, 349, 373, 454, 499, 510, 597, 645,
   743, 761` (seventeen `except Exception as e:`), plus the LED-flash task's top handler M.SRC_NET.092 adds
 - **Change**: every broad handler present in the file's end state starts with `report_if_fatal(e)`, above its logging or
   fallback line (the observation-tier `_wlan_status_or_none()`-style arms included: a swallowed stack overflow there is
   still a design defect, A.U30.19 (1)); where M.SRC_NET.078-.102 merge or split a handler, the resulting handler carries
   it once. `from asy_print_log import report_if_fatal` joins the runtime imports (M.SRC_NET.071; GAP-G8, gap pass G2).
+  (1) (A-C fold, owner requirement 2026-10-08, OR151) `_deactivate_wlan_permanently()` and its handler go in U22
+  (M.SRC_NET.223), so the Site's count is one fewer; a handler U22 adds carries `report_if_fatal(e)` here like the rest.
 - **Resolved**: —
 - **Unit**: U30
 - **Depends**: A.U30.19, M.SRC_NET.071, M.SRC_NET.078-.102 (the handlers as they end up)
 - **Blast carried by**: `tests_scripts/test_fatal_report_sites.py` → A.U30.19 (tests); A.U30.03's run-phase allow-list is
   unaffected (the call allocates nothing)
+- **Kind**: code
+
+### M.SRC_NET.223 The silent mode replaces the permanent deactivation; a credentials change lands in the fresh-boot state
+- **From**: OR151 (owner requirement, 2026-10-08: the second failed STA streak after a hotspot phase no longer switches
+  Wi-Fi off; it supersedes the permanent deactivation, owner, 2026-07-13 and 2026-08-11, and that state's LED pattern,
+  owner, 2026-09-29 and 2026-10-02), OR152 (owner requirement, 2026-10-08: any credentials change lands in the
+  fresh-boot state; the window end keeps its meaning) (U22 start fold, execution-time deltas).
+- **Site**: `src/asy_wifi_service.py` — `__init__`, `_register_sta_connection_failure()`,
+  `_deactivate_wlan_permanently()` (deleted), `_connect_loop()`, `_run_sta_mode()`, `_on_sta_disconnected()`,
+  `_led_on()`, `_led_toggle()`, `_run_led_pattern()`, `_handle_reconnect_trigger()`, `_reset_wlan_connect_state()`,
+  `reconnect_wifi()`, and a new private window-end trigger.
+- **Change**: (1) **Silent mode, never off** (owner, 2026-10-08: "Don't permanently switch WiFi off, only stop retrying
+  to connect."). A streak reaching `_conn_fail_to_hotspot` with the hotspot already used once enters the silent mode in
+  `_register_sta_connection_failure()`: `await self.pr.wrn_s("No WLAN connection after the hotspot ran - silent mode,
+  one connect attempt per hotspot period", wrnno=_WRN_WLAN_SILENT)`, `self._conn_phase = _PHASE_SILENT`, the flash task
+  cancelled and `_led_off()`. No `disconnect()`, `active(False)` or `deinit()`: the radio stays as the failed attempt
+  left it, as between the 60 s retries after a lost link. `_deactivate_wlan_permanently()` is deleted. One W80 per
+  entry.
+  (2) **One silent connect attempt per `hotspot_time_min`, uncapped** (owner, 2026-10-08: "not capped"). The silent
+  branch of `_connect_loop()` keeps the 5 s refresh, the uptime-tick re-arm and the `_error_check()` hardware streak of
+  the other phases and serves a pending reconnect trigger first. It arms the hotspot window's own timer when it is not
+  running — `PERIODIC`, `period=self._hotspot_time`, the callback only setting `_hotspot_timeout_trigger_event` (C.9) —
+  whose watcher marks one attempt due (M.SRC_NET.087 (2)); a failed arm persists `_ERR_TIMER` once per failure and is
+  retried on the next iteration, as `_hotspot_client_absent()` does. The first attempt is due one period after the
+  entry. A due attempt runs once under `wifi_mode_lock` on the STA path (`_attempt_sta_connect()`,
+  `_poll_sta_connect_status()`), its verdict warning persisted as every attempt's is (the newest-entry rule keeps a run
+  of them to one slot with its count), and is judged: a link is a normal connection — `_on_sta_connected()` gives
+  `_PHASE_STA_ESTABLISHED`, the zeroed streak and the LED as `LEDWifiOn` says, and the timer is deinit'd, so a later
+  loss takes the 60 s retry, never the hotspot; no link leaves the silent mode as it is, `_on_sta_disconnected()`
+  registering no failure in it, so the mode never escalates. `WLAN.scan()` is never called: it holds the VM up to 10 s
+  (`extmod/network_cyw43.c:236-246`, v1.29.0), past the 8,388 ms watchdog, so the connect attempt is the availability
+  check (owner, 2026-10-08: "a, go ahead …", to that design).
+  (3) **The LED dark until a link** (owner, 2026-10-08: "The WiFi LED stays dark, even if it is activated, being
+  completely silent in that mode. It should look like turned off."). While the phase is silent, `_led_on()`,
+  `_led_toggle()` and `_run_led_pattern()` light nothing (the connect poll's and the disconnect wait's toggles
+  included); `_led_off()` still acts, and `set_wifi_led()` still records the setting, which shows from the first link.
+  One comment (≤ 3 lines) at the guard: "# Silent mode: dark whatever LEDWifiOn says, until a link (owner, 2026-10-08:
+  'It should look like turned off.')." The no-configuration phase keeps its own pattern unchanged.
+  (4) **Task restarts keep the silent mode** (owner, 2026-10-08: "Entering the hotspot mode only through a reboot, as
+  is."). `_reset_wlan_connect_state()` preserves `_PHASE_SILENT` as it preserves `_PHASE_DEACTIVATED`; the restart's own
+  clean reconnect keeps the phase (dark, (3)), and the next silent iteration re-arms the period. Its comment → "#
+  DEACTIVATED (no configuration) and SILENT survive a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves
+  it" / "# through _leave_hotspot_mode(), after which STA starts a fresh streak with hotspot_started_once cleared, as
+  legacy's restart did" / "# (legacy/firmware/python/CommonDrivers/async_connect.py:176-181)." `_recover_device()` needs
+  no edit: it re-selects STA in the silent mode and returns `None` only with no configuration.
+  (5) **A credentials change lands in the fresh-boot state** (owner, 2026-10-08: "Any change of credentials, no matter
+  from which side, lands in the same mode as "initial connection attempt after a fresh boot". All further steps follow
+  normally."). `reconnect_wifi()` stays the identity group's `post_fct` (`buildgen/validate.py` `SETTINGS_GROUPS`: every
+  accepted Wi-Fi field, from the hotspot page or the home network) and also sets a fresh-boot flag;
+  `_handle_reconnect_trigger()` with the flag set leaves the hotspot, the silent mode (its timer deinit'd) or the
+  established link as today, then sets `_connection_failures = 0`, `_hotspot_started_once = False` and
+  `_PHASE_STA_SEEKING` — a fresh streak, the hotspot available once more. A settings trigger pending beside a window end
+  wins. The `_error_check()` hardware streak is no part of the mode and stays as it is. One comment (≤ 3 lines) at
+  `reconnect_wifi()`: "# The settings hook: a credentials change lands in the fresh-boot state, a fresh streak and the
+  hotspot once more" / "# (owner, 2026-10-08)."
+  (6) **The window end keeps its meaning**: one more STA streak, then the silent mode. A private window-end trigger,
+  called by the watcher (M.SRC_NET.087 (2)), does what `reconnect_wifi()` does at HEAD — the timer deinit'd, the flash
+  task cancelled, `_reconn_wifi` set — without the fresh-boot flag, so `_hotspot_started_once` stays set.
+  (7) The new members sit where D.15's key puts them (M.SRC_NET.103); the two flags are set in `__init__` with the state
+  block. Decided at execution, each with its reason recorded: the new members' names; whether the dark guard reads the
+  phase in the LED helpers or holds the LED handle back while silent; whether the silent attempt is a branch of
+  `_run_sta_mode()` or a method of its own.
+- **Resolved**: The owner's scan design is not built: `WLAN.scan()` blocks the VM past the watchdog
+  (`extmod/network_cyw43.c:236-246`, v1.29.0); the register records the connect-attempt design and the owner's "a" to it
+  (OR151). The period reuses `hotspot_time_min`, as the owner asked ("ideally derived or identical to one of the
+  existing periods"), on the window's own `PERIODIC` timer, free in the silent mode: the field's whole range (1-35,791
+  min, `buildgen/validate.py`) works, where a `ticks_ms()` deadline would pass `ticks_diff()`'s 2**29 ms horizon above
+  8,947 min; a dropped soft callback re-fires one period later (C.9); tests fire it directly; no new tunable (N.1).
+  OR151's "only through a reboot" and OR152's fresh boot on a credentials change both hold: no request reaches a silent
+  unit (no hotspot, no link), and an attempt that links is a normal connection, from which a credentials change lands in
+  the fresh-boot state. A task restart during the window-end streak still clears the hotspot-used-once state, as at HEAD
+  (A.4's restart rule, agent, 2026-09-30; OR151's "as is"); a restart in the silent mode keeps it. No readable Wi-Fi
+  configuration (`_apply_initial_led_config()`) keeps its terminal no-radio state with its own pattern, as the owner
+  decided for it (owner, 2026-09-29, OR97.a (19): "and 'Missing WLAN configuration'"; 2026-10-02): OR151 speaks of the
+  second streak only — a reading recorded for the lead. "Silent" is the LED (the owner's "It should look like turned
+  off"): each silent attempt's verdict warning persists as every attempt's does (C.7's attempt tier; FRAM writes are not
+  wear, and the newest-entry rule keeps the run to one slot).
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.077, M.SRC_NET.081, M.SRC_NET.087 (their U22 stages: the constants, the stations answer, the
+  watcher); M.GEN.034 (W80 `WLAN_SILENT`, E65 retired; its U22 stage); M.SRC_NET.083, .084, .088, .093, .098, .100, .102
+  (as U18 left them).
+- **Blast carried by**: unit tests of every type the owner named → M.TEST_UNIT.346; the real PUT path into the
+  fresh-boot state → M.TEST_UNIT.296 (1); a real NeopixelDriver dark through the silent mode → M.TEST_UNIT.347; the
+  cancellation sweep → M.TEST_UNIT.221; the twin's access-point switch, chip-down stations answer and L2 cases →
+  M.TWIN.040 (2), M.TWIN.132 (2), M.TWIN.144 (19), M.TWIN.058 (1), M.TWIN.059 (5); the fault-or-warning allow-list →
+  M.TSC.231; the catalog check's list → M.TSC.088; SPEC A.4, A.8, C.7, C.8, C.9, E.6.4, F.1, L.3, Part N → M.SPEC.163,
+  .016, .021, .058, .064, .082, .146; DEVICE_REFERENCE, CLAUDE.md, README → M.DOCS.027, .110, .111, .026, .048, .060;
+  the bench role reversal and its README → M.HW_BENCH.071, .073, .110, .124, .130.
+- **Kind**: code
+
+### M.SRC_NET.224 A stations check counts only a confirmed client; a failed check persists its warning
+- **From**: OR152 (owner requirement, 2026-10-08: the stations check returns to the legacy rule — "yes, record it that
+  way", to the agent's proposal) (U22 start fold, execution-time delta).
+- **Site**: `src/asy_wifi_service.py` — `_manage_hotspot_stations()`.
+- **Change**: `stations = await self._get_hotspot_stations()` (`None` for a failed check, M.SRC_NET.081 (2)); `if
+  stations is None:` `await self.pr.wrn_s("Hotspot stations unknown, counted as no client",
+  wrnno=_WRN_WLAN_STATIONS_UNKNOWN)`, then `await self._hotspot_client_absent()` and `return`; otherwise a non-empty
+  list runs `_hotspot_client_connected()` and an empty one `_hotspot_client_absent()`, as at HEAD. Whatever the check
+  cannot confirm as a client counts as no client, as legacy's check did
+  (`legacy/firmware/python/CommonDrivers/async_connect.py:256-266`, read only), and a failed check also persists its
+  warning. One comment line at the branch: "# Unconfirmed is no client (owner, 2026-10-08): a glitch cannot end the
+  window under a client, whose next good check stops it." This replaces the rule "a failed stations query leaves the
+  hotspot timer as it was" (agent, 2026-10-06), which M.SRC_NET.093 (1) landed in U18.
+- **Resolved**: The owner accepted the agent's proposal (owner, 2026-10-08: "yes, record it that way"). From the code: a
+  failed check arms the window only when no timer runs (`_hotspot_client_absent()`), and a client present at the next
+  good check five seconds later deinits it (`_hotspot_client_connected()`), so a glitch cannot close the hotspot under a
+  client; a radio whose stations answer stays unfilled can no longer hold an unattended unit on its hotspot. One `wrn_s`
+  per failed check: the newest-entry rule keeps a run of them to one W77 slot with its count.
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.081, M.SRC_NET.087 (their U22 stages); M.GEN.034 (W77's text, its U22 stage); M.SRC_NET.093 (as
+  U18 left it).
+- **Blast carried by**: tests (a raising query and the 32-entry answer each count as no client, arm the window and keep
+  one W77 slot; 31 entries are clients; an empty list is no client without a warning; the "timer left as it was" test
+  inverted) → M.TEST_UNIT.346; twin (the AP's chip-down answer, and the raising query once the twin's filter exists) →
+  M.TWIN.040 (2), M.TWIN.144 (19), (17); catalog W77 text → M.GEN.034 (2); SPEC A.4, C.7, F.1 → M.SPEC.163, M.SPEC.058
+  (15).
 - **Kind**: code
 
 ## src/asy_webserver_service.py
@@ -4134,3 +4288,16 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | R54 | M.SRC_NET.127, .129 (the window counter called without `await`), .162 (the unintelligible-link code is E89, as .153 and the catalog number it), .119 (Blast and Depends name M.TEST_UNIT.332's U19 `uptime_s=` stage) | amended |
 | R54 | M.SRC_NET.220 (Blast: the test carriers of the copy-out helper with their U17 stages; the generated `limits=TransferLimits(…)`), .222 (floor from one config flush, `_FLASH_HOLD_MAX_MS`, the peer's re-initiations under stop-and-wait; `_ERR_UART_RXBUF` kept; dev's 8,192 ring), .221 (Depends: no retained growth against an ambient control), .213 (one forwarded `TransferLimits` within `max-args = 8`; the echo answered by one copy-out), .214 (the banner compared by copy-out into a scratch allocated once) | amended |
 | R55 | M.SRC_NET.220 (`TransferLimits(payload_size, timeout, chunk_bytes, max_transfer_bytes)`, `_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS`, public `DEFAULT_LIMITS`; `UARTComm(uart, role, limits, callbacks, name, log, logger)`, seven parameters, fields unpacked in `__init__`; U17 is the one stage that replaces `payload_size`/`timeout`; Blast names every construction's U17 carrier), .155 (U17 stage: `limits` replaces the pair; U5-U17 eight-parameter form stands), .213 (U17: `(uart, role, limits, name_ext, log, logger)`, six parameters, `limits` forwarded whole; its own `payload_size`/`timeout` go) | amended |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.SRC_NET.223 | added |
+| OR151 | M.SRC_NET.077 (2), .087 (2), .104 (1) | amended |
+| OR152 | M.SRC_NET.223 (5), (6); M.SRC_NET.224 | added |
+| OR152 | M.SRC_NET.081 (2), .087 (2) | amended |

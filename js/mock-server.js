@@ -15,7 +15,7 @@ const REST_PATHS = /** @type {const} */ ([
     "/status",
 ]);
 
-const SYSTEM_CMDS = ["reboot", "bootloader", "mempause"];
+const SYSTEM_CMDS = ["reboot", "bootloader", "mempause", "resetconfig", "erasefram"]; // matches src/asy_webserver_service.py's own _SYSTEM_CMDS
 // Each flat endpoint's dispatched actions (src/asy_webserver_service.py's dispatch_keys); sent anywhere else, "Invalid".
 /** @type {Record<"networking" | "system" | "notification", string[]>} */
 const DISPATCH_KEYS = { networking: [], system: ["SystemCmd"], notification: ["PauseTime", "LightCmdLED"] };

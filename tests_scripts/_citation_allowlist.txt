@@ -62,7 +62,6 @@ SPECIFICATION.md	WP3
 SPECIFICATION.md	WP3
 SPECIFICATION.md	WP5
 SPECIFICATION.md	WP5
-SPECIFICATION.md	WP6
 SPECIFICATION.md	WP8
 SPECIFICATION.md	devices/zz_test_*.toml
 SPECIFICATION.md	devices/zz_test_*.toml
@@ -77,10 +76,6 @@ SPECIFICATION.md	src/sensortask_wozi.py
 SPECIFICATION.md	tests/test_digital_twin_run_dev_integration.py
 SPECIFICATION.md	tests_hardware/bus_topology.py
 UART_C_PORT_CHANGELOG.md	WP3
-buildgen/buildspec.py	Session 2
-buildgen/frozen_modules.py	Session 6
-buildgen/generate.py	Session 6
-devices/dev.toml	WP3
 digital_twin/README.md	WP1
 digital_twin/machine.py	Step 5
 digital_twin/machine.py	Step 5
@@ -98,17 +93,14 @@ tests/_digital_twin_construction_scenarios.py	decision 10
 tests/test_asy_base_classes.py	Topic 6
 tests/test_asy_base_classes.py	WP4
 tests/test_asy_config_manager.py	WP5
+tests/test_asy_print_log.py	tests/_fram_mock.py
 tests/test_digital_twin_sensortask_integration.py	measure A
 tests/test_digital_twin_uart_link.py	WP3
 tests/test_notification_scd30_integration.py	src/sensortask_wozi.py
 tests/test_notification_scd30_sgp40_integration.py	src/sensortask_wozi.py
 tests/test_notification_sgp40_integration.py	src/sensortask_wozi.py
-tests/test_asy_print_log.py	tests/_fram_mock.py
 tests/test_setter_microdot_integration.py	WP5
 tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
-tests_hardware/README.md	Topic 6
-tests_hardware/README.md	WP3
-tests_hardware/README.md	WP3
 tests_hardware/README.md	tests_hardware/bus_topology.py
 tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	Topic 6
 tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	WP4
@@ -119,14 +111,7 @@ tests_hardware/flash/test_fram_storage.py	Topic 6
 tests_scripts/conftest.py	devices/zz_test_*.toml
 tests_scripts/test_build_firmware.py	devices/no-such-device.toml
 tests_scripts/test_build_website_sh.py	js/app.js.gz
-tests_scripts/test_buildgen_generate.py	Phase 3
-tests_scripts/test_buildgen_generate.py	Phase 4
-tests_scripts/test_buildgen_generate.py	Session 5
-tests_scripts/test_buildgen_generate.py	Topic 2
-tests_scripts/test_buildgen_generate.py	WP1
-tests_scripts/test_buildgen_validate.py	Phase 2
 tests_scripts/test_buildgen_validate.py	WP1
-tests_scripts/test_device_tomls.py	Session 3
 tests_scripts/test_device_tomls.py	tests_hardware/bus_topology.py
 tests_scripts/test_digital_twin_generated_boot.py	Session 3
 tests_scripts/test_digital_twin_generated_boot.py	Session 6

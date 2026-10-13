@@ -2,15 +2,15 @@
 every real generated device under the Unix port and asserts the two one-time boot lists still place
 their survivors low, measured through tests_hardware/heap_map.py - the board tier's own parser."""
 
-from __future__ import annotations
-
+import ast
 import json
 import os
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple
+from typing import NamedTuple
 
 import pytest
 from _devices import DEVICE_NAMES
@@ -23,9 +23,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"
 
 # No E402 suppression: ruff exempts a sys.path insert outright, and RUF100 fails an unused one.
 from heap_map import HeapMap, delta, parse_labelled
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 # scripts/test.sh's own MICROPYPATH, heap size and interpreter, so this measures what the suite
 # measures. The heap size is deliberately NOT calibrated to a fill fraction: every bound below is
@@ -90,6 +87,8 @@ _RETENTION_TOLERANCE = 0.01
 # The allocation-failure markers every gate shares, from the hardware tier's harness
 # (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
 _MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
+# The line the probe's always-printing asyncio report opens with for a task that died unawaited.
+_TASK_DEATH_MARKER = str(load_script_module(Path(__file__).resolve().parent.parent / "digital_twin" / "unix_port_unretrieved_report.py", "unix_port_unretrieved_report").MARKER)
 
 _COUNTER_LINE = re.compile(r"^(?:LISTS|COUNTS) (.*)$", re.MULTILINE)
 _RING_LINE = re.compile(r"^RING (\S+) (\S+) (none|0x[0-9a-f]+) (\d+)$", re.MULTILINE)
@@ -124,12 +123,14 @@ def _parse_counters(stdout: str) -> dict[str, int]:
 
 def _checked_probe_run(device: str, arm: str, completed: subprocess.CompletedProcess[str]) -> _ProbeRun:
     # One finished probe, judged: exit status, its own PASS line, no allocation-failure marker
-    # (SPECIFICATION.md Part I.4(e)), and every map the bounds read.
+    # (SPECIFICATION.md Part I.4(e)), no task that died, and every map the bounds read.
     tail = f"{completed.stdout[-3000:]}\n{completed.stderr[-3000:]}"
     assert completed.returncode == 0, f"the probe failed for {device}/{arm} (exit {completed.returncode}):\n{tail}"
     assert "RESULT: PASS" in completed.stdout, f"the probe never reached its own PASS line for {device}/{arm}:\n{tail}"
     marked = [line for line in f"{completed.stdout}\n{completed.stderr}".splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
     assert not marked, f"the probe for {device}/{arm} logged an allocation failure:\n" + "\n".join(marked)
+    died = [line for line in f"{completed.stdout}\n{completed.stderr}".splitlines() if _TASK_DEATH_MARKER in line]
+    assert not died, f"the probe for {device}/{arm} reports that a task died during the boot it measured:\n" + "\n".join(died)
     maps = parse_labelled(completed.stdout)
     missing = [label for label in _REQUIRED_MAPS if label not in maps]
     assert not missing, f"no usable map captured for {missing} on {device}/{arm} - the measurement would be vacuous:\n{tail}"
@@ -203,7 +204,7 @@ def _blocks_above(before: HeapMap, after: HeapMap, band: int) -> int:
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
-    # The emitted collects' own job (buildgen/codegen.py's batch): each one resets the allocator's
+    # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
     # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
     # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
     maps = boot_probe(device, _ARM_LIVE).maps
@@ -217,7 +218,7 @@ def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
-    # Both lists together - the batch plus start_and_check_tasks()'s starter loop, which archive 7A.3
+    # Both lists together - the batch plus start_tasks()'s starter loop, which archive 7A.3
     # measured as mattering as much as the batch. Read at the loop's own end, never after a settle:
     # the run phase undoes most of the gain within ~2 s and the position stops discriminating (MEASUREMENTS M3.9).
     maps = boot_probe(device, _ARM_LIVE).maps
@@ -230,7 +231,7 @@ def test_the_whole_boot_sequence_places_its_survivors_low(boot_probe: Callable[[
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
-def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
+def test_suppressing_the_placement_collects_breaks_both_bounds(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
     # The control arm, and the reason the bounds above mean anything: a bound the broken
     # configuration also satisfies is not a guard. The arm keeps only the seam's own anchor collect
     # (both arms need it to be comparable) and drops the per-module ones, so this UNDERSTATES.
@@ -238,9 +239,9 @@ def test_suppressing_the_emitted_collects_breaks_both_bounds(boot_probe: Callabl
     seam, after = maps["batch_00"], maps["after_starter_loop_end"]
     batch_depth = -_median(seam, maps["after_batch"])
     boot_reach, boot_high = _reach(seam, after), _blocks_above(seam, after, _HIGH_BAND)
-    assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every emitted collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
-    assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
-    assert boot_high > _HIGH_BAND_BLOCKS_MAX, f"{device}: with every collect suppressed only {boot_high} new blocks sat more than {_HIGH_BAND} B above the seam, still inside the {_HIGH_BAND_BLOCKS_MAX} allowed"
+    assert batch_depth < _BATCH_MEDIAN_DEPTH_MIN, f"{device}: with every per-unit collect suppressed the batch's median still sat {batch_depth} B below the seam, past the {_BATCH_MEDIAN_DEPTH_MIN} B bound - the bound no longer detects the defect it exists for"
+    assert boot_reach > _BOOT_REACH_MAX, f"{device}: with every per-unit collect suppressed the whole boot sequence still stayed inside the {_BOOT_REACH_MAX} B bound (reach {boot_reach} B)"
+    assert boot_high > _HIGH_BAND_BLOCKS_MAX, f"{device}: with every per-unit collect suppressed only {boot_high} new blocks sat more than {_HIGH_BAND} B above the seam, still inside the {_HIGH_BAND_BLOCKS_MAX} allowed"
 
 
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
@@ -275,16 +276,41 @@ def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
     repo_root: Path,
     device: str,
 ) -> None:
-    # Derived from each list's own length, never from the emitted line count: the effect measured
-    # above anchors its seam at the FIRST collect, so a dropped leading collect would re-anchor it
-    # silently - this is the assertion that keeps that anchor honest, and it is what then fails.
+    # Derived from each list's own length: the effect measured above anchors its seam at the FIRST
+    # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
+    # keeps that anchor honest, and it is what then fails.
     counters = boot_probe(device, _ARM_LIVE).counters
     source = (repo_root / "build" / "generated_src" / f"sensortask_{device}.py").read_text()
-    setup_calls = len(re.findall(r"^\s*await \w+\.setup\(\)\s*$", source, re.MULTILINE))
-    assert setup_calls > 0, f"{device}: the generated build_system() has no setup() calls at all, so this count would be vacuous"
-    assert counters["batch_collects"] == setup_calls + 1, f"{device}: the generated build_system() awaits {setup_calls} setup() calls, so it must collect {setup_calls + 1} times (one before the batch, one after each module) - a real boot fired {counters['batch_collects']}"
-    assert counters["starter_collects"] == counters["starters"] + 1, f"{device}: {counters['starters']} task starters ran but the loop collected {counters['starter_collects']} times, not {counters['starters'] + 1}"
-    assert source.count("gc.collect()") == setup_calls + 1, f"{device}: the generated module carries {source.count('gc.collect()')} gc.collect() lines against {setup_calls} setup() calls - one before the batch and one after each module is {setup_calls + 1}"
+    setup_calls = _setup_list_length(source)
+    assert setup_calls > 0, f"{device}: the generated _collect_setups() lists no setup at all, so this count would be vacuous"
+    assert counters["batch_collects"] == setup_calls + 1, f"{device}: the generated _collect_setups() lists {setup_calls} setups, so run_setups() must collect {setup_calls + 1} times (one before the list, one after each unit) - a real boot fired {counters['batch_collects']}"
+    assert counters["starter_collects"] == counters["starters"] + 1, f"{device}: {counters['starters']} task starters ran but start_tasks() collected {counters['starter_collects']} times, not {counters['starters'] + 1}"
+    assert "gc.collect(" not in source, f"{device}: the generated module carries a gc.collect( of its own - both boot lists' collects belong to SystemService (SPECIFICATION.md Part I.4(f.1))"
+
+
+def _setup_list_length(source: str) -> int:
+    # The entries of the list the generated _collect_setups() returns, read from its AST: a list
+    # display of bound setup methods, nothing starred, so its length is the number of units.
+    tree = ast.parse(source)
+    found = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_collect_setups"]
+    assert len(found) == 1, f"expected one module-level _collect_setups() in the generated module, found {len(found)}"
+    returns = [node for node in ast.walk(found[0]) if isinstance(node, ast.Return)]
+    assert len(returns) == 1 and isinstance(returns[0].value, ast.List), "_collect_setups() must return one list display - the count reads its entries"
+    entries = returns[0].value.elts
+    assert not any(isinstance(entry, ast.Starred) for entry in entries), "_collect_setups() returns a starred entry, so its length is not the number of units"
+    return len(entries)
+
+
+def test_the_setup_list_reader_counts_the_returned_entries() -> None:
+    # A guard on the reader itself: the count above is only as good as this parse.
+    source = 'def _collect_setups() -> "list[SetupFct]":\n    return [fram.setup, sysfunct.setup, conn.setup]\n'
+    assert _setup_list_length(source) == 3
+    with pytest.raises(AssertionError, match="one module-level _collect_setups"):
+        _setup_list_length("def main() -> None:\n    pass\n")
+    with pytest.raises(AssertionError, match="one list display"):
+        _setup_list_length("def _collect_setups() -> list:\n    setups = []\n    return setups\n")
+    with pytest.raises(AssertionError, match="starred entry"):
+        _setup_list_length("def _collect_setups() -> list:\n    return [fram.setup, *rest]\n")
 
 
 def _uart_link_devices() -> list[str]:
@@ -319,7 +345,7 @@ def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callabl
 _BOARD_SCRIPT = "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py"
 # The probe's header claims it mirrors the board script's bounds, so that a twin reading and a
 # board reading are taken at the same positions of the same sequence. Nothing pinned that claim.
-_MIRRORED_BOUNDS = ("_STARTER_LOOP_TIMEOUT_MS", "_STARTER_LOOP_GRACE_MS", "_TIMERS_TIMEOUT_S")
+_MIRRORED_BOUNDS = ("_STARTER_LOOP_TIMEOUT_MS", "_TIMERS_TIMEOUT_S")
 
 
 def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:
@@ -369,6 +395,15 @@ def test_a_probe_that_logged_an_allocation_failure_fails_even_when_it_passed() -
         _checked_probe_run("wozi", _ARM_LIVE, completed)
 
 
+def test_a_probe_in_which_a_task_died_fails_even_when_it_passed() -> None:
+    # No supervisor runs in the probe, so nothing restarts or records a dead task: the PC report's line is the
+    # only trace, and a boot that lost a task places a different set of survivors than the one measured.
+    planted = "boot ok\nUNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved\nValueError: planted\nRESULT: PASS\n"
+    completed = subprocess.CompletedProcess(["probe"], 0, stdout=planted, stderr="")
+    with pytest.raises(AssertionError, match="a task died during the boot it measured"):
+        _checked_probe_run("wozi", _ARM_LIVE, completed)
+
+
 def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_root: Path) -> None:
     # This file's header claims it measures what scripts/test.sh measures. A MICROPYPATH that
     # drifted would resolve `import sensortask_<device>` somewhere else, or not at all, and the
@@ -380,7 +415,7 @@ def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_ro
 
 def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_root: Path) -> None:
     # Drift here is silent and invalidates the handover: the board reading is only comparable to the
-    # twin's if both wait out the same starter loop by the same margin. Two files by necessity - a
+    # twin's if both bound the same starter loop and timer start alike. Two files by necessity - a
     # device script is pushed to the board standalone and can import nothing from tests_scripts/.
     twin = _int_constants((repo_root / _PROBE).read_text(), _MIRRORED_BOUNDS)
     board = _int_constants((repo_root / _BOARD_SCRIPT).read_text(), _MIRRORED_BOUNDS)

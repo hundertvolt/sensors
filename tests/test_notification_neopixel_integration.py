@@ -24,13 +24,20 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Awaitable, Callable, Coroutine
+    from typing import Protocol, TypeVar
 
     T = TypeVar("T")
 
+    class _HourMinute(Protocol):
+        # The local-time callback's answer as the service reads it (its own _LocalTime): read-only hour and minute.
+        @property
+        def hour(self) -> int: ...
+        @property
+        def minute(self) -> int: ...
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
+
+def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
     return asyncio.run(coro)
 
 
@@ -69,7 +76,7 @@ _FRAME_S = 1.0 / _FREQ_HZ  # the pixel's frame period, also the pace of every co
 
 
 def make_pair(
-    signals: "tuple[NotificationSignal, ...]", local_time: "Callable[[], Coroutine[Any, Any, Any]]" = _local_time,
+    signals: "tuple[NotificationSignal, ...]", local_time: "Callable[[], Awaitable[_HourMinute | None]]" = _local_time,
 ) -> "tuple[NeopixelDriver, NotificationService]":
     # freq=100 keeps ramps fast in real wall-clock time (same reasoning as
     # tests/test_asy_neopixel_driver.py's own make_driver()).

@@ -16,9 +16,9 @@ The Unit slot therefore names a change's completing unit and its explicit stages
 
 ## 2. Counts
 
-- Merged changes: 1909 (1,865 from the cluster merges plus 44 the A-C3 reports proposed, now in the M files: AC3_S M.GEN.064, M.SRC_CORE.132, M.SRC_SENS.093, the eight S-05 docstring changes, M.HW_BENCH.137, M.TEST_UNIT.341, M.TWIN.166, M.DOCS.109 (= AC3_R R-04's doc change), M.PROC.046/.047; AC3_R R-04's run change M.PROC.048). Changes with no step: M.SRC_CORE.108, M.TSC.183, M.TSC.225.
-- Steps: 6571 (4831 named by their Unit slot, 1740 implicit per rule 2) in 43 units.
-- Edges (deduplicated step pairs): 74,949; by kind: action 60,760, blast 5,737, dep-A 3,020, dep-M 8,328, sweep 445. `action` = an action-level Depends; `blast` = a blast edit after its cause; `dep-A`/`dep-M` = a change's Depends slot; `sweep` = a whole-tree sweep after the per-file changes it completes.
+- Merged changes: 1917 (1,865 from the cluster merges plus 52 the A-C3 reports proposed, now in the M files: AC3_S M.GEN.064, M.SRC_CORE.132, M.SRC_SENS.093, the eight S-05 docstring changes, M.HW_BENCH.137, M.TEST_UNIT.341, M.TWIN.166, M.DOCS.109 (= AC3_R R-04's doc change), M.PROC.046/.047; AC3_R R-04's run change M.PROC.048). Changes with no step: M.SRC_CORE.108, M.TSC.183, M.TSC.225.
+- Steps: 6599 (4859 named by their Unit slot, 1740 implicit per rule 2) in 43 units.
+- Edges (deduplicated step pairs): 75,008; by kind: action 60,760, blast 5,737, dep-A 3,020, dep-M 8,387, sweep 445. `action` = an action-level Depends; `blast` = a blast edit after its cause; `dep-A`/`dep-M` = a change's Depends slot; `sweep` = a whole-tree sweep after the per-file changes it completes.
 - Violations (an edge from a later step) after the fixes: 0. Dependency deferrals: 194. Co-landing groups inside a unit: 52. Lower-priority in-unit edges dropped because they closed a cycle: blast 248, dep-A 151, dep-M 740.
 - Unit and Depends edits written into the M files: 229 (each with a row in its file's "## A-C2 order notes" table).
 
@@ -315,49 +315,49 @@ Inside a unit, in its in-unit order: after each step (or co-landing group), run 
 
 | unit | steps (named + implicit) | actions | co-landing groups | scoped test files | coverage run | hardware rounds that exercise it |
 |---|---|---|---|---|---|---|
-| U0 | 254 (179 + 75) | 59 | 1 | 166 | yes | R1, R3 |
-| U0R | 155 (91 + 64) | 25 | 2 | 149 | yes | R0, R1, R5 |
-| U1 | 90 (70 + 20) | 29 | 1 | 107 | yes | R0, R1, R2, R3 |
-| U2 | 218 (159 + 59) | 18 | 1 | 130 | yes | R1, R3 |
-| U3 | 173 (132 + 41) | 23 | 2 | 113 | yes | R1, R3 |
-| U4 | 43 (33 + 10) | 10 | 1 | 89 | yes | R1, R3 |
-| U5 | 212 (148 + 64) | 22 | 1 | 149 | yes | — |
-| U6 | 105 (83 + 22) | 37 | 1 | 113 | yes | R1, R3 |
-| U7 | 117 (79 + 38) | 36 | 0 | 161 | — | R1, R3 |
-| U8 | 186 (113 + 73) | 28 | 1 | 161 | yes | R0, R1, R3, R4, R5, R7 |
-| U8C | 154 (28 + 126) | 116 | 1 | 120 | — | R1, R3 |
-| U8C2 | 65 (3 + 62) | 49 | 0 | 95 | — | R1, R3 |
-| U9 | 45 (36 + 9) | 15 | 1 | 65 | yes | R1, R4, R5 |
-| U10 | 599 (443 + 156) | 63 | 1 | 181 | yes | R1, R3, R4, R5, R7 |
-| U11 | 195 (148 + 47) | 80 | 1 | 144 | yes | R1, R3, R4, R5 |
-| U12 | 52 (42 + 10) | 25 | 1 | 91 | yes | R1, R3 |
-| U13 | 131 (112 + 19) | 30 | 1 | 111 | yes | R0, R1, R2, R3, R4, R5, R7 |
-| U14 | 99 (62 + 37) | 58 | 2 | 136 | yes | R1, R2, R3 |
-| U15 | 203 (172 + 31) | 62 | 1 | 125 | yes | R1, R2, R3, R5 |
-| U16 | 119 (101 + 18) | 36 | 1 | 118 | yes | R1 |
-| U17 | 109 (96 + 13) | 36 | 2 | 84 | yes | R1, R3 |
-| U18 | 194 (168 + 26) | 56 | 3 | 125 | yes | R1, R3 |
-| U19 | 119 (92 + 27) | 33 | 1 | 124 | yes | R1, R2, R3 |
-| U20 | 242 (179 + 63) | 67 | 1 | 167 | yes | R1, R3 |
-| U21 | 109 (88 + 21) | 47 | 1 | 142 | — | R0, R1, R3, R4, R5 |
-| U22 | 23 (18 + 5) | 4 | 0 | 49 | yes | — |
-| U23 | 112 (94 + 18) | 63 | 1 | 127 | yes | R1, R3 |
-| U24 | 393 (307 + 86) | 113 | 1 | 187 | yes | R1, R2, R3 |
-| U25 | 211 (187 + 24) | 148 | 3 | 171 | yes | R1, R2, R3, R5 |
-| U26 | 325 (311 + 14) | 162 | 3 | 145 | — | R0, R1, R2, R3, R4, R5, R6, R7 |
-| U27 | 246 (192 + 54) | 58 | 2 | 189 | yes | R0, R1, R3, R6 |
-| U28 | 156 (96 + 60) | 56 | 2 | 139 | yes | R0, R1, R3 |
-| U29 | 14 (8 + 6) | 8 | 0 | 55 | yes | R1, R3 |
-| U30 | 145 (115 + 30) | 29 | 1 | 155 | yes | R1, R2, R3 |
-| U31 | 100 (77 + 23) | 28 | 2 | 117 | yes | R1, R3, R4, R5 |
-| U32 | 43 (26 + 17) | 6 | 0 | 80 | yes | — |
-| U33 | 31 (12 + 19) | 15 | 1 | 78 | — | R1 |
-| U34 | 42 (29 + 13) | 19 | 2 | 80 | yes | R1, R3 |
-| U35 | 182 (126 + 56) | 72 | 2 | 141 | yes | R0, R1, R3, R4, R5 |
-| U36 | 403 (277 + 126) | 240 | 1 | 183 | yes | R0, R1, R2, R3, R4, R5 |
-| U37 | 63 (51 + 12) | 21 | 0 | 97 | — | R1, R3, R5 |
-| C | 87 (42 + 45) | 35 | 2 | 79 | — | R1, R3, R4, R5, R7 |
-| D | 7 (6 + 1) | 2 | 0 | 7 | — | — |
+| U0 | 254 (179 + 75) | 59 | 1 | 221 | yes | R1, R3 |
+| U0R | 155 (91 + 64) | 25 | 2 | 197 | yes | R0, R1, R5 |
+| U1 | 90 (70 + 20) | 29 | 1 | 161 | yes | R0, R1, R2, R3 |
+| U2 | 218 (159 + 59) | 18 | 1 | 185 | yes | R1, R3 |
+| U3 | 173 (132 + 41) | 23 | 2 | 160 | yes | R1, R3 |
+| U4 | 43 (33 + 10) | 10 | 1 | 156 | yes | R1, R3 |
+| U5 | 212 (148 + 64) | 22 | 1 | 205 | yes | — |
+| U6 | 105 (83 + 22) | 37 | 1 | 161 | yes | R1, R3 |
+| U7 | 117 (79 + 38) | 36 | 0 | 208 | — | R1, R3 |
+| U8 | 186 (113 + 73) | 28 | 1 | 216 | yes | R0, R1, R3, R4, R5, R7 |
+| U8C | 154 (28 + 126) | 116 | 1 | 164 | — | R1, R3 |
+| U8C2 | 65 (3 + 62) | 49 | 0 | 145 | — | R1, R3 |
+| U9 | 45 (36 + 9) | 15 | 1 | 114 | yes | R1, R4, R5 |
+| U10 | 599 (443 + 156) | 63 | 1 | 231 | yes | R1, R3, R4, R5, R7 |
+| U11 | 195 (148 + 47) | 80 | 1 | 197 | yes | R1, R3, R4, R5 |
+| U12 | 52 (42 + 10) | 25 | 1 | 141 | yes | R1, R3 |
+| U13 | 131 (112 + 19) | 30 | 1 | 166 | yes | R0, R1, R2, R3, R4, R5, R7 |
+| U14 | 99 (62 + 37) | 58 | 2 | 188 | yes | R1, R2, R3 |
+| U15 | 203 (172 + 31) | 62 | 1 | 182 | yes | R1, R2, R3, R5 |
+| U16 | 119 (101 + 18) | 36 | 1 | 166 | yes | R1 |
+| U17 | 109 (96 + 13) | 36 | 2 | 149 | yes | R1, R3 |
+| U18 | 194 (168 + 26) | 56 | 3 | 186 | yes | R1, R3 |
+| U19 | 119 (92 + 27) | 33 | 1 | 186 | yes | R1, R2, R3 |
+| U20 | 242 (179 + 63) | 67 | 1 | 223 | yes | R1, R3 |
+| U21 | 109 (88 + 21) | 47 | 1 | 191 | — | R0, R1, R3, R4, R5 |
+| U22 | 51 (46 + 5) | 9 | 0 | 145 | yes | R1, R5 |
+| U23 | 112 (94 + 18) | 63 | 1 | 188 | yes | R1, R3 |
+| U24 | 393 (307 + 86) | 113 | 1 | 236 | yes | R1, R2, R3 |
+| U25 | 211 (187 + 24) | 146 | 3 | 220 | yes | R1, R2, R3 |
+| U26 | 325 (311 + 14) | 161 | 3 | 191 | — | R0, R1, R2, R3, R4, R5, R6, R7 |
+| U27 | 246 (192 + 54) | 58 | 2 | 239 | yes | R0, R1, R3, R6 |
+| U28 | 156 (96 + 60) | 56 | 2 | 200 | yes | R0, R1, R3 |
+| U29 | 14 (8 + 6) | 8 | 0 | 103 | yes | R1, R3 |
+| U30 | 145 (115 + 30) | 28 | 1 | 206 | yes | R1, R2, R3 |
+| U31 | 100 (77 + 23) | 28 | 2 | 173 | yes | R1, R3, R4, R5 |
+| U32 | 43 (26 + 17) | 6 | 0 | 136 | yes | — |
+| U33 | 31 (12 + 19) | 15 | 1 | 133 | — | R1 |
+| U34 | 42 (29 + 13) | 19 | 2 | 126 | yes | R1, R3 |
+| U35 | 182 (126 + 56) | 72 | 2 | 193 | yes | R0, R1, R3, R4, R5 |
+| U36 | 403 (277 + 126) | 240 | 1 | 236 | yes | R0, R1, R2, R3, R4, R5 |
+| U37 | 63 (51 + 12) | 21 | 0 | 147 | — | R1, R3, R5 |
+| C | 87 (42 + 45) | 35 | 2 | 123 | — | R1, R3, R4, R5, R7 |
+| D | 7 (6 + 1) | 2 | 0 | 9 | — | — |
 
 ## 5. Hardware rounds and sessions
 
@@ -426,7 +426,7 @@ Per unit, the steps in order; `[a b]` is a co-landing group (one commit). The ac
 
 **U21** (109): M.DOCS.065, M.SPEC.088, M.SPEC.025, M.TOOL.001, M.SPEC.033, M.TOOL.036, M.TOOL.047, M.TOOL.048, M.TOOL.053, M.TOOL.059, M.TOOL.064, M.HW_BENCH.018, M.SCR.029, M.TOOL.070, [M.SCR.036 M.SCR.040 M.SCR.041 M.SCR.045 M.SCR.065 M.TOOL.037 M.TOOL.038 M.TOOL.039 M.TOOL.040 M.TOOL.041 M.TOOL.043 M.TOOL.046 M.TOOL.049 M.TOOL.050 M.TOOL.051 M.TOOL.052 M.TOOL.054 M.TOOL.055 M.TOOL.056 M.TOOL.057 M.TOOL.058 M.TOOL.060 M.TOOL.061 M.TOOL.062 M.TOOL.065 M.TOOL.067 M.TOOL.068 M.TOOL.069 M.TOOL.071 M.TOOL.072], M.DOCS.035, M.DOCS.047, M.DOCS.064, M.DOCS.070, M.DOCS.106, M.DOCS.066, M.HW_BENCH.104, M.HW_BENCH.125, M.HW_BENCH.126, M.HW_DEV.055, M.SCR.026, M.SCR.027, M.SCR.061, M.SCR.062, M.SCR.066, M.SCR.073, M.SPEC.026, M.SPEC.027, M.SPEC.028, M.SPEC.029, M.SPEC.031, M.SPEC.035, M.SPEC.036, M.SPEC.037, M.SPEC.106, M.SPEC.039, M.SPEC.109, M.SPEC.087, M.TEST_HELP.001, M.SPEC.076, M.SPEC.107, M.TEST_UNIT.001, M.HW_BENCH.075, M.TOOL.013, M.TOOL.019, M.TOOL.030, M.TOOL.042, M.TOOL.044, M.TOOL.063, M.TOOL.073, M.TOOL.074, M.TOOL.075, M.TOOL.079, M.TOOL.080, M.TSC.032, M.TSC.065, M.TSC.114, M.TSC.115, M.TSC.116, M.TSC.117, M.SPEC.042, M.SPEC.030, M.SPEC.041, M.SPEC.162, M.SPEC.038, M.SPEC.082, M.TOOL.018, M.TSC.125, M.TSC.126, M.HW_BENCH.021, M.HW_BENCH.112, M.TSC.135, M.TSC.171, M.TSC.221, M.TSC.229
 
-**U22** (23): M.SRC_SENS.028, M.SRC_SENS.035, M.SRC_SENS.033, M.SRC_SENS.020, M.SCR.028, M.SRC_SENS.025, M.SPEC.014, M.SRC_SENS.030, M.SRC_SENS.034, M.SRC_SENS.036, M.TEST_HELP.006, M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.080, M.TEST_UNIT.082, M.TEST_UNIT.084, M.TEST_UNIT.086, M.TEST_UNIT.087, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TOOL.030, M.TOOL.033, M.TWIN.132
+**U22** (51): M.DOCS.060, M.GEN.034, M.HW_BENCH.110, M.SPEC.016, M.SPEC.021, M.SPEC.058, M.SPEC.064, M.SPEC.082, M.SPEC.146, M.SRC_NET.077, M.DOCS.027, M.SRC_NET.081, M.SRC_NET.087, M.SRC_NET.223, M.DOCS.110, M.DOCS.111, M.HW_BENCH.071, M.HW_BENCH.073, M.HW_BENCH.124, M.SRC_NET.224, M.SPEC.163, M.SRC_SENS.028, M.SRC_SENS.035, M.SRC_SENS.033, M.SRC_SENS.020, M.SCR.028, M.SRC_SENS.025, M.SPEC.014, M.SRC_SENS.030, M.SRC_SENS.034, M.SRC_SENS.036, M.TEST_HELP.006, M.TEST_UNIT.078, M.TEST_UNIT.079, M.TEST_UNIT.080, M.TEST_UNIT.082, M.TEST_UNIT.084, M.TEST_UNIT.086, M.TEST_UNIT.087, M.TEST_UNIT.274, M.TEST_UNIT.276, M.TEST_UNIT.296, M.TEST_UNIT.346, M.TEST_UNIT.347, M.TOOL.030, M.TOOL.033, M.TSC.231, M.TWIN.040, M.TWIN.058, M.TWIN.132, M.TWIN.144
 
 **U23** (112): M.GEN.003, M.GEN.008, M.GEN.015, M.GEN.018, M.GEN.034, M.GEN.014, M.TEST_HELP.041, M.TEST_UNIT.332, M.TOOL.033, M.TSC.017, M.TSC.039, M.TSC.100, M.SPEC.111, M.TSC.170, M.TSC.202, M.TWIN.136, M.WEB.007, M.WEB.070, M.SRC_NET.043, M.WEB.018, [M.GEN.017 M.GEN.046 M.GEN.060 M.GEN.062 M.SCR.019 M.SCR.071 M.SRC_SENS.051 M.TSC.036 M.WEB.001 M.WEB.002 M.WEB.003 M.WEB.004 M.WEB.006 M.WEB.012 M.WEB.014 M.WEB.015 M.WEB.016 M.WEB.017 M.WEB.019 M.WEB.020 M.WEB.021 M.WEB.025 M.WEB.026 M.WEB.030 M.WEB.031 M.WEB.040 M.WEB.041 M.WEB.042 M.WEB.054 M.WEB.058 M.WEB.071], M.DOCS.032, M.DOCS.065, M.GEN.061, M.SCR.020, M.SCR.039, M.SCR.062, M.SCR.063, M.SCR.072, M.SPEC.021, M.SPEC.117, M.SPEC.118, M.SPEC.119, M.SPEC.120, M.SPEC.149, M.SRC_SENS.072, M.SRC_SENS.094, M.TEST_UNIT.333, M.TOOL.006, M.TOOL.019, M.TSC.040, M.TSC.156, M.TSC.159, M.TSC.214, M.TSC.224, M.WEB.005, M.SRC_SENS.033, M.SRC_SENS.035, M.TEST_UNIT.086, M.TEST_UNIT.087, M.TSC.072, M.TSC.121, M.WEB.013, M.WEB.022, M.WEB.050, M.SCR.068, M.SCR.028, M.SPEC.124, M.TOOL.079, M.WEB.052, M.WEB.055, M.WEB.057, M.WEB.059, M.WEB.061, M.WEB.064, M.WEB.066, M.PROC.045, M.WEB.068, M.WEB.051, M.WEB.053, M.WEB.065, M.WEB.069, M.SPEC.114, M.WEB.062, M.SCR.003, M.SCR.061, M.TWIN.034, M.WEB.060, M.WEB.063, M.WEB.074, M.WEB.076, M.WEB.080
 

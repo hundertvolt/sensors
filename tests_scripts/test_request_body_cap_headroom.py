@@ -95,7 +95,7 @@ def _largest_put_body(section: "Mapping[str, Any]") -> int:
 
 
 def _put_sections(repo_root: Path, device: str) -> "list[tuple[str, int]]":
-    definitions = definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
+    definitions = json.loads(json.dumps(definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")))
     sections = definitions["sections"]
     assert isinstance(sections, list)
     return [(s["rest"]["put"], _largest_put_body(s)) for s in sections if "put" in s.get("rest", {}) and _largest_put_body(s)]

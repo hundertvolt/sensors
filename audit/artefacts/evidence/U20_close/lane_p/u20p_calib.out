@@ -1,0 +1,174 @@
+api.envelope-codes-malformed error: [contract._STANDARD_CODES] /tmp/tmp2sl7tq2s/src/asy_api_response.py: _STANDARD_CODES is not an {int: str
+api.field-key-unclassified error: [contract] definitions field 'FRCState' carries ['description'], neither an API fact nor the page's own - 
+api.result-word-not-string error: [contract.FAILED] /tmp/tmp5g789gej/src/asy_config_manager.py: FAILED is 4, not a result word string - fix:
+api.route-unregistered error: [contract] definitions section 'sensors' names PUT /sensors, which ROUTES in /tmp/tmpez3io0q5/src/asy_webserve
+api.routes-duplicate error: [contract.ROUTES] /tmp/tmp1og2bu1i/src/asy_webserver_service.py: ROUTES lists GET /measurements twice - fix: lis
+api.routes-not-tuple error: [contract.ROUTES] /tmp/tmpr8rpcxo1/src/asy_webserver_service.py: ROUTES is a str, not a tuple of rows - fix: wri
+api.routes-row-malformed error: [contract.ROUTES] /tmp/tmpnc6o4sua/src/asy_webserver_service.py: ROUTES row ('POST', '/measurements', '_get_
+api.source-name-missing error: [contract.ROUTES] /tmp/tmpgr4fok69/src/asy_webserver_service.py no longer defines ROUTES at module level - th
+api.source-not-literal error: [contract.ROUTES] /tmp/tmpoqnu5efs/src/asy_webserver_service.py: ROUTES is no longer a plain literal (malforme
+api.source-unreadable error: [contract._STANDARD_CODES] cannot read /tmp/tmpdnsvuru9/src/asy_api_response.py for its _STANDARD_CODES: [Errno
+bus.address-collision buildgen: [contract/bmp3xx_b.address] bus 'i2c0': address 0x76 claimed by both 'bmp3xx_a' and 'bmp3xx_b' - fix: give o
+bus.boot-clear-budget buildgen: [contract.timeout] the boot bus clear can run 8000 ms unfed over 2 I2C bus(es) (20 SCL waits of one timeout 
+bus.field-missing buildgen: [contract.scl_pin] bus.i2c0 (i2c) is missing required field 'scl_pin' - fix: add scl_pin to [bus.i2c0]
+bus.field-type buildgen: [contract.timeout] bus.i2c0 (i2c) timeout must be an int, got '200ms' - fix: write timeout as a whole number of mic
+bus.field-unknown buildgen: [contract.speed] bus.i2c0 (i2c) declares unrecognized field(s) ['speed'] - typo, or copy-pasted from an unrelate
+bus.fixed-address-collision buildgen: [contract/scd30_b] bus 'i2c0': ['scd30', 'scd30_b'] are all 'scd30'-family instances with no address f
+bus.i2c-frequency-range buildgen: [contract.frequency] bus.i2c0 (i2c) frequency 1000001 Hz is outside 1 … 1000000 - RP2040's I2C runs up t
+bus.i2c-timeout-max buildgen: [contract.timeout] bus.i2c0 (i2c) timeout 10000000 us is above the 200000 us bound - the boot bus clear waits 
+bus.i2c-timeout-range buildgen: [contract.timeout] bus.i2c0 (i2c) timeout 0 us is not positive - every SCL wait would end before it began - 
+bus.not-a-table buildgen: [contract.spi0] bus.spi0 is not a table - fix: write it as a [bus.spi0] table
+bus.uart-baudrate-range buildgen: [contract.baudrate] bus.uart0 (uart) baudrate 7812501 is outside 1 … 7812500 - RP2040's UART tops out at
+bus.uart-poll-idle-range buildgen: [contract/uart_link_init.poll_idle_ms] bus.uart0: poll_idle_ms 1 is outside 2 … 536870911 - the idle po
+bus.uart-poll-wait-range buildgen: [contract/uart_link_init.poll_wait_ms] bus.uart0: poll_wait_ms 0 is outside 1 … 9 - a UART transaction 
+bus.uart-rx-ring buildgen: [contract/uart_link_init.rx_ring] bus.uart0: rx_ring 64 is below the 128-byte floor uart_link_init needs (rxbuf's
+bus.uart-rxbuf-floor buildgen: [contract/uart_link_init.rxbuf] bus.uart0: rxbuf 79 is below the 80 bytes uart_link_init needs (one 53-byte f
+bus.uart-rxbuf-range buildgen: [contract.rxbuf] bus.uart0 (uart) rxbuf 32767 is outside 32 … 32766 - the port raises a smaller one silentl
+bus.uart-shared buildgen: [contract/uart_link_resp.bus] bus.uart0 is claimed by both 'uart_link_init' and 'uart_link_resp' - a UART is point
+bus.uart-timeout-floor buildgen: [contract/uart_link_resp.poll_idle_ms] bus.uart1: uart_link_resp's 1000ms reply timeout is below the 1001ms
+bus.uart-txbuf-range buildgen: [contract.txbuf] bus.uart0 (uart) txbuf 31 is outside 32 … 32766 - the port raises a smaller one silently a
+bus.unknown-id buildgen: [contract.i2c7] bus id 'i2c7' is not a real Pico W bus - valid ids are ['i2c0', 'i2c1', 'spi0', 'spi1', 'uart0', 'u
+bus.unused buildgen: [contract.i2c1] bus(es) ['i2c1'] declared but never referenced by any instance - fix: remove ['i2c1'] or point an insta
+cli.out-dir-unwritable buildgen: [contract] cannot write /tmp/tmpjeelfm0g/out: File exists - fix: check that the output directory is writabl
+device.backlog-above-ceiling buildgen: [contract.backlog] [device].backlog is 6, above max_connections + 1 (5) - each extra queued arrival h
+device.backlog-below-ceiling buildgen: [contract.backlog] [device].backlog is 3, below the 4 connections [device].max_connections admits - t
+device.conn-fail-to-hotspot-range buildgen: [contract.conn_fail_to_hotspot] [device].conn_fail_to_hotspot is 0 - below 1 the hotspot opens o
+device.field-missing buildgen: [contract.hostname] [device] is missing required field 'hostname' - fix: add hostname to [device]
+device.field-type buildgen: [contract.name] [device].name must be a non-empty string - fix: write name as a non-empty quoted string
+device.field-unknown buildgen: [contract.colour] [device] declares unrecognized field(s) ['colour'] - typo, or copy-pasted from an unrelated
+device.hostname-convention buildgen: [contract.hostname] [device].hostname is 'SensorStationOther', expected 'SensorStationTest' (SensorStat
+device.hostname-label buildgen: [contract.hostname] [device].hostname 'SensorStationTe_st' is not a host label (letters, digits, '-'; not st
+device.hostname-length buildgen: [contract.hostname] [device].hostname is 73 characters - network.hostname() caps at 32, so [device].name ma
+device.hotspot-password-length buildgen: [contract.hotspot_password] [device].hotspot_password is 5 characters - WPA2 allows 8 to 63 - fix: 
+device.hotspot-time-min-range buildgen: [contract.hotspot_time_min] [device].hotspot_time_min is 35792 - the hotspot Timer's period, 60000 x
+device.max-connections-lwip buildgen: [contract.max_connections] [device].max_connections is 64, which this firmware's lwIP settings cannot 
+device.max-connections-range buildgen: [contract.max_connections] [device].max_connections is 0 - a webserver admitting no connection at all
+device.ntp-retry-below-tick buildgen: [contract.ntp_retry_s] [device].ntp_retry_s is 1 - NTP checks its sync state every 10s, so no shorter 
+device.ntp-retry-max-below-retry buildgen: [contract.ntp_retry_max_s] [device].ntp_retry_max_s is 60, below the 120s first retry interval it
+device.ntp-retry-max-range buildgen: [contract.ntp_retry_max_s] [device].ntp_retry_max_s is 536870912 - the retry wait doubles up to it, and
+device.table-missing buildgen: [contract] missing [device] table - fix: add a [device] table naming the device and its hotspot settings
+device.wiring-field-missing buildgen: [contract.led_target] [device.wiring] is missing required field 'led_target' - fix: add led_target to 
+device.wiring-field-unknown buildgen: [contract.bogus_target] [device.wiring] declares unknown field 'bogus_target' - fix: use one of ['fram
+device.wiring-no-tag buildgen: [contract.led_target] [device.wiring].led_target declared, but asy_wifi_service.py has no matching @wiring ta
+device.wiring-not-table buildgen: [contract.wiring] [device].wiring must be a table, got 'neopixel' - fix: write it as a [device.wiring] tab
+driver.ambiguous-reader-class buildgen: [contract/x] /tmp/tmphj6h767_/src/asy_x_driver.py defines more than one SensorReader/SensorReaderCon
+driver.module-missing buildgen: [contract/fram] driver 'fram' maps to asy_fram_manager.py via the fallback table, but that file does not exi
+driver.no-build-recipe buildgen: [contract/neopixel] codegen has no build recipe for driver 'neopixel' - fix: add one to buildgen.codegen._B
+driver.no-reader-class buildgen: [contract/x] /tmp/tmpb_1uhhjg/src/asy_x_driver.py defines no SensorReader/SensorReaderConfig subclass - fix
+driver.unknown buildgen: [contract/nonexistent_chip] unknown driver 'nonexistent_chip': no asy_nonexistent_chip_driver.py in /tmp/claude-0/-
+gpio.claimed-twice buildgen: [contract/neopixel.pin] GPIO8 claimed twice - by 'scd30' and by 'neopixel' (pin) - fix: give one of them a free
+gpio.no-function buildgen: [contract/bus.uart0.tx_pin] bus.uart0.tx_pin=GP18 has no UART bus-wire function (RP2040 datasheet Table 279) - fi
+gpio.not-usable buildgen: [contract/scd30.irq_pin] scd30.irq_pin=GP23 is not a usable Pico W GPIO - must be 0-29, excluding the wireless-res
+gpio.type buildgen: [contract/scd30.irq_pin] scd30.irq_pin value '8' is not an int - fix: write irq_pin as a GPIO number
+gpio.wrong-bus buildgen: [contract/bus.i2c0.scl_pin] bus.i2c0.scl_pin=GP11 is wired to i2c1, not i2c0 - fix: use a GPIO Table 279 gives i2c0
+gpio.wrong-role buildgen: [contract/bus.i2c0.scl_pin] bus.i2c0.scl_pin=GP12 is i2c0's SDA pin, not its SCL pin - pins transposed? - fix: swa
+instance.address-not-selectable buildgen: [contract/scd30.address] scd30 declares an address field, but 'scd30' has no address-select pin (s
+instance.bus-kind buildgen: [contract/scd30.bus] scd30.bus='spi0' is a spi bus, but driver 'scd30' needs a i2c bus - fix: point bus at a i2c
+instance.bus-undeclared buildgen: [contract/scd30.bus] scd30 references undeclared bus 'i2c1' - fix: declare a [bus.i2c1] table or point bus
+instance.driver-missing buildgen: [contract] [[instance]] entry #0 is missing a 'driver' field - fix: add driver = "<name>" to this [[instan
+instance.driver-not-a-string buildgen: [contract] [[instance]] entry #0's 'driver' field must be a non-empty string, got 3 - fix: write the 
+instance.duplicate buildgen: [contract/scd30] duplicate [[instance]] entry for 'scd30' (driver+name_ext must be unique) - fix: give one of t
+instance.field-missing buildgen: [contract/scd30.irq_pin] scd30 is missing required field 'irq_pin' - fix: add irq_pin to this [[instance]]
+instance.field-not-finite buildgen: [contract/scd30.gain] scd30.gain=nan is not a finite number - fix: set gain within 0.5..2.5
+instance.field-not-in-set buildgen: [contract/fram.max_size] fram.max_size=4096 is not one of this driver's legal values [8192, 262144] - fi
+instance.field-out-of-range buildgen: [contract/scd30.trigger_s] scd30.trigger_s=1801 is outside this driver's legal range (1, 1800) - fix: 
+instance.field-type buildgen: [contract/scd30.bus] scd30.bus must be a string, got 0 - fix: write bus as a quoted bus id, e.g. "i2c0"
+instance.field-unknown buildgen: [contract/scd30.colour] scd30 declares unrecognized field(s) ['colour'] for driver 'scd30' - fix: remove or
+instance.irq-pull-up-type buildgen: [contract/scd30.irq_pull_up] scd30.irq_pull_up must be true or false, got 1 - fix: write true or false
+instance.name-ext-missing buildgen: [contract/scd30.name_ext] scd30 states no name_ext - a driver that may repeat names every instance expli
+instance.name-ext-not-a-string buildgen: [contract/scd30] 'scd30' instance's 'name_ext' field must be a string, got 1 - fix: write name_ext 
+instance.name-ext-singleton buildgen: [contract/notification_x.name_ext] notification_x: singleton service driver 'notification' must not de
+instance.no-buildspec-row buildgen: [contract/bogus2] bogus2: driver 'bogus2' resolves via buildgen.driver_registry but has no entry in buil
+instance.no-bus-kind-row buildgen: [contract/scd30] scd30: driver 'scd30' is in BUS_ATTACHED_DRIVERS but has no buildgen.buildspec.BUS_KIND_
+instance.not-an-array buildgen: [contract] [[instance]] must be an array of tables, got 5 - fix: declare each instance as an [[instance]] ta
+instance.requires-without-bus buildgen: [contract/neopixel] neopixel declares @requires bus tags but has no 'bus' field - fix: drop the driv
+instance.single-table buildgen: [contract] [instance] is a single table - instances are an array of tables - fix: write each instance header
+instance.uart-baud-mismatch buildgen: [contract/uart_link_resp.baudrate] uart_link pair: bus.uart0 runs at 115200 baud and bus.uart1 at 5760
+instance.uart-crc-mismatch buildgen: [contract/uart_link_resp.crc] uart_link pair: uart_link_init uses crc 'crc16' and uart_link_resp uses '
+instance.uart-crc-mode buildgen: [contract/uart_link_init.crc] uart_link_init.crc must be one of ['crc16', 'none'], got 'crc32' - fix: set c
+instance.uart-link-pair buildgen: [contract] a device wires exactly one uart_link initiator and one responder (RP2040 has only two UART peri
+instance.uart-role buildgen: [contract/uart_link_resp.role] uart_link_resp.role must be one of ['initiator', 'responder'], got 'peer' - fix:
+instance.uart-timeout-max buildgen: [contract/uart_link_init] uart_link_init's 100000000ms reply timeout is above 89478485ms - its drain bou
+instance.uart-transfer-cap buildgen: [contract/uart_link_init.max_transfer_bytes] uart_link_init.max_transfer_bytes 47 is outside 48 … 121
+instance.wiring-not-table buildgen: [contract/neopixel.wiring] neopixel's wiring must be a table, got 'fram' - fix: write it as a [instance.
+limits.checks-nothing buildgen: [contract/scd30.trigger_s] /tmp/tmprrxck4fc/src/asy_scd30_driver.py:180: @limits trigger_s declares '*..*', 
+limits.choice-not-int buildgen: [contract/scd30.trigger_s] /tmp/tmpg9wrseb7/src/asy_scd30_driver.py:180: @limits trigger_s choice '1.5' must
+limits.empty-choice-set buildgen: [contract/scd30.trigger_s] /tmp/tmp7fqwdrxn/src/asy_scd30_driver.py:180: @limits trigger_s declares an emp
+limits.inverted-range buildgen: [contract/scd30.trigger_s] /tmp/tmp8lfuoz31/src/asy_scd30_driver.py:180: @limits trigger_s range 1800..1 is 
+limits.missing-bound buildgen: [contract/scd30.trigger_s] /tmp/tmpdsgnqyve/src/asy_scd30_driver.py:180: @limits trigger_s range '1..' is mis
+limits.payload-shape buildgen: [contract/scd30.trigger_s] /tmp/tmp0heezlzl/src/asy_scd30_driver.py:180: @limits trigger_s payload 'in {3' is
+names.label-collision buildgen: [contract/foo_bar] instance_label collision: ('foo', 'bar') and ('foo_bar', '') both resolve to the generate
+names.logger-collision buildgen: [contract/bmp3xx] instance_name collision: 'bmp3xx' and the mandatory NTP module both claim the logger name
+names.not-an-identifier buildgen: [contract/sgp40_a-b.name_ext] 'sgp40_a-b' is not usable as a generated Python identifier - fix: use letter
+names.settings-key-collision buildgen: [contract.Hostname] settings key 'Hostname' is served twice in /networking: by conn and by ntp - fix:
+requires.missing-bus-field buildgen: [contract/scd30.timeout] bus.i2c0 is missing field 'timeout', required by scd30 ('# @requires bus.timeo
+requires.not-comparable BuildInternalError: internal: '200000' reached a later check as an int unchecked
+requires.unsatisfied buildgen: [contract/scd30.timeout] bus.i2c0.timeout=1000 does not satisfy scd30's requirement '# @requires bus.timeout>
+schema.malformed buildgen: [contract/scd30] /tmp/tmpbj2dq1hf/src/asy_scd30_driver.py:112: schema constant _VAL_X is malformed: record ('X', 
+schema.unreadable buildgen: [contract/scd30] /tmp/tmpgh2sdygu/src/asy_scd30_driver.py:112: schema constant _VAL_X cannot be read at build ti
+schema.value-not-json buildgen: [contract.MeasInterval] /tmp/tmp_a4z96qd/src/asy_scd30_driver.py: the schema of 'MeasInterval' holds b'\x00'
+source.field-unknown buildgen: [contract/sgp40.temperature_source] sgp40's wiring.temperature_source.field='Tmp' names no field of scd30's g
+source.fields-unreadable buildgen: [contract/scd30] /tmp/tmpth9oq7_s/src/asy_scd30_driver.py: cannot read the fields of SCD30_Reader.get_dat
+source.name-missing buildgen: [contract/scd30] /tmp/tmpn0r7lq9x/src/asy_scd30_driver.py declares no module-level _NAME constant - fix: decla
+source.name-not-literal buildgen: [contract/scd30] /tmp/tmpfcmv0dcm/src/asy_scd30_driver.py: _NAME is not a plain/const()-wrapped string lit
+source.syntax-error buildgen: [contract/scd30] /tmp/tmp6do48ixk/src/asy_scd30_driver.py has a syntax error: invalid syntax (asy_scd30_driver
+src.const-missing buildgen: [<src>._NTP_CHECK_INTERV] /tmp/tmpsxrdm4ir/src/asy_ntp_client.py no longer has a readable int _NTP_CHECK_INTERV 
+src.default-missing buildgen: [<src>.rx_ring] UART.__init__ no longer has a readable int default for 'rx_ring' in /tmp/tmp9_ej0810/src/asy_u
+src.schema-missing buildgen: [<src>.HotspotPW] /tmp/tmplky5an5d/src/asy_wifi_service.py no longer declares a HotspotPW schema with int bound
+src.unreadable buildgen: [<src>.HotspotPW] cannot read /tmp/tmpfezf2xg7/src/asy_wifi_service.py to resolve the HotspotPW schema: [Errno 2] N
+tag.duplicate-field buildgen: [contract/scd30.trigger_s] /tmp/tmprkwy90ht/src/asy_scd30_driver.py: declares two @limits tags for 'trigger_s'
+tag.malformed buildgen: [contract/scd30] /tmp/tmphncnmgtx/src/asy_scd30_driver.py:173: malformed @requires tag (doesn't match the required g
+tag.missing-sigil buildgen: [contract/scd30] /tmp/tmpa_1ur1vv/src/asy_scd30_driver.py:173: comment looks like an @requires tag with its lead
+tag.misspelled buildgen: [contract/scd30] /tmp/tmpsgczuh34/src/asy_scd30_driver.py:173: comment looks like a misspelled @requires tag: '# @r
+tag.non-finite-number buildgen: [contract/scd30] /tmp/tmpkk72rit1/src/asy_scd30_driver.py:180: @limits max 'inf' is not a finite number - fi
+tag.not-a-number buildgen: [contract/scd30] /tmp/tmpoxndk_0f/src/asy_scd30_driver.py:180: @limits min 'x' is not a number - fix: write it as
+tag.not-module-level buildgen: [contract/scd30] /tmp/tmpt_t5zrz9/src/asy_scd30_driver.py:579: @limits tag must be at module level, not insid
+toml.not-a-table buildgen: [contract] /tmp/tmpqbk70w4q/devices/contract.toml did not parse to a table at the top level - fix: write the devi
+toml.syntax buildgen: [contract] /tmp/tmpf69hikct/devices/contract.toml is not valid TOML: Invalid value (at end of document) - fix: correct
+toml.unreadable buildgen: [contract] could not read /tmp/tmpigitekb_/devices/contract.toml: [Errno 2] No such file or directory: '/tmp/tmpig
+toolchain.lwip-table buildgen: [<toolchain>.max_connections] cannot read the [lwip] table from /tmp/tmp0sklbn45/versions.toml ('lwip') - it 
+toolchain.overrides-unloadable buildgen: [<toolchain>.max_connections] cannot load toolchain/micropython_overrides.py, which owns lwIP's own
+twin.no-address-rule error: [contract/scd30] asy_scd30_driver.py has no readable module-level _SCD30_ADDR = const(<int>), so the twin cannot
+web.always-executed-and-dispatch buildgen: [contract/scd30.MeasInterval] /tmp/tmpmfsdllg5/src/asy_scd30_driver.py:126: @web tag for 'MeasInt
+web.codes-unknown-table buildgen: [contract.FRCState] codes='NoSuchTable' names no status table in error_catalog.json (tables: ['CalLight', 
+web.decimals-range buildgen: [contract/scd30.MeasInterval] /tmp/tmpn3ulhahn/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' has dec
+web.duplicate-group buildgen: [contract/scd30] /tmp/tmp7mcgbxp5/src/asy_scd30_driver.py: duplicate @web-group tag for section 'sensors'/grou
+web.enum-without-choices buildgen: [contract.ContMeas] /tmp/tmpk57cqep1/src/asy_scd30_driver.py: @web tag for 'ContMeas' has kind=enum but i
+web.group-declared-twice buildgen: [contract] more than one @web-group tag declares section='system' submitGroup='settings' - fix: keep one 
+web.group-undeclared buildgen: [contract] no @web-group tag declares section='system' submitGroup='settings' in any scanned file - fix: add 
+web.group-without-fields buildgen: [contract] section='notification' submitGroup='autoConfig' has an @web-group declaration but no @web fiel
+web.hidden-and-tagged buildgen: [contract/scd30.MeasInterval] /tmp/tmpw7j7mltw/src/asy_scd30_driver.py: field 'MeasInterval' is both hidden 
+web.hidden-no-reason buildgen: [contract/scd30.MeasInterval] /tmp/tmp430q0tz2/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' gives
+web.hidden-not-alone buildgen: [contract/scd30.MeasInterval] /tmp/tmpp5qfb1op/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' has h
+web.instance-group-missing buildgen: [contract/scd30] /tmp/tmp3lwr36gb/src/asy_scd30_driver.py: no @web-group section=measurements submitGro
+web.key-needs-readonly buildgen: [contract/scd30.MeasInterval] /tmp/tmpkqkfapwm/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' has
+web.key-needs-string buildgen: [contract/scd30.MeasInterval] /tmp/tmpbs92fcu8/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' has b
+web.kind-unknown buildgen: [contract/scd30.MeasInterval] /tmp/tmp2qzvcx2h/src/asy_scd30_driver.py:126: @web tag for 'MeasInterval' has unkno
+web.kind-unresolved buildgen: [contract.ContMeas] /tmp/tmpv8vaa8sk/src/asy_scd30_driver.py: @web tag for 'ContMeas' has no matching ConfigSc
+web.maintenance-tag-missing buildgen: [contract/sgp40] /tmp/tmp9fgocr_r/src/asy_sgp40_driver.py: no @web section=status submitGroup=maintena
+web.malformed-pairs buildgen: [contract/scd30.MeasInterval] /tmp/tmpytlk97mw/src/asy_scd30_driver.py:126: malformed @web tag for 'MeasInterv
+web.missing-key buildgen: [contract/scd30.MeasInterval] /tmp/tmp5g5xh83g/src/asy_scd30_driver.py:126: @web tag is missing required key(s) ['
+web.not-a-bool buildgen: [contract/scd30] /tmp/tmpnqikwn7y/src/asy_scd30_driver.py:126: @web mask= must be true or false, got 'yes' - fix: w
+web.path-malformed buildgen: [contract/scd30.CO2] /tmp/tmp3mejo5hd/src/asy_scd30_driver.py:161: @web tag for 'CO2' has malformed path='RGB.'
+web.quoted-special-off-string buildgen: [contract.AmbPres] /tmp/tmp19dnymje/src/asy_scd30_driver.py: @web tag for 'AmbPres' has a quoted spe
+web.schema-field-untagged buildgen: [contract/scd30.AmbPres] /tmp/tmp3wj54td8/src/asy_scd30_driver.py: schema field(s) ['AmbPres'] have no @
+web.special-not-in-schema buildgen: [contract.PW] /tmp/tmpo7393yyh/src/asy_wifi_service.py: @web tag for 'PW' declares special: value(s) ['g
+web.special-unlabelled buildgen: [contract.AmbPres] /tmp/tmprwgiadss/src/asy_scd30_driver.py: @web tag for 'AmbPres' has a sentinel special 
+web.string-key-off-string buildgen: [contract.MeasInterval] /tmp/tmpmjd5gxr9/src/asy_scd30_driver.py: @web tag for 'MeasInterval' has bytes=
+web.string-special-unquoted buildgen: [contract.PW] /tmp/tmpafwpzmsn/src/asy_wifi_service.py: @web tag for 'PW' has special:open= but a stri
+web.unknown-key buildgen: [contract/scd30.MeasInterval] /tmp/tmpu7hetqxj/src/asy_scd30_driver.py:126: @web tag has unknown key(s) ['bogus']:
+web.value-not-in-set buildgen: [contract/scd30.TS] /tmp/tmpp08oxeig/src/asy_scd30_driver.py:168: @web tag for 'TS' has format='iso', expecte
+wiring.cycle buildgen: [contract] wiring dependency cycle detected among: ['notification', 'scd30', 'sgp40'] - fix: remove one of the wiring
+wiring.default-attr-missing buildgen: [contract/notification.signal_sink] notification's wiring.signal_sink default provider _DefaultSignalS
+wiring.default-class-missing buildgen: [contract/sgp40.fram_target] sgp40's wiring.fram_target opts into the default, but asy_sgp40_driver.p
+wiring.default-key-missing buildgen: [contract/sgp40.temperature_source] sgp40's wiring.temperature_source default sub-table is missing requ
+wiring.default-key-unknown buildgen: [contract/sgp40.temperature_source] sgp40's wiring.temperature_source default sub-table has unrecognize
+wiring.field-missing buildgen: [contract/notification.signal_sink] notification is missing required wiring.signal_sink - fix: add signal_sin
+wiring.field-unknown buildgen: [contract/scd30.led_target] scd30 declares wiring.led_target, but its driver has no matching _WIRING entry - 
+wiring.source-shape buildgen: [contract/sgp40.temperature_source] sgp40's wiring.temperature_source must be a {source, field} table - fix: w
+wiring.source-unresolved buildgen: [contract/sgp40.temperature_source] sgp40's wiring.temperature_source.source='bme' does not resolve to an
+wiring.target-class buildgen: [contract/notification.signal_sink] notification's wiring.signal_sink='fram' resolves to a FRAMManager, but 'a
+wiring.target-type buildgen: [contract/scd30.fram_target] scd30's wiring.fram_target must be a string instance reference, got 5 - fix: write
+wiring.target-unresolved buildgen: [contract/sgp40.fram_target] sgp40's wiring.fram_target='nothing' does not resolve to any declared instan
+wiring.warn-outside-notification buildgen: [contract/scd30.warn_co2] scd30 declares wiring.warn_co2, but warn signals belong to the notifica
+wiring.warn-unknown buildgen: [contract/notification.warn_radon] notification declares wiring.warn_radon, but the signal catalog knows only 

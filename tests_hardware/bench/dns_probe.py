@@ -2,8 +2,6 @@
 captive-DNS checks - hand-rolled rather than pulling in dnspython, matching this project's
 preference for small hand-rolled protocol code over a new dependency."""
 
-from __future__ import annotations
-
 import secrets
 import socket
 import struct

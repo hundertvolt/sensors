@@ -1,0 +1,26 @@
+# mutant m7_dispatch against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m7_dispatch
+@@ -504,10 +504,7 @@
+     async def _hotspot_timeout_loop(self) -> None:
+         while True:
+             await self._hotspot_timeout_trigger_event.wait()
+-            if self._conn_phase == _PHASE_SILENT:
+-                self._silent_attempt_due = True  # a fire while one is due adds none
+-            else:
+-                self._on_hotspot_window_end()
++            self._on_hotspot_window_end()
+ 
+     async def _leave_hotspot_mode(self) -> None:
+         self._conn_phase = _PHASE_STA_SEEKING
+@@ -731,8 +728,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:

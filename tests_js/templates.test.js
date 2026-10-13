@@ -225,6 +225,8 @@ describe("buildField", () => {
                 { value: "reboot", label: "Reboot" },
                 { value: "bootloader", label: "Reboot into bootloader" },
                 { value: "mempause", label: "Pause backups for 5 minutes" },
+                { value: "resetconfig", label: "Reset to defaults" },
+                { value: "erasefram", label: "Erase FRAM" },
             ],
         };
         const el = mount(buildField(field, undefined, true));

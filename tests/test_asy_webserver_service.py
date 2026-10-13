@@ -13,16 +13,28 @@ from collections import namedtuple
 # this rather than a build-environment scope change.
 sys.path.insert(0, "ext")
 
+import machine
 from _error_codes import code
+from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import drain_json_response_body
+from _tmp_scratch import TmpScratch
+from _write_counters import WriteCountingOpen
 from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
 
 import asy_config_manager as cm
+import asy_spi_driver
 import asy_webserver_service
-from asy_base_classes import SensorReader
+from asy_base_classes import SensorReader, SensorReaderConfig
+from asy_fram_manager import FRAMManager
 from asy_print_log import LogConfig
+from asy_spi_driver import SPI
+from asy_system_service import SystemService
 from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+
+# The FRAM a system command quiesces and erases sits on the chip fake: the same one-process-per-test-file swap as
+# test_asy_fram_manager.py's.
+asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -377,7 +389,7 @@ def _make_service(**kwargs: "Any") -> "tuple[WebserverService, Microdot]":  # An
     log = LogConfig(kwargs.pop("fram", None), kwargs.pop("history_length", 10), kwargs.pop("debug", None))
     uptime_s = kwargs.pop("uptime_s", _no_uptime)
     assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
-    service = WebserverService(app, routes, serving, uptime_s, static, log)  # type: ignore[arg-type]  # the stub's Microdot takes concrete Request/Stream types, src's _MicrodotApp its Protocols - removal trigger: SPECIFICATION.md B.15
+    service = WebserverService(app, routes, serving, uptime_s, static, log)
     return service, app
 
 
@@ -723,10 +735,12 @@ def test_a_dispatch_key_is_answered_once() -> None:
     assert sysm.set_calls == []
 
 
-# Near misses of the three action words: prefixes, case variants, padded, joined and aliased words.
+# Near misses of the five action words: prefixes, case variants, padded, joined and aliased words.
 _SYSTEM_CMD_NEAR_MISSES = (
     "Reboot", "REBOOT", "reboot ", " reboot", "reboot\n", "rebootx", "rebo", "re boot", "restart", "reset", "boot",
     "Bootloader", "bootloader ", "boot loader", "mempause300", "mem_pause", "MemPause", "pause", "",
+    "ResetConfig", "RESETCONFIG", "resetconfig ", "reset_config", "reset config", "resetconf", "resetconfigs", "defaults",
+    "EraseFRAM", "erasefram\n", " erasefram", "erase_fram", "erase fram", "erase", "fram", "eraseflash",
 )
 
 
@@ -748,13 +762,13 @@ def test_system_put_systemcmd_runs_only_on_the_exact_action_word() -> None:
     for word in _SYSTEM_CMD_NEAR_MISSES:
         assert put(word) == "Invalid", word
     assert calls == []
-    for word in ("reboot", "bootloader", "mempause"):
+    for word in ("reboot", "bootloader", "mempause", "resetconfig", "erasefram"):
         for result, answer in ((True, "Valid"), (False, "Failed"), (RuntimeError("injected for the callback"), "Failed")):
             outcome[0] = result
             del calls[:]
             assert put(word) == answer, (word, result)
             assert calls == [word], (word, calls)
-    assert run(service.get_error_counter())["WEBSERVER"]["ErrNum"].count(code("E", "CALLBACK")) == 1  # one slot for the three
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrNum"].count(code("E", "CALLBACK")) == 1  # one slot for the five
 
 
 def test_system_put_systemcmd_non_string_values_are_invalid() -> None:
@@ -784,6 +798,204 @@ def test_system_put_systemcmd_raising_callback_returns_failed_not_an_exception()
     body = json.loads(res.body)
     assert body["result"]["SystemCmd"] == "Failed"
     assert service.pr._err_count == 1
+
+
+# ---------------------------------------------------------------------------
+# System commands over PUT /system against the real SystemService, FRAM manager and stores: the handler holds no lock
+# while it dispatches, so the shutdown sequence takes each store's owner lock and reaches its reset arm.
+# ---------------------------------------------------------------------------
+
+_scratch = TmpScratch("asy_webserver_service")
+_CMD_SCHEMA: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
+_CmdData = namedtuple("_CmdData", ("TS",))
+_SEQUENCE_YIELDS = 500  # a limit, not a timing claim: every shutdown step here completes in far fewer yields
+
+
+def _system_const(name: str) -> int:
+    # A private const() of asy_system_service, read from its source: not a module attribute on MicroPython.
+    with open("src/asy_system_service.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                return int(line.split("const(", 1)[1].split(")", 1)[0], 0)
+    raise AssertionError(name + " not found in src/asy_system_service.py")
+
+
+async def _never_synced() -> bool:
+    return False
+
+
+class _FastAsyncSleep:
+    # asyncio.sleep()/sleep_ms() as one yield each, so a supervisor pass costs no real time; restored on exit.
+    def __enter__(self) -> "_FastAsyncSleep":
+        self._real_sleep = asyncio.sleep
+        self._real_sleep_ms = asyncio.sleep_ms
+        real_sleep = self._real_sleep
+
+        async def _fast(_seconds: float) -> None:
+            await real_sleep(0)
+
+        async def _fast_ms(_ms: int) -> None:
+            await real_sleep(0)
+
+        asyncio.sleep = _fast  # type: ignore[assignment]  # a test stand-in with the real call shape, swapped back on exit
+        asyncio.sleep_ms = _fast_ms  # type: ignore[assignment]  # likewise, for the millisecond form
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        asyncio.sleep = self._real_sleep
+        asyncio.sleep_ms = self._real_sleep_ms
+
+
+class _CommandBench:
+    # One device's command path: SystemService over a FRAM manager on the chip fake, its own store and a
+    # SensorReaderConfig's, and a webserver whose system_cmd is the generated callback's five branches.
+    def __init__(self) -> None:
+        cfg_path = _scratch.dir("cmd")
+        self.fram = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
+        self.reader = SensorReaderConfig(_CmdData(0), "CMDSENS", _CMD_SCHEMA, cfg_path=cfg_path)
+        self.svc = SystemService(_never_synced, watchdog=machine.WDT(), storage=self.fram, config_stores=self._stores, cfg_path=cfg_path)
+        self.service, self.app = _make_service(sensors=(self.reader,), system_cmd=self._system_cmd)
+        self.paths = (cfg_path + "config_SYSTEM.cfg", cfg_path + "config_CMDSENS.cfg")
+        self.locked_at_dispatch: list[bool] = []
+
+    def _stores(self) -> "list[cm.ConfigManager]":
+        return [self.svc.cfgmgr, self.reader.cfgmgr]  # the generated _collect_config_stores()'s shape
+
+    async def _system_cmd(self, cmd: str) -> bool:
+        # The generated _system_cmd_callback (buildgen/codegen.py), recording whether a PUT lock is held as it runs.
+        self.locked_at_dispatch.append(self.reader._set_lock.locked())
+        if cmd == "reboot":
+            return await self.svc.reboot_system()
+        if cmd == "bootloader":
+            return await self.svc.reboot_bootloader()
+        if cmd == "mempause":
+            return self.svc.pause_permanent_storage(300)
+        if cmd == "resetconfig":
+            return await self.svc.reset_to_defaults()
+        if cmd == "erasefram":
+            return await self.svc.erase_fram()
+        return False
+
+    async def setup(self) -> None:
+        assert await self.fram.setup()
+        assert await self.svc.setup()
+        assert await self.reader.setup()
+
+    async def put(self, path: str, body: "dict[str, Any]") -> "dict[str, Any]":
+        res = await self.app.dispatch_request(_make_request(self.app, "PUT", path, body))
+        result: dict[str, Any] = json.loads(res.body)["result"]
+        return result
+
+    async def sequence_ended(self) -> bool:
+        # Yields, bounded, until the shutdown sequence has ended; then whether it armed the reset.
+        for _ in range(_SEQUENCE_YIELDS):
+            task = self.svc._shutdown_task
+            if task is not None and task.done():
+                break
+            await asyncio.sleep(0)
+        return self.svc._reset_armed
+
+
+async def _cancel_task(task: "asyncio.Task[Any]") -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+def _file_or_none(path: str) -> object:
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except OSError:
+        return None
+
+
+def test_each_system_command_over_put_system_reaches_its_reset_arm_without_a_lock_held() -> None:
+    # Each command's own code is armed, and the one-shot's last flush pass, which takes every owner lock again,
+    # runs the reset; config reset deletes both files, FRAM erase completes (code 8, not 9).
+    cases = (("reboot", "_RR_REBOOT"), ("bootloader", "_RR_BOOTLOADER"), ("resetconfig", "_RR_CONFIG_RESET"), ("erasefram", "_RR_FRAM_ERASED"))
+    for word, code_name in cases:
+        bench = _CommandBench()
+        run(bench.setup())
+        resets = (machine.reset_count, machine.bootloader_count)
+
+        async def scenario(bench: "_CommandBench" = bench, word: str = word) -> "tuple[dict[str, Any], bool, bool]":
+            sup = asyncio.create_task(bench.svc.supervise_tasks())
+            await asyncio.sleep(0)
+            result = await bench.put("/system", {"SystemCmd": word})
+            armed = await bench.sequence_ended()
+            one_shot = bench.svc._reset_timer.mode == machine.Timer.ONE_SHOT and bench.svc._reset_timer.callback is not None
+            bench.svc._reset_timer.trigger()
+            for _ in range(_SEQUENCE_YIELDS):
+                task = bench.svc._reset_task
+                if task is not None and task.done():
+                    break
+                await asyncio.sleep(0)
+            await _cancel_task(sup)
+            return result, armed, one_shot
+
+        with _FastAsyncSleep():
+            result, armed, one_shot = run(scenario())
+        assert result == {"SystemCmd": "Valid"}, word
+        assert bench.locked_at_dispatch == [False], word
+        assert (armed, one_shot) == (True, True), word
+        assert machine.mem_backup(0)[1] == _system_const(code_name), word
+        bootloader = word == "bootloader"
+        assert (machine.reset_count, machine.bootloader_count) == (resets[0] + (not bootloader), resets[1] + bootloader), word
+        files = [_file_or_none(path) is not None for path in bench.paths]
+        assert files == ([False, False] if word == "resetconfig" else [True, True]), (word, files)
+
+
+def test_a_config_put_mid_write_when_a_command_arrives_is_waited_out_then_flushed() -> None:
+    # The PUT holds its module's lock through its push with the write staged and its commit deferred: the sequence
+    # waits at that owner lock, nothing reaches the flash meanwhile, then the PUT's value is flushed before the arm.
+    bench = _CommandBench()
+    run(bench.setup())
+    pushed: list[object] = []
+
+    async def scenario() -> "tuple[dict[str, Any], tuple[object, ...], dict[str, Any], bool]":
+        gate = asyncio.Event()
+
+        async def gated_push(value: "cm.CfgValue") -> bool:
+            pushed.append(value)
+            await gate.wait()
+            return True
+
+        bench.reader._push_callbacks["SampleInterval"] = gated_push
+        sup = asyncio.create_task(bench.svc.supervise_tasks())
+        await asyncio.sleep(0)
+        put = asyncio.create_task(bench.put("/sensors", {"CMDSENS": {"SampleInterval": 42}}))
+        for _ in range(_SEQUENCE_YIELDS):
+            if pushed:
+                break
+            await asyncio.sleep(0)
+        command = await bench.put("/system", {"SystemCmd": "reboot"})
+        for _ in range(_SEQUENCE_YIELDS):
+            await asyncio.sleep(0)  # the sequence runs as far as it can
+        supervisor = bench.svc._supervisor_task
+        held = (
+            supervisor is not None and supervisor.done(), bench.svc._shutdown_task is not None and bench.svc._shutdown_task.done(),
+            bench.svc._reset_armed, counter.writes, _file_or_none(bench.paths[1]),
+        )
+        gate.set()
+        sensor = await put
+        armed = await bench.sequence_ended()
+        await _cancel_task(sup)
+        return command, held, sensor, armed
+
+    with _FastAsyncSleep(), WriteCountingOpen(cm) as counter:
+        command, held, sensor, armed = run(scenario())
+    assert command == {"SystemCmd": "Valid"}
+    assert pushed == [42]
+    # Past the supervisor's stop, the sequence waits at the PUT's lock: not armed, nothing written.
+    assert held == (True, False, False, 0, {"SampleInterval": 2}), held
+    assert sensor == {"CMDSENS": {"SampleInterval": "Valid"}}
+    assert armed is True
+    assert counter.writes == 1  # the PUT's own deferred flush, run by the sequence under the lock
+    assert _file_or_none(bench.paths[1]) == {"SampleInterval": 42}
+    assert machine.mem_backup(0)[1] == _system_const("_RR_REBOOT")
 
 
 def test_status_get_returns_exact_substructure_no_settings_fields_anywhere() -> None:

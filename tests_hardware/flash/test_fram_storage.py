@@ -2,8 +2,6 @@
 asy_fram_driver) - a structurally different mechanism from test_reboot_persistence.py's
 littlefs-backed config storage."""
 
-from __future__ import annotations
-
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,7 +33,7 @@ _PAUSE_SCRIPT_TIMEOUT_S = 90.0
 _LOCKOUT_SCRIPT_TIMEOUT_S = 45.0
 
 
-def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label: str) -> None:
+def _run_and_assert_pass(board: "Board", script_name: str, timeout_s: float, label: str) -> None:
     output = board.run_isolated(DEVICE_SCRIPTS / script_name, timeout_s=timeout_s)
     match = RESULT_RE.search(output)
     assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
@@ -47,7 +45,7 @@ def _run_and_assert_pass(board: Board, script_name: str, timeout_s: float, label
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: Board) -> None:
+def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_manager_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM chunk manager roundtrip")
 
 
@@ -56,7 +54,7 @@ def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: Board) ->
 # ---------------------------------------------------------------------------
 
 
-def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Board) -> None:
+def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: "Board") -> None:
     # ~90s real runtime (60s to the first natural BackupPeriod trigger, plus restore-cycle margin)
     # - see the device script's own docstring; timeout is generous relative to that.
     _run_and_assert_pass(board, "sgp40_fram_backup_restore.py", timeout_s=_BACKUP_SCRIPT_TIMEOUT_S, label="SGP40 FRAM backup/restore")
@@ -67,11 +65,11 @@ def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: Boar
 # ---------------------------------------------------------------------------
 
 
-def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(board: Board) -> None:
+def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_error_log_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM error log roundtrip")
 
 
-def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: Board) -> None:
+def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: "Board") -> None:
     # The other half of the claim above, which simulates a fresh boot in the SAME process and so
     # only ever shows the happy path. Losing the whole history to a reset landing mid-write is
     # accepted (owner, 2026-09-11; Part C.3.1); a PARTIAL restore never is, and is what this asserts.
@@ -87,7 +85,7 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 # ---------------------------------------------------------------------------
 
 
-def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(board: Board) -> None:
+def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_error_log_reset_during_boot_window.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM error-log boot-window reset check")
 
 
@@ -101,7 +99,7 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 # ---------------------------------------------------------------------------
 
 
-def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Board) -> None:
+def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM write-protect roundtrip")
 
 
@@ -112,7 +110,7 @@ def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: Boa
 # ---------------------------------------------------------------------------
 
 
-def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires(board: Board) -> None:
+def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires(board: "Board") -> None:
     # ~20s of real waiting inside the script (the 2s/2s/6s auto-unpause windows plus margins, and
     # the exhausted-alarm-pool step's own window), so the timeout is generous relative to that
     # rather than to the script's negligible compute.
@@ -125,7 +123,7 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 # ---------------------------------------------------------------------------
 
 
-def test_fram_command_hold_stays_under_the_uart_poll_floor(board: Board) -> None:
+def test_fram_command_hold_stays_under_the_uart_poll_floor(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_command_hold_timing.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM command hold timing")
 
 
@@ -136,7 +134,7 @@ def test_fram_command_hold_stays_under_the_uart_poll_floor(board: Board) -> None
 # ---------------------------------------------------------------------------
 
 
-def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: Board) -> None:
+def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=_LOCKOUT_SCRIPT_TIMEOUT_S, label="FRAM busy-status lockout")
 
 
@@ -147,5 +145,5 @@ def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: 
 # ---------------------------------------------------------------------------
 
 
-def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: Board) -> None:
+def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: "Board") -> None:
     _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM capacity check")

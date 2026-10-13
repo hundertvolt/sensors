@@ -6,10 +6,9 @@ import ast
 from pathlib import Path
 
 # The whole allowance. src/ is checked structurally (a real call node attributed to its enclosing
-# function, so a rename of the allowed site fails too); buildgen/ textually, the call existing only
-# inside codegen.py's emitted-source strings. scripts/lint.sh greps the same rule as a fast path.
-_ALLOWED_SRC_SITES = {("asy_system_service.py", "start_and_check_tasks")}
-_ALLOWED_BUILDGEN_FILES = {"codegen.py"}
+# function, so a rename of an allowed site fails too); buildgen/ textually, since the generator emits
+# none. scripts/lint.sh greps the same rule as a fast path.
+_ALLOWED_SRC_SITES = {("asy_system_service.py", "run_setups"), ("asy_system_service.py", "start_tasks")}
 
 
 def _is_gc_collect(node: ast.AST) -> bool:
@@ -41,7 +40,7 @@ def _collect_call_sites(tree: ast.Module) -> "list[str]":
     return sites
 
 
-def test_src_calls_gc_collect_only_in_the_task_starter_list(repo_root: Path) -> None:
+def test_src_calls_gc_collect_only_in_the_two_boot_lists(repo_root: Path) -> None:
     found = set()
     for path in sorted((repo_root / "src").glob("*.py")):
         for owner in _collect_call_sites(ast.parse(path.read_text())):
@@ -52,11 +51,10 @@ def test_src_calls_gc_collect_only_in_the_task_starter_list(repo_root: Path) -> 
     )
 
 
-def test_buildgen_emits_gc_collect_only_from_codegen(repo_root: Path) -> None:
-    found = {path.name for path in sorted((repo_root / "buildgen").rglob("*.py")) if "gc.collect(" in path.read_text()}
-    assert found == _ALLOWED_BUILDGEN_FILES, (
-        f"buildgen/ files containing 'gc.collect(' are {sorted(found)}, expected exactly {sorted(_ALLOWED_BUILDGEN_FILES)}"
-    )
+def test_buildgen_emits_no_gc_collect(repo_root: Path) -> None:
+    # The boot lists run inside SystemService, so no generated module carries a collect of its own.
+    found = sorted(str(path.relative_to(repo_root)) for path in (repo_root / "buildgen").rglob("*.py") if "gc.collect(" in path.read_text())
+    assert not found, f"buildgen/ files containing 'gc.collect(' are {found}; the generator emits none (SPECIFICATION.md Part I.4(f.1))"
 
 
 def test_the_guard_would_notice_a_new_site(tmp_path: Path) -> None:

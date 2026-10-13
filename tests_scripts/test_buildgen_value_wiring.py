@@ -21,9 +21,10 @@ def _parse(tmp_path: Path, source: str) -> "tuple[ValueWiringField, ...]":
     return parse_value_wiring(path, "dev", "x")
 
 
-def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse(tmp_path, source)
+    assert raised.value.rule == rule
 
 
 @pytest.mark.parametrize("word,required", [("required", True), ("optional", False)])
@@ -37,6 +38,20 @@ def test_parse_value_wiring_kwarg_may_differ_from_the_toml_field(tmp_path: Path)
     # kwarg the constructor parameter that receives its ValueRef.
     (field,) = _parse(tmp_path, "# @value-wiring temp_in comp required\n")
     assert field == ValueWiringField("temp_in", "comp", True)
+
+
+@pytest.mark.parametrize(
+    "toml_field,kwarg",
+    [
+        ("temperature_source", "temperature"),
+        ("x", "y"),  # single-character names are still names
+        ("_leading_underscore", "_private"),
+        ("with9digits", "t9"),
+    ],
+)
+def test_parse_value_wiring_accepts_every_name_shape(tmp_path: Path, toml_field: str, kwarg: str) -> None:
+    (field,) = _parse(tmp_path, f"# @value-wiring {toml_field} {kwarg} optional\n")
+    assert field == ValueWiringField(toml_field, kwarg, required=False)
 
 
 @pytest.mark.parametrize(
@@ -73,22 +88,28 @@ def test_parse_value_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> Non
         tmp_path,
         "# @value-wiring a b required\n# @value-wiring a x optional\n",
         "two @value-wiring tags for 'a'",
+        "tag.duplicate-field",
     )
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
-        ("# @value-wirng a b required\n", "misspelled @value-wiring tag"),
-        ("# @value-wiiring a b required\n", "misspelled @value-wiring tag"),
-        ("# @VALUE-WIRING a b required\n", "malformed @value-wiring tag"),
+        ("# @value-wirng a b required\n", "misspelled @value-wiring tag", "tag.misspelled"),
+        ("# @value-wiiring a b required\n", "misspelled @value-wiring tag", "tag.misspelled"),
+        ("# @VALUE-WIRING a b required\n", "malformed @value-wiring tag", "tag.malformed"),
         # Sigil dropped: caught because a real name shape (snake_case) is present, which is what
         # the sigil-less path requires - see tag_comments._looks_like_wiring_payload.
-        ("# value-wiring temperature_source temperature required\n", "leading '@' missing"),
+        ("# value-wiring temperature_source temperature required\n", "leading '@' missing", "tag.missing-sigil"),
     ],
 )
-def test_parse_value_wiring_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_value_wiring_rejects_each_wording_mistake(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
+
+
+def test_parse_value_wiring_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Path) -> None:
+    # "value-wired" is three edits from "value-wiring" - past tolerance, so prose, not an attempt.
+    assert _parse(tmp_path, "# @value-wired temperature_source temperature required\n") == ()
 
 
 @pytest.mark.parametrize(
@@ -103,7 +124,7 @@ def test_parse_value_wiring_rejects_each_wording_mistake(tmp_path: Path, source:
     ],
 )
 def test_parse_value_wiring_rejects_each_element_wrong_or_dropped(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "malformed @value-wiring tag")
+    _parse_expecting(tmp_path, source, "malformed @value-wiring tag", "tag.malformed")
 
 
 @pytest.mark.parametrize(
@@ -114,7 +135,7 @@ def test_parse_value_wiring_rejects_each_element_wrong_or_dropped(tmp_path: Path
     ],
 )
 def test_parse_value_wiring_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
-    _parse_expecting(tmp_path, source, "module level")
+    _parse_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 @pytest.mark.parametrize(

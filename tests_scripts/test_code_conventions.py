@@ -7,6 +7,7 @@ import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeGuard
 
 import pytest
 from _devices import DEVICE_NAMES
@@ -25,6 +26,8 @@ _COLLECTOR_NAMES = {
 _TASK_COROUTINE = re.compile(r"_\w+_loop")
 _NUMBER_NAME = re.compile(r"_?(?:ERR|WRN)_\w+")
 _CONFIG_NAME_HOME = "src/asy_config_manager.py"  # config_filename() there builds every config file name
+# The no-autostart boot entry's one module-level print(): its REPL start line (agent, 2026-09-28).
+_START_LINE_ENTRY = "_main_noautostart.py"
 
 
 @dataclass(frozen=True)
@@ -147,11 +150,19 @@ def log_keywords(module: Module) -> list[str]:
     return found
 
 
+def _is_print(node: ast.AST) -> TypeGuard[ast.Call]:
+    return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"
+
+
 def no_print(module: Module) -> list[str]:
-    # (5) print() only inside the logger.
+    # (5) print() only inside the logger, and the no-autostart boot entry's first module-level start line.
     if module.path == "src/asy_print_log.py":
         return []
-    return [f"{module.path}:{n.lineno}: print()" for n in ast.walk(module.tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print"]
+    calls = [n for n in ast.walk(module.tree) if _is_print(n)]
+    if module.generated and module.path.endswith(_START_LINE_ENTRY):
+        start_line = next((s.value for s in module.tree.body if isinstance(s, ast.Expr) and _is_print(s.value)), None)
+        calls = [n for n in calls if n is not start_line]
+    return [f"{module.path}:{n.lineno}: print()" for n in calls]
 
 
 def _names_a_config_file(node: ast.AST) -> bool:
@@ -178,17 +189,6 @@ def config_file_names(module: Module) -> list[str]:
     return found
 
 
-def _is_generated_narrowing(node: ast.Assert) -> bool:
-    # buildgen/codegen.py's `assert <global> is not None [and ...]` lines: exempt until codegen stops
-    # emitting them, and the exemption goes then (test_the_generated_narrowing_exemption_is_still_needed).
-    tests = node.test.values if isinstance(node.test, ast.BoolOp) and isinstance(node.test.op, ast.And) else [node.test]
-    return node.msg is None and all(
-        isinstance(t, ast.Compare) and isinstance(t.left, ast.Name) and [type(o) for o in t.ops] == [ast.IsNot]
-        and isinstance(t.comparators[0], ast.Constant) and t.comparators[0].value is None
-        for t in tests
-    )
-
-
 # A src assert whose removal a later unit's change owns, keyed by file and enclosing function; an
 # entry whose assert has gone fails (test_every_pending_assert_is_still_there).
 _PENDING_ASSERTS: "dict[tuple[str, str], str]" = {}
@@ -207,7 +207,7 @@ def no_assert(module: Module) -> list[str]:
     in_pending = {id(n) for func, n in _asserts_by_function(module) if func in pending}
     return [
         f"{module.path}:{n.lineno}: assert" for n in ast.walk(module.tree)
-        if isinstance(n, ast.Assert) and not (module.generated and _is_generated_narrowing(n)) and id(n) not in in_pending
+        if isinstance(n, ast.Assert) and id(n) not in in_pending
     ]
 
 
@@ -332,7 +332,8 @@ def modules(tmp_path_factory: pytest.TempPathFactory) -> list[Module]:
     found = [_parse(f"src/{p.name}", p.read_text(encoding="utf-8")) for p in sorted((REPO_ROOT / "src").glob("*.py"))]
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src", REPO_ROOT / "ext")
-        for name, source in ((f"sensortask_{device}", generated.module_source), (f"{device}_boot", generated.boot_entry_source)):
+        sources = ((f"sensortask_{device}", generated.module_source), (f"sensortask_{device}_main", generated.boot_entry_source), (f"sensortask_{device}_main_noautostart", generated.boot_entry_noautostart_source))
+        for name, source in sources:
             (out / f"{name}.py").write_text(source, encoding="utf-8")
             found.append(_parse(f"build/generated_src/{name}.py", (out / f"{name}.py").read_text(encoding="utf-8")))
     return found
@@ -350,11 +351,6 @@ def test_quoted_annotations_name_a_type_checking_symbol(modules: list[Module]) -
     assert not found, "\n".join(found)
 
 
-def test_the_generated_narrowing_exemption_is_still_needed(modules: list[Module]) -> None:
-    exempted = [m.path for m in modules if m.generated for n in ast.walk(m.tree) if isinstance(n, ast.Assert) and _is_generated_narrowing(n)]
-    assert exempted, "no generated narrowing assert is left - delete the exemption in no_assert()"
-
-
 def test_every_pending_assert_is_still_there(modules: list[Module]) -> None:
     by_path = {m.path: m for m in modules}
     gone = [key for key in _PENDING_ASSERTS if key[1] not in {func for func, _n in _asserts_by_function(by_path[key[0]])}]
@@ -362,7 +358,7 @@ def test_every_pending_assert_is_still_there(modules: list[Module]) -> None:
 
 
 def test_the_scan_sees_every_device_module(modules: list[Module]) -> None:
-    assert {m.path for m in modules if m.generated} == {f"build/generated_src/{n}.py" for d in DEVICE_NAMES for n in (f"sensortask_{d}", f"{d}_boot")}
+    assert {m.path for m in modules if m.generated} == {f"build/generated_src/{n}.py" for d in DEVICE_NAMES for n in (f"sensortask_{d}", f"sensortask_{d}_main", f"sensortask_{d}_main_noautostart")}
 
 
 _NEGATIVE = {
@@ -379,7 +375,7 @@ _NEGATIVE = {
     ),
     "log_keywords": ("src/asy_x.py", "async def f(pr):\n    await pr.err_s('bad', _ERR_BAD)\n", "src/asy_x.py:2: err_s() needs its number as errno="),
     "no_print": ("src/asy_x.py", "async def f():\n    print('x')\n", "src/asy_x.py:2: print()"),
-    "no_assert": ("build/generated_src/sensortask_x.py", "def f(a):\n    assert a is not None, 'kept'\n    assert a > 0\n", "build/generated_src/sensortask_x.py:2: assert"),
+    "no_assert": ("build/generated_src/sensortask_x.py", "def f(a):\n    assert a is not None\n    assert a > 0\n", "build/generated_src/sensortask_x.py:2: assert"),
     "member_order": ("src/asy_x.py", "class C:\n    async def setup(self):\n        pass\n    def reset(self):\n        pass\n", "src/asy_x.py class C: setup sits where D.15 puts reset"),
     "config_file_names": ("src/asy_x.py", "def f(p, n):\n    return p + 'config_' + n + '.cfg'\n", "src/asy_x.py:2: a config file name built by hand"),
 }
@@ -392,6 +388,16 @@ def test_a_planted_violation_fails_its_rule(tmp_path: Path, rule: str) -> None:
     copy.write_text(source, encoding="utf-8")
     found = RULES[rule](_parse(path, copy.read_text(encoding="utf-8")))
     assert any(line.startswith(expected) for line in found), found
+
+
+def test_the_no_autostart_entry_prints_its_start_line_and_nothing_else() -> None:
+    # The named exception covers one module-level print() in that one generated file, never a second or a nested one.
+    source = 'import sys\nprint("start line")\nprint("second")\ndef f():\n    print("nested")\n'
+    assert no_print(_parse("build/generated_src/sensortask_x_main_noautostart.py", source)) == [
+        "build/generated_src/sensortask_x_main_noautostart.py:3: print()",
+        "build/generated_src/sensortask_x_main_noautostart.py:5: print()",
+    ]
+    assert len(no_print(_parse("build/generated_src/sensortask_x_main.py", source))) == 3
 
 
 def test_a_planted_quoted_annotation_fails(tmp_path: Path) -> None:

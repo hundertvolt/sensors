@@ -17,6 +17,7 @@ from machine import Timer
 import asy_base_classes
 import asy_print_log as print_log_module
 import asy_wifi_service
+from asy_api_response import handle_set_cmd
 from asy_print_log import LogConfig
 from asy_udp_socket import UDPSocket
 from asy_wifi_service import WIFI, WifiConfig, WifiService
@@ -46,6 +47,8 @@ _PHASE_STA_SEEKING = int(_src_const("_PHASE_STA_SEEKING"))
 _PHASE_STA_ESTABLISHED = int(_src_const("_PHASE_STA_ESTABLISHED"))
 _PHASE_HOTSPOT = int(_src_const("_PHASE_HOTSPOT"))
 _PHASE_DEACTIVATED = int(_src_const("_PHASE_DEACTIVATED"))
+_PHASE_SILENT = int(_src_const("_PHASE_SILENT"))
+_STATIONS_UNSET = int(_src_const("_STATIONS_UNSET"))
 
 # asy_wifi_service.py's own _VAL_SSID/_VAL_PW/_VAL_COUNTRY/_VAL_HOSTNAME/_VAL_LED_WIFI_ON schema tuples - not
 # importable once const()-folded, so mirrored here; test_cfg_schema_matches_what_cfgmgr_was_built_with keeps them in sync.
@@ -239,6 +242,42 @@ _VALID_JSON = (
     '{"SSID": "MyNetwork", "PW": "supersecret", "Country": "US", '
     '"Hostname": "TestNode", "LEDWifiOn": false}'
 )
+
+
+def _stored_json(*, led_on: bool) -> str:
+    # _VALID_JSON's network settings with LEDWifiOn as given: every connect attempt re-reads the stored LED setting.
+    return _VALID_JSON.replace('"LEDWifiOn": false', '"LEDWifiOn": true') if led_on else _VALID_JSON
+
+
+def _silent_client(*, led: "FakeLED | None" = None, led_on: bool = False, hotspot_time_min: int = 1) -> WifiService:
+    # A configured unit already silent, as its second streak leaves it. The watcher's flag parks on an asyncio.Event
+    # (_ParkedFlag), so a parked watcher never waits through select.poll() over a non-fd object.
+    client = make_client_with_json(_stored_json(led_on=led_on), ext_led=led, hotspot_time_min=hotspot_time_min)
+    run(client.pr.setup())
+    client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+    client._conn_phase = _PHASE_SILENT
+    return client
+
+
+def _joins(client: WifiService) -> None:
+    # The selected STA links on its next connect(), as a router back in range lets it.
+    radio = _wlan(client)
+    record = radio.connect
+
+    def connect(ssid: str, pw: str) -> None:
+        record(ssid, pw)
+        radio._status, radio._connected = network.STAT_GOT_IP, True
+
+    radio.connect = connect
+
+
+async def _fire_period(client: WifiService) -> None:
+    # One silent period with the watcher running: an iteration (arming the period if it is not running), the timer's
+    # soft callback, the watcher's wake, then the iteration that serves the attempt.
+    await client._run_silent_mode()
+    client._hotspot_timer.trigger()
+    await _drive(2)
+    await client._run_silent_mode()
 
 
 async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1) -> None:
@@ -924,6 +963,15 @@ async def _drive(steps: int = 8) -> None:
         await asyncio.sleep(0)
 
 
+async def _until(done: "Callable[[], bool]", tries: int = 200) -> bool:
+    # A condition wait bounded by yields: under _FastAsyncSleep every sleep is one yield, so no wall clock is involved.
+    for _ in range(tries):
+        if done():
+            return True
+        await asyncio.sleep(0)
+    return done()
+
+
 async def _stop_flash(client: WifiService) -> None:
     flash = client._ledflash
     assert flash is not None, "no flash task ran"
@@ -1134,6 +1182,90 @@ def test_turning_the_wifi_led_off_mid_pattern_goes_dark() -> None:
     assert results == {"LEDWifiOn": "Valid"}
     assert led.state is False  # the setter's own off
     assert (led.on_calls, led.off_calls, led.toggle_calls) == after, "the pattern kept lighting a disabled LED"
+
+
+def _silent_led_run(*, led_on: bool) -> "tuple[FakeLED, list[tuple[int, int, int]]]":
+    # A seeking unit, lit, goes silent; one attempt polls without a verdict; then a period links. Returns the
+    # (on, off, toggle) counts after the entry, after the attempt and the setter, and after the link.
+    led = FakeLED()
+    client = make_client_with_json(_stored_json(led_on=led_on), conn_fail_to_hotspot=1, ext_led=led)
+    run(client.pr.setup())
+    run(client.set_wifi_led(status=led_on))
+    client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+    client._hotspot_started_once = True
+    client._led_on()  # lit, as a seeking unit's poll can leave it
+    _wlan(client)._status = network.STAT_CONNECTING  # every poll of the attempt toggles, as a real one does
+    counts: list[tuple[int, int, int]] = []
+
+    def snap() -> None:
+        counts.append((led.on_calls, led.off_calls, led.toggle_calls))
+
+    async def scenario() -> None:
+        watcher = client.start_asy_hotspot_timeout()
+        await client._register_sta_connection_failure()
+        snap()
+        await _fire_period(client)
+        await client.set_wifi_led(status=True)  # recorded, lighting nothing while silent
+        snap()
+        _joins(client)
+        await _fire_period(client)
+        snap()
+        await _cancel(watcher)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert client._conn_phase == _PHASE_STA_ESTABLISHED, client._conn_phase
+    return led, counts
+
+
+def test_the_silent_mode_keeps_the_led_dark_until_a_link() -> None:
+    # Dark whatever LEDWifiOn says, until a link (owner, 2026-10-08: "The WiFi LED stays dark, even if it is activated,
+    # being completely silent in that mode. It should look like turned off."); _led_off() still acts.
+    led, counts = _silent_led_run(led_on=True)
+    entered, attempted, linked = counts
+    assert entered == (1, 1, 0), "the entry turns the lit LED off once"
+    assert (attempted[0], attempted[2]) == (1, 0), "the attempt's poll or the setter lit the LED while silent"
+    assert linked[0] == 2 and led.state is True, "the link lights the LED as LEDWifiOn says"
+    led, counts = _silent_led_run(led_on=False)
+    assert [(on, toggle) for on, _off, toggle in counts] == [(0, 0)] * 3 and led.state is not True
+
+
+def test_no_led_helper_lights_while_silent() -> None:
+    # Each helper the silent mode guards lights nothing, and no flash task starts whichever pattern is asked for;
+    # _led_off() still acts.
+    client, led = _lit_client()
+    client._conn_phase = _PHASE_SILENT
+    client._led_on()
+    client._led_toggle()
+    for name in ("HOTSPOT", "HOTSPOT_CLIENT", "DEACTIVATED"):
+        client._run_led_pattern(*_src_pattern(name))
+        assert client._ledflash is None, name
+    client._led_off()
+    assert (led.on_calls, led.toggle_calls, led.off_calls, led.state) == (0, 0, 1, False)
+
+
+def test_turning_the_wifi_led_on_while_silent_lights_nothing_until_the_link() -> None:
+    # The LEDWifiOn push while silent stores and selects the LED but lights nothing, not even through a period's
+    # attempt; the setting shows from the first link.
+    led = FakeLED()
+    client = _silent_client(led=led)
+    _wlan(client)._status = network.STAT_CONNECTING  # the failing attempt polls its full window, toggling each poll
+
+    async def scenario() -> "tuple[WriteValidity, int, int]":
+        watcher = client.start_asy_hotspot_timeout()
+        results = await client._set_dict_cfg({"LEDWifiOn": True}, client.get_cfg_schema())
+        await _fire_period(client)
+        dark = led.on_calls + led.toggle_calls
+        _joins(client)
+        await _fire_period(client)
+        await _cancel(watcher)
+        return results, dark, led.on_calls
+
+    with _FastAsyncSleep():
+        results, dark, lit = run(scenario())
+    assert results == {"LEDWifiOn": "Valid"} and client._led is led
+    assert dark == 0, "the push or the attempt lit the LED while silent"
+    assert (client._conn_phase, lit, led.state) == (_PHASE_STA_ESTABLISHED, 1, True)
 
 
 # ---------------------------------------------------------------------------
@@ -1607,8 +1739,8 @@ def test_network_available_false_on_a_status_exception() -> None:
 
 # ---------------------------------------------------------------------------
 # is_hotspot_active() - lock-free getter for asy_webserver_service.py's captive-portal redirect
-# fallback (SPECIFICATION.md Part A.5). All four _conn_phase values are exercised deliberately:
-# a regression narrowed to, say, _PHASE_DEACTIVATED alone would slip past a two-case test.
+# fallback (SPECIFICATION.md Part A.5). All five _conn_phase values are exercised: a regression
+# narrowed to, say, _PHASE_DEACTIVATED or _PHASE_SILENT alone would slip past a two-case test.
 # ---------------------------------------------------------------------------
 
 
@@ -1636,6 +1768,12 @@ def test_is_hotspot_active_false_in_deactivated_phase() -> None:
     assert client.is_hotspot_active() is False
 
 
+def test_is_hotspot_active_false_in_silent_phase() -> None:
+    client = make_client()
+    client._conn_phase = _PHASE_SILENT
+    assert client.is_hotspot_active() is False
+
+
 def test_is_hotspot_active_dynamic_mode_switch_reflects_live_state_not_cached() -> None:
     # Dynamic-mode-switch coverage: a plain int-compare getter with no caching must track
     # _conn_phase live on the SAME client instance across repeated calls. Every other test above
@@ -1647,6 +1785,8 @@ def test_is_hotspot_active_dynamic_mode_switch_reflects_live_state_not_cached() 
         (_PHASE_STA_ESTABLISHED, False),
         (_PHASE_HOTSPOT, True),
         (_PHASE_DEACTIVATED, False),
+        (_PHASE_HOTSPOT, True),
+        (_PHASE_SILENT, False),
     ):
         client._conn_phase = phase
         assert client.is_hotspot_active() is expected, f"phase {phase} -> expected {expected}"
@@ -1709,6 +1849,7 @@ def test_reconnect_wifi_sets_the_trigger_and_tears_down_hotspot_bookkeeping() ->
 
     reconn, timer_running, ledflash_cleared = run(scenario())
     assert reconn is True
+    assert client._reconnect_fresh is True  # the settings hook: the next iteration lands in the fresh-boot state
     assert timer_running is False
     assert ledflash_cleared is True
 
@@ -1745,8 +1886,8 @@ def test_hotspot_client_absent_arms_the_shutoff_timer_once() -> None:
 
 def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
     # The Timer callback itself only sets _hotspot_timeout_trigger_event (no business logic inside
-    # the IRQ callback, see C.9) - _hotspot_timeout_loop() is the coroutine that actually calls
-    # reconnect_wifi() once woken by that flag.
+    # the IRQ callback, see C.9) - _hotspot_timeout_loop() is the coroutine that actually ends the
+    # window (_on_hotspot_window_end()) once woken by that flag.
     client = make_client(hotspot_time_min=1)
     run(client._hotspot_client_absent())
 
@@ -1761,22 +1902,24 @@ def test_hotspot_client_absent_shutoff_timer_fires_reconnect() -> None:
     assert run(scenario()) is True
 
 
-def test_hotspot_timeout_watcher_calls_reconnect_wifi_directly_when_woken() -> None:
+def test_hotspot_timeout_watcher_ends_the_window_when_woken() -> None:
+    # The window's end, not the settings hook: the reconnect is set without the fresh-boot flag.
     client = make_client(hotspot_time_min=1)
     run(client._hotspot_client_absent())  # arms _hotspot_timer + starts a real _ledflash task
     ledflash_before = client._ledflash
 
-    async def scenario() -> bool:
+    async def scenario() -> "tuple[bool, bool]":
         watcher = client.start_asy_hotspot_timeout()
         client._hotspot_timeout_trigger_event.set()
         await asyncio.sleep(0)
-        result = client._reconn_wifi
+        result = (client._reconn_wifi, client._reconnect_fresh)
         await _cancel(watcher)
         assert ledflash_before is not None
-        await _cancel(ledflash_before)  # reconnect_wifi() already cancelled it - let it settle
+        await _cancel(ledflash_before)  # the window end already cancelled it - let it settle
         return result
 
-    assert run(scenario()) is True
+    assert run(scenario()) == (True, False)
+    assert client._ledflash is None and client._hotspot_timer_running is False
 
 
 def test_a_dropped_hotspot_timer_fire_is_recovered_by_the_next_period() -> None:
@@ -1802,7 +1945,7 @@ def test_a_dropped_hotspot_timer_fire_is_recovered_by_the_next_period() -> None:
 
 
 def test_the_first_delivered_hotspot_fire_stops_the_periodic_timer() -> None:
-    # reconnect_wifi() deinits the timer, so PERIODIC never turns into a reconnect every period.
+    # The window end deinits the timer, so PERIODIC never turns into a reconnect every period.
     client = make_client(hotspot_time_min=1)
     run(client._hotspot_client_absent())
     timer = client._hotspot_timer
@@ -1817,6 +1960,129 @@ def test_the_first_delivered_hotspot_fire_stops_the_periodic_timer() -> None:
     assert timer.deinit_called is True
     assert client._hotspot_timer_running is False
     assert timer.callback is None  # nothing left to fire
+
+
+def test_the_watcher_dispatches_by_phase() -> None:
+    # Silent: a wake marks one connect attempt due and sets no reconnect, a second wake while it is due adds none.
+    # Any other phase: the wake ends the window, the reconnect set without the fresh-boot flag.
+    client = _silent_client()
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+
+    async def wakes(times: int) -> None:
+        for _ in range(times):
+            client._hotspot_timeout_trigger_event.set()
+            await _drive(2)
+
+    async def scenario() -> "tuple[tuple[bool, bool], int, list[tuple[int, bool, bool, bool]]]":
+        watcher = client.start_asy_hotspot_timeout()
+        await asyncio.sleep(0)  # a park: the watcher waits on its flag
+        await wakes(2)
+        due = (client._silent_attempt_due, client._reconn_wifi)
+        for _ in range(2):  # one attempt for both wakes, none for the second iteration
+            await client._run_silent_mode()
+        attempts = len(_wlan(client).connect_calls)
+        others = []
+        for phase in (_PHASE_HOTSPOT, _PHASE_STA_SEEKING, _PHASE_STA_ESTABLISHED, _PHASE_DEACTIVATED):
+            client._conn_phase = phase
+            client._reconn_wifi = False
+            await client._arm_hotspot_timer()
+            await wakes(1)
+            others.append((phase, client._reconn_wifi, client._reconnect_fresh, client._hotspot_timer_running))
+        await _cancel(watcher)
+        return due, attempts, others
+
+    with _FastAsyncSleep():
+        due, attempts, others = run(scenario())
+    assert due == (True, False)
+    assert attempts == 1
+    assert others == [(other[0], True, False, False) for other in others], others
+    assert client._silent_attempt_due is False
+
+
+def test_the_window_end_keeps_its_meaning() -> None:
+    # The window's end retries the stored network once more with the hotspot already used: a failed streak then goes
+    # silent (owner, 2026-10-08: "Entering the hotspot mode only through a reboot, as is.").
+    client = make_client(conn_fail_to_hotspot=2, hotspot_time_min=1)
+    run(client.pr.setup())
+    client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+    client._conn_phase = _PHASE_HOTSPOT
+    client._hotspot_started_once = True
+    run(client._hotspot_client_absent())  # the window runs, its pattern flashing
+
+    async def select(mode: int) -> bool:
+        return mode >= 0
+
+    client._select_wifi_mode = select  # type: ignore[method-assign]  # the mode switch is not under test
+
+    async def scenario() -> "tuple[bool, bool, bool, bool]":
+        watcher = client.start_asy_hotspot_timeout()
+        await asyncio.sleep(0)  # a park: the watcher waits on its flag
+        client._hotspot_timer.trigger()
+        await _drive(2)
+        await _cancel(watcher)
+        return client._reconn_wifi, client._reconnect_fresh, client._hotspot_timer_running, client._ledflash is None
+
+    with _FastAsyncSleep():
+        assert run(scenario()) == (True, False, False, True)
+        run(client._handle_reconnect_trigger())
+    assert (client._conn_phase, client._hotspot_started_once) == (_PHASE_STA_SEEKING, True)
+    for _ in range(2):
+        run(client._register_sta_connection_failure())
+    assert client._conn_phase == _PHASE_SILENT
+
+
+def _fresh_boot_state(client: WifiService) -> "tuple[int, bool, int, bool, bool, bool]":
+    # (failures, hotspot used once, phase, reconnect pending, fresh flag pending, period or window timer running)
+    return (
+        client._connection_failures, client._hotspot_started_once, client._conn_phase, client._reconn_wifi,
+        client._reconnect_fresh, client._hotspot_timer_running,
+    )
+
+
+def test_a_settings_trigger_beside_a_window_end_wins() -> None:
+    # Both pending, in either order: the settings hook's fresh-boot state wins over the window end's kept hotspot use.
+    for settings_first in (True, False):
+        client = make_client(conn_fail_to_hotspot=2, hotspot_time_min=1)
+        client._conn_phase = _PHASE_HOTSPOT
+        client._hotspot_started_once = True
+        client._connection_failures = 1
+
+        async def select(mode: int) -> bool:
+            return mode >= 0
+
+        client._select_wifi_mode = select  # type: ignore[method-assign]  # the mode switch is not under test
+        if settings_first:
+            client.reconnect_wifi()
+            client._on_hotspot_window_end()
+        else:
+            client._on_hotspot_window_end()
+            client.reconnect_wifi()
+        with _FastAsyncSleep():
+            run(client._handle_reconnect_trigger())
+        assert _fresh_boot_state(client) == (0, False, _PHASE_STA_SEEKING, False, False, False), settings_first
+
+
+def test_the_identity_hook_lands_in_the_fresh_boot_state() -> None:
+    # Any credentials change lands where a fresh boot starts (owner, 2026-10-08: "Any change of credentials, no matter
+    # from which side, lands in the same mode as "initial connection attempt after a fresh boot"."), from each state, the
+    # window end's own streak (seeking with the hotspot already used) included.
+    for source in (_PHASE_HOTSPOT, _PHASE_SILENT, _PHASE_STA_ESTABLISHED, _PHASE_STA_SEEKING):
+        client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=2, hotspot_time_min=1)
+        run(client.pr.setup())
+        client._conn_phase = source
+        client._hotspot_started_once = True
+        client._connection_failures = 1
+        timer = client._hotspot_timer
+        if source in (_PHASE_HOTSPOT, _PHASE_SILENT):
+            run(client._arm_hotspot_timer())  # the hotspot's window, or the silent period
+        client.reconnect_wifi()  # the identity group's post hook, as a PUT through the request path calls it
+        with _FastAsyncSleep():
+            run(client._handle_reconnect_trigger())
+        assert _fresh_boot_state(client) == (0, False, _PHASE_STA_SEEKING, False, False, False), source
+        assert timer.callback is None, source
+        for _ in range(2):  # a fresh streak failing opens the hotspot once more, never the silent mode
+            run(client._register_sta_connection_failure())
+        assert client._conn_phase == _PHASE_HOTSPOT, source
 
 
 def test_repeated_absent_ticks_neither_rearm_the_timer_nor_log_anything() -> None:
@@ -1867,8 +2133,8 @@ def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
 
 # ---------------------------------------------------------------------------
 # "Attempt" operations - a mode switch, hotspot activation, a connect trigger, polling connect
-# status, the disconnect-wait, permanent deactivation: each persists a real errno via pr.err_s() and
-# sets self._hw_op_failed on a genuine exception, independent of the AP-reachability-driven fallback.
+# status, the disconnect-wait: each persists a real errno via pr.err_s() and sets
+# self._hw_op_failed on a genuine exception, independent of the AP-reachability-driven fallback.
 # ---------------------------------------------------------------------------
 
 
@@ -2064,19 +2330,6 @@ def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     assert _last_err(counter, "ErrType") == "E"
 
 
-def test_deactivate_wlan_permanently_sets_state_even_when_the_hardware_call_raises() -> None:
-    client = make_client()
-    run(client.pr.setup())
-    client._conn_phase = _PHASE_HOTSPOT
-    _wlan(client).raise_on["disconnect"] = RuntimeError("simulated hardware fault")
-    run(client._deactivate_wlan_permanently())
-    assert client._conn_phase == _PHASE_DEACTIVATED
-    assert client._hw_op_failed is True
-    counter = run(client.get_error_counter())
-    assert _last_err(counter, "ErrNum") == code("E", "WLAN_OFF")
-    assert _last_err(counter, "ErrType") == "E"
-
-
 # ---------------------------------------------------------------------------
 # _print_wlan_diagnostics() / _on_sta_connected() / _on_sta_disconnected() /
 # _register_sta_connection_failure() / _handle_sta_connection_result() - previously untested
@@ -2129,13 +2382,13 @@ def test_register_sta_connection_failure_switches_to_hotspot_at_threshold() -> N
     assert client._conn_phase == _PHASE_HOTSPOT
 
 
-def test_register_sta_connection_failure_deactivates_when_hotspot_already_tried() -> None:
+def test_register_sta_connection_failure_goes_silent_when_hotspot_already_tried() -> None:
     client = make_client(conn_fail_to_hotspot=2)
     run(client.pr.setup())
     client._connection_failures = 1
     client._hotspot_started_once = True
     run(client._register_sta_connection_failure())
-    assert client._conn_phase == _PHASE_DEACTIVATED
+    assert client._conn_phase == _PHASE_SILENT
 
 
 def test_on_sta_disconnected_registers_failure_when_never_connected() -> None:
@@ -2223,6 +2476,33 @@ def test_apply_initial_led_config_valid_config_does_not_deactivate() -> None:
     assert client._conn_phase != _PHASE_DEACTIVATED
 
 
+def test_a_settings_change_cannot_reach_the_no_configuration_state() -> None:
+    # An unreadable store refuses every write, so the request path never runs the settings hook there; called anyway,
+    # the hook changes nothing: the phase stays, the radio stays unused and the no-configuration pattern runs on.
+    client = make_invalid_cfg_client()
+    run(client.pr.setup())
+    results = run(handle_set_cmd(client, {"SSID": "MyNetwork"}, client.get_cfg_schema(), post_fct=client.reconnect_wifi))
+    assert "Valid" not in results.values() and client._reconn_wifi is False, results
+    first = _wlan(client)
+
+    async def scenario() -> "tuple[bool, bool]":
+        loop = asyncio.create_task(client._connect_loop())
+        await _until(lambda: client._ledflash is not None)
+        client.reconnect_wifi()
+        cancelled = client._ledflash is None
+        await _until(lambda: client._ledflash is not None)
+        await _cancel(loop)
+        restarted = client._led_pattern == _src_pattern("DEACTIVATED")
+        await _stop_flash(client)
+        return cancelled, restarted
+
+    with _FastAsyncSleep(), _CountedWLAN() as wlan:
+        cancelled, restarted = run(scenario())
+    assert client._conn_phase == _PHASE_DEACTIVATED
+    assert (wlan.built, first.connect_calls, first.disconnect_called) == ([], [], False)
+    assert cancelled and restarted, "the no-configuration pattern did not run on"
+
+
 def test_start_hotspot_missing_config_logs_in_both_layers() -> None:
     client = make_invalid_cfg_client()
     run(client.pr.setup())
@@ -2252,7 +2532,7 @@ def test_attempt_sta_connect_missing_config_logs_in_both_layers() -> None:
 
 def test_an_empty_ssid_returns_to_the_hotspot_without_a_failure_streak() -> None:
     # No SSID (factory state, or after "Reset to defaults"): nothing to attempt, so no streak - even after
-    # the hotspot ran once, an unconfigured unit goes back to its hotspot instead of deactivating.
+    # the hotspot ran once, an unconfigured unit goes back to its hotspot instead of going silent.
     client = make_client(conn_fail_to_hotspot=2)  # the default SSID is "" until configured
     run(client.pr.setup())
     client._hotspot_started_once = True
@@ -2280,7 +2560,7 @@ def _end_hotspot_window(client: WifiService) -> None:
         run(client._run_sta_mode())
 
 
-def test_an_unconfigured_unit_never_deactivates_over_two_hotspot_windows() -> None:
+def test_an_unconfigured_unit_never_goes_silent_over_two_hotspot_windows() -> None:
     client = make_client(conn_fail_to_hotspot=1)
     run(client.pr.setup())
     for window in range(2):
@@ -2291,18 +2571,19 @@ def test_an_unconfigured_unit_never_deactivates_over_two_hotspot_windows() -> No
     assert run(client.get_error_counter())["WIFI"]["ErrCount"] == 0
 
 
-def test_a_configured_ssid_whose_second_streak_fails_still_deactivates() -> None:
-    # Control, the owner rule (SPECIFICATION.md A.4): a second streak of real STA attempts ends DEACTIVATED.
+def test_a_configured_ssid_whose_second_streak_fails_goes_silent() -> None:
+    # Control, the owner rule (SPECIFICATION.md A.4): a second streak of real STA attempts ends in the silent mode,
+    # never with Wi-Fi off (owner, 2026-10-08: "Don't permanently switch WiFi off, only stop retrying to connect.").
     client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1)
     run(client.pr.setup())
     _wlan(client)._status = network.STAT_NO_AP_FOUND
     client._conn_phase = _PHASE_HOTSPOT
     _end_hotspot_window(client)
     assert len(_wlan(client).connect_calls) == 1
-    assert client._conn_phase == _PHASE_DEACTIVATED
+    assert client._conn_phase == _PHASE_SILENT
 
 
-def test_the_first_streak_persists_its_fallback_and_the_second_its_deactivation_once() -> None:
+def test_the_first_streak_persists_its_fallback_and_the_second_its_silent_entry_once() -> None:
     # The two owner-designed transitions leave a trace in the WIFI history, so it says why a unit was offline.
     client = make_client(conn_fail_to_hotspot=2)
     run(client.pr.setup())
@@ -2315,12 +2596,12 @@ def test_the_first_streak_persists_its_fallback_and_the_second_its_deactivation_
     with _FastAsyncSleep():
         for _ in range(2):
             run(client._register_sta_connection_failure())
-    assert client._conn_phase == _PHASE_DEACTIVATED
+    assert client._conn_phase == _PHASE_SILENT
     log = run(client.get_error_counter())
-    assert _used_slots(log) == [code("W", "WLAN_TO_HOTSPOT"), code("W", "WLAN_DEACTIVATED")]
+    assert _used_slots(log) == [code("W", "WLAN_TO_HOTSPOT"), code("W", "WLAN_SILENT")]
     _no_sta(client)
 
-    async def deactivated_iterations() -> None:
+    async def silent_iterations() -> None:
         task = asyncio.create_task(client._connect_loop())
         await _drive(12)
         await _cancel(task)
@@ -2328,8 +2609,469 @@ def test_the_first_streak_persists_its_fallback_and_the_second_its_deactivation_
             await _stop_flash(client)
 
     with _FastAsyncSleep():
-        run(deactivated_iterations())
-    assert run(client.get_error_counter()) == log  # further deactivated iterations persist nothing
+        run(silent_iterations())
+    assert client._conn_phase == _PHASE_SILENT
+    assert run(client.get_error_counter()) == log  # further iterations without a period's fire persist nothing
+
+
+# ---------------------------------------------------------------------------
+# The silent mode: a second failed streak after the hotspot ran stops the retries but never switches Wi-Fi off;
+# one connect attempt per hotspot_time_min, the LED dark until a link (SPECIFICATION.md A.4).
+# ---------------------------------------------------------------------------
+
+
+def test_a_second_streak_enters_the_silent_mode_once() -> None:
+    # Silent, never off (owner, 2026-10-08: "Don't permanently switch WiFi off, only stop retrying to connect."): the
+    # radio stays as the failed attempt left it, the flash ends, one WLAN_SILENT entry; later failures add nothing.
+    client = make_client(conn_fail_to_hotspot=2)
+    run(client.pr.setup())
+    radio = _wlan(client)
+    radio._active = True  # as the streak's last attempt left it
+    client._hotspot_started_once = True
+    client._connection_failures = 1
+
+    async def scenario() -> "asyncio.Task[None] | None":
+        client._run_led_pattern(*_src_pattern("HOTSPOT"))  # a running flash task the entry must end
+        flash = client._ledflash
+        await client._register_sta_connection_failure()
+        await asyncio.sleep(0)  # a park: the cancelled flash task ends; done() below checks it
+        return flash
+
+    with _FastAsyncSleep():
+        flash = run(scenario())
+    assert client._conn_phase == _PHASE_SILENT
+    assert flash is not None and flash.done() and client._ledflash is None
+    assert (radio.disconnect_called, radio._active, radio.deinit_called) == (False, True, False), "the radio was switched off"
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("W", "WLAN_SILENT")] and log["WIFI"]["ErrCount"] == 1
+    for _ in range(3):  # failed attempts in the mode: no streak, no retry wait, nothing persisted
+        assert run(client._on_sta_disconnected()) is False
+    assert (client._conn_phase, client._connection_failures) == (_PHASE_SILENT, 0)
+    assert run(client.get_error_counter()) == log
+
+
+def test_a_silent_period_runs_one_attempt_and_a_link_is_a_normal_connection() -> None:
+    # The window's own PERIODIC timer is the period; one fire, one attempt with the stored settings, and a link is an
+    # ordinary connection: its timer ends, and a later loss takes the 60 s retry, never the hotspot.
+    client = _silent_client(hotspot_time_min=2)
+    timer = client._hotspot_timer
+    radio = _wlan(client)
+
+    async def scenario() -> "list[tuple[str | None, str | None]]":
+        watcher = client.start_asy_hotspot_timeout()
+        await client._run_silent_mode()  # arms the period; nothing is due yet
+        before = list(radio.connect_calls)
+        _joins(client)
+        await _fire_period(client)
+        await _cancel(watcher)
+        return before
+
+    with _FastAsyncSleep():
+        before = run(scenario())
+    assert before == []
+    assert [arm[1:] for arm in timer.arms] == [(120000, Timer.PERIODIC)]
+    assert radio.connect_calls == [("MyNetwork", "supersecret")]
+    assert (client._conn_phase, client._connection_failures) == (_PHASE_STA_ESTABLISHED, 0)
+    assert (client._hotspot_timer_running, timer.callback) == (False, None), "the link must end the period"
+    radio._connected = False  # a later loss
+    assert run(client._on_sta_disconnected()) is True
+    assert client._conn_phase == _PHASE_STA_ESTABLISHED
+
+
+def test_a_failed_silent_attempt_stays_silent_without_a_streak() -> None:
+    # Uncapped and never escalating (owner, 2026-10-08: "This repeats with the periodicity of the SSID scans if not
+    # successful, not capped"): each attempt's verdict persists, one slot counting the run.
+    client = _silent_client()
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+
+    async def scenario() -> None:
+        watcher = client.start_asy_hotspot_timeout()
+        for _ in range(3):
+            await _fire_period(client)
+        await _cancel(watcher)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert (client._conn_phase, client._connection_failures) == (_PHASE_SILENT, 0)
+    assert len(_wlan(client).connect_calls) == 3
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("W", "WLAN_NO_AP")] and log["WIFI"]["ErrCount"] == 3
+
+
+def test_no_attempt_runs_between_periods() -> None:
+    # Twelve loop iterations (a minute of 5 s refreshes) with no period's fire: no connect attempt, the period armed.
+    client = _silent_client()
+    real = client._run_silent_mode
+    iterations = [0]
+
+    async def counted() -> bool:
+        iterations[0] += 1
+        return await real()
+
+    client._run_silent_mode = counted  # type: ignore[method-assign]  # counts the real iterations
+
+    async def scenario() -> None:
+        loop = asyncio.create_task(client._connect_loop())
+        for _ in range(400):  # bounded: every sleep is one yield here
+            if iterations[0] >= 12:
+                break
+            await asyncio.sleep(0)
+        await _cancel(loop)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert iterations[0] >= 12
+    assert _wlan(client).connect_calls == []
+    assert (client._conn_phase, client._hotspot_timer_running) == (_PHASE_SILENT, True)
+
+
+# Error handling, resilience and non-blocking in the silent mode.
+
+
+def _failed_period_arm_case(exc: "type[BaseException]") -> None:
+    # Two iterations whose period arm raises, then one with room in the alarm pool.
+    client = _silent_client()
+
+    async def scenario() -> "tuple[bool, bool]":
+        with _RaiseOnArm(exc):
+            await client._run_silent_mode()
+            await client._run_silent_mode()
+        failed = client._hotspot_timer_running
+        await client._run_silent_mode()
+        return failed, client._hotspot_timer_running
+
+    assert run(scenario()) == (False, True), exc
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("E", "TIMER")] and log["WIFI"]["ErrCount"] == 2, (exc, log)
+    assert (client._conn_phase, len(client._hotspot_timer.arms)) == (_PHASE_SILENT, 1), exc
+
+
+def test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode() -> None:
+    # Alarm-pool exhaustion (ENOMEM) and an allocation failure each persist one TIMER entry per failed arm; the mode
+    # stays, and the next iteration arms the period once the pool has room.
+    _failed_period_arm_case(OSError)
+    _failed_period_arm_case(MemoryError)
+
+
+class _RaisingConnectWLAN:
+    # Every interface built in the block raises from connect(), as a radio whose join command keeps failing does:
+    # the device rung's fresh interface fails too, so the hardware streak runs on to its give-up.
+    def __enter__(self) -> "Self":
+        self._real = network.WLAN
+        real = self._real
+
+        def build(if_id: int) -> "Any":
+            wlan: Any = real(if_id)
+            wlan.raise_on["connect"] = OSError("simulated join command failure")
+            return wlan
+
+        network.WLAN = build  # type: ignore[misc, assignment]  # a module attribute swap, restored on exit
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        network.WLAN = self._real  # type: ignore[misc]
+
+
+def test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode() -> None:
+    # A silent attempt is an ordinary attempt: a raising connect() persists WLAN_STA_START and counts toward the
+    # hardware streak, which the idle iterations between periods leave as it is, so a radio that never comes up still
+    # reaches its device rung and its give-up; both, and the task's restart, keep the silent mode.
+    with _RaisingConnectWLAN():
+        client = make_client_with_json(_VALID_JSON, max_module_error=2)
+        run(client.pr.setup())
+        client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+        client._conn_phase = _PHASE_SILENT
+        real = client._run_silent_mode
+        iterations = [0]
+
+        async def counted() -> bool:
+            iterations[0] += 1
+            return await real()
+
+        client._run_silent_mode = counted  # type: ignore[method-assign]  # counts the real iterations
+
+        async def idle_then_fire(loop: "asyncio.Task[None]") -> None:
+            target = iterations[0] + 6  # six idle iterations, half a minute of refreshes, then the period's fire
+            await _until(lambda: iterations[0] >= target or loop.done())
+            client._hotspot_timer.trigger()
+
+        async def give_up() -> "tuple[bool, list[int]]":
+            watcher = client.start_asy_hotspot_timeout()
+            loop = asyncio.create_task(client._connect_loop())
+            streak = []
+            for _ in range(4):  # the give-up needs max_module_error + 1 failed attempts, each one period apart
+                await idle_then_fire(loop)
+                await _until(lambda: not client._silent_attempt_due or loop.done())
+                streak.append(client._err_cnt_internal)
+            await _until(loop.done)
+            done = loop.done()
+            if not done:
+                await _cancel(loop)
+            await _cancel(watcher)
+            return done, streak
+
+        with _FastAsyncSleep():
+            done, streak = run(give_up())
+        kept = _used_slots(run(client.get_error_counter()))
+        assert done is True, ("the streak never reached its give-up", streak, kept)
+        for name in (("E", "WLAN_STA_START"), ("W", "DEVICE_RECOVERY"), ("E", "GIVE_UP"), ("E", "WLAN_GIVE_UP")):
+            assert code(*name) in kept, (name, kept)
+        assert client._conn_phase == _PHASE_SILENT, "the give-up left the silent mode"
+        client._run_silent_mode = real  # type: ignore[method-assign]
+
+        async def restarted() -> None:
+            loop = asyncio.create_task(client._connect_loop())
+            await _until(lambda: client._hotspot_timer_running)  # the restart's first silent iteration re-arms
+            await _cancel(loop)
+
+        with _FastAsyncSleep():
+            run(restarted())
+    assert (client._conn_phase, client._hotspot_timer_running) == (_PHASE_SILENT, True), "the restart left the silent mode"
+
+
+def test_a_silent_period_that_cannot_be_armed_feeds_the_hardware_streak() -> None:
+    # With no period armed no attempt is ever due, so each failed arm is the iteration's hardware failure: the streak
+    # reaches its device rung and its give-up as a raising connect() does, and the restart keeps the silent mode.
+    client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1, max_module_error=2)
+    run(client.pr.setup())
+    client._hotspot_started_once = True
+    real = client._run_silent_mode
+    iterations = [0]
+
+    async def counted() -> bool:
+        iterations[0] += 1
+        return await real()
+
+    client._run_silent_mode = counted  # type: ignore[method-assign]  # counts the real iterations
+
+    async def give_up() -> bool:
+        await client._register_sta_connection_failure()  # the second streak's last failure: silent
+        loop = asyncio.create_task(client._connect_loop())
+        await _until(loop.done, 400)
+        done = loop.done()
+        if not done:
+            await _cancel(loop)
+        return done
+
+    with _FastAsyncSleep(), _RaiseOnArm():  # Timer.init() refuses every arm (ENOMEM)
+        done = run(give_up())
+    kept = _used_slots(run(client.get_error_counter()))
+    assert done is True, ("the streak never reached its give-up", iterations, kept)
+    assert iterations[0] == client._err_cnt_internal == client._max_module_error + 1, (iterations, client._err_cnt_internal)
+    for name in (("E", "TIMER"), ("W", "DEVICE_RECOVERY"), ("E", "GIVE_UP"), ("E", "WLAN_GIVE_UP")):
+        assert code(*name) in kept, (name, kept)
+    assert client._conn_phase == _PHASE_SILENT, "the give-up left the silent mode"
+    client._run_silent_mode = real  # type: ignore[method-assign]
+
+    async def restarted() -> None:
+        loop = asyncio.create_task(client._connect_loop())
+        await _until(lambda: client._hotspot_timer_running)  # the pool has room again: the restart arms the period
+        await _cancel(loop)
+
+    with _FastAsyncSleep():
+        run(restarted())
+    assert (client._conn_phase, client._hotspot_timer_running) == (_PHASE_SILENT, True), "the restart left the silent mode"
+
+
+def test_500_silent_periods_stay_silent_and_bounded() -> None:
+    # Uncapped, and bounded by structure: one arm for every period, one history slot for the whole run, no task or
+    # radio interface left behind, however many periods pass (CLAUDE.md's memory rule: a property, not a heap reading).
+    client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1)
+    run(client.pr.setup())
+    client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+    client._hotspot_started_once = True
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+    first = _wlan(client)
+
+    async def scenario() -> "tuple[list[int], list[int], int]":
+        watcher = client.start_asy_hotspot_timeout()
+        await client._register_sta_connection_failure()  # the second streak's last failure: silent
+        await _fire_period(client)
+        after_one = _used_slots(await client.get_error_counter())
+        for _ in range(499):
+            await _fire_period(client)
+            assert client._conn_phase == _PHASE_SILENT and not client._ap_selected
+        after_all = _used_slots(await client.get_error_counter())
+        count = (await client.get_error_counter())["WIFI"]["ErrCount"]
+        await _cancel(watcher)
+        return after_one, after_all, count
+
+    with _FastAsyncSleep():
+        after_one, after_all, count = run(scenario())
+    assert len(first.connect_calls) == 500 and _wlan(client) is first
+    assert after_one == [code("W", "WLAN_SILENT"), code("W", "WLAN_NO_AP")]
+    assert after_all == after_one and count == 501, (after_all, count)
+    assert len(client._hotspot_timer.arms) == 1, "the period was re-armed while it ran"
+    assert (client._ledflash, client._dns_server_task, client._silent_attempt_due) == (None, None, False)
+
+
+def test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period() -> None:
+    # The restart's reset deinits the period, its own reconnect keeps the phase with the LED dark through the
+    # disconnect wait, and the next iteration arms the period again.
+    led = FakeLED()
+    client = _silent_client(led=led, led_on=True)
+    run(client.set_wifi_led(status=True))
+    run(client._run_silent_mode())  # the period runs
+    radio = _wlan(client)
+    radio._active = True  # as the last silent attempt left the radio
+    answers = [True, True, True, True]  # the restart's state read, then three polls of its disconnect wait
+
+    def isconnected() -> bool:
+        return answers.pop(0) if answers else False
+
+    radio.isconnected = isconnected
+    radio.disconnect = lambda: None  # the link clears only as isconnected() above says
+
+    async def scenario() -> None:
+        loop = asyncio.create_task(client._connect_loop())
+        await _until(lambda: len(client._hotspot_timer.arms) == 2)
+        await _cancel(loop)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert client._conn_phase == _PHASE_SILENT
+    assert len(client._hotspot_timer.arms) == 2 and client._hotspot_timer_running, "the period was not re-armed"
+    assert (led.on_calls, led.toggle_calls) == (0, 0), "the restart lit the LED while silent"
+    assert answers == [], "the disconnect wait never polled"
+
+
+def test_a_restart_in_the_window_end_streak_still_clears_the_hotspot_use() -> None:
+    # Guard (the behaviour is unchanged; holds at once): a restart before the window end's streak has failed is a
+    # restart from seeking, which starts a fresh streak with the hotspot available, as at a boot (A.4's restart rule).
+    client = make_client(conn_fail_to_hotspot=2)
+    client._hotspot_started_once = True
+    client._connection_failures = 1
+    _no_sta(client)
+
+    async def scenario() -> None:
+        loop = asyncio.create_task(client._connect_loop())
+        await _drive(4)
+        await _cancel(loop)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert (client._conn_phase, client._hotspot_started_once, client._connection_failures) == (_PHASE_STA_SEEKING, False, 0)
+
+
+def test_a_dropped_silent_period_fire_is_recovered_by_the_next_period() -> None:
+    # The soft-callback drop (Part F.1): the lost fire makes no attempt, and PERIODIC fires the next period, which does.
+    client = _silent_client()
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+    timer = client._hotspot_timer
+
+    async def scenario() -> "tuple[int, int]":
+        watcher = client.start_asy_hotspot_timeout()
+        await client._run_silent_mode()  # arms the period
+        timer.drop()  # period 1's callback is lost
+        await _drive(2)
+        await client._run_silent_mode()
+        dropped = len(_wlan(client).connect_calls)
+        timer.trigger()  # period 2
+        await _drive(2)
+        await client._run_silent_mode()
+        await _cancel(watcher)
+        return dropped, len(_wlan(client).connect_calls)
+
+    with _FastAsyncSleep():
+        assert run(scenario()) == (0, 1)
+
+
+def test_the_first_silent_attempt_waits_one_period_after_the_entry() -> None:
+    # A due mark left from an earlier silent spell does not carry over: the entry clears it, so the first attempt
+    # still waits for one full period.
+    client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1)
+    run(client.pr.setup())
+    client._hotspot_started_once = True
+    client._silent_attempt_due = True  # a stale mark
+    run(client._register_sta_connection_failure())
+    with _FastAsyncSleep():
+        run(client._run_silent_mode())
+    assert _wlan(client).connect_calls == [] and client._hotspot_timer_running
+
+
+def test_the_wifi_service_never_scans() -> None:
+    # Guard (holds at once): WLAN.scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246), past the watchdog.
+    with open(_WIFI) as f:
+        assert ".scan(" not in f.read()
+    scans: list[tuple[object, ...]] = []
+
+    def scan(*args: object) -> "list[object]":
+        scans.append(args)
+        return []
+
+    network.WLAN.scan = scan  # type: ignore[method-assign, assignment]  # recorded, so no swallowing except hides a call
+    try:
+        client = _silent_client()
+        _wlan(client)._status = network.STAT_NO_AP_FOUND
+
+        async def scenario() -> None:
+            watcher = client.start_asy_hotspot_timeout()
+            for _ in range(3):
+                await _fire_period(client)
+            loop = asyncio.create_task(client._connect_loop())
+            await _drive(12)
+            await _cancel(loop)
+            await _cancel(watcher)
+
+        with _FastAsyncSleep():
+            run(scenario())
+    finally:
+        del network.WLAN.scan
+    assert scans == []
+    assert len(_wlan(client).connect_calls) == 3
+
+
+def test_the_silent_wait_holds_no_lock_and_yields() -> None:
+    # Between periods another task takes wifi_mode_lock and a counting task advances on every loop iteration; a due
+    # attempt holds the lock only for its connect and poll, as every attempt does.
+    client = _silent_client()
+    _wlan(client)._status = network.STAT_NO_AP_FOUND
+    real = client._run_silent_mode
+    ticks = [0]
+    taken = [0]
+    seen: list[tuple[int, int, bool]] = []  # (ticks, lock takes, lock free) at each iteration's start
+    held: list[bool] = []
+    real_attempt = client._attempt_sta_connect
+
+    async def iteration() -> bool:
+        seen.append((ticks[0], taken[0], not client.wifi_mode_lock.locked()))
+        return await real()
+
+    async def attempt() -> None:
+        held.append(client.wifi_mode_lock.locked())
+        await real_attempt()
+
+    client._run_silent_mode = iteration  # type: ignore[method-assign]  # observed, then run
+    client._attempt_sta_connect = attempt  # type: ignore[method-assign]  # observed, then run
+
+    async def counter() -> None:
+        while True:
+            ticks[0] += 1
+            await asyncio.sleep(0)
+
+    async def taker() -> None:
+        while True:
+            async with client.wifi_mode_lock:
+                taken[0] += 1
+            await asyncio.sleep(0)
+
+    async def scenario() -> None:
+        tasks = [asyncio.create_task(counter()), asyncio.create_task(taker()), client.start_asy_hotspot_timeout()]
+        loop = asyncio.create_task(client._connect_loop())
+        await _until(lambda: len(seen) >= 12, 600)
+        client._hotspot_timer.trigger()
+        await _until(lambda: len(held) == 1, 600)
+        await _until(lambda: len(seen) >= 14, 600)
+        for task in [loop] + tasks:
+            await _cancel(task)
+
+    with _FastAsyncSleep():
+        run(scenario())
+    assert len(seen) >= 14 and all(free for _ticks, _takes, free in seen), seen
+    advanced = [seen[i + 1][0] > seen[i][0] and seen[i + 1][1] > seen[i][1] for i in range(len(seen) - 1)]
+    assert all(advanced), ("an iteration ran with another task held off", seen)
+    assert held == [True], "the attempt ran outside the lock"
+    assert len(_wlan(client).connect_calls) == 1 and not client.wifi_mode_lock.locked()
 
 
 # ---------------------------------------------------------------------------
@@ -2425,42 +3167,124 @@ def test_get_hotspot_stations_returns_the_real_list_on_success() -> None:
 def test_get_hotspot_stations_answers_none_for_a_failed_query_and_an_empty_list_for_no_client() -> None:
     client = make_client()
     assert run(client._get_hotspot_stations()) == []  # a real empty list: no client
+    _wlan(client)._stations = [(bytes(6),)] * _STATIONS_UNSET
+    assert run(client._get_hotspot_stations()) is None  # the chip-down answer: a failed check
     _wlan(client).raise_on["status"] = RuntimeError("simulated hardware fault")
     assert run(client._get_hotspot_stations()) is None  # unknown, never "no client"
     assert client.wifi_mode_lock.locked() is False
 
 
+def test_get_hotspot_stations_reads_the_unfilled_answer_as_a_failed_check() -> None:
+    # A chip that cannot come up leaves status("stations") at its 32-entry buffer, unfilled (cyw43_ctrl.c:717-730,
+    # v1.29.0): a failed check like a raise. Any other answer is the list as read: 31 clients, or none.
+    client = make_client()
+    radio = _wlan(client)
+    answers = []
+    for count in (_STATIONS_UNSET, _STATIONS_UNSET - 1, 0):
+        radio._stations = [(bytes(6),)] * count
+        answers.append(run(client._get_hotspot_stations()))
+    radio.raise_on["status"] = OSError("simulated stations failure")
+    answers.append(run(client._get_hotspot_stations()))
+    assert answers == [None, [(bytes(6),)] * (_STATIONS_UNSET - 1), [], None]
+
+
 def _failed_stations_case(*, timer_running: bool) -> None:
+    # Three failed checks with the window running, or stopped by a client: each runs the absent path once and not the
+    # client's, so a window a client stopped is armed once more; one slot counts the failed checks.
     client = make_client(hotspot_time_min=1)
     run(client.pr.setup())
     if timer_running:
         run(client._hotspot_client_absent())
+    else:
+        client._hotspot_client_connected()
     transitions: list[str] = []
+    real_absent = client._hotspot_client_absent
 
     def connected() -> None:
         transitions.append("connected")
 
     async def absent() -> None:
         transitions.append("absent")
+        await real_absent()
 
     client._hotspot_client_connected = connected  # type: ignore[method-assign]  # observed, not run
-    client._hotspot_client_absent = absent  # type: ignore[method-assign]  # observed, not run
+    client._hotspot_client_absent = absent  # type: ignore[method-assign]  # observed, then run
     _wlan(client).raise_on["status"] = RuntimeError("simulated stations failure")
     for _ in range(3):
         run(client._manage_hotspot_stations())
-    assert transitions == [], timer_running
-    assert client._hotspot_timer_running is timer_running
+    assert transitions == ["absent"] * 3, timer_running
+    assert client._hotspot_timer_running is True, timer_running
     log = run(client.get_error_counter())
     assert _used_slots(log) == [code("W", "WLAN_STATIONS_UNKNOWN")] and log["WIFI"]["ErrCount"] == 3, (timer_running, log)
     if client._ledflash is not None:
         run(_stop_flash(client))
 
 
-def test_a_failed_stations_query_leaves_the_hotspot_timer_as_it_was() -> None:
-    # A failed query is unknown: a running shutoff timer keeps running (no client seen) and a stopped one
-    # stays stopped (a client was seen); neither transition runs, and one slot counts the failed queries.
+def test_a_failed_stations_query_counts_as_no_client() -> None:
+    # Unconfirmed is no client (owner, 2026-10-08: "yes, record it that way"): a running window keeps running and
+    # one a client stopped is armed again, so an unattended unit is never held on its hotspot.
     _failed_stations_case(timer_running=True)
     _failed_stations_case(timer_running=False)
+
+
+def test_an_unconfirmed_stations_check_counts_as_no_client() -> None:
+    # The raise and the unfilled answer each run the absent path (arming the window when none runs), never the
+    # client's; one slot counts them. An empty list arms the window with no warning; a listed client stops it.
+    client = make_client(hotspot_time_min=1)
+    run(client.pr.setup())
+    radio = _wlan(client)
+    seen: list[tuple[bool, bool]] = []  # (the hotspot pattern runs, the window runs) after each check
+
+    async def check(answer: "list[tuple[bytes, ...]] | None") -> None:
+        if answer is None:
+            radio.raise_on["status"] = RuntimeError("simulated stations failure")
+        else:
+            radio.raise_on.pop("status", None)
+            radio._stations = answer
+        await client._manage_hotspot_stations()
+        seen.append((client._led_pattern == _src_pattern("HOTSPOT"), client._hotspot_timer_running))
+
+    async def scenario() -> "list[int]":
+        await check(None)  # raises
+        await check([_PHONE])  # a listed client
+        await check([(bytes(6),)] * _STATIONS_UNSET)  # the chip-down answer
+        await check(None)
+        counts = [(await client.get_error_counter())["WIFI"]["ErrCount"]]
+        await check([])
+        counts.append((await client.get_error_counter())["WIFI"]["ErrCount"])
+        await _stop_flash(client)
+        return counts
+
+    counts = run(scenario())
+    assert seen == [(True, True), (False, False), (True, True), (True, True), (True, True)], seen
+    assert counts == [3, 3], "an empty list is no client without a warning"
+    assert _used_slots(run(client.get_error_counter())) == [code("W", "WLAN_STATIONS_UNKNOWN")]
+
+
+def test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check() -> None:
+    # The query raising while a phone is listed counts as no client and arms the window; the next good check, five
+    # seconds later on the device, still lists the phone and stops it, so a glitch never ends the window under a client.
+    client = make_client(hotspot_time_min=1)
+    run(client.pr.setup())
+    radio = _wlan(client)
+    radio._stations = [_PHONE]
+
+    async def scenario() -> "list[bool]":
+        running = []
+        await client._manage_hotspot_stations()
+        running.append(client._hotspot_timer_running)
+        radio.raise_on["status"] = OSError("simulated stations failure")
+        await client._manage_hotspot_stations()
+        running.append(client._hotspot_timer_running)
+        del radio.raise_on["status"]
+        await client._manage_hotspot_stations()
+        running.append(client._hotspot_timer_running)
+        await _stop_flash(client)
+        return running
+
+    assert run(scenario()) == [False, True, False]
+    assert client._led_pattern == _src_pattern("HOTSPOT_CLIENT")
+    assert _used_slots(run(client.get_error_counter())) == [code("W", "WLAN_STATIONS_UNKNOWN")]
 
 
 def test_manage_hotspot_stations_with_a_client_connected_stops_the_shutoff_timer() -> None:
@@ -2612,13 +3436,25 @@ def test_reset_wlan_connect_state_resets_sta_established_to_seeking() -> None:
 
 
 def test_reset_wlan_connect_state_preserves_deactivated_phase_across_a_restart() -> None:
-    # A task restart (e.g. after the _hw_op_failed streak gives up) must NOT pull the state machine
-    # out of the terminal deactivated phase - _PHASE_DEACTIVATED is a deliberate, permanent WLAN-off
-    # state (Part A.4: a physical power-cycle is the recovery), same casing as _PHASE_HOTSPOT above.
+    # A task restart (e.g. after the _hw_op_failed streak gives up) keeps the no-configuration state: with no
+    # readable Wi-Fi configuration the radio stays unused until a reboot (Part A.4), same casing as _PHASE_HOTSPOT.
     client = make_client()
     client._conn_phase = _PHASE_DEACTIVATED
     client._reset_wlan_connect_state()
     assert client._conn_phase == _PHASE_DEACTIVATED
+
+
+def test_reset_wlan_connect_state_preserves_silent_phase_across_a_restart() -> None:
+    # The silent mode survives a task restart (owner, 2026-10-08: "Entering the hotspot mode only through a reboot,
+    # as is."); the restart's own reconnect keeps it too.
+    client = make_client()
+    client._conn_phase = _PHASE_SILENT
+    _wlan(client)._active = True  # as the last silent attempt left the radio
+    client._reset_wlan_connect_state()
+    assert (client._conn_phase, client._reconn_wifi) == (_PHASE_SILENT, True)
+    with _FastAsyncSleep():
+        run(client._handle_reconnect_trigger())
+    assert client._conn_phase == _PHASE_SILENT
 
 
 def test_reset_wlan_connect_state_clears_failure_counters_and_hotspot_started_once() -> None:
@@ -3322,25 +4158,33 @@ async def _no_captive_dns(server_ip: str, netmask: str) -> None:
     await asyncio.Event().wait()  # parked until the hotspot is left: the captive DNS server's socket is not under test
 
 
+async def _next_stations_check(radio: _HotspotRadio) -> bool:
+    # Waits until the AP has answered one more stations query than it had when called.
+    target = radio.station_checks + 1
+    return await _until(lambda: radio.station_checks >= target)
+
+
+def _hotspot_client(radio: _HotspotRadio, json_text: str = _VALID_JSON) -> WifiService:
+    # A unit on _HotspotRadio that falls back after one failed attempt, with a one-minute window; the watcher's flag
+    # parks on an asyncio.Event and the captive DNS server is stubbed (its socket is not under test).
+    client = make_client_with_json(json_text, conn_fail_to_hotspot=1, hotspot_time_min=1)
+    client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
+    client._dns_server.run = _no_captive_dns  # type: ignore[method-assign]  # its socket is not under test
+    return client
+
+
+async def _stop_all(client: WifiService, *tasks: "asyncio.Task[None]") -> None:
+    for task in tasks + (client._ledflash, client._dns_server_task):  # a concatenation: a starred display is a SyntaxError here (Part F.1)
+        if task is not None:
+            await _cancel(task)
+
+
 def test_integration_a_hotspot_client_holds_the_unit_until_it_leaves_then_the_window_end_retries_sta() -> None:
     # The owner's rule (SPECIFICATION.md A.4): a client keeps the hotspot for as long as it stays; once none is left the
     # window runs and its end retries the stored network, inside the running tasks - no task restart and no reboot.
     with _HotspotRadio() as radio, _FastAsyncSleep():
-        client = make_client_with_json(_VALID_JSON, conn_fail_to_hotspot=1, hotspot_time_min=1)
-        client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
-        client._dns_server.run = _no_captive_dns  # type: ignore[method-assign]  # its socket is not under test
+        client = _hotspot_client(radio)
         timer = client._hotspot_timer
-
-        async def until(done: "Callable[[], bool]") -> bool:
-            for _ in range(200):  # bounded: every sleep is one yield here
-                if done():
-                    return True
-                await asyncio.sleep(0)
-            return False
-
-        async def next_stations_check() -> bool:
-            target = radio.station_checks + 1
-            return await until(lambda: radio.station_checks >= target)
 
         async def scenario() -> None:
             await client.pr.setup()
@@ -3348,40 +4192,147 @@ def test_integration_a_hotspot_client_holds_the_unit_until_it_leaves_then_the_wi
             watcher = client.start_asy_hotspot_timeout()
             try:
                 # The router is down: the failed attempt brings the hotspot up, whose timer runs while no client is there.
-                assert await until(lambda: client._hotspot_timer_running), "the hotspot never came up with its timer"
+                assert await _until(lambda: client._hotspot_timer_running), "the hotspot never came up with its timer"
                 assert (client._conn_phase, client._ap_selected) == (_PHASE_HOTSPOT, True)
                 radio.stations.append(_PHONE)
-                assert await next_stations_check()
+                assert await _next_stations_check(radio)
                 assert (client._hotspot_timer_running, timer.callback) == (False, None), "a client must stop the timer"
                 for window in range(3):  # three would-be window ends while the phone stays: nothing is armed to fire
                     timer.trigger()
-                    assert await next_stations_check(), window
+                    assert await _next_stations_check(radio), window
                 held = (client._conn_phase, client._ap_selected, client._reconn_wifi, len(radio.built))
                 assert held == (_PHASE_HOTSPOT, True, False, 2), "the unit must stay in its hotspot while the client stays"
                 arms = len(timer.arms)
                 radio.stations.clear()
-                assert await next_stations_check()
+                assert await _next_stations_check(radio)
                 assert client._hotspot_timer_running and len(timer.arms) == arms + 1, "the client's leaving must arm the timer"
                 assert (timer.mode, timer.period, client._conn_phase) == (Timer.PERIODIC, 60000, _PHASE_HOTSPOT)
                 radio.router_up = True
                 timer.trigger()  # the window ends with no client: the soft callback sets the watcher's flag
-                assert await until(lambda: len(radio.built) == 3), "the window's end must leave the hotspot"
+                assert await _until(lambda: len(radio.built) == 3), "the window's end must leave the hotspot"
                 sta = radio.built[2]
                 left = (sta.if_id, client._conn_phase, client._ap_selected, client._dns_server_task, sta.connect_calls)
                 assert left == (network.STA_IF, _PHASE_STA_SEEKING, False, None, []), left
-                assert await until(lambda: client._conn_phase == _PHASE_STA_ESTABLISHED), "STA must be retried"
+                assert await _until(lambda: client._conn_phase == _PHASE_STA_ESTABLISHED), "STA must be retried"
                 assert sta.connect_calls == [("MyNetwork", "supersecret")]  # the stored settings
                 assert not loop.done() and client._hotspot_started_once, "no task restart: the same loop carried it"
                 kept = _used_slots(await client.get_error_counter())
-                assert code("E", "WLAN_GIVE_UP") not in kept and code("W", "WLAN_DEACTIVATED") not in kept, kept
+                assert code("E", "WLAN_GIVE_UP") not in kept and code("W", "WLAN_SILENT") not in kept, kept
             finally:
-                for task in (loop, watcher, client._ledflash, client._dns_server_task):
-                    if task is not None:
-                        await _cancel(task)
+                await _stop_all(client, loop, watcher)
 
         reboots = machine.reset_count
         run(scenario())
     assert machine.reset_count == reboots
+
+
+async def _boot_into_the_hotspot(client: WifiService, radio: _HotspotRadio) -> None:
+    # The router is down at boot: the one-attempt streak brings the hotspot up, its window running with no client.
+    assert await _until(lambda: client._hotspot_timer_running), "the hotspot never came up with its timer"
+    assert (client._conn_phase, client._ap_selected, len(radio.built)) == (_PHASE_HOTSPOT, True, 2)
+
+
+async def _silent_attempt(client: WifiService, sta: "Any") -> bool:
+    # Fires one silent period on the running tasks and waits until its one attempt reached the radio.
+    if not await _until(lambda: client._hotspot_timer_running):
+        return False
+    target = len(sta.connect_calls) + 1
+    client._hotspot_timer.trigger()
+    return await _until(lambda: len(sta.connect_calls) >= target) and len(sta.connect_calls) == target
+
+
+def test_integration_a_unit_goes_silent_after_its_second_streak_and_rejoins_when_the_router_returns() -> None:
+    # The owner's sequence end to end on the running tasks (owner, 2026-10-08: "If the SSID stored in the configuration
+    # is found in the available networks, run one reconnection try"): hotspot, window end, silent, then a link.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = _hotspot_client(radio)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            loop = asyncio.create_task(client._connect_loop())
+            watcher = client.start_asy_hotspot_timeout()
+            try:
+                await _boot_into_the_hotspot(client, radio)
+                client._hotspot_timer.trigger()  # the window ends with the router still down
+                assert await _until(lambda: client._conn_phase == _PHASE_SILENT), "the second streak must go silent"
+                sta = radio.built[2]
+                silent = (len(radio.built), client._ap_selected, client._dns_server_task, client._ledflash)
+                assert silent == (3, False, None, None), silent
+                for period in range(2):
+                    assert await _silent_attempt(client, sta), period
+                assert client._conn_phase == _PHASE_SILENT and len(radio.built) == 3, "no hotspot after the silent entry"
+                radio.router_up = True
+                client._hotspot_timer.trigger()
+                assert await _until(lambda: client._conn_phase == _PHASE_STA_ESTABLISHED), "the router's return must link"
+                assert sta.connect_calls[-1] == ("MyNetwork", "supersecret") and len(sta.connect_calls) == 4
+                assert (client._hotspot_timer_running, client._hotspot_timer.callback) == (False, None)
+                assert not loop.done(), "no task restart: the same loop carried it"
+                kept = _used_slots(await client.get_error_counter())
+                assert code("W", "WLAN_TO_HOTSPOT") in kept and code("W", "WLAN_SILENT") in kept, kept
+                assert code("E", "WLAN_GIVE_UP") not in kept, kept
+            finally:
+                await _stop_all(client, loop, watcher)
+
+        reboots = machine.reset_count
+        run(scenario())
+    assert machine.reset_count == reboots
+
+
+def test_integration_new_credentials_over_the_hotspot_reopen_it_once_more() -> None:
+    # A wrong credential typed on the hotspot page must not lock the user out (owner, 2026-10-08: "it did not turn WiFi
+    # off, but went into hotspot mode once"): the fresh streak fails, the hotspot reopens, and only its end goes silent.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = _hotspot_client(radio)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            loop = asyncio.create_task(client._connect_loop())
+            watcher = client.start_asy_hotspot_timeout()
+            try:
+                await _boot_into_the_hotspot(client, radio)
+                ok, results = await client.cfgmgr.write_config({"SSID": "OtherNet", "PW": "othersecret"})
+                assert ok and results == {"SSID": "Valid", "PW": "Valid"}, results
+                client.reconnect_wifi()  # the identity group's post hook, as the request path calls it
+                assert await _until(lambda: len(radio.built) == 4 and client._hotspot_timer_running), "the hotspot must reopen"
+                sta, ap = radio.built[2], radio.built[3]
+                assert sta.connect_calls == [("OtherNet", "othersecret")] and ap.if_id == network.AP_IF
+                assert (client._conn_phase, client._hotspot_started_once) == (_PHASE_HOTSPOT, True)
+                client._hotspot_timer.trigger()  # the reopened window ends
+                assert await _until(lambda: client._conn_phase == _PHASE_SILENT), "its end's streak must go silent"
+                assert len(radio.built) == 5 and radio.built[4].connect_calls == [("OtherNet", "othersecret")]
+            finally:
+                await _stop_all(client, loop, watcher)
+
+        run(scenario())
+
+
+def test_integration_an_unfilled_stations_answer_never_holds_the_hotspot() -> None:
+    # A radio whose stations answer stays unfilled cannot keep an unattended unit on its hotspot: the check that
+    # follows a client's stop arms the window, and its end leaves the hotspot.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = _hotspot_client(radio)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            loop = asyncio.create_task(client._connect_loop())
+            watcher = client.start_asy_hotspot_timeout()
+            try:
+                await _boot_into_the_hotspot(client, radio)
+                radio.stations.append(_PHONE)
+                assert await _next_stations_check(radio)
+                assert (client._hotspot_timer_running, client._conn_phase) == (False, _PHASE_HOTSPOT), "a listed client must stop the window"
+                radio.stations[:] = [(bytes(6),)] * _STATIONS_UNSET  # the chip-down answer, in place
+                assert await _next_stations_check(radio)
+                assert client._hotspot_timer_running, "the unfilled answer must arm the window"
+                client._hotspot_timer.trigger()
+                assert await _until(lambda: len(radio.built) == 3), "the window's end must leave the hotspot"
+                assert radio.built[2].if_id == network.STA_IF
+                kept = _used_slots(await client.get_error_counter())
+                assert code("W", "WLAN_STATIONS_UNKNOWN") in kept, kept
+            finally:
+                await _stop_all(client, loop, watcher)
+
+        run(scenario())
 
 
 def test_cfg_schema_matches_what_cfgmgr_was_built_with() -> None:
@@ -3705,7 +4656,7 @@ def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_a
 
 def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_already_finished() -> None:
     # The other half of the guard: a *finished* task (real crash/cancellation) must not block a
-    # legitimate restart, matching asy_system_service.py's own start_and_check_tasks() `is None or
+    # legitimate restart, matching asy_system_service.py's own supervisor's (supervise_tasks()) `is None or
     # .done()` convention.
     client = make_client()
 

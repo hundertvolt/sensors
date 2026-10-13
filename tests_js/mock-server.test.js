@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import samples from "../mockdata/samples.json";
 import radioShapes from "../tests/_radio_shape_cases.json";
 import { validateDefinitions } from "../js/definitions.js";
-import { installMockFetch } from "../js/mock-server.js";
+import { composeMockData, installMockFetch } from "../js/mock-server.js";
+import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
 const DEFS = {
@@ -123,6 +125,8 @@ const DEFS = {
                                 { value: "reboot", label: "Reboot" },
                                 { value: "bootloader", label: "Reboot into bootloader" },
                                 { value: "mempause", label: "Pause backups for 5 minutes" },
+                                { value: "resetconfig", label: "Reset to defaults" },
+                                { value: "erasefram", label: "Erase FRAM" },
                             ],
                         },
                     ],
@@ -306,17 +310,31 @@ describe("installMockFetch", () => {
         expect((await fits.json()).result.SSID).toBe("Valid"); // 16 characters, 32 bytes
     });
 
-    it("validates PUT /system's SystemCmd against the fixed real command set", async () => {
+    it.each([["reboot"], ["bootloader"], ["mempause"], ["resetconfig"], ["erasefram"]])("validates PUT /system's SystemCmd against the fixed real command set: %j answers Valid", async (word) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const ok = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+        const ok = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: word }) });
         expect((await ok.json()).result.SystemCmd).toBe("Valid");
 
         const bad = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
         expect((await bad.json()).result.SystemCmd).toBe("Invalid");
     });
 
+    // The definitions-to-mock half of the SystemCmd mirror: every command a generated device offers, the mock runs.
+    it.each(DEVICE_IDS)("answers Valid for every SystemCmd option device %s's generated definitions offer", async (device) => {
+        const defs = /** @type {import("../js/definitions.js").SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+        const fields = defs.sections.flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])));
+        const words = (fields.find((field) => field.key === "SystemCmd")?.options ?? []).map((option) => option.value);
+        expect(words.length).toBeGreaterThan(0);
+        uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
+        const answers = await Promise.all(words.map(async (word) => {
+            const response = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: word }) });
+            return (await response.json()).result.SystemCmd;
+        }));
+        expect(answers).toEqual(words.map(() => "Valid"));
+    });
+
     // One argument per case: it.each() spreads an array case into its arguments.
-    it.each([["Reboot"], ["reboot "], [" reboot"], ["reb"], ["rebootx"], [1], [null], [["reboot"]], [{}]])("answers the SystemCmd near miss %j with Invalid: only the whole word runs a command", async (value) => {
+    it.each([["Reboot"], ["reboot "], [" reboot"], ["reb"], ["rebootx"], ["ResetConfig"], ["reset_config"], ["resetconfig "], ["EraseFRAM"], ["erase_fram"], [" erasefram"], [1], [null], [["reboot"]], [{}]])("answers the SystemCmd near miss %j with Invalid: only the whole word runs a command", async (value) => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: value }) });
         expect((await response.json()).result.SystemCmd).toBe("Invalid");

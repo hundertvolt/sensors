@@ -118,6 +118,21 @@ def test_temperature_offset_set_then_get_round_trips_as_raw_centidegrees() -> No
     assert _get(chip, 0x54, 0x03) == word(150)
 
 
+def _reported_temperature(chip: Scd30Chip) -> float:
+    # The temperature word of the measurement the driver reads (its own unpack of bytes 6-11).
+    chip.handle_writeto(b"\x03\x00")
+    raw = chip.handle_readfrom_into(18)
+    return float(struct.unpack(">f", raw[6:8] + raw[9:11])[0])
+
+
+def test_a_reading_reports_the_sensors_temperature_less_the_offset() -> None:
+    for offset_raw in (0, 150, 65535):
+        chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+        _set(chip, 0x54, 0x03, offset_raw)
+        chip._produce_new_reading()
+        assert abs(_reported_temperature(chip) - (22.0 - offset_raw / 100)) < 1e-3, offset_raw
+
+
 def test_forced_recalibration_reference_always_reads_back_400() -> None:
     # Real hardware quirk (asy_scd30_driver.py's own comment): volatile readback always 400
     # regardless of the last value applied - the calibration curve update is permanent, the
@@ -335,6 +350,31 @@ def test_two_identical_puts_write_the_chip_nvm_only_for_the_always_sent_commands
     second = run(reader._set_dict_cfg(body, reader.get_cfg_schema()))
     assert second == {"TempOffset": "Unchanged", "MeasInterval": "Unchanged", "AmbPres": "Valid", "Altitude": "Unchanged", "ForceCalRef": "Valid", "SelfCal": "Unchanged"}
     assert chip.nvm_writes == 8
+
+
+def test_the_real_reader_accepts_a_reading_at_the_largest_temperature_offset() -> None:
+    # The driver's range gate adds the offset back to the reported temperature: at the largest offset the twin's
+    # reading still passes, and the reader reports the sensor's own temperature less 655.35 degC.
+    machine.configure_wiring({"buses": {"i2c0": [{"driver": "scd30", "address": 0x61, "irq_pin": 8}]}, "spi": {}})
+    machine.Pin.reset_registry()
+    reader = SCD30_Reader(asy_i2c_driver.I2C(0, scl_pin=13, sda_pin=12, frequency=50000), irq_pin=8, cfg_path=_scratch.dir())
+    chip = reader._scd._i2c_scd30.i2c_device.i2c._i2c.devices[0x61]  # type: ignore[union-attr]
+    assert chip._timer is not None
+    chip._timer.deinit()
+    chip._timer = None  # the test produces the measurement itself
+
+    async def scenario() -> "tuple[float | None, bool, float, int]":
+        assert await reader.setup() is True
+        body: dict[str, CfgValue] = {"TempOffset": 655.35}
+        assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == {"TempOffset": "Valid"}
+        chip._produce_new_reading()
+        results, new_data = await reader._read_scd()
+        return results[1], new_data, chip._temp, (await reader.get_error_counter())["SCD30"]["ErrCount"]
+
+    temperature, new_data, sensed, errors = run(scenario())
+    assert new_data is True
+    assert errors == 0  # no "Reading rejected"
+    assert temperature is not None and abs(temperature - (sensed - 655.35)) < 0.01
 
 
 def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_frc_settings() -> None:

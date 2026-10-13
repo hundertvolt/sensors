@@ -2,8 +2,6 @@
 what the board's heap looks like while a full ceiling of connections is genuinely held open, and
 where its real wall is."""
 
-from __future__ import annotations
-
 import socket
 import threading
 import time
@@ -135,7 +133,7 @@ def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list
     held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
 
 
-def test_heap_at_peak_while_a_full_ceiling_is_held(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     ceiling = configured_max_connections()
     held_out: list[int] = []
     stop = threading.Event()

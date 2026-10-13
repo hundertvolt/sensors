@@ -6,8 +6,6 @@
 CPython/stdlib-only (the code under test still only ever runs under the real MicroPython Unix-port interpreter); invoked by `scripts/run_digital_twin_ci.sh` (which owns "clean"/"build", and the per-device `buildgen` generation step this suite's own `--device` depends on) as its "test" phase, once per device via CI's own `strategy.matrix` (see `.github/workflows/ci.yml`'s `digital-twin-e2e` job).
 Full walkthrough and rationale: `digital_twin/README.md`'s "Automated CI suite" section."""
 
-from __future__ import annotations
-
 import argparse
 import http.client
 import json

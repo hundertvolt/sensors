@@ -22,6 +22,7 @@ from unix_port_poll_prewarm import prewarm_poll_set
 # non-fd poll objects already in it, which is a segfault, not a test failure.
 prewarm_poll_set()
 
+import run_generic_integration  # noqa: E402 - placed with the two device imports below
 import sensortask_dev  # noqa: E402 - must follow the prewarm above, which is the point of it
 import sensortask_wozi  # noqa: E402
 
@@ -88,12 +89,28 @@ def _next_test_port() -> int:
     return _next_port
 
 
+async def _boot(module: "ModuleType", cfg_path: str, port: int) -> "WDT":
+    # The generated main()'s first two steps: build_system() constructs with the watchdog the boot entry
+    # arms, then the setup list runs. Returns that watchdog, the one every assertion here reads.
+    watchdog = machine.WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS)
+    await module.build_system(watchdog=watchdog, cfg_path=cfg_path, web_host="127.0.0.1", web_port=port)
+    await module.sysfunct.run_setups(module._collect_setups())
+    return watchdog
+
+
 async def _cancel(task: "asyncio.Task[Any]") -> None:
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def _cancel_started_tasks(module: "ModuleType") -> None:
+    # Every task start_tasks() started, cancelled and awaited: nothing supervises them here.
+    for task in module.sysfunct._tasks:
+        if task is not None:
+            await _cancel(task)
 
 
 async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
@@ -144,17 +161,17 @@ async def _api_burst_at_the_ceiling(module: "ModuleType", host: str, port: int) 
     return list(await asyncio.gather(*(one(paths[i % len(paths)]) for i in range(ceiling))))
 
 
-async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_bus_log: "Container[object]", run_seconds: float, api_port: "int | None" = None) -> None:
-    # Shared scenario body for both variants: starts the real timer/task starters build_system()
+async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", watchdog: "WDT", shared_bus_log: "Container[object]", run_seconds: float, api_port: "int | None" = None) -> None:
+    # Shared scenario body for both variants: starts the real tasks and timers the generated main()
     # itself would, then asserts the run produced fresh data from every sensor and never starved
     # the watchdog - not just "didn't crash".
-    assert module.watchdog is not None and module.sysfunct is not None
+    assert module.sysfunct is not None
     assert module.sgp40 is not None and module.bmp3xx is not None and module.scd30 is not None
     assert module.fram is not None
-    await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
-    tasks = [starter() for starter in module._collect_task_starters()]
-    tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
+    feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
     try:
+        await module.sysfunct.start_tasks(module._collect_task_starters())
+        await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
         if api_port is not None:
             # Mid-run, not before or after: the point is a full ceiling of REST work landing while
             # the sensor tasks are genuinely mid-transaction on the shared bus.
@@ -166,7 +183,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
             await asyncio.sleep(run_seconds / 2)
         else:
             await asyncio.sleep(run_seconds)
-        assert module.watchdog.would_have_triggered_count == 0
+        assert watchdog.would_have_triggered_count == 0
 
         sgp_data = await module.sgp40.get_data()
         bmp_data = await module.bmp3xx.get_data()
@@ -211,8 +228,8 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", shared_b
                 data = await getattr(module, driver).get_data()
                 assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load, per the TOML-driven {bus_name} membership check"
     finally:
-        for task in tasks:
-            await _cancel(task)
+        await _cancel(feeder)
+        await _cancel_started_tasks(module)
 
 
 def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
@@ -222,9 +239,9 @@ def test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_gene
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        watchdog = await _boot(sensortask_wozi, _tmp_cfg_dir(), port)
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
+        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, watchdog, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -236,9 +253,9 @@ def test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_gener
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        watchdog = await _boot(sensortask_dev, _tmp_cfg_dir(), port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, watchdog, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -250,9 +267,9 @@ def test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load(
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        watchdog = await _boot(sensortask_wozi, _tmp_cfg_dir(), port)
         assert sensortask_wozi.i2c1 is not None and sensortask_wozi.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
+        await _run_real_task_graph_and_assert_healthy(sensortask_wozi, watchdog, sensortask_wozi.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
 
     run_timed(scenario(), timeout_s=40.0)
 
@@ -264,9 +281,9 @@ def test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load()
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_dev.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        watchdog = await _boot(sensortask_dev, _tmp_cfg_dir(), port)
         assert sensortask_dev.i2c1 is not None and sensortask_dev.i2c1._i2c is not None
-        await _run_real_task_graph_and_assert_healthy(sensortask_dev, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
+        await _run_real_task_graph_and_assert_healthy(sensortask_dev, watchdog, sensortask_dev.i2c1._i2c.log, run_seconds=_RUN_SECONDS, api_port=port)
 
     run_timed(scenario(), timeout_s=40.0)
 
@@ -279,7 +296,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_write_fault() -> None:
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), port)
         assert sensortask_wozi.fram is not None
         fram_spi = sensortask_wozi.fram.fram
         assert fram_spi._spidev.spi._spi is not None
@@ -321,7 +338,7 @@ def test_wozi_fram_recovers_after_an_injected_spi_read_fault() -> None:
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), port)
         assert sensortask_wozi.fram is not None
         fram_spi = sensortask_wozi.fram.fram
         assert fram_spi._spidev.spi._spi is not None
@@ -367,7 +384,7 @@ def test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun() -> None:
     port = _next_test_port()
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), port)
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
         bus = manager.fram._spidev.spi._spi
@@ -415,9 +432,9 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
 
     async def scenario() -> None:
         module = sensortask_wozi
-        await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+        watchdog = await _boot(module, _tmp_cfg_dir(), port)
         assert module.conn is not None
-        assert module.watchdog is not None and module.sysfunct is not None
+        assert module.sysfunct is not None
         assert module.sgp40 is not None and module.bmp3xx is not None and module.scd30 is not None
         assert module.fram is not None
         # A real configured SSID, written before the task graph starts so the wifi task's first
@@ -426,13 +443,13 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
         persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
         assert persisted
 
-        await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
-        tasks = [starter() for starter in module._collect_task_starters()]
-        tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
+        feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
         flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
         try:
+            await module.sysfunct.start_tasks(module._collect_task_starters())
+            await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
             await asyncio.sleep(_FLAP_WINDOW_S)
-            assert module.watchdog.would_have_triggered_count == 0
+            assert watchdog.would_have_triggered_count == 0
             sgp_data = await module.sgp40.get_data()
             bmp_data = await module.bmp3xx.get_data()
             scd_data = await module.scd30.get_data()
@@ -444,8 +461,8 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
             assert module.conn._wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
         finally:
             await _cancel(flap_task)
-            for task in tasks:
-                await _cancel(task)
+            await _cancel(feeder)
+            await _cancel_started_tasks(module)
 
     run_timed(scenario(), timeout_s=_FLAP_RUN_BOUND_S)
 
@@ -457,7 +474,7 @@ def test_wozi_storage_pause_gates_the_real_twin_chip() -> None:
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), _next_test_port())
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
         chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_PAUSE")
@@ -487,7 +504,7 @@ def test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it() -> None:
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), _next_test_port())
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
         chunk = manager.get_chunk(16, crc=CRC8(), owner="HAZARD_WP")
@@ -513,7 +530,7 @@ def test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_s
     machine.configure_i2c_wiring("wozi")
 
     async def scenario() -> None:
-        await sensortask_wozi.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
+        await _boot(sensortask_wozi, _tmp_cfg_dir(), _next_test_port())
         assert sensortask_wozi.fram is not None
         manager = sensortask_wozi.fram
         bus = manager.fram._spidev.spi._spi
@@ -548,7 +565,7 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
         cfg_path = _tmp_cfg_dir()
         machine.configure_fram_state_path(cfg_path + "fram_state.json")
         try:
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _boot(sensortask_wozi, cfg_path, _next_test_port())
             assert sensortask_wozi.fram is not None
             chunk = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")
             assert chunk is not None
@@ -558,7 +575,7 @@ def test_wozi_storage_pause_does_not_survive_a_simulated_reboot() -> None:
             assert sensortask_wozi.fram.get_pause() is True
             machine.flush_fram()
 
-            await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+            await _boot(sensortask_wozi, cfg_path, _next_test_port())
             assert sensortask_wozi.fram is not None
             assert sensortask_wozi.fram.get_pause() is False, "the pause flag survived a reboot - it is supposed to be RAM-only"
             chunk2 = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner="HAZARD_REBOOT")  # the same owner: its seed must match
@@ -577,7 +594,7 @@ def test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot()
     payload = bytes(range(16))
 
     async def chunk_after_boot(cfg_path: str, owner: str) -> "FRAMChunk":
-        await sensortask_wozi.build_system(cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port())
+        await _boot(sensortask_wozi, cfg_path, _next_test_port())
         assert sensortask_wozi.fram is not None
         chunk = sensortask_wozi.fram.get_chunk(16, crc=CRC8(), owner=owner)
         assert chunk is not None
@@ -844,15 +861,15 @@ async def _ladder_run(faults: "dict[int, str]", until_recoveries: int) -> "tuple
     # wozi's graph with `faults` (chip address -> its read op) failing until i2c1 has run `until_recoveries` bus rungs,
     # then cleared; returns (rungs run, bus clears, controller rebuilds, W15 slots, every streak back to 0, chips kept).
     module = sensortask_wozi
-    await module.build_system(cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=_next_test_port())
-    assert module.i2c1 is not None and module.i2c1._i2c is not None and module.watchdog is not None and module.sysfunct is not None
+    watchdog = await _boot(module, _tmp_cfg_dir(), _next_test_port())
+    assert module.i2c1 is not None and module.i2c1._i2c is not None and module.sysfunct is not None
     assert module.sgp40 is not None and module.bmp3xx is not None
     bus, fake = module.i2c1, module.i2c1._i2c
     chips = dict(fake.devices)
-    await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
-    tasks = [starter() for starter in module._collect_task_starters()]
-    tasks.append(asyncio.get_event_loop().create_task(_feed_watchdog_periodically(module.watchdog)))
+    feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
     try:
+        await module.sysfunct.start_tasks(module._collect_task_starters())
+        await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
         # Both readers set up and measuring first: the faults then hit read cycles, not setup.
         while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
             await asyncio.sleep(_POLL_S)
@@ -875,12 +892,12 @@ async def _ladder_run(faults: "dict[int, str]", until_recoveries: int) -> "tuple
         assert module.sgp40._err_cnt_internal > 0  # the streak the faults built, now unwinding
         while module.sgp40._err_cnt_internal or module.bmp3xx._err_cnt_internal:
             await asyncio.sleep(_POLL_S)
-        assert module.watchdog.would_have_triggered_count == 0
+        assert watchdog.would_have_triggered_count == 0
         kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
         return bus.recoveries - before, calls["clear"], calls["recover"], await _w15(module.sgp40, module.bmp3xx), kept
     finally:
-        for task in tasks:
-            await _cancel(task)
+        await _cancel(feeder)
+        await _cancel_started_tasks(module)
 
 
 def test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared() -> None:

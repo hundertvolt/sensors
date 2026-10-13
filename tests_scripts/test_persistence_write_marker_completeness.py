@@ -7,6 +7,7 @@ silently. The sibling gating test proves the flag WORKS; this proves nothing esc
 # 2026-09-18; tests_hardware/README.md states it fully, and why the answer is not "spend zero".
 
 import ast
+import json
 import re
 import sys
 from functools import cache
@@ -68,7 +69,7 @@ def _flagged_fields(repo_root: Path, flag: str) -> frozenset[str]:
     # website, the mock and this gate all read the two never-"Unchanged" classes from.
     found = set()
     for device in DEVICE_NAMES:
-        definitions = definitions_for_toml(device_toml(device), repo_root / "src")
+        definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), repo_root / "src")))
         found |= {f["key"] for s in definitions["sections"] for g in s["groups"] for f in g.get("fields", []) if f.get(flag) is True}
     return frozenset(found)
 
@@ -436,7 +437,7 @@ def _route_groups(repo_root: Path) -> "tuple[dict[tuple[str, str], frozenset[str
     by_group: dict[tuple[str, str], set[str]] = {}
     by_field: dict[tuple[str, str], set[str]] = {}
     for device in DEVICE_NAMES:
-        for section in definitions_for_toml(device_toml(device), repo_root / "src")["sections"]:
+        for section in json.loads(json.dumps(definitions_for_toml(device_toml(device), repo_root / "src")))["sections"]:
             route = section.get("rest", {}).get("put")
             for group in section["groups"] if route is not None else []:
                 for field in group.get("fields", []):
@@ -459,7 +460,7 @@ def _key_groups(route: str, key: str, value: ast.expr, repo_root: Path) -> "set[
 
 @cache
 def _sections_of(route: str, repo_root: Path) -> "frozenset[str]":
-    return frozenset(s["key"] for d in DEVICE_NAMES for s in definitions_for_toml(device_toml(d), repo_root / "src")["sections"] if s.get("rest", {}).get("put") == route)
+    return frozenset(s["key"] for d in DEVICE_NAMES for s in json.loads(json.dumps(definitions_for_toml(device_toml(d), repo_root / "src")))["sections"] if s.get("rest", {}).get("put") == route)
 
 
 def _written_groups(path: Path, shape: _FetchShape, repo_root: Path) -> "dict[str, set[str]]":

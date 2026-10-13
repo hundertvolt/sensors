@@ -2,19 +2,14 @@
 restore_board_to_serving() against a faked http_client, error_log_helpers' all-modules check, and
 that every bench thread worker calling http_client.fetch() survives a cut-off answer."""
 
-from __future__ import annotations
-
 import ast
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
 sys.path.insert(0, str(TESTS_HARDWARE))

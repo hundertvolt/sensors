@@ -234,10 +234,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_ow
     assert isinstance(err_count, int)
     assert err_count >= 1
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # _signal_loop()'s startup sets a defined (0,0,0) off state once, unconditionally, and nothing beyond
-    # that single boot-time write, no signal ever having been triggered: data.VOC is None on a faulted
-    # cycle, so _check_one()'s getattr reads None, never counted as above threshold.
-    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0)]
+    # One off-state frame from the signal loop's start and one from the overlay task's start, nothing else: no signal
+    # was triggered, data.VOC being None on a faulted cycle, so _check_one() never counts it as above threshold.
+    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0), (0, 0, 0)]
 
 
 def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:

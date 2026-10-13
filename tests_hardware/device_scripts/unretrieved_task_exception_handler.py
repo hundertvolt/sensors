@@ -96,16 +96,8 @@ def _settled_alloc() -> int:
 
 
 async def _install(svc: SystemService) -> None:
-    # The real install path: start_and_check_tasks() sets the report where nothing is set yet, then supervises.
-    supervisor = asyncio.create_task(svc.start_and_check_tasks([_parked_starter]))
-    while svc._supervisor_task is None:
-        await asyncio.sleep_ms(50)
-        wdt.feed()
-    supervisor.cancel()
-    try:
-        await supervisor
-    except asyncio.CancelledError:
-        pass
+    # The real install path: start_tasks() sets the report where nothing is set yet; no supervisor is needed.
+    await svc.start_tasks([_parked_starter])
 
 
 def _locked_report_failures(svc: SystemService) -> "list[str]":
@@ -191,7 +183,7 @@ def _main() -> None:
     svc = SystemService(_ntp_never_synced, watchdog=wdt)
     asyncio.run(_install(svc))
     if asyncio.get_event_loop().get_exception_handler() != svc.pr.report_unretrieved:
-        print("RESULT: FAIL start_and_check_tasks() did not install SYSTEM's report on a loop with no handler")
+        print("RESULT: FAIL start_tasks() did not install SYSTEM's report on a loop with no handler")
         return
     failures = _stage(svc, -1) + _stage(svc, _GC_THRESHOLD)
     if failures:

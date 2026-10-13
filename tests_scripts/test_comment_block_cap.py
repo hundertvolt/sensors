@@ -2,8 +2,6 @@
 hand. Python and shell only - JS/CSS keep their own syntax and stay review-enforced. The counting
 convention this encodes is CLAUDE.md's; without it the same tree measures anywhere from 0 to 458."""
 
-from __future__ import annotations
-
 import ast
 import re
 from pathlib import Path

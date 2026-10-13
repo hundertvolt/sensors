@@ -1,0 +1,24 @@
+lwIP host pool: 4 connection pairs admitted (MEMP_NUM_TCP_PCB 9, two pcbs per pair)
+Warning: exception chaining not supported
+FAIL test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/lwip_host/test_modlwip_eagain.py", line 253, in test_a_write_to_a_peer_that_stopped_reading_returns_within_the_bound
+  File "tests/lwip_host/test_modlwip_eagain.py", line 203, in _load
+  File "tests/lwip_host/test_modlwip_eagain.py", line 203, in <listcomp>
+  File "tests/lwip_host/test_modlwip_eagain.py", line 172, in _write_until_eagain
+  File "tests/lwip_host/test_modlwip_eagain.py", line 162, in _timed_write
+AssertionError: write() raised OSError(12,) after 0 ms
+Warning: exception chaining not supported
+FAIL test_capacity_returns_after_the_peers_close:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/lwip_host/test_modlwip_eagain.py", line 344, in test_capacity_returns_after_the_peers_close
+  File "tests/lwip_host/test_modlwip_eagain.py", line 241, in _load_drain_close
+  File "tests/lwip_host/test_modlwip_eagain.py", line 203, in _load
+  File "tests/lwip_host/test_modlwip_eagain.py", line 203, in <listcomp>
+  File "tests/lwip_host/test_modlwip_eagain.py", line 172, in _write_until_eagain
+  File "tests/lwip_host/test_modlwip_eagain.py", line 162, in _timed_write
+AssertionError: write() raised OSError(12,) after 0 ms
+lwIP assertion failed: sizeof(struct ip6_reass_helper) <= IP6_FRAG_HLEN, set IPV6_FRAG_COPYHEADER to 1 (../../lib/lwip/src/core/ipv6/ip6_frag.c:118)
+rc=134 wall=1.016633542s

@@ -78,10 +78,9 @@ def dump_toml(doc: TomlDoc) -> str:
     device = doc.get("device")
     if device is not None:
         lines.append("[device]")
-        for k, v in device.items():
-            if k != "wiring":
-                lines.append(f"{k} = {_dump_scalar(v)}")
-        if "wiring" in device:
+        # A non-table wiring is written as the plain value it is, for the check that refuses it.
+        lines += [f"{k} = {_dump_scalar(v)}" for k, v in device.items() if k != "wiring" or not isinstance(v, dict)]
+        if isinstance(device.get("wiring"), dict):
             lines += ["", "[device.wiring]"]
             lines += [f"{k} = {_dump_scalar(v)}" for k, v in device["wiring"].items()]
 
@@ -92,8 +91,8 @@ def dump_toml(doc: TomlDoc) -> str:
     for inst in doc.get("instance", []):
         lines += ["", "[[instance]]"]
         wiring = inst.get("wiring")
-        lines += [f"{k} = {_dump_scalar(v)}" for k, v in inst.items() if k != "wiring"]
-        if wiring is not None:
+        lines += [f"{k} = {_dump_scalar(v)}" for k, v in inst.items() if k != "wiring" or not isinstance(v, dict)]
+        if isinstance(wiring, dict):
             lines += ["", "[instance.wiring]"]
             subtables = {k: v for k, v in wiring.items() if isinstance(v, dict)}
             lines += [f"{k} = {_dump_scalar(v)}" for k, v in wiring.items() if not isinstance(v, dict)]

@@ -115,7 +115,7 @@ _VAL_MEAN_ATM_TEMP = const((("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None),))
 _N_INT_CFG = const(4)  # SampleInterval + PresOvers + TempOvers + FiltCoeff
 _N_FLOAT_CFG = const(4)  # PresOffset + TempOffset + SeaLevelOffset + MeanAtmTemp
 
-# @web-group section=sensors submitGroup=self label="BMP388 — Pressure, Temperature" submit=true
+# @web-group section=sensors submitGroup=self label="BMP3xx — Pressure, Temperature" submit=true
 # @web SampleInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"
 # @web PresOvers section=sensors submitGroup=self label="Pressure Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
 # @web TempOvers section=sensors submitGroup=self label="Temperature Oversampling" special:1="×1" special:2="×2" special:4="×4" special:8="×8" special:16="×16" special:32="×32"
@@ -131,7 +131,7 @@ _NAME = const("BMP3XX")
 BMP3XX = namedtuple("BMP3XX", ("Pres", "Temp", "SLPres", "TS"))
 _FIELDS = const(("Pres", "Temp", "SLPres", "TS"))  # kept in sync with BMP3XX's own fields above
 
-# @web-group section=measurements submitGroup=self label="BMP388 — Pressure, Temperature"
+# @web-group section=measurements submitGroup=self label="BMP3xx — Pressure, Temperature"
 # @web Pres section=measurements submitGroup=self kind=readonly label="Pressure" unit="hPa"
 # @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
 # @web SLPres section=measurements submitGroup=self kind=readonly label="Sea Level Pressure" unit="hPa"

@@ -1,0 +1,17 @@
+start 14:27:24
+lint rc=0 14:27:26
+typecheck noargs rc=0 14:27:57
+typecheck ci rc=0 14:28:29
+gc-1 rc=0 14:39:09
+gc32768 rc=0 14:39:52
+phase A done 14:39:52
+klkizi rc=0 14:51:55
+schlafzi rc=0 14:51:58
+arzi rc=0 14:51:58
+npm rc=0 14:51:59
+grkizi rc=0 14:51:59
+wozi rc=0 14:52:35
+dev rc=0 14:54:30
+phase B done 14:54:30
+coverage rc=0 15:10:52
+done 15:10:52

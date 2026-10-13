@@ -2,8 +2,6 @@
 single-core timing headroom under normal full task load (real 133MHz), matching SPECIFICATION.md
 Parts I and F.3. The real-HTTP-soak variants live in bench/ - this tier has no network client."""
 
-from __future__ import annotations
-
 import re
 import time
 from pathlib import Path
@@ -43,7 +41,7 @@ _PRESENCE_TIMEOUT_S = 30.0
 _BOOT_SETTLE_S = 30.0
 
 
-def test_real_gc_heap_headroom_survives_a_full_system_build(board: Board) -> None:
+def test_real_gc_heap_headroom_survives_a_full_system_build(board: "Board") -> None:
     # The one memory figure no fake can produce: real 264KB SRAM minus the firmware's own static
     # footprint, after the real dev object graph exists. The device script checks survivor volume
     # and contiguity; the placement check below needs the block map, which only the host reads back.
@@ -99,7 +97,7 @@ def _probed_largest_block(output: str, label: str) -> int | None:
 
 
 @pytest.mark.long_soak
-def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: Board, request: pytest.FixtureRequest) -> None:
+def test_single_core_timing_headroom_holds_under_normal_full_task_load(board: "Board", request: pytest.FixtureRequest) -> None:
     tier = request.config.getoption("--soak-tier")
     if tier is None:
         pytest.skip("passive soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")

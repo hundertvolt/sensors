@@ -2,8 +2,6 @@
 concurrent API load - the realistic deployed condition, where link work and request handling have
 to coexist rather than each merely work alone (SPECIFICATION.md Part E.6)."""
 
-from __future__ import annotations
-
 import json
 import threading
 import time
@@ -76,7 +74,7 @@ def _require_uart_modules(dut_ip: str) -> None:
         )
 
 
-def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
+def test_the_link_stays_healthy_while_the_api_is_hammered(board: "Board", dut_ip: str) -> None:
     # Both sides have their own budget, and neither may be met by starving the other. The
     # API side is asserted on latency and status; the link side on its own error counters, which
     # is where a transfer that timed out under load would show up.
@@ -127,7 +125,7 @@ def test_the_link_stays_healthy_while_the_api_is_hammered(board: Board, dut_ip: 
     assert_no_task_ended(dut_ip, "UART link under API load")
 
 
-def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip: str) -> None:
+def test_real_transfers_complete_while_the_api_is_hammered(board: "Board", dut_ip: str) -> None:
     # The actual function test: a transfer completes while the API is hammered. Its two
     # neighbours assert the link logged no errors, which an idle link satisfies too; this one
     # requires bytes moved during the load window, with no failed attempt.
@@ -175,7 +173,7 @@ def test_real_transfers_complete_while_the_api_is_hammered(board: Board, dut_ip:
     )
 
 
-def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: Board, dut_ip: str) -> None:
+def test_an_api_overload_does_not_corrupt_the_link_or_the_reverse(board: "Board", dut_ip: str) -> None:
     # The failure direction of the same claim: a burst past the server's comfortable concurrency
     # must degrade requests, never the link - and the link's own recovery must not show up as a
     # request failure either.
