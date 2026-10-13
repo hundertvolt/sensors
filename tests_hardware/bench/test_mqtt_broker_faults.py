@@ -5,6 +5,7 @@ reboot, the status and session settings at the firmware's gc threshold, then the
 import contextlib
 import itertools
 import json
+import math
 import signal
 import socket
 import sys
@@ -39,7 +40,7 @@ _BROKER_PORT = 18883  # fixed, so every iptables rule names it; a distribution m
 _AUTH_PORT = 18884  # the password broker's, beside the anonymous one
 _AUTH_DEVICE = ("bench-device", "bench-device-pass")  # a throwaway broker's accounts, not real secrets
 _AUTH_OBSERVER = ("bench-observer", "bench-observer-pass")
-_STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after a connect, across the 15 s ping interval's phase
+_STALL_OFFSETS_S = (1.0, 5.0, 9.0, 13.0)  # after a connect, across two of the 10 s publish rounds
 _FAULT_COMMENT = "sensors-bench-mqtt-fault"
 _OBSERVER_ID = "bench-observer"
 _SLOT_PAYLOAD_MAX = 384  # mqtt.out_payload_max: a larger measurement object would be dropped, counted
@@ -56,7 +57,7 @@ _STEP_WAIT_S = 20.0  # one message's round trip through the broker and the devic
 # @tunable l4.mqtt_outage_s = 5.0
 _OUTAGE_S = 5.0  # the killed broker's downtime: the client's first attempts fail inside it
 # @tunable l4.mqtt_detect_bound_s = 35.0
-_DETECT_BOUND_S = 35.0  # mqtt.ping_interval_ms + mqtt.response_timeout_ms (25 s), plus ticks and WiFi latency
+_DETECT_BOUND_S = 35.0  # the next publish round's ping + mqtt.response_timeout_ms (20 s), plus ticks and WiFi latency
 # @tunable l4.mqtt_detect_wait_s = 60.0
 _DETECT_WAIT_S = 60.0
 # @tunable l4.mqtt_takeover_s = 20.0
@@ -583,9 +584,9 @@ def test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff(mqtt_b
 
 
 @pytest.mark.parametrize("offset_s", _STALL_OFFSETS_S)
-def test_stall_detection_follows_the_ping_schedule(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "Callable[..., None]") -> None:
-    # PINGREQ goes out every 15 s from the connect, its PINGRESP due 10 s later: a stall `offset_s` after a connect is
-    # detected at (15 - offset_s) + 10 s. The board's own console times both ends; a killed broker makes the connect.
+def test_stall_detection_follows_the_publish_rounds(mqtt_bench: MqttBench, board: "Board", offset_s: float, result_note: "Callable[..., None]") -> None:
+    # A round every 10 s from the connect, each confirmed by a PINGREQ whose PINGRESP is due 10 s later (the idle interval,
+    # 180 s, never falls due): a stall `offset_s` after a connect is detected 10 s after the next round. The console times it.
     m = mqtt_bench
     _wait_connected(m.dut_ip, "before the stall sweep's connect")
     console = _Console(board.device)
@@ -606,7 +607,7 @@ def test_stall_detection_follows_the_ping_schedule(mqtt_bench: MqttBench, board:
     finally:
         console.close()
     assert detected is not None, f"no PINGRESP deadline on the console within {_DETECT_WAIT_S:g}s of a stall {offset_s:g}s after the connect"
-    took, expected = detected - stalled, 25.0 - offset_s
+    took, expected = detected - stalled, math.ceil(offset_s / _PUB_INTERVAL_S) * _PUB_INTERVAL_S - offset_s + 10.0
     assert abs(took - expected) <= _STALL_PHASE_TOLERANCE_S, f"a stall {offset_s:g}s after the connect was detected in {took:.2f}s, expected {expected:.1f}s"
     back = _wait_connected(m.dut_ip, "once the stalled broker resumed")
     assert m.observer.wait_connected(), "the observer did not come back"

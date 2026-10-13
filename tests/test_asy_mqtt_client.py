@@ -29,15 +29,16 @@ _PORT_BASE = 28000
 _ports = [_PORT_BASE]
 _scratch = TmpScratch("mqtt")
 
-# Short timings, so a scenario takes well under a second per phase: client id, keepalive, ping, response, connect,
-# backoff min/max, stable-after, QoS 1 retry, drain, tick, link poll, idle recheck, DNS timeout and tries.
-_CFG = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
-# A ping interval no test outlives: every PINGREQ is one the test caused, and none waits on the broker's wire
-# behind a packet the test feeds a byte at a time.
-_QUIET_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+# Short timings, so a scenario takes well under a second per phase: client id, response, connect, backoff min/max,
+# stable-after, QoS 1 retry, drain, tick, link poll, idle recheck, DNS timeout and tries. The ping interval is the
+# MQTTPingInterval setting, 180 s by default: no idle ping within a test, only the one confirming each publish.
+_CFG = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+# A response deadline no test outlives: no ping a test causes waits on the broker's wire behind a packet the test
+# feeds a byte at a time.
+_QUIET_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
-# No ping and no in-session QoS 1 retry within a test: every PUBLISH sent again is one the session sent again.
-_SESSION_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)
+# No in-session QoS 1 retry within a test: every PUBLISH sent again is one the session sent again.
+_SESSION_CFG = MqttConfig("t1", 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)
 _R_STALLED = 7  # asy_mqtt_client.py's const()-folded teardown reason - mirrored, not importable
 _SLOT_INFLIGHT = 2  # asy_mqtt_client.py's const()-folded slot state - mirrored, not importable
 _ST_CONNECTED = 3  # asy_mqtt_client.py's const()-folded state - mirrored, not importable
@@ -105,12 +106,13 @@ async def errnums(client: MQTTClient) -> "list[int]":
 
 async def broker_and_client(
     *, link: "Callable[[], bool] | None" = None, consumers: "tuple[MqttConsumer, ...]" = (), sources: "tuple[_Source, ...]" = (), config: MqttConfig = _CFG,
+    fields: "dict[str, int | str | bool] | None" = None,
 ) -> "tuple[FakeBroker, MQTTClient, list[asyncio.Task[None]]]":
     broker = FakeBroker(_port())
     await broker.start()
     client = make_client(link=link, consumers=consumers, sources=sources, config=config)
     tasks = await start(client)
-    await configure(client, broker.port)
+    await configure(client, broker.port, **(fields or {}))
     client.reconnect()  # the settings group's post_fct, as a PUT runs it
     return broker, client, tasks
 
@@ -123,7 +125,7 @@ def test_connects_with_a_clean_session_and_a_will_then_subscribes_and_publishes_
             connect = broker.connects[0]
             assert connect["client_id"] == b"t1"
             assert connect["flags"] == 0x02 | 0x04 | 0x08 | 0x20  # clean, will, will QoS 1, will retain; no credentials
-            assert connect["keepalive"] == _CFG.keepalive_s
+            assert connect["keepalive"] == 180 + 1  # the interval setting plus the response deadline, in whole seconds
             assert connect["will_topic"] == b"sensors/t1/status"
             assert connect["will_message"] == b"offline"
             subscribes = [body for first, body in broker.packets if first == 0x82]
@@ -201,7 +203,7 @@ def test_an_enabled_client_without_a_host_stays_off() -> None:
 
 
 def test_a_reconnect_wakes_a_disabled_client_at_once() -> None:
-    config = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 60000, 100, 1)  # an idle recheck of a minute
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 60000, 100, 1)  # an idle recheck of a minute
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
@@ -340,7 +342,7 @@ def test_an_unresolvable_broker_name_is_logged_as_dns() -> None:
 
 
 def test_a_missing_pingresp_ends_the_connection_and_the_client_reconnects() -> None:
-    config = MqttConfig("t1", 60, 300, 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+    config = MqttConfig("t1", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 
     async def scenario() -> None:
         broker = FakeBroker(_port())
@@ -695,14 +697,14 @@ def test_get_masks_the_password() -> None:
         assert cfg["MQTTClientId"] == "t1"  # the build's default (the device hostname)
         assert set(cfg) == {
             "MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval",
-            "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain",
+            "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain",
         }
 
     run(scenario())
 
 
 def test_an_invalid_build_default_client_id_falls_back() -> None:
-    client = make_client(config=MqttConfig("bad id!", 60, 300, 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1))
+    client = make_client(config=MqttConfig("bad id!", 250, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1))
     assert client._val_client_id[0][2] == "SensorNode"
 
 
@@ -782,6 +784,162 @@ _CAP_PAYLOAD = b"m" * 380  # about 388 B on the wire, so five fit under the cap 
 
 def _client_bytes_after_connect(broker: FakeBroker) -> int:
     return sum(1 + len(encode_length(len(body))) + len(body) for first, body in broker.packets if first & 0xF0 != 0x10)
+
+
+def _pings(broker: FakeBroker, n: int) -> int:
+    # PINGREQs on the n-th connection, 0 before it exists.
+    return sum(1 for first, _body in _sent_on(broker, n) if first == 0xC0) if len(broker.connect_packets) > n else 0
+
+
+def _kinds(broker: FakeBroker, n: int) -> "list[int]":
+    return [first & 0xF0 for first, _body in _sent_on(broker, n)] if len(broker.connect_packets) > n else []
+
+
+def test_the_ping_and_publish_intervals_take_off_and_default_to_three_minutes_and_off() -> None:
+    # Owner, 2026-10-13: the ping interval a setting that can be turned off ('3 min' its default), the measurement
+    # publisher off-able and off by default.
+    async def scenario() -> None:
+        client = make_client()
+        assert await client.setup()
+        cfg = (await client.get_dict_cfg())["MQTT"]
+        assert (cfg["MQTTPingInterval"], cfg["MQTTPubInterval"]) == (180, 0)
+        schema = client.get_cfg_schema()
+        cases = (
+            ("MQTTPingInterval", 0, "Valid"), ("MQTTPingInterval", 10, "Valid"), ("MQTTPingInterval", 3600, "Valid"),
+            ("MQTTPingInterval", 9, "Invalid"), ("MQTTPingInterval", 3601, "Invalid"),
+            ("MQTTPubInterval", 10, "Valid"), ("MQTTPubInterval", 0, "Valid"), ("MQTTPubInterval", 9, "Invalid"),
+        )
+        for key, value, verdict in cases:
+            assert (await client._set_dict_cfg({key: value}, schema))[key] == verdict, (key, value)
+
+    run(scenario())
+
+
+def test_the_keepalive_is_the_ping_interval_plus_the_response_deadline_and_zero_when_off() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client()
+        try:
+            assert await until(lambda: len(broker.connects) == 1)
+            assert broker.connects[0]["keepalive"] == 181  # 180 s and the 800 ms deadline rounded up
+            await configure(client, broker.port, MQTTPingInterval=30)
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 2)
+            assert broker.connects[1]["keepalive"] == 31
+            await configure(client, broker.port, MQTTPingInterval=0)
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 3)
+            assert broker.connects[2]["keepalive"] == 0  # no idle ping promised, so none the broker may wait for
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_idle_pings_follow_the_interval_setting() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        client._ping_unit_ms = 20  # one setting second lasts 20 ms here: an interval of 10 pings every 200 ms
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPingInterval=10)
+            client.reconnect()
+            assert await until(lambda: _pings(broker, 0) >= 1)  # the online message's confirmation
+            before = _pings(broker, 0)
+            await asyncio.sleep_ms(1000)
+            assert 3 <= _pings(broker, 0) - before <= 7, _kinds(broker, 0)
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_with_pings_off_an_idle_connection_sends_none_and_a_publish_still_gets_one() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        client._ping_unit_ms = 20
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPingInterval=0)
+            client.reconnect()
+            assert await until(lambda: _pings(broker, 0) == 1)  # the online message's confirmation alone
+            await asyncio.sleep_ms(600)  # three intervals of the smallest setting
+            assert _pings(broker, 0) == 1, _kinds(broker, 0)
+            assert client.publish("sensors/t1/event", "open the window")
+            assert await until(lambda: _pings(broker, 0) == 2)
+            assert _kinds(broker, 0)[-2:] == [0x30, 0xC0], _kinds(broker, 0)  # the event, then the ping confirming it
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_publish_written_while_a_ping_is_out_gets_a_ping_of_its_own() -> None:
+    # The outstanding PINGREQ went before the event, so its PINGRESP confirms nothing written after it.
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        broker.ping_delay_ms = 300
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port)
+            client.reconnect()
+            assert await until(lambda: _pings(broker, 0) == 1)
+            assert client.publish("sensors/t1/event", "open the window")
+            assert await until(lambda: _pings(broker, 0) == 2)
+            assert _kinds(broker, 0) == [0x80, 0x30, 0xC0, 0x30, 0xC0], _kinds(broker, 0)
+            assert client.is_connected()
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_with_pings_off_a_publish_into_a_silent_broker_ends_the_link_and_a_qos1_event_goes_again() -> None:
+    # The use the owner named (2026-10-13): an event sent at detection time, over a link no idle ping has checked.
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)  # no QoS 1 retry within the test
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(config=config, fields={"MQTTPingInterval": 0})
+        try:
+            assert await until(lambda: _pings(broker, 0) == 1 and not client._ping_out)
+            broker.answer_pings = False
+            broker.ack_publishes = False
+            assert client.publish("sensors/t1/event", "open the window", qos=1)
+            assert await until(lambda: count(client, "MQTTPingTimeouts") == 1)
+            assert client.get_link_status()["MQTTLastReason"] == "no pingresp"
+            broker.answer_pings = True
+            broker.ack_publishes = True
+            assert await until(lambda: len(broker.connects) == 2)
+            assert await until(lambda: any(_publish_fields(first, body)[0] == b"sensors/t1/event" for first, body in _sent_on(broker, 1) if first & 0xF0 == 0x30))
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_the_measurement_publisher_is_off_by_default_and_runs_once_given_an_interval() -> None:
+    class Source:
+        async def get_dict_data(self) -> "dict[str, dict[str, object]]":
+            return {"BMP3XX": {"Pres": 1005.3}}
+
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client(sources=(Source(),))
+        try:
+            assert await until(lambda: _pings(broker, 0) == 1)
+            await asyncio.sleep_ms(300)
+            assert not broker.published(b"sensors/t1/measurements/BMP3XX")
+            await configure(client, broker.port, MQTTPubInterval=60)
+            client.reconnect()
+            assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
 
 
 def test_unconfirmed_bytes_stop_at_the_cap_and_ask_for_an_early_ping() -> None:
@@ -871,10 +1029,10 @@ def test_measurements_are_published_as_json_with_null_for_non_finite() -> None:
         async def get_dict_data(self) -> "dict[str, dict[str, object]]":
             return {"SCD30": {"CO2": 612, "Temp": float("nan"), "Hum": float("inf"), "TS": None, "RGB": {"R": float("-inf"), "G": 0.5}}}
 
-    config = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
+    config = MqttConfig("t1", 800, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(sources=(Source(),), config=config)
+        broker, client, tasks = await broker_and_client(sources=(Source(),), config=config, fields={"MQTTPubInterval": 60})
         try:
             assert await until(client.is_connected)  # the publisher's first round follows the CONNACK by itself
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/SCD30")) == 1)
@@ -972,7 +1130,7 @@ def test_settings_and_topics_are_born_at_setup_and_kept_while_unchanged() -> Non
         cfg_dir = _scratch.dir()
         writer = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, cfg_path=cfg_dir)
         assert await writer.setup()
-        await configure(writer, broker.port)
+        await configure(writer, broker.port, MQTTPubInterval=60)
         await writer.cfgmgr.flush_pending()  # on disk before the next client's setup() reads it
         client = MQTTClient(asyncio.Lock(), lambda: True, lambda: None, _CFG, sources=(Source(),), cfg_path=cfg_dir)
         assert await client.setup()  # a boot with the client enabled
@@ -1006,7 +1164,7 @@ def test_a_raising_source_is_logged_and_the_others_still_published() -> None:
             return {"BMP3XX": {"Pres": 1005.3}}
 
     async def scenario() -> None:
-        broker, client, tasks = await broker_and_client(sources=(Broken(), Good()))
+        broker, client, tasks = await broker_and_client(sources=(Broken(), Good()), fields={"MQTTPubInterval": 60})
         try:
             assert await until(client.is_connected)
             assert await until(lambda: len(broker.published(b"sensors/t1/measurements/BMP3XX")) == 1)
@@ -1103,7 +1261,7 @@ def test_a_stall_longer_than_the_interval_never_bunches_rounds() -> None:
 def test_online_goes_out_with_the_subscribe_not_a_tick_later() -> None:
     # The bench board's online reached the broker 0.9 s after a reconnect's CONNACK: a GET /status held the loop past
     # the keeper's next tick. Written in the same step as the SUBSCRIBE, it waits on no wake; this tick is 2 s.
-    slow_tick = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 2000, 50, 200, 100, 1)
+    slow_tick = MqttConfig("t1", 3000, 500, 100, 400, 600, 200, 300, 2000, 50, 200, 100, 1)
 
     async def scenario() -> None:
         broker, client, tasks = await broker_and_client(config=slow_tick)

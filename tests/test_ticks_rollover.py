@@ -260,7 +260,7 @@ async def _no_signal(_r: int, _g: int, _b: int, _t: float) -> bool:
 
 
 # The MQTT client's timings for its two deadlines below: a 250 ms PINGRESP deadline, a 200 ms QoS 1 retry, 5 ms ticks.
-_MQTT_CFG = MqttConfig("t", 60, 300, 250, 500, 100, 400, 600, 200, 300, 5, 1000, 200, 100, 1)
+_MQTT_CFG = MqttConfig("t", 250, 500, 100, 400, 600, 200, 300, 5, 1000, 200, 100, 1)
 _MQTT_PING = 3  # asy_mqtt_client.py's const()-folded _R_PING - mirrored, not importable
 
 

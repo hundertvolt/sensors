@@ -29,10 +29,6 @@ _DNS_TRIES = 1
 # @tunable ntp.fetch_timeout_ms = 5000
 _NTP_FETCH_TIMEOUT_MS = 5000
 # The MQTT client's timings, emitted only into a device carrying it and passed whole as MqttConfig (Part A.11).
-# @tunable mqtt.keepalive_s = 60
-_MQTT_KEEPALIVE_S = 60
-# @tunable mqtt.ping_interval_ms = 15000
-_MQTT_PING_INTERVAL_MS = 15000
 # @tunable mqtt.response_timeout_ms = 10000
 _MQTT_RESPONSE_TIMEOUT_MS = 10000
 # @tunable mqtt.connect_timeout_ms = 10000
@@ -54,7 +50,7 @@ _MQTT_LINK_POLL_MS = 1000
 # @tunable mqtt.idle_recheck_ms = 60000
 _MQTT_IDLE_RECHECK_MS = 60000
 _MQTT_CONSTS = (
-    ("_MQTT_KEEPALIVE_S", _MQTT_KEEPALIVE_S), ("_MQTT_PING_INTERVAL_MS", _MQTT_PING_INTERVAL_MS), ("_MQTT_RESPONSE_TIMEOUT_MS", _MQTT_RESPONSE_TIMEOUT_MS),
+    ("_MQTT_RESPONSE_TIMEOUT_MS", _MQTT_RESPONSE_TIMEOUT_MS),
     ("_MQTT_CONNECT_TIMEOUT_MS", _MQTT_CONNECT_TIMEOUT_MS), ("_MQTT_BACKOFF_MIN_MS", _MQTT_BACKOFF_MIN_MS), ("_MQTT_BACKOFF_MAX_MS", _MQTT_BACKOFF_MAX_MS),
     ("_MQTT_STABLE_AFTER_MS", _MQTT_STABLE_AFTER_MS), ("_MQTT_QOS1_RETRY_MS", _MQTT_QOS1_RETRY_MS), ("_MQTT_DRAIN_TIMEOUT_MS", _MQTT_DRAIN_TIMEOUT_MS),
     ("_MQTT_TICK_MS", _MQTT_TICK_MS), ("_MQTT_LINK_POLL_MS", _MQTT_LINK_POLL_MS), ("_MQTT_IDLE_RECHECK_MS", _MQTT_IDLE_RECHECK_MS),

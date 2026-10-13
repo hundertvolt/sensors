@@ -154,15 +154,27 @@ refused as invalid. Plain MQTT over TCP only (no TLS, usually port 1883);
 user name and password are optional, and the device does not show the password once it is saved. While
 the device runs its own hotspot, the client is off.
 
-**What it sends.** Every *Publish Interval* seconds, one JSON message per sensor on
-`<prefix>/<client id>/measurements/<SENSOR>` (the same keys and values as the REST
-`/measurements` page; a value the sensor cannot give is `null`). `<prefix>/<client id>/status` reads
-`online` while the device is connected and `offline` once it is not: the device sets it itself when
-you change the MQTT settings or switch the client off, and the broker sets it (the device's last
-will) when the device simply disappears, after up to 90 s. A
-consumer such as openHAB should read that retained topic for availability rather than timing the
-measurements. The device sends a first round as soon as it connects. Measurements are not retained:
-after a restart a consumer waits one interval for fresh values.
+**What it sends.** The status topic, `<prefix>/<client id>/status` unless *Status Topic* names
+another, carries the *Online Message* (`online`) while the device is connected and the *Offline
+Message* (`offline`) once it is not: the device sets it itself when you change the MQTT settings or
+switch the client off, and the broker sets it (the device's last will) when the device simply
+disappears. *Status QoS* and *Retain Status* say how both go out; with Retain Status on (the
+default), a consumer such as openHAB should read that topic for availability. With a *Publish
+Interval* set (it is Off by default), the device also sends one JSON message per sensor that often on
+`<prefix>/<client id>/measurements/<SENSOR>` (the same keys and values as the REST `/measurements`
+page; a value the sensor cannot give is `null`), the first round as soon as it connects; they are not
+retained.
+
+**Keeping the link checked.** While it sends nothing, the device pings the broker every *Ping
+Interval* seconds (3 minutes by default), and it pings once right after each message it sends, so a
+link that died without a word is noticed within about 10 s of the next message. The broker sets the
+status offline about 1.5 × (Ping Interval + 10 s) after the device disappears, about 5 minutes at
+the default. Off sends nothing while the device is idle; the broker then cannot tell that a device
+lost power, and the status reads `online` until the device is back.
+
+**Persistent Session** (Off by default): the broker keeps the device's subscriptions and holds QoS 1
+messages sent to it while it is away. Changing the broker, the client ID or the prefix, or switching
+it off, ends the session left on the broker.
 
 **What it does not do.** Messages sent to `<prefix>/<client id>/cmd/...` are counted and the last
 topic is shown on the Status page; they change no setting and run no command. Nothing received over

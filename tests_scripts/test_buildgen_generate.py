@@ -821,7 +821,7 @@ def _settings_groups(source: str, page: str, src_dir: Path = _REPO_ROOT / "src")
 def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
     source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
+    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
     assert _settings_groups(source, "networking", src_dir) == [
         ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
         ("conn", ("LEDWifiOn",), {}),
@@ -1133,12 +1133,13 @@ def test_mqtt_is_built_after_conn_and_every_sensor_it_publishes(tmp_path: Path, 
     source = generate_device(write_doc(tmp_path, "mqtt", _mqtt_doc()), src_dir, ext_dir).module_source
     ast.parse(source)
     line = next(text for text in source.splitlines() if text.strip().startswith("mqtt = MQTTClient("))
-    assert "MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig('SensorStationTest', _MQTT_KEEPALIVE_S," in line
+    assert "MQTTClient(conn.get_wifi_mode_lock(), conn.network_available_locked, conn.get_dns_server_ip, MqttConfig('SensorStationTest', _MQTT_RESPONSE_TIMEOUT_MS," in line
     assert line.rstrip().endswith("_DNS_TIMEOUT_MS, _DNS_TRIES), sources=(scd30, sgp40), cfg_path=cfg_path, log=log_fram)")
     for earlier in ("conn = WifiService(", "scd30 = SCD30_Reader(", "sgp40 = SGP40_Reader("):
         assert source.index(earlier) < source.index(line)
     assert "from asy_mqtt_client import MQTTClient, MqttConfig" in source
-    assert "_MQTT_PING_INTERVAL_MS = const(15000)" in source
+    assert "_MQTT_RESPONSE_TIMEOUT_MS = const(10000)" in source
+    assert "_MQTT_PING_INTERVAL_MS" not in source and "_MQTT_KEEPALIVE_S" not in source  # both follow the MQTTPingInterval setting
     assert "SettingsGroup(mqtt, cm.schema_names(mqtt.get_cfg_schema()), post_fct=mqtt.reconnect)" in source
     assert "status.update(mqtt.get_link_status())" in source
     assert "mqtt.setup" in source  # in the boot's collected setup list

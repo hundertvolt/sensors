@@ -94,7 +94,9 @@ And on 2026-10-08:
   for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
   override (SPECIFICATION.md B.14.4). The client is now built before the UART links. Since 2026-10-13 the will
   and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
-  three bench tests of their own (section 5).
+  three bench tests of their own (section 5); so is the ping interval (180 s, or off), every message now gets
+  a ping of its own, and the measurement publisher is off by default (DESIGN.md §16). The bench module sets
+  its 10 s publish interval itself, so the stall sweep now follows those rounds.
 
 ### 1.4 The client in brief
 
@@ -114,11 +116,13 @@ And on 2026-10-08:
     of lwIP's 10 s retry (SPECIFICATION.md B.14.4).
 - **Hotspot mode**: the client is off there (owner, 2026-10-08: 'Generally, when the device is in hotspot
   mode, the MQTT client is off.'): no socket, no DNS query, no log.
-- **Recovery**: a dead transport is found by the PINGRESP deadline (15 s ping, 10 s deadline); reconnects
-  back off 2 s doubling to 60 s and reset after a 30 s stable session. MQTT never touches WiFi.
+- **Recovery**: a dead transport is found by the 10 s PINGRESP deadline of the ping that follows every
+  message, or of an idle ping every `MQTTPingInterval` seconds (DESIGN.md §16); reconnects back off 2 s
+  doubling to 60 s and reset after a 30 s stable session. MQTT never touches WiFi.
 - **Settings**, `PUT /networking`: `MQTTEnable` (default off), `MQTTHost`, `MQTTPort` (1883), `MQTTUser`,
   `MQTTPW` (masked), `MQTTClientId` (default the hostname, `SensorStationDev`), `MQTTPrefix` (`sensors`),
-  `MQTTPubInterval` (60 s, 10 to 3600).
+  `MQTTPubInterval` (off by default, 10 to 3600 s), `MQTTPingInterval` (180 s, 10 to 3600 s, or off), and the
+  status and session settings (DESIGN.md §15).
 - **Status**, `GET /status` → `networking`: `MQTTState`, `MQTTConnected`, `MQTTBroker`, counters,
   `MQTTLastReason`, `MQTTLastRxTopic`.
 - **Topics**, `<base>` = `<MQTTPrefix>/<MQTTClientId>`:
@@ -131,7 +135,7 @@ And on 2026-10-08:
 - **What else changed on `dev`**:
   - `max_connections` 6 → 5;
   - FRAM chunks `MQTT` and `CFGMGR_MQTT` ahead of `WEBSERVER`'s;
-  - `PUT /networking` is now the largest request body, 1,691 B;
+  - `PUT /networking` is now the largest request body, 1,735 B;
   - `mosquitto` joined the toolchain's apt packages, and `env --tier bench` installs `avahi-daemon`.
 
 ### 1.5 Why the run is scoped, and what it covers
@@ -423,8 +427,9 @@ the summary block's notes. Each settles a SPECIFICATION.md Part N row that still
 | `test_the_client_connects_and_announces_itself_online` | time to connected | `mqtt.connect_timeout_ms`, `mqtt.response_timeout_ms` |
 | `test_every_sensor_publishes_strict_json_on_its_own_topic` | largest payload | `mqtt.out_payload_max` |
 | `test_a_killed_broker_is_reconnected_after_its_restart` | reconnect after the restart | `mqtt.backoff_min_ms`, `l4.mqtt_connect_wait_s` |
-| `test_a_stalled_broker_is_detected_by_the_pingresp_deadline` | detection, reconnect | `mqtt.ping_interval_ms`, `l4.mqtt_detect_bound_s` |
-| `test_a_silent_path_loss_is_detected_and_recovered` | detection, reconnect | `mqtt.ping_interval_ms`, `l4.mqtt_detect_bound_s` |
+| `test_a_stalled_broker_is_detected_by_the_pingresp_deadline` | detection, reconnect | `mqtt.response_timeout_ms`, `l4.mqtt_detect_bound_s` |
+| `test_a_silent_path_loss_is_detected_and_recovered` | detection, reconnect | `mqtt.response_timeout_ms`, `l4.mqtt_detect_bound_s` |
+| `test_stall_detection_follows_the_publish_rounds` | each offset's detection time | `mqtt.response_timeout_ms`, `l4.mqtt_stall_phase_tolerance_s` |
 | `test_a_duplicate_client_id_is_bounded_by_the_backoff` | retakes against the duplicate | `mqtt.stable_after_ms`, `mqtt.short_session_warn`, `l4.mqtt_takeover_max_connects` |
 | `test_an_inbound_flood_leaves_rest_serving_and_the_session_up` | messages taken, `GET /status` latency | `l4.mqtt_flood_messages`, `l4.mqtt_rest_budget_s` |
 | `test_an_inbound_qos1_burst_is_acknowledged_in_full` | burst time | `mqtt.qos1_retry_ms`, `l4.mqtt_detect_wait_s` |

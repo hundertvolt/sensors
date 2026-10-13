@@ -78,8 +78,6 @@ if TYPE_CHECKING:
     # Build-time values the generated module passes whole: the client id default and every timing (Part N's mqtt.*).
     class MqttConfig(NamedTuple):
         client_id: str
-        keepalive_s: int
-        ping_interval_ms: int
         response_timeout_ms: int
         connect_timeout_ms: int
         backoff_min_ms: int
@@ -103,7 +101,7 @@ else:
     MqttConfig = namedtuple(
         "MqttConfig",
         (
-            "client_id", "keepalive_s", "ping_interval_ms", "response_timeout_ms", "connect_timeout_ms", "backoff_min_ms", "backoff_max_ms",
+            "client_id", "response_timeout_ms", "connect_timeout_ms", "backoff_min_ms", "backoff_max_ms",
             "stable_after_ms", "qos1_retry_ms", "drain_timeout_ms", "tick_ms", "link_poll_ms", "idle_recheck_ms", "dns_timeout_ms", "dns_tries",
         ),
     )
@@ -159,7 +157,7 @@ _ID_BYTES = const(2)  # a packet id, and a string's length prefix (MQTT 3.1.1 se
 _SUBACK_MIN = const(3)  # a packet id and at least one return code
 _CONNACK_LEN = const(4)
 _TEXT_FIELDS = const(8)  # host, user, password, client id, prefix, status topic, online and offline payloads
-_INT_FIELDS = const(3)  # port, publish interval, status QoS
+_INT_FIELDS = const(4)  # port, publish interval, ping interval, status QoS
 _BOOL_FIELDS = const(3)  # enable, persistent session, status retain
 _PW_MASK = "********"
 
@@ -217,7 +215,8 @@ _VAL_MQTT_USER = const((("MQTTUser", "str", "", 0, 64, None),))
 _VAL_MQTT_PW = const((("MQTTPW", "str", "", 0, 64, None),))
 _VAL_MQTT_CLIENT_ID = const((("MQTTClientId", "str", "SensorNode", 1, 23, None),))
 _VAL_MQTT_PREFIX = const((("MQTTPrefix", "str", "sensors", 1, 64, None),))
-_VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 60, 10, 3600, None),))
+_VAL_MQTT_PUB_INTERVAL = const((("MQTTPubInterval", "int", 0, 10, 3600, 0),))  # special 0: no measurement rounds
+_VAL_MQTT_PING_INTERVAL = const((("MQTTPingInterval", "int", 180, 10, 3600, 0),))  # special 0: no idle ping, keep-alive 0
 _VAL_MQTT_PERSISTENT = const((("MQTTPersistent", "bool", False, None, None, None),))
 _VAL_MQTT_WILL_TOPIC = const((("MQTTWillTopic", "str", "", 1, 128, ""),))  # special "": <base>/status
 _VAL_MQTT_ONLINE_MSG = const((("MQTTOnlineMsg", "str", "online", 1, 64, None),))
@@ -233,7 +232,8 @@ _VAL_MQTT_WILL_RETAIN = const((("MQTTWillRetain", "bool", True, None, None, None
 # @web MQTTPW section=networking submitGroup=mqtt label="Password" mask=true bytes=true
 # @web MQTTClientId section=networking submitGroup=mqtt label="Client ID" description="Also the device's topic level." bytes=true shape=hostLabel
 # @web MQTTPrefix section=networking submitGroup=mqtt label="Topic Prefix" description="Topics are <prefix>/<client id>/status, /measurements/<module> and /cmd/#." bytes=true
-# @web MQTTPubInterval section=networking submitGroup=mqtt label="Publish Interval" unit="s"
+# @web MQTTPubInterval section=networking submitGroup=mqtt label="Publish Interval" unit="s" description="Seconds between measurement messages." special:0="Off"
+# @web MQTTPingInterval section=networking submitGroup=mqtt label="Ping Interval" unit="s" description="Seconds between keep-alive pings on an idle link; each message gets one of its own. The broker fires the will about 1.5 x (interval + 10 s) after the device drops off; Off lets the broker wait for ever." special:0="Off"
 # @web MQTTPersistent section=networking submitGroup=mqtt label="Persistent Session" description="The broker keeps the subscriptions and queues QoS 1 messages while the device is away." onLabel="On" offLabel="Off"
 # @web MQTTWillTopic section=networking submitGroup=mqtt label="Status Topic" description="Carries the will and the online message." bytes=true special:""="<prefix>/<client id>/status"
 # @web MQTTOnlineMsg section=networking submitGroup=mqtt label="Online Message" description="Published on the status topic after each connect." bytes=true
@@ -268,6 +268,8 @@ class MQTTClient(SensorReaderConfig):
     _unconfirmed: int
     _ping_mark: int
     _ping_early: bool
+    # One MQTTPingInterval second in ms; a class attribute, so the device's instances hold no copy and a test shortens it.
+    _ping_unit_ms = 1000
 
     def __init__(
         self,
@@ -287,7 +289,7 @@ class MQTTClient(SensorReaderConfig):
             MQTT(Connected=False, TS=None),
             _NAME,
             _VAL_MQTT_ENABLE + _VAL_MQTT_HOST + _VAL_MQTT_PORT + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX + _VAL_MQTT_PUB_INTERVAL
-            + _VAL_MQTT_PERSISTENT + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG + _VAL_MQTT_WILL_QOS + _VAL_MQTT_WILL_RETAIN,
+            + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_PERSISTENT + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG + _VAL_MQTT_WILL_QOS + _VAL_MQTT_WILL_RETAIN,
             max_module_error=0,  # no failure streak: a broker outage is routine, never a restart (Part C.7.2)
             cfg_path=cfg_path,
             log=log,
@@ -322,6 +324,7 @@ class MQTTClient(SensorReaderConfig):
             self._alloc_error = e
         self._wake = asyncio.Event()  # set by reconnect(): ends an idle or backoff wait at once
         self._pub_interval_ms = _VAL_MQTT_PUB_INTERVAL[0][2] * 1000  # read with the other settings at each connect
+        self._ping_s = _VAL_MQTT_PING_INTERVAL[0][2]  # 0: no idle ping
         self._pub_due = False  # set at each CONNACK: the first round follows it instead of a whole interval
         self._uptime = TickSeconds()
         self._meas_topics: dict[str, bytes] = {}
@@ -428,7 +431,9 @@ class MQTTClient(SensorReaderConfig):
         stream: _Stream = asyncio.StreamReader(sock)  # type: ignore[assignment]  # MicroPython's one Stream class
         self._stream = stream  # owned from here: _close() ends it on every path
         sock.setblocking(False)
-        n = encode_connect(self._txmv, client_id, self._cfg.keepalive_s, (self._status_topic, will, self._status_qos, self._status_retain) if will else None, user, password, clean=clean)
+        # The keep-alive promises the next ping within the interval plus its own deadline; 0 promises none (section 3.1.2.10).
+        keepalive = self._ping_s + (self._cfg.response_timeout_ms + 999) // 1000 if self._ping_s else 0
+        n = encode_connect(self._txmv, client_id, keepalive, (self._status_topic, will, self._status_qos, self._status_retain) if will else None, user, password, clean=clean)
         if n < 0:  # unreachable within the schema's bounds, which _TX_BYTES is sized for
             if not quiet:
                 await self.pr.err_s("CONNECT does not fit the transmit buffer", errno=_ERR_MQTT_CONNECT)
@@ -658,7 +663,7 @@ class MQTTClient(SensorReaderConfig):
         # after it ran, so a late wake delays that round alone, never the cadence (Part A.11).
         due = time.ticks_ms()
         while True:
-            if self._state != _ST_CONNECTED:
+            if self._state != _ST_CONNECTED or not self._pub_interval_ms:  # 0: the publisher is off
                 await asyncio.sleep_ms(_PUB_STEP_MS)
                 continue
             if self._pub_due:
@@ -800,7 +805,7 @@ class MQTTClient(SensorReaderConfig):
         texts = await self.cfgmgr.get_str_values(
             _VAL_MQTT_HOST + _VAL_MQTT_USER + _VAL_MQTT_PW + self._val_client_id + _VAL_MQTT_PREFIX + _VAL_MQTT_WILL_TOPIC + _VAL_MQTT_ONLINE_MSG + _VAL_MQTT_WILL_MSG,
         )
-        ints = await self.cfgmgr.get_int_values(_VAL_MQTT_PORT + _VAL_MQTT_PUB_INTERVAL + _VAL_MQTT_WILL_QOS)
+        ints = await self.cfgmgr.get_int_values(_VAL_MQTT_PORT + _VAL_MQTT_PUB_INTERVAL + _VAL_MQTT_PING_INTERVAL + _VAL_MQTT_WILL_QOS)
         if bools is None or texts is None or ints is None or len(bools) != _BOOL_FIELDS or len(texts) != _TEXT_FIELDS or len(ints) != _INT_FIELDS:
             if not self._cfg_warned:
                 self._cfg_warned = True
@@ -827,11 +832,11 @@ class MQTTClient(SensorReaderConfig):
             self._status_topic = will_topic.encode() if will_topic else base + b"/status"
         # Read anew at each connect, but an unchanged value keeps the object already held, born at setup().
         self._host, self._port = _kept(self._host, host), ints[0]
-        self._pub_interval_ms = ints[1] * 1000
+        self._pub_interval_ms, self._ping_s = ints[1] * 1000, ints[2]
         self._user, self._password = _kept(self._user, user_b), _kept(self._password, password_b)
         self._client_id = _kept(self._client_id, client_id.encode())
         self._online, self._offline = _kept(self._online, online_b), _kept(self._offline, offline_b)
-        self._status_qos, self._status_retain = ints[2], retain
+        self._status_qos, self._status_retain = ints[3], retain
         self._settle_session((self._host, self._port, self._client_id), persistent=persistent)
         self._persistent = persistent
         return True
@@ -893,7 +898,7 @@ class MQTTClient(SensorReaderConfig):
         self._ack_count = 0
         self._unconfirmed = 0  # bytes written since the CONNACK that no PINGRESP has confirmed yet
         self._ping_mark = 0  # _unconfirmed right after the outstanding PINGREQ: what its PINGRESP confirms
-        self._ping_early = False  # a write is waiting for room: the next tick pings without waiting its interval
+        self._ping_early = False  # a PUBLISH awaits confirmation or room: the next free tick pings, interval or not
 
     async def _retire_session(self) -> None:
         # One clean connect with the identity left behind and no will, then DISCONNECT: the broker discards that session
@@ -947,12 +952,14 @@ class MQTTClient(SensorReaderConfig):
         if head > 0:
             n = head + length
             if self._unconfirmed and self._unconfirmed + n > _UNCONFIRMED_MAX:
-                self._ping_early = not self._ping_out
+                if not self._ping_out:
+                    self._ping_early = True
                 return False
             slot = self._slots[i]
             slot.seek(0)
             slot.readinto(self._txmv[head:n])  # the payload after its head: one packet, one write
             self._write(stream, self._txmv[:n])
+            self._ping_early = True  # a ping of its own confirms it, whatever the interval (owner, 2026-10-13)
         self._slot_tries[i] += 1
         return True
 
@@ -981,7 +988,7 @@ class MQTTClient(SensorReaderConfig):
                 if time.ticks_diff(now, self._ping_sent) >= cfg.response_timeout_ms:
                     self._bump(_C_PING_TIMEOUTS)
                     return _R_PING
-            elif self._ping_early or time.ticks_diff(now, self._last_ping) >= cfg.ping_interval_ms:
+            elif self._ping_early or (self._ping_s and time.ticks_diff(now, self._last_ping) >= self._ping_s * self._ping_unit_ms):
                 self._write(stream, _PINGREQ_PKT)
                 self._ping_mark = self._unconfirmed
                 self._ping_early = False

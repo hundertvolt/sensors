@@ -56,8 +56,9 @@ run) and closing every finding in `RESULTS.md`.
 - **PUBACKs are queued, not written by the reader**: the keeper writes them on its next tick, so every
   write has one author and no PUBACK can land inside a running drain (which resets the stream's
   pending output when it finishes).
-- **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Right
-  after each CONNACK and then every `MQTTPubInterval` seconds (read at connect) it reads each source's
+- **Measurement publisher** — `_publish_loop()`, started by `start_asy_publish()` and supervised. Unless
+  `MQTTPubInterval` is 0, its default (§16), right after each CONNACK and then every `MQTTPubInterval`
+  seconds (read at connect) it reads each source's
   `get_dict_data()` and enqueues one QoS 0 message per module; it never touches the socket. Each round
   falls due one interval after the previous one fell due, and the publisher sleeps to that time in steps
   of at most `mqtt.pub_step_ms` (§13 item 13).
@@ -96,7 +97,8 @@ run) and closing every finding in `RESULTS.md`.
 
 - Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, tries, pr=...)`; an IPv4 literal returns at
   once. Only the DHCP-provided server is asked (§13 item 12). Re-resolved on every attempt (the address may move).
-- CONNECT: protocol level 4, keepalive `mqtt.keepalive_s`, client id `MQTTClientId`, a clean session
+- CONNECT: protocol level 4, a keep-alive of `MQTTPingInterval` plus `mqtt.response_timeout_ms` in whole
+  seconds, or 0 with no idle ping (§13 item 22), client id `MQTTClientId`, a clean session
   unless `MQTTPersistent` is on (§15); the will is the status topic (§7) with `MQTTWillMsg`
   at `MQTTWillQoS`, retained when `MQTTWillRetain` is on; user name and password flags only when set.
 - CONNACK within `mqtt.response_timeout_ms` of the connect completing; any return code other than 0 is
@@ -116,9 +118,11 @@ run) and closing every finding in `RESULTS.md`.
 
 ### 3.3 Serving
 
-- **Ping**: PINGREQ every `mqtt.ping_interval_ms` regardless of traffic; no PINGRESP within
-  `mqtt.response_timeout_ms` → teardown (E `MQTT_NO_PINGRESP`). Worst-case dead-transport detection is
-  their sum. lwIP has no TCP keepalive here, so this is the only detector (RESEARCH.md §4 fact 1).
+- **Ping**: a PINGREQ once `MQTTPingInterval` seconds pass without one (180 s; 0 sends none), and one right
+  after every PUBLISH written, at any interval (§16); one already out confirms only what went before it, so
+  a PUBLISH written meanwhile gets the next. No PINGRESP within `mqtt.response_timeout_ms` → teardown
+  (E `MQTT_NO_PINGRESP`). A dead transport is found within that deadline of the next message or idle ping.
+  lwIP has no TCP keepalive here, so this is the only detector (RESEARCH.md §4 fact 1).
 - **QoS 1 out**: retransmitted with DUP after `mqtt.qos1_retry_ms`, given up after
   `mqtt.qos1_max_tries` (counted, never a teardown — the `mqtt_as` A9 self-inflicted reconnect).
 - **Stalled broker**: the stream's pending output past `mqtt.max_out_backlog` bytes, or a drain not done
@@ -235,9 +239,9 @@ Measured with the need sieve (HEAP_FRAGMENTATION_MEASUREMENTS.md §M6.1) on the 
 
 The round's 256 B is the publisher coroutine's own frame. The split costs 544 B there, about 270 B on the
 board: eight streams carry their own headers where one ring carried one. The instance dict stays at its
-97-entry table (91 attributes, nine of them the will and session state of §15, counted on the Unix port
-after construction, agent, 2026-10-13); its 73-entry step would take eighteen attributes out for about
-190 B on the board.
+97-entry table (92 attributes, nine of them the will and session state of §15 and one the ping interval of
+§16, counted on the Unix port after construction, agent, 2026-10-13); its 73-entry step would take nineteen
+attributes out for about 190 B on the board.
 
 Steady-state allocation: the `readinto` generator per inbound read; two `memoryview` slices per
 written PUBLISH; per measurement message, an iterator and a frame per object in it, plus the dumped text
@@ -258,7 +262,8 @@ of a long int (the timestamp on the board, beyond its small-int range). Counters
 | `MQTTPW` | str | `""` | 0–64 | bytes ≤ 64; masked on every GET (owner, 8.5) |
 | `MQTTClientId` | str | `[device].hostname` | 1–23 | 1–23 bytes of letters, digits, `-` |
 | `MQTTPrefix` | str | `"sensors"` | 1–64 | bytes ≤ 64; no `+`, `#`, NUL; no leading or trailing `/` |
-| `MQTTPubInterval` | int | 60 | 10–3600 | seconds between measurement rounds |
+| `MQTTPubInterval` | int | 0 | 10–3600, special 0 | seconds between measurement rounds; 0, no rounds (§16) |
+| `MQTTPingInterval` | int | 180 | 10–3600, special 0 | seconds without a PINGREQ before an idle one; 0, none, and keep-alive 0 (§16) |
 | `MQTTPersistent` | bool | `false` | — | a persistent session (clean session 0) instead of a clean one (§15) |
 | `MQTTWillTopic` | str | `""` | 1–128, special `""` | the status topic: a topic name of at most 128 bytes, no wildcard, NUL or leading `$`; `""` is `<base>/status` |
 | `MQTTOnlineMsg` | str | `"online"` | 1–64 | bytes ≤ 64, no NUL; published on the status topic after each CONNACK |
@@ -275,8 +280,8 @@ The client id default is `[device].hostname`, substituted the way WiFi substitut
 
 ### 6.2 Settings group
 
-`SettingsGroup(mqtt, (all fourteen keys), post_fct=mqtt.reconnect)` under `"networking"`, rendered as
-the "MQTT Broker" group after NTP. The `/networking` body grows by the fourteen keys; the body-cap
+`SettingsGroup(mqtt, (all fifteen keys), post_fct=mqtt.reconnect)` under `"networking"`, rendered as
+the "MQTT Broker" group after NTP. The `/networking` body grows by the fifteen keys; the body-cap
 headroom pin is updated and its margin read (I.6).
 
 ### 6.3 Status (`GET /status` → `networking`)
@@ -331,7 +336,7 @@ to one history slot. `MQTT` and `CFGMGR_MQTT` are FRAM-backed on `dev` (`fram_ta
 ## 9. Tunables
 
 Generated constants in the `dev` module (the per-service timeouts rule, N.1), passed whole as
-`MqttConfig`: `mqtt.keepalive_s` 60, `mqtt.ping_interval_ms` 15,000, `mqtt.response_timeout_ms` 10,000,
+`MqttConfig`: `mqtt.response_timeout_ms` 10,000,
 `mqtt.connect_timeout_ms` 10,000, `mqtt.backoff_min_ms` 2,000, `mqtt.backoff_max_ms` 60,000,
 `mqtt.stable_after_ms` 30,000, plus the shared `dns.timeout_ms`/`dns.tries` and the client id default.
 In `src/`: `mqtt.tick_ms` 100, `mqtt.link_poll_ms` 1,000, `mqtt.idle_recheck_ms` 60,000,
@@ -417,7 +422,8 @@ Each the more conservative, more easily reversible choice, for review:
 4. Connection failures are errors (the NTP precedent: `NTP_NO_REPLY`, `NTP_DNS`); only the short-session
    pattern is a warning.
 5. Client id limited to the 1–23 letters, digits and `-` every MQTT 3.1.1 broker must accept.
-6. Ping every 15 s with a 10 s deadline regardless of traffic: dead-transport detection within 25 s.
+6. A 10 s PINGRESP deadline (`mqtt.response_timeout_ms`); the interval, 15 s in this design, is the owner's
+   setting since 2026-10-13 (§16).
 7. No MQTT DISCONNECT before a commanded reboot (no new shutdown hook); the broker publishes the will.
 8. `MQTTHost` takes `NTPHost`'s `hostName` shape at PUT and at use, its empty value the schema special
    "no broker, the client off" (as `PW`'s `""` is an open network). First decided as a length check at PUT
@@ -466,6 +472,16 @@ more conservative, more easily reversible choice:
     the broker's expiry, since the identity the keeper remembers is in RAM.
 21. A retire is skipped when the next connect discards the session itself (same host, port and client id,
     clean session, [MQTT-3.1.2-6]), saving one connect.
+22. The keep-alive is the ping interval plus `mqtt.response_timeout_ms` in whole seconds (190 s at the
+    default), 0 when the interval is: the next idle ping always falls inside it with no use of the broker's
+    1.5 times grace, and the will's timing follows the one setting (agent, 2026-10-13).
+23. The confirming ping follows every PUBLISH written, a QoS 1 retransmission and a resumed session's resend
+    included (agent, 2026-10-13): a QoS 1 PUBACK that does not come is a retry, never a teardown (§3.3), so
+    only the ping finds the dead link a retry is sent into.
+24. A test shortens the ping interval's second through the class attribute `_ping_unit_ms` (1,000), which
+    adds nothing to a device instance's dict (agent, 2026-10-13).
+25. The measurement topics are still born at `setup()` with the publisher off, keeping the layout §5
+    measured (agent, 2026-10-13).
 
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 
@@ -506,3 +522,26 @@ Asked which of three gaps to close (a fixed will; a clean session only; QoS 1 me
    `MQTTPersistent`.
 4. Asked "When a persistent session is left behind (client id, broker or prefix changed; persistence or MQTT
    switched off), what should happen to it?": 'Retire it (Recommended)' — §3.4.
+
+## 16. Owner decisions on the ping and the publisher (owner, 2026-10-13)
+
+The use, in the owner's words: "I am not transferring measurements over it. It's intended to be an event
+notifier, but nothing critical. It's about notifying "it's recommended to open a window". So something which
+should be transmitted at the time of detection, but still nothing bad happens if it's completely missed or
+delayed. I don't want to mess up my. WiFi with potentially tens of such sensors pinging all along, actually
+transferring nothing." And: "The ping interval shall become a parameter, it should be possible to turn it off
+(e.g. by setting it to None)." Off is the special 0, which the UI shows as "Off", the schema's form for a
+switched-off number (agent, 2026-10-13).
+
+1. Asked the default of `MQTTPingInterval` (0 off, otherwise 10–3600 s): '3 min' — 180 s, a keep-alive of
+   190 s, so the broker publishes the will about 285 s after a device drops off without a word.
+2. Asked "With rare or no idle pings, should the client send one ping right after each publish, to confirm
+   the event arrived?": 'Ping after publish (Recommended)' — §3.3; a dead link is found within 10 s of the
+   message, and a QoS 1 one goes again after the reconnect.
+3. Asked what should happen to the measurement publisher: 'Off-able, default off (Recommended)' —
+   `MQTTPubInterval` 0, the default.
+
+With pings off the broker never times a device out; mosquitto 2.0.18 publishes the dropped connection's will
+at the device's reconnect when either session is clean, and discards it when both are persistent
+(`handle_connect.c`), so pings off with `MQTTPersistent` on never shows a power loss as offline. A broker
+with `max_keepalive` set refuses a 3.1.1 client whose keep-alive is 0 or above it (the same file).

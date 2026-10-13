@@ -10,6 +10,7 @@ import argparse
 import http.client
 import json
 import os
+import re
 import signal
 import socket
 import statistics
@@ -202,7 +203,9 @@ _MQTT_STEP_WAIT_S = 15.0  # one message's round trip through the broker and the 
 # @tunable l2.mqtt_outage_s = 5.0
 _MQTT_OUTAGE_S = 5.0  # the killed broker's downtime: two attempts fail at the minimum backoff
 # @tunable l2.mqtt_stall_wait_s = 45.0
-_MQTT_STALL_WAIT_S = 45.0  # past the ping interval plus the response timeout (25 s)
+_MQTT_STALL_WAIT_S = 45.0  # past a publish interval plus the PINGRESP deadline (20 s): the ping confirming the next round
+# @tunable mqtt.response_timeout_ms = 10
+_MQTT_PINGRESP_DEADLINE_S = 10  # what the keep-alive adds to the ping interval
 # @tunable l2.mqtt_takeover_s = 15.0
 _MQTT_TAKEOVER_S = 15.0  # the duplicate client's stay, long enough for the device to retake the session once
 # @tunable mqtt.backoff_max_ms = 60.0
@@ -1244,6 +1247,11 @@ def _start_mqtt_broker(ctx: RunContext) -> Mosquitto | None:
     return broker
 
 
+def _mqtt_keepalives(broker: Mosquitto, client_id: str) -> list[int]:
+    # The keep-alive of every connect the broker logged for client_id, oldest first ("... as <id> (p2, c1, k190).").
+    return [int(k) for k in re.findall(rf" as {re.escape(client_id)} \(p\d+, c\d, k(\d+)", broker.log_path.read_text())]
+
+
 def _check_mqtt_traffic(ctx: RunContext, probe: Probe, base: str) -> None:
     # Run 12's normal operation: online on the status topic, every sensor's measurements as strict JSON, a command in.
     online = wait_for(lambda: any(m.payload == b"online" for m in probe.received(f"{base}/status")), _MQTT_CONNECT_WAIT_S)
@@ -1278,7 +1286,7 @@ def _check_mqtt_faults(broker: Mosquitto, probes: list[Probe], base: str, client
     broker.send(signal.SIGSTOP)
     stalled = wait_for(lambda: _mqtt_count("MQTTPingTimeouts") > pings, _MQTT_STALL_WAIT_S)
     broker.send(signal.SIGCONT)
-    _check(condition=stalled, msg="Run 12: a stalled broker was detected by the PINGRESP deadline")
+    _check(condition=stalled, msg="Run 12: a stalled broker was detected by the PINGRESP deadline of the ping confirming the next message")
     back = wait_for(lambda: _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S)
     _check(condition=back, msg="Run 12: reconnected once the stalled broker resumed")
 
@@ -1311,11 +1319,13 @@ def _check_mqtt_will_and_session(ctx: RunContext, broker: Mosquitto, probes: lis
         got = watch.received(_MQTT_STATUS_TOPIC)
         return got[-1].payload if got else b""
 
-    body = {"MQTTWillTopic": _MQTT_STATUS_TOPIC, "MQTTOnlineMsg": "up", "MQTTWillMsg": "down", "MQTTWillQoS": 1, "MQTTWillRetain": True, "MQTTPersistent": True}
+    # Pings off too (owner, 2026-10-13: 'possible to turn it off'): keep-alive 0, and the will still fires on the drop below.
+    body = {"MQTTWillTopic": _MQTT_STATUS_TOPIC, "MQTTOnlineMsg": "up", "MQTTWillMsg": "down", "MQTTWillQoS": 1, "MQTTWillRetain": True, "MQTTPersistent": True, "MQTTPingInterval": 0}
     status, answer = _http("PUT", "/networking", body)
     accepted = isinstance(answer, dict) and all(answer.get("result", {}).get(k) in ("Valid", "Unchanged") for k in body)
-    _check(condition=status == _HTTP_OK and accepted, msg=f"Run 12: PUT /networking set the status topic and a persistent session ({answer!r})")
+    _check(condition=status == _HTTP_OK and accepted, msg=f"Run 12: PUT /networking set the status topic, a persistent session and no pings ({answer!r})")
     _check(condition=wait_for(lambda: last_status() == b"up", _MQTT_CONNECT_WAIT_S), msg=f"Run 12: the online message arrived on {_MQTT_STATUS_TOPIC}")
+    _check(condition=_mqtt_keepalives(broker, client_id)[-1:] == [0], msg=f"Run 12: with pings off the device connected with keep-alive 0 ({_mqtt_keepalives(broker, client_id)})")
     old = probes[0].received(f"{base}/status")
     _check(condition=bool(old) and old[-1].payload == b"offline", msg="Run 12: the old status topic was set offline before the reconnect")
 
@@ -1361,6 +1371,9 @@ def _run_12_mqtt_broker_faults(ctx: RunContext) -> None:
         base = f"{prefix}/{client_id}"
         probes.append(Probe(HOST, broker.port, "twin-observer", (f"{base}/#",)).start())
         _check_mqtt_traffic(ctx, probes[0], base)
+        ping = cfg.get("MQTTPingInterval") if isinstance(cfg, dict) else None
+        kept = _mqtt_keepalives(broker, client_id)
+        _check(condition=isinstance(ping, int) and kept[-1:] == [ping + _MQTT_PINGRESP_DEADLINE_S], msg=f"Run 12: the keep-alive is the {ping} s ping interval plus the PINGRESP deadline ({kept})")
         _check_mqtt_faults(broker, probes, base, client_id)
         system_after = _errcount_required("SYSTEM").get("counter", 0)
         _check(condition=system_after == system_before, msg=f"Run 12: no task ended while the broker failed (SYSTEM counter {system_before} -> {system_after})")

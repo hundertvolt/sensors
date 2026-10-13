@@ -45,6 +45,7 @@ class FakeBroker:
         self.connect_packets: list[list[tuple[int, bytes]]] = []  # per CONNECT, in connects' order: that connection's own
         self.connack_rc: int | None = 0  # None: never answer CONNECT
         self.answer_pings = True
+        self.ping_delay_ms = 0  # how long each PINGRESP waits, reading nothing meanwhile
         self.ack_publishes = True
         self.suback_code = 1
         self.close_after_connack = False
@@ -149,6 +150,8 @@ class FakeBroker:
                     await writer.drain()
             return True
         if kind == 0xC0:
+            if self.ping_delay_ms:
+                await asyncio.sleep_ms(self.ping_delay_ms)
             if self.answer_pings:
                 async with self._wire:
                     writer.write(b"\xd0\x00")
