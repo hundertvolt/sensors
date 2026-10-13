@@ -4,6 +4,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
+import { connect } from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -111,9 +112,12 @@ function spawnTwin(device) {
 
 /** @param {import("node:child_process").ChildProcess} proc */
 async function stopTwin(proc) {
-    if (proc.exitCode !== null || proc.signalCode !== null) {
-        return;
+    if (proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) {
+        return; // never started (waitUntilServing() names its spawn error) or already gone
     }
+    const exited = new Promise((resolve) => {
+        proc.once("exit", resolve);
+    });
     // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
     // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
     // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
@@ -125,9 +129,7 @@ async function stopTwin(proc) {
     let killTimer;
     try {
         await Promise.race([
-            new Promise((resolve) => {
-                proc.once("exit", resolve);
-            }),
+            exited,
             new Promise((resolve) => {
                 killTimer = setTimeout(() => {
                     proc.kill("SIGKILL");
@@ -137,6 +139,41 @@ async function stopTwin(proc) {
         ]);
     } finally {
         clearTimeout(killTimer);
+    }
+    await exited; // a killed twin still holds the port until it has exited, and the next check needs it free
+}
+
+/**
+ * Whether anything accepts a connection on the twin's port; a listener whose queue is full still holds it.
+ * @returns {Promise<boolean>}
+ */
+function portAnswers() {
+    return new Promise((resolve) => {
+        const socket = connect({ host: HOST, port: PORT });
+        socket.setTimeout(SHUTDOWN_TIMEOUT_MS);
+        socket.once("connect", () => {
+            socket.destroy();
+            resolve(true);
+        });
+        socket.once("timeout", () => {
+            socket.destroy();
+            resolve(true);
+        });
+        socket.once("error", () => {
+            resolve(false);
+        });
+    });
+}
+
+/**
+ * Throws while the twin's port still answers: a twin this check did not start would serve its page and readiness
+ * polls, and the check would test that twin as its own (SPECIFICATION.md Part H.7: one twin at a time).
+ * @param {string} device
+ * @param {string} when
+ */
+async function assertPortFree(device, when) {
+    if (await portAnswers()) {
+        throw new Error(`${HOST}:${PORT} still answers ${when} ${device}'s twin: another twin holds the port, and this check would test that one instead of its own`);
     }
 }
 
@@ -247,6 +284,7 @@ export async function runLiveBackendSmoke({ context }, device) {
     // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
+    await assertPortFree(device, "before starting");
     const proc = spawnTwin(device);
     const output = drainChildOutput(proc);
 
@@ -338,6 +376,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const tabs = configuredMaxConnections(device);
+    await assertPortFree(device, "before starting");
     const proc = spawnTwin(device);
     const output = drainChildOutput(proc);
 
@@ -399,6 +438,7 @@ export async function runLiveBackendRestartRecovery({ context }, device) {
     const answered = (/** @type {import("playwright").Response} */ response) => response.url() === `http://${HOST}:${PORT}${landingGet}` && response.status() === 200;
     const banner = (/** @type {"true" | "false"} */ shown) => `#app-main .error-banner[data-shown="${shown}"]`;
 
+    await assertPortFree(device, "before starting");
     const procs = [spawnTwin(device)];
     const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
     /** @type {import("playwright").Page | undefined} */
@@ -419,6 +459,7 @@ export async function runLiveBackendRestartRecovery({ context }, device) {
         const urlBefore = page.url();
 
         await stopTwin(/** @type {import("node:child_process").ChildProcess} */ (procs[0]));
+        await assertPortFree(device, "after stopping");
         const bannerShown = await page.locator(banner("true")).waitFor({ timeout: SECTION_WAIT_MS }).then(() => true, () => false);
 
         const recoveredPoll = settledLater(page.waitForResponse(answered, { timeout: READY_TIMEOUT_MS + POLL_BACKOFF_MAX_MS }));
