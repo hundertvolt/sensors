@@ -821,7 +821,7 @@ def _settings_groups(source: str, page: str, src_dir: Path = _REPO_ROOT / "src")
 def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
     # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
     source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
-    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"), {"post_fct": "mqtt.reconnect"})]
+    mqtt = [("mqtt", ("MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"), {"post_fct": "mqtt.reconnect"})]
     assert _settings_groups(source, "networking", src_dir) == [
         ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
         ("conn", ("LEDWifiOn",), {}),

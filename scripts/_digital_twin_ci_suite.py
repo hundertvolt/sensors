@@ -28,7 +28,7 @@ import tomllib
 # tests_hardware/ last, for the broker tools the bench tier imports under the same top-level name.
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 sys.path.append(str(Path(__file__).resolve().parent.parent / "tests_hardware"))
-from mqtt_probe import Mosquitto, Probe, free_tcp_port, wait_for
+from mqtt_probe import Mosquitto, Probe, free_tcp_port, session_present, wait_for
 
 from scripts._summary_block import Summary
 from tests._error_codes import code
@@ -209,6 +209,8 @@ _MQTT_TAKEOVER_S = 15.0  # the duplicate client's stay, long enough for the devi
 _MQTT_BACKOFF_CAP_S = 60.0  # the reconnect wait the takeover's short sessions may have grown to
 # @tunable l2.mqtt_flood_messages = 3000
 _MQTT_FLOOD_MESSAGES = 3000  # 40-byte QoS 0 payloads, about 200 KB through the device's 1 KB receive buffer
+_MQTT_STATUS_TOPIC = "twin/availability"  # a status topic outside the device's own tree (owner, 2026-10-13: 'Any full topic')
+_MQTT_NEXT_CLIENT_ID = "twin-next"  # the client id the retire check moves to
 
 # A fixed, recognizable DNS transaction ID, so a real answer from CaptiveDNS can be told
 # apart from an echo of the query itself; the header prefix is _try_dns_query()'s own ">HH" unpack.
@@ -1298,6 +1300,43 @@ def _check_mqtt_faults(broker: Mosquitto, probes: list[Probe], base: str, client
     _check(condition=wait_for(lambda: _mqtt_status().get("MQTTConnected") is True, _MQTT_STEP_WAIT_S), msg="Run 12: still connected after the flood")
 
 
+def _check_mqtt_will_and_session(ctx: RunContext, broker: Mosquitto, probes: list[Probe], base: str, client_id: str, procs: "list[subprocess.Popen[str]]") -> None:
+    # Run 12's status settings and persistent session (owner, 2026-10-13): the broker fires the configured will, a QoS 1
+    # command sent while the device is down arrives after its restart, and a client id change retires the old session.
+    # Restarts the twin on its kept state; `procs` holds the one running, so the caller's teardown ends the right one.
+    watch = Probe(HOST, broker.port, "twin-status", (_MQTT_STATUS_TOPIC,)).start()
+    probes.append(watch)
+
+    def last_status() -> bytes:
+        got = watch.received(_MQTT_STATUS_TOPIC)
+        return got[-1].payload if got else b""
+
+    body = {"MQTTWillTopic": _MQTT_STATUS_TOPIC, "MQTTOnlineMsg": "up", "MQTTWillMsg": "down", "MQTTWillQoS": 1, "MQTTWillRetain": True, "MQTTPersistent": True}
+    status, answer = _http("PUT", "/networking", body)
+    accepted = isinstance(answer, dict) and all(answer.get("result", {}).get(k) in ("Valid", "Unchanged") for k in body)
+    _check(condition=status == _HTTP_OK and accepted, msg=f"Run 12: PUT /networking set the status topic and a persistent session ({answer!r})")
+    _check(condition=wait_for(lambda: last_status() == b"up", _MQTT_CONNECT_WAIT_S), msg=f"Run 12: the online message arrived on {_MQTT_STATUS_TOPIC}")
+    old = probes[0].received(f"{base}/status")
+    _check(condition=bool(old) and old[-1].payload == b"offline", msg="Run 12: the old status topic was set offline before the reconnect")
+
+    ec = _shutdown(procs.pop(), "Run 12")  # no DISCONNECT: the broker publishes the will and queues for the session
+    _check(condition=ec == 0, msg=f"Run 12: clean shutdown before the restart (exit code {ec})")
+    _check(condition=wait_for(lambda: last_status() == b"down", _MQTT_STEP_WAIT_S), msg="Run 12: the broker published the configured will when the device dropped off")
+    probes[0].publish(f"{base}/cmd/queued", b"while-away", qos=1)
+    procs.append(_spawn(ctx, [], ctx.logs_dir / "run12b_mqtt_persistent_session.log"))
+    _wait_until_serving(procs[-1])
+    queued = wait_for(lambda: _mqtt_status().get("MQTTLastRxTopic") == f"{base}/cmd/queued", _MQTT_CONNECT_WAIT_S)
+    _check(condition=queued, msg="Run 12: a QoS 1 command sent while the device was down arrived after its restart (the session resumed)")
+    _check(condition=wait_for(lambda: last_status() == b"up", _MQTT_STEP_WAIT_S), msg="Run 12: online again on the status topic after the restart")
+
+    ups = sum(m.payload == b"up" for m in watch.received(_MQTT_STATUS_TOPIC))
+    status, answer = _http("PUT", "/networking", {"MQTTClientId": _MQTT_NEXT_CLIENT_ID})
+    _check(condition=status == _HTTP_OK, msg=f"Run 12: PUT /networking moved the client id ({answer!r})")
+    moved = wait_for(lambda: sum(m.payload == b"up" for m in watch.received(_MQTT_STATUS_TOPIC)) > ups and _mqtt_status().get("MQTTConnected") is True, _MQTT_CONNECT_WAIT_S)
+    _check(condition=moved, msg="Run 12: reconnected under the new client id")
+    _check(condition=not session_present(HOST, broker.port, client_id), msg=f"Run 12: the broker no longer holds {client_id}'s session (retired)")
+
+
 def _run_12_mqtt_broker_faults(ctx: RunContext) -> None:
     # ---- Run 12 (devices carrying the MQTT client): the real client against a real mosquitto, both
     # driven from THIS process (Part E.9): connect, publish, subscribe, then a broker kill, a stall, a
@@ -1308,10 +1347,10 @@ def _run_12_mqtt_broker_faults(ctx: RunContext) -> None:
     broker = _start_mqtt_broker(ctx)
     if broker is None:
         return
-    proc = _spawn(ctx, [], ctx.logs_dir / "run12_mqtt_broker_faults.log")
+    procs = [_spawn(ctx, [], ctx.logs_dir / "run12_mqtt_broker_faults.log")]
     probes: list[Probe] = []
     try:
-        _wait_until_serving(proc)
+        _wait_until_serving(procs[0])
         system_before = _errcount_required("SYSTEM").get("counter", 0)
         body = {"SSID": "digital-twin-test-ssid", "MQTTEnable": True, "MQTTHost": HOST, "MQTTPort": broker.port, "MQTTPubInterval": _MQTT_PUB_INTERVAL_S}
         status, answer = _http("PUT", "/networking", body)
@@ -1323,19 +1362,21 @@ def _run_12_mqtt_broker_faults(ctx: RunContext) -> None:
         probes.append(Probe(HOST, broker.port, "twin-observer", (f"{base}/#",)).start())
         _check_mqtt_traffic(ctx, probes[0], base)
         _check_mqtt_faults(broker, probes, base, client_id)
+        system_after = _errcount_required("SYSTEM").get("counter", 0)
+        _check(condition=system_after == system_before, msg=f"Run 12: no task ended while the broker failed (SYSTEM counter {system_before} -> {system_after})")
+        _check_mqtt_will_and_session(ctx, broker, probes, base, client_id, procs)
         expected = {code("E", n) for n in ("MQTT_CONNECT", "MQTT_LOST", "MQTT_NO_PINGRESP", "MQTT_STALLED")} | {code("W", "MQTT_SHORT_SESSIONS")}
         nums = {item["num"] for item in _errcount_required("MQTT").get("history", []) if isinstance(item, dict) and isinstance(item.get("num"), int) and item["num"]}
         _check(condition=nums <= expected, msg=f"Run 12: MQTT logged only the expected codes ({sorted(nums)})")
-        system_after = _errcount_required("SYSTEM").get("counter", 0)
-        _check(condition=system_after == system_before, msg=f"Run 12: no task ended while the broker failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:  # CI orchestration: surface any failure as a suite failure, not a crash
         _fail(f"Run 12 (MQTT broker faults): {exc!r}")
     finally:
         for probe in probes:
             probe.close()
-        ec = _shutdown(proc, "Run 12")
+        ec = _shutdown(procs.pop(), "Run 12") if procs else None  # empty only if the restart itself failed, already reported
         broker.stop()
-        _check(condition=ec == 0, msg=f"Run 12: clean shutdown (exit code {ec})")
+        if ec is not None:
+            _check(condition=ec == 0, msg=f"Run 12: clean shutdown (exit code {ec})")
 
 
 def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:

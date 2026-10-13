@@ -222,7 +222,7 @@ def test_mqtt_settings_status_and_errcount_follow_the_device_instance_set(repo_r
         assert not {"MQTT", "CFGMGR_MQTT"} & errcount
         return
     fields = {f["key"]: f for f in mqtt_groups[0]["fields"]}
-    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"]
+    assert list(fields) == ["MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"]
     assert fields["MQTTPW"]["mask"] is True
     assert fields["MQTTClientId"]["shape"] == "hostLabel"
     assert (fields["MQTTHost"]["shape"], fields["MQTTHost"]["minLength"], fields["MQTTHost"]["specialValues"][0]["value"]) == ("hostName", 1, "")

@@ -678,7 +678,7 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
 
 def test_parse_web_tags_real_mqtt_field_names(src_dir: Path) -> None:
     tags = parse_web_tags(src_dir / "asy_mqtt_client.py", "dev", "mqtt")
-    assert {t.field_name for t in tags} == {"MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"}
+    assert {t.field_name for t in tags} == {"MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"}
 
 
 def test_parse_web_group_tags_inventory_of_every_src_file(src_dir: Path) -> None:

@@ -286,6 +286,28 @@ class Probe:
         return self._connected.wait(timeout_s)
 
 
+def session_present(host: str, port: int, client_id: str) -> bool:
+    # Whether the broker holds a persistent session for `client_id`, read from a Clean Session 0 CONNACK; a clean connect
+    # then discards whatever that one resumed or made, so the check leaves no session behind. Never a live client's id.
+    present = False
+    for clean in (False, True):
+        with socket.create_connection((host, port), _START_TIMEOUT_S) as sock:
+            sock.settimeout(_START_TIMEOUT_S)
+            sock.sendall(_packet(0x10, _str(b"MQTT") + bytes([4, 0x02 if clean else 0]) + struct.pack("!H", _KEEPALIVE_S) + _str(client_id.encode())))
+            head = b""
+            while len(head) < 4:
+                chunk = sock.recv(4 - len(head))
+                if not chunk:
+                    raise ConnectionError("broker closed the connection before its CONNACK")
+                head += chunk
+            if head[0] != 0x20 or head[1] != 2 or head[3] != 0:
+                raise ConnectionError(f"CONNACK refused or malformed: {head!r}")
+            if not clean:
+                present = bool(head[2] & 1)
+            sock.sendall(b"\xe0\x00")
+    return present
+
+
 def wait_for(predicate: "Callable[[], bool]", timeout_s: float, poll_s: float = 0.25) -> bool:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:

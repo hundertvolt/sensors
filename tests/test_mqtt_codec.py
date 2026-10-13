@@ -60,7 +60,7 @@ def test_a_header_past_the_maximum_or_the_buffer_is_refused() -> None:
 
 def test_connect_matches_the_specification_layout_byte_for_byte() -> None:
     buf = bytearray(128)
-    n = mc.encode_connect(buf, b"abc", 60, b"s/abc/status", b"offline", b"", b"")
+    n = mc.encode_connect(buf, b"abc", 60, (b"s/abc/status", b"offline", 1, True), b"", b"", clean=True)
     expected = (
         b"\x10" + bytes([10 + 2 + 3 + 2 + 12 + 2 + 7])
         + b"\x00\x04MQTT\x04"
@@ -73,20 +73,39 @@ def test_connect_matches_the_specification_layout_byte_for_byte() -> None:
 
 def test_connect_carries_user_and_password_only_together() -> None:
     buf = bytearray(128)
-    n = mc.encode_connect(buf, b"d", 30, b"w", b"o", b"user", b"pw")
+    n = mc.encode_connect(buf, b"d", 30, (b"w", b"o", 1, True), b"user", b"pw", clean=True)
     assert buf[9] == 0x02 | 0x04 | 0x08 | 0x20 | 0x80 | 0x40
     assert bytes(buf[n - 10 : n]) == b"\x00\x04user\x00\x02pw"
-    n = mc.encode_connect(buf, b"d", 30, b"w", b"o", b"user", b"")
+    n = mc.encode_connect(buf, b"d", 30, (b"w", b"o", 1, True), b"user", b"", clean=True)
     assert buf[9] & 0xC0 == 0x80
     assert bytes(buf[n - 6 : n]) == b"\x00\x04user"
-    n = mc.encode_connect(buf, b"d", 30, b"w", b"o", b"", b"pw")  # no user: the password is not sent (3.1.2.9)
+    n = mc.encode_connect(buf, b"d", 30, (b"w", b"o", 1, True), b"", b"pw", clean=True)  # no user: the password is not sent (3.1.2.9)
     assert buf[9] & 0xC0 == 0
     assert n == 2 + 10 + 3 + 3 + 3
     assert bytes(buf[n - 3 : n]) == b"\x00\x01o"
 
 
+def test_connect_flags_follow_the_will_qos_its_retain_and_the_session() -> None:
+    # Section 3.1.2.4-3.1.2.7: Clean Session is bit 1, Will QoS bits 3-4, Will Retain bit 5.
+    buf = bytearray(128)
+    cases = ((0, True, True, 0x02 | 0x04 | 0x20), (1, False, True, 0x02 | 0x04 | 0x08), (1, True, False, 0x04 | 0x08 | 0x20), (0, False, False, 0x04))
+    for qos, retain, clean, flags in cases:
+        n = mc.encode_connect(buf, b"abc", 60, (b"t", b"gone", qos, retain), b"", b"", clean=clean)
+        assert buf[9] == flags, (qos, retain, clean, buf[9])
+        assert bytes(buf[n - 9 : n]) == b"\x00\x01t\x00\x04gone", (qos, retain, clean)
+
+
+def test_connect_without_a_will_carries_no_will_field_and_zero_will_flags() -> None:
+    # No will: no will fields, and Will QoS and Will Retain 0 ([MQTT-3.1.2-11], [MQTT-3.1.2-13]).
+    buf = bytearray(128)
+    for clean in (True, False):
+        n = mc.encode_connect(buf, b"abc", 60, None, b"", b"", clean=clean)
+        assert buf[9] == (0x02 if clean else 0), clean
+        assert bytes(buf[:n]) == b"\x10" + bytes([10 + 2 + 3]) + b"\x00\x04MQTT\x04" + bytes([buf[9]]) + b"\x00\x3c\x00\x03abc"
+
+
 def test_connect_that_does_not_fit_is_refused() -> None:
-    assert mc.encode_connect(bytearray(20), b"abc", 60, b"s/abc/status", b"offline", b"", b"") == -1
+    assert mc.encode_connect(bytearray(20), b"abc", 60, (b"s/abc/status", b"offline", 1, True), b"", b"", clean=True) == -1
 
 
 def test_publish_at_qos_0_has_no_packet_id_and_no_dup() -> None:
@@ -193,6 +212,14 @@ def test_topic_names_have_no_wildcard_and_a_byte_bound() -> None:
     assert mc.topic_name_ok(b"x" * 128)
     for bad in (b"", b"x" * 129, b"a/+", b"a/#", b"a\x00"):
         assert not mc.topic_name_ok(bad), bad
+
+
+def test_a_status_topic_is_a_topic_name_outside_the_brokers_dollar_tree() -> None:
+    # The will's topic: a topic name, and no leading '$', which brokers reserve (mosquitto refuses a will under $CONTROL/).
+    for good in ("a/b", "home/dev/availability", "/leading/slash", "x" * 128, "a$b", "ä/ö"):
+        assert mc.status_topic_ok(good), good
+    for bad in ("", "$SYS/x", "$CONTROL/x", "a/+", "a/#", "a\x00", "x" * 129, "ä" * 65):
+        assert not mc.status_topic_ok(bad), bad
 
 
 if __name__ == "__main__":

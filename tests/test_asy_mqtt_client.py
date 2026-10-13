@@ -36,7 +36,10 @@ _CFG = MqttConfig("t1", 60, 1000, 800, 500, 100, 400, 600, 200, 300, 20, 50, 200
 # behind a packet the test feeds a byte at a time.
 _QUIET_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 200, 300, 20, 50, 200, 100, 1)
 _WAIT_MS = 8000  # every wait polls; the bound only matters on a failure
+# No ping and no in-session QoS 1 retry within a test: every PUBLISH sent again is one the session sent again.
+_SESSION_CFG = MqttConfig("t1", 60, 60000, 3000, 500, 100, 400, 600, 60000, 300, 20, 50, 200, 100, 1)
 _R_STALLED = 7  # asy_mqtt_client.py's const()-folded teardown reason - mirrored, not importable
+_SLOT_INFLIGHT = 2  # asy_mqtt_client.py's const()-folded slot state - mirrored, not importable
 _ST_CONNECTED = 3  # asy_mqtt_client.py's const()-folded state - mirrored, not importable
 
 
@@ -690,7 +693,10 @@ def test_get_masks_the_password() -> None:
         cfg = (await client.get_dict_cfg())["MQTT"]
         assert cfg["MQTTPW"] == "********"
         assert cfg["MQTTClientId"] == "t1"  # the build's default (the device hostname)
-        assert set(cfg) == {"MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval"}
+        assert set(cfg) == {
+            "MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval",
+            "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain",
+        }
 
     run(scenario())
 
@@ -1231,6 +1237,374 @@ def test_a_long_length_prefix_is_split_across_reads() -> None:
             assert packet[1:3] == encode_length(207)
             await broker.send_split(packet)  # one byte per write: every split point the parser can meet
             assert await until(lambda: got == [b"P" * 200])
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def _sent_on(broker: FakeBroker, n: int) -> "list[tuple[int, bytes]]":
+    # What the client sent on the connection of the broker's n-th CONNECT (0-based), that CONNECT excluded.
+    return broker.connect_packets[n][1:]
+
+
+def _flags(broker: FakeBroker, n: int) -> int:
+    flags = broker.connects[n]["flags"]
+    assert isinstance(flags, int)
+    return flags
+
+
+def _publish_fields(first: int, body: bytes) -> "tuple[bytes, int, bytes]":
+    # (topic, packet id or 0, payload) of one PUBLISH the client sent.
+    topic, i = read_str(body, 0)
+    if (first >> 1) & 3:
+        return topic, (body[i] << 8) | body[i + 1], body[i + 2 :]
+    return topic, 0, body[i:]
+
+
+def test_the_status_settings_shape_the_will_and_the_online_and_offline_messages() -> None:
+    async def scenario() -> None:
+        broker, client, tasks = await broker_and_client()
+        try:
+            assert await until(lambda: len(broker.published(b"sensors/t1/status")) == 1)
+            await configure(client, broker.port, MQTTWillTopic="home/dev/avail", MQTTOnlineMsg="up", MQTTWillMsg="down", MQTTWillQoS=0, MQTTWillRetain=False)
+            client.reconnect()
+            assert await until(lambda: len(broker.published(b"home/dev/avail")) == 1)
+            assert broker.published(b"sensors/t1/status")[-1] == (0x31, b"offline")  # the old status, as it was set
+            connect = broker.connects[1]
+            assert connect["flags"] == 0x02 | 0x04  # clean, a will at QoS 0, not retained
+            assert connect["will_topic"] == b"home/dev/avail"
+            assert connect["will_message"] == b"down"
+            assert broker.published(b"home/dev/avail")[0] == (0x30, b"up")  # the will's QoS and retain flag
+            await configure(client, broker.port, MQTTPrefix="other")  # an entered topic no longer follows the prefix
+            client.reconnect()
+            assert await until(lambda: len(broker.published(b"home/dev/avail")) == 3)
+            assert broker.published(b"home/dev/avail")[1] == (0x30, b"down")  # the offline message before the DISCONNECT
+            assert broker.connects[2]["will_topic"] == b"home/dev/avail"
+            assert broker.disconnects == 2
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_put_refuses_status_settings_outside_their_shape_and_takes_the_rest() -> None:
+    async def scenario() -> None:
+        client = make_client()
+        assert await client.setup()
+        schema = client.get_cfg_schema()
+        bad: tuple[tuple[str, int | str], ...] = (
+            ("MQTTWillTopic", "$SYS/x"), ("MQTTWillTopic", "a/#"), ("MQTTWillTopic", "a/+/b"), ("MQTTWillTopic", "x" * 129),
+            ("MQTTWillTopic", "ä" * 65), ("MQTTWillMsg", "a\x00b"), ("MQTTWillMsg", "ä" * 33), ("MQTTOnlineMsg", ""),
+            ("MQTTOnlineMsg", "x" * 65), ("MQTTWillQoS", 2), ("MQTTWillQoS", -1),
+        )
+        for key, value in bad:
+            assert (await client._set_dict_cfg({key: value}, schema)) == {key: "Invalid"}, (key, value)
+        good: dict[str, str | int | bool] = {"MQTTWillTopic": "home/dev/avail", "MQTTWillMsg": "down", "MQTTOnlineMsg": "up", "MQTTWillQoS": 0, "MQTTWillRetain": False, "MQTTPersistent": True}
+        results = await client._set_dict_cfg(good, schema)
+        assert all(v == "Valid" for v in results.values()), results
+        assert (await client._set_dict_cfg({"MQTTWillTopic": ""}, schema)) == {"MQTTWillTopic": "Valid"}  # back to <base>/status
+
+    run(scenario())
+
+
+def test_a_persistent_session_connects_without_clean_session_and_keeps_its_will() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            connect = broker.connects[0]
+            assert connect["flags"] == 0x04 | 0x08 | 0x20  # no clean session; the will as before
+            assert connect["session_present"] == 0
+            assert broker.sessions == {b"t1"}
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_resumed_session_gets_its_unacknowledged_qos1_again_first_with_their_ids_and_dup() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        broker.ack_publishes = False
+        await broker.start()
+        client = make_client(config=_SESSION_CFG)
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            assert client.publish("q/1", b"a", qos=1)
+            assert client.publish("q/1", b"b", qos=1)
+            assert await until(lambda: len(broker.published(b"q/1")) == 2)
+            first_ids = [_publish_fields(f, b)[1] for f, b in broker.packets if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/1"]
+            broker.ack_publishes = True
+            await broker.drop()
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            assert broker.connects[1]["session_present"] == 1
+            assert await until(lambda: any(f == 0x82 for f, _b in _sent_on(broker, 1)))
+            sent = _sent_on(broker, 1)
+            # The first session's online message was unacknowledged too: all three again, oldest first, before anything new.
+            assert [f & 0x0E for f, _b in sent[:3]] == [0x0A, 0x0A, 0x0A]  # QoS 1 with DUP
+            assert [_publish_fields(f, b)[2] for f, b in sent[:3]] == [b"online", b"a", b"b"]
+            assert [_publish_fields(f, b)[1] for f, b in sent[1:3]] == first_ids  # their original packet ids
+            assert sent[3][0] == 0x82  # then the SUBSCRIBE, a resumed session included
+            assert await until(lambda: count(client, "MQTTTxMsgs") >= 4)
+            assert count(client, "MQTTTxDropped") == 0
+            assert set(await errnums(client)) <= {code("E", "MQTT_LOST")}  # the drop itself, if anything
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_resumed_sessions_resend_past_the_byte_cap_goes_after_the_next_ping_not_a_retry_later() -> None:
+    # Six 380 B messages pass the 2,000 B unconfirmed cap: the rest follows the next PINGRESP, not mqtt.qos1_retry_ms (60 s).
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        broker.ack_publishes = False
+        await broker.start()
+        client = make_client(config=_SESSION_CFG)
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            payloads = [bytes([0x41 + n]) * 380 for n in range(6)]
+            for payload in payloads:
+                assert client.publish("q/big", payload, qos=1)
+            assert await until(lambda: len(broker.published(b"q/big")) == len(payloads))
+            broker.ack_publishes = True
+            await broker.drop()
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            resent = lambda: [b for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/big"]  # noqa: E731
+            assert await until(lambda: len(resent()) == len(payloads), timeout_ms=3000)
+            assert [_publish_fields(0x3A, b)[2] for b in resent()] == payloads  # in their original order
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_session_the_broker_lost_gets_its_unacknowledged_qos1_as_new_messages() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        broker.ack_publishes = False
+        await broker.start()
+        client = make_client(config=_SESSION_CFG)
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            assert client.publish("q/1", b"a", qos=1)
+            assert await until(lambda: len(broker.published(b"q/1")) == 1)
+            old_id = next(_publish_fields(f, b)[1] for f, b in broker.packets if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/1")
+            broker.sessions.clear()  # as a restarted broker without persistence would have it
+            broker.ack_publishes = True
+            await broker.drop()
+            assert await until(lambda: len(broker.published(b"q/1")) == 2)
+            assert broker.connects[1]["session_present"] == 0
+            resent = [(f, _publish_fields(f, b)) for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/1"]
+            assert len(resent) == 1
+            first, (_topic, pid, payload) = resent[0]
+            assert first == 0x32  # QoS 1, no DUP: a new message
+            assert payload == b"a"
+            assert pid != old_id
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_session_present_on_a_clean_session_is_a_malformed_connack() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        broker.force_session_present = True
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port)
+            client.reconnect()
+            for _ in range(200):
+                if code("E", "MQTT_PROTOCOL") in await errnums(client):
+                    break
+                await asyncio.sleep_ms(20)
+            assert code("E", "MQTT_PROTOCOL") in await errnums(client)
+            assert not client.is_connected()
+            assert broker.packets == [(f, b) for f, b in broker.packets if f == 0x10]  # nothing past the CONNECT
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_new_packet_id_skips_the_ids_still_in_flight() -> None:
+    client = make_client()
+    client._pid = 65534
+    client._slot_state[0] = _SLOT_INFLIGHT
+    client._slot_pid[0] = 65535
+    client._slot_state[1] = _SLOT_INFLIGHT
+    client._slot_pid[1] = 1
+    assert client._next_pid() == 2  # 65535 and 1 are taken; the counter wraps past 0, which is never an id
+    assert client._next_pid() == 3
+
+
+def test_a_changed_client_id_retires_the_old_persistent_session_first() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True, MQTTUser="u", MQTTPW="p")
+            client.reconnect()
+            assert await until(client.is_connected)
+            assert broker.sessions == {b"t1"}
+            await configure(client, broker.port, MQTTClientId="t2")
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 3 and client.is_connected())
+            assert _sent_on(broker, 0)[-1] == (0xE0, b"")  # the old connection ended with its own DISCONNECT
+            retire = broker.connects[1]
+            assert retire["client_id"] == b"t1"
+            assert retire["flags"] == 0x02 | 0x80 | 0x40  # clean, no will; the old credentials
+            assert _sent_on(broker, 1) == [(0xE0, b"")]  # nothing but the DISCONNECT
+            assert broker.connects[2]["client_id"] == b"t2"
+            assert _flags(broker, 2) & 0x02 == 0
+            assert broker.sessions == {b"t2"}
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_prefix_change_retires_the_session_even_under_the_same_client_id() -> None:
+    # The session would keep the old <base>/cmd/# subscription; a clean connect is the only way to drop it.
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            await configure(client, broker.port, MQTTPrefix="home")
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 3 and client.is_connected())
+            assert broker.connects[1]["client_id"] == b"t1"
+            assert broker.connects[1]["flags"] == 0x02
+            assert _flags(broker, 2) & 0x02 == 0
+            assert broker.connects[2]["session_present"] == 0  # a fresh session, with only the new filters
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_switching_persistence_off_needs_no_retire_the_clean_connect_discards_it() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            await configure(client, broker.port, MQTTPersistent=False)
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            await asyncio.sleep_ms(300)
+            assert len(broker.connects) == 2
+            assert _flags(broker, 1) & 0x02
+            assert broker.sessions == set()
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_switching_the_client_off_retires_its_persistent_session() -> None:
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, broker.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            await configure(client, broker.port, MQTTEnable=False)
+            client.reconnect()
+            assert await until(lambda: len(broker.connects) == 2 and broker.disconnects == 2)
+            assert broker.connects[1]["flags"] == 0x02
+            await asyncio.sleep_ms(300)
+            assert len(broker.connects) == 2
+            assert broker.sessions == set()
+            assert client.get_link_status()["MQTTState"] == "disabled"
+            assert await errnums(client) == []
+        finally:
+            await stop(client, tasks, broker)
+
+    run(scenario())
+
+
+def test_a_retire_that_fails_logs_one_warning_and_the_client_moves_on() -> None:
+    async def scenario() -> None:
+        old = FakeBroker(_port())
+        new = FakeBroker(_port())
+        await old.start()
+        await new.start()
+        client = make_client()
+        tasks = await start(client)
+        try:
+            await configure(client, old.port, MQTTPersistent=True)
+            client.reconnect()
+            assert await until(client.is_connected)
+            old.connack_rc = 5  # the old broker now refuses this client
+            await configure(client, new.port)
+            client.reconnect()
+            assert await until(lambda: len(new.connects) == 1 and client.is_connected())
+            assert len(old.connects) == 2
+            assert old.sessions == {b"t1"}  # left to the broker's expiry
+            assert await errnums(client) == [code("W", "MQTT_RETIRE_FAILED")]  # one occurrence, one kind: no error with it
+        finally:
+            await stop(client, tasks, old)
+            await new.stop()
+
+    run(scenario())
+
+
+def test_a_session_left_by_the_previous_boot_is_retired_too() -> None:
+    # The first settings read inherits the session: the keeper retires it before ever connecting with the new identity.
+    async def scenario() -> None:
+        broker = FakeBroker(_port())
+        await broker.start()
+        link = [False]
+        client = make_client(link=lambda: link[0])
+        assert await client.setup()
+        await configure(client, broker.port, MQTTPersistent=True)  # as the previous boot stored it
+        tasks = [client.start_asy_connection(), client.start_asy_publish()]
+        try:
+            await asyncio.sleep_ms(100)
+            await configure(client, broker.port, MQTTClientId="t2")
+            client.reconnect()
+            await asyncio.sleep_ms(100)
+            link[0] = True
+            assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
+            assert broker.connects[0]["client_id"] == b"t1"
+            assert broker.connects[0]["flags"] == 0x02
+            assert broker.connects[1]["client_id"] == b"t2"
         finally:
             await stop(client, tasks, broker)
 

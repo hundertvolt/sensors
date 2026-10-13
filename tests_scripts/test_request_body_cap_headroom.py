@@ -32,7 +32,7 @@ _NESTED_ROUTES = frozenset({"/sensors"})
 # silent. A new driver or a widened string bound SHOULD fail this - update it and read the margin.
 _EXPECTED_LARGEST = {
     "arzi": 678,
-    "dev": 1318,
+    "dev": 1691,
     "grkizi": 678,
     "klkizi": 678,
     "schlafzi": 678,

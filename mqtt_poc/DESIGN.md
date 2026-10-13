@@ -96,13 +96,23 @@ run) and closing every finding in `RESULTS.md`.
 
 - Resolve with `resolve_ipv4(host, (dns_server,), timeout_ms, tries, pr=...)`; an IPv4 literal returns at
   once. Only the DHCP-provided server is asked (§13 item 12). Re-resolved on every attempt (the address may move).
-- CONNECT: protocol level 4, clean session, keepalive `mqtt.keepalive_s`, client id `MQTTClientId`,
-  will `<base>/status` = `offline`, QoS 1, retained; user name and password flags only when set.
+- CONNECT: protocol level 4, keepalive `mqtt.keepalive_s`, client id `MQTTClientId`, a clean session
+  unless `MQTTPersistent` is on (§15); the will is the status topic (§7) with `MQTTWillMsg`
+  at `MQTTWillQoS`, retained when `MQTTWillRetain` is on; user name and password flags only when set.
 - CONNACK within `mqtt.response_timeout_ms` of the connect completing; any return code other than 0 is
-  a refusal (E `MQTT_REFUSED`, the code logged). The session-present flag is read and ignored (clean
-  session), never treated as an error — the `mqtt_as` A4 defect.
-- After CONNACK: SUBSCRIBE every filter at QoS 1, re-queue unacknowledged QoS 1 messages as new, drop
-  queued QoS 0, then enqueue `online` (QoS 1, retained) on `<base>/status`.
+  a refusal (E `MQTT_REFUSED`, the code logged). Session Present (bit 0) is read, never treated as an
+  error — the `mqtt_as` A4 defect; on a clean session the broker must send it as 0 (3.1.1 section 3.2.2.2), so
+  a 1 there is a malformed CONNACK (E `MQTT_PROTOCOL`).
+- After CONNACK, queued QoS 0 is dropped (it never outlives an outage) and the unacknowledged QoS 1
+  messages are settled: a resumed session (Session Present 1) gets them again first, in their original
+  order with their original packet ids and DUP set ([MQTT-4.4.0-1], [MQTT-4.4.0-2], [MQTT-2.3.1-4],
+  section 4.6); otherwise they are queued again as new messages, the session state they belonged to being
+  gone (section 3.2.2.2). Then
+  SUBSCRIBE every filter at QoS 1 — on a resumed session too, which costs the retained re-send and keeps
+  the filters right whatever the session holds — then enqueue `MQTTOnlineMsg` on the status topic at
+  `MQTTWillQoS`, retained as the will is.
+- A new packet id skips every id still in flight, which a resumed session carries across connections
+  (section 2.3.1).
 
 ### 3.3 Serving
 
@@ -127,10 +137,19 @@ run) and closing every finding in `RESULTS.md`.
 
 ### 3.4 Teardown and backoff
 
-- Teardown order: record the reason → on a deliberate reconnect only, publish a retained `offline` on the
-  old `<base>/status` and send DISCONNECT (so the broker drops the will, and the status still ends
-  `offline`, a disabled client included) → cancel the reader, never awaited (§2) → `wait_closed()` →
-  clear per-connection state.
+- Teardown order: record the reason → on a deliberate reconnect only, publish `MQTTWillMsg` on the old
+  status topic (QoS 0, retained as the will is) and send DISCONNECT (so the broker drops the will, and the
+  status still ends offline, a disabled client included) → cancel the reader, never awaited (§2) →
+  `wait_closed()` → clear per-connection state.
+- **Retiring a persistent session** (§15). The keeper remembers the identity a broker may
+  hold a session for: host, port, client id and prefix, with the credentials to reach it, taken from the
+  settings each time they are read with `MQTTPersistent` on (so the boot's first read inherits the
+  session the last boot left). When a read moves away from it (client off, persistence off, or another
+  host, port, client id or prefix), the keeper first connects once more with that old identity, a clean
+  session and no will, and sends DISCONNECT: the broker discards the session ([MQTT-3.1.2-6]). It waits
+  for the link like a connect does, and is tried once: a failure logs one W `MQTT_RETIRE_FAILED` and the
+  session is left to the broker's expiry. It is skipped when the next connect discards the session
+  anyway: the same host, port and client id with a clean session.
 - Backoff after a failed attempt or a lost connection: `mqtt.backoff_min_ms` doubling to
   `mqtt.backoff_max_ms`. **Reset only after a connection stayed up `mqtt.stable_after_ms`** (RESULTS.md
   finding 2: a reset on CONNACK lets a duplicate client id or a session-dropping broker loop at the
@@ -142,8 +161,8 @@ run) and closing every finding in `RESULTS.md`.
 ### 3.5 Reconfiguration
 
 `reconnect()` is the settings group's `post_fct` (sync, like WiFi's): it sets a flag the keeper reads on
-its next tick (retained `offline`, graceful DISCONNECT, teardown, config re-read, backoff reset) and wakes a
-disabled keeper.
+its next tick (the offline message, graceful DISCONNECT, teardown, config re-read, the retire step when
+the identity moved (§3.4), backoff reset) and wakes a disabled keeper.
 
 ## 4. Public API
 
@@ -239,6 +258,12 @@ of a long int (the timestamp on the board, beyond its small-int range). Counters
 | `MQTTClientId` | str | `[device].hostname` | 1–23 | 1–23 bytes of letters, digits, `-` |
 | `MQTTPrefix` | str | `"sensors"` | 1–64 | bytes ≤ 64; no `+`, `#`, NUL; no leading or trailing `/` |
 | `MQTTPubInterval` | int | 60 | 10–3600 | seconds between measurement rounds |
+| `MQTTPersistent` | bool | `false` | — | a persistent session (clean session 0) instead of a clean one (§15) |
+| `MQTTWillTopic` | str | `""` | 1–128, special `""` | the status topic: a topic name of at most 128 bytes, no wildcard, NUL or leading `$`; `""` is `<base>/status` |
+| `MQTTOnlineMsg` | str | `"online"` | 1–64 | bytes ≤ 64, no NUL; published on the status topic after each CONNACK |
+| `MQTTWillMsg` | str | `"offline"` | 1–64 | bytes ≤ 64, no NUL; the will, and published before a deliberate DISCONNECT |
+| `MQTTWillQoS` | int | 1 | 0, 1 | the will's QoS, and the online message's |
+| `MQTTWillRetain` | bool | `true` | — | the will, the online and the offline message retained |
 
 A refused value answers `"Invalid"` with the shared `BAD_ARG` errno 21, as WiFi's radio fields do
 (C.7.4). `MQTTHost` takes `NTPHost`'s `hostName` check, `host_name_ok()`, at PUT and at use, the
@@ -249,9 +274,9 @@ The client id default is `[device].hostname`, substituted the way WiFi substitut
 
 ### 6.2 Settings group
 
-`SettingsGroup(mqtt, (all eight keys), post_fct=mqtt.reconnect)` under `"networking"`, rendered as the
-"MQTT Broker" group after NTP. The `/networking` body grows by the eight keys; the body-cap headroom pin
-is updated and its margin read (I.6).
+`SettingsGroup(mqtt, (all fourteen keys), post_fct=mqtt.reconnect)` under `"networking"`, rendered as
+the "MQTT Broker" group after NTP. The `/networking` body grows by the fourteen keys; the body-cap
+headroom pin is updated and its margin read (I.6).
 
 ### 6.3 Status (`GET /status` → `networking`)
 
@@ -265,11 +290,13 @@ Status group only when the device carries the driver. The errcount group gains `
 ## 7. Topic and payload contract
 
 `<base>` = `<MQTTPrefix>/<MQTTClientId>`, e.g. `sensors/SensorStationDev`. Frozen at the release like the
-REST API (owner, 8.7: one key scheme with `/measurements`).
+REST API (owner, 8.7: one key scheme with `/measurements`). The status topic is `MQTTWillTopic`, or
+`<base>/status` while that is empty; its payloads, QoS and retain flag are settings (§6.1), whose defaults
+are the row below.
 
 | Topic | Direction | QoS | Retain | Payload |
 |---|---|---|---|---|
-| `<base>/status` | out | 1 | yes | `online` after each CONNACK; `offline` is the will, and is published before a reconfiguring DISCONNECT |
+| status topic (`<base>/status`) | out | `MQTTWillQoS` (1) | `MQTTWillRetain` (yes) | `MQTTOnlineMsg` (`online`) after each CONNACK; `MQTTWillMsg` (`offline`) is the will, and is published before a reconfiguring DISCONNECT |
 | `<base>/measurements/<NAME>` | out | 0 | no | the module's `/measurements` object as JSON, non-finite as `null` |
 | `<base>/cmd/#` | in | 1 | — | counted and shown in status; no behaviour in the PoC |
 | each consumer filter | in | 1 | — | the consumer's own contract |
@@ -293,6 +320,7 @@ New catalog owner `mqtt`, logger `MQTT`, bands E 115–124 and W 82–85:
 | E 121 | `MQTT_STALLED` | the broker stopped reading (backlog or drain timeout) |
 | E 122 | `MQTT_SUB_REFUSED` | the broker refused a subscription |
 | W 82 | `MQTT_SHORT_SESSIONS` | sessions keep ending right after they start |
+| W 83 | `MQTT_RETIRE_FAILED` | a persistent session left behind could not be ended; the broker's expiry applies |
 
 Shared codes: `CALLBACK` 14 (a WiFi callback or a consumer raised), `ALLOC` 20, `BAD_ARG` 21, `CFG_READ`
 26, W `STORED_DEFAULT` 10. A link-loss teardown and a deliberate reconnect log nothing. Each failure is
@@ -340,14 +368,17 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
   timeouts, subscribe, QoS 0/1 both ways, DUP retransmission and give-up, ping deadline, malformed and
   oversize input, broker EOF, stall, short-session warning, link gating, hotspot, disabled, reconnect,
   backoff growth and stable reset, consumer dispatch and a raising consumer, the drain-timeout-ends-the-
-  connection rule, the config shape refusals, and an allocation-flat run. The publisher's cadence runs on a
+  connection rule, the config shape refusals, the status settings and the persistent session (Session Present
+  both ways, the resend order and ids, every retire trigger and a failed retire), and an allocation-flat run. The publisher's cadence runs on a
   virtual clock whose loop stalls as the bench board's did (§13 item 13), and `online` is checked to go out
   with the SUBSCRIBE, not a keeper tick later.
 - **L2** (Run 12 of the twin CI suite, devices carrying `mqtt`): a real mosquitto on a free port; enable over
   REST; `online` retained and every module's measurements arrive; inbound `cmd` messages counted; broker
   SIGKILL and restart, SIGSTOP stall, client-id takeover and an inbound flood, each recovered by the rules
-  above; REST serving throughout; no task restarted; the expected codes and nothing else in `MQTT`'s log;
-  zero memory markers at both GC stages (the suite runs twice).
+  above; REST serving throughout; no task restarted; then (§15) a configured status topic and payloads, the
+  will the broker publishes when the twin stops, a QoS 1 command queued while it is down and delivered after
+  its restart, and the old session gone after a client id change; the expected codes and nothing else in
+  `MQTT`'s log; zero memory markers at both GC stages (the suite runs twice).
 - **What the twin does not show** (the bench of 2026-10-08, `mqtt_poc/bench_results/`): it runs at host
   speed, so the board's loop stalls (a `GET /status` held it about 0.8 s every 5 s) are L1's virtual clock
   above; its fake readings print more digits than the board's, so its payloads run larger than the real
@@ -360,7 +391,7 @@ estimate until the bench run (Basis "estimated (agent, …) — measurement owed
 `mqtt_poc/BENCH_HANDOVER.md` is the run sheet: the safety checks, the FRAM logs saved from the old image
 before the flash, the one flash, the scoped run
 (`scripts/run_bench_hardware_suite.sh --scope mqtt --allow-persistence-writes-to=networking/identity,networking/mqtt,networking/ntp,notification/autoConfig`),
-what each of its 3 flash and 66 bench tests covers, where the results go and which Part N rows they settle,
+what each of its 3 flash and 78 bench tests covers, where the results go and which Part N rows they settle,
 with every piece of context a fresh session there needs. The scope (`tests_hardware/run_scopes.py`) is the
 MQTT module plus what the branch reaches beside it: NTP and the resolver, the connection ceiling and body
 cap, the heap with the client resident, boot and reboot, the website, the hotspot role reversal, the FRAM
@@ -416,6 +447,25 @@ Each the more conservative, more easily reversible choice, for review:
     would double the segments lwIP queues against `TCP_SND_QUEUELEN`, the budget the 2,000 B cap (§3.3)
     protects. The slot is copied into the transmit buffer after its head, one packet in one write.
 
+Decided on the owner's behalf while designing the will and session settings (agent, 2026-10-13), each the
+more conservative, more easily reversible choice:
+
+15. `MQTTWillQoS` takes 0 or 1. The broker alone publishes a will, so QoS 2 would work there, but the online
+    message the client publishes at the same QoS cannot be QoS 2.
+16. The online and offline payloads are 1–64 bytes with no NUL, as `MQTTUser`; an empty retained will
+    would delete the retained status rather than set it, and the web UI cannot store an empty value.
+17. The status topic refuses a leading `$` besides wildcards and NUL: brokers reserve those topics
+    (mosquitto refuses a will under `$CONTROL/` outright, `handle_connect.c` `will__read()`, v2.0.18), so
+    such a will would turn every connect into a refusal.
+18. The offline message before a deliberate DISCONNECT stays QoS 0: the connection closes right after it, so
+    no PUBACK could be waited for.
+19. Every connect subscribes again, a resumed session included (§3.2).
+20. A failed settings read (W `CFG_READ`) retires nothing; only a read that succeeds can say the identity
+    moved. "Reset to defaults" and a reboot between a settings change and its retire leave the session to
+    the broker's expiry, since the identity the keeper remembers is in RAM.
+21. A retire is skipped when the next connect discards the session itself (same host, port and client id,
+    clean session, [MQTT-3.1.2-6]), saving one connect.
+
 ## 14. Owner decisions after the design (owner, 2026-10-08)
 
 - Memory, told after the bench's flash step read 114,768 B against its 100,000 B bound: "The heap limit
@@ -440,3 +490,18 @@ Each the more conservative, more easily reversible choice, for review:
   so scope it correctly'. Then: 'include the ntp tests too, allow networking/ntp', and 'include the hotspot
   role reversal too', whose own writes add `networking/identity` and `notification/autoConfig`. §11.1 has
   the command.
+
+## 15. Owner decisions on the will and the session (owner, 2026-10-13)
+
+Asked which of three gaps to close (a fixed will; a clean session only; QoS 1 messages lost on a reboot):
+'I would like to have 1 and 2 built, 3 is not required'. The queue stays in RAM. Then:
+
+1. Asked "Which will (LWT) settings should be configurable?": 'Full availability set (Recommended)' — topic,
+   offline payload (the will), online payload, QoS 0/1 and retain, the online and offline messages still
+   published on that topic; the defaults reproduce the earlier behaviour (§6.1).
+2. Asked "What form should the will topic take?": 'Any full topic (Recommended)' — free, `<base>/status`
+   until one is entered; once one is, a later prefix or client id change no longer moves it.
+3. Asked "How should the persistent session be switched on?": 'Setting, default off (Recommended)' —
+   `MQTTPersistent`.
+4. Asked "When a persistent session is left behind (client id, broker or prefix changed; persistence or MQTT
+   switched off), what should happen to it?": 'Retire it (Recommended)' — §3.4.

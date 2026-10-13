@@ -189,7 +189,8 @@
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
       "80": {"owner": "wifi", "name": "WLAN_SILENT", "text": "a second STA failure streak after the hotspot ran; Wi-Fi goes silent: no hotspot, the LED dark, one connect attempt every hotspot_time_min until a link"},
       "81": {"owner": "wifi", "name": "WLAN_NO_VERDICT", "text": "a STA connect poll ended without a verdict (still connecting, or joined without an IP address)"},
-      "82": {"owner": "mqtt", "name": "MQTT_SHORT_SESSIONS", "text": "MQTT sessions keep ending right after they start (another client with the same client id?)"}
+      "82": {"owner": "mqtt", "name": "MQTT_SHORT_SESSIONS", "text": "MQTT sessions keep ending right after they start (another client with the same client id?)"},
+      "83": {"owner": "mqtt", "name": "MQTT_RETIRE_FAILED", "text": "a persistent MQTT session left behind could not be ended; the broker's own expiry applies"}
     }
   },
   "status": {

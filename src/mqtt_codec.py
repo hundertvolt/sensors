@@ -12,6 +12,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     Buf = bytearray | memoryview
     Bytes = bytes | bytearray | memoryview
+    Will = tuple[Bytes, Bytes, int, bool]  # topic, message, QoS, retain
 
 # Fixed-header first bytes (MQTT 3.1.1 section 2.2), the low nibble already holding the flags each type requires.
 CONNECT = const(0x10)
@@ -109,11 +110,14 @@ def decode_remaining_length(buf: "Bytes", start: int, end: int) -> int:
     return LENGTH_MALFORMED if end >= start + 4 else LENGTH_INCOMPLETE
 
 
-def encode_connect(buf: "Buf", client_id: "Bytes", keepalive_s: int, will_topic: "Bytes", will_message: "Bytes", user: "Bytes", password: "Bytes") -> int:
-    # Clean session, will at QoS 1 retained (section 3.1); user and password only when non-empty, a password
-    # never without a user (section 3.1.2.9). Returns the packet length, or -1 when it does not fit.
-    flags = _FLAG_CLEAN | _FLAG_WILL | _FLAG_WILL_QOS1 | _FLAG_WILL_RETAIN
-    remaining = 10 + 2 + len(client_id) + 2 + len(will_topic) + 2 + len(will_message)
+def encode_connect(buf: "Buf", client_id: "Bytes", keepalive_s: int, will: "Will | None", user: "Bytes", password: "Bytes", *, clean: bool) -> int:
+    # Section 3.1: `will` is (topic, message, QoS, retain), None for none, whose QoS and retain flags are then 0 ([MQTT-3.1.2-11],
+    # -13); user and password only when non-empty, a password never without a user (3.1.2.9). The length, or -1 if it does not fit.
+    flags = _FLAG_CLEAN if clean else 0
+    remaining = 10 + 2 + len(client_id)
+    if will is not None:
+        flags |= _FLAG_WILL | (_FLAG_WILL_QOS1 if will[2] else 0) | (_FLAG_WILL_RETAIN if will[3] else 0)
+        remaining += 2 + len(will[0]) + 2 + len(will[1])
     if user:
         flags |= _FLAG_USER
         remaining += 2 + len(user)
@@ -129,8 +133,9 @@ def encode_connect(buf: "Buf", client_id: "Bytes", keepalive_s: int, will_topic:
     buf[i + 2] = (keepalive_s >> 8) & 0xFF
     buf[i + 3] = keepalive_s & 0xFF
     i = _put_str(buf, i + 4, client_id)
-    i = _put_str(buf, i, will_topic)
-    i = _put_str(buf, i, will_message)
+    if will is not None:
+        i = _put_str(buf, i, will[0])
+        i = _put_str(buf, i, will[1])
     if flags & _FLAG_USER:
         i = _put_str(buf, i, user)
     if flags & _FLAG_PASSWORD:
@@ -201,6 +206,12 @@ def remaining_length_bytes(buf: "Bytes", start: int, end: int) -> int:
         if not buf[i] & 0x80:
             return i - start + 1
     return 4
+
+
+def status_topic_ok(value: str) -> bool:
+    # The will's topic: a topic name outside the '$' tree brokers reserve (mosquitto refuses a will under $CONTROL/).
+    data = value.encode()
+    return topic_name_ok(data) and data[0] != _DOLLAR
 
 
 def text_ok(value: "Bytes", max_bytes: int) -> bool:

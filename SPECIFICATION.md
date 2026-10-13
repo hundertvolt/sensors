@@ -1169,7 +1169,7 @@ source-level account) worked around entirely from twin-side code
 
 ## A.11 MQTT client (`asy_mqtt_client.py`, `mqtt_codec.py`)
 
-A project-owned MQTT 3.1.1 client service: QoS 0 and 1, clean session, plain TCP. It is written from
+A project-owned MQTT 3.1.1 client service: QoS 0 and 1, a clean or a persistent session, plain TCP. It is written from
 the specification with Peter Hinch's `mqtt_as` as the behavioural reference (owner, 2026-10-07, asked
 which code to use: 'Own client (Recommended)'). It is built into `dev` only and stays off until
 enabled (owner, 2026-10-07: 'dev only, off (Recommended)'), over plain TCP only (owner, 2026-10-07:
@@ -1249,11 +1249,36 @@ that follows is the connect wait, bounded by `mqtt.connect_timeout_ms`.
   stayed up `mqtt.stable_after_ms`, or by `reconnect()` (agent, 2026-10-08): a reset at CONNACK let a
   duplicate client id or a session-dropping broker loop at the minimum. `mqtt.short_session_warn`
   short sessions in a row log one `MQTT_SHORT_SESSIONS` warning per episode.
-- **Reconfiguration**: `reconnect()` is the settings group's `post_fct`. The keeper publishes a
-  retained `offline` on the old `<base>/status` and sends DISCONNECT, which makes the broker drop the
-  will, then reconnects with the new settings at the minimum backoff; disabling the client takes the
-  same path, so its status never stays `online` (agent, 2026-10-08). A commanded reboot sends
-  neither; the broker publishes the will (agent, 2026-10-08).
+- **Reconfiguration**: `reconnect()` is the settings group's `post_fct`. The keeper publishes the
+  offline message on the old status topic (QoS 0, retained as the will is) and sends DISCONNECT, which
+  makes the broker drop the will, then reconnects with the new settings at the minimum backoff;
+  disabling the client takes the same path, so its status never stays online (agent, 2026-10-08). A
+  commanded reboot sends neither; the broker publishes the will (agent, 2026-10-08).
+- **The will and the status topic are settings** (owner, 2026-10-13, asked which will settings should be
+  configurable: 'Full availability set (Recommended)'; asked what form the will topic should take: 'Any
+  full topic (Recommended)'): `MQTTWillTopic`, `<base>/status` while empty, carries the will
+  (`MQTTWillMsg`), the online message after each CONNACK (`MQTTOnlineMsg`) and the offline message above,
+  all at `MQTTWillQoS` (0 or 1) and retained when `MQTTWillRetain` is on; their defaults are the topic
+  table's row. A will topic entered once no longer follows a prefix or client id change.
+- **Persistent session** (owner, 2026-10-13, asked how it should be switched on: 'Setting, default off
+  (Recommended)'): `MQTTPersistent` turns Clean Session off, so the broker keeps the subscriptions and
+  queues QoS 1 messages while the device is away (mosquitto 2.0.18 by default: forever, up to 1,000
+  messages, QoS 0 not queued). The CONNACK's Session Present is read: a resumed session gets the
+  unacknowledged QoS 1 messages again first, oldest first, with their original packet ids and DUP
+  ([MQTT-4.4.0-1], [MQTT-4.4.0-2], [MQTT-2.3.1-4]); a session the broker no longer holds gets them as new
+  messages; a 1 on a clean session is a malformed CONNACK. Every connect subscribes again, and a new
+  packet id skips the ids still in flight (agent, 2026-10-13). The queue stays in RAM, so a reboot drops
+  what is in flight (owner, 2026-10-13: 'I would like to have 1 and 2 built, 3 is not required').
+- **A persistent session left behind is retired** (owner, 2026-10-13, asked what should happen when a
+  persistent session is left behind: 'Retire it (Recommended)'). The keeper remembers the identity a
+  broker may hold a session for (host, port, client id, prefix, with the credentials to reach it), the
+  boot's first read inheriting the last boot's. When the client is switched off, persistence is switched
+  off, or the host, port, client id or prefix moves, it connects once more with the old identity, a clean
+  session and no will, then sends DISCONNECT, and the broker discards that session ([MQTT-3.1.2-6]). It
+  waits for the link as a connect does and is tried once; a failure is one `MQTT_RETIRE_FAILED` warning,
+  the session left to the broker's expiry. It is skipped when the next connect discards the session
+  itself (the same host, port and client id with a clean session), and a failed settings read retires
+  nothing (agent, 2026-10-13).
 
 **Inbound messages may trigger behaviours or carry values, in RAM only** (owner, 2026-10-07, asked
 what received messages may do: 'They may trigger behaviours or contain values (e.g. external
@@ -1271,7 +1296,7 @@ the PoC publishes: 'Also measurements JSON'), with `<base>` = `<MQTTPrefix>/<MQT
 
 | Topic | Direction | QoS | Retain | Payload |
 |---|---|---|---|---|
-| `<base>/status` | out | 1 | yes | `online` after each CONNACK; `offline` is the will, and is published before a reconfiguring DISCONNECT |
+| `MQTTWillTopic`, else `<base>/status` | out | `MQTTWillQoS` (1) | `MQTTWillRetain` (yes) | `MQTTOnlineMsg` (`online`) after each CONNACK; `MQTTWillMsg` (`offline`) is the will, and is published before a reconfiguring DISCONNECT |
 | `<base>/measurements/<NAME>` | out | 0 | no | the module's `/measurements` object as JSON, non-finite as `null` |
 | `<base>/cmd/#` | in | 1 | — | counted and shown in status |
 
@@ -1302,14 +1327,19 @@ multicast query, RFC 6762 section 5.1; owner, 2026-10-08, asked whether the reso
 `.local` names for `MQTTHost` and `NTPHost` alike: 'Add it, bench-tested (Recommended)'),
 `MQTTPort` (1883), `MQTTUser`/`MQTTPW` (0-64 bytes, no NUL, the password masked on every GET),
 `MQTTClientId` (a host label of 1-23 bytes, default `[device].hostname`), `MQTTPrefix` (1-64 bytes,
-no wildcard, NUL, or edge slash) and `MQTTPubInterval` (10-3600 s). A string outside its shape is
+no wildcard, NUL, or edge slash), `MQTTPubInterval` (10-3600 s), `MQTTPersistent` (default false),
+`MQTTWillTopic` (a topic name of 1-128 bytes with no wildcard, NUL or leading `$`, or the special `""`,
+`<base>/status`), `MQTTOnlineMsg` and `MQTTWillMsg` (1-64 bytes, no NUL; `online` and `offline`),
+`MQTTWillQoS` (0 or 1; 1) and `MQTTWillRetain` (default true). A string outside its shape is
 refused at PUT as `Invalid` with `BAD_ARG` (C.7.4's precedent), `MQTTHost` through the `hostName` check
 `NTPHost` uses, `asy_dns_client.py`'s `host_name_ok()`, which the website's mock mirrors (agent,
 2026-10-08). A stored value that fails at use keeps the client off with one `STORED_DEFAULT` warning. `MQTTEnable` exists because the web UI cannot set
 an empty string (owner, 2026-08-22), so an empty host alone could never switch the client off from
 the UI (agent, 2026-10-08). "Reset to defaults" deletes `config_MQTT.cfg` with every schema-backed file
 (A.8), so the unit comes back with the client off. A system command's shutdown cancels the keeper (A.8
-step 4); its teardown closes a connected socket with no DISCONNECT, so the broker publishes the will.
+step 4); its teardown closes a connected socket with no DISCONNECT, so the broker publishes the will, and
+a persistent session outlives it for the next boot to resume. "Reset to defaults" leaves such a session to
+the broker's expiry, as a reboot between a settings change and its retire does (agent, 2026-10-13).
 
 **Status** joins `GET /status`'s `networking` object on a device carrying the client: `MQTTState`,
 `MQTTConnected`, `MQTTBroker`, `MQTTUptime`, `MQTTConnects`, `MQTTTeardowns`, `MQTTLastReason`,
@@ -7768,12 +7798,12 @@ sending six concurrent oversized PUTs could, and each would be answered 413 *aft
 whole per-connection demand, request and response side, is derived in H.7.
 
 **What the caps are set to, and why 2048.** Measured against the real schemas, per **route**
-rather than per group: the largest legitimate body is **1,318 B** on `PUT /networking` on `dev`, whose
+rather than per group: the largest legitimate body is **1,691 B** on `PUT /networking` on `dev`, whose
 MQTT client settings (A.11) join that route; `PUT /sensors` is 1,080 B there, 743 B on `wozi` and 487 B
 on the other four devices. `/networking` is 678 B on every other device, `NTPHost`'s 253-character
 bound (RFC 1035) being 266 B of it, `HotspotPW` 78 B and `DNSFallback` 64 B; the others are smaller —
 `/notification` 530 B, `/system` 139 B, `/status` 22 B — and real traffic measures 232 B. So 2048
-clears the schema maximum with **1.6x** margin and real traffic with ~9x, and takes the six-connection
+clears the schema maximum with **1.2x** margin and real traffic with ~9x, and takes the six-connection
 worst case to 6 x 2,048 = 12,288 B. A body that arrives partly in the head's last read is joined from
 the proxy's read-ahead and the rest, so for that moment it is held about twice, as upstream's
 multi-read `readexactly()` re-concatenates (F.9).
@@ -10148,7 +10178,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,318 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.6× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,691 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.2× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |

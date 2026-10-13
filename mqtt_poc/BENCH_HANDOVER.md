@@ -88,7 +88,9 @@ And on 2026-10-08:
   one stream per outbound slot, each measurement written into its slot a key or scalar at a time, the
   settings and topics born at boot), and the audit's U20 to U22 (merged in `1efe566`): a controlled shutdown
   for every system command, the generated boot entries, the Wi-Fi silent mode, and the `modlwip_eagain`
-  override (SPECIFICATION.md B.14.4). The client is now built before the UART links.
+  override (SPECIFICATION.md B.14.4). The client is now built before the UART links. Since 2026-10-13 the will
+and its topic, the online and offline messages and a persistent session are settings (DESIGN.md §15), with
+three bench tests of their own (section 5).
 
 ### 1.4 The client in brief
 
@@ -125,7 +127,7 @@ And on 2026-10-08:
 - **What else changed on `dev`**:
   - `max_connections` 6 → 5;
   - FRAM chunks `MQTT` and `CFGMGR_MQTT` ahead of `WEBSERVER`'s;
-  - `PUT /networking` is now the largest request body, 1,318 B;
+  - `PUT /networking` is now the largest request body, 1,691 B;
   - `mosquitto` joined the toolchain's apt packages, and `env --tier bench` installs `avahi-daemon`.
 
 ### 1.5 Why the run is scoped, and what it covers
@@ -145,7 +147,7 @@ What that became on this branch:
   run, and the runner refuses it alongside a scope.
 - **A run scope.** `scripts/run_bench_hardware_suite.sh --scope mqtt` runs the lower levels, then only what
   `tests_hardware/run_scopes.py` lists, each entry with the reason the branch reaches it. That is 3 flash
-  tests and 66 bench tests (section 5). Its owned writes are `networking/identity`, `networking/mqtt`,
+  tests and 78 bench tests (section 5). Its owned writes are `networking/identity`, `networking/mqtt`,
   `networking/ntp` and `notification/autoConfig`; nothing in it writes the SCD30.
 - **Not in this run**, left for the full bench later: the bus-hazard and sensor push tests, every SCD30
   write, every soak.
@@ -295,7 +297,7 @@ before the board (section 6).
 - The full-build heap headroom, with the client's buffers resident.
 - The `env --tier flash` rerun, about 8 minutes, since `mosquitto` joined the apt packages.
 
-**The bench step: 75 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
+**The bench step: 78 tests**, in the order `tests_hardware/run_scopes.py` lists them. The durations below are
 estimates.
 
 - **The client** (`tests_hardware/bench/test_mqtt_broker_faults.py`, roughly 20 to 30 minutes). It starts
@@ -310,6 +312,11 @@ estimates.
   - a no-task-ended checkpoint;
   - an AP outage, then a hard reset;
   - the faults again under `device_scripts/mqtt_at_default_gc.py` at `gc.threshold(-1)`, a 7-minute window;
+  - the status settings (2026-10-13): `online` on a configured topic, and the configured will published by the
+    broker across a hard reset;
+  - the persistent session: a QoS 1 command sent during a hard reset arrives after it;
+  - a client id change with the session on: the broker no longer holds the old id's session. These three
+    write `networking/mqtt` and put every value back;
   - switching the client off, which has to publish a retained `offline`.
 - **NTP and the resolver**:
   - NTP sync and DNS resolution over real UDP;

@@ -1,6 +1,6 @@
-"""A scripted MQTT 3.1.1 broker for tests/test_asy_mqtt_client.py, on a real loopback socket (asyncio.start_server):
-it records every packet the client sends and answers by its flags, so a test can produce the faults a real broker only
-shows on demand - a refused CONNACK, a missing PINGRESP or PUBACK, a malformed length, an oversize PUBLISH, a stall."""
+"""A scripted MQTT 3.1.1 broker for tests/test_asy_mqtt_client.py, on a real loopback socket (asyncio.start_server): it
+records every packet and answers by its flags, so a test can produce faults a real broker shows only on demand (a refused
+CONNACK, a lost PINGRESP or PUBACK, a bad length, a stall), and keeps a session per client id not asking for a clean one."""
 
 import asyncio
 
@@ -42,6 +42,7 @@ class FakeBroker:
         self.port = port
         self.connects: list[dict[str, bytes | int]] = []
         self.packets: list[tuple[int, bytes]] = []  # (first byte, body) of every packet the client sent
+        self.connect_packets: list[list[tuple[int, bytes]]] = []  # per CONNECT, in connects' order: that connection's own
         self.connack_rc: int | None = 0  # None: never answer CONNECT
         self.answer_pings = True
         self.ack_publishes = True
@@ -50,6 +51,8 @@ class FakeBroker:
         self.stop_reading = False  # after the CONNACK, stop reading for good (the broker stalls)
         self.after_subscribe: list[bytes] = []  # raw packets sent once the SUBACK is out
         self.connections = 0
+        self.sessions: set[bytes] = set()  # client ids holding a persistent session
+        self.force_session_present = False  # answer Session Present 1 even to a clean session (a broker defect)
         self.disconnects = 0  # DISCONNECT packets received
         self.closed_by_client = 0  # EOFs seen
         self._writers: list[asyncio.StreamWriter] = []
@@ -59,6 +62,7 @@ class FakeBroker:
     async def _client(self, reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
         self.connections += 1
         self._writers.append(writer)
+        mine: list[tuple[int, bytes]] = []
         try:
             while True:
                 first = (await reader.readexactly(1))[0]
@@ -72,7 +76,8 @@ class FakeBroker:
                         break
                 body = await reader.readexactly(value) if value else b""
                 self.packets.append((first, body))
-                if not await self._react(first, body, writer):
+                mine.append((first, body))
+                if not await self._react(first, body, writer, mine):
                     break
         except (EOFError, OSError):
             self.closed_by_client += 1
@@ -84,24 +89,38 @@ class FakeBroker:
             except OSError:
                 pass
 
-    async def _react(self, first: int, body: bytes, writer: "asyncio.StreamWriter") -> bool:
+    async def _react(self, first: int, body: bytes, writer: "asyncio.StreamWriter", mine: "list[tuple[int, bytes]]") -> bool:
         # False ends this connection from the broker's side.
         kind = first & 0xF0
         if kind == 0x10:
             client_id, i = read_str(body, 10)
             flags = body[7]
-            will_topic, i = read_str(body, i)
-            will_message, i = read_str(body, i)
+            will_topic = will_message = b""
+            if flags & 0x04:
+                will_topic, i = read_str(body, i)
+                will_message, i = read_str(body, i)
             user = password = b""
             if flags & 0x80:
                 user, i = read_str(body, i)
             if flags & 0x40:
                 password, i = read_str(body, i)
-            self.connects.append({"client_id": client_id, "flags": flags, "keepalive": (body[8] << 8) | body[9], "will_topic": will_topic, "will_message": will_message, "user": user, "password": password})
+            clean = bool(flags & 0x02)
+            present = 0
+            if not self.connack_rc:
+                present = 1 if self.force_session_present or (not clean and client_id in self.sessions) else 0
+                if clean:
+                    self.sessions.discard(client_id)
+                else:
+                    self.sessions.add(client_id)
+            self.connects.append({
+                "client_id": client_id, "flags": flags, "keepalive": (body[8] << 8) | body[9], "will_topic": will_topic, "will_message": will_message,
+                "user": user, "password": password, "session_present": present,
+            })
+            self.connect_packets.append(mine)
             if self.connack_rc is None:
                 return True
             async with self._wire:
-                writer.write(bytes([0x20, 2, 0, self.connack_rc]))
+                writer.write(bytes([0x20, 2, present, self.connack_rc]))
                 await writer.drain()
             if self.close_after_connack or self.connack_rc:
                 return False
@@ -139,6 +158,14 @@ class FakeBroker:
             self.disconnects += 1
             return False
         return True
+
+    async def drop(self) -> None:
+        # Closes every live connection from the broker's side and keeps listening, its sessions kept.
+        for writer in list(self._writers):
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
 
     def published(self, topic: bytes) -> "list[tuple[int, bytes]]":
         # (first byte, payload) of every PUBLISH the client sent to `topic`.

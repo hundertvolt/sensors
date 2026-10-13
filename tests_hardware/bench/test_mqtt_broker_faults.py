@@ -1,6 +1,6 @@
 """Bench tier for the MQTT client (SPECIFICATION.md Part A.11): the real client on the bench board against a mosquitto
-on this host's own LAN address, through broker faults, path loss, a client-id takeover, inbound floods, an AP outage
-and a reboot at the firmware's own gc threshold, then the broker faults again at MicroPython's default (Part I.4(e))."""
+on this host's own LAN address, through broker faults, path loss, a client-id takeover, inbound floods, an AP outage, a
+reboot, the status and session settings at the firmware's gc threshold, then the faults at MicroPython's default (I.4(e))."""
 
 import contextlib
 import itertools
@@ -20,7 +20,7 @@ import serial
 import tomllib
 from error_log_helpers import assert_no_task_ended, code, get_errcount, reset_all_error_logs
 from harness import MEMORY_ERROR_MARKERS, REPO_ROOT, restore_board_to_serving, wait_for_script_server, wait_until
-from mqtt_probe import Mosquitto, Probe, wait_for
+from mqtt_probe import Mosquitto, Probe, session_present, wait_for
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # the repo root, for buildgen
 
@@ -91,6 +91,7 @@ _REFUSED_WINDOW_S = 40.0  # failed attempts are counted over it: about five at t
 _REFUSED_MAX_ATTEMPTS = 6  # one over the doubling backoff's count in the window; the minimum alone would allow about 20
 # @tunable l4.mqtt_stall_phase_tolerance_s = 1.5
 _STALL_PHASE_TOLERANCE_S = 1.5  # the keeper's 100 ms tick, the console's USB latency and this host's scheduling
+_STATUS_TOPIC = "bench/availability"  # a status topic outside the device's own tree (owner, 2026-10-13: 'Any full topic')
 
 _E_CONNECT = code("E", "MQTT_CONNECT")
 # What this module's faults may log: a failed attempt, a lost connection, a missed PINGRESP, a stalled drain and the
@@ -184,6 +185,12 @@ def _disable_mqtt(dut_ip: str) -> None:
     # Its undo, so the bench tests after this module see the old baseline: the client says offline and idles.
     res = http_client.fetch(dut_ip, 80, "PUT", "/networking", {"MQTTEnable": False}, timeout_s=_REST_BUDGET_S)
     assert res.status_code == 200 and res.json().get("result", {}).get("MQTTEnable") in ("Valid", "Unchanged"), f"disabling the MQTT client was refused: {res.status_code} {res.body!r}"
+
+
+def _assert_taken(res: "http_client.HttpResponse", what: str) -> None:
+    # A PUT /networking answer every field of which was taken; the bodies stay literal at the call, for the wear guard.
+    result = res.json().get("result", {}) if res.status_code == 200 else {}
+    assert result and all(v in ("Valid", "Unchanged") for v in result.values()), f"{what} was refused: {res.status_code} {res.body!r}"
 
 
 def _drive_faults(m: MqttBench, stop: threading.Event, steps: list[str]) -> None:
@@ -676,6 +683,79 @@ def test_the_broker_faults_run_clean_at_micropythons_default_gc(mqtt_bench: Mqtt
     rises = sum(1 for before, after in itertools.pairwise(free) if after > before)
     result_note(f"timeline {steps}; free heap at the reactive default over {len(free)} samples, {rises} collects between them: {free} B")
     _wait_connected(m.dut_ip, "after the board went back to its own firmware", timeout_s=_REBOOT_WAIT_S)
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+def test_the_status_settings_shape_the_online_message_and_the_will_the_broker_fires(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+    # The test owns both writes, the settings and the defaults back. A reboot drops the board without a DISCONNECT, so
+    # the broker publishes the configured will, at its keepalive deadline or at the clean session's takeover.
+    m = mqtt_bench
+    watch = Probe(m.host_ip, _BROKER_PORT, "bench-status", (_STATUS_TOPIC,)).start()
+    try:
+        assert watch.wait_connected(), "the status topic's watcher could not connect"
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTWillTopic": _STATUS_TOPIC, "MQTTOnlineMsg": "up", "MQTTWillMsg": "down", "MQTTWillQoS": 0, "MQTTWillRetain": False}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "the status settings")
+        up = wait_for(lambda: any(msg.payload == b"up" and not msg.retained for msg in watch.received(_STATUS_TOPIC)), _CONNECT_WAIT_S)
+        assert up, f"no online message on {_STATUS_TOPIC}: {watch.received(_STATUS_TOPIC)!r}"
+        offline = [msg.payload for msg in m.observer.received(f"{m.base}/status")]
+        assert offline[-1:] == [b"offline"], f"the old status topic was not set offline before the reconnect: {offline!r}"
+        seen = len(watch.received(_STATUS_TOPIC))
+        bench.kick_all_stations()
+        board.hard_reset()
+        back = _wait_connected(m.dut_ip, "after the reboot", timeout_s=_REBOOT_WAIT_S)
+        will = wait_for(lambda: any(msg.payload == b"down" for msg in watch.received(_STATUS_TOPIC)[seen:]), _STEP_WAIT_S)
+        assert will, f"the broker never published the configured will: {watch.received(_STATUS_TOPIC)[seen:]!r}"
+    finally:
+        watch.close()
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTWillTopic": "", "MQTTOnlineMsg": "online", "MQTTWillMsg": "offline", "MQTTWillQoS": 1, "MQTTWillRetain": True}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "restoring the status settings to their defaults")
+    _wait_connected(m.dut_ip, "after the status settings went back")
+    result_note(f"online and will on {_STATUS_TOPIC}; reconnected {back:.1f}s after the reset")
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+def test_a_persistent_session_delivers_a_command_sent_while_the_board_rebooted(mqtt_bench: MqttBench, board: "Board", bench: "BenchBridge", result_note: "Callable[..., None]") -> None:
+    # The broker keeps the session across the reboot and holds the QoS 1 command for it (owner, 2026-10-13: 'Setting,
+    # default off (Recommended)'); the test owns the switch and puts it back off.
+    m = mqtt_bench
+    try:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPersistent": True}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "the persistent session")
+        _wait_connected(m.dut_ip, "with a persistent session")
+        bench.kick_all_stations()
+        board.hard_reset()
+        assert m.observer.publish(f"{m.base}/cmd/queued", b"while-away", qos=1), "the observer lost its broker"
+        back = _wait_connected(m.dut_ip, "after the reboot", timeout_s=_REBOOT_WAIT_S)
+        wait_until(lambda: _networking(m.dut_ip).get("MQTTLastRxTopic") == f"{m.base}/cmd/queued", timeout_s=_STEP_WAIT_S, poll_interval_s=_POLL_S, description="the command queued during the reboot delivered")
+    finally:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPersistent": False}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "switching the persistent session off")
+    _wait_connected(m.dut_ip, "after the persistent session was switched off")  # its clean connect discards the session
+    result_note(f"the queued command arrived after the reboot; reconnected {back:.1f}s after the reset")
+
+
+@pytest.mark.persistence_write("networking/mqtt")
+def test_a_changed_client_id_retires_the_old_persistent_session(mqtt_bench: MqttBench, result_note: "Callable[..., None]") -> None:
+    # The keeper ends the old identity's session with one clean connect before it connects as the new one (owner,
+    # 2026-10-13: 'Retire it (Recommended)'); the test owns the writes and puts the client id and the switch back.
+    m = mqtt_bench
+    moved_id = f"{m.client_id[:21]}-b"  # a 1-23 byte host label, never the old id
+    try:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTPersistent": True}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "the persistent session")
+        _wait_connected(m.dut_ip, "with a persistent session")
+        connects = _count(m.dut_ip, "MQTTConnects")
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTClientId": moved_id}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "the new client id")
+        took = _wait_count_above(m.dut_ip, "MQTTConnects", connects, _CONNECT_WAIT_S, "a connection under the new client id")
+        _wait_connected(m.dut_ip, "under the new client id")
+        assert not session_present(m.host_ip, _BROKER_PORT, m.client_id), f"the broker still holds {m.client_id}'s session"
+    finally:
+        res = http_client.fetch(m.dut_ip, 80, "PUT", "/networking", {"MQTTClientId": m.client_id, "MQTTPersistent": False}, timeout_s=_REST_BUDGET_S)
+        _assert_taken(res, "restoring the client id")
+    _wait_connected(m.dut_ip, "under the old client id again")
+    assert not session_present(m.host_ip, _BROKER_PORT, moved_id), f"the broker still holds {moved_id}'s session after the switch went off"
+    result_note(f"retired {m.client_id}'s session and reconnected as {moved_id} within {took:.1f}s")
 
 
 def test_disabling_the_client_publishes_offline_and_ends_the_session(mqtt_bench: MqttBench) -> None:
