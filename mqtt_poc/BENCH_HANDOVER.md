@@ -71,18 +71,18 @@ And on 2026-10-08:
   `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
   after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host** (`98ae981`, the will and the persistent session), each tier run on its own:
+- **Verified on the host** (`46671ce`, the ping interval and the publisher as settings), each tier run on its own:
   - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 96 files, 4,977 MicroPython tests, zero memory errors. At
-    `32768` one base test missed its wall-clock bound, `tests/lwip_host/test_modlwip_eagain.py`'s spin
-    round (25 ms against 20 ms); alone it failed 1 of 3 runs. Neither it nor its lwIP binary is in this
-    branch's diff;
+  - `scripts/test.sh` at both GC stages: 96 files, 4,984 MicroPython tests, zero memory errors;
   - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
   - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
-    flood, the will, a persistent session across a restart, the retire): 368 of 368 checks across both stages;
-  - `npm test` under the `.nvmrc` Node 24, the website's settings matrix with it: 1,347 passed, 8 skipped.
-- **CI**: green on `98ae981`, all 27 checks, and on `41b28e3` (DESIGN.md only), whose one `unit-tests`
-  failure, a base wozi test's CaptiveDNS bind, passed on its re-run; the PR's checks show the current head.
+    flood, the will, a persistent session across a restart, the keep-alive the ping interval sets, pings
+    off, the retire): 372 of 372 checks across both stages;
+  - `npm test` under the `.nvmrc` Node 24, the website's settings matrix with it: 1,367 passed, 8 skipped.
+- **CI**: 26 of 27 checks passed on `46671ce`. The 27th, `Unit tests (shipped gc.threshold)`, failed one test each in
+  `tests/test_digital_twin_sensortask_integration.py` (wozi only) and `tests/test_digital_twin_isl29125_autorange.py`:
+  both files and the code under them match the audit base, whose own run `38443106827` failed the first the
+  same way, and both passed here at both stages (the PR comment has the trace). The PR's checks show the current head.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
