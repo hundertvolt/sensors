@@ -71,15 +71,14 @@ And on 2026-10-08:
   `0103283` (U22: the LED re-check, the Wi-Fi silent mode and the fresh-boot settings change). It merges only
   after the audit closes (owner, 2026-10-07: "After audit closes"), then retargets to
   `main`. Never merge it, rebase it, force-push it or push to another branch.
-- **Verified on the host** (`43b5373`, the bench findings' fixes):
+- **Verified on the host** (`45e3748`, after the U19 fix to U22 merge), each tier run on its own:
   - lint and all three typecheck passes;
-  - `scripts/test.sh` at both GC stages: 94 files, 4,800 MicroPython tests, zero memory errors;
-  - the full `tests_scripts/` tier: 3,415 tests passed, 11 skipped;
+  - `scripts/test.sh` at both GC stages: 96 files, 4,960 MicroPython tests, zero memory errors;
+  - the full `tests_scripts/` tier: 4,275 tests passed, 11 skipped;
   - the `dev` twin suite, Run 12 included (the client against a real mosquitto: kill, stall, takeover,
     flood): 346 of 346 checks across both stages;
-  - `npm test`, the website's settings matrix with it: 1,272 passed, 7 skipped.
-- **CI**: green on `59eac40`, the five web lanes skipped as nothing under the web tree changed; the PR's
-  checks show the current head.
+  - `npm test`, the website's settings matrix with it: 1,289 passed, 7 skipped.
+- **CI**: green on `45e3748`, every lane run, the web lanes included; the PR's checks show the current head.
 - **The board ran the scope twice on 2026-10-08** (`mqtt_poc/bench_results/`, images `51a5bd2d` and
   `f2e30c4a`): every MQTT test passed on both; each run's README lists the failures, none of them an MQTT
   test, though the client's 11,360 B (DESIGN.md §5) is part of the flash step's heap figure over its
