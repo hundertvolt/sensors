@@ -287,21 +287,62 @@ function checkClock(testTimeoutMs) {
 
 /**
  * Closes `pages` within one twin stop, a page already gone counting as closed.
+ * @param {import("playwright").BrowserContext} context the pages' context, asked for Chromium's view of a hang
  * @param {import("playwright").Page[]} pages
  * @returns {Promise<Error | null>} why a close was still pending at that bound, or null
  */
-async function closePages(pages) {
+async function closePages(context, pages) {
     /** @type {ReturnType<typeof setTimeout> | undefined} */
     let timer;
-    const closed = Promise.all(pages.map((page) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ }))).then(() => null);
-    /** @type {Promise<Error>} */
+    const started = Date.now();
+    /** @type {(number | null)[]} */
+    const closedAfter = pages.map(() => null);
+    const closed = Promise.all(pages.map((page, index) => page.close().catch(() => { /* best-effort teardown - a page already gone is fine */ }).then(() => {
+        closedAfter[index] = Date.now() - started;
+    }))).then(() => null);
+    /** @type {Promise<"late">} */
     const late = new Promise((resolve) => {
         timer = setTimeout(() => {
-            resolve(new Error(`its pages were still closing ${SHUTDOWN_TIMEOUT_MS}ms after the check ended`));
+            resolve("late");
         }, SHUTDOWN_TIMEOUT_MS);
     });
     try {
-        return await Promise.race([closed, late]);
+        if (await Promise.race([closed, late]) === null) {
+            return null;
+        }
+    } finally {
+        clearTimeout(timer);
+    }
+    const tabs = pages.map((page, index) => `tab ${index + 1} ${closedAfter[index] === null ? `still closing (${page.url()}, isClosed ${page.isClosed()})` : `closed after ${closedAfter[index]}ms`}`);
+    return new Error(`its pages were still closing ${SHUTDOWN_TIMEOUT_MS}ms after the check ended: ${tabs.join("; ")}; Chromium's page targets then: ${await pageTargets(context)}`);
+}
+
+/**
+ * Chromium's own list of page targets (url, attached), asked over a browser-level CDP session within one section wait.
+ * @param {import("playwright").BrowserContext} context
+ * @returns {Promise<string>}
+ */
+async function pageTargets(context) {
+    const browser = context.browser();
+    if (browser === null) {
+        return "(no browser)";
+    }
+    /** @type {ReturnType<typeof setTimeout> | undefined} */
+    let timer;
+    const asked = (async () => {
+        const cdp = await browser.newBrowserCDPSession();
+        const { targetInfos } = await cdp.send("Target.getTargets");
+        await cdp.detach();
+        return targetInfos.filter((info) => info.type === "page").map((info) => `${info.url} attached=${info.attached}`).join(", ");
+    })();
+    /** @type {Promise<string>} */
+    const late = new Promise((resolve) => {
+        timer = setTimeout(() => {
+            resolve(`(no answer within ${SECTION_WAIT_MS}ms)`);
+        }, SECTION_WAIT_MS);
+    });
+    try {
+        return await Promise.race([settledLater(asked).catch((err) => `(asking failed: ${String(err)})`), late]);
     } finally {
         clearTimeout(timer);
     }
@@ -422,7 +463,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         for (const page of pages) {
             page.removeAllListeners();
         }
-        const [unclosed] = await Promise.all([closePages(pages), stopTwin(proc)]);
+        const [unclosed] = await Promise.all([closePages(context, pages), stopTwin(proc)]);
         failure ??= unclosed;
     }
     twinVerdict(`live-backend smoke check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
@@ -511,7 +552,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         failure = err;
     } finally {
         clock.end();
-        const [unclosed] = await Promise.all([closePages(pages), stopTwin(proc)]);
+        const [unclosed] = await Promise.all([closePages(context, pages), stopTwin(proc)]);
         failure ??= unclosed;
     }
     twinVerdict(`live-backend concurrent-tab check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
@@ -593,7 +634,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
         failure = err;
     } finally {
         clock.end();
-        const [unclosed] = await Promise.all([closePages(pages), ...procs.map((proc) => stopTwin(proc))]);
+        const [unclosed] = await Promise.all([closePages(context, pages), ...procs.map((proc) => stopTwin(proc))]);
         failure ??= unclosed;
     }
     const drained = await Promise.all(outputs.map((output) => output.closed(SHUTDOWN_TIMEOUT_MS)));
