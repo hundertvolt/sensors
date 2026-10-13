@@ -287,8 +287,8 @@ class Probe:
 
 
 def session_present(host: str, port: int, client_id: str) -> bool:
-    # Whether the broker holds a persistent session for `client_id`, read from a Clean Session 0 CONNACK; a clean connect
-    # then discards whatever that one resumed or made, so the check leaves no session behind. Never a live client's id.
+    # Whether the broker holds a persistent session for `client_id`, read from the CONNACK of a connect keeping its session;
+    # a clean connect then discards whatever that one resumed or made, so the check leaves none behind. Never a live id.
     present = False
     for clean in (False, True):
         with socket.create_connection((host, port), _START_TIMEOUT_S) as sock:

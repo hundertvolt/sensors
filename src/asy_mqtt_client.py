@@ -1064,7 +1064,7 @@ class MQTTClient(SensorReaderConfig):
                 if not self._session_present:
                     self._slot_state[i] = _SLOT_QUEUED
 
-    def _settle_session(self, nxt: "tuple[str, int, bytes] | None", *, persistent: bool) -> None:
+    def _settle_session(self, nxt: tuple[str, int, bytes] | None, *, persistent: bool) -> None:
         # The persistent session a broker may hold is owed while the settings keep its identity, and left behind to be
         # retired once they move away from it, unless the next connect (same host, port and id, clean) discards it itself.
         left = self._retire if self._retire is not None else self._owed
