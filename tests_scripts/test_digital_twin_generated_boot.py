@@ -173,13 +173,19 @@ def _status_field_parity_failures(definitions: dict[str, Any], status_body: obje
     missing = []
     for group_key, field in _readonly_fields(definitions, "status"):
         source = status_body.get(group_key)
-        if group_key == "sensors" and isinstance(source, dict):
-            # Maintenance data is per sensor; the page flattens it to <SENSOR>_<field> as js/render.js does.
-            source = {f"{sensor}_{key}": value for sensor, values in source.items() if isinstance(values, dict) for key, value in values.items()}
         found = _resolves(source, field["path"]) if "path" in field else isinstance(source, dict) and field["key"] in source
         if not found:
             missing.append(f"{group_key}.{field['key']}")
     return [f"Status page fields GET /status does not publish (each renders blank): {missing}"] if missing else []
+
+
+def test_the_status_field_parity_check_reads_a_maintenance_field_by_its_path() -> None:
+    # Pure, no boot: a maintenance field resolves only where GET /status nests it, under its instance's name.
+    field = {"key": "SGP40_BackupTS", "label": "L", "kind": "readonly", "path": ["SGP40", "BackupTS"]}
+    definitions = {"sections": [{"key": "status", "groups": [{"key": "sensors", "fields": [field]}]}]}
+    assert _status_field_parity_failures(definitions, {"sensors": {"SGP40": {"BackupTS": None}}}) == []
+    for body in ({"sensors": {"SGP40_BackupTS": None}}, {"sensors": {"SGP40_b": {"BackupTS": 1}}}, {"sensors": {"SGP40": {"error": "unavailable"}}}):
+        assert _status_field_parity_failures(definitions, body), body
 
 
 def _maintenance_key_failures(model: "DeviceModel", status_body: object) -> list[str]:

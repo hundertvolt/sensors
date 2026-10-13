@@ -2,9 +2,9 @@
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
-# The real chain: html/ and js/ -> scripts/build_website.sh wozi -> frozen_modules/frozen_html.py ->
-# `import frozen_html` (mount on import) -> WebserverService(..., static=StaticSite(...)). scripts/test.sh builds it
-# first; the import mounts /html once per process. The prototype-only files are confirmed absent.
+# The real chain: html/ and js/ -> scripts/build_website.sh wozi (staged by scripts/_stage_website.py) ->
+# frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) -> WebserverService. scripts/test.sh builds it
+# first; the import mounts /html once per process.
 
 import asyncio
 import json
@@ -24,7 +24,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, Protocol, TypeVar
+    from typing import Protocol, TypeVar
 
     T = TypeVar("T")
 
@@ -34,8 +34,17 @@ if TYPE_CHECKING:
         def read(self) -> bytes: ...
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
+    def hold(self, closable: object) -> None:
+        pass
+
+
+def _bundle_modules(body: bytes) -> "list[str]":
+    # The bundle's module list, read from its banner (scripts/_stage_website.py writes it in dependency order).
+    for line in body.split(b"\n")[:3]:
+        if line.startswith(b"// Modules: "):
+            return [name.decode() for name in line[len(b"// Modules: ") :].split(b", ")]
+    raise AssertionError("the bundle's banner names no module list: " + repr(body[:200]))
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
@@ -50,9 +59,16 @@ def _decompress(body: "_ResponseBody") -> bytes:
     return d.read()  # type: ignore[no-any-return]
 
 
-class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
-    def hold(self, closable: object) -> None:
-        pass
+def _make_app() -> "tuple[WebserverService, Microdot]":
+    app = Microdot()
+    # Dispatch only, no server starts: backlog, host and port are never used here.
+    serving = ServingLimits(
+        int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
+        None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
+    )
+    routes = RouteSources([], None, None, None, None, None, None, [], [])
+    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
+    return service, app
 
 
 def _make_request(app: "Microdot", method: str, path: str) -> Request:
@@ -74,16 +90,8 @@ async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no conn
     return 0
 
 
-def _make_app() -> "tuple[WebserverService, Microdot]":
-    app = Microdot()
-    # Dispatch only, no server starts: backlog, host and port are never used here.
-    serving = ServingLimits(
-        int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
-        None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
-    )
-    routes = RouteSources([], None, None, None, None, None, None, [], [])
-    service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
-    return service, app
+def run(coro: "Coroutine[object, None, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
+    return asyncio.run(coro)
 
 
 def test_root_serves_the_real_index_html() -> None:
@@ -125,49 +133,45 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:
-    # The seven production modules are concatenated into one js/app.js at staging time (Part H.7) rather
-    # than shipped as seven separate files, so each of their own paths must now 404, not 200.
+    # The production modules are concatenated into one js/app.js at staging time (Part H.7), so every
+    # banner module but the entry, main.js, whose content js/app.js is, must 404 at its own path.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     assert res.status_code == 200
     assert res.headers["Content-Type"].startswith("application/javascript")
+    modules = _bundle_modules(_decompress(res.body))
+    assert modules[-1] == "main.js", modules
 
-    for path in ("/js/definitions.js", "/js/poll-manager.js", "/js/render.js", "/js/templates.js", "/js/nav.js", "/js/field-format.js"):
-        res = run(app.dispatch_request(_make_request(app, "GET", path)))
-        assert res.status_code == 404, path
+    for name in modules[:-1]:
+        res = run(app.dispatch_request(_make_request(app, "GET", "/js/" + name)))
+        assert res.status_code == 404, name
 
 
-def test_bundled_js_contains_every_production_module_with_no_leftover_local_imports() -> None:
+def test_bundled_js_carries_every_banner_module_and_no_local_imports() -> None:
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))
     body = _decompress(res.body)
+    modules = _bundle_modules(body)
 
-    # Every production module's own distinctive top-level declaration made it into the bundle -
-    # a real, direct check that concatenation didn't silently drop one.
-    for marker in (
-        b"function formatFieldValue",  # field-format.js
-        b"function fetchWithTimeout",  # poll-manager.js
-        b"function buildFieldGroupCard",  # templates.js
-        b"function validateDefinitions",  # definitions.js
-        b"function renderSection",  # render.js
-        b"function initNav",  # nav.js
-        b"function startApp",  # main.js
-    ):
-        assert marker in body, marker
+    # One non-empty `// ---- js/<name> ----` section per banner module, in the banner's order: the
+    # concatenation dropped none and repeated none.
+    sections = [section.split(b" ----\n", 1) for section in body.split(b"\n// ---- js/")[1:]]
+    assert [name.decode() for name, _ in sections] == modules
+    for name, text in sections:
+        assert text.strip(), name
 
     # No `import { ... } from "./local-file.js";` line survived - every such line only worked because the
     # imported name is now already in scope earlier in the same concatenated file.
     #
-    # A leftover `export { ... } from "./local-file.js";` re-export would be just as broken, the bundle
-    # being one file with no such path left to resolve, but is not caught by the import-line check above -
-    # checked directly after a real instance of exactly that was caught only by manually tracing the build.
+    # Nor an `export … from "./x.js"` re-export: the bundle has no such path to resolve (scripts/_stage_website.py
+    # refuses one; this checks the served result).
     for line in body.split(b"\n"):
         assert not line.startswith(b"import "), line
         assert not (line.startswith(b"export ") and b' from "./' in line), line
 
 
 def test_js_app_js_is_the_real_production_entry_not_the_prototype() -> None:
-    # js/main.js's content, staged as js/app.js (see scripts/build_website.sh) - distinguished from
+    # js/main.js's content, staged as js/app.js (scripts/_stage_website.py) - distinguished from
     # the prototype js/app.js by the absence of its mock-install/device-switch machinery.
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/js/app.js")))

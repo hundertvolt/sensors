@@ -122,17 +122,18 @@ _VAL_FRC_RATE = const((("FRCRate", "float", 10.0, 0.1, 1000.0, None),))
 _VAL_FRC_WINDOW = const((("FRCWindow", "int", 60, 20, 3600, None),))
 
 # @web-group section=sensors submitGroup=self label="SCD30 — CO2, Temperature, Humidity" submit=true
-# @web TempOffset section=sensors submitGroup=self label="Temperature Offset" unit="K"
+# Interface Description 1.4.7 (the offset's tick is 0.01 °C) and 1.4.8 (Altitude is ignored while a pressure is set).
+# @web TempOffset section=sensors submitGroup=self label="Temperature Offset" unit="K" resolution=0.01
 # @web MeasInterval section=sensors submitGroup=self label="Measurement Interval" unit="s"
 # @web AmbPres section=sensors submitGroup=self label="Ambient Pressure (starts continuous measurement)" unit="hPa" special:0="Compensation off / use Altitude" alwaysExecuted=true
-# @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used while Ambient Pressure is 0; a pressure value overrides it."
+# @web Altitude section=sensors submitGroup=self label="Altitude above sea level" unit="m" description="Only used while Ambient Pressure is 0; a pressure value overrides it." ignoredWhenSet=AmbPres
 # Interface Description 1.4.6 and its FRC section (p14), Low Power Mode note (6 min / 5 intervals), Field Calibration note (the configured interval).
 # @web ForceCalRef section=sensors submitGroup=self label="Forced Calibration Reference" unit="ppm" description="A calibration run, carried out on every Apply. Only valid after continuous measurement at the configured interval for 6 minutes or 5 intervals, whichever is longer, in stable air of known CO2 (400-2000 ppm). FRC Readiness shows when that holds." alwaysExecuted=true
 # @web SelfCal section=sensors submitGroup=self label="Automatic Self-Calibration" description="Needs 7 days of uninterrupted power with at least 1 hour of fresh air every day; a power loss in the first 7 days restarts the search."
 # @web FRCNoise section=sensors submitGroup=self label="FRC Noise Floor" unit="ppm"
 # @web FRCRate section=sensors submitGroup=self label="FRC Change-Rate Limit" unit="ppm/min"
 # @web FRCWindow section=sensors submitGroup=self label="FRC Stability Window" unit="s"
-# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." defaultValue=true alwaysExecuted=true
+# @web ContMeas section=sensors submitGroup=self kind=toggle label="Continuous Measurement" onLabel="On" offLabel="Off" description="Setting this to Off stops continuous measurement; restart it via Ambient Pressure above." alwaysExecuted=true
 
 def _snapshot_dict(snap: tuple[float, int, int, int, int, bool]) -> "dict[str, CfgValue]":
     # The six chip-stored settings by name, from one get_config_snapshot() tuple.
@@ -158,11 +159,12 @@ SCD30 = namedtuple("SCD30", ("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCSt
 _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWait", "TS"))  # kept in sync with SCD30's own fields above
 
 # @web-group section=measurements submitGroup=self label="SCD30 — CO2, Temperature, Humidity"
-# @web CO2 section=measurements submitGroup=self kind=readonly label="CO2" unit="ppm"
-# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C"
-# @web Hum section=measurements submitGroup=self kind=readonly label="Relative Humidity" unit="%"
-# @web WetBulb section=measurements submitGroup=self kind=readonly label="Wet Bulb Temperature" unit="°C"
-# @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C"
+# Decimals from the datasheet's repeatability (Tables 1-3): CO2 10 ppm, humidity 0.1 %RH, temperature 0.1 °C.
+# @web CO2 section=measurements submitGroup=self kind=readonly label="CO2" unit="ppm" decimals=0
+# @web Temp section=measurements submitGroup=self kind=readonly label="Temperature" unit="°C" decimals=1
+# @web Hum section=measurements submitGroup=self kind=readonly label="Relative Humidity" unit="%" decimals=1
+# @web WetBulb section=measurements submitGroup=self kind=readonly label="Wet Bulb Temperature" unit="°C" decimals=1
+# @web DewPoint section=measurements submitGroup=self kind=readonly label="Dew Point" unit="°C" decimals=1
 # @web FRCState section=measurements submitGroup=self kind=readonly label="FRC Readiness" description="0 not measuring, 1 settling, 2 CO2 drifting, 3 CO2 noisy, 4 ready for a forced recalibration." codes=FRCState
 # @web FRCWait section=measurements submitGroup=self kind=readonly label="FRC Settling Left" unit="s" decimals=0
 # @web TS section=measurements submitGroup=self kind=readonly label="Timestamp" format=epoch

@@ -5,6 +5,7 @@ second, separately-tested detector). Grammar and design rationale: SPECIFICATION
 import math
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 
 from buildgen.errors import BuildError
@@ -24,19 +25,21 @@ _KV_RE = re.compile(r'(?P<key>special:(?:"[^"]*"|[^\s="]+)|[A-Za-z][A-Za-z0-9]*)
 
 _FIELD_KNOWN_KEYS = frozenset({
     "section", "submitGroup", "label", "unit", "description", "kind",
-    "onLabel", "offLabel", "mask", "dispatch", "defaultValue", "path", "decimals",
+    "onLabel", "offLabel", "mask", "dispatch", "path", "decimals",
     "alwaysExecuted", "format", "codes", "bytes", "shape", "hidden",
+    "clearable", "ignoredWhenSet", "resolution",
 })
 _GROUP_KNOWN_KEYS = frozenset({"section", "submitGroup", "label", "submit", "submitLabel"})
 _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
-# The values each enumerated key takes; format and codes describe a readonly value, bytes and shape a
-# string one (a string's kind is inferred from its schema, so the generator checks that half).
+# The values each enumerated key takes; format and codes describe a readonly value, bytes, shape and clearable a
+# string one, resolution a number (an inferred kind comes from the schema, so the generator checks that half).
 _FORMATS = frozenset({"epoch", "gmtimestruct"})
 _SHAPES = frozenset({"hostLabel", "countryCode", "hostName", "ipv4List"})
 _READONLY_ONLY_KEYS = ("format", "codes")
-_STRING_ONLY_KEYS = ("bytes", "shape")
-# js/definitions.js's own validateFieldHints() ceiling (Number#toFixed()'s real RangeError
-# boundary) - pinned by `tests_scripts/test_definitions_js_mirrors.py`.
+_STRING_ONLY_KEYS = ("bytes", "shape", "clearable")
+_NUMBER_ONLY_KEYS = ("resolution",)
+# js/definitions.js's own MAX_DECIMALS (Number#toFixed()'s real RangeError boundary) - pinned by
+# `tests_scripts/test_definitions_js_mirrors.py`.
 _MAX_DECIMALS = 100
 _BOOL_VALUES = {"true": True, "false": False}
 SELF_GROUP = "self"
@@ -62,7 +65,6 @@ class WebFieldTag:
     off_label: "str | None" = None
     mask: bool = False
     dispatch: bool = False
-    default_value: "bool | int | float | str | None" = None
     special: "tuple[tuple[str, str], ...]" = ()
     path: "tuple[str, ...] | None" = None
     decimals: "int | None" = None
@@ -72,6 +74,9 @@ class WebFieldTag:
     byte_length: bool = False
     shape: "str | None" = None
     hidden: "str | None" = None  # why a schema field stays off the website; its tag then has no other key
+    clearable: bool = False  # a string the page may empty with its own Clear button
+    ignored_when_set: "str | None" = None  # the sibling field whose non-zero value overrides this one
+    resolution: "float | None" = None  # the step the device rounds this number to
 
 
 @dataclass(frozen=True)
@@ -137,26 +142,27 @@ def _coerce_decimals(raw: str, *, device: str, path: Path, lineno: int, instance
     return value
 
 
-def _coerce_default_value(raw: str, site: "TagSite") -> "bool | int | float | str":
-    if raw in _BOOL_VALUES:
-        return _BOOL_VALUES[raw]
-    try:
-        return int(raw)
-    except ValueError:
-        pass
+def resolution_decimals(resolution: float) -> int:
+    # The decimals a value rounded to `resolution` shows: 0.01 -> 2, 0.5 -> 1, 5 -> 0 (repr() is the shortest exact form).
+    exponent = Decimal(repr(resolution)).normalize().as_tuple().exponent
+    return max(0, -exponent) if isinstance(exponent, int) else 0
+
+
+def _coerce_resolution(raw: str, site: "TagSite") -> float:
+    where = f"{site.path}:{site.lineno}: @web tag for {site.field!r} has resolution={raw!r}"
     try:
         value = float(raw)
     except ValueError:
-        return raw
+        raise BuildError(site.device, f"{where}, which is not a number", rule="tag.not-a-number", fix="write the step as an int or a float, e.g. resolution=0.01", instance=site.instance_label, field=site.field) from None
     if not math.isfinite(value):
         # float() reads nan/inf, and json.dumps() would write NaN/Infinity, which no browser parses.
+        raise BuildError(site.device, f"{where}, which is not a finite number", rule="tag.non-finite-number", fix="write a finite number", instance=site.instance_label, field=site.field)
+    if value <= 0:
+        raise BuildError(site.device, f"{where}, expected a positive number", rule="web.value-not-in-set", fix="write the step the device rounds to, a positive number", instance=site.instance_label, field=site.field)
+    if resolution_decimals(value) > _MAX_DECIMALS:
         raise BuildError(
-            site.device,
-            f"{site.path}:{site.lineno}: @web tag for {site.field!r} has defaultValue={raw!r}, which is not a finite number",
-            rule="tag.non-finite-number",
-            fix="write a finite number",
-            instance=site.instance_label,
-            field=site.field,
+            site.device, f"{where}, which needs {resolution_decimals(value)} decimals, outside 0..{_MAX_DECIMALS}", rule="web.decimals-range",
+            fix=f"write a step of at most {_MAX_DECIMALS} decimals", instance=site.instance_label, field=site.field,
         )
     return value
 
@@ -204,6 +210,16 @@ def _check_value_keys(plain: "dict[str, str]", kind: "str | None", site: TagSite
                 f"{where} has {key}= but is not a string field: {site.raw!r}",
                 rule="web.key-needs-string",
                 fix=f"drop {key}=: it applies to a string field only",
+                instance=site.instance_label,
+                field=site.field,
+            )
+    for key in _NUMBER_ONLY_KEYS:
+        if key in plain and kind not in (None, "number"):
+            raise BuildError(
+                site.device,
+                f"{where} has {key}= but is not a number field: {site.raw!r}",
+                rule="web.key-needs-number",
+                fix=f"drop {key}=: it applies to a number field only",
                 instance=site.instance_label,
                 field=site.field,
             )
@@ -348,7 +364,6 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
             off_label=plain.get("offLabel"),
             mask=_coerce_bool(plain["mask"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="mask") if "mask" in plain else False,
             dispatch=_coerce_bool(plain["dispatch"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="dispatch") if "dispatch" in plain else False,
-            default_value=_coerce_default_value(plain["defaultValue"], site) if "defaultValue" in plain else None,
             special=special,
             path=_coerce_path(plain["path"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "path" in plain else None,
             decimals=_coerce_decimals(plain["decimals"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, field_name=field_name) if "decimals" in plain else None,
@@ -357,6 +372,9 @@ def parse_web_tags(path: Path, device: str, instance_label: str) -> "tuple[WebFi
             codes=plain.get("codes"),
             byte_length=_coerce_bool(plain["bytes"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="bytes") if "bytes" in plain else False,
             shape=plain.get("shape"),
+            clearable=_coerce_bool(plain["clearable"], device=device, path=path, lineno=tok.lineno, instance_label=instance_label, key="clearable") if "clearable" in plain else False,
+            ignored_when_set=plain.get("ignoredWhenSet"),
+            resolution=_coerce_resolution(plain["resolution"], site) if "resolution" in plain else None,
         ))
     check_for_near_miss_tags(tokens, path, device, instance_label, exact_matches, _SPECS_WEB)
     _check_no_duplicate_fields(tags, path, device, instance_label)
@@ -428,6 +446,24 @@ def _check_no_duplicate_fields(tags: "tuple[WebFieldTag, ...] | list[WebFieldTag
                 f"{path}: field {tag.field_name!r} is both hidden and on the page",
                 rule="web.hidden-and-tagged",
                 fix="drop its hidden= tag or its page tag",
+                instance=instance_label,
+                field=tag.field_name,
+            )
+
+
+def check_ignored_when_set(tags: "tuple[WebFieldTag, ...]", path: Path, device: str, instance_label: str) -> None:
+    # The overriding field is a sibling: another field this file puts on the same section and group. Run once
+    # the file's schema fields are known tagged, so an untagged sibling is reported as untagged.
+    for tag in tags:
+        if tag.ignored_when_set is None:
+            continue
+        siblings = {t.field_name for t in tags if t.hidden is None and (t.section, t.submit_group) == (tag.section, tag.submit_group) and t is not tag}
+        if tag.ignored_when_set not in siblings:
+            raise BuildError(
+                device,
+                f"{path}: @web tag for {tag.field_name!r} has ignoredWhenSet={tag.ignored_when_set!r}, which names no other field of its group",
+                rule="web.ignored-when-set-unknown",
+                fix=f"name one of {sorted(siblings)}, or drop ignoredWhenSet=",
                 instance=instance_label,
                 field=tag.field_name,
             )

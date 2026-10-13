@@ -5,7 +5,6 @@ BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must 
 BACKLOG.md	- **The UART fakes still do not *wait* the way a real read does, deliberately.**
 BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
 BACKLOG.md	Deliberately does **not** use the Unix-port twin's own `gc.mem_free()` recovery-
-BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
 BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
 BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
@@ -42,7 +41,6 @@ SPECIFICATION.md	**A dedicated unit-test file for the driver itself** (`tests/te
 SPECIFICATION.md	**A lost final ACK folds into failure**, deliberately, rather than becoming a th
 SPECIFICATION.md	**CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate
 SPECIFICATION.md	**Constraint — a loopback harness must never register a fake UART with a real `s
-SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
 SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
@@ -106,7 +104,6 @@ SPECIFICATION.md	the excluded file holds two trivial fixtures, its real logic mo
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
 SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
-SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
 UART_C_PORT_CHANGELOG.md	- **Class A — protocol-level, must be mirrored in C.** It alters the bytes emitt
 UART_C_PORT_CHANGELOG.md	A change that alters emitted bytes is a coordinated flag-day, and **the project
 UART_C_PORT_CHANGELOG.md	The reconciliation session will most likely meet this signature first, so it is
@@ -154,7 +151,6 @@ digital_twin/segfault_stress_repro.py	read_body=False: only ever checks that the
 digital_twin/unix_port_poll_prewarm.py	A fresh socket per attempt, because a bind that failed leaves nothing worth reus
 digital_twin/unix_port_poll_prewarm.py	Only the accepted server-side socket has to stay registered to force pollfds gro
 host_typecheck.ini	it holds two trivial fixtures - an accepted gap (B.15).
-js/field-format.js	Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - s
 js/templates.js	See SPECIFICATION.md Part H.3's "One deliberate exception" note for why this ret
 pyproject.toml	---- Contradicts CLAUDE.md's own documentation rule (continued) ---- CPY001: no
 pyproject.toml	---- Deliberate, documented idiom ---- `x != x` is asy_scd30_driver.py's NaN tes
@@ -169,7 +165,6 @@ scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose any
 scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
 scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
-scripts/build_website.sh	Part H.7 owns why bundling and inlining exist at all, and why keep-alive is deli
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
@@ -517,35 +512,23 @@ tests_hardware/harness.py	Like run_isolated(), but for a script that deliberatel
 tests_hardware/harness.py	Raised for a genuine real-hardware assertion failure - deliberately a plain Asse
 tests_hardware/harness.py	resolve_board_device()'s ambiguous-hardware raise is the deliberate exception: t
 tests_hardware/manual/runner.py	Deliberately no `if __name__ == "__main__":` block here - running this file dire
-tests_js/_live_matrix_command.js	@param {{ sectionKey: string, groupKey: string, fieldKey: string, field: import(
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func
 tests_js/live-backend-put-matrix.test.js	Fills+applies `value` expecting real rejection, then confirms the render never m
 tests_js/live-backend-put-matrix.test.js	wholeRange (cosmetic probe-value shape) and isFloat (the real accept/reject-frac
-tests_js/live-backend.test.js	"Valid" or "Unchanged" both mean the backend accepted the write, matching every
-tests_js/main.test.js	The actual point of inlining (scripts/build_website.sh's own "Inlining" comment,
 tests_js/mock-server.test.js	Boundary values (0/255 for R/G/B, 0.5/60.0 for T) are still accepted - only genu
 tests_js/mock-server.test.js	ResetVOC is a special-alone schema field, deliberately excluded from get_dict_cf
 tests_js/mock-server.test.js	Sequential is the point: each PUT must be accepted after the previous one alread
-tests_js/render.test.js	Both real definitions files declare "status" as pollGroup "live" and this fixtur
-tests_js/render.test.js	Deliberately not the real SCD30 key "ContMeas": mock-server.js special-cases tha
-tests_js/render.test.js	JSON.stringify(NaN) is "null", so typed garbage used to arrive as null and a ser
-tests_js/render.test.js	On -> Off: a real, deliberate change
 tests_js/render.test.js	On -> Off: a real, deliberate change from the current value (true)
 tests_js/render.test.js	min: 0 deliberately, to catch a form input coerced to the number 0 by accident (
-tests_js/render.test.js	networkingConfig deliberately never mentions AuxEnabled - the mock GET response
-tests_js/render.test.js	request settled
 tests_js/vitest-commands.d.ts	Deliberately NOT `import type {...} from "./_live_twin_command.js"` (or the matr
 tests_scripts/_devices.py	A leaked live-tree fixture (tests_scripts/conftest.py's own reclamation, scripts
 tests_scripts/_toml_fixtures.py	A parsed/to-be-serialized TOML table - str keys, arbitrarily nested str/int/floa
 tests_scripts/buildgen_fixtures/malformed_missing_device_table.toml	Deliberately invalid buildgen fixture: no [device] table at all (a plausible han
 tests_scripts/buildgen_fixtures/multi_instance.toml	multi_instance.toml - axis 9's own dedicated multi-instance fixture (SPECIFICATI
 tests_scripts/buildgen_fixtures/novel_combo.toml	ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_s combo no
-tests_scripts/test_build_website_sh.py	build_website.sh's cp lists are hand-kept, not derived from directory contents,
 tests_scripts/test_buildgen_definitions.py	Failure paths: a minimal DeviceModel pointed at a deliberately mutated copy of o
 tests_scripts/test_buildgen_definitions.py	SPECIFICATION.md Part L.7: buildgen.version.WEBSITE_VERSION is a build-provenanc
 tests_scripts/test_buildgen_definitions.py	asy_ntp_client.py deliberately never declares its own @web-group for section=sys

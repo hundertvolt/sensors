@@ -1,0 +1,20 @@
+--- 4f60381/tests/lwip_host/test_modlwip_eagain.py
++++ api1/bite/test_modlwip_eagain_bite.py
+@@ -22,7 +22,7 @@
+ # @tunable l1.lwip_host_rounds = 20
+ _ROUNDS = 20
+ # @tunable l1.lwip_host_spin_rounds = 1000
+-_SPIN_ROUNDS = 1000
++_SPIN_ROUNDS = 40
+ # One drain() round on this host includes select's own 1 ms poll() sleep (modselect.c); the
+ # unpatched path sleeps 50 ms per round instead, so the bound stays well below that.
+ # @tunable l1.lwip_host_spin_round_max_us = 20000
+@@ -436,6 +436,8 @@
+             writable = False
+             for _, events in poller.ipoll(0):
+                 writable = bool(events & select.POLLOUT)
++            while time.ticks_diff(time.ticks_us(), start) < 50000:  # bite: a 50 ms round, as the unpatched sleep makes it
++                pass
+             elapsed_us = time.ticks_diff(time.ticks_us(), start)
+             grown = gc.mem_alloc() - allocated
+             assert written is None and writable, f"the spin ended: write() returned {written}, POLLOUT {writable}"

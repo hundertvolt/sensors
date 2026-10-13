@@ -121,7 +121,7 @@ _DNS_FALLBACK_MAX = const(3)  # ipv4List items; the 47-character bound fits thre
 # @web NTPOffset section=networking submitGroup=ntp label="NTP Offset" unit="s" description="Added to Unix time; affects system time and all timestamps."
 # @web NTPInterval section=networking submitGroup=ntp label="NTP Sync Interval" unit="h"
 # @web-group section=networking submitGroup=dns label="DNS Fallback Servers" submit=true
-# @web DNSFallback section=networking submitGroup=dns label="Fallback DNS Servers" shape=ipv4List description="Asked after the DHCP-provided server fails. Empty = none. The website cannot send an empty value (Part H.4); use the API."
+# @web DNSFallback section=networking submitGroup=dns label="Fallback DNS Servers" shape=ipv4List clearable=true description="Asked after the DHCP-provided server fails, in order. Empty = none; the Clear button empties it."
 
 # Contributed into asy_system_service.py's "settings" group: GMTOffset/DSTOffset are real cettime()
 # inputs owned by this module even though they render on the System page. That group is declared

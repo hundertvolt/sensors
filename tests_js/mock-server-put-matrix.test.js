@@ -135,17 +135,19 @@ describe.each(CASES)("PUT $device $sectionKey/$groupKey/$field.key ($field.kind)
     });
 
     if (field.kind === "number") {
-        const { min, max } = /** @type {{min: number, max: number}} */ (field);
+        const { min, max, resolution } = /** @type {{min: number, max: number, resolution?: number}} */ (field);
         const mid = min + (max - min) / 2;
+        // A field with a resolution is stored rounded to its step: the test's own arithmetic, not the mock's.
+        const persisted = (/** @type {number} */ value) => (resolution === undefined ? value : Math.round(value / resolution) / Math.round(1 / resolution));
 
         it.each(
             [min, mid, max]
                 .map((v) => (Number.isInteger(min) && Number.isInteger(max) && !isFloat ? Math.round(v) : v))
-                .filter((v) => v !== currentValue),
+                .filter((v) => persisted(v) !== currentValue),
         )("accepts %s (a valid value distributed across the range): Valid, and it gets persisted", async (value) => {
             const { status, getBody } = await putAndGet(testCase, numberLiteral(value, isFloat));
             expect(status).toBe("Valid");
-            expect(currentValueIn(getBody, testCase)).toBe(value);
+            expect(currentValueIn(getBody, testCase)).toBe(persisted(value));
         });
 
         const step = Number.isInteger(min) && Number.isInteger(max) ? 1 : 0.5;

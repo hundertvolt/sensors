@@ -179,7 +179,7 @@ _N_BOOL_CFG = const(1)  # RangeAuto ALONE - Calibrate is command-only (see _VAL_
 # @web IRCompAdjust section=sensors submitGroup=self label="IR Compensation Adjust" unit="codes" description="Fine infrared rejection. Changing it shifts the lux scale: the reported full scale is nominal at one setting only."
 # @web FiltCoeff section=sensors submitGroup=self label="Output Filter" description="First-order exponential moving average over the measured channels, stepped once per read cycle." special:-1.0="Filter off"
 # @web GainRatio section=sensors submitGroup=self label="Range Gain Ratio" decimals=3 description="The applied ratio between the 375 lx and 10000 lx full scales. Nominally 26.667; every real part differs, and the error shows as a step at each range change. Changed only here - measure a candidate with Calibrate below, read it off Measured Gain Ratio, and enter it."
-# @web Calibrate section=sensors submitGroup=self label="Calibrate Gain Ratio" onLabel="On" offLabel="Off" description="Only 'On' has effect. Measures the ratio for up to two minutes while the light stays in the auto-range overlap band, and publishes the result as Measured Gain Ratio. Changes nothing on its own." dispatch=true defaultValue=false
+# @web Calibrate section=sensors submitGroup=self label="Calibrate Gain Ratio" onLabel="On" offLabel="Off" description="Only 'On' has effect. Measures the ratio for up to two minutes while the light stays in the auto-range overlap band, and publishes the result as Measured Gain Ratio. Changes nothing on its own." dispatch=true
 
 _NAME = const("ISL29125")
 # Kept as a literal tuple inline (not `_FIELDS` below) because mypy's namedtuple plugin can only

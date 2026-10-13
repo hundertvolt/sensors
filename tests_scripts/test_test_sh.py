@@ -1088,6 +1088,49 @@ def test_a_no_verdict_marker_from_the_memory_gate_fails_the_file(repo_root: Path
     assert "  - tests/test_x.py: no verdict (per-file log missing or unreadable)" in _block(out)
 
 
+def _failure(name: str, *message: str) -> str:
+    # One failing test of test_x as microtest prints it: its FAIL line, then sys.print_exception's traceback.
+    frames = f'[test_x] Traceback (most recent call last):\n[test_x]   File "tests/microtest.py", line 35, in run\n[test_x]   File "tests/test_x.py", line 9, in {name}\n'
+    return f"[test_x] FAIL {name}:\n{frames}" + "".join(f"[test_x] {line}\n" for line in message)
+
+
+@pytest.mark.parametrize(
+    ("failures", "count", "reason"),
+    [
+        (_failure("test_b", "AssertionError: expected 3, got 4"), "2/3 passed, 1 failed", "1 of 3 tests failed (FAIL test_b: AssertionError: expected 3, got 4)"),
+        (_failure("test_b", "AssertionError: ") + _failure("test_c", "ValueError: first line", "second line"), "1/3 passed, 2 failed", "2 of 3 tests failed (FAIL test_b: AssertionError:; FAIL test_c: ValueError: first line)"),
+    ],
+    ids=["one", "two"],
+)
+def test_a_failed_files_reason_names_each_failing_test_with_its_first_failure_line(repo_root: Path, tmp_path: Path, failures: str, count: str, reason: str) -> None:
+    # The deciding attempt's tests only: the timed-out first attempt's failure is not named.
+    log = "[test_x] == attempt 1/3\n" + _failure("test_stale", "OSError: 110") + "[test_x] == attempt 2/3\n[test_x] PASS test_a\n" + failures + f"[test_x] {count}, 0 skipped\n"
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", log, None)})
+    assert code == 1, out
+    assert f"Failed:\n  - tests/test_x.py: {reason}\nSkipped:" in _block(out), _block(out)
+
+
+@pytest.mark.parametrize(
+    ("fail_lines", "failed", "more"),
+    [(7, 7, "+2 more"), (1, 2, "+1 more")],
+)
+def test_at_most_five_failing_tests_are_named_and_the_rest_counted(repo_root: Path, tmp_path: Path, fail_lines: int, failed: int, more: str) -> None:
+    # "+N more" counts the closing line's failures left unnamed, so a FAIL line lost from the log still shows.
+    log = "".join(_failure(f"test_f{i}", f"AssertionError: {i}") for i in range(1, fail_lines + 1)) + f"[test_x] 0/{failed} passed, {failed} failed, 0 skipped\n"
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", log, None)})
+    assert code == 1, out
+    named = "; ".join(f"FAIL test_f{i}: AssertionError: {i}" for i in range(1, min(fail_lines, 5) + 1))
+    assert f"  - tests/test_x.py: {failed} of {failed} tests failed ({named}; {more})\n" in _block(out), _block(out)
+
+
+def test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed(repo_root: Path, tmp_path: Path) -> None:
+    # Guard: with no closing line the attempt is incomplete, so its reason stays the crash's own.
+    log =_failure("test_b", "AssertionError: boom") + "[test_x] Segmentation fault\n"
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", log, None)})
+    assert code == 1, out
+    assert "Failed:\n  - tests/test_x.py: failed; no test count (crashed or killed)\nSkipped:" in _block(out), _block(out)
+
+
 @pytest.mark.parametrize(
     ("pytest_status", "record", "reason"),
     [

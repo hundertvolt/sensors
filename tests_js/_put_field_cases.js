@@ -10,8 +10,8 @@ import { neverUnchanged } from "../js/definitions.js";
 /** @typedef {import("../js/definitions.js").MockDeviceData} MockDeviceData */
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 
-// Action fields (dispatch) and always-executed fields have their own category: the matrices'
-// never-"Unchanged" category (two identical valid sends both answer Valid).
+// Action fields (dispatch) and always-executed fields have their own categories: the matrices'
+// never-"Unchanged" category (two identical valid sends both answer Valid) and the live tier's action-field block.
 
 /**
  * @typedef {{

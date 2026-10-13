@@ -29,6 +29,7 @@
     "test:coverage": "vitest run --coverage --exclude \"**/node_modules/**\" --exclude \"tests_js/live-backend-put-matrix.test.js\"",
     "lint:html": "html-validate \"html/**/*.html\"",
     "lint:css": "stylelint \"html/**/*.css\"",
+    "lint:html:built": "scripts/build_device_websites.sh --stage-only build/staged_html && html-validate \"build/staged_html/*/index.html\"",
     "prepreview": "npm run build:definitions",
     "preview": "python3 -m http.server 8000"
   },

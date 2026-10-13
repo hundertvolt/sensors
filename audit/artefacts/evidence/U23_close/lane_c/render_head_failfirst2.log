@@ -1,0 +1,638 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23c
+
+ ❯ |chromium| tests_js/render.test.js (49 tests | 25 failed) 32785ms
+   ❯ renderSection (49)
+     ✓ renders readonly measurement fields and updates them on poll 14ms
+     ✓ renders a nested measurement field's own leaf at its declared precision, not [object Object] 15ms
+     ✓ renders a writable number field pre-filled via its current-value caption, and a toggle button 16ms
+     ✓ submits an edited field via Apply and shows the resulting per-field status 23ms
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 27ms
+     × sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 231ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 24ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 23ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 12ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 12ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll update 115ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 33ms
+     ❯ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       × renders On (the schema defaultValue), not Off, despite no real current value 110ms
+       ✓ sparse-omits it when left untouched at the defaultValue (nothing to submit) 11ms
+       ✓ submits it once deliberately flipped away from the defaultValue 24ms
+     ✓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 12ms
+     ✓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 12ms
+     × shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 102ms
+     × shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it 2098ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 22ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 22ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 21ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 22ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 11ms
+     × reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value 2089ms
+     × shows a visible error banner when a GET response body is empty 2103ms
+     × shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 2096ms
+     × surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error 2081ms
+     × shows a visible error banner when a section's /status sub-request fails 2091ms
+     ✓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 218ms
+     ✓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 22ms
+     ✓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 22ms
+     × shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 139ms
+     ✓ shows Failed when a PUT response body is empty (a torn/truncated transmission) 22ms
+     × shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 131ms
+     ❯ the section controller (14)
+       × keeps the same card and readonly value node across three polls 171ms
+       × keeps focus on the errcount card's 'Show all' across a poll 136ms
+       × paints nothing and shows no banner when a GET pending at stop() settles afterwards 166ms
+       × does not queue the next section's first GET behind a stopped section's pending one 2116ms
+       × reads a statusPath field's value from GET /status on a section that reads another route 2104ms
+       × shows a degraded /status source as unavailable in every field of its card, with the card's cue 105ms
+       × updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns 2104ms
+       × renders every errcount row as no data when /status carries no errcount 108ms
+       × renders an errcount entry sent as the unavailable marker as unavailable 103ms
+       × feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike 2091ms
+       × shows an epoch field as its age against the device clock, and a float without decimals at the site default 138ms
+       × calls onRecovered once when a failure episode ends, never on a plain success 2133ms
+       × logs console.error once per failure episode, not once per failed tick 5167ms
+       × counts an Apply on the shell's tracker from the click until its post-write GET settles 2118ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 25 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field
+AssertionError: expected 'Command executed — MeasInterval: Valid' to be 'OK — MeasInterval: Valid' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---sparse-omits-an-untouched-toggle-enum-field-left-at-its-current-value--unlike-a-dispatch-marked-field.png
+
+Expected: [32m"[7mOK[27m — MeasInterval: Valid"[39m
+Received: [31m"[7mCommand executed[27m — MeasInterval: Valid"[39m
+
+ ❯ tests_js/render.test.js:368:62
+    366|         expect(card.dataset.applyStatus).toBe("valid");
+    367|         // Only the field that actually changed shows up in the result…
+    368|         expect(mustQuery(card, ".apply-result").textContent).toBe("OK …
+       |                                                              ^
+    369|     });
+    370|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---renders-On--the-schema-defaultValue---not-Off--despite-no-real-current-value.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/render.test.js:565:57
+    563|
+    564|             const toggle = mustQuery(main, '[data-field-key="AuxEnable…
+    565|             expect(toggle.getAttribute("aria-pressed")).toBe("true");
+       |                                                         ^
+    566|             expect(toggle.textContent).toBe("On");
+    567|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+AssertionError: expected undefined to be 'false' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner--without-clearing-existing-data--when-a-live-poll-s-GET-fails--and-hides-it-again-once-the-next-poll-succeeds.png
+
+[32m- Expected:[39m
+"false"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/render.test.js:718:38
+    716|         await waitFor(() => main.querySelector('[data-field-key="CO2"]…
+    717|         const banner = mustQuery(main, ".error-banner");
+    718|         expect(banner.dataset.shown).toBe("false");
+       |                                      ^
+    719|
+    720|         controls.nextFailure = 500;
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-a-settings-section-s-one-shot-GET-fails--and-a-later-tick-recovers-it.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:738:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reads-maintenance-data-by-path--each-of-two-instances-whose-flattened-keys-would-collide-showing-its-own-value.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:873:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-a-GET-response-body-is-empty.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:893:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-clear--non-crashing-error-banner-when-a-GET-response-body-is-torn-truncated-JSON--a-transmission-error-.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:904:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---surfaces-the-server-s-own-descr-text-when-a-section-s--status-sub-request-returns-a-shaped-HTTP-error.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:922:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-a-section-s--status-sub-request-fails.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:941:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)
+AssertionError: expected 'Request failed: Error: Internal serve…' to match /simulated failure/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-with-the-server-s-own-descr-when-a-PUT-hits-a-shaped-HTTP-error--500-.png
+
+[32m- Expected:[39m
+/simulated failure/i
+
+[31m+ Received:[39m
+"Request failed: Error: Internal server error"
+
+ ❯ tests_js/render.test.js:1053:62
+    1051|         const card = mustQuery(main, '[data-group-key="SCD30"]');
+    1052|         expect(card.dataset.applyStatus).toBe("failed");
+    1053|         expect(mustQuery(card, ".apply-result").textContent).toMatch(/…
+       |                                                              ^
+    1054|     });
+    1055|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status
+AssertionError: expected 'Request failed: RangeError: Failed to…' to contain 'MeasInterval: Failed'
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-for-a-field-silently-missing-from-a-nominally-OK-PUT-response--without-losing-the-other-field-s-real-status.png
+
+Expected: [32m"MeasInterval: Failed"[39m
+Received: [31m"Request failed: RangeError: Failed to construct 'Response': The status provided (0) is outside the range [200, 599]."[39m
+
+ ❯ tests_js/render.test.js:1092:62
+    1090|         const card = mustQuery(main, '[data-group-key="SCD30"]');
+    1091|         expect(card.dataset.applyStatus).toBe("failed"); // worst-firs…
+    1092|         expect(mustQuery(card, ".apply-result").textContent).toContain…
+       |                                                              ^
+    1093|         // The reconciled Failed status reaches the field's own box to…
+    1094|         expect(mustQuery(card, '[data-field-wrapper-key="MeasInterval"…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > keeps the same card and readonly value node across three polls
+AssertionError: expected <div class="card" …(1)>…(2)</div> to be <div class="card" …(1)>…(2)</div> // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---keeps-the-same-card-and-readonly-value-node-across-three-polls.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -22,11 +22,11 @@[39m
+[2m      </label>[22m
+[2m      <span[22m
+[2m        class="field-value"[22m
+[2m        data-field-key="CO2"[22m
+[2m      >[22m
+[32m-       596.71[39m
+[31m+       591.28[39m
+[2m      </span>[22m
+[2m      <p[22m
+[2m        class="field-description"[22m
+[2m      />[22m
+[2m    </div>[22m
+
+ ❯ tests_js/render.test.js:1112:65
+    1110|             const seen = requests.length;
+    1111|             await waitFor(() => requests.length >= seen + 3);
+    1112|             expect(mustQuery(main, '[data-group-key="SCD30"]')).toBe(c…
+       |                                                                 ^
+    1113|             expect(mustQuery(main, '[data-field-key="CO2"]')).toBe(val…
+    1114|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > keeps focus on the errcount card's 'Show all' across a poll
+AssertionError: expected false to be true // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---keeps-focus-on-the-errcount-card-s--Show-all--across-a-poll.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ tests_js/render.test.js:1128:41
+    1126|             const seen = requests.length;
+    1127|             await waitFor(() => requests.length >= seen + 2);
+    1128|             expect(showAll.isConnected).toBe(true);
+       |                                         ^
+    1129|             expect(document.activeElement).toBe(showAll);
+    1130|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > paints nothing and shows no banner when a GET pending at stop() settles afterwards
+AssertionError: expected <div class="card" …(1)>…(2)</div> to be null
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---paints-nothing-and-shows-no-banner-when-a-GET-pending-at-stop---settles-afterwards.png
+
+[32m- Expected:[39m
+null
+
+[31m+ Received:[39m
+<div
+  class="card"
+  data-group-key="SCD30"
+>
+  <h3>
+    SCD30
+  </h3>
+  <div
+    class="field"
+    data-field-wrapper-key="CO2"
+  >
+    <label
+      class="field-label"
+      for="field-CO2"
+    >
+      CO2
+      <span
+        class="field-unit"
+      >
+         [ppm]
+      </span>
+    </label>
+    <span
+      class="field-value"
+      data-field-key="CO2"
+    >
+      600
+    </span>
+    <p
+      class="field-description"
+    />
+  </div>
+</div>
+
+ ❯ tests_js/render.test.js:1156:60
+    1154|                 setTimeout(resolve, 50);
+    1155|             });
+    1156|             expect(main.querySelector("[data-group-key]")).toBeNull();
+       |                                                            ^
+    1157|             expect(mustQuery(main, ".error-banner").dataset.shown).toB…
+    1158|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > does not queue the next section's first GET behind a stopped section's pending one
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---does-not-queue-the-next-section-s-first-GET-behind-a-stopped-section-s-pending-one.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1182:17
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > reads a statusPath field's value from GET /status on a section that reads another route
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---reads-a-statusPath-field-s-value-from-GET--status-on-a-section-that-reads-another-route.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1205:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > shows a degraded /status source as unavailable in every field of its card, with the card's cue
+AssertionError: expected undefined to be 'unavailable' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---shows-a-degraded--status-source-as-unavailable-in-every-field-of-its-card--with-the-card-s-cue.png
+
+[32m- Expected:[39m
+"unavailable"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/render.test.js:1235:48
+    1233|             await waitFor(() => main.querySelector('[data-field-key="R…
+    1234|             const system = mustQuery(main, '[data-group-key="system"]'…
+    1235|             expect(system.dataset.sourceState).toBe("unavailable");
+       |                                                ^
+    1236|             const values = [...system.querySelectorAll(".field-value")…
+    1237|             expect(values).toEqual(["unavailable", "unavailable"]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---updates-a-sensor-card-in-place-to-unavailable-when-a-refresh-sends-its-marker--and-back-when-the-map-returns.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1269:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > renders every errcount row as no data when /status carries no errcount
+AssertionError: expected '0' to be 'no data' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---renders-every-errcount-row-as-no-data-when--status-carries-no-errcount.png
+
+Expected: [32m"no data"[39m
+Received: [31m"0"[39m
+
+ ❯ tests_js/render.test.js:1287:72
+    1285|
+    1286|             mustQuery(main, '[data-errcount-action="all"]').click();
+    1287|             expect(mustQuery(main, ".errcount-row-count").textContent)…
+       |                                                                        ^
+    1288|         });
+    1289|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > renders an errcount entry sent as the unavailable marker as unavailable
+AssertionError: expected 'undefined' to be 'unavailable' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---renders-an-errcount-entry-sent-as-the-unavailable-marker-as-unavailable.png
+
+Expected: [32m"un[7mavailable[27m"[39m
+Received: [31m"un[7mdefined[27m"[39m
+
+ ❯ tests_js/render.test.js:1298:72
+    1296|
+    1297|             mustQuery(main, '[data-errcount-action="all"]').click();
+    1298|             expect(mustQuery(main, ".errcount-row-count").textContent)…
+       |                                                                        ^
+    1299|         });
+    1300|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---feeds-every--status-body-it-reads-to-the-device-clock--its-own-GET-s-and-a-sub-request-s-alike.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1306:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > shows an epoch field as its age against the device clock, and a float without decimals at the site default
+AssertionError: expected '1000' to be '30 s ago' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---shows-an-epoch-field-as-its-age-against-the-device-clock--and-a-float-without-decimals-at-the-site-default.png
+
+Expected: [32m"30 s ago"[39m
+Received: [31m"1000"[39m
+
+ ❯ tests_js/render.test.js:1341:74
+    1339|
+    1340|             await waitFor(() => main.querySelector('[data-field-key="T…
+    1341|             expect(mustQuery(main, '[data-field-key="TS"]').textConten…
+       |                                                                          ^
+    1342|             expect(mustQuery(main, '[data-field-key="Temp"]').textCont…
+    1343|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---calls-onRecovered-once-when-a-failure-episode-ends--never-on-a-plain-success.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1356:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > logs console.error once per failure episode, not once per failed tick
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---logs-console-error-once-per-failure-episode--not-once-per-failed-tick.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1380:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/25]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > the section controller > counts an Apply on the shell's tracker from the click until its post-write GET settles
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---the-section-controller---counts-an-Apply-on-the-shell-s-tracker-from-the-click-until-its-post-write-GET-settles.png
+
+ ❯ waitFor tests_js/render.test.js:29:11
+     27|         });
+     28|     }
+     29|     throw new Error("waitFor timed out");
+       |           ^
+     30| }
+     31|
+ ❯ tests_js/render.test.js:1405:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=e1840600:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/25]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  25 failed | 24 passed (49)
+   Start at  08:59:51
+   Duration  34.11s (tests 99%, worker 1%)
+
+== Summary: npm test ==
+Commit: d90bd96 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 24 · failed 25 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field: expected 'Command executed — MeasInterval: Valid' to be 'OK — MeasInterval: Valid' // Object.is equality
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value: expected 'false' to be 'true' // Object.is equality
+  - tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds: expected undefined to be 'false' // Object.is equality
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it: waitFor timed out
+  - tests_js/render.test.js > renderSection > reads maintenance data by path, each of two instances whose flattened keys would collide showing its own value: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error): waitFor timed out
+  - tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500): expected 'Request failed: Error: Internal serve…' to match /simulated failure/i
+  - tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status: expected 'Request failed: RangeError: Failed to…' to contain 'MeasInterval: Failed'
+  - tests_js/render.test.js > renderSection > the section controller > keeps the same card and readonly value node across three polls: expected <div class="card" …(1)>…(2)</div> to be <div class="card" …(1)>…(2)</div> // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > keeps focus on the errcount card's 'Show all' across a poll: expected false to be true // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > paints nothing and shows no banner when a GET pending at stop() settles afterwards: expected <div class="card" …(1)>…(2)</div> to be null
+  - tests_js/render.test.js > renderSection > the section controller > does not queue the next section's first GET behind a stopped section's pending one: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > reads a statusPath field's value from GET /status on a section that reads another route: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > shows a degraded /status source as unavailable in every field of its card, with the card's cue: expected undefined to be 'unavailable' // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > renders every errcount row as no data when /status carries no errcount: expected '0' to be 'no data' // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > renders an errcount entry sent as the unavailable marker as unavailable: expected 'undefined' to be 'unavailable' // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > feeds every /status body it reads to the device clock, its own GET's and a sub-request's alike: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > shows an epoch field as its age against the device clock, and a float without decimals at the site default: expected '1000' to be '30 s ago' // Object.is equality
+  - tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > logs console.error once per failure episode, not once per failed tick: waitFor timed out
+  - tests_js/render.test.js > renderSection > the section controller > counts an Apply on the shell's tracker from the click until its post-write GET settles: waitFor timed out
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

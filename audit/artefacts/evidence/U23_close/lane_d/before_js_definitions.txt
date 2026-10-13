@@ -1,0 +1,23 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/laneD/head_tree
+
+ ✓ |chromium| tests_js/definitions.test.js (39 tests) 19ms
+
+ Test Files  1 passed (1)
+      Tests  39 passed (39)
+   Start at  07:55:17
+   Duration  1.66s (worker 85%, import 12%, tests 3%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 39 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

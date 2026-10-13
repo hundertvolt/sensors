@@ -15,29 +15,24 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 // If the two ever disagree this test goes red, which is the failure mode worth having.
 /**
  * @param {{key: string}} section
- * @param {{key: string}} group
+ * @param {{key: string, fields?: FieldDef[]}} group
  * @param {Record<string, unknown>} data
+ * @param {Record<string, unknown>} statusBody
  * @returns {Record<string, unknown>}
  */
-function groupValuesFrom(section, group, data) {
-    if (section.key === "measurements" || section.key === "sensors") {
-        return /** @type {Record<string, unknown>} */ (data[group.key] ?? {});
+function groupValuesFrom(section, group, data, statusBody) {
+    const source = section.key === "measurements" || section.key === "sensors" || section.key === "status"
+        ? /** @type {Record<string, unknown>} */ (data[group.key] ?? {})
+        : data;
+    const statusFields = (group.fields ?? []).filter((field) => field.statusPath !== undefined);
+    if (statusFields.length === 0) {
+        return source;
     }
-    if (section.key === "status" && group.key === "sensors") {
-        /** @type {Record<string, unknown>} */
-        const flat = {};
-        const bySensor = /** @type {Record<string, Record<string, unknown>>} */ (data.sensors ?? {});
-        for (const [sensorKey, fields] of Object.entries(bySensor)) {
-            for (const [fieldKey, value] of Object.entries(fields)) {
-                flat[`${sensorKey}_${fieldKey}`] = value;
-            }
-        }
-        return flat;
+    const values = { ...source };
+    for (const field of statusFields) {
+        values[field.key] = resolveFieldValue({ ...field, path: field.statusPath ?? [] }, statusBody);
     }
-    if (section.key === "status") {
-        return /** @type {Record<string, unknown>} */ (data[group.key] ?? {});
-    }
-    return data;
+    return values;
 }
 
 /**
@@ -76,7 +71,7 @@ function unrenderableReadonlyFields(defs, data) {
         }
         const sectionData = /** @type {Record<string, unknown>} */ (data[dataKey] ?? {});
         for (const group of section.groups) {
-            const values = groupValuesFrom(section, group, sectionData);
+            const values = groupValuesFrom(section, group, sectionData, /** @type {Record<string, unknown>} */ (data.status ?? {}));
             for (const field of group.fields ?? []) {
                 // Only readonly fields: a command-only trigger is never echoed in a GET.
                 if (field.kind !== "readonly") {
@@ -125,6 +120,16 @@ describe("definitions and mockdata agree", () => {
         };
         const data = { measurements: { ISL29125: { RGB: { R: 0.5, G: 0.25, B: 0.125 } } } };
         expect(unrenderableReadonlyFields(defs, data)).toEqual(["measurements/ISL29125/R (an object, not a leaf)"]);
+    });
+
+    it("reads a maintenance field by its path and reports one whose instance is absent", () => {
+        const fields = [
+            { key: "SGP40_BackupTS", label: "Backup", kind: /** @type {const} */ ("readonly"), path: ["SGP40", "BackupTS"] },
+            { key: "SGP40_2_BackupTS", label: "Backup 2", kind: /** @type {const} */ ("readonly"), path: ["SGP40_2", "BackupTS"] },
+        ];
+        const defs = { sections: [{ key: "status", groups: [{ key: "sensors", fields }] }] };
+        expect(unrenderableReadonlyFields(defs, { status: { sensors: { SGP40: { BackupTS: 1 }, SGP40_2: { BackupTS: 2 } } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { sensors: { SGP40: { BackupTS: 1 } } } })).toEqual(["status/sensors/SGP40_2_BackupTS"]);
     });
 
     it("takes a list of names as a leaf and still reports a list that holds a sub-object", () => {

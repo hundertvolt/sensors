@@ -27,7 +27,7 @@ import asy_fram_manager
 import asy_print_log
 import asy_spi_driver
 import asy_system_service
-from asy_base_classes import SensorReaderConfig
+from asy_base_classes import UNAVAILABLE, SensorReaderConfig
 from asy_crc_checks import CRC8, CRC32
 from asy_fram_manager import FRAMChunk, FRAMManager
 from asy_i2c_driver import I2C, I2CDevice
@@ -3457,7 +3457,8 @@ def test_setup_answers_false_for_an_unusable_store_and_still_sets_up_the_logger(
 
 def test_get_dict_cfg_answers_the_nested_shape_or_the_unavailable_marker() -> None:
     svc = make_service(cfg_path=_tmp_cfg_dir())
-    assert run(svc.get_dict_cfg()) == {"SYSTEM": {"error": "unavailable"}}  # before setup(): the store is not valid
+    marker = run(svc.get_dict_cfg())
+    assert marker == {"SYSTEM": {"error": "unavailable"}} == {"SYSTEM": {"error": UNAVAILABLE}}  # before setup(): the store is not valid
     run(svc.setup())
     assert run(svc.get_dict_cfg()) == {"SYSTEM": {"DebugLevel": 0}}
 

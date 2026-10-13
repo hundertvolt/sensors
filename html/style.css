@@ -5,21 +5,24 @@
  */
 
 :root {
+    color-scheme: light dark;
+
     --color-bg: #f2f3f5;
     --color-surface: #fff;
     --color-surface-alt: #f6f7f9;
     --color-border: #d8dbe0;
+    --color-control-border: #8790a0;
     --color-text: #1b1e22;
     --color-text-muted: #5b6270;
     --color-accent: #2f6fed;
     --color-accent-contrast: #fff;
-    --color-success: #1f9d55;
+    --color-success: #197f45;
     --color-success-bg: #e5f7ec;
     --color-neutral: #6b7280;
     --color-neutral-bg: #eceef1;
-    --color-danger: #d64545;
+    --color-danger: #cb2d2d;
     --color-danger-bg: #fbe9e9;
-    --color-warn: #9457c7;
+    --color-warn: #8d4cc3;
     --color-warn-bg: #f2e9fa;
     --shadow-card: 0 1px 2px rgb(20 22 26 / 6%), 0 1px 1px rgb(20 22 26 / 4%);
     --radius-card: 10px;
@@ -32,6 +35,7 @@
         --color-surface: #1e2126;
         --color-surface-alt: #262a31;
         --color-border: #34383f;
+        --color-control-border: #6b7482;
         --color-text: #e7e9ec;
         --color-text-muted: #9aa1ac;
         --color-accent: #6d9dff;
@@ -122,7 +126,7 @@ button {
     transition: opacity 0.18s ease;
 }
 
-.app-shell.nav-open .nav-backdrop {
+.app-shell[data-nav-open="true"] .nav-backdrop {
     opacity: 1;
     pointer-events: auto;
 }
@@ -142,8 +146,15 @@ button {
     overflow-y: auto;
 }
 
-.app-shell.nav-open .nav-drawer {
+.app-shell[data-nav-open="true"] .nav-drawer {
     transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .nav-backdrop,
+    .nav-drawer {
+        transition: none;
+    }
 }
 
 .nav-drawer-heading {
@@ -258,14 +269,63 @@ button {
     font-size: 12px;
 }
 
+/* A source the device could not read: its values say so instead of looking unset. */
+[data-source-state="unavailable"] .field-value {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.field-warning {
+    margin: 4px 0 0;
+    color: var(--color-warn);
+    font-size: 12px;
+}
+
+.field-warning:not([data-shown="true"]) {
+    display: none;
+}
+
+/* A code shown as its value: a button only so a click can show the code's description. */
+button.field-value.code-value {
+    margin: 0;
+    padding: 0;
+    background: none;
+    color: inherit;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+.code-number {
+    color: var(--color-text-muted);
+}
+
+.code-description {
+    margin: 6px 0 0;
+    font-size: 13px;
+}
+
+[data-code-tone="good"] {
+    color: var(--color-success);
+}
+
+[data-code-tone="neutral"] {
+    color: var(--color-neutral);
+}
+
+[data-code-tone="warn"] {
+    color: var(--color-warn);
+}
+
 .field input[type="text"],
+.field input[type="password"],
 .field input[type="number"],
 .field select {
     width: 100%;
     padding: 7px 9px;
     background-color: var(--color-surface-alt);
     color: var(--color-text);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-control-border);
     border-radius: var(--radius-control);
     font-size: 14px;
 }
@@ -281,7 +341,7 @@ button {
     padding: 7px 14px;
     background-color: var(--color-surface-alt);
     color: var(--color-text);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-control-border);
     border-radius: var(--radius-control);
     cursor: pointer;
 }
@@ -290,6 +350,10 @@ button {
     background-color: var(--color-accent);
     color: var(--color-accent-contrast);
     border-color: var(--color-accent);
+}
+
+.action-button.clear-button {
+    margin-top: 6px;
 }
 
 .apply-button {
@@ -311,9 +375,7 @@ button {
     color: var(--color-text-muted);
 }
 
-/* Apply-result indicator: a left accent stripe rather than legacy's full background recolor, so
-   it reads as a badge and not a flash. Two levels, as legacy had: the card's worst status across
-   the group, and each field's own box (SPECIFICATION.md Part H.3). */
+/* Apply result: a left stripe on the card and on each field, double for invalid/failed (SPECIFICATION.md Part H.4). */
 .card[data-apply-status="valid"] {
     border-left: 3px solid var(--color-success);
 }
@@ -323,11 +385,11 @@ button {
 }
 
 .card[data-apply-status="invalid"] {
-    border-left: 3px solid var(--color-danger);
+    border-left: 3px double var(--color-danger);
 }
 
 .card[data-apply-status="failed"] {
-    border-left: 3px solid var(--color-warn);
+    border-left: 3px double var(--color-warn);
 }
 
 .field[data-apply-status="valid"] {
@@ -340,10 +402,12 @@ button {
 
 .field[data-apply-status="invalid"] {
     border-left-color: var(--color-danger);
+    border-left-style: double;
 }
 
 .field[data-apply-status="failed"] {
     border-left-color: var(--color-warn);
+    border-left-style: double;
 }
 
 /* ---- Error / status counts ---- */
@@ -404,8 +468,18 @@ button {
     color: var(--color-text-muted);
 }
 
-.errcount-row[data-has-errors="true"] .errcount-row-count {
+.errcount-row-wrapper[data-worst="E"] .errcount-row-count {
     color: var(--color-danger);
+}
+
+.errcount-row-wrapper[data-worst="W"] .errcount-row-count {
+    color: var(--color-warn);
+}
+
+/* A module without data ("no data", "unavailable"): muted like an unavailable field value. */
+.errcount-row-wrapper[data-worst="none"] .errcount-row-count {
+    color: var(--color-text-muted);
+    font-style: italic;
 }
 
 /* One horizontal wrapping row of pills per module, not a vertical list: a module can carry 10+
@@ -434,6 +508,13 @@ button {
     font-size: 12px;
     font-weight: 600;
     text-align: center;
+}
+
+/* A button only so a click can show the code's description; it keeps the pill's look. */
+button.history-entry-num {
+    margin: 0;
+    border: none;
+    cursor: pointer;
 }
 
 .history-entry[data-err-type="N"] .history-entry-num {
@@ -469,6 +550,11 @@ button {
     font-size: 14px;
 }
 
+.error-banner:not([data-shown="true"]) {
+    display: none;
+}
+
+/* A templates-only utility (SPECIFICATION.md Part H.3); controllers use the data attributes above. */
 .hidden {
     display: none !important;
 }

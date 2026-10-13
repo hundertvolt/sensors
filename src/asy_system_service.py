@@ -16,7 +16,7 @@ from machine import bootloader as system_bootloader
 from machine import reset as system_reset
 from micropython import const
 
-from asy_base_classes import LockedValue, TickSeconds, arm_tick_timer, utc_now
+from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
 from asy_print_log import DEFAULT_LOG, LogConfig, make_logger
 
@@ -573,7 +573,7 @@ class SystemService:
         # the nested {name: {field: value}} shape every SettingsGroup module returns, or the unavailable marker (Part C.6)
         # when the store answers nothing or only defaults standing in for a file it could not read.
         values = await self.cfgmgr.get_dict(schema_names(self._cfg_schema))
-        return {_NAME: values if values is not None and self.cfgmgr.writable else {"error": "unavailable"}}
+        return {_NAME: values if values is not None and self.cfgmgr.writable else {"error": UNAVAILABLE}}
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()

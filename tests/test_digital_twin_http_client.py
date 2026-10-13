@@ -188,8 +188,8 @@ def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof()
 
 
 # ---------------------------------------------------------------------------
-# _read_until_close() - the unsized fallback path GET / actually takes (Microdot's send_file()
-# passes a raw stream body, so no Content-Length is ever set - see this function's own comment).
+# _read_until_close() - the unsized fallback for a body that ends at EOF; GET / is sized now (the
+# static route sets Content-Length), so fetch() reads it through _read_exact() - see digital_twin/README.md.
 # ---------------------------------------------------------------------------
 
 

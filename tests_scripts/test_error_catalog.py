@@ -645,6 +645,39 @@ def test_the_reset_reason_table_has_one_row_per_recorded_code() -> None:
     assert not problems, "\n".join(problems)
 
 
+# ---- (12) the status tables: text, and a tone only where the page colours the code ------------------
+
+# The one table the page colours (agent, 2026-09-30): its text is the cue, the tone repeats it in colour.
+_TONED_TABLES = frozenset({"CalLight"})
+_TONES = frozenset({"good", "neutral", "warn"})
+
+
+def _status_table_problems(catalog: "dict[str, Any]") -> "list[str]":
+    problems: list[str] = []
+    for table, rows in catalog.get("status", {}).items():
+        for num, row in rows.items():
+            where = f"status.{table}.{num}"
+            if not num.isdigit():
+                problems.append(f"{where}: the code is not a non-negative int")
+            if not isinstance(row.get("text"), str) or not row["text"]:
+                problems.append(f"{where}: no text")
+            problems.extend(f"{where}: unknown key {key!r}" for key in sorted(set(row) - {"text", "tone"}))
+            if "tone" in row and table not in _TONED_TABLES:
+                problems.append(f"{where}: a tone, but the page colours only {sorted(_TONED_TABLES)}")
+            elif "tone" in row and row["tone"] not in _TONES:
+                problems.append(f"{where}: tone {row['tone']!r} is not one of {sorted(_TONES)}")
+    return problems
+
+
+def test_the_status_tables_carry_text_and_a_tone_only_where_the_page_colours_them() -> None:
+    catalog = _catalog()
+    problems = _status_table_problems(catalog)
+    assert not problems, "\n".join(problems)
+    for table in _TONED_TABLES:
+        assert all("tone" in row for row in catalog["status"][table].values()), f"{table}: every code needs its tone"
+    assert {num: row["tone"] for num, row in catalog["status"]["CalLight"].items()} == {"0": "neutral", "1": "good", "2": "warn", "3": "warn"}
+
+
 # ---- planted violations: each check above bites ---------------------------------------------------
 
 
@@ -778,6 +811,22 @@ def test_the_history_check_bites() -> None:
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 30))})  # another logger's code
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), ("E", 20))})  # an adjacent repeat
     assert _history_problems(_PLANT_CATALOG, "plant", {"NET": entry(("E", 20), counter=0)})  # counter below its slots
+
+
+@pytest.mark.parametrize(
+    ("table", "row", "expected"),
+    [
+        ("ResetReason", {"text": "t", "tone": "good"}, "the page colours only"),
+        ("CalLight", {"text": "t", "tone": "red"}, "tone 'red' is not one of"),
+        ("CalLight", {"text": "t", "colour": "good"}, "unknown key 'colour'"),
+        ("CalLight", {"tone": "good"}, "no text"),
+    ],
+)
+def test_the_status_table_check_bites(table: str, row: "dict[str, str]", expected: str) -> None:
+    catalog = {"status": {"ResetReason": {"0": {"text": "a"}}, "CalLight": {"0": {"text": "b", "tone": "neutral"}}}}
+    assert not _status_table_problems(catalog)
+    catalog["status"][table]["9"] = row
+    assert any(expected in p for p in _status_table_problems(catalog))
 
 
 def test_the_reset_table_check_bites() -> None:

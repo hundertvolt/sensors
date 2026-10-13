@@ -42,7 +42,7 @@ function groupValues(sectionKey, group, data) {
     }
     if (sectionKey === "status") {
         if (group.key === "sensors") {
-            return Object.fromEntries(Object.entries(data.status.sensors).flatMap(([name, body]) => Object.entries(body).map(([leaf, value]) => [`${name}_${leaf}`, value])));
+            return data.status.sensors; // read by each field's path, [<module name>, <leaf>]
         }
         return /** @type {Record<string, unknown>} */ (data.status[/** @type {"networking" | "system" | "notification"} */ (group.key)] ?? {});
     }
@@ -114,6 +114,18 @@ function namedKeys(defs, sectionKey, groupKey) {
 
 /**
  * @param {SiteDefinitions} defs
+ * @param {string} sectionKey
+ * @param {string} groupKey
+ * @returns {Set<string>} every dotted path one group's fields read (`SGP40.BackupTS`), a field without a path by its key
+ */
+function namedPaths(defs, sectionKey, groupKey) {
+    const section = defs.sections.find((s) => s.key === sectionKey);
+    const group = section?.groups.find((g) => "fields" in g && g.key === groupKey);
+    return new Set((group === undefined ? [] : /** @type {FieldGroup} */ (group).fields).map((f) => (f.path ?? [f.key]).join(".")));
+}
+
+/**
+ * @param {SiteDefinitions} defs
  * @returns {ErrcountGroup[]}
  */
 function errcountGroups(defs) {
@@ -145,9 +157,9 @@ function strayKeys(defs, data) {
         check(`${sectionKey}Config`, data[`${sectionKey}Config`], namedKeys(defs, sectionKey));
         check(`status.${sectionKey}`, data.status[sectionKey], namedKeys(defs, "status", sectionKey));
     }
-    const maintenance = namedKeys(defs, "status", "sensors");
+    const maintenance = namedPaths(defs, "status", "sensors");
     for (const [name, body] of Object.entries(data.status.sensors)) {
-        stray.push(...Object.keys(body).filter((leaf) => !maintenance.has(`${name}_${leaf}`)).map((leaf) => `status.sensors.${name}.${leaf}`));
+        stray.push(...Object.keys(body).filter((leaf) => !maintenance.has(`${name}.${leaf}`)).map((leaf) => `status.sensors.${name}.${leaf}`));
     }
     check("status.errcount", data.status.errcount, new Set(errcountGroups(defs).flatMap((g) => g.modules.map((m) => m.key))));
     return stray;
@@ -201,6 +213,22 @@ describe("composeMockData", () => {
             sections: [{ key: "measurements", label: "Measurements", rest: { get: "/measurements" }, pollGroup: /** @type {const} */ ("live"), groups: [{ key: "GHOST", label: "Ghost", fields: [] }] }],
         };
         expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock samples: no sample for group "measurements/GHOST"');
+    });
+
+    it("composes a maintenance field by its path: an instance's entry under its own name, from its driver's sample", () => {
+        const defs = definitionsOf(DEVICE_IDS[0] ?? "");
+        const field = { key: "SGP40_second_BackupTS", label: "Second Backup", kind: /** @type {const} */ ("readonly"), path: ["SGP40_second", "BackupTS"] };
+        const status = { key: "status", label: "Status", rest: { get: "/status" }, pollGroup: /** @type {const} */ ("live"), groups: [{ key: "sensors", label: "Sensor Maintenance", fields: [field] }] };
+        const data = composeMockData({ ...defs, sections: [status] }, SAMPLES);
+        expect(data.status.sensors).toEqual({ "SGP40_second": { BackupTS: SAMPLES.status.sensors.SGP40?.BackupTS } });
+    });
+
+    it("reports a maintenance value composed under a path no field reads", () => {
+        const defs = definitionsOf(DEVICE_IDS[0] ?? "");
+        const data = composeMockData(defs, SAMPLES);
+        const [name, body] = Object.entries(data.status.sensors)[0] ?? ["", {}];
+        data.status.sensors[name] = { ...body, Stray: 1 };
+        expect(strayKeys(defs, data)).toContain(`status.sensors.${name}.Stray`);
     });
 
     it("reports a value of the wrong kind and a stray key, so the checks above cannot pass vacuously", () => {

@@ -1,0 +1,45 @@
+In the hotspot mode, _hotspot_client_absent() now treats a failed arm of the
+hotspot-window timer (_arm_hotspot_timer() returning False: alarm-pool
+exhaustion, ENOMEM, or an allocation failure) as the iteration's WLAN
+hardware failure. Before this change the arm was persisted as TIMER and
+retried every 5 s without feeding the streak, so the window never ended and
+STA was never retried until a reboot or a credentials resubmit. The streak
+now climbs one step per no-client tick, through the device rung (the AP
+re-selected), to the give-up (GIVE_UP, WLAN_GIVE_UP). The supervisor
+restarts the task, whose start leaves the hotspot through
+_leave_hotspot_mode() and starts a fresh STA streak with the hotspot
+available once more, so a router back after a power loss is rejoined.
+Repeated task ends charge the task budget, which reboots. A later tick that
+arms the window heals the streak one step per clean iteration, as before.
+The new comment follows the silent mode's failed-arm comment word for word
+(one rule, two sites). That comment keeps its own actor and date.
+
+Tests (tests/test_asy_wifi_service.py, 261 -> 264, all three seen failing
+first on 202a118's code):
+- test_a_failed_window_arm_is_the_iterations_hardware_failure: with OSError
+  and with MemoryError, each failed tick sets the flag, and the two failures
+  leave one TIMER slot counting 2. Once the pool has room, the tick arms the
+  window once and clears the flag.
+- test_integration_a_hotspot_window_that_cannot_be_armed_ends_the_task_and_its_restart_retries_sta:
+  on the hotspot radio, the three no-client ticks start from streak 0, 1
+  and 2, and the task gives up at max_module_error + 1. The restart runs
+  with the pool still exhausted and the router back: it leaves the hotspot,
+  links on a new STA interface with the stored settings, and starts a fresh
+  streak with the hotspot available. The restart half guards unchanged code
+  and passes on its own.
+- test_integration_a_window_arm_that_succeeds_later_heals_the_streak: the
+  streak runs 0, 1, 2, 1, 0, 0 across the ticks, the window is armed once,
+  and the task keeps running.
+_hotspot_client() takes max_module_error. The twin's Timer has no
+arm-failure model, so no twin file can pin this behaviour; the unit tier
+pins it.
+
+Runs, each file in its own unshare -n, TZ=UTC, nice 19: the 32 test files
+that construct a WifiService (git grep plus U22's lane W consumer list) ran
+at -1 and at 32768, on a scratch copy of 202a118 and on this tree. All 128
+runs passed with no memory marker. tests/test_asy_wifi_service.py also ran
+under settrace, before and after. Every after wall time is within a few
+percent of its before time. The checks are clean: ruff on the 8 scopes, the
+four mypy passes on a cold cache, and the tests_scripts pre-commit set except
+test_tunables_register. That check is red only on rows another lane owes,
+none from these files.

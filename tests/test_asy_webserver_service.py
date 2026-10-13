@@ -25,7 +25,7 @@ from microdot import Microdot, Request, Response
 import asy_config_manager as cm
 import asy_spi_driver
 import asy_webserver_service
-from asy_base_classes import SensorReader, SensorReaderConfig
+from asy_base_classes import UNAVAILABLE, SensorReader, SensorReaderConfig
 from asy_fram_manager import FRAMManager
 from asy_print_log import LogConfig
 from asy_spi_driver import SPI
@@ -1090,6 +1090,50 @@ def test_a_failing_source_reset_answers_failed_and_the_others_still_reset() -> N
         assert m.pr.history == [], m.name
 
 
+class _RaisingResetModule(_FakeModule):
+    async def reset_error_counter(self) -> bool:
+        raise RuntimeError("injected for the reset")
+
+
+class _SlowResetModule(_FakeModule):
+    # Its reset finishes only after the raising one has: the answer must wait for it.
+    async def reset_error_counter(self) -> bool:
+        await asyncio.sleep(0.05)
+        return await self.pr.reset()
+
+
+def test_a_raising_source_reset_answers_failed_once_every_other_reset_has_run() -> None:
+    slow, bad, fast = _SlowResetModule("A"), _RaisingResetModule("B"), _FakeModule("C")
+    for m in (slow, fast):
+        run(m.pr.err_s("x", errno=1))
+    service, app = _make_service(error_sources=[slow, bad, fast])
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
+    assert res.status_code == 200
+    assert json.loads(res.body)["result"] == {"ResetErrors": "Failed"}
+    for m in (slow, fast):
+        assert (m.pr.reset_calls, m.pr.history) == (1, []), m.name
+    # The raise is persisted once, after the resets cleared this service's own log, so the evidence stays.
+    log = run(service.get_error_counter())["WEBSERVER"]
+    assert log["ErrCount"] == 1
+    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1
+
+
+def test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persisted() -> None:
+    other = _FakeModule("A")
+    service, app = _make_service(error_sources=[other])
+
+    async def _raise() -> bool:
+        raise RuntimeError("injected for the reset")
+
+    service.pr.reset = _raise  # type: ignore[method-assign]
+    res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
+    assert (res.status_code, json.loads(res.body)["result"]) == (200, {"ResetErrors": "Failed"})
+    assert other.pr.reset_calls == 1
+    log = run(service.get_error_counter())["WEBSERVER"]
+    assert log["ErrCount"] == 1
+    assert log["ErrNum"].count(code("E", "CALLBACK")) == 1
+
+
 class _SuspendingModule(_FakeModule):
     # Its reset waits until every module's reset has started (or a bound passes), then records how many had.
     def __init__(self, name: str, started: "list[str]", everyone: int, release: asyncio.Event) -> None:
@@ -1119,6 +1163,54 @@ def test_reset_errors_runs_every_source_at_once() -> None:
     res = run(app.dispatch_request(_make_request(app, "PUT", "/status", {"ResetErrors": True})))
     assert json.loads(res.body)["result"] == {"ResetErrors": "Valid"}
     assert [m.started_before_finish for m in mods] == [3, 3, 3]
+
+
+def _put_result(app: "Microdot", path: str, body: "dict[str, Any]") -> "dict[str, Any]":
+    result: dict[str, Any] = json.loads(run(app.dispatch_request(_make_request(app, "PUT", path, body))).body)["result"]
+    return result
+
+
+def test_reset_errors_answers_failed_and_clears_nothing_once_a_reboot_or_erase_command_is_accepted() -> None:
+    # From a restarting command's "Valid" on, ResetErrors answers "Failed" and no log, nor the drop window, is touched:
+    # the logs survive into the reboot (owner, 2026-10-13). A bad value still reads "Invalid"; repeating keeps it shut.
+    async def system_cmd(_cmd: str) -> bool:
+        return True
+
+    seen: dict[str, object] = {}
+    for word in ("reboot", "bootloader", "resetconfig", "erasefram"):
+        mod = _FakeModule("SGP40")
+        run(mod.pr.err_s("x", errno=1))
+        service, app = _make_service(error_sources=[mod], system_cmd=system_cmd)
+        run(service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))  # one entry in its own log, one dropped connection
+        answers: list[dict[str, Any]] = []
+        for path, body in (("/system", {"SystemCmd": word}), ("/status", {"ResetErrors": True}), ("/status", {"ResetErrors": False}), ("/system", {"SystemCmd": word}), ("/status", {"ResetErrors": True})):
+            answers.append(_put_result(app, path, body))
+        seen[word] = (answers, mod.pr.reset_calls, mod.pr.err_count, run(service.get_error_counter())["WEBSERVER"]["ErrCount"], run(service.get_dropped_count()))
+    shut = [{"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}, {"ResetErrors": "Invalid"}, {"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}]
+    assert seen == dict.fromkeys(seen, (shut, 0, 1, 1, 1)), seen  # no reset call, every log and the drop count kept
+
+
+def test_reset_errors_stays_open_after_mempause_or_a_command_that_was_not_accepted() -> None:
+    # Guard: ResetErrors shuts only on a restarting command's "Valid" (owner, 2026-10-13). mempause (no reboot follows), a
+    # refused or raising command and a word that is no command leave it answering "Valid" and resetting every log.
+    outcome: list[object] = [True]
+
+    async def system_cmd(_cmd: str) -> bool:
+        if isinstance(outcome[0], Exception):
+            raise outcome[0]
+        return outcome[0] is True
+
+    mod = _FakeModule("SGP40")
+    _service, app = _make_service(error_sources=[mod], system_cmd=system_cmd)
+    cases: list[tuple[str, object, str]] = [("mempause", True, "Valid"), ("reboot ", True, "Invalid")]
+    for word in ("reboot", "bootloader", "mempause", "resetconfig", "erasefram"):
+        cases += [(word, False, "Failed"), (word, RuntimeError("injected for the command"), "Failed")]
+    for word, result, answer in cases:
+        outcome[0] = result
+        calls = mod.pr.reset_calls
+        assert _put_result(app, "/system", {"SystemCmd": word}) == {"SystemCmd": answer}, (word, result)
+        assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Valid"}, (word, result)
+        assert mod.pr.reset_calls == calls + 1, (word, result)
 
 
 def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
@@ -3223,6 +3315,15 @@ def test_h2_stream_status_source_failure_yields_an_error_marker_not_a_broken_str
     log = run(service.get_error_counter())
     assert log["WEBSERVER"]["ErrNum"].count(code("E", "CALLBACK")) == 1
     assert log["WEBSERVER"]["ErrType"][log["WEBSERVER"]["ErrNum"].index(code("E", "CALLBACK"))] == "E"
+
+
+def test_h2_stream_both_marker_sites_send_the_one_spelling() -> None:
+    # Guard: a failed status source and a failed error log send the same compact text, built from asy_base_classes.UNAVAILABLE.
+    _service, app = _make_service(status_sources={"networking": _raising_source}, error_sources=[_RaisingErrorCounterModule("BMP3XX")], history_length=0)
+    raw = status_body(run(app.dispatch_request(_make_request(app, "GET", "/status", None))))
+    body = json.loads(raw)
+    assert body["networking"] == body["errcount"]["BMP3XX"] == {"error": UNAVAILABLE}
+    assert raw.count(b'{"error":"unavailable"}') == 2
 
 
 def test_h2_stream_maintenance_source_failure_is_isolated_to_that_one_sensor() -> None:

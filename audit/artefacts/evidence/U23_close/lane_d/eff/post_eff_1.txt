@@ -1,0 +1,16 @@
+........................................................................ [ 18%]
+........................................................................ [ 36%]
+........................................................................ [ 55%]
+........................................................................ [ 73%]
+........................................................................ [ 91%]
+................................                                         [100%]
+============================= slowest 8 durations ==============================
+0.32s call     tests_scripts/test_buildgen_definitions.py::test_cli_reports_a_definitions_error_in_one_line
+0.27s call     tests_scripts/test_buildgen_definitions.py::test_every_tagged_field_lands_once_in_its_group[arzi]
+0.21s call     tests_scripts/test_buildgen_definitions.py::test_web_tag_schema_sentinel_value_with_no_matching_special_label_fails_loud
+0.20s call     tests_scripts/test_buildgen_definitions.py::test_each_status_group_lists_the_keys_its_generated_source_returns[arzi]
+0.17s call     tests_scripts/test_buildgen_definitions.py::test_every_tagged_field_lands_once_in_its_group[dev]
+0.17s call     tests_scripts/test_buildgen_definitions.py::test_the_mandatory_logger_names_are_read_from_their_files
+0.15s call     tests_scripts/test_buildgen_definitions.py::test_every_field_codes_table_equals_its_catalog_status_table[arzi]
+0.14s call     tests_scripts/test_buildgen_definitions.py::test_an_unreadable_schema_names_its_device_and_instance
+392 passed in 4.32s

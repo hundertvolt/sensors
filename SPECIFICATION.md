@@ -416,7 +416,9 @@ features as today's deployed units, not a feature change.
   2026-10-08, to 'Bound how long a hotspot client holds the unit?': 'a, because the user may
   want to do other settings after setting the wifi, still using the same coupled device. it
   only must be sure that once no clients are connected to the hotspot anymore, the device
-  will try to connect to the actual wifi settings without a reboot required.'). A second failed STA
+  will try to connect to the actual wifi settings without a reboot required.'). A window whose timer
+  cannot be armed counts as a WLAN hardware failure each iteration, so the task gives up and its
+  restart leaves the hotspot for a fresh STA streak (owner, 2026-10-13; C.7). A second failed STA
   streak after a hotspot phase puts Wi-Fi into the silent mode, never off (owner, 2026-10-08: 'Don't
   permanently switch WiFi off, only stop retrying to connect.'): no hotspot, the status LED dark
   whatever `LEDWifiOn` says ('It should look like turned off.'), and one connect attempt every
@@ -887,12 +889,21 @@ Full coverage: `tests/_sensortask_scenarios.py` (imported by the six `tests/test
 The normative REST reference is generated per device: `buildgen/api_reference.py` writes
 `build/generated_src/api/<device>.json` (gitignored with `build/`, never frozen) from the one route
 table (`ROUTES` in `asy_webserver_service.py`), the device's generated definitions, the result words
-and the envelope code catalog (L.4). It holds `device`, `envelopeCodes`, `resultWords` and `routes`
-in `ROUTES` order, each route with its fields' facts: a GET lists every field except the
-dispatch-only ones and those with a `defaultValue`, a PUT every field except the readonly ones, and
-`GET /status` every errcount module. `tests_scripts/test_api_reference.py` pins it; this section is
-its prose summary. The build refuses a settings key two groups would serve on one route, and a
-logger name two modules would claim in `errcount` (L.6.6).
+and the envelope code catalog (L.4). It holds `device`, `envelopeCodes`, `resultWords`,
+`unavailableMarker` (`{"error": "unavailable"}`, its word `asy_base_classes.py`'s `UNAVAILABLE`),
+`unknownCodeText` (`asy_api_response.py`'s `_UNKNOWN_DESCR`, "Unknown error"; both read from `src/`
+by AST) and `routes` in `ROUTES` order, each route with its fields' facts: a GET lists every field
+except the dispatch-only ones and an always-executed toggle (`ContMeas`, the one command a GET
+cannot report), a PUT every field except the readonly ones, and `GET /status` every errcount
+module. A field's facts are its API keys (`key`, `kind`, `unit`, `min`/`max`,
+`minLength`/`maxLength`, `byteLength`, `shape`, `float`, `specialValues`, `path`, `format`, `codes`,
+`mask`, `dispatch`, `alwaysExecuted`, `resolution`, `ignoredWhenSet`, `statusPath`; an enum's
+options reduced to their values, a composite's sub-fields to their facts); the page-only hints
+(`label`, `description`, `onLabel`, `offLabel`, `decimals`, `clearable`, `codeTones`, `confirm`)
+stay out, and a definitions key in neither set fails the build (`api.field-key-unclassified`).
+`tests_scripts/test_api_reference.py` pins it; this section is its prose summary. The build refuses
+a settings key two groups would serve on one route, and a logger name two modules would claim in
+`errcount` (L.6.6).
 
 `WebserverService` is **registration-based**: the generated module hands it one `RouteSources`
 object (`sensors`, `settings`, `build_info`, `system_cmd`, `notification_led`, `notification_pause`,
@@ -919,8 +930,11 @@ settings.
   without re-flashing to check); `/notification` → `OnH, OnM, OffH, OffM, FlashBri, FlashInterval, FlashDur,
   AutoOn, WarnCO2, WarnVOC, WarnHum`; `/status` → live-only, sub-structured
   `networking`/`system`/`sensors`/`notification`/`errcount` (one entry per module plus per
-  `ConfigManager` — `CFGMGR_<name>`); `sensors` keys are `<source>_<field>`, one source per SGP40
-  under its instance name (`SGP40`, `SGP40_<ext>`, Part C.14) and `UARTLINK` for dev's initiator.
+  `ConfigManager` — `CFGMGR_<name>`); `sensors` holds one object per source with that source's
+  fields — one per SGP40 under its instance name (`SGP40`, `SGP40_<ext>`, Part C.14:
+  `BackupTS`/`RestoreTS`) and `UARTLINK` for dev's initiator (`Transfers`/`Failures`); the page
+  reads each such field by its `path` (`[source, field]`), while its definitions key stays
+  `<source>_<field>`.
 - **`/status` fields with meaning beyond their name**: `SysUptime` — measured seconds since boot
   from `ticks_ms()` deltas, never counted wake-ups or the clock (owner, 2026-09-29); if the uptime
   tick timer cannot be armed, a one-second sleep stands in, so it stays measured. `BootSignature` —
@@ -939,7 +953,9 @@ settings.
   failed (the absent file's defaults, the boot repair, or a PUT's deferred flush), so
   their current values apply now but are lost at the next boot; an empty list when there are none;
   a module leaves the list at its next successful write (C.7.3). `UTCTime` — `null` until the
-  first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `networking`'s link
+  first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `UnixTime` — the device's
+  Unix seconds (an int) when the poll was answered, `null` until the first NTP sync; every age on
+  the website is computed against it. `networking`'s link
   fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot, refreshed
   each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8). `WifiTS` —
   that snapshot's UTC time (the Wi-Fi task's `TS`), `null` until the first NTP sync, so a stale
@@ -951,7 +967,7 @@ settings.
   capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it happened; no drop, read
   or hour change allocates; `ResetErrors` clears it; each drop is also traced once (A.5; owner,
   2026-10-01). A 413 is answered, so it is not a drop.
-  `SGP40_BackupTS`/`SGP40_RestoreTS` — `null` = none since boot,
+  `BackupTS`/`RestoreTS` under each SGP40 source — `null` = none since boot,
   `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
   `ConfigManager` (`CFGMGR_<name>`).
 - **Code tables**: every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState`
@@ -1006,9 +1022,17 @@ settings.
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
   300 s lives in the command callback. `/status` — `{"ResetErrors": true}` only: every registered
-  error source resets concurrently, `HTTPDropped`'s window included, and `result.ResetErrors` answers
-  `"Valid"`, or `"Failed"` when a store's write failed; any other value, and every other key, answers
-  `"Invalid"`; a body without the key resets nothing. `/notification` — settings + `LightCmdLED`
+  error source and the webserver's own log reset concurrently, `HTTPDropped`'s window included, and
+  all are awaited before the answer; `result.ResetErrors` answers `"Failed"` when any reset raised
+  or returned false, else `"Valid"`, and each raise is persisted once, after the resets, in the
+  webserver's own history (errno 14, `CALLBACK`: `"Error log reset failed: <name> <exception>"`);
+  any other value, and every other key, answers `"Invalid"`; a body without the key resets nothing.
+  From the acceptance of a `reboot`, `bootloader`, `resetconfig` or `erasefram` command until the
+  unit restarts, `ResetErrors` answers `"Failed"` and clears nothing, so the logs survive into the
+  reset (owner, 2026-10-13, asked "refuse `ResetErrors` once a reboot or erase command has been
+  accepted?", option (b) reading "Refuse it ("Failed") from the command's acceptance on: ... the
+  logs survive into the reboot.": "1 b").
+  `/notification` — settings + `LightCmdLED`
   (exactly `R`/`G`/`B`, ints 0-255, and `T`, a float 0.5-60.0 s, validated in the webserver through
   synthetic schemas like every schema-backed field; answered `"Failed"` while a signal is queued or
   running (owner, 2026-09-29), and the refusal tells the caller to try again later, the envelope's
@@ -1041,12 +1065,18 @@ schema defaults, as the hotspot with its TOML hostname and hotspot password; FRA
 SCD30's NVM are untouched (Wi-Fi and identity included, owner, 2026-09-30). `erasefram` ("Erase
 FRAM") zeroes the whole chip — every FRAM log and the SGP40 backup start fresh (A.4); it is refused
 when no FRAM chip is set up, or the chip is lost or write-protected. The API takes one command per
-request and asks no confirmation (owner, 2026-09-30).
+request and asks no confirmation (owner, 2026-09-30). The website asks the browser's confirmation
+before it sends a system command (`"<option label>?"`, e.g. "Reboot?", "Erase FRAM?"), the error
+reset ("Reset All Errors?") or the DNS fallback's Clear ("Clear Fallback DNS Servers?"), and a
+declined one sends nothing (owner, 2026-10-01, asked about "A confirmation before clearing the DNS
+fallback list": 'Fine, and add a dialog to all system commands and the clear error history as well.
+But only on the website, not on the API side. The API stays single command.').
 
 No SCD30 write can happen while a sequence runs (owner, 2026-10-02): the SCD30 is written only by
 an API command, and every config PUT, the SCD30 setters included, answers "Failed" from the moment
 a sequence is accepted, before any chip or flash write; `mempause` is refused too, and `ResetErrors`
-answers "Failed" once the sequence has closed FRAM. The unit tier proves it on every generated
+answers "Failed" from the moment a sequence is accepted, clearing nothing, so the FRAM-backed logs
+survive into the reset. The unit tier proves it on every generated
 device (`tests/_sensortask_scenarios.py`: `only_the_api_writes_the_scd30`,
 `every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset`).
 
@@ -1117,7 +1147,7 @@ before reusing a page and a reflashed site is never served stale (agent, 2026-09
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
 table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
 recursive, not flat**: each one's nested subtree keeps its relative paths, so a staged website build
-(`<staged>/index.html`, `<staged>/definitions/wozi.json`, `<staged>/js/render.js`) and a shared dir
+(`<staged>/index.html`, `<staged>/js/app.js`) and a shared dir
 can each contribute part of the tree — freezefs's archiver already walks nested paths and Microdot's
 static route already matches slashes, so a plain recursive copy is all the script needs. Every
 generated
@@ -2413,10 +2443,12 @@ deleted, failed all seven tests: single writes of 10,000-10,065 ms, or a differe
 **Cost.** `POLLOUT` reports writable while `tcp_sndbuf() > 0` (`extmod/modlwip.c:1639`), so with
 the arena full the retry is a cooperative busy wait until the peer acknowledges or the per-call
 timeout fires — its duration bounded by that timeout, its per-round cost by the host build's
-spin-round test (`l1.lwip_host_spin_round_max_us`, `l1.lwip_host_spin_round_alloc_max_b`; 8.5 ms
-and 32 B at worst on the host) and on the dev bench by a concurrent request's bound while one
-connection spins (owed, BACKLOG.md); a failed bound goes to the owner as a change to the override,
-a short `POLLOUT` back-off after `EAGAIN`, not a larger bound (owner, 2026-09-30).
+spin-round test (`l1.lwip_host_spin_round_max_us` on the fastest round of every three consecutive
+rounds, `l1.lwip_host_spin_window_rounds` (owner, 2026-10-13), and
+`l1.lwip_host_spin_round_alloc_max_b` on every round; 8.5 ms for a single round and 32 B at worst
+on the host) and on the dev bench by a concurrent request's bound while one connection spins (owed,
+BACKLOG.md); a failed bound goes to the owner as a change to the override, a short `POLLOUT`
+back-off after `EAGAIN`, not a larger bound (owner, 2026-09-30).
 
 **Removal trigger**: the pin carries an upstream fix for micropython issue 19704 (PRs 19705/19708);
 the override is then removed, not re-anchored (owner, 2026-09-30). Its anchors are re-checked at
@@ -3219,7 +3251,15 @@ evidence, so the streak neither counts nor heals, and a connect that always rais
 the participant rung and the give-up. A period that cannot be armed is such a failure: with no
 period no attempt is ever due, so each failed arm counts, as a failed re-arm of the uptime tick
 does, and the streak climbs the same way while task restarts keep the silent mode (agent,
-2026-10-12).
+2026-10-12). A hotspot window that cannot be armed is a hardware failure too: with no window the
+hotspot never ends and STA is never retried, so each failed arm counts, the streak climbs to the
+device rung and the give-up, and the task's restart leaves the hotspot for a fresh STA streak with
+the hotspot available once more; repeated task ends charge the supervisor's budget, which reboots
+(owner, 2026-10-13, asked "should a failed hotspot-window timer count as a hardware failure?",
+option (b) reading "Count it like the silent mode does: it feeds the streak, then the task restart,
+then the budget's reboot.": "Take option b for 2", after their follow-up "this means that currently
+the window timer continously fails, the Hotspot never ends, and option b makes it try to restart
+the task and if unsuccessful reboots, like normal modules do?" was answered yes).
 
 A per-field get/set forward always logs via `err_s()`/`wrn_s()` on failure, never a bare
 `except Exception: return None` — a transient bus fault on a REST-triggered get/set must stay
@@ -3774,12 +3814,12 @@ failure wakes the task waiting on it, which persists the failure (`TIMER`) once 
 restart re-arms first. Any other failed arm is re-armed at the task's next opportunity and
 persisted on a second failure, then the task ends for the supervisor: NTP's check and sync-age
 timers when the sync task starts and at each of its wakes, the WiFi uptime tick at the connection
-loop's next iteration; a failed hotspot-timer arm persists `TIMER` and is retried on the next cycle,
-and in the silent mode, where it leaves no attempt due, it also counts toward the WiFi task's
-hardware streak (C.7). The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
-`arm_tick_timer()`; they start with the timer starters and never take a stagger slot. System
-uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks (`TickSeconds`, G.2), never
-counted wake-ups. Wall-clock consumers survive an RTC step, pinned by
+loop's next iteration; a failed hotspot-timer arm persists `TIMER`, is retried on the next cycle
+and counts toward the WiFi task's hardware streak (C.7): in the silent mode it leaves no attempt
+due, in the hotspot mode no end to the window. The 1 s tick timers (system uptime, WiFi uptime, NTP
+sync age) share `arm_tick_timer()`; they start with the timer starters and never take a stagger
+slot. System uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks
+(`TickSeconds`, G.2), never counted wake-ups. Wall-clock consumers survive an RTC step, pinned by
 `tests/test_asy_base_classes.py`'s `test_utc_now_follows_a_clock_step_while_tickseconds_does_not`,
 `tests/test_asy_fram_manager.py`'s `test_a_read_after_the_rtc_stepped_back_returns_a_negative_age`,
 `tests/test_asy_notification_service.py`'s
@@ -6664,12 +6704,28 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Cross-language mirror: `js/` must encode the same policy `src/` enforces for anything it
   simulates**; a `src/`-side policy change and its `js/` mirror are one change, not two. The
   mirrored pairs, each with its check: `js/mock-server.js` against the real `src/` endpoints, field
-  for field, bound for bound; the website's copies of generator bounds (`js/definitions.js`'s
-  `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`, and the shape rules of `validateDefinitions()`)
-  against `buildgen/`, pinned by `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
+  for field, bound for bound (H.4); `js/api-contract.js`'s wire facts against `src/` — the four
+  result words (`asy_config_manager.py`), `ERR_COUNT_CAP` (`asy_print_log.py`'s `_MAX_CNT`, the
+  error counter's cap), `GMTIME_KEYS` (the first six keys of the generated
+  `_gmtimestruct_to_dict()`) and `isUnavailable()` (the marker built from `asy_base_classes.py`'s
+  `UNAVAILABLE`); the mock's own copies — `COUNTER_CAP`, `STANDARD_CODES`, `makeResponse()`'s
+  unknown-code text (`_UNKNOWN_DESCR`), `LED_BUSY_DESCR`, `LED_DURATION_MEMBER`, `DNS_LABEL_MAX` and
+  `DNS_FALLBACK_MAX` — against theirs; every device's dispatch-field definitions against the
+  webserver's `_SYSTEM_CMDS`, `_PAUSE_TIME_FIELD` and `_LIGHT_CMD_FIELDS`; and a scan that `src/`
+  spells the degraded-source marker only through `UNAVAILABLE` — all read as source and pinned by
+  `tests_scripts/test_js_api_mirrors.py`, each pin biting on a planted mismatch. Each device's
+  generated REST reference agrees with its definitions' routes, the result words and the mock's
+  code table (`tests_js/api-reference-agreement.test.js`). The website's copies of generator bounds
+  (`js/definitions.js`'s `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`, and the shape rules of
+  `validateDefinitions()`) against `buildgen/`, and its `MAX_POLL_INTERVAL_MS` (2**31 − 1,
+  `setTimeout()`'s ceiling) against the Python shape check's `_MAX_POLL_INTERVAL_MS`, pinned by
+  `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
   `tests_scripts/definitions_shape_cases.json`, which the Python shape check and the JS validator
   both read; and the facts `buildgen/` restates from `src/` with the two owner-kept catalogs (K.3),
-  pinned to their sources both ways by `tests_scripts/test_buildgen_source_agreement.py`.
+  pinned to their sources both ways by `tests_scripts/test_buildgen_source_agreement.py`. A JS test
+  reads a JS module's own constant from its source rather than restating it
+  (`tests_js/_source_constants.js`'s `readIntConst()`/`readObjectConst()`: `POLL_BACKOFF_MAX_MS`,
+  `DEFAULT_TIMEOUT_MS`, the mock's `STANDARD_CODES`).
 - **Per-instance naming** — `asy_config_manager.py`'s `instance_name()`, never a hand-rolled
   string-concatenation/f-string. See Part C.14.1.
 - **Cross-instance wiring declaration** — a `# @wiring` comment tag next to a driver's `_VAL_*`
@@ -6740,6 +6796,19 @@ no external runtime deps; stable on major browsers, light/dark (automatic-only v
 `prefers-color-scheme`); modern hamburger/drawer nav; build = gzip → `freezefs` → frozen bytecode →
 mount on startup → served via Microdot as gzip-compressed HTML (A.9).
 
+**Accessibility baseline** (agent, 2026-09-27; owner-reviewed, 2026-10-01): unique ids, every label
+bound to its control, the closed drawer inert with focus handled, WCAG 2.1 AA contrast in both
+themes — text and status colours 4.5:1 on every background they sit on, control borders 3:1
+through `--color-control-border`, pinned by `tests_scripts/test_website_tokens.py` — and reduced
+motion honoured (the drawer's transition off); `color-scheme: light dark` lets native controls
+follow the theme. The baseline is checked, not stated: `tests_js/accessibility.test.js` (pure DOM
+rules in `tests_js/_a11y_checks.js`) runs the real `html/index.html` shell through `startApp`
+against the composed mock for every device and every section — unique ids, every `label[for]` and
+`aria-labelledby` naming a real element, a name on every input, select and button,
+`autocomplete="new-password"` on every masked input, and the drawer inert when closed, focus on its
+first link when opened and back on the hamburger when closed; three fixture cases prove each rule
+bites.
+
 **Predecessor**: `legacy/firmware/html_raw/{general,arzi,dev,wozi}` is the legacy site the owner's
 legacy units serve, targeting the legacy REST shape (PUT-with-`cmd`-envelope, `Led`-prefixed
 fields) predating `asy_webserver_service.py` (A.8). This Part's website targets the refactored
@@ -6764,32 +6833,49 @@ build/generated_src/definitions/
 — against `js/mock-server.js`'s fake backend.
 
 **JS modules**: `app.js` (prototype-only: the device manifest, the mock install), `main.js` (real
-production entry — no mock, staged as `app.js` in the real build), `definitions.js` (loader +
-validator, no DOM), `field-format.js` (pure formatting, split so Node-context tests can reuse it
-without DOM types, H.8.1), `render.js` (controller, delegates DOM to `templates.js`),
+production entry — no mock, staged as `app.js` in the real build), `shell.js` (the one page shell
+both entries start: the nav, section switching with `#<key>` history, the device watch, one stop
+handle; `startShell()`, `historyOf()`, `visibilityOf()`), `definitions.js` (loader + validator, no
+DOM; it also exports the shared plain-object check `isRecord()`), `api-contract.js` (the wire facts
+mirrored from `src/`, G.2, imported by the mock and the production modules), `field-format.js` (pure
+formatting, no DOM dependency), `render.js` (controller, delegates DOM to `templates.js`),
 `templates.js` (DOM/markup layer, H.3), `nav.js` (drawer wiring), `poll-manager.js`
 (single-flight queue + shared fetch-timeout), `mock-server.js` (prototype-only fake backend
 answering the six REST paths, A.8, from data composed out of `mockdata/samples.json`).
+`tests_js/_expected_display.js` is the expected-display helper the Node-context and browser tests
+share (H.7, H.8.1).
 
-**`scripts/build_website.sh <device>`** generates the device's definitions from
-`devices/<device>.toml` (H.5) and stages its real site: `index.html` (with
-`style.css` and `definitions.json` inlined, H.7), the production `js/` modules concatenated into
-one `js/app.js` bundle, `main.js` renamed `app.js`. Staging the production entry under the name
-`app.js` means `index.html`'s import path never needs a build-time rewrite. `js/mock-server.js` is
-deliberately never staged at all — its `fetch` patching has no business near production. That same
-path also stays identical under `npm run preview`, which serves the repo layout where `js/app.js` is
-the prototype-only entry file. Cross-checked against `html/`/`js/`'s real contents by
-`tests_scripts/test_build_website_sh.py`. `scripts/build_device_websites.sh` builds every device's
-site into `build/generated_html/<device>/`.
+**`scripts/build_website.sh [--stage-only] <device> [output]`** generates the device's
+definitions from `devices/<device>.toml` (H.5) and stages its real site through
+`scripts/_stage_website.py` (CPython stdlib only): `index.html` with the stylesheet, the icon and
+`definitions.json` inlined (H.7), and `js/main.js`'s import closure bundled into one `js/app.js` (a
+three-line banner naming the derived order, then each module under `// ---- js/<file> ----`);
+`--stage-only` stages into `output` and freezes nothing. Staging the production entry under the
+name `app.js` means `index.html`'s import path never needs a build-time rewrite.
+`js/mock-server.js` is deliberately never staged at all — its `fetch` patching has no business near
+production. That same path also stays identical under `npm run preview`, which serves the repo
+layout where `js/app.js` is the prototype-only entry file. The drift rule: every file under `html/`
+and `js/` is `index.html`, a file it links, or a module of `js/main.js`'s or `js/app.js`'s import
+closure, else the build fails; it and every other refusal are pinned by
+`tests_scripts/test_stage_website.py`. `scripts/build_device_websites.sh [--stage-only] [out_root]`
+builds every device's site (each `devices/*.toml` but the `zz_test_` fixtures) into
+`build/generated_html/<device>/`, or with `--stage-only` stages each page and bundle into
+`build/staged_html/<device>/`.
 
 **Splitting a module**: the bundler strips local `import` lines but never `export` lines — two
 production files declaring the same top-level name, exported or not, would collide once
 concatenated, so every top-level name is unique across the production modules; a split-out module
-(`field-format.js`) must never be *re-exported*. Concatenation order is fixed so every file follows
-the local files it imports from, which matters only for the handful of top-level `const`s
-(`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`, `MAX_DECIMALS`) since function and
-class declarations hoist anyway; `scripts/build_website.sh` re-checks that mechanically on every build. **`index.html`'s inline bootstrap `<script
-type="module">`** can't be extracted (must keep importing the literal, never-rewritten path).
+(`field-format.js`) must never be *re-exported*. The order is derived, a depth-first post-order
+from `js/main.js` that puts each module after the ones it imports, which matters only for the
+handful of top-level `const`s (`DEFAULT_TIMEOUT_MS`/`pollManager`, `SUPPORTED_SCHEMA_MAJOR`,
+`MAX_DECIMALS`) since function and class declarations hoist anyway. The stager refuses, naming file
+and line, every import outside the one-line `import { a, b } from "./x.js";` form (multi-line,
+namespace, default, bare, dynamic, `import.meta`, a non-relative specifier), an import of a missing
+module, a default export, a re-export, an import cycle, a top-level name declared twice across the
+bundle (exported or not) and a top-level destructuring declaration; it also checks the inline
+bootstrap's element ids against `index.html` and its `startApp` keys against `js/main.js`'s JSDoc.
+**`index.html`'s inline bootstrap `<script type="module">`** can't be extracted (must keep importing
+the literal, never-rewritten path).
 `eslint-plugin-html` still lints it in place; `tsc`'s JSDoc checking doesn't cover inline scripts
 (agent, 2026-08-26: it is a thin bootstrap).
 
@@ -6806,48 +6892,86 @@ never require editing data-fetching, validation, submission, or poll-coordinatio
   for schema/labeling) and nothing else.
 - **Mechanics layer** — data fetching, polling, validation, PUT submission:
   `poll-manager.js`/`mock-server.js`/`definitions.js` (pure) and the non-presentational parts of
-  `render.js`/`nav.js`. None build DOM elements.
+  `render.js`/`nav.js`/`shell.js`. None build DOM elements.
 
 **Contract between them**: controllers reach into a template only via `data-*` attributes/CSS
 classes, the one thing a redesign must keep stable — `[data-field-key]`/`[data-sub-field-key]`
 (inputs, collected by `render.js`), `[data-current-value-for]` (readonly captions, refreshed on
 poll), `[data-group-key]`/`[data-field-wrapper-key]` (card/field-level status coloring),
-`[data-apply-status]` (written only by the controller; appearance decided entirely by CSS),
-`.apply-button`, `[data-section-key]` (nav). Controllers only ever set the semantic
-`data-apply-status` value, never a color/class directly. **In-place refresh only ever touches a
-number/string field's caption** — a toggle/enum field's round-trip needs a genuine full remount
-(a nav-drawer click), never an in-place poll.
+`[data-apply-status]` (written only by the controller; its appearance set entirely by CSS),
+`.apply-button`, `[data-section-key]` (nav), `[data-clear-for]` (a field's Clear button). The
+controllers (`render.js`, `nav.js`, `shell.js` and the two entries) write only four dataset hooks,
+each a semantic value whose look CSS sets — `data-apply-status`, `data-shown` (the section banner,
+the field warning), `data-nav-open` (the app shell) and `data-source-state` (`"unavailable"` on a
+card whose source sent the unavailable marker) — never a color/class directly; `.hidden` stays a
+templates-only utility. The templates write the rest: ids `field-<group index>-<field index>` and
+the span label `<id>-label`, a toggle's `data-value` (`true`/`false`/`unset`, an unset one showing
+"—" with `aria-pressed="mixed"`), `p.field-warning`, `button.field-value.code-value[aria-expanded]`
+with its `p.code-description`, `[data-code-tone]` with `.code-number`, `button.history-entry-num`,
+`.errcount-module-list[data-filter]`, `[data-rollup="nodata"]` and an errcount row's `data-worst`
+(`E`/`W`/`N`/`none`, the row's one severity). **Each poll updates every card in place** — readonly
+values (a readonly toggle's state included), an editable number or string field's caption and
+placeholder, and the errcount card, through `updateFieldGroupValues()` and `updateErrcountGroup()`,
+keeping the nodes and the focus. An editable toggle or select is never repainted by a poll: it
+changes only by the user, or by `resetControl()` after an Apply, which takes the baseline the
+post-write GET reports.
+
+The template API, `js/templates.js`: `buildErrcountGroup(group, errcount|null)`,
+`buildFieldGroupCard(group, currentValues, groupIndex, display)`, `buildNavDrawer(defs, drawerEl)`,
+`buildSectionShell(section, mainEl)`, `resetControl(wrapper, field, value)`,
+`updateErrcountGroup(card, group, errcount|null)` and `updateFieldGroupValues(card, group,
+currentValues, display)`, with `CardDisplay = {deviceNowS, defaultDecimals?, isUnavailable(field)}`.
+The controller `js/render.js` exports `showBanner`, `hideBanner` and `renderSection(defs, section,
+mainEl, context = {})`; the shell `js/shell.js` holds the `DeviceClock`; the request path
+`js/poll-manager.js` exports `pollManager.request(url, init, timeoutMs, signal, queueSignal)` and
+`startPolling(pollOnce, intervalMs, {visibility?, onError?, stopAfterSuccess?})` with the
+`Visibility` typedef. The split is guarded: `tests_scripts/test_website_layering.py` fails on an
+element built, or a class or style written, outside `templates.js`, `document` read outside the
+entries, a controller writing any other `data-*` hook, an unescaped key selector, or a dropped HTML
+sink rule (H.4), each rule biting on a planted copy; it is text-based, so an aliased or computed
+call evades it.
 
 ## H.4 Architecture decisions
 
 | Topic | Current behavior | Rationale / notes |
 |---|---|---|
-| Page model | Single-page shell, JS-driven view switching | One HTML skeleton; menu swaps sections via JS, no reload — makes the poll-manager's single-active-poll rule trivial. |
+| Page model | Single-page shell, JS-driven view switching | One HTML skeleton; menu swaps sections via JS, no reload — makes the poll-manager's single-active-poll rule trivial. Each menu selection is a `#<key>` history entry, so Back and Forward walk the sections and a `#<key>` URL opens its section (owner, 2026-10-01, asked about "The website meets an accessibility baseline": 'I want "back" to move backwards through the sensor subpages openend through the menu as well (actually the most intuitive way)'). |
 | Definitions file | One JSON per device, fetched once | Covers nav, labels, units, ranges, special values (H.5). |
 | REST target | `asy_webserver_service.py` (A.8) | Six endpoints, sparse-body PUT, no `cmd` envelope, no `Led` prefix. |
 | Nav grouping | Mirrors the 6 REST endpoints 1:1 | Measurements, Sensors, Networking, System, Status, Notification. |
 | History depth | Counts always visible; full history on demand; no pagination | A realistic depth stays well under 20 entries, rides along in `/status`. |
-| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently by design; every fetch has a shared `AbortController` timeout — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. The poll interval is Part N `web.poll_interval_ms`; a page load opens `web.connections_per_page_load` connections. |
+| Poll coordination | One shared poll-manager (single-flight queue) | Measurements and status/settings groups are never polled concurrently, a page only ever needing one or the other; every request, the definitions fetch at startup included, goes through the one queue (`pollManager.request(url, init, timeoutMs, signal, queueSignal)`), and its shared `AbortController` timeout covers the whole request, the body read included — `DEFAULT_TIMEOUT_MS = 15000`, see the row below for why that exact value. A section that is left drops its queued GETs; its GET on the wire runs to its end, discarded, when the next section is rendered (a switch), and is aborted when the page itself stops (before a reload), with any GET a switch handed it (agent, 2026-10-13, decided on the owner's behalf for review): an aborted GET would reset a connection the device is still answering, which the device logs as a peer reset (`wrnno` 48), on ordinary navigation. The cost: the next section's first GET waits for the left one, measured on the twin (2026-10-13) at a median 216.6 ms after the click against 6.6 ms when it was aborted, at most the 15 s request cap. Polling pauses while the tab is hidden. The poll interval is Part N `web.poll_interval_ms`; a page load opens `web.connections_per_page_load` connections. |
 | Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberately **equals** `asy_webserver_service.py`'s `outer_cap_s` (15.0 s, Part N `web.outer_cap_s`) | Not an independently-chosen UI number: the server aborts any request at `outer_cap_s` (applied via `asyncio.wait_for()`), so matching it is what makes a slow request surface as *the server's own abort*, which the UI can report, rather than a client-side give-up it cannot explain. Giving up earlier would hide real server aborts behind a generic timeout; later would leave the UI hanging past the point the server already gave up. The heaviest real request is `PUT /status {"ResetErrors": true}`, which resets every error source concurrently (its measured cost: C.7) — this ceiling is a product constraint for its operators, not a test-harness number. The mirror is enforced structurally by `tests_scripts/test_request_timeout_ceiling.py`, which parses `outer_cap_s` out of `src/` with `ast` and pins this constant and both test tiers' own `ResetErrors` client timeouts against it. |
 | API reachability | No dedicated API-browser page | Reachable somewhere in the ordinary GUI is enough. |
 | Definitions validation | Strict — visible error banner on mismatch | Checks shape/version including `pollGroup` and poll-interval fields. |
 | Landing page | Measurements | Matches legacy's default. |
 | Card/nav visual treatment | Modernized flat cards; slide-in drawer nav | Soft border/shadow, real light/dark tokens. |
-| Rendering safety | `textContent` only, never `innerHTML` | XSS-safe by construction. |
+| Rendering safety | `textContent` only, never `innerHTML` | XSS-safe by construction: ESLint's `no-restricted-properties` refuses `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` and `document.writeln` in `js/` and `html/` (`tests_js/` exempt), and `tests_scripts/test_website_layering.py` fails when that rule is dropped. |
 | Numeric coercion/validation | `type_or_range_error()` and the per-kind validators (`asy_config_manager.py`), mirrored in `mock-server.js` | Canonical for every numeric field (A.8, Part G). |
 | Dispatch-only PUT fields | `SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, plus every schema field carrying `dispatch=true` in its own `@web` tag (`ResetVOC`, `Calibrate` today — derive the set from the tags, never from this list alone) | None persisted — each re-dispatches fresh every submission. **This distinction is load-bearing beyond the UI**: a PUT to any *other* field is written straight through to the RP2040's flash filesystem by `asy_config_manager.py`'s own `json.dump()`, i.e. it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.persistence_write` gate exists and why a dispatch-only PUT is deliberately outside it. An enum field with no GET-matching state renders a blank placeholder by default. |
 | PUT-result coloring | 4-state (`Valid`/`Unchanged`/`Invalid`/`Failed`), colored at group and field level | Matches the backend vocabulary. A whole-request failure marks every field `Failed` individually. |
-| PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. |
+| PUT/GET error handling | Non-2xx / null body / `res:"ERR"` = whole-request failure, surfacing the server's `descr` | A field missing from `result` shows `"Failed"`. A GET failure shows a per-section banner without clearing stale data. Apply first re-reads the section (one GET before the PUT, so a value another client changed is the baseline), then asks the confirmations, an enum's chosen option label or a toggle's card submit label with "?" (A.8); a declined or suppressed confirmation sends nothing and reads "Not sent - the confirmation was declined.". A GET whose body is not a JSON object raises the section banner (`"GET <url> returned no JSON object"`, or `"returned an empty body"`); a non-ok GET reads `"GET <url> failed: <descr>"`, or `"... HTTP <n>"` without a `descr`. |
 | Per-device page-scheme mechanism | The definitions file itself | `render.js`/`nav.js` have zero device-specific branching. |
 | Submit-button labels | The identity and NTP groups keep legacy's "Apply & Reconnect" and "Apply & Resync" | Restored from the legacy pages (owner, 2026-09-29). |
-| Known accepted gap | An empty string can't be set via this UI for any field | The sparse-PUT "blank = untouched" convention makes it structurally impossible (`PW`'s "open network" sentinel). Accepted (owner, 2026-08-22, `cc999c1`: leave as-is). |
+| Known accepted gap | An empty string can't be set via this UI for any field but one, the DNS fallback list, whose Clear button sends `""` (owner, 2026-09-26) | The sparse-PUT "blank = untouched" convention makes it structurally impossible (`PW`'s "open network" sentinel, which `PW`'s hint states as `"" = Open network`: a number or string field's hint lists its special values). Accepted (owner, 2026-08-22, `cc999c1`: leave as-is). |
+| Divergences from the legacy site | A whole-request Apply failure, which legacy only logged to the console, marks every submitted field Failed (agent, 2026-08-22; owner-reviewed, 2026-10-01). The Apply result is a left stripe on the card and on each field rather than legacy's full background recolour, keeping legacy's two levels (owner, 2026-08-21), drawn double for Invalid and Failed so the state does not rest on colour alone (agent, 2026-09-27). The legacy favicon is inlined as a 16×16 image, so a page load still opens two connections (agent, 2026-09-30; owner-reviewed, 2026-10-02). The Altitude warning `"Ignored: <label> is set."` replaces legacy's "turn off continuous measurement" note (owner, 2026-09-29). `ContMeas` shows no state until it is set (agent, 2026-09-30; owner-reviewed, 2026-10-02). Inputs clear after an Apply as legacy's did, a rejected one keeping its value (owner, 2026-09-29). A failed GET is retried with a capped back-off (agent, 2026-09-30; owner-reviewed, 2026-10-01), and a changed build reloads the page (agent, 2026-09-30; owner-reviewed, 2026-10-01). Timestamps show as an age against the device clock (owner, 2026-09-29). The error and warning numbers are clickable for their description (owner, 2026-09-29: '... don't change the current look of the website, make the codes clickable and show the description on click'), and so are the status codes, `ResetReason` first (owner, 2026-10-02, asked about "The reset-reason and boot-phase numbers": 'Good, and make the numbers clickable in the website like the errno and wrnno numbers.'). The DNS fallback list has an explicit Clear (owner, 2026-09-26). | Every behaviour that departs from the legacy pages is listed here with its decider and date. |
 
-**`js/mock-server.js` mirrors every real backend quirk, not just the happy path**: `PW` masked on
-every GET; SCD30's `ForceCalRef` always reports `400` on GET (a real register limitation);
-`ContMeas`/`ResetVOC` never reported by GET (command-only triggers, C.5.2.1) — each dispatched
-separately from the generic sparse-PUT path, covered explicitly by `tests_js/mock-server.test.js`.
-One known gap: the browser has doubles only, so the mock compares a float as sent, while the board
-compares the single-precision form its config file reloads as (A.8).
+**`js/mock-server.js` mirrors every real backend quirk, not just the happy path**: it answers the
+routes the definitions declare, from data composed per device out of `mockdata/samples.json`, and
+takes its dispatch rules, masks (`mask: true`: `PW` and `HotspotPW` on every GET) and bounds from
+the definitions; every envelope goes through `makeResponse()` with the server's code table, and
+"Unknown error" for a code it lacks. `ForceCalRef` reads back the last applied value (400 fresh),
+as `AmbPres` does, while `ContMeas`/`ResetVOC` are never reported by GET (command-only triggers,
+C.5.2.1): an always-executed field is stored only where the composed data carries its key, a
+dispatch field never. `UnixTime`, `WifiTS` and every measurement `TS` read the browser clock
+(`Math.floor(Date.now() / 1000)`) on each GET, the measurements jitter around their samples, and
+the uptimes step once per GET, saturating at `COUNTER_CAP`. Failures are injected one at a time
+(`controls.nextFailure`: a network error, an HTTP status, a malformed, torn or empty body, a group
+failure) and `controls.delayMs` delays every answer by a fixed time; there is no random latency and
+no partial-result injection. `tests_js/mock-server.test.js` covers each. One known gap: the browser
+has doubles only, so the mock compares a float at the field's `resolution` when it has one (agent,
+2026-09-30), else as sent, while the board compares the single-precision form its config file
+reloads as (A.8).
 
 ## H.5 Definitions JSON schema
 
@@ -6858,7 +6982,8 @@ Every device's `definitions.json` is generated at build time from the `@web`/`@w
 into `build/generated_src/definitions/`, which the JS tests and `npm run preview` read.
 `js/definitions.js` documents the shape via JSDoc and strictly validates it at load time. **Top
 level**: `{schemaVersion, websiteVersion, device, landingSection, defaultPollIntervalMs,
-sections[]}`. `websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is
+defaultDecimals, sections[]}`; `defaultDecimals` (H.5.1) is optional in the validator and always
+emitted. `websiteVersion` (SPECIFICATION.md Part L.7, `buildgen.version.WEBSITE_VERSION`) is
 the bundle's own build provenance, never validated; the page shows the device's own versions from
 `GET /system` (L.7). It is a genuinely different concept from `schemaVersion` (that field's own
 wire-format-shape concern) — never conflate the two. **`section`** mirrors one REST endpoint
@@ -6866,12 +6991,21 @@ wire-format-shape concern) — never conflate the two. **`section`** mirrors one
 `FieldGroup` or an `ErrcountGroup` (`kind: "errcount"`, `modules[]`, `codes` — the error catalog's
 descriptions, H.6); the DNS server's errcount group sits in the Networking section, every other
 module's in Status. **`FieldDef`**: a `kind` (`readonly|number|string|enum|toggle|composite`) plus
-kind-specific metadata (`min`/`max`, `mask`, `options`, `specialValues`, `subFields`,
-`onLabel`/`offLabel`, `float`, `decimals`, `path`, `byteLength` (a byte-bounded radio string,
-C.7.4), `shape` (`hostLabel`, `countryCode`, `hostName` or `ipv4List`: a host label, a country code,
-a host name, a list of up to three IPv4 addresses; C.7.2, C.7.4), `format` (`epoch`/`gmtimestruct`,
-readonly only), `codes` (a readonly code's descriptions), `dispatch`, `alwaysExecuted`,
-`defaultValue`).
+kind-specific metadata (`min`/`max`, `mask`, `options`, `specialValues` (listed in a number or
+string field's hint), `subFields`, `onLabel`/`offLabel`, `float`, `decimals`, `path`,
+`byteLength` (a byte-bounded radio string, C.7.4), `shape` (`hostLabel`, `countryCode`, `hostName`
+or `ipv4List`: a host label, a country code, a host name, a list of up to three IPv4 addresses;
+C.7.2, C.7.4; the page's hint: `hostLabel` "letters, digits and '-' only", `hostName` "a host name
+(letters, digits, '-' and '.') or an IPv4 address", `ipv4List` "up to 3 IPv4 addresses,
+comma-separated, no spaces", its 3 read from `src/asy_ntp_client.py`'s `_DNS_FALLBACK_MAX` by
+`tests_js/templates.test.js`; `countryCode` none, its description states the form), `format`
+(`epoch`/`gmtimestruct`, readonly only), `codes` (a readonly code's descriptions), `codeTones` (a
+code's tone from the catalog: `good`, `neutral` or `warn`), `dispatch`, `alwaysExecuted`,
+`resolution` (a number's step the device rounds to), `ignoredWhenSet` (the sibling whose non-zero
+value overrides the field), `statusPath` (where `GET /status` carries the field's live value),
+`clearable` (a string the page may empty with its own Clear button), `confirm` (the page asks before
+it sends)). Every maintenance field of the Status section carries a `path` (`[source, field]`, set
+by the generator, A.8).
 `dispatch: true` marks a repeatable command field that must re-submit even when
 unchanged — **and it is only consulted for `kind: "toggle"` and `kind: "enum"`** (`js/render.js`'s
 `collectGroupBody()`, the two sites that compare a control against `resolveFieldValue()`). Every
@@ -6880,10 +7014,10 @@ is blank, a `composite` only when no sub-input is filled — so the flag would b
 generator still sets `dispatch` on every webserver action field (`SystemCmd`, `PauseTime`,
 `LightCmdLED`, `ResetErrors`) and on every tag carrying `dispatch=true`, and `alwaysExecuted` from
 the tags (`AmbPres`, `ForceCalRef`, `ContMeas`), so both never-"Unchanged" classes (H.6) are
-readable from the definitions alone. `defaultValue` marks a field's safe synthetic baseline when GET
-never reports a real value — `ContMeas`'s `defaultValue` is `true` since `false` ("Off") actually
-stops measurement, not a no-op (matching the legacy synthetic reference), not the toggle's naive
-`false` default.
+readable from the definitions alone. No field carries a synthetic baseline: an always-executed
+toggle a GET never reports (`ContMeas`, which the device runs on every write) has no current value,
+so the page shows no state for it — "—" with `aria-pressed="mixed"` — and sends it only once it is
+set (agent, 2026-09-30; owner-reviewed, 2026-10-02).
 
 ## H.5.1 Definitions-file autogeneration
 
@@ -6955,9 +7089,22 @@ sibling hint — a display-precision override, `js/field-format.js`'s `formatFie
 place in the whole stack that rounds an emitted value (no driver in `src/` rounds anything), so
 without it a declared precision is an aspiration; bounded 0–100 (`Number#toFixed()`'s own
 `RangeError` ceiling), checked at generation time in `buildgen/web_tag.py` and again in
-`js/definitions.js`'s `validateFieldHints()`, the two bounds pinned equal by
+`js/definitions.js`'s `validateNumberHints()`, the two bounds pinned equal by
 `tests_scripts/test_definitions_js_mirrors.py` (G.2). Unlike `path`, `decimals` applies to any
 numeric field regardless of `kind` — `GainRatio` (an ordinary flat `sensors` field) carries one too.
+Every numeric value the website shows takes its decimals from its source: the `@web` tag's
+`decimals`, else the digits its `resolution` needs (`0.01` → 2), else the site's `defaultDecimals`
+(2, Part N `web.default_decimals`); only the website rounds, the API keeps full resolution (owner,
+2026-10-02, asked about "How timestamps, codes and numbers show on the website": 'Fine, and maintain
+a reasonable number of digits per value (e.g. limit to 2 or 3 digits behind the decimal point, don't
+print full floats). But only for the website, the API delivers full resolution. Configured in the
+website config file, derived or defined from the value sourcing modules (e.g. Schema or inside the
+commented configs).'). The counts the build carries (agent, 2026-10-13): SCD30 `CO2` 0 and
+`Temp`/`Hum`/`WetBulb`/`DewPoint` 1, from the datasheet's repeatability (10 ppm, 0.1 °C, 0.1 %RH;
+Tables 1-3), and `TempOffset` 2 from its 0.01 °C tick (Interface Description 1.4.7); BMP3XX none,
+the default 2 sitting at or above the chip's resolution; SGP40's values are integers; ISL29125
+keeps its own tags (0 to 4). A derived or default count lies in 0..3; a tag's explicit count
+stands as its source states it.
 
 A schema-declared sentinel special value must have a matching tag `special:<value>="<meaning>"` or
 the build fails loud; on a string field, and only there, `<value>` is a quoted string
@@ -6976,7 +7123,10 @@ one beside their description (agent, 2026-10-07).
 one source file owns: the six-REST-endpoint section skeleton itself (pure routing architecture,
 H.4's "mirrors the 6 REST endpoints 1:1"); the dispatch-only, webserver-level fields with no natural
 owning file (`SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, the Status section's own
-live-readonly field lists); and the `warn_co2`/`warn_voc`/`warn_hum` UI metadata, read with the
+live-readonly field lists — among them the Device Clock row (`UnixTime`, which every age on the site
+is computed against), the notification `TS` row "Last Cycle Time", and `ResetReason`'s description
+"Why the device last restarted, as a numeric code; click it for its meaning."); and the
+`warn_co2`/`warn_voc`/`warn_hum` UI metadata, read with the
 schema by codegen and definitions alike from `buildgen/signals.py`'s one catalog, `WARN_SIGNALS`.
 
 **Correctness proof**: for every device, each tagged field lands exactly once in its group with its
@@ -6994,13 +7144,15 @@ plus `WEBSERVER`, looked up in `/status`'s `errcount[key]`. **Keyed per
 logger instance, not per driver kind**: the key has to be the name the live object graph actually
 publishes, so an instance named `scd30_fan_pressure` needs rows under `SCD30_fan_pressure`/
 `CFGMGR_SCD30_fan_pressure` (Part L's instance-naming rule, applied to the website). Getting this
-wrong fails in both directions and neither is visible — a published source with no row is never
-rendered at all, and a row with no published source renders a permanent, reassuring `0` from
-`templates.js`'s own `?? {counter: 0}` fallback. **History
+wrong fails in both directions — a published source with no row is never rendered at all, which
+nothing shows, and a row with no published source reads "no data" (one whose source sent the
+unavailable marker, "unavailable"), counted in the rollup's `"<n> module(s) without data"`, a line
+shown only when there are some; no fallback paints a healthy zero. **History
 entry**: `{"num": <raw errno>, "type": "N"|"E"|"W"}`, a fixed `history_length`-long list (the ring and its
 repeat rule: C.7.1), no per-entry timestamp — `type` only colors `num`. **Errcount UX**: same `.card` shell as other
-groups, starts collapsed to a rollup + two filter buttons, wired entirely inside `templates.js`
-(no controller involvement). **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
+groups, starts collapsed to a rollup + two filter buttons; the buttons and the rollup are wired
+inside `templates.js`, and the controller only hands each poll's `errcount` to
+`updateErrcountGroup()`. **Dispatch-only field semantics** — `SystemCmd`, `PauseTime`,
 `LightCmdLED` (R/G/B/T, bounds matching legacy exactly, rejecting not clamping),
 `ResetErrors`, `ContMeas`, `ResetVOC`: `"Invalid"` for a bad or unknown key or a value out of its
 type or range; a valid submission reports `"Valid"` on every repeat (never `"Unchanged"`), except
@@ -7027,15 +7179,44 @@ device, serving its own site from `build/generated_html/<device>/`;
 `live-backend-put-matrix.test.js` extends this to every writable field of every device's generated
 definitions, a field whose definition an earlier device already covered running once.
 
+**What the live tier checks.** The smoke applies a `DebugLevel` other than the twin's, then the same
+value, expecting exactly "valid", then "unchanged". `runLiveBackendConcurrentTabs` opens the
+device's whole `max_connections` of tabs against one twin, all navigating at once: each loads
+within the page's request cap plus 5 s or on one reload of its own, at least one on the first pass,
+and the check prints one line per device, on a pass too: `"concurrent tabs on <device>: N tabs, A
+loaded on the first pass, B on their reload, C not at all"`. `runLiveBackendRestartRecovery` stops
+the twin under an open page once its landing section has answered, waits for the section's banner,
+restarts the twin on the same port and config, and needs the page to recover by itself — the
+banner hidden again — within the boot time plus the poll back-off cap, with no reload. The put
+matrix expects exactly one word per case (`valid`, `unchanged` or `invalid`), reading each case's
+current value from the twin first; it sends each never-"Unchanged" field of the sensors section
+twice, both Valid, and drives the four action fields through the page with probes of their own,
+in this order: `ResetErrors` (its confirmation answered, then every error-count row read as `0` in
+place), `LightCmdLED` (lit for 10 s, a second send answered Failed while it runs, an out-of-range
+one Invalid), `PauseTime` (two sends Valid, the remaining time read on the status page, 3601
+Invalid) and `SystemCmd`'s `mempause` last, since a `ResetErrors` while it holds storage answers
+Failed. `reboot`, `bootloader`, `resetconfig` and `erasefram` end the twin process, so the unit
+tier's shutdown scenarios (A.8) cover them, not this tier. Before the reset, `archiveErrcount()`
+keeps `GET /status`'s error counts under `build/archive/live_twin/` (`scripts/_archive_evidence.py`,
+one run directory per test process). Captions are checked against `tests_js/_expected_display.js`,
+the text the page should show, written apart from `js/field-format.js` so the live tier never checks
+the renderer against itself (`tests_js/expected-display.test.js` pins it to hand-written texts).
+Every live command fails on a twin whose output holds a memory marker or a restart sign
+(`SimulatedResetError`, `reboot triggered`; `tests_js/_memory_markers.js`). The matrix page runs
+with reduced motion, which removes only the drawer's slide, and waits for each element on the
+frame it appears, then confirms it with the same locator wait (agent, 2026-10-13, decided on the
+owner's behalf for review); its three CI shards took 245-255 s each, every case kept (2026-10-13).
+
 ### The connection ceiling (`max_connections`, `backlog`, lwIP pcbs)
 
 **Connection-concurrency ceiling and mitigations**: the rp2040/lwIP ceiling is a compile-time
 pool this project pins itself — `toolchain/versions.toml`'s `[lwip].MEMP_NUM_TCP_PCB`, injected
 per Part B.14.2 — rather than lwIP's own default of 5. A page load stays well under it via
-**bundling** (seven modules concatenated into one `js/app.js`, plain text concatenation, safe since
-none use default exports/dynamic imports/re-exports) and **inlining** (`style.css` and the device's
-`definitions.json` embedded directly into the staged `index.html`, with `<` escaped to avoid a
-literal `</script` closing the tag early) — 2 connections per page load (down from ~9), and a
+**bundling** (`js/main.js`'s import closure, nine modules, bundled into one `js/app.js` in its
+derived order, the stager refusing whatever would break their one shared scope, H.2) and
+**inlining** (the stylesheet, the device's `definitions.json` with every `<` written `\u003c` so no
+literal `</script` closes its block early, and the icon as a `data:image/x-icon;base64,` link, all
+embedded in the staged `index.html`) — 2 connections per page load (down from ~9), and a
 Chromium-family engine sometimes opens one or two more (Chromium one, Edge two), spare sockets that carry no request.
 
 **`max_connections` is `6`** (owner, 2026-09-24, `db3bf52`; evidence below), stated per device in
@@ -7227,8 +7408,9 @@ first integer field with a finite range of at least 64 in a submit group), each 
 no other check of that device sent, and a device without such a field fails the run. Deliberately
 narrow scope (not a second exhaustive PUT matrix — each real WebDriver round trip costs seconds),
 and single-session: concurrency is covered by
-`tests_js/live-backend.test.js`'s `runLiveBackendConcurrentTabs` (`max_connections // 2` parallel
-Chromium tabs against one twin, so the ceiling is never exceeded; every tab must load).
+`tests_js/live-backend.test.js`'s `runLiveBackendConcurrentTabs` (the device's whole
+`max_connections` of parallel Chromium tabs against one twin, every tab loading on the first pass
+or on one reload of its own).
 `scripts/setup_cross_browser_toolchain.sh` installs the
 three non-Chromium toolchains (idempotent), shared between CI and local dev; CI always installs all
 three (a skip there is the bug to chase).
@@ -7264,31 +7446,43 @@ and which therefore shadowed the real `coverage` distribution `scripts/_render_c
 `exclude: ["**/*.json"]` because the provider re-parses every file V8 reported as JavaScript, so
 the JSON the site fetches at runtime threw a rolldown parse stack per run before being dropped
 anyway - `tests_scripts/test_js_coverage_excludes_json.py` keeps every JSON out of that set)
-for `--coverage`; **html-validate** for `html/`, **Stylelint** for CSS.
-Vitest reads every device's generated definitions from `build/generated_src/definitions/` through
-one loader, `tests_js/_generated_definitions.js`, which fails at import when that tree is missing or
-its device set differs from `devices/*.toml`; per device it runs the validator and the renderer over
+for `--coverage`; **html-validate** for `html/` and, through `npm run lint:html:built`, for every
+device's staged `index.html` (`scripts/build_device_websites.sh --stage-only build/staged_html`; a
+local check until CI runs it), **Stylelint** for CSS.
+Vitest reads every device's generated definitions from `build/generated_src/definitions/` and its
+REST reference from `build/generated_src/api/` (`API_REFERENCES`) through one loader,
+`tests_js/_generated_definitions.js`, which fails at import when either tree is missing or its
+device set differs from `devices/*.toml`; per device it runs the validator and the renderer over
 every section, and the mock PUT matrix over data composed from `mockdata/samples.json`
-(deduplicated by definition, as the live one).
+(deduplicated by definition, as the live one). `tests_js/api-reference-agreement.test.js` checks
+each reference's routes against the definitions, its result words against `js/api-contract.js` and
+its code table against the mock's; `tests_scripts/test_js_api_mirrors.py` pins every JS copy of a
+`src/` wire fact (G.2). `tests_js/expected-display.test.js` pins the live tier's display oracle to
+hand-written texts, and `tests_js/memory-markers.test.js` the twin's restart signs beside the memory
+markers (H.7).
 
 **ESLint's rule set is curated, not `eslint:all`** (its own docs advise against that switch, which
 enables mutually contradictory style rules): `BUG_CATCHING_RULES` in `eslint.config.js` is every
 core rule that catches a real defect or enforces a decision, verified rule by rule against the
 installed ESLint, with pure style-preference bans (`no-bitwise`, `no-plusplus`, `one-var`,
 `func-style`, `id-length`, `sort-keys`, `no-ternary`, `no-magic-numbers`, `no-undefined`,
-`no-continue`) left out. `no-console` bans `console.log` and friends but allows `error`/`warn`:
-`js/poll-manager.js`'s "Poll failed:" is the poll loop's only failure diagnostic and is asserted
-by a test, as is a live-backend test's skip warning; `scripts/*.mjs` (a CLI, where console is the
-output) is exempt in its own block.
-Complexity ceilings (`complexity` 41, `max-depth` 4, `max-nested-callbacks` 4,
-`max-classes-per-file` 1) sit at the measured maximum — `js/mock-server.js`'s route dispatcher at
-41, `validateDefinitions` at 38 — so they gate regression, mirror `pyproject.toml`'s mccabe/pylint
+`no-continue`) left out. `no-console` bans `console.log` and friends but allows `error`/`warn`,
+the real diagnostics: a section's failing GET shows the section's banner and is logged once per
+failure episode (`js/render.js`'s `"Could not refresh <section>:"`), then retried with a capped
+back-off (Part N `web.poll_backoff_max_ms`; a PUT is never retried), and a live-backend test warns
+when it skips; `scripts/*.mjs` (a CLI, where console is the output) is exempt in its own block. Over
+the shipped page (`js/`, `html/`), `no-restricted-properties` refuses the HTML sinks (H.4's
+"Rendering safety" row).
+Complexity ceilings (`complexity` 22, `max-depth` 4, `max-nested-callbacks` 4,
+`max-classes-per-file` 1) sit at the measured maximum — `js/field-format.js`'s `formatFieldValue()`
+at 22 — so they gate regression, mirror `pyproject.toml`'s mccabe/pylint
 policy, and only ever ratchet down, pinned by `tests_js/lint-ceilings.test.js` (one finding one
 below each, none at it, through ESLint's Node API in a Commands API module,
 `tests_js/_lint_command.js`).
 `html/index.html`'s inline `<script type="module">` stays inline and is linted in place through
-`eslint-plugin-html`: `scripts/build_website.sh` relies on it importing the literal
-`../js/app.js`, which resolves both under `npm run preview` and in a device build.
+`eslint-plugin-html`: `scripts/_stage_website.py` checks that it imports the literal
+`../js/app.js` (and its element ids and `startApp` keys, H.2), which resolves both under
+`npm run preview` and in a device build.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
 conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file
@@ -7320,9 +7514,10 @@ type-check program does the importing. A Node-context module referencing a DOM-c
 inherits that module's DOM-typed JSDoc and fails to type-check. **Convention**: declare a narrow,
 structural local typedef instead of importing the real one (`field-format.js`'s
 `FormattableField`, intersected with `Record<string, unknown>` so a wider real object doesn't trip
-excess-property checking, is the worked example). **Testing an async DOM refresh**: poll for the
-exact expected rendered text, never a fixed sleep — a caption refresh via a separate async GET can
-otherwise be caught mid-flight from a *previous* case.
+excess-property checking, is the worked example; `tests_js/_expected_display.js`'s `DisplayField`,
+in the one test module both contexts import, follows it too). **Testing an async DOM refresh**: poll
+for the exact expected rendered text, never a fixed sleep — a caption refresh via a separate async
+GET can otherwise be caught mid-flight from a *previous* case.
 
 ---
 
@@ -9339,7 +9534,7 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   second, less-tested detector, and every `check_for_near_miss_tags()` caller passes its own
   family's spec. A comment at column 0 takes the level of the next statement token outside brackets
   (module level when none follows); an indented one keeps its own. Every value dimension refuses
-  `nan` and `inf`: `@limits` bounds and choices, `@requires` values and `@web defaultValue`
+  `nan` and `inf`: `@limits` bounds and choices, `@requires` values and `@web resolution`
   (`tag.non-finite-number`), and `@requires` compares only an int or float bus value, never a bool.
   Each family's unit tests must cover the whole matrix: **the accept side needs full
   dimensionality** (every operator against every value shape, every legal spacing/placement
@@ -9454,18 +9649,19 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   `web.always-executed-and-dispatch`, `web.codes-unknown-table`, `web.decimals-range`,
   `web.duplicate-group`, `web.enum-without-choices`, `web.group-declared-twice`,
   `web.group-undeclared`, `web.group-without-fields`, `web.hidden-and-tagged`,
-  `web.hidden-no-reason`, `web.hidden-not-alone`, `web.instance-group-missing`,
-  `web.key-needs-readonly`, `web.key-needs-string`, `web.kind-unknown`, `web.kind-unresolved`,
-  `web.maintenance-tag-missing`, `web.malformed-pairs`, `web.missing-key`, `web.not-a-bool`,
+  `web.hidden-no-reason`, `web.hidden-not-alone`, `web.ignored-when-set-unknown`,
+  `web.instance-group-missing`, `web.key-needs-number`, `web.key-needs-readonly`,
+  `web.key-needs-string`, `web.kind-unknown`, `web.kind-unresolved`, `web.maintenance-tag-missing`,
+  `web.malformed-pairs`, `web.missing-key`, `web.not-a-bool`,
   `web.path-malformed`, `web.quoted-special-off-string`, `web.schema-field-untagged`,
   `web.special-not-in-schema`, `web.special-unlabelled`, `web.string-key-off-string`,
   `web.string-special-unquoted`, `web.unknown-key`, `web.value-not-in-set`; the API reference:
   `api.envelope-codes-malformed`, `api.field-key-unclassified`, `api.result-word-not-string`,
   `api.route-unregistered`, `api.routes-duplicate`, `api.routes-not-tuple`,
   `api.routes-row-malformed`, `api.source-name-missing`, `api.source-not-literal`,
-  `api.source-unreadable`; the toolchain tables: `toolchain.lwip-table`,
-  `toolchain.overrides-unloadable`; the twin wiring plan: `twin.no-address-rule`; the CLI:
-  `cli.out-dir-unwritable`.
+  `api.source-unreadable`, `api.wire-text-not-string`; the toolchain tables:
+  `toolchain.lwip-table`, `toolchain.overrides-unloadable`; the twin wiring plan:
+  `twin.no-address-rule`; the CLI: `cli.out-dir-unwritable`.
 - **Tested to the same bar as `src/` code**: correct-path functioning, full error-handling-path
   coverage (every abort condition gets its own test, driven by deliberately malformed fixture
   definition files — never just incidentally exercised by the six real device TOMLs happening to be
@@ -10196,6 +10392,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,735 B (`PUT /networking` on `dev`, its MQTT settings included); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.18× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
+| `web.poll_backoff_max_ms` | 60000 ms | `js/poll-manager.js` — `60000` | after the k-th consecutive failure of a section's GET the next attempt comes min(interval × 2^(k−1), this cap) later, back to the interval after one success (`tests_js/poll-manager.test.js` reads it with `readIntConst()`) | estimated (agent, 2026-09-30) — measurement owed: the time a page takes to recover once the device answers again with its sections at the cap, the L2 live restart-recovery test | one request per minute per failing section against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
+| `web.device_watch_interval_ms` | 60000 ms | `js/shell.js` — `60000` | the shell's device watch: `GET /status` for the device clock, `GET /system` for the build compare, a changed build reloading the page once no Apply is pending; one extra watch runs when a section's failure episode ends, none while the tab is hidden (`tests_js/shell.test.js` reads it with `readIntConst()`) | estimated (agent, 2026-09-30) — measurement owed: the time a page open across a reflash takes to reload, the L2 live restart-recovery test | two requests per minute per tab against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
+| `web.clock_mismatch_s` | 5 s | `js/field-format.js` — `5` | an epoch value up to this far ahead of the page's estimate of the device clock reads "0 s ago", further ahead "clock mismatch" (the age display, H.4's "Divergences from the legacy site" row) | estimated (agent, 2026-10-13) — measurement owed: the `/status` latency under load, L2 (the shell's `nowS()` is `floor(Date.now()/1000 + offset)`, the offset taken when a `/status` answer arrives, so it trails the device by that request's latency plus up to 1 s of flooring) | unknown until measured | the device-clock derivation or the request path changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
 | `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256`; `tests/test_asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
 | `web.max_header_lines` | 32 | `src/asy_webserver_service.py` — `32` | the reader proxy's head guard: a 33rd header refuses the head, answered 400 and traced as `wrnno` 61 (A.5) | estimated (agent, 2026-09-30): browsers send about 15-20 headers, curl about 4 — measurement owed: the header count of each supported browser's requests to the device, L4 | about 1.6× a browser's 20 headers | the device sets a cookie or an auth header, or a supported client sends more headers |
@@ -10338,6 +10537,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
 | `web.poll_interval_ms` | 3000 ms | `buildgen/definitions.py` — `3000` | sustained load = pages × connections per page load / interval stays under the measured ~2.2 requests/s (H.7) and `max_connections` (6) | estimated (agent, `8c83b66`) — measurement owed: sustained requests/s of open pages against the serving saturation, L4 | unknown until measured | the serving throughput or `max_connections` changes |
+| `web.default_decimals` | 2 decimals | `buildgen/definitions.py` — `2`; `tests_scripts/test_buildgen_definitions.py` — `2` | the top-level `defaultDecimals` of every device's definitions, taken by every fractional value of a field with neither its own `decimals` nor a `resolution` (H.5.1); `js/definitions.js` refuses one outside 0..`MAX_DECIMALS` | owner decision (owner, 2026-10-02), asked about "How timestamps, codes and numbers show on the website": 'Fine, and maintain a reasonable number of digits per value (e.g. limit to 2 or 3 digits behind the decimal point, don't print full floats). But only for the website, the API delivers full resolution. Configured in the website config file, derived or defined from the value sourcing modules (e.g. Schema or inside the commented configs).'; the value is the lower of the owner's two (agent, 2026-10-13) | a value that needs another precision states its own `decimals` or `resolution` (SCD30's do, H.5.1) | a displayed value whose source states no decimals needs another precision |
 | `lwip.memp_num_tcp_pcb_listen` | 8 | `toolchain/versions.toml` — `8` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.memp_num_pbuf` | 16 | `toolchain/versions.toml` — `16` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
 | `lwip.pbuf_pool_size` | 16 | `toolchain/versions.toml` — `16` | `check_lwip_ensemble()`'s ensemble checks (B.14.2) | estimated (agent, `9751814`) — measurement owed: the serving heap and throughput at the ceiling, L4 (B.14.2) | B.14.2 states the budget | the pin moves (B.14.2's anchors) or `max_connections` changes |
@@ -10398,11 +10598,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.put_matrix_apply_status_timeout_ms` | 5000 ms | `tests_js/_live_matrix_command.js` — `5000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_caption_poll_timeout_ms` | 3000 ms | `tests_js/_live_matrix_command.js` — `3000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_case_timeout_ms` | 15000 ms | `tests_js/live-backend-put-matrix.test.js` — `15000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.render_wait_timeout_ms` | 2000 ms | `tests_js/render.test.js` — `2000` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.render_poll_ms` | 10 ms | `tests_js/render.test.js` — `10` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.render_wait_timeout_ms` | 2000 ms | `tests_js/render.test.js` — `2000`; `tests_js/site-functions.test.js` — `2000` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.render_poll_ms` | 10 ms | `tests_js/render.test.js` — `10`; `tests_js/site-functions.test.js` — `10` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.render_banner_wait_ms` | 5000 ms | `tests_js/render.test.js` — `5000` | — | estimated (agent, `9f6f6e1`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.section_render_wait_ms` | 5000 ms | `tests_js/accessibility.test.js` — `5000`; `tests_js/generated-definitions-render.test.js` — `5000`; `tests_js/site-functions.test.js` — `5000` | the wait for a rendered section's heading and every card, per device | measured (agent, 2026-10-13): the slowest section case 59 ms, `startApp` included, over 42 accessibility cases, two runs at nice 19 | about 85× | the mock gains a delay, or more requests come before the first paint |
 | `l0.live_twin_section_wait_ms` | 10000 ms | `tests_js/_live_twin_command.js` — `10000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.live_twin_tab_wait_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000` | — | estimated (agent, `9751814`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_concurrent_tabs_timeout_ms` | 200000 ms | `tests_js/live-backend.test.js` — `200000` | the full-ceiling tabs case per device: the twin's boot (`l0.live_twin_ready_timeout_ms`), the first pass within the page's request cap (`web.outer_cap_s`) plus 5 s, one reload of up to `l0.live_twin_tab_wait_ms` per tab of `max_connections`, the stop | estimated (agent, 2026-10-13): the sum of those waits, 20 s, 20 s, six 20 s reloads and the stop — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 10.2-23.2 s per device, one run of all six (2026-10-13) | about 8.6× the slowest device here | `max_connections`, `web.outer_cap_s` or a wait it sums changes |
+| `l0.live_restart_recovery_timeout_ms` | 180000 ms | `tests_js/live-backend.test.js` — `180000` | the restart-recovery case per device: two boots (`l0.live_twin_ready_timeout_ms`), the banner wait (`l0.live_twin_section_wait_ms`), the back-off cap the page may be waiting out (`web.poll_backoff_max_ms`), two stops and their drains | estimated (agent, 2026-10-13): two 20 s boots, the 10 s banner wait, the 60 s back-off cap and two stops with their drains — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 6.3-9.3 s per device, one run of all six (2026-10-13) | about 19× the slowest device here | `web.poll_backoff_max_ms` or a wait it sums changes |
 | `l0.smoke_h1_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | — | estimated (agent, `7ff3c3c`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 (the smoke) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.smoke_speculative_connections_max` | 2 | `scripts/cross_browser_smoke.mjs` — `2` | read beside `web.connections_per_page_load`: each spare socket holds a device connection slot until the server reclaims it, and a page load's 2, its one data request and 2 spares hold 5 of `max_connections`' 6 | measured (agent, 2026-10-08), counted once the page's first data request reached the proxy: Chromium one spare in 2 of 312 local page loads (the trees of fb9b92d and 7efb5f2, 36 of them beside four busy loops), where 62 more sockets still empty when the navigation finished carried that first data request within 24 ms; Edge two in 1 of 36 CI page loads (wozi, desktop, run 37763477250), both opened before the document while the data request went out on a third. The 2026-10-07 figures counted when the navigation finished, which read the socket opened for the first data request as a spare | the observed maximum | an engine's connection predictor changes, or an engine is added |
 | `l0.smoke_first_data_request_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | the same cap as `l0.smoke_h1_wait_ms`; `l0.smoke_speculative_connections_max` is counted when it ends | measured (agent, 2026-10-08): the first data request reached the proxy at most 1,766 ms after the navigation started and within 24 ms of its socket opening, 72 local Chromium page loads, 36 of them beside four busy loops | a cap, not a pace: the wait ends when the request arrives and only bounds a page that never sends one | the page's first data request moves, or the code under test or the host class changes |
@@ -10420,7 +10623,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | about 3.4 KB over `dev`'s demand, against an estimated budget | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 | `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `LightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
 | `l1.sensortask_locked_status_ms` | 5000 ms | `tests/_sensortask_scenarios.py` — `5000` | the bound on a `GET /status` taken while a test task holds `wifi_mode_lock`; it only ends a regression that waits on the lock instead of letting it hang the file | measured (agent, 2026-10-08): one `GET /status` took 86-194 ms on `build-standard` and 129-318 ms on `build-settrace` | more than 15× the slowest measured read | a `GET /status` nears 1 s on the coverage lane |
-| `l1.sensortask_notify_cycle_rounds` | 200 | `tests/_sensortask_scenarios.py` — `200` | the scheduler rounds `_one_notification_cycle()` gives one monitor cycle of the built notification service to store its sample, in the per-device `State` scenario; a hang guard | estimated (agent, `7b548af`) — measurement owed: the rounds one monitor cycle takes to store a sample that flashes nothing, at both GC stages on the slowest host, L1 (it is expected within a few) | against that measurement, once taken | the monitor loop's await structure changes |
+| `l1.sensortask_notify_cycle_rounds` | 200 | `tests/_sensortask_scenarios.py` — `200` | the scheduler rounds `_one_notification_cycle()` gives one monitor cycle of the built notification service to store its sample, in the per-device `State` scenario; a hang guard | estimated (agent, `0103283`) — measurement owed: the rounds one monitor cycle takes to store a sample that flashes nothing, at both GC stages on the slowest host, L1 (it is expected within a few) | against that measurement, once taken | the monitor loop's await structure changes |
 | `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |
 | `l1.notification_neopixel_wait_until_timeout_ms` | 10000 ms | `tests/test_notification_neopixel_integration.py` — `10000` | a hang guard; above the product's own 2 × FlashDur settle | measured longest wait 1004 ms (agent, 2026-10-06, single observation, x86 VM) | about 10x the observed wait | FlashDur's settle or the signal path changes |
 | `l1.captive_dns_wait_until_timeout_ms` | 1000 ms | `tests/test_asy_captive_dns.py` — `1000` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -10594,7 +10797,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.lwip_host_recovery_s` | 15 s | `tests/lwip_host/test_modlwip_eagain.py` — `15` | the drain and capacity-recovery waits; covers modlwip's 10 s close-abort (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`) | estimated (agent, `65088de`) — measurement owed: the slowest recovery on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 126.6 ms under load, 120.1 ms quiet, the close-abort never reached | 5 s over the 10 s close-abort | the close linger or the host class changes |
 | `l1.lwip_host_rounds` | 20 | `tests/lwip_host/test_modlwip_eagain.py` — `20` | test (6)'s load, drain and close rounds; 20 take 16.8 s of the file's 23.7-24.4 s here | estimated (agent, `65088de`) — measurement owed: the file's wall time against `runner.per_file_timeout_s` on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; capacity was 10,400 B in every round here | the file uses about a tenth of the 240 s per-file limit here | the file's wall time nears the per-file limit |
 | `l1.lwip_host_spin_rounds` | 1000 | `tests/lwip_host/test_modlwip_eagain.py` — `1000` | test (7)'s rounds; 5.1-5.2 s here | estimated (agent, `65088de`) — measurement owed: test (7)'s wall time on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1 | enough rounds that one slow round shows; a tenth of the file's time here | the file's wall time nears the per-file limit |
-| `l1.lwip_host_spin_round_max_us` | 20000 µs | `tests/lwip_host/test_modlwip_eagain.py` — `20000` | one `drain()` round at the patched edge (a `write()` returning `None`, a timeout-0 poll), which on this host includes select's 1 ms `poll()` sleep (F.7 row 30); rounds that ran a collection are counted and left out | estimated (agent, `65088de`) — measurement owed: the slowest spin round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 8,536 µs under load, 5,896 µs quiet | 2.3× the slowest round here, 2.5× under an unpatched round's 50,000 µs sleep; a failed bound goes to the owner as a change to the override, never a larger bound (owner, 2026-09-30) | the override, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_spin_round_max_us` | 20000 µs | `tests/lwip_host/test_modlwip_eagain.py` — `20000` | the fastest of every `l1.lwip_host_spin_window_rounds` consecutive `drain()` rounds at the patched edge (a `write()` returning `None`, a timeout-0 poll; each on this host includes select's 1 ms `poll()` sleep, F.7 row 30); rounds that ran a collection are counted and left out | estimated (agent, `65088de`) — measurement owed: the slowest spin round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 8,536 µs under load, 5,896 µs quiet | 2.3× the slowest round here, 2.5× under an unpatched round's 50,000 µs sleep; a failed bound goes to the owner as a change to the override, never a larger bound (owner, 2026-09-30) | the override, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_spin_window_rounds` | 3 rounds | `tests/lwip_host/test_modlwip_eagain.py` — `3` | the spin test reads `l1.lwip_host_spin_round_max_us` against the fastest round of every run of this many consecutive measured rounds (sliding; rounds that ran a collection are left out); the two window cases `test_one_or_two_late_rounds_pass_the_spin_window` and `test_a_round_that_sleeps_every_time_fails_the_spin_window` | owner decision (owner, 2026-10-13), asked whether the host-only test's spin-round bound, failing on single late wake-ups of this machine, should (a) stay as is, every failure going to the owner, or (b) apply the same 20 ms bound to the fastest of each three consecutive rounds: "Then option b is fine." (after "And the fix within this question is about the reliability of a test only on your local machine?" was answered yes) | one or two late rounds in a row pass, three consecutive rounds over the bound fail, as every round of the unpatched path does (its 50,000 µs sleep); measured slowest windows 1,154-1,294 µs against single rounds of 2,288-5,471 µs, three runs at each GC stage (2026-10-13) | the host class changes, or the override or the pin's `modlwip.c` changes |
 | `l1.lwip_host_spin_round_alloc_max_b` | 64 B | `tests/lwip_host/test_modlwip_eagain.py` — `64` | the heap one spin round allocates, a `gc.mem_alloc()` delta | estimated (agent, `65088de`) — measurement owed: the allocation per round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 32 B in every round of every run, one 32 B GC block for the memoryview slice `drain()` makes | two GC blocks of the 64-bit host | the spin's per-round work or the GC block size changes |
 
 **L2 (digital twin)**
@@ -10718,9 +10922,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_churn_transfers` | 10 | `tests/test_digital_twin_uart_link.py` — `10` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
 | `l2.isl29125_autorange_red_scene_window_s` | 20 s | `tests/test_digital_twin_isl29125_autorange.py` — `20` | the red-dominant scene's twin time at a 5 s `SampleInterval`: its read cycles are bounded by the window's intervals plus two | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.wifi_modes_wait_poll_s` | 0.25 s | `tests/test_digital_twin_wifi_modes.py` — `0.25` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `85c82b9`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
-| `l2.wifi_modes_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_wifi_modes.py` — `25.0` | each wait for a Wi-Fi transition of the scenario, and its short waits (the first attempt, the lit frame) | estimated (agent, `85c82b9`) — measurement owed: the longest single transition's elapsed at both GC stages on the slowest host that runs it, L2; derived from the product's timeline: a window end or settings change reaches the next phase within `wifi.refresh_s` 5 + `wifi.reconnect_caller_grace_s` 5 + the mode switch 4 + `wifi.reconnect_settle_s` 3 + one attempt (`l2.twin_wifi_connect_delay_s` 0.7 and the poll), about 18 s | about 7 s over that path, against an estimate | a `wifi.*` delay on that path or the twin's connect delay changes |
-| `l2.wifi_modes_run_bound_s` | 200.0 s | `tests/test_digital_twin_wifi_modes.py` — `200.0` | the backstop of the file's one scenario (one boot through the stations rule, the settings change and the silent mode); stays under `runner.per_file_timeout_s` | estimated (agent, `85c82b9`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; about twice the 101.3, 101.6 and 101.9 s it took here at the two GC stages and under settrace (agent, 2026-10-12, one run each) | about twice the run measured here, 40 s under the 240 s per-file limit | the scenario's stages or a `wifi.*` delay on its path change |
+| `l2.wifi_modes_wait_poll_s` | 0.25 s | `tests/test_digital_twin_wifi_modes.py` — `0.25` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
+| `l2.wifi_modes_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_wifi_modes.py` — `25.0` | each wait for a Wi-Fi transition of the scenario, and its short waits (the first attempt, the lit frame) | estimated (agent, `0103283`) — measurement owed: the longest single transition's elapsed at both GC stages on the slowest host that runs it, L2; derived from the product's timeline: a window end or settings change reaches the next phase within `wifi.refresh_s` 5 + `wifi.reconnect_caller_grace_s` 5 + the mode switch 4 + `wifi.reconnect_settle_s` 3 + one attempt (`l2.twin_wifi_connect_delay_s` 0.7 and the poll), about 18 s | about 7 s over that path, against an estimate | a `wifi.*` delay on that path or the twin's connect delay changes |
+| `l2.wifi_modes_run_bound_s` | 200.0 s | `tests/test_digital_twin_wifi_modes.py` — `200.0` | the backstop of the file's one scenario (one boot through the stations rule, the settings change and the silent mode); stays under `runner.per_file_timeout_s` | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; about twice the 101.3, 101.6 and 101.9 s it took here at the two GC stages and under settrace (agent, 2026-10-12, one run each) | about twice the run measured here, 40 s under the 240 s per-file limit | the scenario's stages or a `wifi.*` delay on its path change |
 
 **L3/L4 (real hardware)**
 
@@ -10821,7 +11025,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.hotspot_role_reversal_dns_recovery_timeout_s` | 8.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `8.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.hotspot_role_reversal_raw_socket_timeout_s` | 10.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `10.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.hotspot_role_reversal_reassociate_cycles` | 3 | `tests_hardware/bench/test_hotspot_role_reversal.py` — `3` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
-| `l4.hotspot_role_reversal_derived_wait_margin_s` | 30.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `30.0` | added to each wait the two Wi-Fi-mode bench cases derive from the Wi-Fi service's own timeline (`devices/dev.toml`'s `conn_fail_to_hotspot`/`hotspot_time_min` and the `wifi.*` constants): the reopen bound `_streak_bound_s()` (refresh + grace + mode switch + settle + `conn_fail_to_hotspot` × (connect poll + refresh) + mode switch), the leave wait (refresh + grace), the window-end wait (window + 2 × refresh + grace) and the relink wait (window + connect poll + refresh) | estimated (agent, `45f5c23`) — measurement owed: each derived wait's elapsed on the dev bench, L4; sized for the bench's scan cadence (an `nmcli` rescan of up to 15 s plus its 2 s poll) and a link loss NetworkManager notices late | against that measurement, once taken | a `wifi.*` constant, `conn_fail_to_hotspot`/`hotspot_time_min` or the bench host changes |
+| `l4.hotspot_role_reversal_derived_wait_margin_s` | 30.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `30.0` | added to each wait the two Wi-Fi-mode bench cases derive from the Wi-Fi service's own timeline (`devices/dev.toml`'s `conn_fail_to_hotspot`/`hotspot_time_min` and the `wifi.*` constants): the reopen bound `_streak_bound_s()` (refresh + grace + mode switch + settle + `conn_fail_to_hotspot` × (connect poll + refresh) + mode switch), the leave wait (refresh + grace), the window-end wait (window + 2 × refresh + grace) and the relink wait (window + connect poll + refresh) | estimated (agent, `0103283`) — measurement owed: each derived wait's elapsed on the dev bench, L4; sized for the bench's scan cadence (an `nmcli` rescan of up to 15 s plus its 2 s poll) and a link loss NetworkManager notices late | against that measurement, once taken | a `wifi.*` constant, `conn_fail_to_hotspot`/`hotspot_time_min` or the bench host changes |
 | `l4.memory_stress_bench_fetch_timeout_s` | 5.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `5.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.memory_stress_bench_join_timeout_s` | 10.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `10.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.memory_stress_bench_hammer_duration_s` | 120.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `120.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |

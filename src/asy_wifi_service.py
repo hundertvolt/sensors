@@ -492,8 +492,12 @@ class WifiService(SensorReaderConfig):
 
     async def _hotspot_client_absent(self) -> None:
         if not self._hotspot_timer_running:  # retry STA once the window ends with no client (maybe a router back after power loss)
-            self.pr.evt("No client connected - hotspot timer started")
-            await self._arm_hotspot_timer()
+            if await self._arm_hotspot_timer():
+                self.pr.evt("No client connected - hotspot timer started")
+            else:
+                # Persisted and retried next iteration; with no window the hotspot never ends and STA is never retried, so the
+                # failed arm is this iteration's hardware failure and feeds the streak, as the uptime tick's does (owner, 2026-10-13).
+                self._hw_op_failed = True
         self._run_led_pattern(_LED_HOTSPOT_ON_S, _LED_HOTSPOT_OFF_S)
 
     def _hotspot_client_connected(self) -> None:

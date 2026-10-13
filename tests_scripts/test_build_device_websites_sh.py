@@ -1,18 +1,26 @@
 """scripts/build_device_websites.sh builds every derived device's site from its generated definitions:
-one frozen module per device under the given root, each serving an index.html whose inlined
-definitions name that device, and a reserved zz_test_ fixture TOML never built (SPECIFICATION.md H.2)."""
+one frozen module per device under the given root (or with --stage-only one staged page and bundle, frozen
+nowhere), each index.html's inlined definitions naming that device; a zz_test_ fixture is never built (SPECIFICATION.md H.2)."""
 
 import ast
 import gzip
 import json
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from _devices import DEVICE_NAMES
 
 _INLINED = re.compile(r'<script type="application/json" id="inlined-definitions">(.*?)</script>', re.DOTALL)
+
+
+@dataclass(frozen=True)
+class _Runs:
+    built: Path
+    staged: Path
+    staged_stdout: str
 
 
 def _frozen_file(module_text: str, served_path: str) -> bytes:
@@ -38,19 +46,27 @@ def _inlined_device_id(frozen_module: Path) -> str:
 
 
 @pytest.fixture(scope="module")
-def built_root(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    # One build of every device for the whole module, with a reserved zz_test_ TOML present: it is
-    # malformed, so building it would fail the run, and it is removed again whatever happens.
-    out_root = tmp_path_factory.mktemp("device_websites")
+def built_root(runs: _Runs) -> Path:
+    return runs.built
+
+
+@pytest.fixture(scope="module")
+def runs(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> _Runs:
+    # One build and one --stage-only run of every device for the whole module, in one window with a reserved
+    # zz_test_ TOML present: it is malformed, so building or staging it would fail, and it is removed whatever happens.
+    built, staged = tmp_path_factory.mktemp("device_websites"), tmp_path_factory.mktemp("device_stages")
     skipped_toml = repo_root / "devices" / "zz_test_device_websites_skip.toml"
     assert not skipped_toml.exists(), "sanity: this test-only device name must not collide with a real device"
     skipped_toml.write_text((repo_root / "tests_scripts" / "buildgen_fixtures" / "malformed_missing_device_table.toml").read_text())
+    script = str(repo_root / "scripts" / "build_device_websites.sh")
     try:
-        result = subprocess.run([str(repo_root / "scripts" / "build_device_websites.sh"), str(out_root)], cwd=repo_root, capture_output=True, text=True, check=False)
+        build = subprocess.run([script, str(built)], cwd=repo_root, capture_output=True, text=True, check=False)
+        stage = subprocess.run([script, "--stage-only", str(staged)], cwd=repo_root, capture_output=True, text=True, check=False)
     finally:
         skipped_toml.unlink()
-    assert result.returncode == 0, f"build_device_websites.sh failed:\n{result.stdout}\n{result.stderr}"
-    return out_root
+    assert build.returncode == 0, f"build_device_websites.sh failed:\n{build.stdout}\n{build.stderr}"
+    assert stage.returncode == 0, f"build_device_websites.sh --stage-only failed:\n{stage.stdout}\n{stage.stderr}"
+    return _Runs(built, staged, stage.stdout)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -62,6 +78,21 @@ def test_every_device_gets_its_own_site_from_its_generated_definitions(built_roo
 
 def test_only_derived_devices_are_built(built_root: Path) -> None:
     assert sorted(p.name for p in built_root.iterdir()) == sorted(DEVICE_NAMES)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_stage_only_stages_every_device_page_and_bundle_from_its_definitions(runs: _Runs, device: str) -> None:
+    stage = runs.staged / device
+    assert sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
+    match = _INLINED.search((stage / "index.html").read_text())
+    assert match is not None, f"{stage}: index.html carries no inlined definitions"
+    assert json.loads(match.group(1))["device"]["id"] == device
+
+
+def test_stage_only_skips_the_fixtures_and_freezes_nothing(runs: _Runs) -> None:
+    assert sorted(p.name for p in runs.staged.iterdir()) == sorted(DEVICE_NAMES)
+    assert not list(runs.staged.rglob("*.py"))
+    assert "Wrote " not in runs.staged_stdout  # build_frozen_html.sh's own line: it never ran
 
 
 def test_the_inlined_reader_bites(tmp_path: Path) -> None:

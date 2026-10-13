@@ -1,0 +1,40 @@
+U23 lane Y: the reset's two refusal windows, the hotspot timer's restart, and two stale doc facts
+
+DEVICE_REFERENCE.md, "Clearing the error logs": the general "Failed"
+sentence now holds outside two cases, each stated. During a backup
+pause ("Pause backups for 5 minutes") the reset answers "Failed", since
+the logs kept in FRAM cannot be written then; repeat it once the pause
+ends. From a Reboot, Reboot into bootloader, Reset to defaults or Erase
+FRAM command's acceptance until the unit restarts, the reset answers
+"Failed" and clears nothing; clear the logs once the unit is back. The
+owner's decision, asked "OF-111: refuse `ResetErrors` once a reboot or
+erase command has been accepted? ... (a) As is: accepted until FRAM
+pauses. (b) Refuse it ("Failed") from the command's acceptance on: one
+line in the status PUT handler; the logs survive into the reboot."
+(owner, 2026-10-13: "1 b"). The doc quotes the question without its
+audit ID, the answer, and option (b)'s first clause.
+
+DEVICE_REFERENCE.md, the Wi-Fi status overlay: should the timer that
+ends a hotspot with no client fail to start, the Wi-Fi task restarts
+after a few 5-second checks and tries the stored network again, as a
+fresh boot does; repeated restarts reboot the unit. The owner's
+decision, asked "OF-129: should a failed hotspot-window timer count as
+a hardware failure? ... (a) As is. (b) Count it like the silent mode
+does: it feeds the streak, then the task restart, then the budget's
+reboot." (owner, 2026-10-13: "Take option b for 2"). The doc quotes the
+question without its audit ID, the answer and option (b). The rest of
+the bullet is rewrapped only: no meaning change.
+
+README.md: `npm run lint`'s comment lists what the script lints
+(package.json's lint script, eslint.config.js's file blocks): js/,
+tests_js/, scripts/*.mjs, the inline scripts in html/*.html,
+eslint.config.js and vitest.config.js. A stale-fact correction, no
+meaning change.
+
+CLAUDE.md: "the `# /// script` ... block four `uv run` scripts carry"
+becomes "every `uv run` script carries": every script the repo runs as
+`uv run <script>` carries the block (eight files). A stale-fact
+correction, no meaning change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

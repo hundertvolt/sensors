@@ -24,6 +24,7 @@ const DEFS = {
                     submit: true,
                     fields: [
                         { key: "MeasInterval", label: "Measurement Interval", kind: "number", min: 2, max: 1800 },
+                        { key: "TempOffset", label: "Temperature Offset", kind: "number", min: 0, max: 655.35, float: true, resolution: 0.01 },
                         {
                             key: "AmbPres", label: "Ambient Pressure", kind: "number", min: 700, max: 1400, alwaysExecuted: true,
                             specialValues: [{ value: 0, meaning: "Compensation off / use Altitude" }],
@@ -68,6 +69,7 @@ const DEFS = {
                             specialValues: [{ value: "", meaning: "Open network" }],
                         },
                         { key: "HotspotPW", label: "Hotspot Password", kind: "string", minLength: 8, maxLength: 63, mask: true, byteLength: true },
+                        { key: "ProxyPW", label: "Proxy Password", kind: "string", minLength: 0, maxLength: 63, mask: true },
                     ],
                 },
                 {
@@ -131,6 +133,7 @@ const DEFS = {
                         },
                     ],
                 },
+                { key: "build", label: "Build", fields: [{ key: "FirmwareVersion", label: "Firmware Version", kind: "readonly", path: ["build", "FirmwareVersion"] }] },
             ],
         },
         {
@@ -139,7 +142,7 @@ const DEFS = {
             rest: { get: "/notification", put: "/notification" },
             pollGroup: "settings",
             groups: [
-                { key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600, dispatch: true }] },
+                { key: "pause", label: "Pause Notifications", submit: true, fields: [{ key: "PauseTime", label: "Pause Time", kind: "number", min: 0, max: 3600, dispatch: true, statusPath: ["notification", "PauseTime"] }] },
                 {
                     key: "flash",
                     label: "Manual Flash Command",
@@ -154,7 +157,7 @@ const DEFS = {
                                 { key: "R", label: "Red", kind: "number", min: 0, max: 255 },
                                 { key: "G", label: "Green", kind: "number", min: 0, max: 255 },
                                 { key: "B", label: "Blue", kind: "number", min: 0, max: 255 },
-                                { key: "T", label: "Time (s)", kind: "number", min: 0.5, max: 60.0 },
+                                { key: "T", label: "Time (s)", kind: "number", min: 0.5, max: 60.0, float: true },
                             ],
                         },
                     ],
@@ -166,12 +169,15 @@ const DEFS = {
 
 const DATA = {
     measurements: {
-        SCD30: { CO2: 600, TS: 1000, Model: "SCD30" },
+        SCD30: { CO2: 600, TS: 1000, SensorUptime: 120, Model: "SCD30" },
         ISL29125: { Lux: 300, RGB: { R: 0.02, G: 0.03, B: 0.01 }, CCT: null, TS: 1000 },
     },
-    sensorsConfig: { SCD30: { MeasInterval: 5, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } },
-    networkingConfig: { Hostname: "fixture-host", PW: "hunter2hunter2", HotspotPW: "fixture-hotspot", NTPHost: "ntp.fixture-host", DNSFallback: "192.0.2.53" },
-    systemConfig: {},
+    sensorsConfig: { SCD30: { MeasInterval: 5, TempOffset: 12.35, AmbPres: 1013, ForceCalRef: 400 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } },
+    networkingConfig: {
+        Hostname: "fixture-host", PW: "hunter2hunter2", HotspotPW: "fixture-hotspot", ProxyPW: "fixture-proxy", NTPHost: "ntp.fixture-host",
+        DNSFallback: "192.0.2.53",
+    },
+    systemConfig: { build: { FirmwareVersion: "fixture-version" } },
     notificationConfig: {},
     status: {
         networking: {},
@@ -184,6 +190,41 @@ const DATA = {
 
 // src/asy_webserver_service.py's _LED_BUSY_DESCR: the envelope's descr when a running signal refused LightCmdLED.
 const LED_BUSY_DESCR = "LED busy - retry later";
+// src/asy_base_classes.py's COUNTER_CAP: the value every server counter saturates at.
+const COUNTER_CAP = 2 ** 30 - 1;
+
+/** @typedef {import("../js/mock-server.js").MockFetchControls} MockFetchControls */
+/** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
+
+/**
+ * DEFS with the field `key` replaced by `change(field)`, for a case that needs another definition of it.
+ * @param {string} key
+ * @param {(field: FieldDef) => FieldDef} change
+ * @returns {import("../js/definitions.js").SiteDefinitions}
+ */
+function defsWith(key, change) {
+    const groups = (/** @type {import("../js/definitions.js").Section} */ section) => section.groups.map((group) => (
+        "fields" in group ? { ...group, fields: group.fields.map((field) => (field.key === key ? change(field) : field)) } : group
+    ));
+    return { ...DEFS, sections: DEFS.sections.map((section) => ({ ...section, groups: groups(section) })) };
+}
+
+/**
+ * PUTs `body` as JSON text; resolves to the parsed envelope.
+ * @param {string} path
+ * @param {unknown} body
+ */
+function putJson(path, body) {
+    return fetch(path, { method: "PUT", body: JSON.stringify(body) }).then((response) => response.json());
+}
+
+/**
+ * GETs `path`; resolves to the parsed body.
+ * @param {string} path
+ */
+function getJson(path) {
+    return fetch(path).then((response) => response.json());
+}
 
 /**
  * Moves the frozen mock clock forward; vi.setSystemTime() mocks Date only, so timers stay real.
@@ -199,7 +240,9 @@ describe("installMockFetch", () => {
 
     afterEach(() => {
         uninstall?.();
+        uninstall = undefined; // a later test that installs nothing must not re-run this one's restore
         vi.useRealTimers(); // also ends a vi.setSystemTime() Date mock
+        vi.unstubAllGlobals(); // after the uninstall, which restores the fetch it found
     });
 
     it("runs on fixture definitions the site's own validator accepts", () => {
@@ -233,28 +276,62 @@ describe("installMockFetch", () => {
     it("marks an in-range changed value as Valid and persists it for the next GET", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const put = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 10 } }) });
-        expect((await put.json()).result.SCD30.MeasInterval).toBe("Valid");
+        // The whole envelope, as make_response(0, result=...) builds it: the catalog's text for code 0.
+        expect(await put.json()).toEqual({ res: "OK", code: 0, descr: "Command executed", result: { SCD30: { MeasInterval: "Valid" } } });
 
         const get = await fetch("/sensors");
         expect((await get.json()).SCD30.MeasInterval).toBe(10);
     });
 
+    it("compares a number with a resolution in its steps and stores the value rounded to one, as the device reads it back", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        // 12.345 and 12.346 round to the stored 12.35's step; 12.3449 rounds to 12.34, 12.36 is a step away.
+        expect((await putJson("/sensors", { SCD30: { TempOffset: 12.345 } })).result.SCD30.TempOffset).toBe("Unchanged");
+        expect((await putJson("/sensors", { SCD30: { TempOffset: 12.346 } })).result.SCD30.TempOffset).toBe("Unchanged");
+        expect((await putJson("/sensors", { SCD30: { TempOffset: 12.3449 } })).result.SCD30.TempOffset).toBe("Valid");
+        expect((await getJson("/sensors")).SCD30.TempOffset).toBe(12.34);
+        expect((await putJson("/sensors", { SCD30: { TempOffset: 12.36 } })).result.SCD30.TempOffset).toBe("Valid");
+        expect((await getJson("/sensors")).SCD30.TempOffset).toBe(12.36);
+    });
+
+    // The server's per-kind validation (SPECIFICATION.md Part A.8): a JSON int is a valid float, a number with a
+    // fraction no valid int, and a bool never a number.
+    it.each([["TempOffset", 50, "Valid", 50], ["TempOffset", true, "Invalid", 12.35], ["MeasInterval", 5.5, "Invalid", 5], ["MeasInterval", 6, "Valid", 6], ["MeasInterval", true, "Invalid", 5]])(
+        "answers PUT /sensors' %s: %j with %s and reads back %j",
+        async (key, value, word, stored) => {
+            uninstall = installMockFetch(DEFS, DATA);
+            expect((await putJson("/sensors", { SCD30: { [key]: value } })).result.SCD30[key]).toBe(word);
+            expect((await getJson("/sensors")).SCD30[key]).toBe(stored);
+        },
+    );
+
+    it("answers Invalid for a readonly key and stores nothing, as for any key no writable field lists", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        expect((await putJson("/system", { FirmwareVersion: "9.9.9" })).result).toEqual({ FirmwareVersion: "Invalid" });
+        expect(await getJson("/system")).toEqual({ build: { FirmwareVersion: "fixture-version" } });
+    });
+
     it("resets error counters and refills history with no-error placeholders (real reset() never shrinks it)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        await fetch("/status", { method: "PUT", body: JSON.stringify({ ResetErrors: true }) });
+        const answer = await putJson("/status", { ResetErrors: true });
+        expect(answer).toEqual({ res: "OK", code: 0, descr: "Command executed", result: { ResetErrors: "Valid" } });
 
-        const get = await fetch("/status");
-        const body = await get.json();
+        const body = await getJson("/status");
         expect(body.errcount.SCD30.counter).toBe(0);
         expect(body.errcount.SCD30.history).toEqual([{ num: 0, type: "N" }]);
     });
 
     it("leaves error counters untouched when ResetErrors is absent", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        await fetch("/status", { method: "PUT", body: JSON.stringify({}) });
+        expect((await putJson("/status", {})).result).toEqual({});
 
-        const get = await fetch("/status");
-        expect((await get.json()).errcount.SCD30.counter).toBe(2);
+        expect((await getJson("/status")).errcount.SCD30.counter).toBe(2);
+    });
+
+    it.each([[false], [1], ["true"], [null]])("answers ResetErrors: %j with Invalid and resets nothing, as _put_status() does", async (value) => {
+        uninstall = installMockFetch(DEFS, DATA);
+        expect((await putJson("/status", { ResetErrors: value, Bogus: true })).result).toEqual({ ResetErrors: "Invalid", Bogus: "Invalid" });
+        expect((await getJson("/status")).errcount.SCD30.counter).toBe(2);
     });
 
     it("validates PUT /networking against the networking group's own field defs", async () => {
@@ -340,6 +417,13 @@ describe("installMockFetch", () => {
         expect((await response.json()).result.SystemCmd).toBe("Invalid");
     });
 
+    it("derives SystemCmd's words from its options, not a hand-kept list", async () => {
+        const extra = { value: "selftest", label: "Self test" };
+        uninstall = installMockFetch(defsWith("SystemCmd", (field) => ({ ...field, options: [...(field.options ?? []), extra] })), DATA);
+        expect((await putJson("/system", { SystemCmd: "selftest" })).result.SystemCmd).toBe("Valid");
+        expect((await putJson("/system", { SystemCmd: "reboot" })).result.SystemCmd).toBe("Valid");
+    });
+
     it("answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included", async () => {
         // Mirrors _apply_settings_groups(): every submitted key gets a word, an unknown one "Invalid".
         uninstall = installMockFetch(DEFS, DATA);
@@ -395,6 +479,37 @@ describe("installMockFetch", () => {
         // A repeat submission of the same value must still report Valid, not Unchanged.
         const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
         expect((await again.json()).result.PauseTime).toBe("Valid");
+    });
+
+    it("derives PauseTime's bounds from its field and writes it where its statusPath points", async () => {
+        uninstall = installMockFetch(defsWith("PauseTime", (field) => ({ ...field, max: 7200 })), DATA);
+        expect((await putJson("/notification", { PauseTime: 5000 })).result.PauseTime).toBe("Valid");
+        expect((await getJson("/status")).notification.PauseTime).toBe(5000);
+    });
+
+    it("writes a dispatched number without a statusPath nowhere", async () => {
+        const withoutStatusPath = (/** @type {FieldDef} */ field) => {
+            const copy = { ...field };
+            delete copy.statusPath;
+            return copy;
+        };
+        uninstall = installMockFetch(defsWith("PauseTime", withoutStatusPath), DATA);
+        expect((await putJson("/notification", { PauseTime: 60 })).result.PauseTime).toBe("Valid");
+        expect((await getJson("/status")).notification).toEqual({});
+    });
+
+    it("derives LightCmdLED's members and bounds from its subFields", async () => {
+        vi.setSystemTime(Date.now());
+        /** @type {FieldDef[]} */
+        const subFields = [
+            { key: "R", label: "Red", kind: "number", min: 0, max: 255 },
+            { key: "G", label: "Green", kind: "number", min: 0, max: 255 },
+            { key: "T", label: "Time (s)", kind: "number", min: 0.5, max: 120.0, float: true },
+        ];
+        uninstall = installMockFetch(defsWith("LightCmdLED", (field) => ({ ...field, subFields })), DATA);
+        expect((await putJson("/notification", { LightCmdLED: { R: 1, G: 2, T: 100 } })).result.LightCmdLED).toBe("Valid");
+        advanceMockClockMs(100000);
+        expect((await putJson("/notification", { LightCmdLED: { R: 1, G: 2, B: 3, T: 1 } })).result.LightCmdLED).toBe("Invalid");
     });
 
     it("dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting", async () => {
@@ -473,8 +588,9 @@ describe("installMockFetch", () => {
         expect((await afterward.json()).result.LightCmdLED).toBe("Valid");
     });
 
-    it("dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied", async () => {
+    it("dispatches PUT /sensors' ForceCalRef: range-validated, never Unchanged, and GET reads back the last reference applied (400 on a fresh mock)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
+        expect((await getJson("/sensors")).SCD30.ForceCalRef).toBe(400);
 
         const outOfRange = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 399 } }) });
         expect((await outOfRange.json()).result.SCD30.ForceCalRef).toBe("Invalid");
@@ -482,14 +598,13 @@ describe("installMockFetch", () => {
         const applied = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
         expect((await applied.json()).result.SCD30.ForceCalRef).toBe("Valid");
 
-        // Real SCD30 register limitation (src/asy_scd30_driver.py's get_forced_recalibration_reference()
-        // docstring): the calibration update is permanent, but this readback always reports 400, never
-        // whatever was just applied.
-        expect((await (await fetch("/sensors")).json()).SCD30.ForceCalRef).toBe(400);
+        // The chip reports the most recently used reference within one power-up and 400 after power-up
+        // (Interface Description 1.4.6).
+        expect((await (await fetch("/sensors")).json()).SCD30.ForceCalRef).toBe(900);
 
-        // Resubmitting the exact fixture-seeded value (400) still reports Valid, never Unchanged - a
-        // direct hardware write is re-run every request, with no stored value to compare against.
-        const resubmit = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 400 } }) });
+        // Resubmitting the value just applied still reports Valid, never Unchanged - a direct
+        // hardware write is re-run every request.
+        const resubmit = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
         expect((await resubmit.json()).result.SCD30.ForceCalRef).toBe("Valid");
     });
 
@@ -507,7 +622,7 @@ describe("installMockFetch", () => {
         expect((await outOfRange.json()).result.SCD30.AmbPres).toBe("Invalid");
     });
 
-    it("dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all", async () => {
+    it("dispatches PUT /sensors' ContMeas as a command: bool-only, never persisted or reported by GET", async () => {
         uninstall = installMockFetch(DEFS, DATA);
 
         const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: "not-a-bool" } }) });
@@ -558,15 +673,72 @@ describe("installMockFetch", () => {
         expect([after.PW, after.HotspotPW]).toEqual(["********", "********"]);
     });
 
-    it("increments a TS-suffixed leaf by exactly 1 on jitter, jitters a plain number, and leaves a non-number leaf untouched", async () => {
+    it("masks every field the definitions mark mask: true, not a fixed list", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await getJson("/networking");
+        expect([body.PW, body.HotspotPW, body.ProxyPW, body.Hostname]).toEqual(["********", "********", "********", "fixture-host"]);
+    });
+
+    it("sets each measurement TS to the clock, jitters a plain number, and leaves a time key and a non-number leaf untouched", async () => {
+        vi.setSystemTime(new Date("2026-10-13T06:00:00.900Z"));
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/measurements");
         const body = await response.json();
 
-        expect(body.SCD30.TS).toBe(1001); // timestamp-looking key: always +1, never randomized
+        expect(body.SCD30.TS).toBe(Math.floor(Date.now() / 1000)); // the clock's Unix seconds, never a jittered value
+        expect(body.SCD30.SensorUptime).toBe(120); // a key ending Uptime never jitters
         expect(body.SCD30.Model).toBe("SCD30"); // non-number leaf: untouched
         expect(body.SCD30.CO2).toBeGreaterThan(590);
         expect(body.SCD30.CO2).toBeLessThan(610);
+    });
+
+    it("answers GET /status' UnixTime and WifiTS from the clock", async () => {
+        vi.setSystemTime(new Date("2026-10-13T06:00:00.900Z"));
+        uninstall = installMockFetch(DEFS, DATA);
+        const body = await getJson("/status");
+        const now = Math.floor(Date.now() / 1000);
+        expect([body.system.UnixTime, body.networking.WifiTS]).toEqual([now, now]);
+    });
+
+    it("steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP", async () => {
+        const status = { ...DATA.status, system: { SysUptime: COUNTER_CAP - 1 }, networking: { WifiUptime: COUNTER_CAP - 1 } };
+        uninstall = installMockFetch(DEFS, { ...DATA, status });
+        const first = await getJson("/status");
+        const second = await getJson("/status");
+        const uptimes = [first.system.SysUptime, first.networking.WifiUptime, second.system.SysUptime, second.networking.WifiUptime];
+        expect(uptimes).toEqual([COUNTER_CAP, COUNTER_CAP, COUNTER_CAP, COUNTER_CAP]);
+    });
+
+    it("serves every other /status value as stored: LocalTime is the same over ten GETs", async () => {
+        const localTime = { Year: 2026, Month: 10, MDay: 13, Hour: 8, Minute: 0, Second: 0, Weekday: 1 };
+        const status = { ...DATA.status, system: { LocalTime: localTime, MemFree: 104960, BootSignature: 1754568003 } };
+        uninstall = installMockFetch(DEFS, { ...DATA, status });
+        const bodies = await Promise.all(Array.from({ length: 10 }, () => getJson("/status")));
+        const served = bodies.map((body) => [body.system.LocalTime, body.system.MemFree, body.system.BootSignature]);
+        expect(served).toEqual(Array.from({ length: 10 }, () => [localTime, 104960, 1754568003]));
+    });
+
+    it("answers at once with no timer when controls.delayMs is unset", async () => {
+        vi.useFakeTimers();
+        uninstall = installMockFetch(DEFS, DATA, {});
+        const answers = Promise.all([fetch("/status"), fetch("/sensors")]);
+        expect(vi.getTimerCount()).toBe(0);
+        expect((await answers).map((response) => response.status)).toEqual([200, 200]);
+    });
+
+    it("delays every answer by controls.delayMs, a fixed time", async () => {
+        vi.useFakeTimers();
+        uninstall = installMockFetch(DEFS, DATA, { delayMs: 250 });
+        let answered = false;
+        const pending = fetch("/status").then((response) => {
+            answered = true;
+            return response;
+        });
+        await vi.advanceTimersByTimeAsync(249);
+        expect(answered).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(answered).toBe(true);
+        expect((await pending).status).toBe(200);
     });
 
     it("jitters a nested measurement sub-object's leaves too, not just the top level", async () => {
@@ -574,11 +746,12 @@ describe("installMockFetch", () => {
         // sit static forever, which reads as a broken renderer. Math.random is pinned to its maximum
         // so the expectations are exact: below 1 the spread is 5% and the rounding keeps 4 decimals.
         const random = vi.spyOn(Math, "random").mockReturnValue(1);
+        vi.setSystemTime(new Date("2026-10-13T06:00:00.900Z"));
         uninstall = installMockFetch(DEFS, DATA);
         const body = await (await fetch("/measurements")).json();
         random.mockRestore();
 
-        expect(body.ISL29125.TS).toBe(1001); // top-level timestamp: still exactly +1
+        expect(body.ISL29125.TS).toBe(Math.floor(Date.now() / 1000)); // the timestamp: the clock, never jittered
         expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
         expect(body.ISL29125.Lux).toBe(303); // at or above 1: unchanged, 300 + 1% of itself
         // The nested leaves, each moved by 5% of itself - which only happens at all if
@@ -642,6 +815,21 @@ describe("installMockFetch", () => {
         }
     });
 
+    it("never composes a sensor sample's command value, so GET /sensors never echoes a command as a setting", async () => {
+        /** @type {import("../js/definitions.js").MockSamples} */
+        const commandSamples = {
+            measurements: { SCD30: { CO2: 600 } },
+            sensorsConfig: { SCD30: { MeasInterval: 5 }, SGP40: { ResetVOC: true }, ISL29125: { IRCompAdjust: 40, Calibrate: true } },
+            networkingConfig: {}, systemConfig: {}, notificationConfig: {},
+            status: { networking: {}, system: {}, sensors: {}, notification: {} },
+            errcount: {},
+        };
+        const data = composeMockData(DEFS, commandSamples);
+        expect(data.sensorsConfig).toEqual({ SCD30: { MeasInterval: 5 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } });
+        uninstall = installMockFetch(DEFS, data);
+        expect(await getJson("/sensors")).toEqual({ SCD30: { MeasInterval: 5 }, SGP40: {}, ISL29125: { IRCompAdjust: 40 } });
+    });
+
     it("answers Invalid for a PUT /sensors key that isn't a real sensor, applying the real ones normally", async () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors", {
@@ -660,12 +848,22 @@ describe("installMockFetch", () => {
         expect(body.result).toEqual({ SCD30: "Invalid" });
     });
 
-    it("rejects an unsupported HTTP method with a 405", async () => {
+    it.each([["DELETE", "/sensors"], ["POST", "/status"], ["PUT", "/measurements"]])("rejects %s %s, a method its route does not take, with make_response(405) and HTTP 405", async (method, path) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const response = await fetch("/sensors", { method: "DELETE" });
+        const response = await fetch(path, { method });
         expect(response.status).toBe(405);
-        const body = await response.json();
-        expect([body.res, body.code, body.descr]).toEqual(["ERR", 405, "Method not allowed"]); // the status is its code
+        // The status is its code, and the envelope the catalog's (make_response(405)).
+        expect(await response.json()).toEqual({ res: "ERR", code: 405, descr: "Method not allowed", result: {} });
+    });
+
+    it("intercepts only the routes the definitions declare, passing every other path through", async () => {
+        const passedThrough = vi.fn(() => Promise.resolve(new Response("passed through", { status: 299 })));
+        vi.stubGlobal("fetch", passedThrough); // the fetch the mock passes through to; afterEach restores the real one
+        const defs = { ...DEFS, sections: DEFS.sections.filter((section) => section.key !== "notification") };
+        uninstall = installMockFetch(defs, DATA);
+        expect(await (await fetch("/notification")).text()).toBe("passed through");
+        expect((await fetch("/networking")).status).toBe(200);
+        expect(passedThrough).toHaveBeenCalledTimes(1);
     });
 
     it("injects exactly one network failure via controls.nextFailure, then serves normally again", async () => {
@@ -686,9 +884,19 @@ describe("installMockFetch", () => {
         const response = await fetch("/sensors");
         expect(response.ok).toBe(false);
         expect(response.status).toBe(500);
+        // The status is its code, with the catalog's text (make_response(500)).
+        expect(await response.json()).toEqual({ res: "ERR", code: 500, descr: "Internal server error", result: {} });
 
         const second = await fetch("/sensors");
         expect(second.ok).toBe(true);
+    });
+
+    it("answers an injected status the catalog does not list with make_response()'s Unknown error", async () => {
+        const controls = { nextFailure: /** @type {"network" | number | undefined} */ (503) };
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        const response = await fetch("/status");
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({ res: "ERR", code: 503, descr: "Unknown error", result: {} });
     });
 
     it("injects a malformed-body failure: HTTP 200 with res:ERR/code:1, matching the real backend's own make_response(1) exactly", async () => {
@@ -720,14 +928,30 @@ describe("installMockFetch", () => {
         expect(await response.text()).toBe("");
     });
 
-    it("injects a partial-result failure: one submitted field silently missing from a successful PUT's result", async () => {
-        const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("partial-result") };
-        uninstall = installMockFetch(DEFS, DATA, controls);
+    // Mirrors _body_as_dict(): a body request.json cannot parse, or one that parses to anything but an
+    // object, answers make_response(1) with HTTP 200 on every PUT route.
+    it.each([["/sensors", "nope"], ["/sensors", "[1,2]"], ["/networking", "\"text\""], ["/system", "null"], ["/status", "5"], ["/notification", "{"]])(
+        "answers PUT %s with the body %s by make_response(1), HTTP 200",
+        async (path, body) => {
+            uninstall = installMockFetch(DEFS, DATA);
+            const response = await fetch(path, { method: "PUT", body });
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
+        },
+    );
 
-        const response = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 10, ContMeas: false } }) });
-        const body = await response.json();
-        expect(body.res).toBe("OK"); // the real backend's own gap: overall envelope still reports OK
-        expect(Object.keys(body.result.SCD30)).toHaveLength(1); // one of the two submitted fields is missing
+    it("injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only", async () => {
+        const controls = /** @type {MockFetchControls} */ ({ nextFailure: "group-failure" });
+        uninstall = installMockFetch(DEFS, DATA, controls);
+        await getJson("/sensors");
+        expect(controls.nextFailure).toBe("group-failure"); // a GET leaves it for the next PUT
+
+        const sensors = await putJson("/sensors", { SCD30: { MeasInterval: 10, AmbPres: 950 }, ISL29125: { IRCompAdjust: 41 } });
+        expect(sensors).toEqual({ res: "OK", code: 0, descr: "Command executed", result: { SCD30: { MeasInterval: "Failed", AmbPres: "Failed" }, ISL29125: { IRCompAdjust: "Failed" } } });
         expect(controls.nextFailure).toBeUndefined();
+        expect((await putJson("/networking", { Hostname: "next-host" })).result).toEqual({ Hostname: "Valid" });
+
+        controls.nextFailure = "group-failure";
+        expect((await putJson("/networking", { Hostname: "other-host", Bogus: 1 })).result).toEqual({ Hostname: "Failed", Bogus: "Failed" });
     });
 });

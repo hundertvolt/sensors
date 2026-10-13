@@ -1,0 +1,97 @@
+U23 lane X WIP X1: SPECIFICATION.md follows the website, its build and the wire facts
+
+Every SPECIFICATION.md sentence the website work made false is corrected
+with the smallest true text, and the facts it added are written where the
+code and its comments cite them. Changes, by Part:
+
+- A.8: the REST reference's two new keys (unavailableMarker, unknownCodeText,
+  both read from src/ by AST); its GET rule (an always-executed toggle, not a
+  defaultValue, stays off a GET); which definitions keys are API facts and
+  which page-only, a key in neither failing the build; /status's sensors map
+  as the wire sends it (one object per source; corrected, it was wrong before
+  this unit too) and the SGP40 timestamps under their source; UnixTime;
+  PUT /status's ResetErrors (every reset awaited, "Failed" on a raise or a
+  false, each raise persisted once); the website's confirmation dialogs.
+- B.14.4: the spin test's time bound holds for the fastest of every three
+  consecutive rounds; the allocation bound for every round.
+- L.5: the three new build rule ids; the non-finite rule names @web
+  resolution in place of the removed defaultValue.
+- G.2: the catalog of mirrored pairs and their checks (js/api-contract.js,
+  the mock's copies, the dispatch fields, the marker scan, the reference
+  agreement, MAX_POLL_INTERVAL_MS, the source-constant reader).
+- H.1: the accessibility baseline and the test that checks it.
+- H.2: the module map (shell.js, api-contract.js, isRecord()); the stager,
+  its derived order, drift rule and refusals; --stage-only on both scripts.
+- H.3: the hook contract (the four controller hooks, the template hooks,
+  .hidden templates-only), in-place updates, the template API and the
+  layering guard.
+- H.4: the section history; the poll queue (startup fetch, whole-request
+  timeout, abort on leave, hidden-tab pause); the HTML sink rule; the Apply
+  path's texts; the gap row's DNS-fallback exception and PW's hint; a new
+  "Divergences from the legacy site" row; the mock paragraph.
+- H.5/H.5.1: defaultDecimals; the new FieldDef keys, defaultValue gone; the
+  shape hints; ContMeas shows no state until set; every value's decimals
+  from its source and the counts the build carries; validateNumberHints();
+  D's status rows among the generator-owned lists.
+- H.6: no invented zero ("no data", "unavailable", the rollup's count); the
+  errcount wiring.
+- H.7: the bundle (main.js's closure, nine modules) and the inlined icon.
+- H.8: lint:html:built; the reference loader and agreement checks; the
+  console rule's diagnostic and the sink rule; the stager checks the
+  bootstrap's import.
+- Part N: web.poll_backoff_max_ms, web.device_watch_interval_ms and
+  web.clock_mismatch_s beside web.outer_cap_s; web.default_decimals beside
+  web.poll_interval_ms; l0.section_render_wait_ms; site-functions.test.js as
+  a site of l0.render_wait_timeout_ms and l0.render_poll_ms;
+  l1.lwip_host_spin_window_rounds, and l1.lwip_host_spin_round_max_us's
+  Dependants read the window (its value, Basis and Margin unchanged).
+
+Owner decisions written, each with its question and words:
+- (owner, 2026-10-13) asked whether the host-only test's spin-round bound,
+  failing on single late wake-ups of this machine, should (a) stay as is,
+  every failure going to the owner, or (b) apply the same 20 ms bound to the
+  fastest of each three consecutive rounds: "Then option b is fine." (after
+  "And the fix within this question is about the reliability of a test only
+  on your local machine?" was answered yes).
+- (owner, 2026-10-02) asked about "How timestamps, codes and numbers show on
+  the website": 'Fine, and maintain a reasonable number of digits per value
+  (e.g. limit to 2 or 3 digits behind the decimal point, don't print full
+  floats). But only for the website, the API delivers full resolution.
+  Configured in the website config file, derived or defined from the value
+  sourcing modules (e.g. Schema or inside the commented configs).' The value
+  2 is the lower of the owner's two (agent, 2026-10-13).
+- (owner, 2026-10-01) asked about "A confirmation before clearing the DNS
+  fallback list": 'Fine, and add a dialog to all system commands and the
+  clear error history as well. But only on the website, not on the API side.
+  The API stays single command.'
+- (owner, 2026-10-01) asked about "The website meets an accessibility
+  baseline": 'I want "back" to move backwards through the sensor subpages
+  openend through the menu as well (actually the most intuitive way)'
+  (part of the answer; the whole begins 'Fine, and make the "back" function
+  of the browser work.').
+- (owner, 2026-10-02) asked about "The reset-reason and boot-phase numbers":
+  'Good, and make the numbers clickable in the website like the errno and
+  wrnno numbers.'
+- (owner, 2026-09-29) on the error and warning numbers: '... don't change the
+  current look of the website, make the codes clickable and show the
+  description on click'.
+The divergence row's other tags are carried as the unit's records give
+them: (owner, 2026-08-21) the stripe's two levels; (owner, 2026-09-29) the
+Altitude warning, inputs cleared after Apply, ages against the device
+clock; (owner, 2026-09-26) the DNS fallback's Clear; agent decisions with
+their owner review where one exists: failed-Apply marking (agent,
+2026-08-22; owner-reviewed, 2026-10-01), the favicon (agent, 2026-09-30;
+owner-reviewed, 2026-10-02), ContMeas with no state (agent, 2026-09-30;
+owner-reviewed, 2026-10-02), the back-off and the reload (agent,
+2026-09-30; owner-reviewed, 2026-10-01), the double stripe (agent,
+2026-09-27), the accessibility baseline (agent, 2026-09-27;
+owner-reviewed, 2026-10-01).
+
+The allow-list row SPECIFICATION.md "**Contract between them**" is retired
+by the H.3 rewrite ("appearance decided" became "appearance set"); the
+lead drops it. Not written here, pending: the ESLint ceiling figures (the
+final merge's), the live tier's ceiling text and l0.live_* rows, and the
+field-format.js/_expected_display.js module-map change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

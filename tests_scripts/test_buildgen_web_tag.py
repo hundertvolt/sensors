@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from buildgen.errors import BuildError
-from buildgen.web_tag import WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
+from buildgen.web_tag import WebFieldTag, WebGroupTag, check_ignored_when_set, parse_web_group_tags, parse_web_tags, resolution_decimals
 
 
 @pytest.fixture
@@ -64,17 +64,10 @@ def test_parse_web_tags_bareword_kind_and_flags(tmp_path: Path) -> None:
     assert (tag.kind, tag.mask, tag.dispatch, tag.on_label, tag.off_label) == ("toggle", True, True, "On", "Off")
 
 
-@pytest.mark.parametrize("raw,expected", [("true", True), ("42", 42), ("-1.5", -1.5), ("hello", "hello")])
-def test_parse_web_tags_default_value_coercion(tmp_path: Path, raw: str, expected: object) -> None:
-    (tag,) = _parse(tmp_path, f'# @web X section=sensors submitGroup=self label="L" defaultValue={raw}\n')
-    assert tag.default_value == expected
-    assert type(tag.default_value) is type(expected)
-
-
-@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "infinity"])
-def test_parse_web_tags_non_finite_default_value_rejected(tmp_path: Path, raw: str) -> None:
-    # float() reads all of these; json.dumps() would then write NaN/Infinity, which no browser parses.
-    _parse_expecting(tmp_path, f'# @web X section=sensors submitGroup=self label="L" defaultValue={raw}\n', "is not a finite number", "tag.non-finite-number")
+@pytest.mark.parametrize("raw", ["true", "false", "42"])
+def test_parse_web_tags_retired_default_value_rejected(tmp_path: Path, raw: str) -> None:
+    # Retired: a toggle whose state the GET cannot report shows unset rather than a stand-in value.
+    _parse_expecting(tmp_path, f'# @web X section=sensors submitGroup=self label="L" defaultValue={raw}\n', r"unknown key\(s\) \['defaultValue'\]", "web.unknown-key")
 
 
 def test_parse_web_tags_hidden_alone_keeps_a_schema_field_off_the_page(tmp_path: Path) -> None:
@@ -262,6 +255,90 @@ def test_parse_web_tags_a_quoted_special_is_kept_with_its_quotes(tmp_path: Path,
 )
 def test_parse_web_tags_shape_rejected_off_its_value_set_or_a_string(tmp_path: Path, source: str, match: str, rule: str) -> None:
     _parse_expecting(tmp_path, source, match, rule)
+
+
+# ---------------------------------------------------------------------------
+# The page keys: clearable (a string's Clear button), ignoredWhenSet (a sibling that overrides the
+# field), resolution (the step the device rounds a number to) - each on the kind and value it allows.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_web_tags_clearable_is_a_flag(tmp_path: Path) -> None:
+    (tag,) = _parse(tmp_path, '# @web X section=networking submitGroup=dns label="L" clearable=true\n')
+    assert tag.clearable is True
+    (plain,) = _parse(tmp_path, '# @web X section=networking submitGroup=dns label="L"\n')
+    assert plain.clearable is False
+
+
+@pytest.mark.parametrize(
+    ("source", "match", "rule"),
+    [
+        ('# @web X section=networking submitGroup=dns label="L" clearable=yes\n', "must be true or false", "web.not-a-bool"),
+        ('# @web X section=sensors submitGroup=self kind=number label="L" clearable=true\n', "not a string field", "web.key-needs-string"),
+        ('# @web X section=sensors submitGroup=self kind=toggle label="L" clearable=true\n', "not a string field", "web.key-needs-string"),
+    ],
+)
+def test_parse_web_tags_clearable_rejected_off_a_bool_or_a_string(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
+
+
+def _parse_with_siblings(tmp_path: Path, source: str) -> "tuple[WebFieldTag, ...]":
+    tags = _parse(tmp_path, source)
+    check_ignored_when_set(tags, tmp_path / "asy_x_driver.py", "dev", "x")
+    return tags
+
+
+def test_parse_web_tags_ignored_when_set_names_a_sibling(tmp_path: Path) -> None:
+    tags = _parse_with_siblings(tmp_path, '# @web A section=sensors submitGroup=self label="A"\n# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=A\n')
+    assert [t.ignored_when_set for t in tags] == [None, "A"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# @web A section=sensors submitGroup=self label="A"\n# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=Nope\n',
+        '# @web A section=sensors submitGroup=other label="A"\n# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=A\n',
+        '# @web A section=measurements submitGroup=self kind=readonly label="A"\n# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=A\n',
+        '# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=B\n',
+        '# @web A hidden="why"\n# @web B section=sensors submitGroup=self label="B" ignoredWhenSet=A\n',
+    ],
+    ids=["no-such-field", "another-group", "another-section", "itself", "a-hidden-field"],
+)
+def test_parse_web_tags_ignored_when_set_naming_no_sibling_rejected(tmp_path: Path, source: str) -> None:
+    with pytest.raises(BuildError, match="names no other field of its group") as raised:
+        _parse_with_siblings(tmp_path, source)
+    assert raised.value.rule == "web.ignored-when-set-unknown"
+
+
+@pytest.mark.parametrize(("raw", "value"), [("0.01", 0.01), ("1", 1.0), ("0.5", 0.5), ("1e-3", 0.001)])
+def test_parse_web_tags_resolution_is_a_positive_number(tmp_path: Path, raw: str, value: float) -> None:
+    (tag,) = _parse(tmp_path, f'# @web X section=sensors submitGroup=self label="L" resolution={raw}\n')
+    assert tag.resolution == value
+
+
+@pytest.mark.parametrize(
+    ("raw", "match", "rule"),
+    [
+        ("abc", "is not a number", "tag.not-a-number"),
+        ("nan", "is not a finite number", "tag.non-finite-number"),
+        ("inf", "is not a finite number", "tag.non-finite-number"),
+        ("0", "expected a positive number", "web.value-not-in-set"),
+        ("-0.01", "expected a positive number", "web.value-not-in-set"),
+        ("1e-101", "needs 101 decimals", "web.decimals-range"),
+    ],
+)
+def test_parse_web_tags_resolution_rejected_off_a_positive_finite_number(tmp_path: Path, raw: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, f'# @web X section=sensors submitGroup=self label="L" resolution={raw}\n', match, rule)
+
+
+@pytest.mark.parametrize("kind", ["string", "readonly", "toggle", "enum"])
+def test_parse_web_tags_resolution_off_a_number_field_rejected(tmp_path: Path, kind: str) -> None:
+    _parse_expecting(tmp_path, f'# @web X section=sensors submitGroup=self kind={kind} label="L" resolution=0.01\n', "not a number field", "web.key-needs-number")
+
+
+@pytest.mark.parametrize(("value", "decimals"), [(0.01, 2), (0.1, 1), (1.0, 0), (0.5, 1), (0.25, 2), (10.0, 0), (0.001, 3), (2.5, 1)])
+def test_a_resolutions_decimals_are_the_digits_its_step_needs(value: float, decimals: int) -> None:
+    assert resolution_decimals(value) == decimals
 
 
 # ---------------------------------------------------------------------------
@@ -550,10 +627,30 @@ def test_parse_web_tags_real_scd30_ambpres_special(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_scd30_contmeas_is_freestanding(src_dir: Path) -> None:
+    # No schema and no state the GET reports: an always-executed toggle the page shows unset until set.
     tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
     cont_meas = next(t for t in tags if t.field_name == "ContMeas")
-    assert cont_meas.kind == "toggle"
-    assert cont_meas.default_value is True
+    assert (cont_meas.kind, cont_meas.always_executed, cont_meas.dispatch) == ("toggle", True, False)
+
+
+def test_parse_web_tags_real_scd30_page_keys(src_dir: Path) -> None:
+    # The chip's 0.01 degC offset tick; Altitude ignored while a pressure is set (Interface Description 1.4.7, 1.4.8).
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")}
+    assert {name: t.resolution for name, t in tags.items() if t.resolution is not None} == {"TempOffset": 0.01}
+    assert {name: t.ignored_when_set for name, t in tags.items() if t.ignored_when_set is not None} == {"Altitude": "AmbPres"}
+    assert not [name for name, t in tags.items() if t.clearable]
+
+
+def test_parse_web_tags_real_measurement_decimals(src_dir: Path) -> None:
+    # The page's decimals per value, from each chip's datasheet; a value with none takes the site default.
+    expected = {
+        "asy_scd30_driver.py": {"CO2": 0, "Temp": 1, "Hum": 1, "WetBulb": 1, "DewPoint": 1, "FRCState": None, "FRCWait": 0, "TS": None},
+        "asy_bmp3xx_driver.py": {"Pres": None, "Temp": None, "SLPres": None, "TS": None},
+        "asy_sgp40_driver.py": {"VOC": None, "Raw": None, "VOCState": None, "TS": None},
+    }
+    for driver, decimals in expected.items():
+        tags = parse_web_tags(src_dir / driver, "dev", "x")
+        assert {t.field_name: t.decimals for t in tags if t.section == "measurements"} == decimals, driver
 
 
 def test_parse_web_tags_real_bmp3xx_enum_specials(src_dir: Path) -> None:
@@ -587,6 +684,8 @@ def test_parse_web_tags_real_isl29125_enum_specials(src_dir: Path) -> None:
     assert dict(resolution.special) == {"12": "12 bit (fast)", "16": "16 bit (flicker-rejecting)"}
     range_field = next(t for t in tags if t.field_name == "Range")
     assert dict(range_field.special) == {"375": "375 lx", "10000": "10000 lx"}
+    calibrate = next(t for t in tags if t.field_name == "Calibrate")
+    assert (calibrate.dispatch, calibrate.on_label, calibrate.off_label) == (True, "On", "Off")
 
 
 def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_decimals(src_dir: Path) -> None:
@@ -660,6 +759,7 @@ def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
     assert {t.field_name for t in tags if t.submit_group == "ntp"} == {"NTPHost", "NTPOffset", "NTPInterval"}
     assert {t.field_name for t in tags if t.submit_group == "dns"} == {"DNSFallback"}
     assert {t.field_name: t.shape for t in tags if t.shape is not None} == {"NTPHost": "hostName", "DNSFallback": "ipv4List"}
+    assert {t.field_name for t in tags if t.clearable} == {"DNSFallback"}  # the one value the page may send empty
     assert {t.section for t in tags if t.submit_group in ("ntp", "dns")} == {"networking"}
     # GMTOffset/DSTOffset are real asy_ntp_client.py fields that render on the System page instead
     # (a deliberate cross-file section/group assignment, not a mistake to "fix").

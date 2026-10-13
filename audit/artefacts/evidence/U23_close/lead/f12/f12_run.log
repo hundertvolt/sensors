@@ -1,0 +1,177 @@
+# F-12: tests_scripts/test_api_reference.py from 3c23b1b (lane D's final) on a git archive of 3d29af9 (API base 1); 2026-10-13T11:20:22Z
+# cmd: PYTHONPATH=scripts nice -n 19 unshare -n u22/api5/ns.sh /home/user/sensors/.venv/bin/python -m pytest -q -p no:cacheprovider tests_scripts/test_api_reference.py
+...............................FFFFFF.............FFF................... [ 73%]
+..........................                                               [100%]
+=================================== FAILURES ===================================
+______________ test_the_two_failure_shapes_are_the_sources[arzi] _______________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+_______________ test_the_two_failure_shapes_are_the_sources[dev] _______________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+_____________ test_the_two_failure_shapes_are_the_sources[grkizi] ______________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+_____________ test_the_two_failure_shapes_are_the_sources[klkizi] ______________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+____________ test_the_two_failure_shapes_are_the_sources[schlafzi] _____________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+______________ test_the_two_failure_shapes_are_the_sources[wozi] _______________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+>       assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'unavailableMarker'
+
+tests_scripts/test_api_reference.py:225: KeyError
+_ test_an_unreadable_result_word_or_code_fails_the_build[marker-not-a-string] __
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7822/test_an_unreadable_result_word5')
+filename = 'asy_base_classes.py', old = 'UNAVAILABLE = const("unavailable")'
+new = 'UNAVAILABLE = const(5)', name = 'UNAVAILABLE is 5, not a string'
+rule = 'api.wire-text-not-string'
+
+    @pytest.mark.parametrize(
+        ("filename", "old", "new", "name", "rule"),
+        [
+            ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED", "api.result-word-not-string"),
+            ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID", "api.source-name-missing"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES", "api.envelope-codes-malformed"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal", "api.source-not-literal"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {)", "cannot read .* for its _STANDARD_CODES", "api.source-unreadable"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)", "UNAVAILABLE is 5, not a string", "api.wire-text-not-string"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', 'UNAVAILABLE_WORD = const("unavailable")', "UNAVAILABLE", "api.source-name-missing"),
+            ("asy_api_response.py", '_UNKNOWN_DESCR = const("Unknown error")', "_UNKNOWN_DESCR = const(None)", "_UNKNOWN_DESCR is None, not a string", "api.wire-text-not-string"),
+        ],
+        ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error", "marker-not-a-string", "marker-missing", "unknown-text-not-a-string"],
+    )
+    def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str, rule: str) -> None:
+        src_dir = _src_with(tmp_path, filename, old, new)
+>       with pytest.raises(BuildError, match=name) as caught:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_api_reference.py:272: Failed
+____ test_an_unreadable_result_word_or_code_fails_the_build[marker-missing] ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7822/test_an_unreadable_result_word6')
+filename = 'asy_base_classes.py', old = 'UNAVAILABLE = const("unavailable")'
+new = 'UNAVAILABLE_WORD = const("unavailable")', name = 'UNAVAILABLE'
+rule = 'api.source-name-missing'
+
+    @pytest.mark.parametrize(
+        ("filename", "old", "new", "name", "rule"),
+        [
+            ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED", "api.result-word-not-string"),
+            ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID", "api.source-name-missing"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES", "api.envelope-codes-malformed"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal", "api.source-not-literal"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {)", "cannot read .* for its _STANDARD_CODES", "api.source-unreadable"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)", "UNAVAILABLE is 5, not a string", "api.wire-text-not-string"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', 'UNAVAILABLE_WORD = const("unavailable")', "UNAVAILABLE", "api.source-name-missing"),
+            ("asy_api_response.py", '_UNKNOWN_DESCR = const("Unknown error")', "_UNKNOWN_DESCR = const(None)", "_UNKNOWN_DESCR is None, not a string", "api.wire-text-not-string"),
+        ],
+        ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error", "marker-not-a-string", "marker-missing", "unknown-text-not-a-string"],
+    )
+    def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str, rule: str) -> None:
+        src_dir = _src_with(tmp_path, filename, old, new)
+>       with pytest.raises(BuildError, match=name) as caught:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_api_reference.py:272: Failed
+_ test_an_unreadable_result_word_or_code_fails_the_build[unknown-text-not-a-string] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-7822/test_an_unreadable_result_word7')
+filename = 'asy_api_response.py'
+old = '_UNKNOWN_DESCR = const("Unknown error")'
+new = '_UNKNOWN_DESCR = const(None)'
+name = '_UNKNOWN_DESCR is None, not a string', rule = 'api.wire-text-not-string'
+
+    @pytest.mark.parametrize(
+        ("filename", "old", "new", "name", "rule"),
+        [
+            ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED", "api.result-word-not-string"),
+            ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID", "api.source-name-missing"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES", "api.envelope-codes-malformed"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal", "api.source-not-literal"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {)", "cannot read .* for its _STANDARD_CODES", "api.source-unreadable"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)", "UNAVAILABLE is 5, not a string", "api.wire-text-not-string"),
+            ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', 'UNAVAILABLE_WORD = const("unavailable")', "UNAVAILABLE", "api.source-name-missing"),
+            ("asy_api_response.py", '_UNKNOWN_DESCR = const("Unknown error")', "_UNKNOWN_DESCR = const(None)", "_UNKNOWN_DESCR is None, not a string", "api.wire-text-not-string"),
+        ],
+        ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error", "marker-not-a-string", "marker-missing", "unknown-text-not-a-string"],
+    )
+    def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str, rule: str) -> None:
+        src_dir = _src_with(tmp_path, filename, old, new)
+>       with pytest.raises(BuildError, match=name) as caught:
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_api_reference.py:272: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[arzi]
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[dev]
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[grkizi]
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[klkizi]
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[schlafzi]
+FAILED tests_scripts/test_api_reference.py::test_the_two_failure_shapes_are_the_sources[wozi]
+FAILED tests_scripts/test_api_reference.py::test_an_unreadable_result_word_or_code_fails_the_build[marker-not-a-string]
+FAILED tests_scripts/test_api_reference.py::test_an_unreadable_result_word_or_code_fails_the_build[marker-missing]
+FAILED tests_scripts/test_api_reference.py::test_an_unreadable_result_word_or_code_fails_the_build[unknown-text-not-a-string]
+9 failed, 89 passed in 8.22s
+# rc=1 wall=12.100848019 s; end 2026-10-13T11:20:34Z

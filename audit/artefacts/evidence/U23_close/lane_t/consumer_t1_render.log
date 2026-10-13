@@ -1,0 +1,731 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23t
+
+ ❯ |chromium| tests_js/render.test.js (35 tests | 32 failed) 145245ms
+   ❯ renderSection (35)
+     × renders readonly measurement fields and updates them on poll 2212ms
+     × renders a nested measurement field's own leaf at its declared precision, not [object Object] 2103ms
+     × renders a writable number field pre-filled via its current-value caption, and a toggle button 2107ms
+     × submits an edited field via Apply and shows the resulting per-field status 2097ms
+     × colors each individual field's own box by its own result, not just the card's worst status 2099ms
+     × sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 2141ms
+     × still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 2088ms
+     × submits a numeric-valued enum field as a number, not a stringified one (regression) 2099ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 18ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 13ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild 14ms
+     × shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 2089ms
+     ❯ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       × renders On (the schema defaultValue), not Off, despite no real current value 2085ms
+       × sparse-omits it when left untouched at the defaultValue (nothing to submit) 2109ms
+       × submits it once deliberately flipped away from the defaultValue 2095ms
+     × skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 2093ms
+     × skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 2083ms
+     × shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 2089ms
+     × shows a visible error banner when a settings section's one-shot GET fails 107ms
+     × reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 2085ms
+     × reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 2086ms
+     × reports Invalid for a composite field submitted with only some subfields filled 2099ms
+     × reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 2090ms
+     × skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 2083ms
+     × flattens per-sensor maintenance data one level for the Status section's sensors group 2094ms
+     × shows a visible error banner when a GET response body is empty 113ms
+     × shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 108ms
+     × surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error 111ms
+     × shows a visible error banner when the notification section's own /status sub-fetch fails 101ms
+     × refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 117ms
+     × shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 20081ms
+     × shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 20084ms
+     × shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 20087ms
+     × shows Failed when a PUT response body is empty (a torn/truncated transmission) 20076ms
+     × shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 20086ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 32 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > renders readonly measurement fields and updates them on poll
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---renders-readonly-measurement-fields-and-updates-them-on-poll.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:218:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > renders a nested measurement field's own leaf at its declared precision, not [object Object]
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---renders-a-nested-measurement-field-s-own-leaf-at-its-declared-precision--not--object-Object-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:235:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > renders a writable number field pre-filled via its current-value caption, and a toggle button
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---renders-a-writable-number-field-pre-filled-via-its-current-value-caption--and-a-toggle-button.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:259:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > submits an edited field via Apply and shows the resulting per-field status
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---submits-an-edited-field-via-Apply-and-shows-the-resulting-per-field-status.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:273:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > colors each individual field's own box by its own result, not just the card's worst status
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---colors-each-individual-field-s-own-box-by-its-own-result--not-just-the-card-s-worst-status.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:293:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---sparse-omits-an-untouched-toggle-enum-field-left-at-its-current-value--unlike-a-dispatch-marked-field.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:318:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---still-submits-a-toggle-enum-field-explicitly-flipped-back-to-its-original-value--a-real--deliberate-change-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:337:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > submits a numeric-valued enum field as a number, not a stringified one (regression)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---submits-a-numeric-valued-enum-field-as-a-number--not-a-stringified-one--regression-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:357:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Valid--not-Failed--after-a-successful-Reset-All-Errors-submission--even-though--status-s-PUT-never-returns-a-per-field-result.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:473:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---renders-On--the-schema-defaultValue---not-Off--despite-no-real-current-value.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:528:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > sparse-omits it when left untouched at the defaultValue (nothing to submit)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---sparse-omits-it-when-left-untouched-at-the-defaultValue--nothing-to-submit-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:540:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > submits it once deliberately flipped away from the defaultValue
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---submits-it-once-deliberately-flipped-away-from-the-defaultValue.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:554:13
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when Apply is clicked with nothing to submit
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---skips-the-PUT-and-shows-a-neutral-message-when-Apply-is-clicked-with-nothing-to-submit.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:595:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---skips-the-PUT-for-an-enum-only-submit-group--e-g--SystemCmd--left-untouched--instead-of-silently-dispatching-whichever-command-the-browser-defaults-a-bare--select--to--regression-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:663:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner--without-clearing-existing-data--when-a-live-poll-s-GET-fails--and-hides-it-again-once-the-next-poll-succeeds.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:681:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails
+AssertionError: expected '' to match /sensors/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-a-settings-section-s-one-shot-GET-fails.png
+
+[32m- Expected:[39m
+/sensors/i
+
+[31m+ Received:[39m
+""
+
+ ❯ tests_js/render.test.js:703:62
+    701|
+    702|         await waitFor(() => !mustQuery(main, ".error-banner").classLis…
+    703|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+       |                                                              ^
+    704|     });
+    705|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Invalid-for-non-numeric-text-in-a-number-field-instead-of-silently-submitting-0--regression-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:713:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Invalid-for-non-numeric-text-in-a-composite-subfield-instead-of-silently-submitting-0--regression-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:733:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Invalid-for-a-composite-field-submitted-with-only-some-subfields-filled.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:755:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---reports-Valid-for-a-fully-specified-composite-LightCmdLED-submission-and-never-persists-it--dispatch-only--matches-real-GET--notification-.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:774:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---skips-the-PUT-and-shows-a-neutral-message-when-LightCmdLED-s-Apply-is-clicked-with-every-subfield-left-blank.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:797:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > flattens per-sensor maintenance data one level for the Status section's sensors group
+Error: waitFor timed out
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---flattens-per-sensor-maintenance-data-one-level-for-the-Status-section-s-sensors-group.png
+
+ ❯ waitFor tests_js/render.test.js:30:11
+     28|         });
+     29|     }
+     30|     throw new Error("waitFor timed out");
+       |           ^
+     31| }
+     32|
+ ❯ tests_js/render.test.js:834:9
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+AssertionError: expected '' to match /measurements/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-a-GET-response-body-is-empty.png
+
+[32m- Expected:[39m
+/measurements/i
+
+[31m+ Received:[39m
+""
+
+ ❯ tests_js/render.test.js:854:62
+    852|
+    853|         await waitFor(() => !mustQuery(main, ".error-banner").classLis…
+    854|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+       |                                                              ^
+    855|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+    856|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+AssertionError: expected '' to match /measurements/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-clear--non-crashing-error-banner-when-a-GET-response-body-is-torn-truncated-JSON--a-transmission-error-.png
+
+[32m- Expected:[39m
+/measurements/i
+
+[31m+ Received:[39m
+""
+
+ ❯ tests_js/render.test.js:865:62
+    863|
+    864|         await waitFor(() => !mustQuery(main, ".error-banner").classLis…
+    865|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+       |                                                              ^
+    866|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+    867|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error
+AssertionError: expected '' to match /not found/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---surfaces-the-server-s-own-descr-text-when-the-notification-section-s--status-sub-fetch-returns-a-shaped-HTTP-error.png
+
+[32m- Expected:[39m
+/not found/i
+
+[31m+ Received:[39m
+""
+
+ ❯ tests_js/render.test.js:883:62
+    881|
+    882|         await waitFor(() => !mustQuery(main, ".error-banner").classLis…
+    883|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+       |                                                              ^
+    884|     });
+    885|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows a visible error banner when the notification section's own /status sub-fetch fails
+AssertionError: expected '' to match /notification/i
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-a-visible-error-banner-when-the-notification-section-s-own--status-sub-fetch-fails.png
+
+[32m- Expected:[39m
+/notification/i
+
+[31m+ Received:[39m
+""
+
+ ❯ tests_js/render.test.js:903:62
+    901|
+    902|         await waitFor(() => !mustQuery(main, ".error-banner").classLis…
+    903|         expect(mustQuery(main, ".error-banner").textContent).toMatch(/…
+       |                                                              ^
+    904|     });
+    905|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > refreshes a readonly field embedded in a writable, live-polled group in place on the next poll
+Error: Expected to find ".field-value[data-field-key="Model"]"
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---refreshes-a-readonly-field-embedded-in-a-writable--live-polled-group-in-place-on-the-next-poll.png
+
+ ❯ mustQuery tests_js/render.test.js:44:15
+     42|     const found = root.querySelector(selector);
+     43|     if (found === null) {
+     44|         throw new Error(`Expected to find "${selector}"`);
+       |               ^
+     45|     }
+     46|     return /** @type {T} */ (found);
+ ❯ tests_js/render.test.js:944:22
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure)
+Error: Test timed out in 20000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows--Request-failed--and-a-failed-apply-status-when-the-PUT-itself-fails--network-failure-.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4317:14
+ ❯ tests_js/render.test.js:956:5
+    954|     });
+    955|
+    956|     it("shows 'Request failed' and a failed apply-status when the PUT …
+       |     ^
+    957|         const controls = { nextFailure: /** @type {import("../js/mock-…
+    958|         uninstall = installMockFetch(DEFS, DATA, controls);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5825:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)
+Error: Test timed out in 20000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed--not-silently-Valid--when-the-PUT-body-is-rejected-as-malformed--HTTP-200--res-ERR-.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4317:14
+ ❯ tests_js/render.test.js:981:5
+    979|     });
+    980|
+    981|     it("shows Failed, not silently Valid, when the PUT body is rejecte…
+       |     ^
+    982|         // make_response(1) for a malformed body is HTTP 200 with res:…
+    983|         // a shaped HTTP error status - so render.js has to check enve…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5825:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)
+Error: Test timed out in 20000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-with-the-server-s-own-descr-when-a-PUT-hits-a-shaped-HTTP-error--500-.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4317:14
+ ❯ tests_js/render.test.js:1003:5
+    1001|     });
+    1002|
+    1003|     it("shows Failed with the server's own descr when a PUT hits a sha…
+       |     ^
+    1004|         const controls = { nextFailure: /** @type {import("../js/mock-…
+    1005|         uninstall = installMockFetch(DEFS, DATA, controls);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5825:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed when a PUT response body is empty (a torn/truncated transmission)
+Error: Test timed out in 20000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-when-a-PUT-response-body-is-empty--a-torn-truncated-transmission-.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4317:14
+ ❯ tests_js/render.test.js:1022:5
+    1020|     });
+    1021|
+    1022|     it("shows Failed when a PUT response body is empty (a torn/truncat…
+       |     ^
+    1023|         const controls = { nextFailure: /** @type {import("../js/mock-…
+    1024|         uninstall = installMockFetch(DEFS, DATA, controls);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5825:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/32]⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status
+Error: Test timed out in 20000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---shows-Failed-for-a-field-silently-missing-from-a-nominally-OK-PUT-response--without-losing-the-other-field-s-real-status.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:4317:14
+ ❯ tests_js/render.test.js:1039:5
+    1037|     });
+    1038|
+    1039|     it("shows Failed for a field silently missing from a nominally-OK …
+       |     ^
+    1040|         // A real server-side gap (Part H.6): a settings group's post-…
+    1041|         // that group's fields from `result` while the envelope still …
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=defba69f:5825:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/32]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  32 failed | 3 passed (35)
+   Start at  09:10:39
+   Duration  146.50s (tests 100%)
+
+== Summary: npm test ==
+Commit: d90bd96 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 3 · failed 32 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > renders readonly measurement fields and updates them on poll: waitFor timed out
+  - tests_js/render.test.js > renderSection > renders a nested measurement field's own leaf at its declared precision, not [object Object]: waitFor timed out
+  - tests_js/render.test.js > renderSection > renders a writable number field pre-filled via its current-value caption, and a toggle button: waitFor timed out
+  - tests_js/render.test.js > renderSection > submits an edited field via Apply and shows the resulting per-field status: waitFor timed out
+  - tests_js/render.test.js > renderSection > colors each individual field's own box by its own result, not just the card's worst status: waitFor timed out
+  - tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field: waitFor timed out
+  - tests_js/render.test.js > renderSection > still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change): waitFor timed out
+  - tests_js/render.test.js > renderSection > submits a numeric-valued enum field as a number, not a stringified one (regression): waitFor timed out
+  - tests_js/render.test.js > renderSection > shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result: waitFor timed out
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value: waitFor timed out
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > sparse-omits it when left untouched at the defaultValue (nothing to submit): waitFor timed out
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > submits it once deliberately flipped away from the defaultValue: waitFor timed out
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when Apply is clicked with nothing to submit: waitFor timed out
+  - tests_js/render.test.js > renderSection > skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression): waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails: expected '' to match /sensors/i
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression): waitFor timed out
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression): waitFor timed out
+  - tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled: waitFor timed out
+  - tests_js/render.test.js > renderSection > reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification): waitFor timed out
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank: waitFor timed out
+  - tests_js/render.test.js > renderSection > flattens per-sensor maintenance data one level for the Status section's sensors group: waitFor timed out
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty: expected '' to match /measurements/i
+  - tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error): expected '' to match /measurements/i
+  - tests_js/render.test.js > renderSection > surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error: expected '' to match /not found/i
+  - tests_js/render.test.js > renderSection > shows a visible error banner when the notification section's own /status sub-fetch fails: expected '' to match /notification/i
+  - tests_js/render.test.js > renderSection > refreshes a readonly field embedded in a writable, live-polled group in place on the next poll: Expected to find ".field-value[data-field-key="Model"]"
+  - tests_js/render.test.js > renderSection > shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure): Test timed out in 20000ms.
+  - tests_js/render.test.js > renderSection > shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR): Test timed out in 20000ms.
+  - tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500): Test timed out in 20000ms.
+  - tests_js/render.test.js > renderSection > shows Failed when a PUT response body is empty (a torn/truncated transmission): Test timed out in 20000ms.
+  - tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status: Test timed out in 20000ms.
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

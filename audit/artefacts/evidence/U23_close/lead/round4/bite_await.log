@@ -1,0 +1,81 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/round4/bite_tree
+
+ ❯ |chromium| tests_js/shell.test.js (15 tests | 1 failed | 14 skipped) 317ms
+   ❯ startShell (13)
+     ↓ opens the landing section, and leaves no timer, listener or request behind once stopped
+     ↓ leaves one set of listeners after start, stop and start again
+     ↓ reloads once when the second watch sees a different build, stopping first
+     ↓ never reloads while the build stays the same, or when /system carries no build object
+     ↓ pauses the watch while the page is hidden and watches once on becoming visible
+     ↓ neither reloads nor rejects unhandled when the watch's /system request fails
+     ↓ shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes
+     ↓ defers a reload for a changed build until the pending Apply has settled
+     ↓ watches once more as soon as a section's failing episode ends, not only at its own cadence
+     ↓ pushes one history entry per menu selection of another section, none for the current one
+     ↓ selects the popped section without pushing: Back, then Forward, then back to the landing entry
+     × on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it 315ms
+     ↓ opens a deep-linked section, and the landing section for an unknown key, pushing nothing
+   ↓ historyOf and visibilityOf (2)
+     ↓ reads the section from the URL hash, pushes one entry per key and reports a Back as a pop
+     ↓ reads the document's visibility and reports each change until released
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/shell.test.js > startShell > on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it
+AssertionError: expected true to be false // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/shell.test.js/startShell---on-a-switch-lets-the-left-section-s-GET-on-the-wire-end-before-the-next-section-s-first-GET--and-a-page-stop-right-after-a-switch-aborts-it.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/shell.test.js:504:42
+    502|             setTimeout(resolve, 50);
+    503|         });
+    504|         expect(wire[0]?.signal?.aborted).toBe(false);
+       |                                          ^
+    505|         expect(statusGets).toBe(1);
+    506|         wire[0]?.answer();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-HSuYK7l7.js?v=675ca495:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  13:24:11
+   Duration  2.01s (worker 62%, tests 32%, import 6%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 14 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/shell.test.js > startShell > on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it: expected true to be false // Object.is equality
+Skipped:
+  - tests_js/shell.test.js > startShell > opens the landing section, and leaves no timer, listener or request behind once stopped: skip
+  - tests_js/shell.test.js > startShell > leaves one set of listeners after start, stop and start again: skip
+  - tests_js/shell.test.js > startShell > reloads once when the second watch sees a different build, stopping first: skip
+  - tests_js/shell.test.js > startShell > never reloads while the build stays the same, or when /system carries no build object: skip
+  - tests_js/shell.test.js > startShell > pauses the watch while the page is hidden and watches once on becoming visible: skip
+  - tests_js/shell.test.js > startShell > neither reloads nor rejects unhandled when the watch's /system request fails: skip
+  - tests_js/shell.test.js > startShell > shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes: skip
+  - tests_js/shell.test.js > startShell > defers a reload for a changed build until the pending Apply has settled: skip
+  - tests_js/shell.test.js > startShell > watches once more as soon as a section's failing episode ends, not only at its own cadence: skip
+  - tests_js/shell.test.js > startShell > pushes one history entry per menu selection of another section, none for the current one: skip
+  - tests_js/shell.test.js > startShell > selects the popped section without pushing: Back, then Forward, then back to the landing entry: skip
+  - tests_js/shell.test.js > startShell > opens a deep-linked section, and the landing section for an unknown key, pushing nothing: skip
+  - tests_js/shell.test.js > historyOf and visibilityOf > reads the section from the URL hash, pushes one entry per key and reports a Back as a pop: skip
+  - tests_js/shell.test.js > historyOf and visibilityOf > reads the document's visibility and reports each change until released: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

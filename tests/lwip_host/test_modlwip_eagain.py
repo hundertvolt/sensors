@@ -29,6 +29,10 @@ _SPIN_ROUNDS = 1000
 _SPIN_ROUND_MAX_US = 20000
 # @tunable l1.lwip_host_spin_round_alloc_max_b = 64
 _SPIN_ROUND_ALLOC_MAX_B = 64
+# The bound holds for the fastest of every run of this many consecutive rounds, so one late wake-up
+# of the host is not a failure while a round that sleeps every time still is (owner, 2026-10-13).
+# @tunable l1.lwip_host_spin_window_rounds = 3
+_SPIN_WINDOW_ROUNDS = 3
 
 _HOST = "127.0.0.1"
 _PORT = 50000
@@ -231,6 +235,14 @@ def _recovered(reference: int) -> int:
         _pump(_SETTLE_MS)
 
 
+def _slowest_window_us(rounds_us: "list[int]") -> int:
+    # Over every run of _SPIN_WINDOW_ROUNDS consecutive rounds, the fastest one's time; the slowest such time.
+    slowest = 0
+    for start in range(len(rounds_us) - _SPIN_WINDOW_ROUNDS + 1):
+        slowest = max(slowest, min(rounds_us[start : start + _SPIN_WINDOW_ROUNDS]))
+    return slowest
+
+
 def _timed_write(sock: "lwip.socket", piece: "bytes | memoryview") -> "int | None":
     # write()'s result, None on EAGAIN, or _REFUSED for ENOMEM; every call timed against the bound.
     start = time.ticks_ms()
@@ -387,6 +399,20 @@ def test_repeated_rounds_stay_stable() -> None:
         _recovered(reference)
 
 
+def test_one_or_two_late_rounds_pass_the_spin_window() -> None:
+    # A host that wakes the process late now and then: the window's other rounds stay under the bound.
+    quick, late = _SPIN_ROUND_MAX_US // 10, _SPIN_ROUND_MAX_US * 3
+    assert _slowest_window_us([quick, quick, late, quick, quick]) == quick
+    assert _slowest_window_us([quick, late, late, quick, quick]) == quick
+
+
+def test_a_round_that_sleeps_every_time_fails_the_spin_window() -> None:
+    # The unpatched path sleeps 50 ms in every round, so every window's fastest round is over the bound.
+    asleep = 50000
+    assert _slowest_window_us([asleep] * 10) == asleep > _SPIN_ROUND_MAX_US
+    assert _slowest_window_us([1000, asleep, asleep, asleep, 1000]) == asleep
+
+
 def test_the_eagain_spin_round_is_bounded() -> None:
     # At the queue-limit edge, what asyncio's drain() repeats while a connection spins: write() of the
     # remaining memoryview slice returns None, a timeout-0 poll reports POLLOUT; no pump in between.
@@ -402,6 +428,7 @@ def test_the_eagain_spin_round_is_bounded() -> None:
             pass  # ipoll's result tuple is allocated once, on first use; asyncio's poller already has it
         remaining = memoryview(_MSS_PIECE)
         slowest_us = largest_b = collections = 0
+        rounds_us: list[int] = []
         for _ in range(_SPIN_ROUNDS):
             allocated = gc.mem_alloc()
             start = time.ticks_us()
@@ -417,11 +444,13 @@ def test_the_eagain_spin_round_is_bounded() -> None:
                 # collector's, not the spin's, so the round is counted and left out of both maxima.
                 collections += 1
                 continue
+            rounds_us.append(elapsed_us)  # outside the timed span and the next round's allocation read
             slowest_us = max(slowest_us, elapsed_us)
             largest_b = max(largest_b, grown)
-        print(f"EAGAIN spin: slowest round {slowest_us} us, largest allocation {largest_b} B over {_SPIN_ROUNDS - collections} rounds ({collections} with a collection)")
-        assert collections < _SPIN_ROUNDS, "every round ran a collection: nothing measured"
-        assert slowest_us <= _SPIN_ROUND_MAX_US, f"a spin round took {slowest_us} us, bound {_SPIN_ROUND_MAX_US} us"
+        window_us = _slowest_window_us(rounds_us)
+        print(f"EAGAIN spin: slowest round {slowest_us} us, slowest {_SPIN_WINDOW_ROUNDS}-round window {window_us} us, largest allocation {largest_b} B over {_SPIN_ROUNDS - collections} rounds ({collections} with a collection)")
+        assert len(rounds_us) >= _SPIN_WINDOW_ROUNDS, f"only {len(rounds_us)} rounds ran without a collection: nothing measured"
+        assert window_us <= _SPIN_ROUND_MAX_US, f"{_SPIN_WINDOW_ROUNDS} consecutive spin rounds each took over the bound, the fastest {window_us} us, bound {_SPIN_ROUND_MAX_US} us"
         assert largest_b <= _SPIN_ROUND_ALLOC_MAX_B, f"a spin round allocated {largest_b} B, bound {_SPIN_ROUND_ALLOC_MAX_B} B"
     finally:
         _close([pair], reset=True)

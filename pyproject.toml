@@ -485,7 +485,6 @@ module = [
     "test_setter_microdot_integration",
     "test_uart_comm_hazard",
     "test_voc_algorithm",
-    "test_website_build_integration",
     "uart_crossover_exchange",
     "uart_crossover_recovery",
     "uart_driver_read_never_blocks_the_loop",

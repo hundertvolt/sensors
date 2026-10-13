@@ -123,9 +123,9 @@ def test_real_website_root_serves_the_actual_production_index_html() -> None:
 
 
 def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() -> None:
-    # definitions.json is no longer a separately-fetched route (scripts/build_website.sh's own
-    # "Inlining" comment - SPECIFICATION.md Part H.7): it's embedded directly into
-    # index.html at build time instead, so this now reads it out of the real page body.
+    # definitions.json is no longer a separately-fetched route (scripts/_stage_website.py inlines
+    # it - SPECIFICATION.md Part H.7): it's embedded directly into index.html at build time
+    # instead, so this now reads it out of the real page body.
     #
     # "wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4, re-verified): this
     # file's device.id assertion comes from whichever device's real website bundle scripts/test.sh built -

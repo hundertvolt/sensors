@@ -1,0 +1,4 @@
+
+> sensors-website@0.1.0 lint:html:built
+> scripts/build_device_websites.sh --stage-only build/staged_html && html-validate "build/staged_html/*/index.html"
+

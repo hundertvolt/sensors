@@ -1,0 +1,43 @@
+
+######## SubagentHandback 2026-10-13T09:32:03.579Z
+**API2 = `0d9611b`** (0d9611b916cb70d0798114d99ec0909a0095143b) on `audit/u23-api2`, in wt-u23api. The three merges went in with no conflict, all reds are expected, and the worktree is clean and not pushed.
+- **Merges:** the branch heads matched their hashes (T `10005b1`, C `71f14d6`, S `dec9e2f`). The merges are `7c2d03d` (T), `7de3dec` (C) and `fa42840` (S).
+- **Step 1b:** the decision-vocabulary test reported exactly 2 stale rows, so I deleted only those:
+  - `:158` `js/field-format.js` "Deliberately a narrow local shape…" (T's)
+  - `:530` `tests_js/main.test.js` "The actual point of inlining…" (S's)
+  - `:535` was not reported and stays. The rerun is green (6 passed). I committed it alone as `0d9611b` with `lead5_msg.txt`, the two rows appended and the trailers last.
+**Rebuild:** rc 0 (`rebuilt 0d9611b arzi dev grkizi klkizi schlafzi wozi`). The duplicate-name check found none:
+- The stager's own unique-name check passed inside the rebuild.
+- I also checked independently: staged every device with `--stage-only` into `u23/api2/stage` (scratch) and parsed each `js/app.js` with acorn as one module (`u23/api2/tools/dupnames.cjs`). All 6 bundles parse, each has 113 top-level names, 0 duplicates and 0 leftover imports. The closure includes `shell.js`.
+**`summary.txt` (u23/api2), verbatim:**
+ruff rc=0 / mypy_noargs rc=0 / mypy_ci rc=0 / mypy_twin rc=0 / mypy_host rc=0 / npm_lint rc=0 / npm_typecheck rc=1 / lint_html rc=0 / lint_css rc=0 / vt_definitions rc=0 / vt_definitions-shape-corpus rc=0 / vt_source-constants rc=0 / vt_mock-server rc=0 / vt_mock-server-put-matrix rc=0 / vt_generated-definitions-render rc=0 / vt_mock-data-compose rc=0 / vt_definitions-mockdata-coverage rc=1 / vt_app rc=0 / vt_templates rc=0 / vt_render rc=1 / vt_lint-ceilings rc=1 / vt_main rc=0 / vt_api-reference-agreement rc=0 / vt_nav rc=0 / vt_poll-manager rc=0 / vt_shell rc=0 / done
+- I added nav, poll-manager and shell to the vitest list. The new and changed files: nav 8/8, poll-manager 21/21, shell 11/11, main 8/8, app 10/10, templates 103/103, generated-definitions-render 48/48.
+- `npm run typecheck` stops after its first pass because of the `&&`, so I ran the second pass (`tsc -p tsconfig.node.json`) alone: rc 0.
+**`tests_scripts/` tier (whole):** rc 1, 4487 passed, 11 skipped, 1 failed, in 9:16 at nice 19. The failure is `test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree`. The counts are the same as W1.
+**MicroPython:** `git diff --name-only d90bd96 API2 -- src tests digital_twin` is empty, so step 4 had nothing to run. No log of mine contains `MemoryError` or "memory allocation failed".
+**Reds, every one classified (no UNEXPECTED):**
+- **typecheck, EXPECTED:**
+  - S: `live-backend-put-matrix.test.js(54,40)` and `(65,56)` `defaultValue`.
+  - C: `render.test.js(560,134)` `defaultValue`. This is C1's own listed line; it moved from W1's 513.
+- **typecheck, the lines that had to go GREEN are green:** `js/app.js(9,10)`, `js/main.js(8,10)`, `js/shell.js(128,60)` and C1's eight `js/render.js` lines are all gone.
+- **render.test.js, EXPECTED (C, Apply phase):** 49/50; the one red is the "renders On (the schema defaultValue)…" case, `render.test.js:578` (expected 'false' to be 'true').
+- **definitions-mockdata-coverage, EXPECTED (C, row 62):** 6 device cases fail at `:107`. The unresolved paths are `status/sensors/SGP40_BackupTS` and `SGP40_RestoreTS`, plus `UARTLINK_Transfers` and `UARTLINK_Failures` on dev. The reds are identical to W1.
+- **lint-ceilings "complexity sits at its measured maximum", EXPECTED (lead, A-26):** the configured ceiling is 41. At 40 there are 0 findings, so the measured maximum is below the ceiling.
+- **tunables, EXPECTED:**
+  - X: `web.default_decimals` (`buildgen/definitions.py:39`, `tests_scripts/test_buildgen_definitions.py:377`), `l1.lwip_host_spin_window_rounds` (`tests/lwip_host/test_modlwip_eagain.py:34`), `web.clock_mismatch_s` (`js/field-format.js:15`).
+  - S→X: `web.poll_backoff_max_ms` (`js/poll-manager.js:12`), `web.device_watch_interval_ms` (`js/shell.js:16`).
+- **main.test.js and app.test.js are GREEN.** Nothing of T's is red.
+**C1's "What T and S must provide", checked against API2 — all present as C1 expects:**
+- T, in `js/templates.js`:
+  - `buildFieldGroupCard(group, currentValues, groupIndex, display)` with `CardDisplay {deviceNowS, defaultDecimals?, isUnavailable}`.
+  - `updateFieldGroupValues(card, group, currentValues, display)`.
+  - Both errcount functions take `Record<string, unknown> | null`.
+  - The banner starts at `data-shown="false"`.
+- S:
+  - `request(url, init, timeoutMs, signal)` rejects with an `AbortError` `DOMException`.
+  - `startPolling(fn, ms, {visibility?, onError?, stopAfterSuccess?})`.
+  - `Visibility` is typed at `poll-manager.js:15` and `DeviceClock` at `shell.js:12`.
+**Step 6:** nothing to do.
+**RUNS.md matches `ps`: yes.** Every run of mine has its own line and is marked done, and my agent line is closed. No process of mine is left (quick.sh pid 2598 and l0.sh pid 5609 both exited).
+
+Everything is in `u23/api2/`: `summary.txt`, `vt_*.log`, `npm_typecheck.log`, `tsc_node.log`, `l0.log`, `rebuild.log`, `decvocab{1,2}.log`, `c1_handback.txt`.

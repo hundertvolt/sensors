@@ -1,12 +1,21 @@
 /**
- * The one tests_js loader for every device's generated definitions (build/generated_src/); throws at
- * import when the tree is missing or does not name exactly the devices/*.toml set.
+ * The one tests_js loader for every device's generated definitions and REST reference (build/generated_src/);
+ * throws at import when the tree is missing or does not name exactly the devices/*.toml set.
  */
 
 /** @typedef {import("../js/definitions.js").SiteDefinitions} SiteDefinitions */
+/**
+ * @typedef {{
+ *   device: string, envelopeCodes: Record<string, string>, resultWords: string[],
+ *   routes: {method: string, path: string, groups: unknown[]}[],
+ * }} ApiReference
+ */
 
 const definitionFiles = /** @type {Record<string, SiteDefinitions>} */ (
     import.meta.glob("../build/generated_src/definitions/*.json", { eager: true, import: "default" })
+);
+const referenceFiles = /** @type {Record<string, ApiReference>} */ (
+    import.meta.glob("../build/generated_src/api/*.json", { eager: true, import: "default" })
 );
 const tomlFiles = import.meta.glob("../devices/*.toml", { query: "?raw", eager: true, import: "default" });
 
@@ -36,7 +45,21 @@ export const GENERATED_DEFINITIONS = new Map(
         .sort(([a], [b]) => (a < b ? -1 : 1)),
 );
 
-const generatedIds = [...GENERATED_DEFINITIONS.keys()];
-if (DEVICE_IDS.length === 0 || generatedIds.length !== DEVICE_IDS.length || DEVICE_IDS.some((id) => !GENERATED_DEFINITIONS.has(id))) {
+/** @type {Map<string, ApiReference>} */
+export const API_REFERENCES = new Map(
+    Object.entries(referenceFiles)
+        .map(([path, reference]) => /** @type {[string, ApiReference]} */ ([stemOf(path), reference]))
+        .sort(([a], [b]) => (a < b ? -1 : 1)),
+);
+
+/**
+ * @param {Map<string, unknown>} generated
+ * @returns {boolean} whether `generated` holds exactly one entry per device
+ */
+function namesEveryDevice(generated) {
+    return generated.size === DEVICE_IDS.length && DEVICE_IDS.every((id) => generated.has(id));
+}
+
+if (DEVICE_IDS.length === 0 || !namesEveryDevice(GENERATED_DEFINITIONS) || !namesEveryDevice(API_REFERENCES)) {
     throw new Error("generated definitions missing or stale: run npm run build:site");
 }

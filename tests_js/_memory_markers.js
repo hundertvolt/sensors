@@ -1,46 +1,90 @@
 // The allocation-failure marker pair the unit, twin, flash/bench and JS gates all match (CLAUDE.md's
-// memory rule, SPECIFICATION.md Part I.4(e)), and the drain a JS gate reads a twin's output through.
-// Pure, no Node built-ins: tsconfig.json checks it as browser code.
+// memory rule, SPECIFICATION.md Part I.4(e)), the twin's restart signs, and the drain a JS gate reads a
+// twin's output through. Pure, no Node built-ins: tsconfig.json checks it as browser code.
 
 export const MEMORY_ERROR_MARKERS = ["MemoryError", "memory allocation failed"];
+
+// machine.reset() raises SimulatedResetError in the twin (digital_twin/machine.py), and the task supervisor logs
+// "reboot triggered" before it: a live command whose twin printed either has not tested a running device.
+export const TWIN_RESET_MARKERS = ["SimulatedResetError", "reboot triggered"];
 
 // A child's kept output tail, in characters; trimming it never drops a marker line (scanned first).
 export const OUTPUT_TAIL_CHARS = 256 * 1024;
 const MARKER_LINES_QUOTED = 50;
-const MARKER_OVERLAP = Math.max(...MEMORY_ERROR_MARKERS.map((marker) => marker.length)) - 1;
+const MARKER_OVERLAP = Math.max(...[...MEMORY_ERROR_MARKERS, ...TWIN_RESET_MARKERS].map((marker) => marker.length)) - 1;
 
 /**
- * Every line of `text` holding either marker, whole.
+ * Every line of `text` holding any of `markers`, whole.
+ * @param {string} text
+ * @param {string[]} markers
+ * @returns {string[]}
+ */
+function linesWith(text, markers) {
+    return text.split("\n").filter((line) => markers.some((marker) => line.includes(marker)));
+}
+
+/**
+ * The lines holding any of `markers`, quoted up to a bound and counted beyond it, never dropped unseen.
+ * @param {string[]} markers
+ */
+function markedLineLog(markers) {
+    /** @type {string[]} */
+    const quoted = [];
+    let unquoted = 0;
+    return {
+        /** @param {string} lines complete lines */
+        add(lines) {
+            for (const line of linesWith(lines, markers)) {
+                if (quoted.length < MARKER_LINES_QUOTED) {
+                    quoted.push(line);
+                } else {
+                    unquoted += 1;
+                }
+            }
+        },
+        /** @param {string[]} unfinished the lines still without their newline, scanned too */
+        lines(unfinished) {
+            const all = [...quoted, ...unfinished.flatMap((rest) => linesWith(rest, markers))];
+            return unquoted > 0 ? [...all, `[${unquoted} more marker lines not quoted]`] : all;
+        },
+    };
+}
+
+/**
+ * Every line of `text` holding either memory marker, whole.
  * @param {string} text
  * @returns {string[]}
  */
 export function memoryMarkerLines(text) {
-    return text.split("\n").filter((line) => MEMORY_ERROR_MARKERS.some((marker) => line.includes(marker)));
+    return linesWith(text, MEMORY_ERROR_MARKERS);
+}
+
+/**
+ * Every line of `text` holding either restart sign, whole.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function resetMarkerLines(text) {
+    return linesWith(text, TWIN_RESET_MARKERS);
 }
 
 /**
  * A bounded, line-complete record of a child's output streams: complete lines join one tail in
- * arrival order, and each is scanned for the markers before the tail is trimmed.
+ * arrival order, and each is scanned for both marker kinds before the tail is trimmed.
  * @param {number} [limit]
  */
 export function createOutputDrain(limit = OUTPUT_TAIL_CHARS) {
     /** @type {Map<string, string>} */
     const partial = new Map();
-    /** @type {string[]} */
-    const marked = [];
-    let unquoted = 0;
+    const memory = markedLineLog(MEMORY_ERROR_MARKERS);
+    const reset = markedLineLog(TWIN_RESET_MARKERS);
     let tail = "";
     let dropped = 0;
 
     /** @param {string} lines complete lines, each ending in "\n" */
     function keep(lines) {
-        for (const line of memoryMarkerLines(lines)) {
-            if (marked.length < MARKER_LINES_QUOTED) {
-                marked.push(line);
-            } else {
-                unquoted += 1;
-            }
-        }
+        memory.add(lines);
+        reset.add(lines);
         tail += lines;
         if (tail.length > limit) {
             const cut = tail.indexOf("\n", tail.length - limit);
@@ -70,11 +114,13 @@ export function createOutputDrain(limit = OUTPUT_TAIL_CHARS) {
             const unfinished = [...partial.values()].filter((rest) => rest !== "").map((rest) => `${rest}\n`).join("");
             return `${dropped > 0 ? `[${dropped} earlier characters dropped]\n` : ""}${tail}${unfinished}`;
         },
-        /** @returns {string[]} every marker line seen, unfinished lines included, an overflow counted */
+        /** @returns {string[]} every memory-marker line seen, unfinished lines included, an overflow counted */
         markerLines() {
-            const pending = [...partial.values()].flatMap((rest) => memoryMarkerLines(rest));
-            const quoted = [...marked, ...pending];
-            return unquoted > 0 ? [...quoted, `[${unquoted} more marker lines not quoted]`] : quoted;
+            return memory.lines([...partial.values()]);
+        },
+        /** @returns {string[]} every restart-sign line seen, the same way */
+        resetLines() {
+            return reset.lines([...partial.values()]);
         },
     };
 }

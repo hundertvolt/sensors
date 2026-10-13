@@ -1,0 +1,232 @@
+
+######## SubagentHandback 2026-10-13T09:15:54.224Z
+WIP 10005b1
+
+Lane T stopped at its first WIP commit, as the brief orders. Branch `audit/u23-t` in `scratchpad/wt-u23t` = d90bd96 + 10005b1 ("U23 lane T WIP T1: the templates API and formatFieldValue's context"). It touches three files: `js/templates.js`, `js/field-format.js`, `tests_js/templates.test.js`. Nothing was pushed, nothing is left running, and every run below exited.
+
+**Expected reds on T1 alone, until C1 merges.** `js/render.js:189` still calls `buildFieldGroupCard(group, currentValues)` with two arguments.
+- `npm run typecheck`: `js/render.js(189,18): error TS2554: Expected 4 arguments, but got 2.` The other four typecheck errors are already red at W1.
+- At runtime, `fieldDisplayOf()` reads `display.deviceNowS` with `display` undefined. That throws inside `paint()`, so no card renders.
+  - `generated-definitions-render.test.js`: 36 of 48 fail (was green at W1).
+  - `render.test.js`: 32 of 35 fail (5 at W1).
+  - `main.test.js`: 1 failure, the same as W1 (S's).
+  - `app.test.js`: 8/8 pass.
+- I traced this through the code; the error text itself is not in the vitest logs. These files only changed between W1 and T1, so this is the cause.
+
+### Step table
+| step | M-id | state | note |
+|---|---|---|---|
+| 21.14 | M.WEB.012 | applied | Everything except (6) `lasttaskend`, which is U32's. New header, the narrow-shape comment, the `GMTIME_KEYS` import, `formatFieldValue(field, value, context = {deviceNowS: null})`, all steps in order including (8a) and (8b). |
+| 21.15 | M.WEB.014 | partly | Everything except OF-84's string specials (A-6) and OF-85's shape hints (A-7), which the brief puts in "the rest". Byte and host-label hints had already landed (U6). |
+| 21.16 | M.WEB.015 | applied | `buildFieldGroupCard(group, values, groupIndex, display)`, `updateFieldGroupValues()` with (1), `resetControl()`. |
+| 21.17 | M.WEB.016 | applied | Includes (1) `ERR_COUNT_CAP+`. The `:292-293` comment is kept verbatim (landed U0); the `:303-304` text is kept verbatim (U36's). |
+| 21.18 | M.WEB.017 | applied | The banner is `className = "error-banner"` with `dataset.shown = "false"`. |
+| 21.30 | M.WEB.058 | partly | The HEAD cases go through a one-field `buildFieldGroupCard()`; all T1 cases, (1) and (2) are in. Header (U27) and `lasttaskend` (U32) are not written. The A-6/A-7 hint cases come in the rest. |
+| 53 | M.WEB.013 | applied | The two-line comment; `buildField` is no longer exported. `templates.js` also imports `./api-contract.js`, which M.WEB.016 needs. |
+| 82 | M.WEB.080 | not yet | The rest phase. It stays red until C1 and S1 are in my tree. |
+
+### Deviations (each the more conservative, reversible option; agent, 2026-10-13)
+1. **Card attribute in M.WEB.058 (2).** `templates.test.js` does not assert the card's `data-source-state`. M.WEB.020 gives that attribute to the controller in `render.js`, so it stays single-owner and C's render case M.WEB.054 (2) pins it. The templates tests cover the captions, placeholders, toggles, selects and the exact-shape marker.
+2. **Code value button.** It gets `id = fieldId` and `aria-labelledby="<fieldId>-label <fieldId>"`, so its accessible name is the label plus the number. Pointing at the label alone would drop the number. When there is no code (null or unavailable) the button is disabled and an open description closes; the spec says nothing for that case.
+3. **`resetControl` on a select.** With no matching option and no placeholder, it inserts the "Select…" placeholder. The spec only covers "the placeholder when present".
+4. **Formatter edge cases.**
+   - An epoch value that is not a finite number goes to step (9). So NaN shows "NaN", never "NaN d ago".
+   - The age is `Math.floor`ed.
+   - Any non-number `deviceNowS` reads "age unknown".
+5. **`exactOptionalPropertyTypes`.** I typed `defaultDecimals?: number | undefined` in both `CardDisplay` and the formatter's `FormatContext`. That way C can pass `defs.defaultDecimals` without a type error.
+6. **Comment wording.** The toggle comment is kept verbatim. The site-default comment quotes `answers.json` `website-display-details` (owner, 2026-10-02).
+7. **D.15 order.** Applied as the last code edit to both product files: constants first, then non-exported functions alphabetically, then exported functions alphabetically. One rename to stay out of the Setters role: `setRollupText` became `paintRollupText`.
+
+### Files outside my set
+None edited. C must change the `render.js:189` call site to `buildFieldGroupCard(group, values, groupIndex, display)`.
+
+### Facts owed
+**X: one new tunable.** `web.clock_mismatch_s = 5` (s). Site: `js/field-format.js` — `5`.
+- What it does: a timestamp up to 5 s ahead of the page's device-clock estimate reads "0 s ago"; anything further ahead reads "clock mismatch".
+- Basis: estimated (agent, value from the U23 timestamp-age action). The shell's `nowS()` is `floor(Date.now()/1000 + offset)`, with the offset taken when a `/status` answer arrives, so it trails the device by that request's latency plus up to 1 s of flooring. Measurement owed: `/status` latency under load (L2).
+- Margin: unknown until measured.
+- Re-check trigger: the DeviceClock derivation or the request path changes.
+
+**X / H.3: API end state.**
+- Exports: `buildErrcountGroup(group, errcount|null)`, `buildFieldGroupCard(group, currentValues, groupIndex, display)`, `buildNavDrawer`, `buildSectionShell`, `resetControl(wrapper, field, value)`, `updateErrcountGroup(card, group, errcount|null)`, `updateFieldGroupValues(card, group, currentValues, display)`.
+- Typedef `CardDisplay = {deviceNowS, defaultDecimals?, isUnavailable(field)}`.
+- Hooks: ids `field-<g>-<f>`; span label id `<fieldId>-label`; `data-value` true/false/unset (unset has `aria-pressed="mixed"` and text "—"); `[data-clear-for]`; `p.field-warning[data-shown]` after the caption; `button.field-value.code-value[aria-expanded]` with `p.code-description` after it; `[data-code-tone]` with `.code-number`; `button.history-entry-num`, its description after the row's `.history-list`; `.errcount-module-list[data-filter=collapsed|flagged|all]`; `[data-rollup="nodata"]`; the row wrapper's `data-worst` E/W/N/none, with `data-has-errors` gone.
+- Page texts: "unavailable", "no data", "<n> module(s) without data", "<n>: <text>", "No description for code <n>", "Ignored: <label> is set.", "Clear", "age unknown", "clock mismatch", "<n> s/min/h/d ago", "invalid time value", "none".
+
+**Lead.**
+- Allow-list: `_decision_vocab_allowlist.txt:158` (`js/field-format.js` "Deliberately a narrow local shape…") is now stale; `test_decision_vocabulary.py` fails only on that row. Row `:159` (templates' "One deliberate exception") still occurs.
+- Any-baseline: none.
+- ESLint maxima of my files: complexity 22 (`formatFieldValue`, `js/field-format.js:65`) and 21 (`buildFieldDescription`, `js/templates.js:161`); max-depth 3 (`js/templates.js:913`); max-nested-callbacks 3 (`tests_js/templates.test.js:575`). No ceiling raised. The 22 ties the tree maximum (`render.js:196`) and does not move it. `lint-ceilings.test.js` shows only the complexity red already there at W1.
+- **Website input changed: rebuild the site.** `js/templates.js` and `js/field-format.js` changed, and `js/api-contract.js` is now in `main.js`'s closure. A temp stage of dev's site exited 0 with modules `poll-manager, definitions, api-contract, field-format, templates, nav, render, main`.
+- New top-level bundle names, to check against C and S for collisions: `applyErrcountFilter`, `buildCompositeControl`, `buildEnumControl`, `buildErrcountFilterButton`, `buildFieldLabel`, `buildHistoryEntry`, `buildReadonlyValue`, `buildRollupCount`, `buildSelectPlaceholder`, `buildTextControls`, `buildToggleControl`, `closeCodeDescription`, `codeOf`, `currentValueText`, `describeCode`, `epochInstant`, `errcountRowState`, `fieldDisplayOf`, `historySignature`, `modulesText`, `openCodeDescription`, `paintCodeButton`, `paintErrcountGroup`, `paintErrcountRow`, `paintReadonlyValue`, `paintRollupText`, `paintToggle`, `paintTonedCode`, `shownHistorySignature`, `toggleHistoryDescription`, `toggleStateOf`, `SOURCE_UNAVAILABLE_TEXT`, `NO_DATA_TEXT`, `UNSET_TOGGLE_TEXT`, `INVALID_TIME_TEXT`, `CLOCK_MISMATCH_S`, `formatEpochAge`, `formatTimeStruct`.
+
+**Y:** nothing.
+
+### Tests run (all at nice 19; browser files each in their own `unshare -n`)
+- **Fail-first:** a temp copy of the new `templates.test.js` with a namespace import, run against the d90bd96 code: 59 failed, 44 passed. It covers ages, specials, struct check, defaultDecimals, lists, resolution hint, unset toggle, autocomplete, ids/labels, Clear, warning, code button, Enter, tones, title, unavailable, both update functions, `resetControl`, errcount no-data/unavailable/null/cap/`data-worst`/filter/pills, the banner and the hostile description. Log: `u23/laneT/failfirst_templates_head.log`.
+- **Guards** that passed at once:
+  - epoch null with no specials reads "—"
+  - a dispatch toggle with no value shows Off
+  - no Clear button on a non-clearable or read-only field
+  - the unit stays inside the label
+  - a marker beside field values counts as available
+  - the counter and history show once revealed
+  - the rewritten HEAD cases
+- **After:** `templates.test.js` 103/103.
+- **Wall times:** HEAD file 45 tests in 1.29 / 1.32 s (3.0–3.2 s wall); T1 file 103 tests in 1.28 / 1.54 s (2.8–3.2 s wall). GC stages and settrace do not apply (no MicroPython file).
+- **Lint and types:** `npm run lint` clean. `tsc` main pass shows only the reds above; `tsc -p tsconfig.node.json` clean. Ruff over the eight scopes clean. mypy main pass, cold cache: 187 and 174 files, both rc 0.
+- **Pre-commit pytest set, after `git add`:**
+  - Green: citations, comment cap, legacy paths, import placement, code conventions, error catalog, host annotations, lint ceilings, Any baseline, memory-error gate agreement, no variant literals.
+  - Red: decision vocabulary (row 158 above) and tunables register (three IDs already red before T1 plus `js/field-format.js:15: web.clock_mismatch_s is tagged but has no SPECIFICATION.md Part N row`, X's to write).
+- **Process slip:** the four consumer browser runs (09:00–09:06) were entered in RUNS.md only after they exited; the mypy run was entered at its start.
+
+### Files the lead must run after merging
+`templates.test.js`, `render.test.js`, `generated-definitions-render.test.js`, `npm run lint` and `npm run typecheck`, `lint-ceilings.test.js`, `test_decision_vocabulary.py` (after dropping row 158), `test_tunables_register.py`, and the site rebuild.
+
+### Silent-failure scan over my files (T1 part)
+Fixed and tested in T1:
+- **Unavailable source** (class 4): readonly, code and toned values plus writable captions now say "unavailable".
+- **Missing errcount** (class 4): every row reads "no data" and the rollup counts them.
+- **Saturated counter** (class 4): reads "65535+".
+- **Invalid time struct** (class 4): reads "invalid time value", never "undefined".
+- **Clock not known / clock stepped back**: "age unknown" and "clock mismatch" instead of a wrong age.
+- **Epoch value no date can hold** (class 4): no title and no exception.
+
+Inherently safe:
+- A malformed errcount history: `_shape_errcount_entry()` in `src/asy_webserver_service.py` always emits a list and an int counter.
+- An update on a card built from another group: cards are built from the same group, and definitions only change with a reload.
+- A stale open description: it closes or refreshes when its code or history changes.
+
+The other modes in the brief's list (section switch, hidden tab, PUT shapes, ceiling, second client, stopped page, mock failures, ResetErrors) are controller or mock paths: no T site, checked. New findings: none.
+
+######## SubagentHandback 2026-10-13T09:44:29.287Z
+FINAL f28431e
+
+**Lane T is finished.** Branch `audit/u23-t` in `scratchpad/wt-u23t`, three commits on d90bd96:
+- 10005b1, the T1 WIP;
+- f865d44, the merge of API base 0d9611b;
+- f28431e, the final.
+
+I rebuilt my site after the merge (`u23/rebuild.sh wt-u23t`, rc 0, 7 s). Nothing was pushed, every run has exited, and no process from `wt-u23t` is left. Every red left on my tree belongs to another lane or to you; none is from my files.
+
+### Step table
+| step | M-id | state | note |
+|---|---|---|---|
+| 21.14 | M.WEB.012 | applied (T1) | Everything except (6) `lasttaskend`, which is U32's. |
+| 21.15 | M.WEB.014 | applied | T1, plus in the final: OF-84 string specials (A-6) and OF-85 shape hints (A-7). |
+| 21.16 | M.WEB.015 | applied (T1) | |
+| 21.17 | M.WEB.016 | applied (T1) | The `:292-293` comment (landed at U0) and the `:303-304` text (U36's) are kept verbatim. |
+| 21.18 | M.WEB.017 | applied (T1) | |
+| 21.30 | M.WEB.058 | applied | The header is U27's and `lasttaskend` is U32's, so neither is written. The card-attribute clause of (2) is deviation 1, which you accepted. |
+| 53 | M.WEB.013 | applied (T1) | |
+| 82 | M.WEB.080 | applied | `tests_js/_a11y_checks.js` (pure DOM rules) and `tests_js/accessibility.test.js`. |
+
+**What the final adds**
+- **A-6.** A number or string field's specials join the hint, a string value quoted: `"" = Open network`.
+- **A-7.** Shape hints:
+  - hostLabel stays as before.
+  - hostName: "a host name (letters, digits, '-' and '.') or an IPv4 address".
+  - ipv4List: "up to 3 IPv4 addresses, comma-separated, no spaces". The 3 is pinned by a test that reads `_DNS_FALLBACK_MAX` from `src/asy_ntp_client.py`.
+  - countryCode gets no shape hint; its description already states the form.
+- **Complexity split.** The range, length and resolution hints moved into a new `fieldBoundHints()`, so `buildFieldDescription` does not rise to 24.
+- **Code fields on every device.** One case per device renders every generated code field with its catalog text: a button whose click shows the description, or the toned text.
+- **Accessibility check.** For every device and every section, the test runs the real `html/index.html` shell through `startApp` against the composed mock. It checks unique ids, that every `label[for]` and `aria-labelledby` names a real element, that every input, select and button has a name, and that every masked input has `autocomplete="new-password"`. Per device it also checks the drawer: inert when closed; on open, focus moves to the first link and the hamburger reads "Close navigation"; Escape or a link click returns focus to the hamburger. Three fixture cases prove each rule catches a planted fault.
+
+### Deviations
+- T1's deviations 1–7 stand; you accepted them (agent, 2026-10-13).
+- No new deviations in the final.
+
+### Files outside my set
+None edited. Two findings in other lanes' files, for the scan record:
+- **`js/mock-server.js:17` and `:19` (M).** `DNS_LABEL_MAX` and `DNS_FALLBACK_MAX` copy `src/` values, but no test reads the source to pin them (`test_js_api_mirrors.py` covers neither). This breaks the mirror obligation in plan §8. Suggested fix: add both to that mirror test.
+- **`tests_js/generated-definitions-render.test.js:21` (C).** It waits with an untagged 5000 ms bound; that is a tuned value without a `@tunable` tag.
+
+### Facts owed
+**X: two new tunables**
+- `web.clock_mismatch_s = 5` (s). Site: `js/field-format.js` — `5`.
+  - What it governs: an epoch value up to 5 s ahead of the page's device-clock estimate reads "0 s ago"; anything further ahead reads "clock mismatch".
+  - Basis: estimated (agent, value from the U23 timestamp-age action). `shell.js`'s `nowS()` is `floor(Date.now()/1000 + offset)`, with the offset taken when a `/status` answer arrives, so it trails the device by that request's latency plus up to 1 s of flooring. Measurement owed: `/status` latency under load (L2).
+  - Margin: unknown until measured.
+  - Re-check: the DeviceClock derivation or the request path changes.
+- `l0.a11y_render_wait_ms = 5000`. Site: `tests_js/accessibility.test.js` — `5000`.
+  - What it governs: the wait for a section's heading and every card.
+  - Basis: measured (agent, 2026-10-13). Each page case took at most 49–59 ms including `startApp`, over 42 cases, two runs at nice 19. The bound matches the one in `generated-definitions-render.test.js`.
+  - Margin: about 85×.
+  - Re-check: the mock gains a delay, or more requests come before the first paint.
+
+**X: SPEC sections**
+- **H.1:** the accessibility check is these two files.
+- **H.3 hooks and API:** as in my T1 report, plus `fieldBoundHints` and `STRING_SHAPE_HINTS` (internal).
+- **H.4, "Known accepted gap":** the PW hint now shows `"" = Open network`; sending `""` stays the owner's accepted gap, with the DNS fallback's Clear as the one exception (A-6).
+- **H.5:** the shape hint texts above.
+
+**For you (the lead)**
+- **Allow-lists:** none left (your api2 commit dropped `:158`). No Any-baseline lines.
+- **ESLint maxima of my files:**
+
+  | rule | my maximum | site |
+  |---|---|---|
+  | complexity | 22 | `formatFieldValue`, `js/field-format.js:67` |
+  | complexity, next | 15 | `fieldBoundHints`, `js/templates.js:437` |
+  | max-depth | 3 | `js/templates.js`, `tests_js/_a11y_checks.js:71` |
+  | max-nested-callbacks | 3 | the two test files |
+
+- **Tree maxima on my merged tree:** complexity 22, now at `field-format.js:67` (`render.js` dropped to 20); max-depth 4 (`definitions-mockdata-coverage.test.js`); max-nested-callbacks 4 (`render.test.js`). No ceiling raised. `lint-ceilings.test.js` is red only on complexity: 41 is configured, 22 measured, yours to set (A-26).
+- **Website-input change, rebuild needed:** `js/templates.js`. A temp stage of dev's site exits 0. Bundle order: `poll-manager, definitions, api-contract, field-format, templates, render, nav, shell, main`. New top-level names: `STRING_SHAPE_HINTS`, `fieldBoundHints`.
+
+**Y:** nothing.
+
+### Tests (nice 19; every browser file in its own `unshare -n`)
+**Seen failing first**
+- T1: 59 of 103 failed on the old code.
+- Final:
+  - The two hint cases failed against T1's product.
+  - Against d90bd96's templates via temp copies: 67 of 112 failed, including all 6 device code-field cases.
+  - Against d90bd96's `js/` via temp copies: 42 of 45 accessibility cases failed. Findings included duplicate `field-TempOffset`/`SampleInterval`/`FiltCoeff` ids, `label[for]` pointing at readonly spans, unnamed second inputs, password fields without autocomplete, and a drawer still inert after opening.
+  - Every temp copy is removed (logs in `u23/laneT/`).
+
+**Guards** (passed at once): the country-code hint, plus the T1 guards I named in the T1 report.
+
+**Final runs**
+
+| check | result |
+|---|---|
+| `templates.test.js` | 112/112 |
+| `accessibility.test.js` | 45/45 |
+| `generated-definitions-render.test.js` | 48/48 |
+| `render.test.js` | 49/50: the one failure is C's `defaultValue` case, on your expected list |
+| `npm run lint` | clean |
+| `tsc` | only the expected reds: `live-backend-put-matrix.test.js:54`, `:65` (S) and `render.test.js:560` (C) |
+| `tsc -p tsconfig.node.json` | clean |
+| ruff, 8 scopes | clean |
+| mypy main pass | 187 and 174 files, rc 0 |
+| pre-commit pytest set | 13 green; `test_tunables_register` red only on missing Part N rows (mine: `js/field-format.js:15 web.clock_mismatch_s`, `tests_js/accessibility.test.js:16 l0.a11y_render_wait_ms`; X's to write) |
+
+**Wall times** (JS files, so GC stages and settrace do not apply)
+
+| file | HEAD | T1 | final |
+|---|---|---|---|
+| `templates.test.js` | 45 tests, 1.29–1.32 s (3.0–3.2 s wall) | 103 tests, 1.28–1.54 s | 112 tests, 1.72–2.04 s (3.6–3.9 s wall) |
+| `accessibility.test.js` | — | — | new, 2.77–2.92 s (4.7–4.9 s wall) |
+
+**RUNS.md:** every run of this phase got its line before it started and is marked done.
+
+### Files the lead must run
+`templates.test.js`, `accessibility.test.js`, `render.test.js`, `generated-definitions-render.test.js`, `npm run lint`, `npm run typecheck`, `lint-ceilings.test.js`, and `test_tunables_register.py` (green once X writes the rows). Plus the site rebuild.
+
+### Silent-failure scan (my five files, every mode in plan §8's last bullet)
+Fixed with tests:
+- **Unavailable source** (class 4): every value kind says "unavailable".
+- **Missing errcount** (class 4): every row reads "no data" and the rollup counts them.
+- **Saturated counter:** reads "65535+".
+- **Invalid time struct:** reads "invalid time value".
+- **Unknown or stepped device clock:** "age unknown" and "clock mismatch" instead of a wrong age.
+- **Epoch value no date can hold:** no title and no exception.
+- **Device reboot:** counters drop the "+", and an open code description refreshes or closes when its code changes.
+- **First load and every section:** now pinned by the accessibility check per device.
+
+Inherently safe:
+- A malformed errcount entry: `_shape_errcount_entry()` in `src/asy_webserver_service.py:1018` always sends a list and an int counter.
+- An update on a card built from another group: definitions only change with a reload.
+
+The other modes (section switch, hidden tab, PUT result shapes, connection ceiling, second client, stopped page, mock injected failures, a raising ResetErrors) are controller or mock paths with no template site: checked, nothing found. New findings: the two under "Files outside my set".

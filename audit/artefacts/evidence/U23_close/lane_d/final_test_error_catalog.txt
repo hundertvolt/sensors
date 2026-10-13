@@ -1,0 +1,14 @@
+........F.............................                                   [100%]
+=================================== FAILURES ===================================
+________________ test_no_test_tier_keeps_its_own_copy_of_a_code ________________
+
+    def test_no_test_tier_keeps_its_own_copy_of_a_code() -> None:
+        problems = _copy_problems(_test_side())
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests/test_asy_webserver_service.py:1132 test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persisted() compares a logged code with the literal(s) [1] - use code()
+E       assert not ['tests/test_asy_webserver_service.py:1132 test_a_raising_reset_of_this_services_own_log_answers_failed_and_is_persisted() compares a logged code with the literal(s) [1] - use code()']
+
+tests_scripts/test_error_catalog.py:555: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+1 failed, 37 passed in 14.78s

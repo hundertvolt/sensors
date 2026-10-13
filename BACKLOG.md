@@ -692,6 +692,22 @@ gates, traps).
   `test_asy_notification_service`, `test_neopixel_wifi_integration`,
   `test_notification_neopixel_integration`). No dependency, pin, script or installer step changed:
   the chroot legs' lint and typecheck runs cover it.
+  **2026-10-13, the website stager and the staged-page lint: shell, host Python and config, no
+  dependency or installer change**: the new `scripts/_stage_website.py`, which stages one device's
+  page and bundle, needs CPython's standard library only (its PEP 723 header asks Python 3.11 or
+  newer, which both chroot targets ship) and runs under the bare `python3` `scripts/build_website.sh`
+  already uses; `build_website.sh` and `scripts/build_device_websites.sh` gain `--stage-only`;
+  `package.json` gains one script, `lint:html:built`; `eslint.config.js` gains one core rule,
+  `no-restricted-properties`, and no plugin; `pyproject.toml` and `host_typecheck.ini` each lose one
+  explicit-`Any` baseline entry (`test_website_build_integration`;
+  `[mypy-test_request_body_cap_headroom]`). New pytest-tier files join the host typecheck pass:
+  `tests_scripts/test_js_api_mirrors.py`, `test_stage_website.py`, `test_website_layering.py` and
+  `test_website_tokens.py`. The web tier's config follows: `vitest.config.js` registers two more
+  Commands API functions (`runLiveBackendRestartRecovery`, `archiveErrcount`), typed in
+  `tests_js/vitest-commands.d.ts`, and `eslint.config.js`'s `complexity` ceiling drops 41 → 22, its
+  measured maximum (`max-depth` 4, `max-nested-callbacks` 4 and `max-classes-per-file` 1 already
+  sat at theirs). No dependency, pin, lock or toolchain change: the chroot legs' lint,
+  typecheck and `scripts/test.sh` runs cover it, and `env --tier generic` installs nothing new.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -901,15 +917,6 @@ gates, traps).
   schema tuple + `get_dict_cfg()`/`get_dict_data()` is the intended single source, not fully wired
   end-to-end yet (`sensortask-wozi.py` itself predates the per-sensor-config model — see "Refactor
   targets not yet done" above).
-- **`js/nav.js`'s `initNav()` registers a `document`-level `keydown` listener with no matching
-  removal** — harmless today (called exactly once per real page load), but a latent leak if it's
-  ever called more than once without a full page reload (e.g. a future hot-reload path, or a test
-  file that calls it repeatedly against the same `document`). Worth a `removeEventListener`/cleanup
-  return value if that ever becomes a real scenario.
-- **`selectSection()` is duplicated near-verbatim between `js/app.js` and `js/main.js`** (both
-  entry points build their own local closure over `onSelect`/nav rebuild). Low priority: the two
-  entry points are deliberately separate (prototype vs. production, Part H.2), and the duplication
-  is small: extracting a shared helper is a minor simplification, not a correctness fix.
 - Network fault injection against the real dev bench unit is complete
   (`BenchBridge.inject_network_degradation()`, `tc netem` on `wifi_iface()` only: loss,
   latency+jitter, corruption, duplication, reordering, exercised by

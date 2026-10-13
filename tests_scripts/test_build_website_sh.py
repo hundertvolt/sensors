@@ -2,6 +2,8 @@
 excluded) complementing tests/test_website_build_integration.py, which proves the served *content*
 is correct. Same literal-path-string grep technique as test_build_frozen_html_sh.py."""
 
+import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -26,10 +28,8 @@ def test_a_device_stages_the_expected_files_renamed_and_flattened(repo_root: Pat
     text = out_file.read_text()
     for expected in (
         "/index.html.gz",
-        "/js/app.js.gz",  # the bundled production JS (field-format.js, poll-manager.js, templates.js,
-        # definitions.js, render.js, nav.js, main.js concatenated - see scripts/build_website.sh's
-        # own "Bundling" comment for why) - a single file now, not seven separate ones
-        # (SPECIFICATION.md Part H.7).
+        "/js/app.js.gz",  # the one production bundle: js/main.js's import closure, concatenated by
+        # scripts/_stage_website.py (SPECIFICATION.md Part H.7), not one file per module.
     ):
         assert expected in text, expected
 
@@ -113,23 +113,6 @@ def test_device_toml_that_fails_buildgen_validation_fails_the_build_loud(repo_ro
         device_toml.unlink()
 
 
-def test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script(repo_root: Path) -> None:
-    # build_website.sh's cp lists are hand-kept, not derived from directory contents, so a new
-    # html/ or js/ file would silently ship without it - or without a deliberate prototype-only
-    # decision. Cross-checking the directories against the script's source makes that loud.
-    script_text = (repo_root / "scripts" / "build_website.sh").read_text()
-
-    html_root_files = {p.name for p in (repo_root / "html").iterdir() if p.is_file()}
-    for name in html_root_files:
-        assert name in script_text, f"html/{name} exists but isn't referenced by build_website.sh"
-
-    js_files = {p.name for p in (repo_root / "js").glob("*.js")}
-    # js/main.js is staged under a different name (see build_website.sh's own comment) - checked
-    # for by content ("main.js" itself), not "js/app.js.gz" like the others.
-    for name in js_files:
-        assert name in script_text, f"js/{name} exists but isn't referenced by build_website.sh"
-
-
 def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root: Path, tmp_path: Path) -> None:
     # A distinctive, non-default output path proves scripts/build_website.sh really forwards its
     # second argument through to scripts/build_frozen_html.sh rather than always writing to the
@@ -139,3 +122,24 @@ def test_output_path_argument_is_forwarded_to_build_frozen_html(repo_root: Path,
     _run_build_website(repo_root, DEVICE_NAMES[0], out_file)
 
     assert out_file.is_file()
+
+
+def test_stage_only_fills_the_given_directory_and_freezes_nothing(repo_root: Path, tmp_path: Path) -> None:
+    # The staged page html-validate lints: the stager's output in a directory created for it, and no
+    # build_frozen_html.sh run (its "Wrote" line) and no frozen module anywhere.
+    stage = tmp_path / "nested" / "stage"
+    result = subprocess.run([str(repo_root / "scripts" / "build_website.sh"), "--stage-only", DEVICE_NAMES[0], str(stage)], cwd=repo_root, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(p.relative_to(stage).as_posix() for p in stage.rglob("*") if p.is_file()) == ["index.html", "js/app.js"]
+    assert "Wrote " not in result.stdout
+    assert not list(tmp_path.rglob("*.py"))
+    inlined = re.search(r'<script type="application/json" id="inlined-definitions">(.*?)</script>', (stage / "index.html").read_text(), re.DOTALL)
+    assert inlined is not None
+    assert json.loads(inlined.group(1))["device"]["id"] == DEVICE_NAMES[0]
+
+
+def test_stage_only_without_a_stage_directory_is_a_usage_error(repo_root: Path) -> None:
+    result = subprocess.run([str(repo_root / "scripts" / "build_website.sh"), "--stage-only", DEVICE_NAMES[0]], cwd=repo_root, capture_output=True, text=True, check=False)
+    assert result.returncode == 2, (result.returncode, result.stderr)
+    assert "Usage: scripts/build_website.sh [--stage-only] <device> [output]" in result.stderr

@@ -76,7 +76,7 @@ def test_the_web_ui_gives_up_exactly_at_the_servers_own_ceiling(repo_root: Path,
     # the one number that decides whether a slow request is a server abort the UI can report or a
     # client-side give-up it cannot explain. Only the two ends being equal makes the first true.
     js_text = (repo_root / "js" / "poll-manager.js").read_text()
-    match = re.search(r"export const DEFAULT_TIMEOUT_MS = (\d+);", js_text)
+    match = re.search(r"(?:export )?const DEFAULT_TIMEOUT_MS = (\d+);", js_text)
     assert match is not None, "js/poll-manager.js no longer declares DEFAULT_TIMEOUT_MS - update this mirror check with it"
     assert float(match.group(1)) / 1000.0 == outer_cap_s, f"js/poll-manager.js's DEFAULT_TIMEOUT_MS ({match.group(1)}ms) must mirror asy_webserver_service.py's outer_cap_s ({outer_cap_s}s)"
 

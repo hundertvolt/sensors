@@ -1,0 +1,9 @@
+Writing Python file frozen_modules/frozen_html.py.
+Appended folder /tmp/tmp.rdDMOq2Zxn as /.
+Appended file   /tmp/tmp.rdDMOq2Zxn/index.html.gz (13989 bytes) as /index.html.gz
+Appended folder /tmp/tmp.rdDMOq2Zxn/js as /js
+Appended file   /tmp/tmp.rdDMOq2Zxn/js/app.js.gz (27834 bytes) as /js/app.js.gz
+Sum of file sizes 41823 bytes, 2 files 2 folders
+On import the file system will be mounted at /html.
+frozen_modules/frozen_html.py written successfully.
+Wrote frozen_modules/frozen_html.py (mounts at /html on import)

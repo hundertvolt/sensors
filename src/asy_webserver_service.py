@@ -12,7 +12,7 @@ from microdot import Request, Response, abort, redirect, send_file
 from micropython import const
 
 import asy_api_response as ar
-from asy_base_classes import HourlyWindowCounter, LockedCounter
+from asy_base_classes import UNAVAILABLE, HourlyWindowCounter, LockedCounter
 from asy_config_manager import FAILED, INVALID, VALID, checked_float, checked_int
 from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
 
@@ -119,6 +119,7 @@ _WRN_HTTP_START_FAILED = const(62)
 # runs a command, so no alias, prefix or case variant does (owner, 2026-09-30). mempause's fixed 300 s lives in
 # the callback (Part A.8).
 _SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))
+_SHUTDOWN_CMDS = const(("reboot", "bootloader", "resetconfig", "erasefram"))  # the four that end in a reset (Part A.8)
 _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
 # set_override_led() clamp ceiling (_MAX_OVERRIDE_TIME), kept here as its own constant (not
@@ -139,6 +140,7 @@ _LIGHT_CMD_FIELDS: "tuple[cm.FieldSchema, ...]" = (
     ("T", "float", None, 0.5, 60.0, None),
 )
 _LED_BUSY_DESCR = const("LED busy - retry later")  # the envelope's descr when a running signal refused LightCmdLED
+_UNAVAILABLE_TEXT = '{"error":"' + UNAVAILABLE + '"}'  # a failed /status source's piece, built once at import
 
 # @tunable web.max_pending_fragments = 16
 _MAX_PENDING_FRAGMENTS = const(16)  # _PieceWriter's list never outgrows 16 slots (64 B on the RP2040)
@@ -556,6 +558,7 @@ class WebserverService:
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (routes.settings or {}).items()}
         self._build_info = routes.build_info
         self._system_cmd = routes.system_cmd
+        self._shutdown_accepted = False  # one-way: a _SHUTDOWN_CMDS word answered "Valid", so the unit is going down
         self._notification_led = routes.notification_led
         self._notification_pause = routes.notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
@@ -829,11 +832,21 @@ class WebserverService:
             if key != "ResetErrors" or value is not True:
                 result[key] = INVALID  # {"ResetErrors": true} is the one request (SPECIFICATION.md A.8)
                 continue
+            if self._shutdown_accepted:  # refused, nothing cleared: the logs survive into the reboot (owner, 2026-10-13)
+                result[key] = FAILED
+                continue
             # Every source at once, this service's own entry included (_build_status_pieces()): "`ResetErrors`
             # resets the FRAM-backed logs concurrently rather than one after another" (owner, 2026-09-26).
-            # One store whose write failed answers the whole key "Failed".
-            ok = await asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter())
-            result[key] = VALID if all(ok) else FAILED
+            # One store whose write failed or that raised answers the whole key "Failed"; every reset is awaited first.
+            outcomes = await asyncio.gather(*(m.reset_error_counter() for m in self._error_sources.values()), self.reset_error_counter(), return_exceptions=True)
+            result[key] = VALID
+            names = iter(self._error_sources)  # the outcomes' order; this service's own entry is the last
+            for outcome in outcomes:
+                name = next(names, _NAME)
+                if isinstance(outcome, BaseException):  # persisted after the resets, so the cleared log keeps it
+                    await self.pr.err_s("Error log reset failed:", name, outcome, errno=_ERR_CALLBACK)
+                if isinstance(outcome, BaseException) or not outcome:
+                    result[key] = FAILED
         return ar.make_response(0, result=result)
 
     async def _put_system(self, request: "_RequestLike") -> "ResponseEnvelope":
@@ -855,6 +868,8 @@ class WebserverService:
         except Exception as e:
             await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
+        if ok and name in _SHUTDOWN_CMDS:  # set before this task yields: no request runs between the acceptance and here
+            self._shutdown_accepted = True
         return VALID if ok else FAILED
 
     async def _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:
@@ -933,7 +948,7 @@ class WebserverService:
             raw = await get_log_fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
-            writer.add('{"error":"unavailable"}')
+            writer.add(_UNAVAILABLE_TEXT)
             return
         writer.add_value(_shape_errcount_entry(raw, name))
 
@@ -943,7 +958,7 @@ class WebserverService:
             value = await fct()
         except Exception as e:
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
-            writer.add('{"error":"unavailable"}')
+            writer.add(_UNAVAILABLE_TEXT)
             return
         writer.add_value(value)
 
