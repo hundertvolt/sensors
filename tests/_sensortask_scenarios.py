@@ -1985,11 +1985,26 @@ def _scd30_put_bodies(reader: "Any") -> "list[dict[str, Any]]":
     return bodies
 
 
+async def _every_error_log(module: "Any") -> "list[object]":
+    # What ResetErrors would clear: every registered error source's log, the webserver's own and its drop window.
+    webserver = module.webserver
+    logs: list[object] = [await webserver.get_error_counter(), await webserver.get_dropped_count()]
+    for source in webserver._error_sources.values():
+        logs.append(await source.get_error_counter())  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+    return logs
+
+
+def _log_chunk_bytes(module: "Any") -> "list[bytes]":
+    # Both blocks of every log store's chunk as the chip holds them, never the whole chip (256 KiB on some devices).
+    memory = _fram_chip(module).memory
+    chunks = [logger.fram for logger in _fram_stores(module)]
+    return [bytes(memory[c._block_addr[0] : c._block_addr[0] + 2 * (c.size + c.crc.length() + _STATUS_BYTES_PER_BLOCK)]) for c in chunks]
+
+
 async def _every_write_refused(module: "Any", word: str, accepted: "Any") -> "list[object]":
     # Every write the API offers, sent while the sequence waits at a gate: the answers that are not "Failed" (the same
-    # command again: "Valid", nothing new started). ResetErrors writes FRAM, not a store: refused once S3 paused FRAM.
+    # command again: "Valid", nothing new started). ResetErrors clears nothing: no log and no log chunk's FRAM bytes.
     wrong: list[object] = []
-    paused = module.fram.get_pause()
 
     async def put(path: str, body: "dict[str, Any]") -> "dict[str, Any]":
         answer: dict[str, Any] = json.loads((await _dispatch_async(module, "PUT", path, body)).body)["result"]
@@ -2007,9 +2022,12 @@ async def _every_write_refused(module: "Any", word: str, accepted: "Any") -> "li
                 wrong.append(("/sensors", body, answer, len(waiting) - len(queue)))
             queue[:] = before
     for path, body in (("/networking", {"LEDWifiOn": True}), ("/status", {"ResetErrors": True}), ("/system", {"SystemCmd": "bootloader" if word == "reboot" else "reboot"})):
+        kept = (await _every_error_log(module), _log_chunk_bytes(module)) if path == "/status" else None
         answer = await put(path, body)
-        if answer != dict.fromkeys(body, "Valid" if path == "/status" and not paused else "Failed"):
+        if answer != dict.fromkeys(body, "Failed"):
             wrong.append((path, body, answer))
+        if kept is not None and kept != (await _every_error_log(module), _log_chunk_bytes(module)):
+            wrong.append((path, body, "a log was cleared"))
     again = await put("/system", {"SystemCmd": word})
     if again != {"SystemCmd": "Valid"} or module.sysfunct._shutdown_task is not accepted:
         wrong.append(("/system", word, again))
@@ -2130,6 +2148,8 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
         async def scenario(word: str = word, gate: "_StepGate" = gate) -> "tuple[list[object], list[dict[int, int]], list[dict[int, int]]]":
             module, sup = await _boot_supervised(device, gate)
             _hold_each_step(module, gate)
+            for logger in _fram_stores(module):  # a log in every store, so a ResetErrors that cleared one shows
+                await logger.err_s("written before the command", errno=code("E", "INIT"))
             nvm: list[list[dict[int, int]]] = []
             wrong: list[object] = []
 
@@ -2336,7 +2356,7 @@ def _scenario_status_get(device: str) -> None:
         assert "BackupTS" in body["sensors"]["SGP40"] and "RestoreTS" in body["sensors"]["SGP40"]
     if _has_uart_link(module):
         assert "Transfers" in body["sensors"]["UARTLINK"] and "Failures" in body["sensors"]["UARTLINK"]
-    assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UTCTime" in body["system"]
+    assert "SysUptime" in body["system"] and "LocalTime" in body["system"] and "UTCTime" in body["system"] and "UnixTime" in body["system"]
     system = body["system"]
     for key in ("ResetReason", "ResetBits", "MemFree"):  # this boot's decoded reason, the chip's raw flags, the free heap
         assert type(system[key]) is int, (key, system[key])
@@ -2561,10 +2581,10 @@ def _scenario_status_ap_mode_rssi(device: str) -> None:
 @_register("webserver_status_publishes_utc_time_only_after_the_first_ntp_sync")
 def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
     # rp2's RTC starts at its reset epoch (ports/rp2/main.c), a plausible-looking wrong date, so
-    # UTCTime is gated on ntp_issynced() exactly as LocalTime is.
+    # UTCTime and UnixTime are gated on the first sync exactly as LocalTime is.
     module = build(device)
     system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
-    assert system["UTCTime"] is None and system["LocalTime"] is None
+    assert system["UTCTime"] is None and system["LocalTime"] is None and system["UnixTime"] is None
 
     async def synced() -> bool:
         return True
@@ -2573,6 +2593,13 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
     utc = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["UTCTime"]
     assert isinstance(utc, dict), utc
     assert set(utc.keys()) == {"Year", "Month", "MDay", "Hour", "Minute", "Second", "Weekday", "Yearday"}
+    asy_base_classes.set_utc_valid()  # the boot's first sync: the clock every age on the page is read against
+    try:
+        unix = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["UnixTime"]
+        now = time.mktime(time.gmtime())
+    finally:
+        asy_base_classes.set_utc_valid(valid=False)
+    assert type(unix) is int and 0 <= now - unix <= 1, (unix, now)
 
 
 @_register("webserver_system_get_reports_the_real_build_info")

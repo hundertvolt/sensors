@@ -58,7 +58,7 @@ def _assert_rule(error: BuildError, rule: str) -> None:
 
 def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]], set[tuple[str, str, str, str]], set[Path]]":
     # (method, path, group, key) of every @web tag the device's sources carry, present and absent, and the files read:
-    # GET reports a tag unless dispatch or defaultValue (H.5), PUT takes it unless readonly; maintenance is <name>_<field>.
+    # GET reports a tag unless dispatch or an always-executed toggle (H.5), PUT takes it unless readonly; maintenance is <name>_<field>.
     sources: list[tuple[Path, str, str | None]] = [(_SRC / name, name, None) for name in _MANDATORY_TAGGED]
     sources += [(spec.driver_info.source_path, spec.label, spec.resolved_name) for spec in model.instances.values() if spec.driver_info is not None]
     expected: set[tuple[str, str, str, str]] = set()
@@ -71,7 +71,7 @@ def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]
             if tag.section == "status" or tag.submit_group == SELF_GROUP:
                 assert resolved is not None, f"{path}: {tag.field_name} is keyed by its instance, but {path.name} has none"
                 group, key = ("sensors", f"{resolved}_{key}") if tag.section == "status" else (resolved, key)
-            for method, applies in (("GET", not tag.dispatch and tag.default_value is None), ("PUT", tag.kind != "readonly")):
+            for method, applies in (("GET", not tag.dispatch and not (tag.always_executed and tag.kind == "toggle")), ("PUT", tag.kind != "readonly")):
                 (expected if applies else absent).add((method, f"/{tag.section}", group, key))
     return expected, absent, {path for path, _label, _resolved in sources}
 
@@ -79,6 +79,12 @@ def _expected_fields(model: DeviceModel) -> "tuple[set[tuple[str, str, str, str]
 def _generated_function(device: str, name: str) -> ast.AsyncFunctionDef:
     tree = ast.parse(generate_device(device_toml(device), _SRC, _REPO_ROOT / "ext").module_source)
     return next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == name)
+
+
+def _fields(group: "dict[str, object]") -> "list[dict[str, object]]":
+    fields = group.get("fields", [])
+    assert isinstance(fields, list)
+    return fields
 
 
 def _groups(route: "dict[str, object]") -> "list[dict[str, object]]":
@@ -202,6 +208,24 @@ def test_the_result_words_and_envelope_codes_are_the_sources(references: "dict[s
     assert references[device]["device"] == device
 
 
+def _src_const_string(filename: str, name: str) -> str:
+    # A module-level `NAME = const("<text>")` of a src/ file, unwrapped here on its own.
+    for node in ast.parse((_SRC / filename).read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [ast.unparse(target) for target in node.targets] == [name]:
+            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
+            text = ast.literal_eval(node.value.args[0])
+            assert isinstance(text, str)
+            return text
+    raise AssertionError(f"src/{filename} defines no {name}")
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_two_failure_shapes_are_the_sources(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # A source that could not read its values sends the marker in place of them; a code outside the catalog reads this text.
+    assert references[device]["unavailableMarker"] == {"error": _src_const_string("asy_base_classes.py", "UNAVAILABLE")} == {"error": "unavailable"}
+    assert references[device]["unknownCodeText"] == _src_const_string("asy_api_response.py", "_UNKNOWN_DESCR") == "Unknown error"
+
+
 def test_a_route_the_definitions_name_but_the_table_lacks_fails_the_build(tmp_path: Path) -> None:
     src_dir = _src_with(tmp_path, _WEBSERVER, '    ("PUT", "/sensors", "_put_sensors"),\n', "")
     with pytest.raises(BuildError, match=r"PUT /sensors") as caught:
@@ -237,8 +261,11 @@ def test_an_unreadable_route_table_fails_the_build(tmp_path: Path, old: str, new
         ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES", "api.envelope-codes-malformed"),
         ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal", "api.source-not-literal"),
         ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {)", "cannot read .* for its _STANDARD_CODES", "api.source-unreadable"),
+        ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)", "UNAVAILABLE is 5, not a string", "api.wire-text-not-string"),
+        ("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', 'UNAVAILABLE_WORD = const("unavailable")', "UNAVAILABLE", "api.source-name-missing"),
+        ("asy_api_response.py", '_UNKNOWN_DESCR = const("Unknown error")', "_UNKNOWN_DESCR = const(None)", "_UNKNOWN_DESCR is None, not a string", "api.wire-text-not-string"),
     ],
-    ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error"],
+    ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key", "syntax-error", "marker-not-a-string", "marker-missing", "unknown-text-not-a-string"],
 )
 def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str, rule: str) -> None:
     src_dir = _src_with(tmp_path, filename, old, new)
@@ -276,6 +303,46 @@ def test_a_field_key_the_reference_does_not_classify_fails_the_build(monkeypatch
     with pytest.raises(BuildError, match=r"'pattern'.*neither an API fact nor the page's own") as caught:
         generate_api_reference(_model(DEVICE_NAMES[0]), _SRC)
     _assert_rule(caught.value, "api.field-key-unclassified")
+
+
+def test_each_definitions_key_is_an_api_fact_or_the_pages_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The device rounds to resolution, ignores a field while its sibling is set and keeps a dispatch field's state in
+    # another route; a Clear button, a code's colour, a confirmation question and a display precision are the page's.
+    field = {**_GOOD_FIELD, "resolution": 0.01, "ignoredWhenSet": "G2", "statusPath": ["notification", "F"], "clearable": True, "codeTones": {"0": "good"}, "confirm": True, "decimals": 2}
+    definitions = {"sections": [{"key": "sensors", "rest": {"put": "/sensors"}, "groups": [{"key": "G", "fields": [field]}]}]}
+    monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
+    reference: dict[str, object] = json.loads(api_reference_json(generate_api_reference(_model(DEVICE_NAMES[0]), _SRC)))
+    (group,) = _groups(_route(reference, "PUT", "/sensors"))
+    assert group["fields"] == [{"key": "F", "kind": "number", "resolution": 0.01, "ignoredWhenSet": "G2", "statusPath": ["notification", "F"]}]
+
+
+def test_a_retired_default_value_is_classified_nowhere(monkeypatch: pytest.MonkeyPatch) -> None:
+    definitions = {"sections": [{"key": "sensors", "rest": {"put": "/sensors"}, "groups": [{"key": "G", "fields": [{**_GOOD_FIELD, "defaultValue": True}]}]}]}
+    monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
+    with pytest.raises(BuildError, match=r"'defaultValue'.*neither an API fact nor the page's own") as caught:
+        generate_api_reference(_model(DEVICE_NAMES[0]), _SRC)
+    _assert_rule(caught.value, "api.field-key-unclassified")
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_toggle_the_get_cannot_report_is_on_no_get_route(references: "dict[str, dict[str, object]]", device: str) -> None:
+    # An always-executed toggle (SCD30's ContMeas) has no state a GET could return; the PUT still takes it.
+    def toggles(method: str, path: str) -> "set[str]":
+        return {str(field["key"]) for group in _groups(_route(references[device], method, path)) for field in _fields(group) if field.get("alwaysExecuted") and field["kind"] == "toggle"}
+
+    put = toggles("PUT", "/sensors")
+    assert put == ({"ContMeas"} if any(spec.driver == "scd30" for spec in _model(device).instances.values()) else set())
+    assert not toggles("GET", "/sensors")
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_put_routes_carry_the_rounding_step_and_the_overriding_sibling(references: "dict[str, dict[str, object]]", device: str) -> None:
+    facts = {(str(group["key"]), str(field["key"])): field for group in _groups(_route(references[device], "PUT", "/sensors")) for field in _fields(group)}
+    for (group, key), field in facts.items():
+        if group.startswith("SCD30") and key in ("TempOffset", "Altitude"):
+            assert (field.get("resolution"), field.get("ignoredWhenSet")) == ((0.01, None) if key == "TempOffset" else (None, "AmbPres"))
+    pause = [field for group in _groups(_route(references[device], "PUT", "/notification")) for field in _fields(group) if field["key"] == "PauseTime"]
+    assert [field.get("statusPath") for field in pause] == ([["notification", "PauseTime"]] if pause else [])
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

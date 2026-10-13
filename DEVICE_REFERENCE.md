@@ -14,12 +14,17 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   every 3 s, an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its
   hotspot while the client stays; no readable Wi-Fi configuration — off with a short blink every
   3 s, until a reboot. Every one of these patterns follows `LEDWifiOn`, the no-configuration one
-  included: dark while it is off, shown as soon as it is switched on (owner, 2026-10-02). After a
-  second failed connection streak following its hotspot the unit goes silent: no hotspot, the LED
-  dark even while `LEDWifiOn` is on, and one quiet attempt to join the stored network every
-  `hotspot_time_min` minutes; once an attempt connects it is a normal connection and the LED shows
-  it again (owner, 2026-10-08: 'It should look like turned off.'). Unplug and replug a silent unit
-  to get its hotspot back.
+  included: dark while it is off, shown as soon as it is switched on (owner, 2026-10-02). Should the
+  timer that ends a hotspot with no client fail to start, the Wi-Fi task restarts after a few
+  5-second checks and tries the stored network again, as a fresh boot does; repeated restarts reboot
+  the unit (owner, 2026-10-13, asked "should a failed hotspot-window timer count as a hardware
+  failure?": 'Take option b for 2', its option "Count it like the silent mode does: it feeds the
+  streak, then the task restart, then the budget's reboot"). After a second failed connection
+  streak following its hotspot the unit goes silent: no hotspot, the LED dark even while
+  `LEDWifiOn` is on, and one quiet attempt to join the stored network every `hotspot_time_min`
+  minutes; once an attempt connects it is a normal connection and the LED shows it again (owner,
+  2026-10-08: 'It should look like turned off.'). Unplug and replug a silent unit to get its
+  hotspot back.
 - **Notification signal** — a colored ramp-up/ramp-down flash, triggered per sensor threshold and
   fully overriding the WiFi overlay while it plays (the overlay's own value is restored once the
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
@@ -54,8 +59,8 @@ stays reachable for a correction.
 (`NTPInterval`); a failed resync does not extend it, and a change to an NTP setting clears it until
 the next successful sync (owner, 2026-09-29). `DNSFallback` (Networking) lists up to three IPv4 DNS
 servers, comma-separated, tried in order after the one the network hands out (default
-`8.8.8.8,1.1.1.1`); empty means none, set through the API, since the website cannot send an empty
-value.
+`8.8.8.8,1.1.1.1`); empty means none. The Networking page's **Clear** button empties it, after
+asking "Clear Fallback DNS Servers?".
 
 ## SGP40 VOC baseline FRAM backup
 
@@ -150,5 +155,15 @@ device's TOML decides its sensors.
 The Status page's error-log reset (`PUT /status {"ResetErrors": true}`) clears every module's log
 and the dropped-connection count (`HTTPDropped`) at once. It must finish within the device's
 15-second request limit, the same limit the web page waits; on a busy device it can take several
-seconds. A reset that reports "Failed" means one module's log could not be written; the other logs
-are cleared. Read and save the logs before clearing them: the reset cannot be undone.
+seconds. Outside the two cases below, a reset that reports "Failed" means one module's log could
+not be cleared; the other logs are cleared. During a backup pause ("Pause backups for 5 minutes")
+the reset answers "Failed", yet it still clears the logs held in memory, and their next save
+carries that into FRAM: read the logs before resetting, and repeat the reset after the pause if the
+answer matters. From the moment a Reboot, Reboot into bootloader, Reset to defaults or Erase FRAM
+command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner,
+2026-10-13, asked "refuse `ResetErrors` once a reboot or erase command has been accepted?": '1 b',
+its option "Refuse it ("Failed") from the command's acceptance on"); clear the logs once the unit
+is back. Read and save the logs before clearing them: the reset cannot be undone. The page asks
+for confirmation ("Reset All Errors?") before it sends the reset (owner, 2026-10-01, asked about "A
+confirmation before clearing the DNS fallback list": '... add a dialog to all system commands and
+the clear error history as well. But only on the website, not on the API side.').

@@ -1,15 +1,12 @@
 // Server-side Vitest Commands API module backing tests_js/live-backend-put-matrix.test.js: a
 // shared, boot-once-per-file live digital-twin + real-browser harness driving many real UI
 // actions against one real backend. See SPECIFICATION.md Part H.7.
-import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// Reused (not hand-duplicated) so this module knows the *exact* expected caption text to poll for
-// below - see SPECIFICATION.md Part H.8.1 for why this is a DOM-free module, not a
-// js/templates.js import.
-import { formatFieldValue } from "../js/field-format.js";
+import { expectedDisplay } from "./_expected_display.js";
 import { drainChildOutput } from "./_memory_markers.js";
 import { twinStartFailure } from "./_twin_start_failure.js";
 
@@ -137,6 +134,8 @@ let twinProc = null;
 let twinOutput = null;
 /** @type {import("playwright").Page | null} */
 let livePage = null;
+/** @type {string | null} */
+let archiveRunDir = null;
 
 /**
  * The matrix's run settings, read without booting a twin: whether the interpreter is built, and
@@ -173,6 +172,9 @@ export async function startLiveMatrix({ context }, device) {
     try {
         await waitUntilServing(twinProc, READY_TIMEOUT_MS);
         livePage = await context.newPage();
+        // The drawer then opens without its 0.18 s slide (style.css drops only that), so a nav click does not wait the
+        // slide out to find its link stable; every check of the page stays as it was.
+        await livePage.emulateMedia({ reducedMotion: "reduce" });
         await livePage.goto(`http://${HOST}:${PORT}/`);
         await livePage.waitForSelector("[data-section-key]");
     } catch (err) {
@@ -192,8 +194,8 @@ export async function startLiveMatrix({ context }, device) {
         twinOutput = null;
         const message = err instanceof Error ? err.message : String(err);
         await output.closed(SHUTDOWN_TIMEOUT_MS);
-        const marked = output.markerLines();
-        const markers = marked.length > 0 ? `\n--- the twin also logged an allocation failure ---\n${marked.join("\n")}` : "";
+        const marked = [...output.markerLines(), ...output.resetLines()];
+        const markers = marked.length > 0 ? `\n--- the twin also logged an allocation failure or reset ---\n${marked.join("\n")}` : "";
         throw new Error(`startLiveMatrix failed for ${device}: ${message}${markers}\n--- twin output ---\n${output.text()}`, { cause: err });
     }
 }
@@ -222,6 +224,10 @@ export async function stopLiveMatrix() {
         if (marked.length > 0) {
             throw new Error(`the live-matrix twin logged an allocation failure:\n${marked.join("\n")}`);
         }
+        const reset = output.resetLines();
+        if (reset.length > 0) {
+            throw new Error(`the live-matrix twin reset itself, so later cases talked to a device that was not running:\n${reset.join("\n")}`);
+        }
         if (!drained) {
             throw new Error(`the live-matrix twin's output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete`);
         }
@@ -243,10 +249,38 @@ export async function getRealCurrentValues(_context, paths) {
     for (const p of paths) {
         // eslint-disable-next-line no-await-in-loop -- small, fixed, sequential set of real endpoints
         const res = await fetch(`http://${HOST}:${PORT}${p}`);
+        if (!res.ok) {
+            throw new Error(`GET ${p} -> HTTP ${res.status}`);
+        }
         // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-        out[p] = await res.json();
+        const body = await res.json();
+        // A GET answers its bare data object; an envelope (it carries `res`) is an error the baseline must not absorb.
+        if (typeof body !== "object" || body === null || Array.isArray(body) || "res" in body) {
+            throw new Error(`GET ${p} did not answer a data object`);
+        }
+        out[p] = body;
     }
     return out;
+}
+
+/**
+ * Saves GET /status's `errcount` verbatim under build/archive/live_twin/ (scripts/_archive_evidence.py) before a
+ * case resets it, so the evidence a reset clears outlives the run.
+ * @param {import("playwright").BrowserContext} _context unused - see getRealCurrentValues()'s own note.
+ * @param {string} label names the saved file, e.g. the device and the step
+ * @returns {Promise<string>} the archived file's path
+ */
+export async function archiveErrcount(_context, label) {
+    const { "/status": status } = await getRealCurrentValues(_context, ["/status"]);
+    // One run directory per test process: every device's counts of one run sit together, and the archive's keep-3
+    // pruning counts runs, never the devices of the run in progress.
+    archiveRunDir ??= execFileSync("uv", ["run", "--quiet", "scripts/_archive_evidence.py", "--runner", "live_twin", "--new-dir"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+    if (archiveRunDir === "") {
+        throw new Error("archiveErrcount: scripts/_archive_evidence.py made no run directory");
+    }
+    const file = path.join(archiveRunDir, `errcount-${label.replace(/[^a-z0-9_-]/giu, "_")}.json`);
+    writeFileSync(file, `${JSON.stringify(/** @type {{errcount?: unknown}} */ (status).errcount ?? null, null, 2)}\n`);
+    return file;
 }
 
 /** @param {boolean} open */
@@ -259,8 +293,32 @@ async function setDrawerOpen(open) {
 }
 
 /**
+ * Resolves on the first frame `locator`'s element is visible as a locator's waitFor judges it, and enabled when asked:
+ * that waitFor checks at steps growing to 0.5 s, so it idled up to that long after each paint it waited for.
+ * @param {import("playwright").Locator} locator one element already in the page
+ * @param {{enabled?: boolean, timeout?: number}} [options] the page's default timeout when none is given
+ */
+async function onFrameShown(locator, { enabled = false, timeout } = {}) {
+    const limit = timeout === undefined ? {} : { timeout };
+    const handle = await locator.elementHandle(limit);
+    try {
+        await locator.page().waitForFunction(([el, wantEnabled]) => {
+            if (!el.isConnected || !el.checkVisibility() || el.ownerDocument.defaultView?.getComputedStyle(el).visibility !== "visible") {
+                return false;
+            }
+            const box = el.getBoundingClientRect();
+            return box.width > 0 && box.height > 0 && (!wantEnabled || el.matches(":enabled"));
+        }, /** @type {const} */ ([handle, enabled]), limit);
+    } catch (err) {
+        throw new Error(`${String(locator)} was not shown${enabled ? " and enabled" : ""} in time`, { cause: err });
+    } finally {
+        await handle.dispose();
+    }
+}
+
+/**
  * Navigates to `sectionKey` via a real drawer-open + nav-link click, exactly like a visitor would -
- * always a genuine click, even when already on that section (js/main.js's selectSection() always
+ * always a genuine click, even when already on that section (js/shell.js's selectSection() always
  * tears down and rebuilds fresh regardless), which is exactly what a from-scratch render check needs.
  * @param {string} sectionKey
  */
@@ -268,26 +326,71 @@ async function navigateToSection(sectionKey) {
     const page = /** @type {import("playwright").Page} */ (livePage);
     await setDrawerOpen(true);
     await page.locator(`[data-section-key="${sectionKey}"]`).click();
+    await onFrameShown(page.locator(".group-grid"));
     await page.locator(".group-grid").waitFor();
 }
 
 /**
- * @param {import("playwright").Locator} card
- * @param {number} timeoutMs
- * @returns {Promise<string>}
+ * Clicks a toggle until its `data-value` reads `desired`: at most two clicks, from any of its three states.
+ * @param {import("playwright").Locator} control
+ * @param {string} desired "true" or "false"
  */
-async function waitForApplyStatus(card, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-        const status = await card.getAttribute("data-apply-status");
-        if (status) {
-            return status;
+async function setToggle(control, desired) {
+    for (let clicks = 0; ; clicks += 1) {
+        // eslint-disable-next-line no-await-in-loop -- each click changes what the next read sees
+        const current = await control.getAttribute("data-value");
+        if (current === desired) {
+            return;
         }
-        // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-        await sleep(50);
+        if (clicks === 2) {
+            throw new Error(`the toggle still reads ${String(current)} after two clicks, not ${desired}`);
+        }
+        // eslint-disable-next-line no-await-in-loop -- as above
+        await control.click();
     }
-    throw new Error(`card never got a data-apply-status within ${timeoutMs}ms`);
+}
+
+/**
+ * Clicks the card's Apply and waits until the button is enabled again (the PUT and its post-write GET finished),
+ * accepting exactly the one confirmation `confirmMessage` names and failing on any other dialog.
+ * @param {import("playwright").Locator} card
+ * @param {string | undefined} confirmMessage
+ * @returns {Promise<string>} the card's `data-apply-status`
+ */
+async function applyAndSettle(card, confirmMessage) {
+    const page = /** @type {import("playwright").Page} */ (livePage);
+    /** @type {string[]} */
+    const unexpected = [];
+    let confirmed = false;
+    /** @param {import("playwright").Dialog} dialog */
+    const onDialog = async (dialog) => {
+        if (!confirmed && dialog.type() === "confirm" && dialog.message() === confirmMessage) {
+            confirmed = true;
+            await dialog.accept();
+        } else {
+            unexpected.push(`${dialog.type()} "${dialog.message()}"`);
+            await dialog.dismiss();
+        }
+    };
+    page.on("dialog", onDialog);
+    try {
+        await card.locator(".apply-button").click();
+        await onFrameShown(card.locator(".apply-button"), { enabled: true, timeout: APPLY_STATUS_TIMEOUT_MS });
+        await card.locator(".apply-button:enabled").waitFor({ timeout: APPLY_STATUS_TIMEOUT_MS });
+    } finally {
+        page.off("dialog", onDialog);
+    }
+    if (unexpected.length > 0) {
+        throw new Error(`Apply raised a dialog no field asked for: ${unexpected.join(", ")}`);
+    }
+    if (confirmMessage !== undefined && !confirmed) {
+        throw new Error(`Apply never asked "${confirmMessage}"`);
+    }
+    const status = await card.getAttribute("data-apply-status");
+    if (status === null) {
+        throw new Error(`the card has no data-apply-status once Apply settled: ${String(await card.locator(".apply-result").textContent())}`);
+    }
+    return status;
 }
 
 /**
@@ -316,20 +419,18 @@ async function pollForText(locator, expectedText, timeoutMs) {
 }
 
 /**
- * Fills one field's real control with `value` (per its real `kind`) and clicks its group card's
- * real Apply button - the same gesture tests_js/live-backend.test.js's single DebugLevel case
- * drives, generalized to every writable field kind.
+ * Fills one field's real control with `value` (per its real `kind`), clicks its card's Apply, answers the field's
+ * confirmation and waits for the Apply to finish; then, for a number/string, polls its caption for the text
+ * `expectRenderedValue` should show (the applied value when the device took it, its untouched value when refused).
  * @param {import("playwright").BrowserContext} _context unused - every command here still declares
  * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {{
- *   sectionKey: string, groupKey: string, fieldKey: string,
- *   field: import("../js/field-format.js").FormattableField, value: unknown, expectRenderedValue: unknown,
- * }} args `expectRenderedValue` is what the caller expects rendered afterward - the applied `value`
- * when it should be accepted, or the field's own untouched current value when it should be
- * rejected - so this command always knows the exact text to poll for (see pollForText()).
+ *   sectionKey: string, groupKey: string, fieldKey: string, field: import("./_expected_display.js").DisplayField,
+ *   value: unknown, expectRenderedValue: unknown, defaultDecimals?: number, confirmMessage?: string, readCaption?: boolean,
+ * }} args `readCaption: false` skips the caption, for a field whose caption shows a live state, not the sent value
  * @returns {Promise<{applyStatus: string, captionText: string | null, toggleValue: string | null, selectValue: string | null}>}
  */
-export async function applyField(_context, { sectionKey, groupKey, fieldKey, field, value, expectRenderedValue }) {
+export async function applyField(_context, { sectionKey, groupKey, fieldKey, field, value, expectRenderedValue, defaultDecimals, confirmMessage, readCaption = true }) {
     const page = /** @type {import("playwright").Page} */ (livePage);
     const { kind } = field;
     await navigateToSection(sectionKey);
@@ -340,40 +441,32 @@ export async function applyField(_context, { sectionKey, groupKey, fieldKey, fie
     if (kind === "number" || kind === "string") {
         await control.fill(String(value));
     } else if (kind === "toggle") {
-        const desired = String(Boolean(value));
-        const current = await control.getAttribute("data-value");
-        if (current !== desired) {
-            await control.click();
-        }
+        await setToggle(control, String(Boolean(value)));
     } else if (kind === "enum") {
         await control.selectOption({ value: String(value) });
+    } else if (kind === "composite") {
+        for (const [subKey, subValue] of Object.entries(/** @type {Record<string, unknown>} */ (value))) {
+            // eslint-disable-next-line no-await-in-loop -- one sub-input after another, as a visitor fills them
+            await control.locator(`[data-sub-field-key="${subKey}"]`).fill(String(subValue));
+        }
     } else {
-        throw new Error(`applyField: unsupported kind "${kind}" - composite/readonly/dispatch-only fields aren't driven through this generic matrix (see SPECIFICATION.md Part H.7)`);
+        throw new Error(`applyField: a ${kind} field has no control to fill`);
     }
 
-    await card.locator(".apply-button").click();
-    const applyStatus = await waitForApplyStatus(card, APPLY_STATUS_TIMEOUT_MS);
-
+    const applyStatus = await applyAndSettle(card, confirmMessage);
     let captionText = null;
-    if (kind === "number" || kind === "string") {
-        const captionLocator = card.locator(`[data-current-value-for="${fieldKey}"]`);
-        const expectedCaption = `Current value: ${formatFieldValue(field, expectRenderedValue)}`;
-        captionText = await pollForText(captionLocator, expectedCaption, CAPTION_POLL_TIMEOUT_MS);
-    } else {
-        // Toggle/select never self-refresh in place (SPECIFICATION.md Part H.3) - the control's current
-        // state IS this action's own synchronous DOM write, just worth a short event-loop beat.
-        await sleep(50);
+    if (readCaption && (kind === "number" || kind === "string")) {
+        const expectedCaption = `Current value: ${expectedDisplay(field, expectRenderedValue, defaultDecimals)}`;
+        captionText = await pollForText(card.locator(`[data-current-value-for="${fieldKey}"]`), expectedCaption, CAPTION_POLL_TIMEOUT_MS);
     }
     const toggleValue = kind === "toggle" ? await control.getAttribute("data-value") : null;
     const selectValue = kind === "enum" ? await control.inputValue() : null;
-
     return { applyStatus, captionText, toggleValue, selectValue };
 }
 
 /**
- * Leaves a non-`dispatch` toggle/enum at its current value and clicks Apply, expecting
- * collectGroupBody() to sparse-omit it. No PUT fires, so unlike applyField() this waits on no
- * `data-apply-status` - and navigateToSection() leaves none behind from an earlier field.
+ * Leaves a non-dispatch toggle/enum at its current value and clicks Apply, expecting collectGroupBody() to
+ * sparse-omit it: no PUT fires, so no status is waited on.
  * @param {import("playwright").BrowserContext} _context unused - see applyField()'s own note.
  * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: "toggle" | "enum", value: unknown}} args
  * @returns {Promise<{resultText: string | null, applyStatus: string | null}>}
@@ -386,11 +479,7 @@ export async function applyUnchangedFieldExpectNothingToSubmit(_context, { secti
     const control = card.locator(`[data-field-key="${fieldKey}"]`);
 
     if (kind === "toggle") {
-        const desired = String(Boolean(value));
-        const current = await control.getAttribute("data-value");
-        if (current !== desired) {
-            await control.click();
-        }
+        await setToggle(control, String(Boolean(value)));
     } else {
         await control.selectOption({ value: String(value) });
     }
@@ -402,16 +491,24 @@ export async function applyUnchangedFieldExpectNothingToSubmit(_context, { secti
 }
 
 /**
- * Forces a genuinely fresh remount of `sectionKey` and reads back `fieldKey`'s freshly-rendered
- * initial state - the only real-UI-driven proof a toggle/enum field's persisted value round-tripped
- * (SPECIFICATION.md Part H.3: an in-place poll never touches those controls).
+ * Remounts `sectionKey` and reads `fieldKey`'s freshly built control, whose value comes from the remount's own GET,
+ * not the page's own state (SPECIFICATION.md Part H.3); a readonly field gives its shown text, and kind "errcount"
+ * every row of the shown group, unremounted, as "<module>: <count>".
  * @param {import("playwright").BrowserContext} _context unused - every command here still declares
  * this leading parameter since Vitest's BrowserCommand type always calls `(context, ...payload)`.
  * @param {{sectionKey: string, groupKey: string, fieldKey: string, kind: string}} args
- * @returns {Promise<{placeholder: string | null, toggleValue: string | null, toggleText: string | null, selectValue: string | null}>}
+ * @returns {Promise<{placeholder: string | null, toggleValue: string | null, toggleText: string | null, selectValue: string | null, valueText: string | null, errcountRows: string[]}>}
  */
 export async function remountAndReadField(_context, { sectionKey, groupKey, fieldKey, kind }) {
     const page = /** @type {import("playwright").Page} */ (livePage);
+    const read = { placeholder: null, toggleValue: null, toggleText: null, selectValue: null, valueText: null, errcountRows: [] };
+    if (kind === "errcount") {
+        // In place, as the shown section's last poll painted them, so the read adds no request of its own.
+        const rows = page.locator(`[data-group-key="${groupKey}"] .errcount-row`);
+        await rows.first().waitFor({ state: "attached" });
+        const texts = () => rows.evaluateAll((elements) => elements.map((row) => `${row.querySelector(".errcount-row-name")?.textContent ?? "?"}: ${row.querySelector(".errcount-row-count")?.textContent ?? "?"}`));
+        return { ...read, errcountRows: await texts() };
+    }
     await navigateToSection(sectionKey);
     const card = page.locator(`[data-group-key="${groupKey}"]`);
     await card.waitFor();
@@ -419,13 +516,16 @@ export async function remountAndReadField(_context, { sectionKey, groupKey, fiel
     await control.waitFor();
 
     if (kind === "number" || kind === "string") {
-        return { placeholder: await control.getAttribute("placeholder"), toggleValue: null, toggleText: null, selectValue: null };
+        return { ...read, placeholder: await control.getAttribute("placeholder") };
     }
     if (kind === "toggle") {
-        return { placeholder: null, toggleValue: await control.getAttribute("data-value"), toggleText: await control.textContent(), selectValue: null };
+        return { ...read, toggleValue: await control.getAttribute("data-value"), toggleText: await control.textContent() };
     }
     if (kind === "enum") {
-        return { placeholder: null, toggleValue: null, toggleText: null, selectValue: await control.inputValue() };
+        return { ...read, selectValue: await control.inputValue() };
+    }
+    if (kind === "readonly") {
+        return { ...read, valueText: await control.textContent() };
     }
     throw new Error(`remountAndReadField: unsupported kind "${kind}"`);
 }

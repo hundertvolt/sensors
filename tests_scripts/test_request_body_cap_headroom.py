@@ -9,7 +9,7 @@ grows it - dev's `/sensors` is 337 B larger than wozi's purely for carrying one 
 import ast
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
@@ -18,6 +18,8 @@ from buildgen.definitions import definitions_for_toml
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from buildgen.jsontypes import JsonDict, JsonValue
 
 # The widest JSON number a double round-trips to, so no legitimate numeric field can exceed it.
 # Deliberately an upper bound rather than the field's own min/max: a client may send any number of
@@ -53,38 +55,41 @@ def _cap_from_src(repo_root: Path) -> int:
     raise AssertionError("_DEFAULT_MAX_CONTENT_LENGTH is no longer readable from src/asy_webserver_service.py")
 
 
-def _field_bound(field: "Mapping[str, Any]") -> int:
+def _dicts(value: "JsonValue") -> "list[JsonDict]":
+    # A definitions list whose every entry is an object, as the schema requires.
+    assert isinstance(value, list), value
+    assert all(isinstance(item, dict) for item in value), value
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _field_bound(field: "Mapping[str, JsonValue]") -> int:
     kind = field.get("kind")
     if kind == "string":
-        return int(field.get("maxLength", 0)) + 2  # the two quotes
+        max_length = field.get("maxLength", 0)
+        assert isinstance(max_length, int), max_length
+        return max_length + 2  # the two quotes
     if kind == "toggle":
         return len("false")
     if kind == "enum":
-        options = field["options"]
-        assert isinstance(options, list)
-        return max(len(json.dumps(option["value"])) for option in options)
+        return max(len(json.dumps(option["value"])) for option in _dicts(field["options"]))
     if kind == "number":
         return _MAX_JSON_NUMBER
     if kind == "composite":
-        sub = field["subFields"]
-        assert isinstance(sub, list)
-        return sum(len(json.dumps(s["key"])) + 1 + _field_bound(s) + 1 for s in sub) + 1
+        return sum(len(json.dumps(s["key"])) + 1 + _field_bound(s) + 1 for s in _dicts(field["subFields"])) + 1
     raise AssertionError(f"unhandled writable field kind {kind!r} - teach this guard about it rather than skipping it")
 
 
-def _largest_put_body(section: "Mapping[str, Any]") -> int:
+def _largest_put_body(section: "Mapping[str, JsonValue]") -> int:
     # Bytes of the largest body this section's PUT route can legitimately be sent.
-    groups = section.get("groups", [])
-    assert isinstance(groups, list)
     per_group: dict[str, int] = {}
-    for group in groups:
+    for group in _dicts(section.get("groups", [])):
         cost = sum(
             len(json.dumps(f["key"])) + 1 + _field_bound(f) + 1
-            for f in group.get("fields", [])
+            for f in _dicts(group.get("fields", []))
             if f.get("kind") not in (None, "readonly")
         )
         if cost:
-            per_group[group["key"]] = cost
+            per_group[str(group["key"])] = cost
     if not per_group:
         return 0
     rest = section.get("rest", {})
@@ -138,7 +143,7 @@ def test_an_oversized_field_is_actually_caught(repo_root: Path) -> None:
     # Proves the derivation bites rather than merely agreeing with today's schema: the guard above
     # passes trivially if _largest_put_body() ever stops finding fields at all.
     cap = _cap_from_src(repo_root)
-    section = {"rest": {"put": "/networking"}, "groups": [{"key": "identity", "fields": [{"key": "Huge", "kind": "string", "maxLength": cap}]}]}
+    section: JsonDict = {"rest": {"put": "/networking"}, "groups": [{"key": "identity", "fields": [{"key": "Huge", "kind": "string", "maxLength": cap}]}]}
     assert _largest_put_body(section) > cap, "a field alone wider than the cap was not reported as exceeding it"
-    empty = {"rest": {"put": "/networking"}, "groups": [{"key": "identity", "fields": [{"key": "Reading", "kind": "readonly"}]}]}
+    empty: JsonDict = {"rest": {"put": "/networking"}, "groups": [{"key": "identity", "fields": [{"key": "Reading", "kind": "readonly"}]}]}
     assert _largest_put_body(empty) == 0, "a section with no writable field must contribute nothing, not an empty-body constant"

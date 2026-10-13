@@ -215,10 +215,10 @@
       "4": {"text": "ready for a forced recalibration"}
     },
     "CalLight": {
-      "0": {"text": "not applicable now (fixed range, or the range is changing)"},
-      "1": {"text": "suitable for Calibrate Gain Ratio"},
-      "2": {"text": "too dark"},
-      "3": {"text": "too bright"}
+      "0": {"text": "not applicable now (fixed range, or the range is changing)", "tone": "neutral"},
+      "1": {"text": "suitable for Calibrate Gain Ratio", "tone": "good"},
+      "2": {"text": "too dark", "tone": "warn"},
+      "3": {"text": "too bright", "tone": "warn"}
     },
     "NotifyState": {
       "0": {"text": "every signal evaluated"},

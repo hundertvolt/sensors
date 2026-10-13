@@ -2120,6 +2120,73 @@ def test_hotspot_client_absent_degrades_gracefully_on_a_memory_error() -> None:
     assert _used_slots(run(client.get_error_counter())) == [code("E", "TIMER")]
 
 
+def _failed_window_arm_case(exc: "type[BaseException]") -> None:
+    # Two no-client ticks whose window arm raises, then one with room in the alarm pool; each starts with the flag
+    # cleared, as _connect_loop() starts an iteration.
+    client = make_client(hotspot_time_min=1)
+    run(client.pr.setup())
+
+    async def scenario() -> "list[tuple[bool, bool]]":
+        seen = []
+        for exhausted in (True, True, False):
+            client._hw_op_failed = False
+            if exhausted:
+                with _RaiseOnArm(exc):
+                    await client._hotspot_client_absent()
+            else:
+                await client._hotspot_client_absent()
+            seen.append((client._hw_op_failed, client._hotspot_timer_running))
+        await _stop_flash(client)
+        return seen
+
+    assert run(scenario()) == [(True, False), (True, False), (False, True)], exc
+    log = run(client.get_error_counter())
+    assert _used_slots(log) == [code("E", "TIMER")] and log["WIFI"]["ErrCount"] == 2, (exc, log)
+    assert len(client._hotspot_timer.arms) == 1, exc
+
+
+def test_a_failed_window_arm_is_the_iterations_hardware_failure() -> None:
+    # Alarm-pool exhaustion (ENOMEM) and an allocation failure each persist one TIMER entry and mark the iteration's
+    # hardware failure, as the silent mode's period arm does; the next tick arms the window once the pool has room.
+    _failed_window_arm_case(OSError)
+    _failed_window_arm_case(MemoryError)
+
+
+def _window_line_case(exc: "type[BaseException]") -> None:
+    # The console lines of three no-client ticks at the event level: a failed arm, then an arm with room in the alarm
+    # pool, then a tick with the window already running.
+    client = make_client(hotspot_time_min=1)
+    run(client.pr.setup())
+    client.pr.set_level(4)
+
+    async def scenario() -> "list[list[tuple[object, ...]]]":
+        ticks = []
+        for exhausted in (True, False, False):
+            recorder = _PrintRecorder()
+            try:
+                if exhausted:
+                    with _RaiseOnArm(exc):
+                        await client._hotspot_client_absent()
+                else:
+                    await client._hotspot_client_absent()
+            finally:
+                recorder.restore()
+            ticks.append(recorder.lines)
+        await _stop_flash(client)
+        return ticks
+
+    failed, armed, running = run(scenario())
+    assert [line[:2] for line in failed] == [("WIFI", "Could not start hotspot timer:")], (exc, failed)
+    assert (armed, running) == ([("WIFI", "No client connected - hotspot timer started")], []), (exc, armed, running)
+
+
+def test_the_window_started_line_follows_a_successful_arm_only() -> None:
+    # A failed arm prints its own error and nothing more, its persisted TIMER entry being the record; the started line
+    # comes once the window is armed, never before the arm's result is known.
+    _window_line_case(OSError)
+    _window_line_case(MemoryError)
+
+
 def test_hotspot_client_absent_starts_the_led_flash_task() -> None:
     client = make_client()
 
@@ -4164,10 +4231,10 @@ async def _next_stations_check(radio: _HotspotRadio) -> bool:
     return await _until(lambda: radio.station_checks >= target)
 
 
-def _hotspot_client(radio: _HotspotRadio, json_text: str = _VALID_JSON) -> WifiService:
+def _hotspot_client(radio: _HotspotRadio, json_text: str = _VALID_JSON, max_module_error: int = 5) -> WifiService:
     # A unit on _HotspotRadio that falls back after one failed attempt, with a one-minute window; the watcher's flag
     # parks on an asyncio.Event and the captive DNS server is stubbed (its socket is not under test).
-    client = make_client_with_json(json_text, conn_fail_to_hotspot=1, hotspot_time_min=1)
+    client = make_client_with_json(json_text, conn_fail_to_hotspot=1, hotspot_time_min=1, max_module_error=max_module_error)
     client._hotspot_timeout_trigger_event = _ParkedFlag()  # type: ignore[assignment]  # see _ParkedFlag
     client._dns_server.run = _no_captive_dns  # type: ignore[method-assign]  # its socket is not under test
     return client
@@ -4331,6 +4398,75 @@ def test_integration_an_unfilled_stations_answer_never_holds_the_hotspot() -> No
                 assert code("W", "WLAN_STATIONS_UNKNOWN") in kept, kept
             finally:
                 await _stop_all(client, loop, watcher)
+
+        run(scenario())
+
+
+def _observe_absent_ticks(client: WifiService) -> "list[int]":
+    # The hardware streak each no-client tick of the hotspot starts from, in order; the tick itself runs unchanged.
+    streak: list[int] = []
+    real_absent = client._hotspot_client_absent
+
+    async def absent() -> None:
+        streak.append(client._err_cnt_internal)
+        await real_absent()
+
+    client._hotspot_client_absent = absent  # type: ignore[method-assign]  # observed, then run
+    return streak
+
+
+def test_integration_a_hotspot_window_that_cannot_be_armed_ends_the_task_and_its_restart_retries_sta() -> None:
+    # With no window armed the hotspot never ends, so each failed arm is the iteration's hardware failure (owner,
+    # 2026-10-13): one step per tick to the give-up, and the restart leaves the hotspot for a fresh STA streak.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = _hotspot_client(radio, max_module_error=2)
+        streak = _observe_absent_ticks(client)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            tasks = [asyncio.create_task(client._connect_loop())]
+            try:
+                assert await _until(tasks[0].done, 400), ("the streak never reached its give-up", streak)
+                assert (streak, client._err_cnt_internal) == ([0, 1, 2], 3), (streak, client._err_cnt_internal)
+                kept = _used_slots(await client.get_error_counter())
+                for name in (("E", "TIMER"), ("W", "DEVICE_RECOVERY"), ("E", "GIVE_UP"), ("E", "WLAN_GIVE_UP")):
+                    assert code(*name) in kept, (name, kept)
+                assert (client._conn_phase, client._ap_selected, len(radio.built)) == (_PHASE_HOTSPOT, True, 3)
+                radio.router_up = True  # back while the alarm pool stays exhausted
+                tasks.append(asyncio.create_task(client._connect_loop()))  # the supervisor's restart
+                assert await _until(lambda: client._conn_phase == _PHASE_STA_ESTABLISHED), "the restart must retry STA"
+                sta = radio.built[3]
+                left = (len(radio.built), sta.if_id, sta.connect_calls, client._ap_selected, client._dns_server_task)
+                assert left == (4, network.STA_IF, [("MyNetwork", "supersecret")], False, None), left
+                fresh = (client._err_cnt_internal, client._connection_failures, client._hotspot_started_once)
+                assert fresh == (0, 0, False), ("the restart must start a fresh streak with the hotspot available", fresh)
+                assert not tasks[1].done()
+            finally:
+                await _stop_all(client, *tasks)
+
+        with _RaiseOnArm():  # Timer.init() refuses every arm (ENOMEM)
+            run(scenario())
+
+
+def test_integration_a_window_arm_that_succeeds_later_heals_the_streak() -> None:
+    # Two ticks whose arm fails raise the streak to 2; once the pool has room the next tick arms the window and every
+    # clean iteration heals one step, the task running on with its window armed once.
+    with _HotspotRadio() as radio, _FastAsyncSleep():
+        client = _hotspot_client(radio)
+        streak = _observe_absent_ticks(client)
+
+        async def scenario() -> None:
+            await client.pr.setup()
+            loop = asyncio.create_task(client._connect_loop())
+            try:
+                with _RaiseOnArm():
+                    assert await _until(lambda: client._err_cnt_internal == 2), ("the failed arms never fed the streak", streak)
+                assert await _until(lambda: len(streak) == 6), streak
+                assert streak == [0, 1, 2, 1, 0, 0], streak
+                running = (loop.done(), client._conn_phase, client._hotspot_timer_running, len(client._hotspot_timer.arms))
+                assert running == (False, _PHASE_HOTSPOT, True, 1), running
+            finally:
+                await _stop_all(client, loop)
 
         run(scenario())
 

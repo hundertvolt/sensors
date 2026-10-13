@@ -2,10 +2,11 @@ import { existsSync } from "node:fs";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
-import { runLiveBackendConcurrentTabs, runLiveBackendSmoke } from "./tests_js/_live_twin_command.js";
+import { runLiveBackendConcurrentTabs, runLiveBackendRestartRecovery, runLiveBackendSmoke } from "./tests_js/_live_twin_command.js";
 import {
     applyField,
     applyUnchangedFieldExpectNothingToSubmit,
+    archiveErrcount,
     getLiveMatrixConfig,
     getRealCurrentValues,
     remountAndReadField,
@@ -54,6 +55,7 @@ export default defineConfig({
             commands: {
                 runLiveBackendSmoke,
                 runLiveBackendConcurrentTabs,
+                runLiveBackendRestartRecovery,
                 getLiveMatrixConfig,
                 startLiveMatrix,
                 stopLiveMatrix,
@@ -61,6 +63,7 @@ export default defineConfig({
                 applyField,
                 applyUnchangedFieldExpectNothingToSubmit,
                 remountAndReadField,
+                archiveErrcount,
                 probeLintRule,
             },
         },

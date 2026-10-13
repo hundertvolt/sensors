@@ -1,0 +1,123 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23c/harness
+
+stdout | tests_js/render.test.js > renderSection > preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild
+PROBE gets=0 sameList=true
+ ❯ |chromium| tests_js/render.test.js (35 tests | 1 failed | 34 skipped) 204ms
+   ❯ renderSection (35)
+     ↓ renders readonly measurement fields and updates them on poll
+     ↓ renders a nested measurement field's own leaf at its declared precision, not [object Object]
+     ↓ renders a writable number field pre-filled via its current-value caption, and a toggle button
+     ↓ submits an edited field via Apply and shows the resulting per-field status
+     ↓ colors each individual field's own box by its own result, not just the card's worst status
+     ↓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field
+     ↓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change)
+     ↓ submits a numeric-valued enum field as a number, not a stringified one (regression)
+     ↓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination
+     ↓ renders an errcount group outside the Status section from GET /status's errcount
+     × preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild 201ms
+     ↓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result
+     ↓ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       ↓ renders On (the schema defaultValue), not Off, despite no real current value
+       ↓ sparse-omits it when left untouched at the defaultValue (nothing to submit)
+       ↓ submits it once deliberately flipped away from the defaultValue
+     ↓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit
+     ↓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression)
+     ↓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+     ↓ shows a visible error banner when a settings section's one-shot GET fails
+     ↓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression)
+     ↓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression)
+     ↓ reports Invalid for a composite field submitted with only some subfields filled
+     ↓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification)
+     ↓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank
+     ↓ flattens per-sensor maintenance data one level for the Status section's sensors group
+     ↓ shows a visible error banner when a GET response body is empty
+     ↓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+     ↓ surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error
+     ↓ shows a visible error banner when the notification section's own /status sub-fetch fails
+     ↓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll
+     ↓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure)
+     ↓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR)
+     ↓ shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500)
+     ↓ shows Failed when a PUT response body is empty (a torn/truncated transmission)
+     ↓ shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild
+AssertionError: expected +0 to be 1 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---preserves-an-expanded-errcount-card-s--Show-flagged---Show-all--state-across-a-live-poll-rebuild.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ tests_js/render.test.js:439:22
+    437|         const rendered = mustQuery(main, ".errcount-module-list");
+    438|         console.log(`PROBE gets=${gets} sameList=${rendered === main.q…
+    439|         expect(gets).toBe(1);
+       |                      ^
+    440|
+    441|         // Before the fix, the poll rebuild unconditionally reset to t…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=1e0125a0:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 34 skipped (35)
+   Start at  08:59:06
+   Duration  1.62s (worker 50%, tests 40%, import 11%)
+
+== Summary: npm test ==
+Commit: 6d9ae47 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 34 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild: expected +0 to be 1 // Object.is equality
+Skipped:
+  - tests_js/render.test.js > renderSection > renders readonly measurement fields and updates them on poll: skip
+  - tests_js/render.test.js > renderSection > renders a nested measurement field's own leaf at its declared precision, not [object Object]: skip
+  - tests_js/render.test.js > renderSection > renders a writable number field pre-filled via its current-value caption, and a toggle button: skip
+  - tests_js/render.test.js > renderSection > submits an edited field via Apply and shows the resulting per-field status: skip
+  - tests_js/render.test.js > renderSection > colors each individual field's own box by its own result, not just the card's worst status: skip
+  - tests_js/render.test.js > renderSection > sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field: skip
+  - tests_js/render.test.js > renderSection > still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change): skip
+  - tests_js/render.test.js > renderSection > submits a numeric-valued enum field as a number, not a stringified one (regression): skip
+  - tests_js/render.test.js > renderSection > renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination: skip
+  - tests_js/render.test.js > renderSection > renders an errcount group outside the Status section from GET /status's errcount: skip
+  - tests_js/render.test.js > renderSection > shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result: skip
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value: skip
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > sparse-omits it when left untouched at the defaultValue (nothing to submit): skip
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > submits it once deliberately flipped away from the defaultValue: skip
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when Apply is clicked with nothing to submit: skip
+  - tests_js/render.test.js > renderSection > skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression): skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails: skip
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression): skip
+  - tests_js/render.test.js > renderSection > reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression): skip
+  - tests_js/render.test.js > renderSection > reports Invalid for a composite field submitted with only some subfields filled: skip
+  - tests_js/render.test.js > renderSection > reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification): skip
+  - tests_js/render.test.js > renderSection > skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank: skip
+  - tests_js/render.test.js > renderSection > flattens per-sensor maintenance data one level for the Status section's sensors group: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty: skip
+  - tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error): skip
+  - tests_js/render.test.js > renderSection > surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error: skip
+  - tests_js/render.test.js > renderSection > shows a visible error banner when the notification section's own /status sub-fetch fails: skip
+  - tests_js/render.test.js > renderSection > refreshes a readonly field embedded in a writable, live-polled group in place on the next poll: skip
+  - tests_js/render.test.js > renderSection > shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure): skip
+  - tests_js/render.test.js > renderSection > shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR): skip
+  - tests_js/render.test.js > renderSection > shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500): skip
+  - tests_js/render.test.js > renderSection > shows Failed when a PUT response body is empty (a torn/truncated transmission): skip
+  - tests_js/render.test.js > renderSection > shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status: skip
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

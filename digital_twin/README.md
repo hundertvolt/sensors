@@ -773,33 +773,40 @@ abandoned. Over a several-KB body arriving in several TCP reads that is several 
 bigger allocate-copy-discard cycles per fetch, which is exactly what fragments this heap under
 repeated soak cycles. Confirmed by reading the pinned interpreter's own source, not inferred.
 
-- **Sized (`Content-Length`) →** one right-sized `bytearray` filled through `Stream.readinto()`,
-  which does a single non-accumulating read per call and so has to be looped. One allocation per
-  fetch, made once the final size is known. **`readinto()` can return `None`** — poll said
-  readable, the read still came back empty, the race `Stream.read()`'s own retry loop exists to
-  ride out. It reaches this caller directly and must be retried; only a real `0` means the peer
-  closed. Conflating the two reads as an intermittent, environment-dependent false `EOFError`
-  under scheduling jitter, which a quiet sandbox rarely reproduces. This file's first version did.
-- **Unsized (`GET /`, the frozen website) →** `ext/microdot.py`'s `send_file()` hands the response
-  a raw file stream, so `Response.complete()`'s automatic `Content-Length` never applies and
-  `Connection: close` plus EOF is how the response ends. This is the live path for that route, not
-  a rare fallback. Fixed-size chunks collected in a list and joined once, rather than one bigger
-  contiguous copy per read.
+- **Sized (`Content-Length`; every response this webserver writes, `GET /` included) →** one
+  right-sized `bytearray` filled through `Stream.readinto()` (`_read_exact()`), which does a single
+  non-accumulating read per call and so has to be looped. One allocation per fetch, made once the
+  final size is known. **`readinto()` can return `None`** — poll said readable, the read still
+  came back empty, the race `Stream.read()`'s own retry loop exists to ride out. It reaches this
+  caller directly and must be retried; only a real `0` means the peer closed. Conflating the two
+  reads as an intermittent, environment-dependent false `EOFError` under scheduling jitter, which a
+  quiet sandbox rarely reproduces. This file's first version did.
+- **Unsized (no `Content-Length`) →** a fallback, not a live path: `src/asy_webserver_service.py`
+  sends the header on every response — `Response.complete()` adds it for a bytes body,
+  `_pieces_response()` for the streamed JSON routes, and `_StaticRoutes.serve()` sets it from the
+  opened file's size for the frozen website — so none of its responses ends at EOF. Here
+  `_read_until_close()` collects fixed-size chunks in a list and joins them once, rather than one
+  bigger contiguous copy per read.
 
-The final `b"".join(chunks)` is still one whole-body allocation (~7.5KB for the largest device's
-frozen website). That is fine for a caller that needs the bytes, but **no real device ever holds
-one**: a browser assembles the body from Microdot's own 1KB `send_file_buffer_size` chunks over the
-wire. A caller that only checks `status_code` takes `_drain_until_close()` instead — SPECIFICATION.md
-Part I.4(g), relieve the pressure at its source rather than paper over an avoidable allocation with
-a GC-policy change. No explicit `gc.collect()` belongs anywhere near this: `py/gc.c`'s `gc_alloc()`
-already runs a full collect-and-retry before it ever raises `MemoryError`, so a stale response's
-garbage is reclaimed exactly when an allocation needs the room.
+Either path still makes one whole-body allocation, `_read_exact()`'s buffer or the final
+`b"".join(chunks)` (~16KB for the largest device's `GET /` page; the bundle `/js/app.js` is ~28KB
+on every device). That is fine for a caller that needs the bytes, but **no real device ever holds
+one**: the static route reads and writes the file in `chunk_bytes` pieces (256 B; it sets the
+response's `send_file_buffer_size`, Microdot's 1,024 B default otherwise; SPECIFICATION.md
+Part I.3), and a browser assembles the body from those over the wire. A caller that only checks
+`status_code` passes `read_body=False` and takes the matching drain sibling instead,
+`_drain_exact()` (or `_drain_until_close()` for an unsized body) — SPECIFICATION.md Part I.4(g),
+relieve the pressure at its source rather than paper over an avoidable allocation with a GC-policy
+change. No explicit `gc.collect()` belongs anywhere near this: `py/gc.c`'s `gc_alloc()` already
+runs a full collect-and-retry before it ever raises `MemoryError`, so a stale response's garbage is
+reclaimed exactly when an allocation needs the room.
 
-That distinction was found by a real CI failure, and is the reason `_drain_until_close()` exists:
-`dev`'s own frozen website (7579 bytes, 168-483 bytes larger than the other five devices') tipped
-that one allocation over a fragmented-heap edge at `gc.threshold(-1)` where the slightly smaller
-sites did not. The fix was calling the draining sibling from the hot soak loop — not shrinking the
-site, and not reaching for a threshold.
+That distinction was found by a real CI failure, and is the reason `read_body=False` exists:
+`dev`'s own frozen website (its `GET /` page, then 7579 bytes, 168-483 bytes larger than the other
+five devices'; 16045 bytes and 2056-2491 bytes larger today) tipped that one allocation over a
+fragmented-heap edge at `gc.threshold(-1)` where the slightly smaller sites did not. The fix was
+calling the draining sibling from the hot soak loop — not shrinking the site, and not reaching for
+a threshold.
 
 ### `_unix_port_udp_addr_shim.py` (real UDP round trips under the Unix port)
 

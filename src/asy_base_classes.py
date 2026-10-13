@@ -68,6 +68,8 @@ else:
 
 # 2**30 - 1: rp2's largest small int (object repr A), 34 years in seconds; no counter or cap may exceed it
 COUNTER_CAP = const(0x3FFFFFFF)
+# The degraded-source marker's word: a source that could not read its values answers {"error": UNAVAILABLE} (Part C.6).
+UNAVAILABLE = const("unavailable")
 # HourlyWindowCounter's window: 24 bins of one hour each
 _WINDOW_HOURS = const(24)
 _HOUR_S = const(3600)
@@ -442,21 +444,21 @@ class SensorReader:
                     values.update(sensor_conf)
             except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
                 await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
-                return {name: {"error": "unavailable"}}
+                return {name: {"error": UNAVAILABLE}}
             if sensor_conf is None:
-                return {name: {"error": "unavailable"}}  # the store persisted its own entry; the callback is not read
+                return {name: {"error": UNAVAILABLE}}  # the store persisted its own entry; the callback is not read
 
             if callback is not None:
                 try:
                     sensor_callback = await callback()
                     if sensor_callback is None:
-                        return {name: {"error": "unavailable"}}  # the driver persisted its own entry
+                        return {name: {"error": UNAVAILABLE}}  # the driver persisted its own entry
                     if not all(k in values for k in sensor_callback):
                         await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
                     values.update(sensor_callback)
                 except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
                     await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
-                    return {name: {"error": "unavailable"}}
+                    return {name: {"error": UNAVAILABLE}}
 
             return {name: values}
 

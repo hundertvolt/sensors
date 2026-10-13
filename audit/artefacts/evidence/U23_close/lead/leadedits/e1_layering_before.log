@@ -1,0 +1,17 @@
+F.................                                                       [100%]
+=================================== FAILURES ===================================
+____________________ test_the_real_tree_keeps_the_layering _____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L')
+
+    def test_the_real_tree_keeps_the_layering(repo_root: Path) -> None:
+>       assert _layering_problems(repo_root) == []
+E       AssertionError: assert ['js/template...CSS.escape()'] == []
+E         
+E         Left contains one more item: 'js/templates.js:620: a selector template interpolates a value without CSS.escape()'
+E         Use -v to get more diff
+
+tests_scripts/test_website_layering.py:195: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_website_layering.py::test_the_real_tree_keeps_the_layering
+1 failed, 17 passed in 1.53s

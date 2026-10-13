@@ -326,6 +326,8 @@ _ROWS: "dict[str, Row]" = {
     ),
     "web.quoted-special-off-string": Row("definitions", f"[{_DEVICE}.AmbPres] ", edits=((_SCD30, ' special:0="Compensation', ' special:"0"="Compensation'),)),
     "web.string-special-unquoted": Row("definitions", f"[{_DEVICE}.PW] ", edits=(("asy_wifi_service.py", 'special:""="Open network"', 'special:open="Open network"'),)),
+    "web.key-needs-number": _web_row('# @web MeasInterval section=sensors submitGroup=self kind=string label="Measurement Interval" unit="s" resolution=1'),
+    "web.ignored-when-set-unknown": _web_row("ignoredWhenSet=NoSuchField", old="ignoredWhenSet=AmbPres", where="/scd30.Altitude"),
     # buildgen/validate.py: [device]
     "device.table-missing": Row("generate", f"[{_DEVICE}] ", doc=_drop("device")),
     "device.field-missing": Row("generate", f"[{_DEVICE}.hostname] ", doc=_drop("device", "hostname")),
@@ -462,6 +464,7 @@ _ROWS: "dict[str, Row]" = {
     "api.routes-duplicate": Row("batch", f"[{_DEVICE}.ROUTES] ", edits=(("asy_webserver_service.py", '    ("GET", "/sensors", "_get_sensors"),', '    ("GET", "/measurements", "_get_sensors"),'),)),
     "api.route-unregistered": Row("batch", f"[{_DEVICE}] ", edits=(("asy_webserver_service.py", '    ("PUT", "/sensors", "_put_sensors"),\n', ""),)),
     "api.result-word-not-string": Row("batch", f"[{_DEVICE}.FAILED] ", edits=(("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4'),)),
+    "api.wire-text-not-string": Row("batch", f"[{_DEVICE}.UNAVAILABLE] ", edits=(("asy_base_classes.py", 'UNAVAILABLE = const("unavailable")', "UNAVAILABLE = const(5)"),)),
     "api.envelope-codes-malformed": Row("batch", f"[{_DEVICE}._STANDARD_CODES] ", edits=(("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, "),)),
     # A syntax error there fails the frozen set first (source.syntax-error); a src/ tree without the file reaches the reference.
     "api.source-unreadable": Row("batch", f"[{_DEVICE}._STANDARD_CODES] ", drop=("asy_api_response.py",)),

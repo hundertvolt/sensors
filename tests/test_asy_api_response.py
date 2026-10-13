@@ -150,9 +150,24 @@ def test_every_catalogued_code_has_a_producer_and_every_produced_code_is_catalog
     assert never_produced == [] and uncatalogued == [], (never_produced, uncatalogued)
 
 
+def _src_string_const(name: str) -> str:
+    # A `NAME = const("<text>")` line of the source: an underscore const() is not a module attribute on MicroPython.
+    with open("src/asy_api_response.py") as f:
+        for line in f:
+            if line.startswith(name + ' = const("'):
+                text: str = line.split('const("', 1)[1].split('")', 1)[0]
+                return text
+    raise AssertionError(name + " not found in src/asy_api_response.py")
+
+
 def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() -> None:
     resp = ar.make_response(999)
     assert resp == {"res": "ERR", "code": 999, "descr": "Unknown error", "result": {}}
+
+
+def test_the_unknown_code_text_is_the_one_constant_beside_the_catalog() -> None:
+    # Guard: the fallback descr the REST reference and the mock mirror is _UNKNOWN_DESCR's text, never a second literal.
+    assert _src_string_const("_UNKNOWN_DESCR") == "Unknown error" == ar.make_response(-1)["descr"]
 
 
 def test_make_response_unknown_code_with_descr_keeps_the_given_descr() -> None:

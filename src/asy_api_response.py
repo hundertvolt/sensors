@@ -49,6 +49,7 @@ _STANDARD_CODES: dict[int, str] = {
     413: "Payload too large",
     500: "Internal server error",
 }
+_UNKNOWN_DESCR = const("Unknown error")  # the descr of a code the catalog does not list
 
 
 async def handle_set_cmd(
@@ -78,7 +79,7 @@ def make_response(code: int, descr: str | None = None, result: "JsonMapping | No
     # Pure and total: never raises, no I/O. code == 0 is the only "OK" outcome (matches every existing
     # endpoint's convention), every other code "ERR"; an uncatalogued code without descr reads "Unknown error".
     if descr is None:
-        descr = _STANDARD_CODES.get(code, "Unknown error")
+        descr = _STANDARD_CODES.get(code, _UNKNOWN_DESCR)
     return {
         "res": "OK" if code == 0 else "ERR",
         "code": code,

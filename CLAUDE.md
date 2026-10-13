@@ -494,9 +494,9 @@ information):
   construction (SPECIFICATION.md Part L.6.4), and `# @tunable` (`// @tunable` in JS) is the
   tunable register's (Part N) — the prose introducing them is not exempt. **JSDoc
   `@typedef`/`@param`/`@returns` annotations are the same case** — `npm run typecheck` really
-  checks them with `tsc`, so `js/definitions.js`'s ~37-line `@typedef` run is a type declaration,
+  checks them with `tsc`, so `js/definitions.js`'s ~51-line `@typedef` run is a type declaration,
   not a comment; the prose above it is not exempt. **PEP 723 inline script metadata is the same
-  case** — the `# /// script` … `# ///` block four `uv run` scripts carry is read by `uv` itself.
+  case** — the `# /// script` … `# ///` block every `uv run` script carries is read by `uv` itself.
   Applied across `src/` in one pass (project owner's direction, 2026-09-18) and repo-wide since:
   **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS, since
   2026-09-22 `scripts/`'s shell, and since 2026-09-24 the config files too** (`pyproject.toml`,

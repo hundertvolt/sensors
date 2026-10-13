@@ -1,0 +1,38 @@
+
+######## SubagentHandback 2026-10-13T12:11:25.408Z
+API4 = `e4a18bf` (branch `audit/u23-api4` in `S/wt-u23api`, worktree clean). Both merges were clean and nothing needed resolving: `b631c20` merges S final `b8ccba7` and `fb6fede` merges lead `202a118`. Before merging I confirmed both heads and that each contains `9a8700f`. One red is lane X's open rows and the other is the lead's at API5. Nothing is UNEXPECTED.
+
+**1b.** `test_decision_vocabulary` named exactly the four rows S expected. I dropped those four and nothing else: `:519` (`_live_matrix_command.js` "@param {{ sectionKey…"), `:522` (one of the three identical `:520-:522` matrix no-await-in-loop rows), `:524` (one of the two `:523-:524` twin no-await-in-loop rows) and `:528` (`live-backend.test.js` "\"Valid\" or \"Unchanged\"…"). The rerun passed 6/6. Committed alone as `57da9b5`, with lead5's text, subject "…the rows S's final retired" and the rows appended.
+
+**1d.** `js/definitions.js:438` now cites Part H.5 instead of H.4; the wording is otherwise unchanged. Lane X's 7006202 states the fact at SPEC:6781 (SPEC:6666 on API4): "`dispatch`… `alwaysExecuted`… so both never-\"Unchanged\" classes (H.6) are readable from the definitions alone". The other places fall short: H.4 never states the fact, H.6 states only the dispatch-only half (with ContMeas), and AmbPres/ForceCalRef are covered in A.4 (:311/:316). `test_citations` passed 15/15 and `definitions.test.js` 45/45. Committed alone as `e4a18bf`.
+- **Side finding (not touched, the step named only :438):** `js/definitions.js:68-69` cites the same fact as "Part H.4" and needs the same fix. You decide.
+
+**2.** `rebuild.sh` rc 0 ("rebuilt e4a18bf arzi dev grkizi klkizi schlafzi wozi"). Duplicate-name check over the 6 staged bundles: rc 0, 129 top-level names each, 0 imports left, 0 duplicates. API3 had 130; the one gone is `isObject`, from your isRecord edit.
+
+**3.** `quick.sh` gained `expected-display` and `memory-markers`. I did not run the live-tier files `live-backend.test.js` and `live-backend-put-matrix.test.js` (S ran them).
+
+`summary.txt` verbatim (line breaks shown as "; "):
+ruff rc=0; mypy_noargs rc=0; mypy_ci rc=0; mypy_twin rc=0; mypy_host rc=0; npm_lint rc=0; npm_typecheck rc=0; lint_html rc=0; lint_css rc=0; vt_definitions rc=0; vt_definitions-shape-corpus rc=0; vt_source-constants rc=0; vt_mock-server rc=0; vt_mock-server-put-matrix rc=0; vt_generated-definitions-render rc=0; vt_mock-data-compose rc=0; vt_definitions-mockdata-coverage rc=0; vt_app rc=0; vt_templates rc=0; vt_render rc=0; vt_lint-ceilings rc=1; vt_main rc=0; vt_api-reference-agreement rc=0; vt_nav rc=0; vt_poll-manager rc=0; vt_shell rc=0; vt_accessibility rc=0; vt_site-functions rc=0; vt_expected-display rc=0; vt_memory-markers rc=0; done
+
+`tests_scripts/` tier: 4510 passed, 11 skipped, 1 failed (`test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree`), 579 s, rc 1.
+
+**4.** `git diff --name-only 9a8700f e4a18bf -- src tests digital_twin` is empty, so there were no MicroPython runs.
+
+**5. Reds:**
+- **EXPECTED, lane X (tunables):** the Part N rows are missing for:
+  - `web.default_decimals` (`buildgen/definitions.py:39`, `tests_scripts/test_buildgen_definitions.py:377`)
+  - `l1.lwip_host_spin_window_rounds` (`tests/lwip_host/test_modlwip_eagain.py:34`)
+  - `web.clock_mismatch_s` (`js/field-format.js:15`)
+  - `web.poll_backoff_max_ms` (`js/poll-manager.js:12`)
+  - `web.device_watch_interval_ms` (`js/shell.js:16`)
+  - `l0.section_render_wait_ms` (accessibility:16, generated-definitions-render:14, site-functions:19)
+  - `l0.live_concurrent_tabs_timeout_ms = 200000` (`tests_js/live-backend.test.js:9`)
+  - `l0.live_restart_recovery_timeout_ms = 180000` (`live-backend.test.js:12`)
+  - Two Sites lists also lack `tests_js/site-functions.test.js`: SPEC:10161 `l0.render_wait_timeout_ms` and SPEC:10162 `l0.render_poll_ms`.
+  - X's WIP `7006202` has every one of these except the two `l0.live_*` rows, which are new tags from S final (X38 facts still owed to X).
+- **EXPECTED, lead at API5:** `lint-ceilings.test.js` "complexity sits at its measured maximum" fails with "expected 0 to be greater than 0" (`:30`), the same as at API3.
+- **Now green:** API3's `npm run typecheck` lines (put-matrix (54,40)/(65,56)) and `test_website_layering`.
+
+RUNS.md matches `ps`: yes. All 7 of my runs exited, and my agent line is marked done. The only processes running are the lead-edits-2 agent's vitest and twin in wt-u23L, which have their own RUNS.md line (336).
+
+Logs are in `S/u23/api4/`.

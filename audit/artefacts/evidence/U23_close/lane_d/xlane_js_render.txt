@@ -1,0 +1,84 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ❯ |chromium| tests_js/render.test.js (35 tests | 1 failed) 9998ms
+   ❯ renderSection (35)
+     ✓ renders readonly measurement fields and updates them on poll 140ms
+     ✓ renders a nested measurement field's own leaf at its declared precision, not [object Object] 159ms
+     ✓ renders a writable number field pre-filled via its current-value caption, and a toggle button 146ms
+     ✓ submits an edited field via Apply and shows the resulting per-field status 333ms
+     ✓ colors each individual field's own box by its own result, not just the card's worst status 374ms
+     ✓ sparse-omits an untouched toggle/enum field left at its current value, unlike a dispatch-marked field 445ms
+     ✓ still submits a toggle/enum field explicitly flipped back to its original value (a real, deliberate change) 497ms
+     ✓ submits a numeric-valued enum field as a number, not a stringified one (regression) 446ms
+     ✓ renders an errcount rollup, revealed via 'Show flagged', showing its full history immediately with no pagination 291ms
+     ✓ renders an errcount group outside the Status section from GET /status's errcount 301ms
+     ✓ preserves an expanded errcount card's 'Show flagged'/'Show all' state across a live poll rebuild 214ms
+     ✓ shows Valid (not Failed) after a successful Reset All Errors submission, even though /status's PUT never returns a per-field result 570ms
+     ❯ a toggle field with no real GET readback but a schema-declared defaultValue (3)
+       × renders On (the schema defaultValue), not Off, despite no real current value 394ms
+       ✓ sparse-omits it when left untouched at the defaultValue (nothing to submit) 156ms
+       ✓ submits it once deliberately flipped away from the defaultValue 332ms
+     ✓ skips the PUT and shows a neutral message when Apply is clicked with nothing to submit 301ms
+     ✓ skips the PUT for an enum-only submit group (e.g. SystemCmd) left untouched, instead of silently dispatching whichever command the browser defaults a bare <select> to (regression) 207ms
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 361ms
+     ✓ shows a visible error banner when a settings section's one-shot GET fails 11ms
+     ✓ reports Invalid for non-numeric text in a number field instead of silently submitting 0 (regression) 322ms
+     ✓ reports Invalid for non-numeric text in a composite subfield instead of silently submitting 0 (regression) 527ms
+     ✓ reports Invalid for a composite field submitted with only some subfields filled 627ms
+     ✓ reports Valid for a fully-specified composite LightCmdLED submission and never persists it (dispatch-only, matches real GET /notification) 653ms
+     ✓ skips the PUT and shows a neutral message when LightCmdLED's Apply is clicked with every subfield left blank 600ms
+     ✓ flattens per-sensor maintenance data one level for the Status section's sensors group 114ms
+     ✓ shows a visible error banner when a GET response body is empty 11ms
+     ✓ shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error) 11ms
+     ✓ surfaces the server's own descr text when the notification section's /status sub-fetch returns a shaped HTTP error 146ms
+     ✓ shows a visible error banner when the notification section's own /status sub-fetch fails 167ms
+     ✓ refreshes a readonly field embedded in a writable, live-polled group in place on the next poll 15ms
+     ✓ shows 'Request failed' and a failed apply-status when the PUT itself fails (network failure) 167ms
+     ✓ shows Failed, not silently Valid, when the PUT body is rejected as malformed (HTTP 200, res:ERR) 208ms
+     ✓ shows Failed with the server's own descr when a PUT hits a shaped HTTP error (500) 220ms
+     ✓ shows Failed when a PUT response body is empty (a torn/truncated transmission) 177ms
+     ✓ shows Failed for a field silently missing from a nominally-OK PUT response, without losing the other field's real status 354ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value
+AssertionError: expected 'false' to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/render.test.js/renderSection---a-toggle-field-with-no-real-GET-readback-but-a-schema-declared-defaultValue---renders-On--the-schema-defaultValue---not-Off--despite-no-real-current-value.png
+
+Expected: [32m"[7mtru[27me"[39m
+Received: [31m"[7mfals[27me"[39m
+
+ ❯ tests_js/render.test.js:531:57
+    529|
+    530|             const toggle = mustQuery(main, '[data-field-key="AuxEnable…
+    531|             expect(toggle.getAttribute("aria-pressed")).toBe("true");
+       |                                                         ^
+    532|             expect(toggle.textContent).toBe("On");
+    533|         });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5211:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 34 passed (35)
+   Start at  06:46:51
+   Duration  11.43s (tests 97%, worker 2%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 34 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/render.test.js > renderSection > a toggle field with no real GET readback but a schema-declared defaultValue > renders On (the schema defaultValue), not Off, despite no real current value: expected 'false' to be 'true' // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

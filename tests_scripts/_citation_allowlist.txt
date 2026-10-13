@@ -110,7 +110,6 @@ tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	measure B
 tests_hardware/flash/test_fram_storage.py	Topic 6
 tests_scripts/conftest.py	devices/zz_test_*.toml
 tests_scripts/test_build_firmware.py	devices/no-such-device.toml
-tests_scripts/test_build_website_sh.py	js/app.js.gz
 tests_scripts/test_buildgen_validate.py	WP1
 tests_scripts/test_device_tomls.py	tests_hardware/bus_topology.py
 tests_scripts/test_digital_twin_generated_boot.py	Session 3

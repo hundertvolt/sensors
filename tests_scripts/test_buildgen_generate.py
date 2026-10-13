@@ -331,8 +331,9 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime", "UnixTime"]
     assert list(entries) == expected
+    assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
     assert entries["ResetReason"] == "sysfunct.get_reset_reason()"
     assert entries["ResetBits"] == "sysfunct.get_reset_bits()"
     assert entries["MemFree"] == "gc.mem_free()"
@@ -354,6 +355,7 @@ def test_real_device_header_imports_the_boot_marks_and_the_watchdog_type_only(de
     tree = ast.parse(source)
     runtime = [ast.unparse(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
     assert "from asy_system_service import SystemService, begin_boot, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, BOOT_NTP, BOOT_DONE" in runtime
+    assert [line for line in runtime if line.startswith("from asy_base_classes import ")] in (["from asy_base_classes import ValueRef, utc_now"], ["from asy_base_classes import utc_now"])
     assert "import frozen_html" in runtime
     assert "from machine import WDT" not in runtime
     assert re.search(r"^import frozen_html$", source, re.MULTILINE), "the website mount import carries no suppression"

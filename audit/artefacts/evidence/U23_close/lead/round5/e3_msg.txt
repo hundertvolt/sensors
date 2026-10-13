@@ -1,0 +1,14 @@
+U23 lead: the decision-vocabulary allow-list drops the rows the docs lanes retired
+
+The allow-list only shrinks: each row whose text no longer occurs in its file goes. Dropped rows:
+
+- BACKLOG.md	Low priority: the two entry points are deliberately separate (prototype vs. prod
+- SPECIFICATION.md	**Contract between them**: controllers reach into a template only via `data-*` a
+- SPECIFICATION.md	| Poll coordination | One shared poll-manager (single-flight queue) | Measuremen
+
+The docs lanes removed the BACKLOG.md sentence and reworded the two
+SPECIFICATION.md ones without decision vocabulary; the check named
+exactly these three as stale, and nothing else.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,15 @@
+U23 lane Y WIP Y3: the backup-pause reset states what it clears
+
+DEVICE_REFERENCE.md, "Clearing the error logs": the backup-pause
+sentence said only that the reset answers "Failed" because FRAM cannot
+be written. It now states the effect as the code has it: the reset
+still clears the logs held in memory (PrintLog.reset() clears the ring
+before the FRAM write is refused), and their next save writes the
+cleared ring into FRAM (PrintLogHistoryStore._write() packs the whole
+live ring), so the FRAM history is lost although the answer is
+"Failed". The user is told to read the logs before resetting and to
+repeat the reset after the pause if the answer matters. A correction of
+a sentence written in this unit; the behaviour itself is unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

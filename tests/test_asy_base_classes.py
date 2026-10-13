@@ -19,6 +19,7 @@ import asy_print_log
 import asy_spi_driver
 from asy_base_classes import (
     COUNTER_CAP,
+    UNAVAILABLE,
     DeviceSession,
     HourlyWindowCounter,
     Lockable,
@@ -1516,6 +1517,12 @@ def test_get_dict_cfg_merges_callback_result() -> None:
 
     result = run(reader._get_dict_cfg("Sensor", _VAL_SI, callback=callback))
     assert result == {"Sensor": {"SampleInterval": 5}}
+
+
+def test_the_unavailable_marker_is_built_from_its_one_spelling() -> None:
+    # Guard: the wire marker every degraded source sends stays {"error": "unavailable"} (SPECIFICATION.md C.6).
+    assert UNAVAILABLE == "unavailable"
+    assert json.loads(json.dumps({"error": UNAVAILABLE})) == {"error": "unavailable"}
 
 
 def test_get_dict_cfg_a_raising_callback_sends_the_unavailable_marker() -> None:

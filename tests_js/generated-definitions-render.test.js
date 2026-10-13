@@ -11,13 +11,15 @@ import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
 /** @typedef {import("../js/definitions.js").Section} Section */
 
 const SAMPLES = /** @type {import("../js/definitions.js").MockSamples} */ (samples);
+// @tunable l0.section_render_wait_ms = 5000
+const SECTION_RENDER_WAIT_MS = 5000;
 
-// Polls instead of a fixed sleep: the mock answers after a randomised latency (js/mock-server.js).
+// Polls instead of a fixed sleep: a section paints once its GET and any /status sub-request answer.
 /**
  * @param {() => boolean} check
  * @param {number} [timeoutMs]
  */
-async function waitFor(check, timeoutMs = 5000) {
+async function waitFor(check, timeoutMs = SECTION_RENDER_WAIT_MS) {
     const start = Date.now();
     while (!check()) {
         if (Date.now() - start > timeoutMs) {
@@ -90,7 +92,7 @@ describe.each(DEVICE_IDS)("%s's generated definitions", (device) => {
                     : [card.querySelectorAll(".errcount-row-wrapper"), group.modules.length];
                 expect(rows, `${section.key}/${group.key}`).toHaveLength(expected);
             }
-            expect(main.querySelector(".error-banner")?.classList.contains("hidden")).toBe(true);
+            expect(main.querySelector(".error-banner")?.getAttribute("data-shown")).toBe("false");
             expect(consoleError).not.toHaveBeenCalled();
         },
     );

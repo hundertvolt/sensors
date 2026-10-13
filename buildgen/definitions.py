@@ -20,7 +20,7 @@ from buildgen.schema_ast import FieldSchema, extract_field_schemas
 from buildgen.signals import WARN_SIGNALS, WarnSignal
 from buildgen.validate import build_model
 from buildgen.version import WEBSITE_VERSION
-from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, parse_web_group_tags, parse_web_tags
+from buildgen.web_tag import SELF_GROUP, WebFieldTag, WebGroupTag, check_ignored_when_set, parse_web_group_tags, parse_web_tags, resolution_decimals
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # The one code catalog (SPECIFICATION.md C.7.1): errno/wrnno texts and the status-code tables.
@@ -34,6 +34,10 @@ SCHEMA_VERSION = "1.0.0"
 # The page's poll interval: the status section's own and the default every other polled section takes.
 # @tunable web.poll_interval_ms = 3000
 _POLL_INTERVAL_MS = 3000
+# The page's decimals for a fractional number whose field states none; the API keeps full resolution (owner,
+# 2026-10-02: 'But only for the website, the API delivers full resolution.').
+# @tunable web.default_decimals = 2
+_DEFAULT_DECIMALS = 2
 
 # Fixed, generator-owned REST-endpoint skeleton (H.4: "Nav grouping: Mirrors the 6 REST endpoints
 # 1:1") - never per-device data, so never tag-derived (SPECIFICATION.md Part H.5.1). "groups" is
@@ -52,9 +56,12 @@ _NOTIFICATION_SECTION_SKELETON: JsonDict = {
 # Dispatch-only webserver-level fields: no per-device variation and no single owning driver file
 # (Part H.5.1), each flagged dispatch so the never-"Unchanged" class reads from definitions alone.
 # Sources in asy_webserver_service.py: _dispatch_notification_led(), _SYSTEM_CMDS, PauseTime's field.
+#
+# The page asks before it sends a system command or the error reset (owner, 2026-10-01: 'add a dialog to all
+# system commands and the clear error history as well. But only on the website, not on the API side.').
 _SYSTEM_COMMAND_GROUP: JsonDict = {
     "key": "command", "label": "System Command", "submit": True,
-    "fields": [{"key": "SystemCmd", "label": "Command", "kind": "enum", "dispatch": True, "options": [
+    "fields": [{"key": "SystemCmd", "label": "Command", "kind": "enum", "dispatch": True, "confirm": True, "options": [
         {"value": "reboot", "label": "Reboot"},
         {"value": "bootloader", "label": "Reboot into bootloader"},
         {"value": "mempause", "label": "Pause backups for 5 minutes"},
@@ -76,13 +83,14 @@ _NOTIFICATION_PAUSE_GROUP: JsonDict = {
     "fields": [{
         "key": "PauseTime", "label": "Pause Time", "unit": "s", "kind": "number", "min": 0, "max": 3600,
         "description": "Temporarily suppress automatic LED notifications. Current value is live (from Status).", "dispatch": True,
+        "statusPath": ["notification", "PauseTime"],
     }],
 }
 _RESET_ERRORS_GROUP: JsonDict = {
     "key": "resetErrors", "label": "Reset Errors", "submit": True, "submitLabel": "Reset All Errors",
     "fields": [{
         "key": "ResetErrors", "label": "Confirm Reset", "kind": "toggle", "onLabel": "Yes, reset", "offLabel": "No",
-        "description": "Resets every module's error counter and history in one call. Absent/No is a no-op.", "dispatch": True,
+        "description": "Resets every module's error counter and history in one call. Absent/No is a no-op.", "dispatch": True, "confirm": True,
     }],
 }
 
@@ -137,6 +145,7 @@ class _CodeRow(TypedDict):
 
 class _StatusRow(TypedDict):
     text: str
+    tone: NotRequired[str]  # good, neutral or warn: the page colours the code, its text the cue (CalLight's table)
 
 
 class _Catalog(TypedDict):
@@ -153,14 +162,20 @@ def _load_catalog() -> _Catalog:
 
 
 def _status_codes(table: str, device: str, field: str) -> JsonDict:
-    # A readonly field's codes=<table>, inlined as {"<n>": "<text>"} from the catalog's status section.
+    # A readonly field's codes=<table>, inlined as "codes": {"<n>": "<text>"} from the catalog's status section,
+    # plus "codeTones": {"<n>": "<tone>"} when the table colours its codes.
     tables = _load_catalog().get("status", {})
     if table not in tables:
         raise BuildError(
             device, f"codes={table!r} names no status table in {_CATALOG_PATH.name} (tables: {sorted(tables)})", field=field,
             rule="web.codes-unknown-table", fix=f"name one of the catalog's status tables, or add a {table!r} table to buildgen/{_CATALOG_PATH.name}",
         )
-    return {num: row["text"] for num, row in tables[table].items()}
+    codes: JsonDict = {num: row["text"] for num, row in tables[table].items()}
+    out: JsonDict = {"codes": codes}
+    tones: JsonDict = {num: row["tone"] for num, row in tables[table].items() if "tone" in row}
+    if tones:
+        out["codeTones"] = tones
+    return out
 
 
 def _errcount_codes(catalog: _Catalog) -> JsonDict:
@@ -186,6 +201,7 @@ class _DriverTags:
                 device, f"{path}: schema field(s) {untagged} have no @web tag", instance=instance_label, field=untagged[0],
                 rule="web.schema-field-untagged", fix='add a # @web tag for each, or # @web <Field> hidden="<why>" to keep one off the website',
             )
+        check_ignored_when_set(self.field_tags, path, device, instance_label)
 
 
 def _load_driver_tags(cache: "dict[Path, _DriverTags]", path: Path, device: str, instance_label: str) -> _DriverTags:
@@ -295,18 +311,25 @@ def _string_field(tag: WebFieldTag, min_v: object, max_v: object, special: objec
         out["byteLength"] = True
     if tag.shape is not None:
         out["shape"] = tag.shape
+    if tag.clearable:
+        out["clearable"] = True
     special_values = _string_special(tag, special, device, path)
     if special_values:
         out["specialValues"] = special_values
     return out
 
 
-def _check_string_keys(tag: WebFieldTag, kind: str, device: str, path: Path) -> None:
-    # web_tag checks bytes=/shape= against an explicit kind=; an inferred kind is known only here.
-    if kind != "string" and (tag.byte_length or tag.shape is not None):
+def _check_kind_keys(tag: WebFieldTag, kind: str, device: str, path: Path) -> None:
+    # web_tag checks each kind's keys against an explicit kind=; an inferred kind is known only here.
+    if kind != "string" and (tag.byte_length or tag.shape is not None or tag.clearable):
         raise BuildError(
-            device, f"{path}: @web tag for {tag.field_name!r} has bytes= or shape= but its kind is {kind!r}, not string", field=tag.field_name,
-            rule="web.string-key-off-string", fix="drop bytes= and shape= from the tag, or make the field a string",
+            device, f"{path}: @web tag for {tag.field_name!r} has bytes=, shape= or clearable= but its kind is {kind!r}, not string", field=tag.field_name,
+            rule="web.string-key-off-string", fix="drop bytes=, shape= and clearable= from the tag, or make the field a string",
+        )
+    if kind != "number" and tag.resolution is not None:
+        raise BuildError(
+            device, f"{path}: @web tag for {tag.field_name!r} has resolution= but its kind is {kind!r}, not number", field=tag.field_name,
+            rule="web.key-needs-number", fix="drop resolution= from the tag: it applies to a number field only",
         )
     if kind != "string" and any(_unquoted(raw) is not None for raw, _meaning in tag.special):
         raise BuildError(
@@ -348,6 +371,8 @@ def _number_field(tag: WebFieldTag, field_type: "str | None", min_v: object, max
         out["max"] = _json_literal(max_v, device, path, tag.field_name)
     if field_type == "float":
         out["float"] = True
+    if tag.resolution is not None:
+        out["resolution"] = tag.resolution
     if special is not None and not isinstance(special, (tuple, list)):
         # A schema-declared sentinel bypass (e.g. AmbPres=0, outside the field's normal min/max
         # range) - the tag must document its meaning; nothing else may claim it.
@@ -376,7 +401,7 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
     field_type = raw_type if isinstance(raw_type, str) else None
     kind = _infer_kind(tag, field_type, special, device, path)
     out["kind"] = kind
-    _check_string_keys(tag, kind, device, path)
+    _check_kind_keys(tag, kind, device, path)
 
     if kind == "toggle":
         out.update(_toggle_field(tag))
@@ -397,17 +422,21 @@ def _build_field_def(tag: WebFieldTag, schema: "FieldSchema | None", device: str
         out["dispatch"] = True
     if tag.always_executed:
         out["alwaysExecuted"] = True
-    if tag.default_value is not None:
-        out["defaultValue"] = tag.default_value
+    if tag.ignored_when_set is not None:
+        out["ignoredWhenSet"] = tag.ignored_when_set
     if tag.path is not None:
         path_keys: list[JsonValue] = list(tag.path)
         out["path"] = path_keys
+    # The value's own source states its decimals: the tag's, else the digits its resolution needs (owner, 2026-10-02:
+    # 'derived or defined from the value sourcing modules'); any other number takes the site's defaultDecimals.
     if tag.decimals is not None:
         out["decimals"] = tag.decimals
+    elif tag.resolution is not None:
+        out["decimals"] = resolution_decimals(tag.resolution)
     if tag.format is not None:
         out["format"] = tag.format
     if tag.codes is not None:
-        out["codes"] = _status_codes(tag.codes, device, tag.field_name)
+        out.update(_status_codes(tag.codes, device, tag.field_name))
     return out
 
 
@@ -595,8 +624,8 @@ def _errcount_group(model: DeviceModel, catalog: _Catalog, src_dir: Path) -> Jso
 
 
 def _sgp40_maintenance_fields(model: DeviceModel, cache: "dict[Path, _DriverTags]") -> "list[JsonValue]":
-    # Built from the SGP40 driver's own section=status tags, one set per instance in construction
-    # order; keyed as GET /status flattens them (<resolved_name>_<field>), labelled like its card.
+    # Built from the SGP40 driver's own section=status tags, one set per instance in construction order; keyed
+    # <resolved_name>_<field>, read by path from GET /status's nested entry, labelled like its card.
     out: list[JsonValue] = []
     for spec, info in _sensor_instance_specs(model):
         if spec.driver != "sgp40":
@@ -612,6 +641,7 @@ def _sgp40_maintenance_fields(model: DeviceModel, cache: "dict[Path, _DriverTags
         for tag in maintenance:
             field = _build_field_def(tag, tags.schemas.get(tag.field_name), model.device, path)
             field["key"] = f"{_resolved_key(spec, model.device)}_{tag.field_name}"
+            field["path"] = [_resolved_key(spec, model.device), tag.field_name]
             if spec.name_ext:
                 field["label"] = f"{tag.label} ({spec.name_ext})"
             out.append(field)
@@ -643,8 +673,8 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             "description": "Opaque value, stable for the running boot session; a different value on a later poll means the device rebooted. Not a human-readable code.",
         },
         {
-            "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code.",
-            "codes": _status_codes("ResetReason", model.device, "ResetReason"),
+            "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code; click it for its meaning.",
+            **_status_codes("ResetReason", model.device, "ResetReason"),
         },
         {
             "key": "ResetBits", "label": "Reset Flags", "kind": "readonly",
@@ -665,6 +695,10 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         },
         {"key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct"},
         {"key": "UTCTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct"},
+        {
+            "key": "UnixTime", "label": "Device Clock", "unit": "s", "kind": "readonly",
+            "description": "Unix time (UTC) when this poll was answered; every age on this site is computed against it.",
+        },
     ]
     groups: list[JsonValue] = [
         {"key": "networking", "label": "Networking Status", "fields": networking_fields},
@@ -680,11 +714,11 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         uart = MAINTENANCE_NAMES["uart_link"]
         maintenance_fields += [
             {
-                "key": f"{uart}_Transfers", "label": "UART Link Transfers", "kind": "readonly",
+                "key": f"{uart}_Transfers", "label": "UART Link Transfers", "kind": "readonly", "path": [uart, "Transfers"],
                 "description": "Completed transfers across this bench rig's UART0<->UART1 crossover jumper since boot. Bench-only - a deployed unit has no such link.",
             },
             {
-                "key": f"{uart}_Failures", "label": "UART Link Failures", "kind": "readonly",
+                "key": f"{uart}_Failures", "label": "UART Link Failures", "kind": "readonly", "path": [uart, "Failures"],
                 "description": "Transfers that did not complete across the crossover jumper since boot.",
             },
         ]
@@ -696,9 +730,12 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             {
                 "key": "State", "label": "Evaluation State", "kind": "readonly",
                 "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
-                "codes": _status_codes("NotifyState", model.device, "State"),
+                **_status_codes("NotifyState", model.device, "State"),
             },
-            {"key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly", "format": "epoch"},
+            {
+                "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
+                "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
+            },
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})
     # Every field group, then the error counts and their reset command; the webserver's row is errcount's last.
@@ -766,6 +803,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> JsonDict:
         "device": {"id": model.device, "displayName": model.device},
         "landingSection": "measurements",
         "defaultPollIntervalMs": _POLL_INTERVAL_MS,
+        "defaultDecimals": _DEFAULT_DECIMALS,
         "sections": sections,
     }
 

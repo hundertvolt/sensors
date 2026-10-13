@@ -1,0 +1,23 @@
+
+######## SubagentHandback 2026-10-13T13:35:47.373Z
+Both edits are committed on `audit/u23-lead2` in `S/wt-u23L` (not pushed), and every hand-back check is green apart from the one expected red allow-list case.
+
+1. `e9b5ce1` U23 lead: a new shell test pins that a section switch hands the left section's GET over to the next section. Test only.
+2. `39420cc` U23 lead: the mock's ResetErrors header says it answers as a running device (comment only). It now says the mock answers as a running device outside the device's "Failed" windows: from a reboot or erase command's acceptance on, and during mempause.
+
+- **Test:** `tests_js/shell.test.js`, case "on a switch lets the left section's GET on the wire end before the next section's first GET, and a page stop right after a switch aborts it". It is a guard: it passes on the tree (15/15).
+- **Bite (required plant):** an `await` between the old stop and the new render fails the case at `:504` (left GET aborted). Evidence is in `S/u23/round4/`: `plant_await.diff` and `bite_await.log`.
+- **The `await` was already caught by other tests:** on that plant the whole file fails 4 of 15, so 3 existing cases also catch it through their synchronous heading checks (`bite_await_wholefile.log`).
+- **Extra bites:** moving the old stop after the new render, both still synchronous, fails only the new case among the 15 (`plant_reorder.diff`, `bite_reorder_wholefile.log`). A page stop that leaves the section running fails the page-stop half at `:512` (`plant_nostop.diff`, `bite_nostop.log`).
+- **Hand-back checks (`S/u23/round4/final/`):**
+  - `rebuild.sh` rebuilt `39420cc` for all six devices.
+  - ruff on the 8 scopes: clean. `npm run lint`: 0. `npm run typecheck`: 0.
+  - vitest, each in its own netns: shell 15/15, main 11/11, app 11/11, render 86/86, poll-manager 22/22, mock-server 132/132, mock-server-put-matrix 433/433.
+  - `test_comment_block_cap.py`: 458 passed.
+  - `test_decision_vocabulary.py`: 5 passed, 1 failed. The failure is `test_the_allowlist_only_shrinks`, red only on the 4 rows API4 dropped: `_live_matrix_command.js` "@param {{ sectionKey…" and "eslint-disable-next-line no-await-in-loop…", `_live_twin_command.js` "eslint-disable-next-line no-await-in-loop…", and `live-backend.test.js` ""Valid" or "Unchanged" both mean…".
+- **Pre-commit runs (`pc_A`, `pc_B2`):**
+  - 18 tests_scripts files: 793 passed, 2 failed. One is the same allow-list case; the other is `test_tunables_register`, red only on lane X's rows, with identical failure lines before and after my edits.
+  - `lint-ceilings.test.js` fails on complexity: the ceiling of 41 sits above the tree's measured maximum. This was already red on API4 and is left for the lead's ceiling change at the final merge.
+  - I did not run mypy, because no Python file changed.
+  - `pc_B` caught my first R2 wording: "accepted" is decision vocabulary, so I reworded it before committing.
+- **File set and runs:** only `tests_js/shell.test.js` and `js/mock-server.js` changed, and the tree is clean. My 10 RUNS.md lines are all closed (newline-terminated), and `ps` shows none of my processes running (0 heavy processes on the host).

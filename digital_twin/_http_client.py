@@ -97,8 +97,8 @@ _READ_UNTIL_CLOSE_CHUNK_BYTES = 1024
 
 
 async def _read_until_close(reader: "Any") -> bytes:
-    # The live path for GET /, not a rare fallback: send_file() hands the response a raw file
-    # stream, so the automatic Content-Length never applies and EOF ends the body. Fixed-size
+    # The fallback for a body with no Content-Length, which EOF ends: the webserver sends the header on
+    # every response, GET / included, so fetch() reads those through _read_exact(). Fixed-size
     # chunks joined once, for Stream.read(-1)'s same accumulation reason (README.md).
 
     # The b"".join(chunks) below is still one whole-body allocation, which is fine for a caller

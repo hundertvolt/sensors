@@ -1,0 +1,16 @@
+rebuild rc=0 8s
+ruff rc=0 0s
+npm_lint rc=0 3s
+npm_typecheck rc=0 1s
+vt_render rc=0 8s
+vt_poll-manager rc=0 3s
+vt_shell rc=0 5s
+vt_main rc=0 3s
+vt_app rc=0 3s
+vt_generated-definitions-render rc=0 5s
+vt_site-functions rc=0 5s
+vt_templates rc=0 4s
+vt_accessibility rc=0 4s
+tunables rc=1 5s
+live_backend rc=0 208s
+done

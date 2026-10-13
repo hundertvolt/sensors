@@ -1,0 +1,37 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L
+
+ ❯ |chromium| tests_js/definitions.test.js (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions.test.js [ tests_js/definitions.test.js ]
+Error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L/tests_js/definitions.test.js
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5822:5
+ ❯ collectTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:5798:3
+ ❯ startTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=29ae6a91:6480:17
+
+Caused by: SyntaxError: The requested module '/js/definitions.js' does not provide an export named 'isRecord'
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  10:24:22
+   Duration  1.24s (worker 100%)
+
+== Summary: npm test ==
+Commit: a7db4cd (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 1
+Failed:
+  - tests_js/definitions.test.js: module error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L/tests_js/definitions.test.js
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing:
+  - npm test: no test case ran
+Result: FAIL
+Exit code: 1

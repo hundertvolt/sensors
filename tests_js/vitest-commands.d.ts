@@ -27,11 +27,15 @@ declare module "vitest/browser" {
     interface BrowserCommands {
         runLiveBackendSmoke: (device: string) => Promise<
             | { skipped: true; reason: string }
-            | { skipped: false; titleHasSensorStation: boolean; deviceName: string; debugLevelApplyStatus: string | null }
+            | { skipped: false; titleHasSensorStation: boolean; deviceName: string; firstStatus: string | null; resubmitStatus: string | null }
         >;
         runLiveBackendConcurrentTabs: (device: string) => Promise<
             | { skipped: true; reason: string }
-            | { skipped: false; tabs: number; loaded: number; deviceNames: string[] }
+            | { skipped: false; tabs: number; loadedFirstPass: number; loadedAfterRetry: number; failures: string[] }
+        >;
+        runLiveBackendRestartRecovery: (device: string) => Promise<
+            | { skipped: true; reason: string }
+            | { skipped: false; bannerShown: boolean; recovered: boolean; reloaded: boolean }
         >;
         getLiveMatrixConfig: () => Promise<{ skipped: boolean; reason: string | null; shard: string }>;
         startLiveMatrix: (device: string) => Promise<void>;
@@ -44,6 +48,9 @@ declare module "vitest/browser" {
             field: import("../js/definitions.js").FieldDef;
             value: unknown;
             expectRenderedValue: unknown;
+            defaultDecimals?: number | undefined;
+            confirmMessage?: string;
+            readCaption?: boolean;
         }) => Promise<{
             applyStatus: string;
             captionText: string | null;
@@ -62,7 +69,10 @@ declare module "vitest/browser" {
             toggleValue: string | null;
             toggleText: string | null;
             selectValue: string | null;
+            valueText: string | null;
+            errcountRows: string[];
         }>;
+        archiveErrcount: (label: string) => Promise<string>;
         probeLintRule: (args: { rule: string; value: number }) => Promise<number>;
     }
 }

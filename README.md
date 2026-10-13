@@ -252,12 +252,15 @@ The individual commands, if you want to run them by hand:
 npm ci                            # installs into node_modules/ from package-lock.json
 npx playwright install chromium   # the real browser Vitest drives - `npm test` cannot start without it
 
-npm run lint           # ESLint (js/, tests_js/)
-npm run typecheck      # tsc --noEmit (checkJS over js/, tests_js/)
-npm run lint:html      # html-validate (html/*.html)
-npm run lint:css       # Stylelint (html/*.css)
-npm test               # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
-npm run preview        # serves the repo root locally (python3 -m http.server 8000)
+npm run lint              # ESLint (js/, tests_js/, scripts/*.mjs, the inline scripts in html/*.html,
+                          # eslint.config.js, vitest.config.js)
+npm run typecheck         # tsc --noEmit (checkJS over js/, tests_js/)
+npm run lint:html         # html-validate (html/*.html)
+npm run lint:html:built   # html-validate over every device's staged page (it stages each into
+                          # build/staged_html/<device>/ first) - a local check, not a CI step yet
+npm run lint:css          # Stylelint (html/*.css)
+npm test                  # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
+npm run preview           # serves the repo root locally (python3 -m http.server 8000)
 ```
 
 `web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
@@ -321,11 +324,14 @@ bench-only variant, never built for field deployment, but a real `src/`-assemble
 same). This script only builds `build/firmware-<device>.uf2`; it never
 flashes or touches real hardware — see "Flashing a real board" below for that step. Under the hood
 it also stages and freezes the real website for that one device, runnable on its own for just that
-step:
+step, for one device or for every device:
 
 ```sh
 scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
 scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
+scripts/build_website.sh --stage-only wozi <dir>              # stages index.html and js/app.js into <dir>, freezes nothing
+scripts/build_device_websites.sh                              # every device -> build/generated_html/<device>/frozen_html.py
+scripts/build_device_websites.sh --stage-only                 # every device, staged only -> build/staged_html/<device>/
 ```
 
 `.github/workflows/ci.yml`'s `firmware-build-verify` job runs the real `build_firmware.py` build on

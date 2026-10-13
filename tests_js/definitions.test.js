@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
 import { GENERATED_DEFINITIONS } from "./_generated_definitions.js";
-import { loadDefinitions, resolveFieldValue, SUPPORTED_SCHEMA_MAJOR, validateDefinitions } from "../js/definitions.js";
+import { readIntConst } from "./_source_constants.js";
+import definitionsSource from "../js/definitions.js?raw";
+import pollManagerSource from "../js/poll-manager.js?raw";
+import { isRecord, loadDefinitions, resolveFieldValue, validateDefinitions } from "../js/definitions.js";
+import { pollManager } from "../js/poll-manager.js";
+
+const SUPPORTED_SCHEMA_MAJOR = readIntConst(definitionsSource, "SUPPORTED_SCHEMA_MAJOR");
+const DEFAULT_TIMEOUT_MS = readIntConst(pollManagerSource, "DEFAULT_TIMEOUT_MS");
+// setTimeout's own ceiling: a larger delay fires at once.
+const TIMEOUT_CEILING_MS = 2 ** 31 - 1;
 
 const MINIMAL_VALID = {
     schemaVersion: "1.0.0",
@@ -88,6 +97,27 @@ describe("validateDefinitions", () => {
     it("rejects a missing or non-positive defaultPollIntervalMs", () => {
         for (const defaultPollIntervalMs of [undefined, 0, -1, "3000"]) {
             expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs }).some((p) => p.includes("defaultPollIntervalMs"))).toBe(true);
+        }
+    });
+
+    it("holds both poll intervals to setTimeout's ceiling", () => {
+        const sectionWith = (/** @type {number} */ pollIntervalMs) => ({ ...MINIMAL_VALID, sections: [{ ...MINIMAL_VALID.sections[0], pollIntervalMs }] });
+        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS })).toEqual([]);
+        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS))).toEqual([]);
+        expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollIntervalMs: TIMEOUT_CEILING_MS + 1 })).toEqual([
+            "defaultPollIntervalMs must be a positive number of at most 2147483647 ms",
+        ]);
+        expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS + 1))).toEqual(["sections[0].pollIntervalMs must be a positive number of at most 2147483647 ms"]);
+    });
+
+    it("takes the site's default decimals as an integer from 0 to 100 only", () => {
+        for (const defaultDecimals of [0, 2, 100]) {
+            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals })).toEqual([]);
+        }
+        for (const defaultDecimals of [-1, 1.5, 101, "2", null]) {
+            expect(validateDefinitions({ ...MINIMAL_VALID, defaultDecimals }), JSON.stringify(defaultDecimals)).toEqual([
+                "defaultDecimals must be an integer from 0 to 100 when present",
+            ]);
         }
     });
 
@@ -190,6 +220,22 @@ describe("validateDefinitions", () => {
         expect(problems.some((p) => p.includes(".path is only valid on a readonly field"))).toBe(true);
     });
 
+    it("asks for confirmation on an enum or a toggle only, and only with a boolean", () => {
+        const options = [{ value: "reboot", label: "Reboot" }];
+        expect(validateDefinitions(withField({ key: "C", label: "Command", kind: "enum", options, confirm: true }))).toEqual([]);
+        expect(validateDefinitions(withField({ key: "R", label: "Reset", kind: "toggle", confirm: false }))).toEqual([]);
+        for (const field of [
+            { key: "C", label: "Command", kind: "enum", options, confirm: "yes" },
+            { key: "N", label: "Number", kind: "number", confirm: true },
+            { key: "S", label: "Text", kind: "string", confirm: true },
+            { key: "R", label: "Reading", kind: "readonly", confirm: true },
+        ]) {
+            expect(validateDefinitions(withField(field)), JSON.stringify(field)).toEqual([
+                "sections[0].groups[0].fields[0].confirm must be a boolean on an enum or toggle field when present",
+            ]);
+        }
+    });
+
     it("rejects a malformed decimals hint", () => {
         // 101 is the real ceiling, not a round number: Number#toFixed throws a RangeError above
         // 100, so a definitions file declaring more would pass validation and then break the card
@@ -202,6 +248,20 @@ describe("validateDefinitions", () => {
 
     it.each([...GENERATED_DEFINITIONS])("accepts the generated %s definitions", (_device, generated) => {
         expect(validateDefinitions(generated)).toEqual([]);
+    });
+});
+
+describe("isRecord", () => {
+    it("accepts every object but null and an array, an Object.create(null) one and a class instance included", () => {
+        for (const value of [{}, { a: 1 }, Object.create(null), new Date(0), new Map()]) {
+            expect(isRecord(value)).toBe(true);
+        }
+    });
+
+    it("refuses null, an array, a function and a primitive", () => {
+        for (const value of [null, undefined, [], [{ a: 1 }], () => ({}), 0, Number.NaN, "{}", true, Symbol("s")]) {
+            expect(isRecord(value)).toBe(false);
+        }
     });
 });
 
@@ -231,16 +291,14 @@ describe("resolveFieldValue", () => {
         expect(resolveFieldValue({ ...field, path: ["RGB"] }, { RGB: { R: 1 } })).toEqual({ R: 1 });
     });
 
-    it("still falls back to defaultValue when a path resolves to nothing", () => {
-        /** @type {import("../js/definitions.js").FieldDef} */
-        const field = { key: "R", label: "Red", kind: "readonly", path: ["RGB", "R"], defaultValue: 0 };
-        expect(resolveFieldValue(field, {})).toBe(0);
+    it("yields undefined for a value the GET did not report, whatever the field's kind", () => {
+        // An always-executed toggle the GET cannot report (SCD30's ContMeas) stays unset, never a stand-in.
+        expect(resolveFieldValue({ key: "ContMeas", label: "Continuous Measurement", kind: "toggle", alwaysExecuted: true }, {})).toBeUndefined();
     });
 
-    it("passes a null through as a real value rather than falling back", () => {
-        // CCT is legitimately null in a dark room - the renderer shows an em dash for it, and a
-        // defaultValue fallback here would silently invent a colour temperature instead.
-        expect(resolveFieldValue({ key: "CCT", label: "CCT", kind: "readonly", defaultValue: 5000 }, { CCT: null })).toBeNull();
+    it("passes a null through as a real value", () => {
+        // CCT is legitimately null in a dark room; the renderer shows an em dash for it.
+        expect(resolveFieldValue({ key: "CCT", label: "CCT", kind: "readonly" }, { CCT: null })).toBeNull();
     });
 });
 
@@ -258,8 +316,10 @@ describe("loadDefinitions", () => {
     });
 
     it("throws on a non-ok HTTP response", async () => {
-        window.fetch = vi.fn(() => Promise.resolve(new Response("not found", { status: 404 })));
-        await expect(loadDefinitions("definitions/missing.json")).rejects.toThrow("404");
+        // The device answers a missing file with its JSON envelope (asy_api_response.make_response()).
+        const envelope = { res: "ERR", code: 404, descr: "Not found", result: {} };
+        window.fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(envelope), { status: 404 })));
+        await expect(loadDefinitions("definitions/missing.json")).rejects.toThrow("Failed to fetch definitions/missing.json: HTTP 404");
     });
 
     it("throws with the validation problems on a malformed document", async () => {
@@ -270,6 +330,33 @@ describe("loadDefinitions", () => {
     it("throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error)", async () => {
         window.fetch = vi.fn(() => Promise.resolve(new Response("{not valid json", { status: 200 })));
         await expect(loadDefinitions("definitions/torn.json")).rejects.toThrow(/not valid json/i);
+    });
+
+    it("waits for the request already in flight before it fetches (one request at a time)", async () => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+        /** @type {(() => void)[]} */
+        const releases = [];
+        window.fetch = vi.fn((url) => {
+            inFlight += 1;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            return new Promise((resolve) => {
+                releases.push(() => {
+                    inFlight -= 1;
+                    resolve(new Response(String(url).endsWith(".json") ? JSON.stringify(MINIMAL_VALID) : "{}", { status: 200 }));
+                });
+            });
+        });
+        const pending = pollManager.request("/status");
+        const loading = loadDefinitions("definitions/fixture-device.json");
+        await vi.waitFor(() => expect(releases).toHaveLength(1), { interval: 1 });
+        expect(window.fetch).toHaveBeenCalledTimes(1);
+        releases[0]?.();
+        await pending;
+        await vi.waitFor(() => expect(releases).toHaveLength(2), { interval: 1 });
+        releases[1]?.();
+        expect((await loading).device.id).toBe("fixture-device");
+        expect(maxInFlight).toBe(1);
     });
 
     it("never hangs forever on a connection that never responds", async () => {
@@ -284,7 +371,7 @@ describe("loadDefinitions", () => {
 
         const pending = loadDefinitions("definitions/hangs.json");
         const assertion = expect(pending).rejects.toThrow(/timed out/i);
-        await vi.advanceTimersByTimeAsync(15000); // fetchWithTimeout()'s own DEFAULT_TIMEOUT_MS
+        await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
         await assertion;
 
         vi.useRealTimers();

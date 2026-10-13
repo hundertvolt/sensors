@@ -1,0 +1,12 @@
+U23 lead: the decision-vocabulary allow-list drops the rows wave 2's finals retired
+
+The allow-list only shrinks: each row whose text no longer occurs in its file goes. Dropped rows:
+- tests_js/render.test.js (row 532): "Both real definitions files declare "status" as pollGroup "live" and this fixtur"
+- tests_js/render.test.js (row 533): "Deliberately not the real SCD30 key "ContMeas": mock-server.js special-cases tha"
+- tests_js/render.test.js (row 534): "JSON.stringify(NaN) is "null", so typed garbage used to arrive as null and a ser"
+- tests_js/render.test.js (row 535): "On -> Off: a real, deliberate change"
+- tests_js/render.test.js (row 538): "networkingConfig deliberately never mentions AuxEnabled - the mock GET response"
+- tests_js/render.test.js (row 539): "request settled"
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

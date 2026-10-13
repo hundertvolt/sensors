@@ -1,0 +1,41 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ✓ |chromium| tests_js/mock-server.test.js (100 tests) 22113ms
+   ✓ installMockFetch (100)
+     ✓ validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged 307ms
+     ✓ marks an in-range changed value as Valid and persists it for the next GET 334ms
+     ✓ validates PUT /networking against the networking group's own field defs 428ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 325ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid 320ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "bootloader" answers Valid 338ms
+     ✓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 426ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 381ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1361ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1886ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 685ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 427ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 757ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 621ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 658ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 420ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 351ms
+
+ Test Files  1 passed (1)
+      Tests  100 passed (100)
+   Start at  06:47:04
+   Duration  23.48s (tests 99%, worker 1%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 100 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

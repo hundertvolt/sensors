@@ -106,16 +106,28 @@ const BUG_CATCHING_RULES = {
     "prefer-template": "error",
 
     // --- console.log is debug residue; console.error/warn are real diagnostics ---
-    // poll-manager's "Poll failed:" and the live-backend test's skip warning are real signal;
-    // scripts/*.mjs is exempt below (H.8).
+    // a section's once-per-episode failure line (js/render.js) and the live-backend test's skip warning
+    // are real signal; scripts/*.mjs is exempt below (H.8).
     "no-console": ["error", { allow: ["error", "warn"] }],
 
     // --- complexity ceilings at the measured maximum, so they gate regression: ratchet DOWN only, pinned by
     // tests_js/lint-ceilings.test.js (H.8) ---
-    complexity: ["error", 41],
+    complexity: ["error", 22],
     "max-depth": ["error", 4],
     "max-nested-callbacks": ["error", 4],
     "max-classes-per-file": ["error", 1],
+};
+
+// The shipped page inserts every server- or user-supplied string as text, never as markup (SPECIFICATION.md H.4).
+const PRODUCTION_ONLY_RULES = {
+    "no-restricted-properties": [
+        "error",
+        { property: "innerHTML" },
+        { property: "outerHTML" },
+        { property: "insertAdjacentHTML" },
+        { object: "document", property: "write" },
+        { object: "document", property: "writeln" },
+    ],
 };
 
 // Node-context tests_js files (Vitest Commands API modules and their Node-only helpers, the summary reporter) run in the
@@ -133,7 +145,7 @@ export default [
                 ...globals.browser,
             },
         },
-        rules: BUG_CATCHING_RULES,
+        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES },
     },
     {
         files: ["tests_js/**/*.js"],
@@ -188,7 +200,7 @@ export default [
         rules: { ...BUG_CATCHING_RULES, "no-console": "off" },
     },
     {
-        // html/index.html's inline module bootstrap stays inline - build_website.sh relies on its
+        // html/index.html's inline module bootstrap stays inline - scripts/_stage_website.py checks its
         // literal "../js/app.js" import (H.8) - so eslint-plugin-html lints it in place.
         files: ["html/**/*.html"],
         plugins: { html },
@@ -199,6 +211,6 @@ export default [
                 ...globals.browser,
             },
         },
-        rules: BUG_CATCHING_RULES,
+        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES },
     },
 ];

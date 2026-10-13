@@ -3,7 +3,9 @@ every device's output passes the shared shape corpus, and the catalog-derived bl
 
 import ast
 import copy
+import functools
 import json
+import math
 import os
 import re
 import shutil
@@ -23,11 +25,11 @@ from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.model import DeviceModel, InstanceSpec
-from buildgen.schema_ast import _eval_literal
+from buildgen.schema_ast import _eval_literal, extract_field_schemas
 from buildgen.signals import WARN_SIGNALS
 from buildgen.validate import build_model
 from buildgen.version import WEBSITE_VERSION
-from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_tags
+from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_tags, resolution_decimals
 
 BMP3XX_DEVICES = {"dev", "wozi"}
 ISL29125_DEVICES = {"dev"}
@@ -50,8 +52,20 @@ def fixtures_dir(repo_root: Path) -> Path:
     return repo_root / "tests_scripts" / "buildgen_fixtures"
 
 
+@functools.cache
+def _definitions_text(toml_path: Path, src_dir: Path) -> str:
+    # One generation per device file and source tree, kept as JSON text so every caller parses its own copy.
+    return json.dumps(definitions_for_toml(toml_path, src_dir))
+
+
+@functools.cache
+def _module_source(toml_path: Path, src_dir: Path, ext_dir: Path) -> str:
+    return generate_device(toml_path, src_dir, ext_dir).module_source
+
+
 def _generate(repo_root: Path, src_dir: Path, device: str) -> "dict[str, Any]":
-    return _read(definitions_for_toml(repo_root / "devices" / f"{device}.toml", src_dir))
+    parsed: dict[str, Any] = json.loads(_definitions_text(repo_root / "devices" / f"{device}.toml", src_dir))
+    return parsed
 
 
 def _read(definitions: JsonDict) -> "dict[str, Any]":
@@ -244,7 +258,7 @@ def _returned_keys(module_source: str, function: str) -> "list[str]":
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root: Path, src_dir: Path, device: str) -> None:
-    source = generate_device(device_toml(device), src_dir, repo_root / "ext").module_source
+    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
     status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
     groups = {g["key"]: g for g in status["groups"]}
     for key, function in (("networking", "_networking_status"), ("system", "_system_status"), ("notification", "_notification_status")):
@@ -257,7 +271,7 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
     # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
-    source = generate_device(device_toml(device), src_dir, repo_root / "ext").module_source
+    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
     status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
     group = next((g for g in status["groups"] if g["key"] == "notification"), None)
     if group is None:
@@ -289,7 +303,7 @@ def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo
 
 
 # GET /status's system keys in the order the generated _system_status() publishes them; MemPaused only with FRAM.
-_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime")
+_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime", "UnixTime")
 
 
 def _system_status_fields(repo_root: Path, src_dir: Path, device: str) -> "list[dict[str, Any]]":
@@ -308,7 +322,9 @@ def test_system_status_lists_its_rows_in_the_published_order(repo_root: Path, sr
 def test_the_reset_heap_and_config_rows_say_what_they_report(repo_root: Path, src_dir: Path) -> None:
     fields = {f["key"]: f for f in _system_status_fields(repo_root, src_dir, DEVICE_NAMES[0])}
     reset_codes = {num: row["text"] for num, row in _CATALOG["status"]["ResetReason"].items()}
-    assert fields["ResetReason"] == {"key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code.", "codes": reset_codes}
+    assert fields["ResetReason"] == {
+        "key": "ResetReason", "label": "Last Reset Reason", "kind": "readonly", "description": "Why the device last restarted, as a numeric code; click it for its meaning.", "codes": reset_codes,
+    }
     assert fields["ResetBits"] == {
         "key": "ResetBits", "label": "Reset Flags", "kind": "readonly",
         "description": "The chip's own reset flags at this boot, reported raw: 1 watchdog timer expired, 2 reset forced by software, 256 power-on or brown-out, 65536 RUN pin, 1048576 debug-port restart.",
@@ -335,6 +351,127 @@ def test_the_system_command_offers_its_five_words_in_order(repo_root: Path, src_
         {"value": "resetconfig", "label": "Reset to defaults"},
         {"value": "erasefram", "label": "Erase FRAM"},
     ]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_device_clock_follows_utc_time(repo_root: Path, src_dir: Path, device: str) -> None:
+    fields = {f["key"]: f for f in _system_status_fields(repo_root, src_dir, device)}
+    assert fields["UnixTime"] == {
+        "key": "UnixTime", "label": "Device Clock", "unit": "s", "kind": "readonly",
+        "description": "Unix time (UTC) when this poll was answered; every age on this site is computed against it.",
+    }
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_command_and_the_error_reset_ask_before_they_are_sent(repo_root: Path, src_dir: Path, device: str) -> None:
+    # The page asks before either, the API stays one command (owner, 2026-10-01: 'The API stays single command.').
+    asking = [(section, group["key"], f["key"]) for section, group in _field_groups(_generate(repo_root, src_dir, device)) for f in group["fields"] if "confirm" in f]
+    assert asking == [("system", "command", "SystemCmd"), ("status", "resetErrors", "ResetErrors")]
+    assert all(f["confirm"] is True for _s, g in _field_groups(_generate(repo_root, src_dir, device)) for f in g["fields"] if "confirm" in f)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_site_default_decimals_follows_the_poll_interval(repo_root: Path, src_dir: Path, device: str) -> None:
+    generated = _generate(repo_root, src_dir, device)
+    keys = list(generated)
+    # @tunable web.default_decimals = 2
+    assert generated["defaultDecimals"] == 2
+    assert keys.index("defaultDecimals") == keys.index("defaultPollIntervalMs") + 1
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_no_field_carries_a_stand_in_value(repo_root: Path, src_dir: Path, device: str) -> None:
+    # A toggle whose state the GET cannot report renders unset; the definitions hold no default for it.
+    assert '"defaultValue"' not in json.dumps(_generate(repo_root, src_dir, device))
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_maintenance_field_reads_its_instance_and_field_by_path(repo_root: Path, src_dir: Path, device: str) -> None:
+    # GET /status nests each source's fields under its name; the key stays the flat, unique wire name.
+    status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
+    fields = [f for g in status["groups"] if g["key"] == "sensors" for f in g["fields"]]
+    for f in fields:
+        assert len(f.get("path", [])) == 2 and "_".join(f["path"]) == f["key"], f
+    sources = {f["path"][0] for f in fields}
+    model = build_model(device_toml(device), src_dir)
+    expected = {spec.resolved_name for spec in model.instances.values() if spec.driver == "sgp40"} | ({"UARTLINK"} if any(spec.driver == "uart_link" for spec in model.instances.values()) else set())
+    assert sources == expected
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_notification_status_time_is_the_last_cycles_and_pause_time_reads_from_status(repo_root: Path, src_dir: Path, device: str) -> None:
+    sections = {s["key"]: s for s in _generate(repo_root, src_dir, device)["sections"]}
+    if "notification" not in sections:
+        pytest.skip(f"{device} has no notification instance")
+    status_fields = {f["key"]: f for g in sections["status"]["groups"] if g["key"] == "notification" for f in g["fields"]}
+    assert status_fields["TS"] == {
+        "key": "TS", "label": "Last Cycle Time", "kind": "readonly", "format": "epoch",
+        "description": "When the last notification cycle ran, whether or not it evaluated a signal (see Evaluation State).",
+    }
+    (pause,) = [f for g in sections["notification"]["groups"] if g["key"] == "pause" for f in g["fields"]]
+    assert (pause["key"], pause["kind"], pause["statusPath"]) == ("PauseTime", "number", ["notification", "PauseTime"])
+
+
+def _fields_by_key(definitions: "dict[str, Any]") -> "dict[str, list[dict[str, Any]]]":
+    found: dict[str, list[dict[str, Any]]] = {}
+    for _section, group in _field_groups(definitions):
+        for f in group["fields"]:
+            found.setdefault(f["key"], []).append(f)
+    return found
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_page_keys_land_on_the_fields_their_tags_name(repo_root: Path, src_dir: Path, device: str) -> None:
+    fields = _fields_by_key(_generate(repo_root, src_dir, device))
+    assert [f["key"] for fs in fields.values() for f in fs if f.get("clearable")] == ["DNSFallback"]
+    assert {f["key"]: f["ignoredWhenSet"] for fs in fields.values() for f in fs if "ignoredWhenSet" in f} == ({"Altitude": "AmbPres"} if "Altitude" in fields else {})
+    for f in fields.get("TempOffset", []):
+        if f.get("unit") == "K" and "resolution" in f:  # SCD30's, read in the chip's 0.01 degC tick
+            assert (f["resolution"], f["decimals"]) == (0.01, 2)
+    assert len([f for fs in fields.values() for f in fs if "resolution" in f]) == len([s for s in build_model(device_toml(device), src_dir).instances.values() if s.driver == "scd30"])
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_scd30_measurements_carry_their_datasheet_decimals(repo_root: Path, src_dir: Path, device: str) -> None:
+    # CO2 repeats to 10 ppm, humidity to 0.1 %RH and temperature to 0.1 degC (SCD30 datasheet, Tables 1-3).
+    measurements = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "measurements")
+    for group in measurements["groups"]:
+        if not group["key"].startswith("SCD30"):
+            continue
+        decimals = {f["key"]: f.get("decimals") for f in group["fields"]}
+        assert {key: decimals[key] for key in ("CO2", "Temp", "Hum", "WetBulb", "DewPoint")} == {"CO2": 0, "Temp": 1, "Hum": 1, "WetBulb": 1, "DewPoint": 1}
+
+
+def _page_key_tag(*, resolution: "float | None" = None, decimals: "int | None" = None, clearable: bool = False) -> WebFieldTag:
+    return WebFieldTag(field_name="X", section="sensors", submit_group="self", label="X", raw="# @web X", resolution=resolution, decimals=decimals, clearable=clearable)
+
+
+@pytest.mark.parametrize(("resolution", "tag_decimals", "decimals"), [(0.1, None, 1), (0.01, None, 2), (5.0, None, 0), (0.01, 3, 3), (None, None, None)])
+def test_a_number_fields_decimals_are_its_tags_else_its_resolutions(resolution: "float | None", tag_decimals: "int | None", decimals: "int | None") -> None:
+    field = _build_field_def(_page_key_tag(resolution=resolution, decimals=tag_decimals), ("float", None, 0.0, 10.0, None), "dev", Path("asy_x.py"))
+    assert field.get("decimals") == decimals
+    assert field.get("resolution") == resolution
+
+
+@pytest.mark.parametrize(
+    ("tag", "schema", "match", "rule"),
+    [
+        (_page_key_tag(clearable=True), ("int", 0, 0, 10, None), "but its kind is 'number', not string", "web.string-key-off-string"),
+        (_page_key_tag(resolution=0.01), ("str", "x", 1, 32, None), "has resolution= but its kind is 'string', not number", "web.key-needs-number"),
+        (_page_key_tag(resolution=0.01), ("bool", None, None, None, None), "has resolution= but its kind is 'toggle', not number", "web.key-needs-number"),
+    ],
+    ids=["clearable-on-a-number", "resolution-on-a-string", "resolution-on-a-toggle"],
+)
+def test_a_page_key_off_its_inferred_kind_fails_the_build(tag: WebFieldTag, schema: "tuple[object, object, object, object, object]", match: str, rule: str) -> None:
+    with pytest.raises(BuildError, match=match) as caught:
+        _build_field_def(tag, schema, "dev", Path("asy_x.py"))
+    _assert_rule(caught.value, rule)
+
+
+def test_a_code_table_without_tones_carries_no_code_tones() -> None:
+    tag = WebFieldTag(field_name="X", section="measurements", submit_group="self", label="X", raw="# @web X", kind="readonly", codes="FRCState")
+    field = _build_field_def(tag, None, "dev", Path("asy_x.py"))
+    assert "codes" in field and "codeTones" not in field
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +573,18 @@ def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path
                 assert f["codes"] == {num: row["text"] for num, row in tables[table].items()}, f["key"]
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_code_tone_block_equals_its_catalog_tables_tones(repo_root: Path, src_dir: Path, device: str) -> None:
+    # The page colours a code only where the catalog gives its table tones; text stays the cue either way.
+    tables = _CATALOG.get("status", {})
+    named = _tagged_code_tables(src_dir)
+    for _section, group in _field_groups(_generate(repo_root, src_dir, device)):
+        for f in group["fields"]:
+            table = named.get(f["key"], _STATUS_ROW_TABLES.get(f["key"], f["key"])) if "codes" in f else None
+            tones = {num: row["tone"] for num, row in tables[table].items() if "tone" in row} if table is not None else {}
+            assert f.get("codeTones", {}) == tones, f["key"]
+
+
 def test_every_codes_tag_names_a_present_table(src_dir: Path) -> None:
     missing = {field: table for field, table in _tagged_code_tables(src_dir).items() if table not in _CATALOG.get("status", {})}
     assert not missing, f"codes= tags naming no table in buildgen/error_catalog.json's status section: {missing}"
@@ -525,7 +674,7 @@ def test_sgp40_maintenance_fields_carry_both_special_values_and_the_adapters_key
         return
     prefix = f"{sgp40[0].resolved_name}_"
     fields = {f["key"].removeprefix(prefix): f for f in maintenance if f["key"].startswith(prefix)}
-    assert set(fields) == _sgp_maintenance_keys(generate_device(device_toml(device), src_dir, repo_root / "ext").module_source)
+    assert set(fields) == _sgp_maintenance_keys(_module_source(device_toml(device), src_dir, repo_root / "ext"))
     for name, f in fields.items():
         assert f["specialValues"] == [{"value": None, "meaning": "None since boot"}, {"value": 0, "meaning": "No timestamp"}], name
 
@@ -534,7 +683,7 @@ def test_each_sgp40_publishes_its_own_maintenance_rows_under_its_rest_identity(r
     # Two SGP40s: one adapter each, reading its own module-level instance (a bare `sgp40` names none,
     # so every /status read failed), and one row set each keyed <resolved_name>_<field>.
     toml_path = fixtures_dir / "multi_instance.toml"
-    source = generate_device(toml_path, src_dir, repo_root / "ext").module_source
+    source = _module_source(toml_path, src_dir, repo_root / "ext")
     entries = dict(re.findall(r'\("(SGP40\w*)", (_sgp_maintenance_status\w*)\)', source))
     assert entries == {"SGP40_a": "_sgp_maintenance_status_sgp40_a", "SGP40_b": "_sgp_maintenance_status_sgp40_b"}
     for adapter in entries.values():
@@ -554,6 +703,66 @@ def test_every_logger_has_one_errcount_row_and_dns_sits_on_networking(repo_root:
     rows = Counter(m["key"] for _section, g in groups for m in g["modules"])
     assert not [key for key, count in rows.items() if count > 1], f"loggers listed in more than one errcount row: {rows}"
     assert [section for section, g in groups if any(m["key"] == "DNSSRV" for m in g["modules"])] == ["networking"]
+
+
+# The status sources the generated module registers, by the key GET /status publishes each under.
+_STATUS_SOURCES = {"networking": "_networking_status", "system": "_system_status", "notification": "_notification_status"}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_status_path_resolves_in_the_generated_status_source(repo_root: Path, src_dir: Path, device: str) -> None:
+    # A field another route answers (PauseTime's live value) is read where GET /status publishes it.
+    source = _module_source(device_toml(device), src_dir, repo_root / "ext")
+    paths = [f["statusPath"] for _section, group in _field_groups(_generate(repo_root, src_dir, device)) for f in group["fields"] if "statusPath" in f]
+    for path in paths:
+        assert len(path) == 2 and path[0] in _STATUS_SOURCES, path
+        assert path[1] in _returned_keys(source, _STATUS_SOURCES[path[0]]), path
+    has_notification = any(spec.driver == "notification" for spec in build_model(device_toml(device), src_dir).instances.values())
+    assert paths == ([["notification", "PauseTime"]] if has_notification else [])
+
+
+def _placed_fields(definitions: "dict[str, Any]") -> "dict[tuple[str, str, str], dict[str, Any]]":
+    return {(section, group["key"], f["key"]): f for section, group in _field_groups(definitions) for f in group["fields"]}
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_number_field_is_float_exactly_where_its_schema_is(repo_root: Path, src_dir: Path, device: str) -> None:
+    # The client sends a fraction only where the server's schema takes one (C.16's int/float policy).
+    model = build_model(device_toml(device), src_dir)
+    placed = _placed_fields(_generate(repo_root, src_dir, device))
+    checked = 0
+    for path, spec in _tag_sources(model, src_dir):
+        label = spec.label if spec is not None else path.stem
+        schemas = extract_field_schemas(path, device=device, instance_label=label)
+        for tag in parse_web_tags(path, device, label):
+            f = placed.get(_tag_place(tag, spec)) if tag.hidden is None and tag.field_name in schemas else None
+            if f is not None and f["kind"] == "number":
+                assert (f.get("float") is True) == (schemas[tag.field_name][0] == "float"), f["key"]
+                checked += 1
+    assert checked, f"{device}: no schema-backed number field found - the check held nothing"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_every_field_shows_the_decimals_its_source_states(repo_root: Path, src_dir: Path, device: str) -> None:
+    # The tag's decimals, else the digits its resolution needs, else the site default; a derived or default count
+    # lies in 0..3, a tag's own is its source's decision (owner, 2026-10-02: 'derived or defined from the value
+    # sourcing modules'). The API values stay unrounded: nothing here reaches the server.
+    model = build_model(device_toml(device), src_dir)
+    generated = _generate(repo_root, src_dir, device)
+    assert 0 <= generated["defaultDecimals"] <= 3
+    placed = _placed_fields(generated)
+    tagged: set[tuple[str, str, str]] = set()
+    for path, spec in _tag_sources(model, src_dir):
+        for tag in parse_web_tags(path, device, spec.label if spec is not None else path.stem):
+            place = _tag_place(tag, spec)
+            if tag.hidden is not None or place not in placed:
+                continue
+            tagged.add(place)
+            derived = resolution_decimals(tag.resolution) if tag.resolution is not None else None
+            assert placed[place].get("decimals") == (tag.decimals if tag.decimals is not None else derived), place
+            if tag.decimals is None:
+                assert 0 <= placed[place].get("decimals", generated["defaultDecimals"]) <= 3, place
+    assert not [place for place, f in placed.items() if "decimals" in f and place not in tagged]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -591,9 +800,12 @@ def test_the_byte_bounded_fields_are_exactly_the_radio_fields(src_dir: Path) -> 
 # its $ never matches before a trailing newline, hence [0-9] and fullmatch.
 _SEMVER = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js's, pinned by test_definitions_js_mirrors.py
+_MAX_POLL_INTERVAL_MS = 2**31 - 1  # setTimeout's ceiling; js/definitions.js's copy is pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
+_FIELD_KINDS = ("readonly", "number", "string", "enum", "toggle", "composite")
 _FIELD_FORMATS = ("gmtimestruct", "epoch")
 _STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
+_CODE_TONES = ("good", "neutral", "warn")
 
 
 def _is_number(value: object) -> "TypeGuard[int | float]":
@@ -602,6 +814,28 @@ def _is_number(value: object) -> "TypeGuard[int | float]":
 
 def _is_string_map(value: object) -> bool:
     return isinstance(value, dict) and all(isinstance(v, str) for v in value.values())
+
+
+def _is_poll_interval(value: object) -> bool:
+    return _is_number(value) and 0 < value <= _MAX_POLL_INTERVAL_MS
+
+
+def _is_decimals(value: object) -> bool:
+    return _is_number(value) and float(value).is_integer() and 0 <= value <= _MAX_DECIMALS
+
+
+def _is_step_list(value: object) -> bool:
+    return isinstance(value, list) and bool(value) and all(isinstance(step, str) and step for step in value)
+
+
+def _duplicate(seen: "dict[str, int]", key: object, index: int, where: str) -> "list[str]":
+    # A repeated key names both indices, as validateDefinitions()'s noteDuplicate() does.
+    if not isinstance(key, str):
+        return []
+    if key in seen:
+        return [f"{where}.key {key!r} duplicates [{seen[key]}]"]
+    seen[key] = index
+    return []
 
 
 def _top_level_problems(defs: "dict[str, Any]") -> "list[str]":
@@ -616,47 +850,92 @@ def _top_level_problems(defs: "dict[str, Any]") -> "list[str]":
         problems.append("device.id")
     if not isinstance(defs.get("landingSection"), str):
         problems.append("landingSection")
-    interval = defs.get("defaultPollIntervalMs")
-    if not _is_number(interval) or not interval > 0:
+    if not _is_poll_interval(defs.get("defaultPollIntervalMs")):
         problems.append("defaultPollIntervalMs")
+    if "defaultDecimals" in defs and not _is_decimals(defs["defaultDecimals"]):
+        problems.append("defaultDecimals")
     return problems
 
 
-def _field_hint_problems(f: object, where: str) -> "list[str]":
-    if not isinstance(f, dict):
-        return []  # validateFieldHints() leaves a non-object field to the group-level checks
+def _code_hint_problems(f: "dict[str, Any]", where: str) -> "list[str]":
     problems = []
-    if "path" in f:
-        path = f["path"]
-        if not isinstance(path, list) or not path or not all(isinstance(step, str) and step for step in path):
-            problems.append(f"{where}.path")
-        elif f.get("kind") != "readonly":
-            problems.append(f"{where}.path on a writable field")
-    decimals = f.get("decimals")
-    if "decimals" in f and not (_is_number(decimals) and float(decimals).is_integer() and 0 <= decimals <= _MAX_DECIMALS):
-        problems.append(f"{where}.decimals")
     if "format" in f and (f["format"] not in _FIELD_FORMATS or f.get("kind") != "readonly"):
         problems.append(f"{where}.format")
     if "codes" in f and not _is_string_map(f["codes"]):
         problems.append(f"{where}.codes")
-    if "alwaysExecuted" in f and not isinstance(f["alwaysExecuted"], bool):
-        problems.append(f"{where}.alwaysExecuted")
-    if "byteLength" in f and (not isinstance(f["byteLength"], bool) or f.get("kind") != "string"):
-        problems.append(f"{where}.byteLength")
-    if "shape" in f and (f["shape"] not in _STRING_SHAPES or f.get("kind") != "string"):
-        problems.append(f"{where}.shape")
+    if "codeTones" in f:
+        codes = f["codes"] if isinstance(f.get("codes"), dict) else {}
+        tones = f["codeTones"]
+        if not isinstance(tones, dict) or not all(code in codes and tone in _CODE_TONES for code, tone in tones.items()):
+            problems.append(f"{where}.codeTones")
+    special = f.get("specialValues")
+    if "specialValues" in f and not (isinstance(special, list) and all(isinstance(s, dict) and "value" in s and isinstance(s.get("meaning"), str) for s in special)):
+        problems.append(f"{where}.specialValues")
     return problems
 
 
-def _group_problems(g: object, where: str) -> "list[str]":
-    if not isinstance(g, dict):
-        return [f"{where} is not an object"]  # validateDefinitions() throws on it: a rejection either way
+def _value_hint_problems(f: "dict[str, Any]", where: str, sibling_keys: "list[object]") -> "list[str]":
+    problems = []
+    kind = f.get("kind")
+    if "path" in f:
+        if not _is_step_list(f["path"]):
+            problems.append(f"{where}.path")
+        elif kind != "readonly":
+            problems.append(f"{where}.path on a writable field")
+    if "statusPath" in f and (not _is_step_list(f["statusPath"]) or kind not in ("readonly", "number")):
+        problems.append(f"{where}.statusPath")
+    if "decimals" in f and not _is_decimals(f["decimals"]):
+        problems.append(f"{where}.decimals")
+    resolution = f.get("resolution")
+    if "resolution" in f and not (_is_number(resolution) and math.isfinite(resolution) and resolution > 0 and kind == "number"):
+        problems.append(f"{where}.resolution")
+    problems.extend(f"{where}.{key}" for key in ("byteLength", "clearable") if key in f and (not isinstance(f[key], bool) or kind != "string"))
+    if "shape" in f and (f["shape"] not in _STRING_SHAPES or kind != "string"):
+        problems.append(f"{where}.shape")
+    if "alwaysExecuted" in f and not isinstance(f["alwaysExecuted"], bool):
+        problems.append(f"{where}.alwaysExecuted")
+    if "confirm" in f and (not isinstance(f["confirm"], bool) or kind not in ("enum", "toggle")):
+        problems.append(f"{where}.confirm")
+    sibling = f.get("ignoredWhenSet")
+    if "ignoredWhenSet" in f and (not isinstance(sibling, str) or sibling == f.get("key") or sibling not in sibling_keys):
+        problems.append(f"{where}.ignoredWhenSet")
+    return problems
+
+
+def _field_problems(f: "dict[str, Any]", where: str, sibling_keys: "list[object]") -> "list[str]":
+    problems = [f"{where}.{key}" for key in ("key", "label") if not isinstance(f.get(key), str)]
+    if f.get("kind") not in _FIELD_KINDS:
+        problems.append(f"{where}.kind")
+    if f.get("kind") == "composite":
+        sub_fields = f.get("subFields")
+        problems += _fields_problems(sub_fields, f"{where}.subFields") if isinstance(sub_fields, list) else [f"{where}.subFields"]
+    return problems + _code_hint_problems(f, where) + _value_hint_problems(f, where, sibling_keys)
+
+
+def _fields_problems(fields: "list[object]", where: str) -> "list[str]":
+    # A group's fields or a composite's sub-fields: each an object, each key once.
+    problems: list[str] = []
+    seen: dict[str, int] = {}
+    keys = [f.get("key") if isinstance(f, dict) else None for f in fields]
+    for index, f in enumerate(fields):
+        if not isinstance(f, dict):
+            problems.append(f"{where}[{index}] is not an object")
+            continue
+        problems += _duplicate(seen, f.get("key"), index, f"{where}[{index}]")
+        problems += _field_problems(f, f"{where}[{index}]", keys)
+    return problems
+
+
+def _group_problems(g: "dict[str, Any]", where: str, section: "dict[str, Any]") -> "list[str]":
     problems = []
     if not isinstance(g.get("key"), str) or not isinstance(g.get("label"), str):
         problems.append(f"{where} key/label")
     if g.get("kind") == "errcount":
-        if not isinstance(g.get("modules"), list):
+        modules = g.get("modules")
+        if not isinstance(modules, list):
             problems.append(f"{where}.modules")
+        else:
+            problems += [f"{where}.modules[{i}]" for i, m in enumerate(modules) if not (isinstance(m, dict) and isinstance(m.get("key"), str) and isinstance(m.get("label"), str))]
         codes = g.get("codes", {"E": {}, "W": {}})
         if not isinstance(codes, dict) or not _is_string_map(codes.get("E")) or not _is_string_map(codes.get("W")):
             problems.append(f"{where}.codes")
@@ -664,9 +943,10 @@ def _group_problems(g: object, where: str) -> "list[str]":
     fields = g.get("fields")
     if not isinstance(fields, list):
         return [*problems, f"{where}.fields"]
-    for index, f in enumerate(fields):
-        problems += _field_hint_problems(f, f"{where}.fields[{index}]")
-    return problems
+    rest = section.get("rest")
+    if g.get("submit") is True and not (isinstance(rest, dict) and isinstance(rest.get("put"), str)):
+        problems.append(f"{where} is writable but its section has no rest.put")
+    return problems + _fields_problems(fields, f"{where}.fields")
 
 
 def _section_problems(s: "dict[str, Any]", where: str) -> "list[str]":
@@ -676,13 +956,18 @@ def _section_problems(s: "dict[str, Any]", where: str) -> "list[str]":
         problems.append(f"{where}.rest.get")
     if s.get("pollGroup") not in _POLL_GROUPS:
         problems.append(f"{where}.pollGroup")
-    if "pollIntervalMs" in s and (not _is_number(s["pollIntervalMs"]) or not s["pollIntervalMs"] > 0):
+    if "pollIntervalMs" in s and not _is_poll_interval(s["pollIntervalMs"]):
         problems.append(f"{where}.pollIntervalMs")
     groups = s.get("groups")
     if not isinstance(groups, list):
         return [*problems, f"{where}.groups"]
+    seen: dict[str, int] = {}
     for index, g in enumerate(groups):
-        problems += _group_problems(g, f"{where}.groups[{index}]")
+        if not isinstance(g, dict):
+            problems.append(f"{where}.groups[{index}] is not an object")
+            continue
+        problems += _duplicate(seen, g.get("key"), index, f"{where}.groups[{index}]")
+        problems += _group_problems(g, f"{where}.groups[{index}]", s)
     return problems
 
 
@@ -694,15 +979,14 @@ def _shape_problems(defs: object) -> "list[str]":
     sections = defs.get("sections")
     if not isinstance(sections, list) or not sections:
         return [*problems, "sections"]
-    section_keys = set()
+    seen: dict[str, int] = {}
     for index, s in enumerate(sections):
         if not isinstance(s, dict):
             problems.append(f"sections[{index}] is not an object")
             continue
-        if isinstance(s.get("key"), str):
-            section_keys.add(s["key"])
+        problems += _duplicate(seen, s.get("key"), index, f"sections[{index}]")
         problems += _section_problems(s, f"sections[{index}]")
-    if "landingSection" in defs and defs["landingSection"] not in section_keys:
+    if "landingSection" in defs and defs["landingSection"] not in seen:
         problems.append("landingSection matches no section")
     return problems
 
@@ -763,7 +1047,7 @@ def test_a_schema_value_with_no_json_form_fails_the_build(bound: object) -> None
     ids=["shape", "bytes"],
 )
 def test_a_string_key_off_a_string_field_fails_the_build(tag: WebFieldTag) -> None:
-    with pytest.raises(BuildError, match="has bytes= or shape= but its kind is 'number'") as caught:
+    with pytest.raises(BuildError, match="has bytes=, shape= or clearable= but its kind is 'number'") as caught:
         _build_field_def(tag, ("int", 0, 0, 10, None), "dev", Path("asy_x.py"))
     _assert_rule(caught.value, "web.string-key-off-string")
 
@@ -828,13 +1112,25 @@ def test_an_unreadable_schema_names_its_device_and_instance(tmp_path: Path, src_
 def test_a_hidden_schema_field_stays_off_the_website(tmp_path: Path, src_dir: Path) -> None:
     # A schema field tagged hidden= stays off the page; the rest of the card still shows.
     original = (src_dir / "asy_scd30_driver.py").read_text(encoding="utf-8")
-    line = next(line for line in original.splitlines(keepends=True) if line.startswith("# @web AmbPres section=sensors"))
+    line = next(line for line in original.splitlines(keepends=True) if line.startswith("# @web FRCWindow section=sensors"))
     mutated = tmp_path / "asy_scd30_driver.py"
-    mutated.write_text(original.replace(line, '# @web AmbPres hidden="a test keeps it off"\n', 1), encoding="utf-8")
+    mutated.write_text(original.replace(line, '# @web FRCWindow hidden="a test keeps it off"\n', 1), encoding="utf-8")
     generated = _read(generate_definitions(_single_scd30_model("dev", mutated), src_dir))
     sensors_fields = {f["key"] for g in next(s for s in generated["sections"] if s["key"] == "sensors")["groups"] for f in g["fields"]}
-    assert "AmbPres" not in sensors_fields
+    assert "FRCWindow" not in sensors_fields
     assert "MeasInterval" in sensors_fields
+
+
+def test_a_field_ignored_while_a_hidden_or_absent_sibling_is_set_fails_the_build(tmp_path: Path, src_dir: Path) -> None:
+    # The page warns from the sibling's value, so the sibling must be on the page beside it.
+    original = (src_dir / "asy_scd30_driver.py").read_text(encoding="utf-8")
+    line = next(line for line in original.splitlines(keepends=True) if line.startswith("# @web AmbPres section=sensors"))
+    for replacement in ('# @web AmbPres hidden="a test keeps it off"\n', line.replace("section=sensors", "section=measurements kind=readonly")):
+        mutated = tmp_path / "asy_scd30_driver.py"
+        mutated.write_text(original.replace(line, replacement, 1), encoding="utf-8")
+        with pytest.raises(BuildError, match="ignoredWhenSet='AmbPres', which names no other field of its group") as caught:
+            generate_definitions(_single_scd30_model("dev", mutated), src_dir)
+        _assert_rule(caught.value, "web.ignored-when-set-unknown")
 
 
 def test_every_src_schema_field_is_tagged_or_hidden(src_dir: Path) -> None:

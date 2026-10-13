@@ -380,8 +380,8 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("from asy_ntp_client import NTPClient, NtpTiming")
     lines.append("from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService")
     lines.append("from asy_wifi_service import WifiService, WifiConfig")
-    if have & {"sgp40", "notification"}:
-        lines.append("from asy_base_classes import ValueRef")
+    # utc_now() answers /status's UnixTime on every device; ValueRef only where a value is wired.
+    lines.append(f"from asy_base_classes import {'ValueRef, ' if have & {'sgp40', 'notification'} else ''}utc_now")
     crc_classes = sorted({c for c in (_bus_crc_class(model, b) for b in _bus_tables(model)) if c is not None})
     if crc_classes:
         lines.append(f"from asy_crc_checks import {', '.join(crc_classes)}")
@@ -640,7 +640,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append(f'        "MemPaused": {_singleton_var(ctx, "fram")}.get_pause(),')
     # Copied into the JSON value type: a list[str] is not a list of JSON values (lists are invariant).
     lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()), "ConfigUnpersisted": list(sysfunct.get_config_unpersisted()),')
-    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc),')
+    lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc), "UnixTime": utc_now(),')
     lines.append("    }")
     lines.append("")
     if "notification" in have:
