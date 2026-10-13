@@ -1384,7 +1384,10 @@ def test_a_resumed_sessions_resend_past_the_byte_cap_goes_after_the_next_ping_no
             broker.ack_publishes = True
             await broker.drop()
             assert await until(lambda: len(broker.connects) == 2 and client.is_connected())
-            resent = lambda: [b for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/big"]  # noqa: E731
+
+            def resent() -> "list[bytes]":
+                return [b for f, b in _sent_on(broker, 1) if f & 0xF0 == 0x30 and _publish_fields(f, b)[0] == b"q/big"]
+
             assert await until(lambda: len(resent()) == len(payloads), timeout_ms=3000)
             assert [_publish_fields(0x3A, b)[2] for b in resent()] == payloads  # in their original order
         finally:
