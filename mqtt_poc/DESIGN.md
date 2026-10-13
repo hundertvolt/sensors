@@ -235,8 +235,9 @@ Measured with the need sieve (HEAP_FRAGMENTATION_MEASUREMENTS.md §M6.1) on the 
 
 The round's 256 B is the publisher coroutine's own frame. The split costs 544 B there, about 270 B on the
 board: eight streams carry their own headers where one ring carried one. The instance dict stays at its
-97-entry table (83 attributes); its 73-entry step would take ten attributes out for about 190 B on the
-board.
+97-entry table (91 attributes, nine of them the will and session state of §15, counted on the Unix port
+after construction, agent, 2026-10-13); its 73-entry step would take eighteen attributes out for about
+190 B on the board.
 
 Steady-state allocation: the `readinto` generator per inbound read; two `memoryview` slices per
 written PUBLISH; per measurement message, an iterator and a frame per object in it, plus the dumped text
