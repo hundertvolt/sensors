@@ -951,6 +951,7 @@ change lists its stages; the end state is the last stage's.
   M_SRC_SENS GAP-7 (with A.U10.R01, A.U15.24, A.U18.06, A.U18.14, A.U18.15, A.U14.26, A.U19 A-C note 3 as their merges
   number them); OR140.a (7) (per-layer entries), routine settlement "ntp-malformed-text", OR143.a (2) (A-C review
   fold).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: new `buildgen/error_catalog.json`.
 - **Change**: A.U2.01's object `{"format": 1, "range": [1, 127], "owners": {...}, "codes": {"E": {...}, "W": {...}},
   "status": {"ResetReason": {...}, "VOCState": {...}, "FRCState": {...}, "CalLight": {...}}}` with A.U2.01's band
@@ -989,13 +990,20 @@ change lists its stages; the end state is the last stage's.
   `CONFIG_LOST` "the config file was absent at this boot while FRAM history exists and no config reset was commanded:
   the filesystem was reformatted or wiped" (M.SRC_CORE.005 (1)/.017 (1), Stage U11); `status.ResetReason` gains 21
   "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed" (M.SRC_CORE.006 (2), M.GEN.001 (1), Stage U20). SYSTEM's existing E17 `TIMER` gains the uptime-timer site (M.SRC_CORE.013 (1), Stage U11) with no new row.
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, with M.SRC_NET.077 (2),
+  .223 and .224: W80 renamed `WLAN_SILENT`, its number kept (the same condition), text "a second STA failure streak
+  after the hotspot ran; Wi-Fi goes silent: no hotspot, the LED dark, one connect attempt every hotspot_time_min until a
+  link"; E65 `WLAN_OFF` `retired` (its one site, the permanent deactivation, goes); W77 text "the hotspot's station list
+  could not be read (the query raised, or the chip-down 32-entry answer); counted as no client". The website shows them
+  from the generated definitions (M.GEN.016): no page edit follows.
 - **Resolved**: A.U2.21's golden-file edit falls away with A.U6.04 (A.U2.21 says so). `SOCKET_TEARDOWN`: M_SRC_NET
   (M.SRC_NET.004/.023/.047, written first) numbers it W11; M.SRC_SENS.043 (later, SUPP_recovery conflicts row 7) gives W11
   to `DERIVED_DOMAIN` and W12 to `SOCKET_TEARDOWN`, and M_TEST_UNIT follows it (GAP-U5) — W12 (gap pass G1). The
   C-stack errno: A.U30.19 says "<catalog number, A.U2.01>"; M.SRC_CORE.005 fixes shared 25 (M_SRC_CORE GAP-G2).
 - **Unit**: U35 (latest constituent: A.U35.55's retirement). Stages: U2 (file), U10 (16 retired with A.U10.06), U11
   (register fixes, ResetReason), U13 (52), U15 (34, W11, status tables), U17 (UART codes 91/92), U18 (W12, DNSSRV 42/43,
-  69, NTP owners), U19 (W48, W60-62), U23 (tones), U30 (C-stack 25, ResetReason 20); fold stages (A-C review): U2 (the per-layer rows
+  69, NTP owners), U19 (W48, W60-62), U22 ((2) W80, E65, W77), U23 (tones), U30 (C-stack 25, ResetReason 20); fold
+  stages (A-C review): U2 (the per-layer rows
   with their source constants), U17 (93).
   A-C2 step order: A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20).
 - **Depends**: A.U2.01-.03 (catalog, test, helper), each code's source constant (SRC_* clusters).
@@ -2068,3 +2076,14 @@ Folded per `audit/actions/FOLD_BRIEF.md` (OR136-OR143, FOLD_ANSWERS, `routine_me
 | R54 | M.GEN.008 (`ConfigFaults` comment: damaged = unparseable, non-object, refused value, repaired and listed), M.GEN.014 (field description: a damaged file is repaired at boot) | amended |
 | R54 | M.GEN.066 (floor read with `_FLASH_HOLD_MAX_MS` from source; `dev` states `rx_ring = 8192` for the bench's 400 ms continuous-sender window; the generated `limits=TransferLimits(…)`) | amended |
 | R55 | M.GEN.066 (the generated `limits=TransferLimits(<payload_size>, <timeout>, <chunk_bytes>, <max_transfer_bytes>)`: the cap from the TOML, the other three the source defaults), M.GEN.027 (U17 stage: `_check_uart_link_buses()` reads `_DEFAULT_PAYLOAD_SIZE`/`_DEFAULT_TIMEOUT_MS` from `asy_uart_comm` once the link driver drops the two parameters) | amended |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.GEN.034 (2) (W80 `WLAN_SILENT`, E65 retired) | amended |
+| OR152 | M.GEN.034 (2) (W77's text) | amended |

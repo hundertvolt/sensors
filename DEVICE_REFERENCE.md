@@ -12,10 +12,14 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
   `LEDWifiOn` is on (off: the overlay stays dark): searching for the network — toggling every half
   second; connected — on; disconnected — off; serving the fallback hotspot — on with a short gap
   every 3 s, an even slow blink (1.5 s on, 1.5 s off) once a client has joined: the unit stays on its
-  hotspot while the client stays; Wi-Fi switched off (a second failure streak after the hotspot ran,
-  or no readable Wi-Fi configuration) — off with a short blink every 3 s, until a power cycle. Every
-  one of these patterns follows `LEDWifiOn`, the switched-off one included: dark while it is off,
-  shown as soon as it is switched on (owner, 2026-10-02).
+  hotspot while the client stays; no readable Wi-Fi configuration — off with a short blink every
+  3 s, until a reboot. Every one of these patterns follows `LEDWifiOn`, the no-configuration one
+  included: dark while it is off, shown as soon as it is switched on (owner, 2026-10-02). After a
+  second failed connection streak following its hotspot the unit goes silent: no hotspot, the LED
+  dark even while `LEDWifiOn` is on, and one quiet attempt to join the stored network every
+  `hotspot_time_min` minutes; once an attempt connects it is a normal connection and the LED shows
+  it again (owner, 2026-10-08: 'It should look like turned off.'). Unplug and replug a silent unit
+  to get its hotspot back.
 - **Notification signal** — a colored ramp-up/ramp-down flash, triggered per sensor threshold and
   fully overriding the WiFi overlay while it plays (the overlay's own value is restored once the
   flash finishes). Brightness (`FlashBri`, 1–255) and duration (`FlashDur`, 0.5–10s) are
@@ -36,8 +40,15 @@ One physical LED serves two independent purposes, arbitrated by `asy_neopixel_dr
 reachability: they count while the unit is joined to a network **or** serving its fallback hotspot
 (owner, 2026-09-29). While the radio's status cannot be read, `Connected` and `WifiUptime` keep
 their last values and the WIFI history counts a warning. Why a unit went offline is in that history
-too: the fallback to the hotspot, the permanent switch-off and a connect attempt that ended without
-a verdict each leave a warning.
+too: the fallback to the hotspot, the change to the silent mode (the Wi-Fi status overlay above) and
+a connect attempt that ended without a verdict each leave a warning, and a silent unit's quiet
+attempts leave theirs.
+
+Saving a changed `SSID`, `PW`, `Country`, `Hostname` or `HotspotPW` (`/networking`) restarts the
+Wi-Fi connection as a fresh boot does: a fresh series of connection attempts, with the fallback
+hotspot available once more (owner, 2026-10-08, paraphrase). A wrong password therefore brings the
+hotspot back after its failed connection streak, even when the hotspot has run before, so the unit
+stays reachable for a correction.
 
 `NTPSynced` is true only while the last successful time sync is less than three sync intervals old
 (`NTPInterval`); a failed resync does not extend it, and a change to an NTP setting clears it until

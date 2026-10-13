@@ -34,14 +34,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # failed, ..." (py/runtime.c) and the class name appears only in an UNCAUGHT traceback.
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
-def configured_max_connections(device: str = "dev") -> int:
+# The one unit ever bench-flashed (CLAUDE.md's hard rule), named once for the tier.
+_BENCH_DEVICE = "dev"
+
+
+def device_toml(device: str = _BENCH_DEVICE) -> Path:
+    # The device file a build comes from, the bench board's by default: a wait or ceiling the tier derives reads it.
+    return REPO_ROOT / "devices" / f"{device}.toml"
+
+
+def configured_max_connections(device: str = _BENCH_DEVICE) -> int:
     # The admission ceiling this repo's config would build for `device`. It describes the TREE, not
     # necessarily the image on the board, so a test that cares asserts the two agree.
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
     from buildgen.validate import device_max_connections
 
-    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src")
+    return device_max_connections(device_toml(device), REPO_ROOT / "src")
 
 
 # The request line every connection held open against the board sends. A FIN close ends its headers,

@@ -363,6 +363,20 @@ gates, traps).
   and the timer is gone afterwards; the sequence's wall time and the time to a DHCP lease go into
   the Basis of `tool.bench_bridge_recovery_arm_s` and `tool.bench_bridge_up_poll_s`. Wear: none
   (host network state only, no flash). Twin row: none.
+- **The hotspot role reversal's failed-credential cases** — on `dev`, `errcount` read and saved
+  first (CLAUDE.md's FRAM rule; the module itself clears the error logs in stages 3-5), then
+  `tests_hardware/bench/test_hotspot_role_reversal.py`'s two stage-6 cases for a credentials change
+  landing in the fresh-boot state (owner, 2026-10-08, paraphrase). (a)
+  `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot`, about 3-4 min: a well-formed wrong
+  password over the DUT's hotspot reopens the hotspot once more, with one more `WLAN_TO_HOTSPOT` and
+  no `WLAN_SILENT` in WIFI's history. (b)
+  `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, about 20 min: the reopened
+  hotspot's window ends with no client, the second streak goes silent (one `WLAN_SILENT`, no
+  `WLAN_GIVE_UP`) and a later attempt links once the bench AP is back, with no reset. (b) runs on the
+  real-credentials test's write, so both run as the whole module in one invocation with
+  `--soak-tier` and `--allow-persistence-writes` (`tests_hardware/README.md`'s "What a failed stage-6
+  credential does" names a candidate invocation). Wear: (a) one owned flash write, restored by the
+  real-credentials test; (b) none. Twin row: `tests/test_digital_twin_wifi_modes.py`.
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
   segfault fix" below); G6, a rollover method that leaves the board running (item 12, adapt now,
@@ -649,6 +663,12 @@ gates, traps).
   readings this host could not make: the apt-get(8), apt.conf(5) and dpkg(1) pages behind the apt
   split (here only the binaries' own strings were read), and `sudo -k`'s exact semantics for the
   passwordless-sudo probe.
+  **2026-10-12, `pyproject.toml` lint and type config only, no build impact**: the notification
+  module's per-file ruff entry narrows to `ARG004` and six modules leave the explicit-`Any` baseline
+  (`asy_neopixel_driver`, `asy_notification_service`, `test_asy_neopixel_driver`,
+  `test_asy_notification_service`, `test_neopixel_wifi_integration`,
+  `test_notification_neopixel_integration`). No dependency, pin, script or installer step changed:
+  the chroot legs' lint and typecheck runs cover it.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

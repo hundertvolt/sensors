@@ -235,9 +235,9 @@ def test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_scd30s_ow
     # recorded - only the trailing entries are this fault's own (see PrintLogHistory.get_log()).
     assert _last_two_err_nums(scd_log, "SCD30") == [code("E", "READ"), code("E", "STREAK")]
     assert notify_log["NOTIFY"]["ErrCount"] == 0
-    # _signal_loop()'s own startup sets a defined (0,0,0) off state once, unconditionally -
-    # nothing beyond that single boot-time write, since no signal was ever triggered.
-    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0)]
+    # One off-state frame from the signal loop's start and one from the overlay task's start, nothing else
+    # since no signal was triggered.
+    assert [w[0] for w in pixel._pixel.writes] == [(0, 0, 0), (0, 0, 0)]
 
 
 def test_recovers_and_triggers_normally_after_a_prior_fault() -> None:

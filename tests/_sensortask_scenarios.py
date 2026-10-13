@@ -30,7 +30,9 @@ from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from microdot import Request, Response
 
+import asy_base_classes
 import asy_config_manager
+import asy_ntp_client
 import asy_scd30_driver
 import asy_spi_driver
 import asy_system_service
@@ -1672,11 +1674,12 @@ def _scenario_networking_put_ssid_group(device: str) -> None:
     assert module.conn is not None
     res = _dispatch(module, "PUT", "/networking", {"LEDWifiOn": False})
     assert json.loads(res.body)["result"] == {"LEDWifiOn": "Valid"}
-    assert module.conn._reconn_wifi is False  # LEDWifiOn alone must never reconnect
+    assert (module.conn._reconn_wifi, module.conn._reconnect_fresh) == (False, False)  # LEDWifiOn alone must never reconnect
 
     res = _dispatch(module, "PUT", "/networking", {"Hostname": "TestHost"})
     assert json.loads(res.body)["result"] == {"Hostname": "Valid"}
-    assert module.conn._reconn_wifi is True  # setNetwork's own field group did change
+    # setNetwork's own field group did change; through the generated hook the change lands in the fresh-boot state.
+    assert (module.conn._reconn_wifi, module.conn._reconnect_fresh) == (True, True)
 
 
 @_register("webserver_networking_put_answers_an_unknown_key_invalid")
@@ -2346,6 +2349,85 @@ def _scenario_status_get(device: str) -> None:
     # keyed by name (Part H.6), so a published key nothing matches renders nothing at all.
     assert {logger.name for logger in _all_loggers(module)} == set(body["errcount"].keys())
     assert len(body["errcount"]) == len(_all_loggers(module)), "two loggers sharing a name would collapse into one row"
+
+
+class _Rp2Gmtime:
+    # Stands in for the NTP client's `time`: rp2's gmtime() has 8 fields, this Unix port's 9, and cettime() answers
+    # local time only in rp2's shape (the stand-in tests/test_notification_neopixel_integration.py uses too).
+    def gmtime(self, *secs: int) -> "tuple[int, ...]":
+        return tuple(time.gmtime(*secs))[:8]
+
+    def mktime(self, t: "tuple[int, ...]") -> int:
+        return time.mktime(t)
+
+    def time(self) -> int:
+        return time.time()
+
+
+class _ReadableSample:
+    # A producer's sample: each field a signal reads at a value no threshold triggers on, and no TS yet (current).
+    def __init__(self) -> None:
+        self.TS = None
+
+
+# A hang guard in scheduler rounds: a monitor cycle that flashes nothing stores its sample within a few.
+# @tunable l1.sensortask_notify_cycle_rounds = 200
+_NOTIFY_CYCLE_ROUNDS = 200
+
+
+def _one_notification_cycle(notification: "Any") -> None:
+    # One _monitor_loop() cycle of the built service, until it stores its sample, then the task cancelled.
+    before = notification._datastruct
+
+    async def cycle() -> bool:
+        task = notification.start_asy_monitor()
+        for _ in range(_NOTIFY_CYCLE_ROUNDS):
+            if notification._datastruct is not before:
+                break
+            await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return notification._datastruct is not before
+
+    assert run(cycle()), "no monitor cycle stored its sample"
+
+
+@_register("webserver_status_notification_state_says_why_signals_were_not_evaluated")
+def _scenario_status_notification_state(device: str) -> None:
+    # GET /status's notification State: none before any cycle, 2 for a cycle before the first sync, 0 for one after
+    # it with every producer readable; a whole-day window keeps the answer off the hour of the run.
+    module = build(device)
+    if not _has(module, "notification"):
+        return
+    notification = module.notification
+    window = {"OnH": 0, "OnM": 0, "OffH": 23, "OffM": 59}
+    result = json.loads(_dispatch(module, "PUT", "/notification", window).body)["result"]
+    assert all(result[key] in ("Valid", "Unchanged") for key in window), result  # OnM keeps its default 0
+
+    def state() -> object:
+        return json.loads(status_body(_dispatch(module, "GET", "/status")))["notification"]["State"]
+
+    assert state() is None
+    _one_notification_cycle(notification)
+    assert state() == 2
+    samples: dict[int, tuple[Any, _ReadableSample]] = {}
+    for notif in notification._registered:
+        sample = samples.setdefault(id(notif.value.source), (notif.value.source, _ReadableSample()))[1]
+        setattr(sample, notif.value.field, 0.0 if notif.above else 1e9)
+    for source, sample in samples.values():
+        run(source._set_meas_data(sample))
+    original = asy_ntp_client.time
+    asy_ntp_client.time = _Rp2Gmtime()  # type: ignore[assignment]  # a stand-in for the module's time, restored below
+    asy_base_classes.set_utc_valid()  # the boot's first sync
+    try:
+        _one_notification_cycle(notification)
+        assert state() == 0
+    finally:
+        asy_ntp_client.time = original
+        asy_base_classes.set_utc_valid(valid=False)
 
 
 def _storing_stores(module: "Any") -> "list[Any]":

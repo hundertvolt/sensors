@@ -1,0 +1,23 @@
+# mutant m2b_on_guard against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m2b_on_guard
+@@ -527,7 +527,7 @@
+ 
+     def _led_on(self) -> None:
+         # Silent mode: dark whatever LEDWifiOn says, until a link (owner, 2026-10-08: 'It should look like turned off.').
+-        if self._led is not None and self._conn_phase != _PHASE_SILENT:
++        if self._led is not None:
+             try:  # self._led may be a caller-supplied ext_led (LEDControl Protocol, not necessarily a
+                 # real Pin) - could misbehave, so this degrades silently rather than feeding
+                 # _hw_op_failed/_error_check().
+@@ -731,8 +731,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:

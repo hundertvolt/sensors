@@ -1323,6 +1323,7 @@ special, OR140.a (18)).
   (`:289` `device=`), A.U0.07 (`:248, :296, :335` imports, B6), A.U26.76/B8, A.U8C.48 (`:27, :33, :38, :68, :80, :86,
   :95, :109, :115, :121`), A.U7.24/A.U26.51 (`COVERS_TWIN_SCENARIOS = ["real_website_integration",
   "sensortask_integration"]`), A.U28.29 (blast: the S105 entry for this file goes with the literal).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests_hardware/bench/test_hotspot_role_reversal.py:1-125`, `:132-160`.
 - **Change**: docstring (≤ 3 lines) drops "Definition order matters - see stage 6 below" (order is enforced,
   M.HW_BENCH.073). `_HOTSPOT_PASSWORD` and its stale comment go; every join uses `harness.hotspot_password()`.
@@ -1337,7 +1338,8 @@ special, OR140.a (18)).
   unreachable restore raises (`HardwareTestFailureError`), reported by pytest as a teardown error beside any test
   failure. Stage 8: after leaving the hotspot, `recover_by_reset(board, bench, ready=…, skipped="the passive STA
   reconnect after the flip back", note=<record_session_note bound to "joined_hotspot">, description="role flip back")`,
-  then `GET /networking` over the bridge must report the STA mode (the phase left `_PHASE_DEACTIVATED`) — the loud raise
+  then `GET /networking` over the bridge must report the STA mode (the DUT left its hotspot and the silent mode) — the
+  loud raise
   follows if not. Content: `test_dut_enters_hotspot_mode_after_ssid_cleared` asserts `GET /networking` over the hotspot
   reports the hotspot mode; `test_hotspot_ssid_matches_configured_hostname` asserts the recorded scan contained
   `hotspot_ssid`; `test_hotspot_password_matches_known_fixed_value` → `test_the_dut_accepts_the_toml_hotspot_password`
@@ -1352,11 +1354,18 @@ special, OR140.a (18)).
   `result_note`, and asserts only that transfers advance again inside the window. The record fills F.3's
   `stall.wlan_switch` row (M.SPEC.097 (v)); zero wear beyond the fixture's pinned prerequisite. Measures SF-M4-09 (no
   source part); phase C, R1.
+  (2) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22 (HEAD's fixture, with
+  M.SRC_NET.223): the stage-8 comment `:148-150` → "# Stage 8 - confirm the DUT is back on the bridge network. A failed
+  stage-6 reconnect reopens the DUT's hotspot once, then after its" / "# window one more streak, then the silent mode
+  retrying once per hotspot_time_min (Part A.4) - so recover with hard_reset()" / "# rather than waiting that out, then
+  still assert, so a break is loud." In the U26 form above, `recover_by_reset`'s `skipped=` names "the passive STA
+  reconnect after the flip back, or the silent mode's next attempt".
 - **Resolved**: A.U7.15 (U7) would route the two stage-7 notes through `record_session_note`; A.U26.39 (2) (U26,
   G1/R28 "a rejected restore fails loudly") turns them into a raise — A.U7.15's two sites are dropped (no hardware run
   falls between U7 and U26). The `request` parameter A.U7.15 adds stays (stage 8's note uses it).
-- **Unit**: U26.
-- **Depends**: M.HW_BENCH.010, M.HW_BENCH.015, M.HW_BENCH.004, M.HW_BENCH.037, M.HW_BENCH.023, A.U18.28 (an active AP
+- **Unit**: U26. Stage U22 ((2), HEAD's stage-8 comment).
+- **Depends**: M.SRC_NET.223 ((2)); M.HW_BENCH.010, M.HW_BENCH.015, M.HW_BENCH.004, M.HW_BENCH.037, M.HW_BENCH.023,
+  A.U18.28 (an active AP
   reports `STAT_GOT_IP`: blast-only, the real AP already does).
 - **Blast carried by**: `_KNOWN_PERSISTING_HELPERS` keeps `joined_hotspot` (its "stage-0 PUT … stage-7 restore"
   comment holds) → A.U26.39 (TSC); `tests_scripts/test_tests_hardware_conftest_constants.py` (the password pin) →
@@ -1410,6 +1419,7 @@ special, OR140.a (18)).
 ### M.HW_BENCH.073 Stage 6 runs last by marker; the flip back is a test of its own
 - **From**: A.U26.39 (4)(5), A.U26.71 (`:380-392`), A.U0.35 (`:425-426` owner tag), A.U18.38 (blast: `:143-147` holds),
   A.U26.06 (the module-level `pytestmark` is read), A.U8C.48.
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests_hardware/bench/test_hotspot_role_reversal.py:373-428`.
 - **Change**: `test_invalid_credentials_rejected_without_triggering_reconnect` loses `persistence_write` (every field
   rejected) and asserts `result["PW"] == "Invalid"`, then no reconnect; it joins `_JUSTIFIED_UNMARKED` ("PW below
@@ -1421,11 +1431,37 @@ special, OR140.a (18)).
   work done; its comment: "No STA-phase field is added to /networking (owner, 2026-09-26: 'It seems to be unreachable by
   definition.'): a reachable board on the bridge network is STA-connected by definition." The banners `:373-377`,
   `:410-414` state the enforced order (the marker), not definition order.
+  (1) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22 (HEAD's file, defined
+  before the real-credentials test, the file's definition-order rule; with M.SRC_NET.223), carried into the U26 form
+  above with `destructive_last`; both run in R3 with stage 6.
+  (a) `@pytest.mark.persistence_write test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench, joined_hotspot,
+  hotspot_ssid)` (OR152 on the hotspot side, the hotspot having run since stage 0): over the joined hotspot, PUT
+  `{"SSID": bench.ap_ssid(), "PW": <a well-formed wrong password>}` answered "Valid"; the DUT leaves its hotspot, its
+  fresh streak fails (the bench AP is down while the radio is the DUT's client), and its hotspot is scannable again
+  within the streak's bound — `conn_fail_to_hotspot` × (the connect poll + the refresh) + the reconnect's grace, mode
+  switch and settle, from the bench TOML and the `wifi.*` Part N rows, a derived wait — where before these requirements
+  it ended deactivated; the bench radio rejoins (`_join_dut_hotspot_with_reverify_retry`) and gets a lease, so the
+  real-credentials test that follows runs over the reopened hotspot and restores the network; WIFI's `/status` history
+  holds one more `WLAN_TO_HOTSPOT` entry and no `WLAN_SILENT`. One owned flash write (the wrong password; the next test
+  restores).
+  (b) An opt-in case, `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt` (OR151 on silicon), after
+  the real-credentials PUT with the bench AP still down: the DUT's fresh streak fails and its hotspot reappears (scan);
+  with no client its window (`hotspot_time_min` from the bench TOML) ends and the second streak fails; the hotspot then
+  stays absent across one more scan window (the silent mode: no hotspot); the bench AP comes up and the DUT is reachable
+  over the bridge within one `hotspot_time_min` plus one attempt, with no reset; WIFI's history then holds one
+  `WLAN_SILENT` slot and no `WLAN_GIVE_UP`; the relink time recorded through the result note. The bench AP is restored
+  in `finally` on every path, and the case ends with the DUT reachable, so the fixture's flip back finds the work done.
+  About two windows long (≈ 18 min on `dev`), so never in a default run: its gate is decided at execution (the
+  `long_soak` tier that covers it, or a flag of its own), with its reason recorded; it writes nothing. The LED's
+  darkness is not visible to the bench and stays the L1/L2 proof.
+  New tunables tagged per N.1 (`l4.hotspot_role_reversal_*`), their rows with this change.
 - **Resolved**: A.U0.35's `:425-426` tag lands in the merged test's comment (the two tests it sat in merge in U26).
-- **Unit**: U26 (A.U0.35's U0 tag on `:425-426` lands in U0 and moves with the merge).
-- **Depends**: M.HW_BENCH.002/.003 (`destructive_last`), M.HW_BENCH.071, A.U4.02, A.U6.17.
+- **Unit**: U26 (A.U0.35's U0 tag on `:425-426` lands in U0 and moves with the merge). Stage U22 ((1), on
+  HEAD's file).
+- **Depends**: M.SRC_NET.223 ((1)); M.HW_BENCH.002/.003 (`destructive_last`), M.HW_BENCH.071, A.U4.02, A.U6.17.
 - **Blast carried by**: `_JUSTIFIED_UNMARKED` → A.U26.71 (TSC); the collect-only "destructive items last" L0 →
-  A.U26.39 (TSC); `test_tests_hardware_persistence_write_gating.py` deselection set shrinks by one → A.U26.71 (TSC).
+  A.U26.39 (TSC); `test_tests_hardware_persistence_write_gating.py` deselection set shrinks by one → A.U26.71 (TSC);
+  (1): the wear budget's row → M.HW_BENCH.130 (2); E.6.4's finding → M.SPEC.082 (8).
 - **Kind**: test, hardware (Round: R3, the destructive stage last of the round's gated bench rows [H62])
 
 ## tests_hardware/bench/test_memory_stress_bench.py
@@ -2267,15 +2303,19 @@ check.
 ### M.HW_BENCH.110 Header: the levels by SPEC E.6.1's names, the bench board by data
 - **From**: A.U7.01 (blast: `tests_hardware/README.md:80-160` points to E.6.1), A.U36.008 (OR45.a (1): point, do not
   restate), A.U26.01 (the bench board is the TOML's `bench = true`), A.U26.35 (soak durations), A.U26.74 (flag names).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `tests_hardware/README.md:1-16`.
 - **Change**: `:3` "flash/bench/manual backends" → "levels L3 (flash) and L4 (bench) and the manual mode
   (SPECIFICATION.md E.6.1)"; `:6-9` "**Real-hardware execution is standing practice on the bench Pi4** - the flash and
   bench tiers have run clean end to end on real hardware, with additional coverage added since;" → "Real-hardware runs
   happen on the bench Pi4 against the board whose device TOML sets `[device] bench = true` (today `dev`);"; `:13-16` the
-  pointer list names `--allow-flash-cycle`/`--soak-duration` ("Running"), the role-reversal stage-6 risk ("The hotspot
-  role reversal") and `BENCH_AP_PASSWORD` ("Environment variables"). The go-ahead sentence `:11-12` stays word for word.
+  pointer list names `--allow-flash-cycle`/`--soak-duration` ("Running"), the role reversal's stage-6 fallback ("The
+  hotspot role reversal") and `BENCH_AP_PASSWORD` ("Environment variables"). The go-ahead sentence `:11-12` stays word
+  for word.
+  (1) (A-C fold, owner requirements 2026-10-08, OR151/OR152) Stage U22 (HEAD's `tests_hardware/README.md:13-16`): "the
+  stage-6 permanent-WLAN-deactivation risk" → "the role reversal's stage-6 fallback".
 - **Resolved**: —
-- **Unit**: U36 (the pointer work), carrying U26's names.
+- **Unit**: U36 (the pointer work), carrying U26's names. Stage U22 ((1), HEAD's pointer).
 - **Depends**: M.HW_BENCH.001 (flag names), M.HW_BENCH.010 (`bench_device()`), A.U7.01.
 - **Blast carried by**: README.md's hardware section → A.U36.008 (DOCS).
 - **Kind**: doc
@@ -2557,14 +2597,26 @@ check.
 ### M.HW_BENCH.124 The hotspot role reversal: ordered restore, stage-6 risk, serial repair
 - **From**: A.U26.39 (role-reversal section), A.U26.04 / A.U26.63 ("MicroPython's DHCP server"), A.U33.08 (REST-reboot
   trap points here), M.HW_BENCH.071-073 (the serial-side repair recipe).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: the role-reversal text (HEAD in "Known assumptions" and the fourth pass, gathered under one heading
   `## The hotspot role reversal`).
-- **Change**: states: stage 6 hands real credentials to the DUT; a failure after stage 6 can leave the WLAN interface
-  deactivated until a serial-side repair (`kick_then_reset.py`, then the documented `mpremote` repair); `destructive_last`
-  tests run last in their module; every stage restores on every path in order; the lease test asserts the range
-  MicroPython's DHCP server hands out.
+- **Change**: states: stage 6 hands real credentials to the DUT; a failure after stage 6 reopens the DUT's hotspot once
+  (a credentials change lands in the fresh-boot state, owner, 2026-10-08), then after its window one more streak and the
+  silent mode, retrying once per `hotspot_time_min` (SPECIFICATION.md A.4) — nothing terminal: the fixture's reset ends
+  the wait, and the serial-side repair (`kick_then_reset.py`, then the documented `mpremote` repair) stays for a board
+  still unreachable after it; `destructive_last` tests run last in their module; every stage restores on every path in
+  order; the lease test asserts the range MicroPython's DHCP server hands out.
+  (1) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22 (HEAD's two passages, with
+  M.SRC_NET.223), carried into the U26 section: `tests_hardware/README.md:746-756`'s "A permanent-WLAN-deactivation risk
+  …" item → "- **What a failed stage-6 credential does**: a credentials change lands in the fresh-boot state (owner,
+  2026-10-08), so a failed real-credential PUT reopens the DUT's hotspot once more although it has run since stage 0;
+  with no client its window ends in one more streak and then the silent mode, which retries once per `hotspot_time_min`
+  (SPECIFICATION.md Part A.4). Nothing is terminal; `test_hotspot_role_reversal.py`'s `joined_hotspot` still recovers
+  with `board.hard_reset()` rather than waiting that out."; `:1028-1031`'s "specifically to rule out accidentally
+  tripping that scenario's own disclosed permanent-WLAN-deactivation risk" → "specifically to stay off that scenario's
+  hotspot fallback".
 - **Resolved**: —
-- **Unit**: U26.
+- **Unit**: U26. Stage U22 ((1), HEAD's two passages).
 - **Depends**: M.HW_BENCH.071, M.HW_BENCH.072, M.HW_BENCH.073, M.HW_BENCH.042.
 - **Blast carried by**: —
 - **Kind**: doc
@@ -2706,6 +2758,7 @@ check.
   M.HW_BENCH.102 — A.U26.42, A.U4.04, A.C.17, A.S0930.29 (7)); A-C review fold: OR136.a (1), (4) (an absent file's
   first write, counted as a prerequisite), OR139.a (2) (the rollover image's one flash), OR141.a (4) (g) (the optional
   config write during UART traffic).
+  OR152 (owner requirement, 2026-10-08; U22 start fold, execution-time delta).
 - **Site**: `tests_hardware/README.md:1309-1390`.
 - **Change**: the section opens with A.U0.27's tag "**Standing design (owner, 2026-09-16, `98dc1b2`/`4f1c802`)**"; the
   marker table `marker | flag | gate kind (deselect/skip) | what it spends`; the budget table: default run — flash
@@ -2734,6 +2787,9 @@ check.
   `--allow-persistence-write`: the Wi-Fi link under a flash stall 2 (M.HW_BENCH.082 (4)); the UART link during config
   writes 5 scratch writes and 1 removal (M.HW_DEV.160 (5)); under manual mode: the SCD30 NVM power cut, up to 21 SCD30
   NVM writes and 1 restore (M.HW_BENCH.102 (6)). Zero-wear additions are not listed. Stage U26.
+  (2) (A-C fold, owner requirement 2026-10-08, OR152) Under `--allow-persistence-write` the budget table gains "the role
+  reversal's wrong-password fallback 1 (the real-credentials test after it restores)" (M.HW_BENCH.073 (1) (a)); the
+  opt-in silent-mode case writes nothing. Stage U26.
 - **Resolved**: A.U26.09's "+2" for `--allow-scd30-extra-write` counts only A.U26.08 (3); the table lists every
   `scd30_extra_write` row (M.HW_BENCH.001's settlement). A.U4.08 (U4) writes the REST half into `:1310-1325`; U26's
   table carries it (A.U4.08's Blast names the flash-tier text U26's).
@@ -3386,3 +3442,14 @@ Folds the owner's A-C review answers (OR136-OR143, FOLD_ANSWERS, the routine set
 | F31 | — | none in this file |
 | F32 | — | none in this file |
 | F33 | — | none in this file |
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.HW_BENCH.071 (main text, (2)), .073 (1) (b), .110 (main text, (1)), .124 (main text, (1)) | amended |
+| OR152 | M.HW_BENCH.071 (2), .073 (1) (a), .110 (1), .124 (main text, (1)), .130 (2) | amended |

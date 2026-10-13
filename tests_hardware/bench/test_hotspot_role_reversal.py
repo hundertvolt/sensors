@@ -4,22 +4,23 @@ DUT's OWN hotspot to test its AP/DHCP/captive-portal/REST role from a real exter
 """
 
 import os
+import re
 import time
 from typing import TYPE_CHECKING
 
 import dns_probe
 import http_client
 import pytest
+import tomllib
 import website_identity
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, HardwareTestFailureError, wait_until
+from bench_control import ROLE_REVERSAL_CLIENT_CONN, BenchBridge
+from error_log_helpers import assert_module_error_log_empty, assert_no_task_ended, code, get_errcount, reset_all_error_logs
+from harness import REPO_ROOT, Board, HardwareTestFailureError, device_toml, wait_until
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
-    from bench_control import BenchBridge
-
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_6_configure_ssid", "ci_suite._run_7_wifi_hotspot_dns")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "wifi_modes", "ci_suite._run_6_configure_ssid", "ci_suite._run_7_wifi_hotspot_dns")
 
 pytestmark = pytest.mark.role_reversal
 
@@ -64,6 +65,27 @@ _DNS_FLOOD_STEP_S = 0.05
 _DNS_RECOVERY_TIMEOUT_S = 8.0
 # @tunable l4.hotspot_role_reversal_raw_socket_timeout_s = 10.0
 _RAW_SOCKET_TIMEOUT_S = 10.0
+# Added to each wait derived from the Wi-Fi service's own timeline: the bench's scan cadence, a link loss noticed late.
+# @tunable l4.hotspot_role_reversal_derived_wait_margin_s = 30.0
+_DERIVED_WAIT_MARGIN_S = 30.0
+
+
+def _dut_reachable_again(dut_ip: str) -> bool:
+    try:
+        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
+    except OSError:
+        return False
+
+
+def _gained_entries(before: "tuple[int, list[tuple[str, int]]]", after: "tuple[int, list[tuple[str, int]]]") -> "list[tuple[str, int]]":
+    # The entries a module's history gained between two reads. It is a fixed-length window that each new code shifts by
+    # one slot (a repeat of the newest spends none), so the gain is the smallest shift, within the counter's growth, that
+    # lines the two reads up; a read that no shift continues (a reset in between) fails rather than guess.
+    (count_before, old), (count_after, new) = before, after
+    for shift in range(min(count_after - count_before, len(new)) + 1):
+        if new[: len(new) - shift] == old[shift:]:
+            return new[len(new) - shift :]
+    raise HardwareTestFailureError(f"the history does not continue the earlier read: {old!r} -> {new!r} (counter {count_before} -> {count_after})")
 
 
 def _join_dut_hotspot_with_reverify_retry(bench: "BenchBridge", ssid: str, password: str, *, attempts: int = _JOIN_ATTEMPTS) -> None:
@@ -81,6 +103,44 @@ def _join_dut_hotspot_with_reverify_retry(bench: "BenchBridge", ssid: str, passw
             except TimeoutError:
                 pass  # fall through and retry the join anyway - it may still succeed, and the
                 # join's own next HardwareTestFailureError (or success) is the real signal either way
+
+
+def _on_dut_hotspot(bench: "BenchBridge") -> bool:
+    try:
+        return bool(bench.gateway_ip())
+    except HardwareTestFailureError:  # no lease: the association is gone
+        return False
+
+
+def _streak_bound_s() -> float:
+    # A reconnect trigger to the hotspot beaconing again, on the Wi-Fi service's own timeline: the trigger seen within one
+    # refresh, its grace, the switch to STA and the settle, each failed attempt's poll and refresh, the switch back.
+    fails, _window_min = _wifi_settings()
+    refresh = _wifi_const("_WIFI_REFRESH_S")
+    switch = _wifi_const("_WLAN_DOWN_SETTLE_S") + _wifi_const("_WLAN_DEINIT_SETTLE_S") + _wifi_const("_WLAN_MODE_SETTLE_S")
+    poll = _wifi_const("_STA_CONNECT_POLL_ITERS") * _wifi_const("_STA_CONNECT_POLL_S")
+    return refresh + _wifi_const("_RECONNECT_CALLER_GRACE_S") + switch + _wifi_const("_RECONNECT_SETTLE_S") + fails * (poll + refresh) + switch + _DERIVED_WAIT_MARGIN_S
+
+
+def _wifi_const(name: str) -> float:
+    # One of src/asy_wifi_service.py's const() values, read from its source: the names are private and the module MicroPython's.
+    match = re.search(rf"^{name} = const\(([0-9.]+)\)", (REPO_ROOT / "src" / "asy_wifi_service.py").read_text(), re.MULTILINE)
+    assert match is not None, f"src/asy_wifi_service.py has no `{name} = const(<number>)` line to derive a wait from"
+    return float(match.group(1))
+
+
+def _wifi_log(ip: str) -> "tuple[int, list[tuple[str, int]]]":
+    entry = get_errcount(ip).get("WIFI", {})
+    return int(entry.get("counter", 0)), [(str(h.get("type")), int(h.get("num", 0))) for h in entry.get("history", [])]
+
+
+def _wifi_settings() -> "tuple[int, int]":
+    # conn_fail_to_hotspot and hotspot_time_min of the device the bench runs, read from the tree as
+    # harness.configured_max_connections() reads its ceiling: the waits assume the board runs this tree's build.
+    with device_toml().open("rb") as f:
+        settings = tomllib.load(f)["device"]
+    return int(settings["conn_fail_to_hotspot"]), int(settings["hotspot_time_min"])
+
 
 _HOTSPOT_PASSWORD = "12345678"  # hardcoded in src/asy_wifi_service.py's _configure_hotspot_ap()
 
@@ -145,9 +205,9 @@ def joined_hotspot(board: Board, bench: "BenchBridge", dut_ip: str, hotspot_ssid
         print(f"RESULT NOTE: SSID restore over the hotspot failed to reach the DUT: {exc!r}")
 
     bench.leave_dut_hotspot_and_restore_bridge()
-    # Stage 8 - confirm the DUT is back on the bridge network. A failed stage-6 STA reconnect
-    # ends in _PHASE_DEACTIVATED, which only a power cycle clears (Part A.4), so recover with
-    # hard_reset() rather than leaving the board stuck - then still assert, so a break is loud.
+    # Stage 8 - confirm the DUT is back on the bridge network. A failed stage-6 reconnect reopens the DUT's hotspot once, then after its
+    # window one more streak, then the silent mode retrying once per hotspot_time_min (Part A.4) - so recover with hard_reset()
+    # rather than waiting that out, then still assert, so a break is loud.
     try:
         wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=_FLIP_BACK_TIMEOUT_S, poll_interval_s=_FLIP_BACK_POLL_S, description="DUT reachable again over the bridge network after role-flip-back")
     except TimeoutError:
@@ -157,13 +217,6 @@ def joined_hotspot(board: Board, bench: "BenchBridge", dut_ip: str, hotspot_ssid
         board.hard_reset()
         wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=_RECOVERY_TIMEOUT_S, poll_interval_s=_RECOVERY_POLL_S, description="DUT reachable again after a recovery hard_reset() (see this fixture's own comment)")
         raise
-
-
-def _dut_reachable_again(dut_ip: str) -> bool:
-    try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
-    except OSError:
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +488,27 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "Bench
 
 
 @pytest.mark.persistence_write
+def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
+    # A credentials change lands in the fresh-boot state (owner, 2026-10-08, paraphrase): its streak fails (a wrong key, the
+    # bench AP down while the radio is the DUT's client) and the hotspot opens once more. One owned flash write; the next test restores it.
+    password = os.environ.get("BENCH_AP_PASSWORD") or bench.ap_password()
+    wrong = ("y" if password[0] == "x" else "x") + password[1:]  # well-formed: the same length, inside _VAL_PW's bounds
+    before = _wifi_log(joined_hotspot)
+    res = http_client.fetch(joined_hotspot, 80, "PUT", "/networking", {"SSID": bench.ap_ssid(), "PW": wrong})
+    put_at = time.monotonic()
+    assert res.status_code == 200 and res.json().get("result") == {"SSID": "Valid", "PW": "Valid"}, f"the wrong-password PUT was not taken: {res.status_code} {res.body!r}"
+    left_bound_s = _wifi_const("_WIFI_REFRESH_S") + _wifi_const("_RECONNECT_CALLER_GRACE_S") + _DERIVED_WAIT_MARGIN_S
+    wait_until(lambda: not _on_dut_hotspot(bench), timeout_s=left_bound_s, poll_interval_s=_DHCP_POLL_S, description="the DUT to leave its hotspot for the fresh streak")
+    reopen_s = max(put_at + _streak_bound_s() - time.monotonic(), 0.0)
+    wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=reopen_s, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"the DUT's hotspot ({hotspot_ssid!r}) to reopen after the failed fresh streak")
+    _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
+    wait_until(lambda: bench.gateway_ip() == joined_hotspot, timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description="a lease on the reopened hotspot")
+    gained = _gained_entries(before, _wifi_log(joined_hotspot))
+    to_hotspot, silent = ("W", code("W", "WLAN_TO_HOTSPOT")), ("W", code("W", "WLAN_SILENT"))
+    assert gained.count(to_hotspot) == 1 and silent not in gained, f"expected one more WLAN_TO_HOTSPOT and no WLAN_SILENT in WIFI's history, gained {gained!r}"
+
+
+@pytest.mark.persistence_write
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK via `nmcli --show-secrets` by default now, so this
     # test needs no manual BENCH_AP_PASSWORD setup (still honored as an explicit override) - see
@@ -448,6 +522,60 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
     # holds the requested value - either acceptance outcome is a genuine pass.
     accepted = {"Valid", "Unchanged"}
     assert result.get("SSID") in accepted and result.get("PW") in accepted, f"real credential PUT was not accepted: {result!r}"
+
+
+@pytest.mark.long_soak
+@pytest.mark.persistence_write
+def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(
+    bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, dut_ip: str, request: pytest.FixtureRequest, result_note: "Callable[[str], None]",
+) -> None:
+    # The second failed streak goes silent and a later attempt links (owner, 2026-10-08, paraphrase), on the preceding test's stored
+    # credentials with the bench AP still down. Writes nothing: persistence_write is the AND-gate on that test's write, and
+    # long_soak gates its length, about two hotspot_time_min windows (tests_hardware/README.md names the invocation).
+    if request.config.getoption("--soak-tier") is None:
+        pytest.skip("about two hotspot windows long - runs with the whole module, --soak-tier and --allow-persistence-writes")
+    window_s = _wifi_settings()[1] * 60.0
+    refresh_s = _wifi_const("_WIFI_REFRESH_S")
+    grace_s = _wifi_const("_RECONNECT_CALLER_GRACE_S")
+    restored = False
+    try:
+        try:
+            stored_ssid = http_client.fetch(joined_hotspot, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S).json().get("SSID")
+        except OSError:
+            stored_ssid = None  # the hotspot has closed already: the preceding test's credentials started the fresh streak
+        assert stored_ssid != "", "needs test_real_credentials_put_succeeds_and_confirms_accepted_values's write in the same run: on stage 0's empty SSID the unit returns to its hotspot every window"
+        started = time.monotonic()
+        wait_until(lambda: not _on_dut_hotspot(bench), timeout_s=refresh_s + grace_s + _DERIVED_WAIT_MARGIN_S, poll_interval_s=_DHCP_POLL_S, description="the DUT to leave its hotspot for the fresh streak")
+        wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=max(started + _streak_bound_s() - time.monotonic(), 0.0), poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"the DUT's hotspot ({hotspot_ssid!r}) to reopen after the failed fresh streak")
+        _join_dut_hotspot_with_reverify_retry(bench, hotspot_ssid, _HOTSPOT_PASSWORD)
+        wait_until(lambda: bench.gateway_ip() == joined_hotspot, timeout_s=_DHCP_TIMEOUT_S, poll_interval_s=_DHCP_POLL_S, description="a lease on the reopened hotspot")
+        before = _wifi_log(joined_hotspot)
+        # A BenchBridge over the client profile: its ap_down() is a user deactivation, which NetworkManager blocks from
+        # autoconnecting again (nmcli(1), "connection down"), so the radio stays off the DUT's hotspot and the bench AP down.
+        BenchBridge(ap_conn=ROLE_REVERSAL_CLIENT_CONN).ap_down()
+        window_end_at = time.monotonic() + window_s  # the window arms at the DUT's first stations check without a client
+        wait_until(lambda: time.monotonic() >= window_end_at and not bench.is_ssid_visible(hotspot_ssid), timeout_s=window_s + 2 * refresh_s + grace_s + _DERIVED_WAIT_MARGIN_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description="the hotspot window to end with no client")
+        try:
+            wait_until(lambda: bench.is_ssid_visible(hotspot_ssid), timeout_s=_streak_bound_s() + _HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description="the hotspot to reopen after the second streak")
+        except TimeoutError:
+            pass  # closed through the second streak and one more scan window: the silent mode
+        else:
+            pytest.fail("the DUT's hotspot came back after its second failed streak instead of the silent mode")
+        bench.ap_up()
+        restored = True
+        up_at = time.monotonic()
+        relink_s = window_s + _wifi_const("_STA_CONNECT_POLL_ITERS") * _wifi_const("_STA_CONNECT_POLL_S") + refresh_s + _DERIVED_WAIT_MARGIN_S
+        wait_until(lambda: _dut_reachable_again(dut_ip), timeout_s=relink_s, poll_interval_s=_FLIP_BACK_POLL_S, description="the silent DUT to link on a later attempt once the bench AP is back, with no reset")
+        assert_no_task_ended(dut_ip, "the second failed streak, the silent mode and its later link")
+        result_note(f"silent mode: relinked {time.monotonic() - up_at:.0f} s after the bench AP came back (one silent period is {window_s:.0f} s)")
+        gained = _gained_entries(before, _wifi_log(dut_ip))
+        silent, give_up = ("W", code("W", "WLAN_SILENT")), ("E", code("E", "WLAN_GIVE_UP"))
+        assert gained.count(silent) == 1 and give_up not in gained, f"expected one WLAN_SILENT slot and no WLAN_GIVE_UP in WIFI's history, gained {gained!r}"
+    finally:
+        # The bench AP back on every path, and left alone once up: NetworkManager takes an active profile down before it
+        # activates it again (NetworkManager's nm-manager.c, _internal_activate_device()), which would drop the relinked DUT.
+        if not restored:
+            bench.leave_dut_hotspot_and_restore_bridge()
 
 
 # ---------------------------------------------------------------------------

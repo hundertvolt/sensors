@@ -290,11 +290,15 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   config file forced into repair and the littlefs erase count of that commit recorded (A.U31.03), the torn-write reset
   race (A.U35.40), the role reversal's destructive stage 6 run as the round's last bench test, after every other gated
   and read-only row, with stage 8's check that the STA mode is back after the recovery reset (A.U26.39 (3)-(4):
-  `_PHASE_DEACTIVATED` cleared by `machine.reset()`), the `HotspotPW` PUT rows
+  `_PHASE_DEACTIVATED` cleared by `machine.reset()`; after the U22 start fold, OR151, stage 6 ends in the silent mode
+  instead, which a `machine.reset()` clears the same way, M.HW_BENCH.071 (2)), the wrong-password-over-the-hotspot test
+  (M.HW_BENCH.073 (1) (a): the hotspot reopens once, one owned flash write, OR152) and the opt-in silent-mode relink case
+  of about 18 min (M.HW_BENCH.073 (1) (b), OR151; its gate decided at U26), the `HotspotPW` PUT rows
   (A.U18.38), the console row of A.U19.23 (`DebugLevel` 0 by PUT, a host process holding the CDC port open with DTR
   and never reading, the adversarial-client load of A.U19.23's L1 test replayed over HTTP for 60 s: no WDT reset,
   `ResetReason` unchanged, then `DebugLevel` 5 restored — 2 flash writes). Before stage 6 the record names its
-  recovery: the USB raw REPL does not depend on the WLAN, so a board left with its WLAN deactivated is restored over USB
+  recovery: the USB raw REPL does not depend on the WLAN, so a board left with its WLAN deactivated (silent, after the
+  U22 start fold) is restored over USB
   (`config_files_restore.py` with the saved files, then `machine.reset()`, then a power cycle if that fails); a stage-8
   failure stops the round and goes to the owner (A.C.01 (9)). (2) `--allow-persistence-write
   --allow-scd30-extra-write`: the SCD30 hazard arm (A.U26.32), Altitude with `AmbPres` 0 (A.U26.72), the argument

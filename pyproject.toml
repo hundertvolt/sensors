@@ -291,7 +291,7 @@ max-returns = 10
 #
 # ARG004: _DefaultSignalSink.request_signal() is a no-op static sink whose signature mirrors
 # NeopixelDriver's exactly, so codegen needs no special case.
-"src/asy_notification_service.py" = ["ANN401", "ARG004"]
+"src/asy_notification_service.py" = ["ARG004"]
 "tests/test_asy_sgp40_driver.py" = ["ANN401"]
 "tests/test_notification_scd30_sgp40_integration.py" = ["ANN401"]
 "tests/test_notification_sgp40_integration.py" = ["ANN401"]
@@ -443,8 +443,6 @@ module = [
     "_uart_comm_harness",
     "_uart_link_contract",
     "allocation_need_per_source",
-    "asy_neopixel_driver",
-    "asy_notification_service",
     "asy_system_service",
     "machine",
     "serving_at_default_gc",
@@ -462,8 +460,6 @@ module = [
     "test_asy_framing_codecs",
     "test_asy_i2c_driver",
     "test_asy_isl29125_driver",
-    "test_asy_neopixel_driver",
-    "test_asy_notification_service",
     "test_asy_ntp_client",
     "test_asy_print_log",
     "test_asy_scd30_driver",
@@ -480,9 +476,7 @@ module = [
     "test_bus_hazard_multi_device",
     "test_fake_timer_and_network",
     "test_fram_integration",
-    "test_neopixel_wifi_integration",
     "test_notification_fram_integration",
-    "test_notification_neopixel_integration",
     "test_notification_scd30_integration",
     "test_notification_scd30_sgp40_integration",
     "test_notification_sgp40_integration",

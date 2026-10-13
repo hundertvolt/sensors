@@ -319,8 +319,6 @@ tests/test_asy_webserver_service.py	the callback must never see an out-of-range 
 tests/test_asy_webserver_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_webserver_service.py	writer.close() raising is real Stream-caller-supplied behavior this module must
 tests/test_asy_wifi_service.py	(field, largest accepted, smallest refused) - each pair within the schema's char
-tests/test_asy_wifi_service.py	A task restart (e.g. after the _hw_op_failed streak gives up) must NOT pull the
-tests/test_asy_wifi_service.py	All four _conn_phase values are exercised deliberately: a regression narrowed to
 tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
 tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
 tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test

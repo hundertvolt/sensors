@@ -1,0 +1,47 @@
+U22 lane E: the Wi-Fi silent mode and the fresh-boot settings change in the docs
+
+CLAUDE.md carries the one meaning change, following the owner's requirements
+of 2026-10-08: the real-hardware go-ahead rule's safety facts name the hotspot
+role-reversal scenario's stage-6 fallback (a failed credential reopens the
+DUT's hotspot once, then its silent mode) in place of its stage-6
+permanent-WLAN-deactivation risk. The rest of that bullet is word for word.
+
+The owner's words, 2026-10-08. On the second failed STA streak after a hotspot
+phase, which switched Wi-Fi off: "Don't permanently switch WiFi off, only stop
+retrying to connect." ... "The WiFi LED stays dark, even if it is activated,
+being completely silent in that mode. It should look like turned off." ...
+"Entering the hotspot mode only through a reboot, as is." Told that WLAN.scan()
+holds the VM past the watchdog, so the availability check is one silent
+connect attempt every hotspot_time_min: "a, go ahead and add it to all layers
+and tiers affected, ...". On a settings change, told that it reset neither the
+failure streak nor the hotspot-used-once state (question paraphrased): "Point
+1: Unify it. Simplify it. Any change of credentials, no matter from which
+side, lands in the same mode as "initial connection attempt after a fresh
+boot". All further steps follow normally. This means one operation flow
+covering all needs."
+
+Every other edit makes no meaning change beyond those two requirements:
+- README.md: the map's tests_hardware/README.md entry names the role
+  reversal's stage-6 fallback; the retired-docs paragraph's safety-fact list
+  drops the deactivation risk.
+- tests_hardware/README.md: the header pointer; "What a failed stage-6
+  credential does" replaces the deactivation-risk item and names the two
+  stage-6 bench cases, their markers, the long case's gate and a candidate
+  invocation (not yet run on hardware); the fourth pass's outage item stays
+  off the hotspot fallback.
+- DEVICE_REFERENCE.md: the overlay bullet's no-configuration pattern and the
+  silent mode; the networking-status sentence names the change to the silent
+  mode and the silent attempts' warnings.
+- digital_twin/README.md: the twin's two Wi-Fi knobs; the Wi-Fi modes file
+  beside the in-process tier.
+- BACKLOG.md: the build-environment list's 2026-10-12 entry (pyproject.toml
+  lint and type config only); one owed real-hardware row for the two stage-6
+  cases, FRAM-backed logs read first.
+- DEVICE_REFERENCE.md (second commit): the networking-status section states
+  for users that saving a changed SSID, PW, Country, Hostname or HotspotPW
+  restarts the Wi-Fi connection as a fresh boot does, so a wrong password
+  brings the hotspot back after its failed streak and the unit stays
+  reachable for a correction.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

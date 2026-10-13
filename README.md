@@ -776,7 +776,7 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 - **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
   prerequisites, environment variables, how to run each tier, the safety facts (the
   `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
-  gates, the stage-6 permanent-WLAN-deactivation risk, the FRAM-chunk overwrite trap), the dev
+  gates, the role reversal's stage-6 fallback, the FRAM-chunk overwrite trap), the dev
   bench's wiring, chips, host-network recipe and dated state, the ISL29125 bench-rig facts and the
   numbered audit passes that found this tier's own gaps. CLAUDE.md's
   real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;
@@ -798,7 +798,7 @@ modes, the hotspot role-reversal deep-dive's verified driver-behavior facts, and
 overlap scan now live in `SPECIFICATION.md` Part E.6; the "a session needs the project owner's
 go-ahead before touching real hardware, and it doesn't carry over between sessions" policy is now
 CLAUDE.md's own hard rule; the remaining safety facts (the `--allow-flash-cycle`/long-soak opt-in
-gates, the stage-6 permanent-WLAN-deactivation risk, `BENCH_AP_PASSWORD` handling) were already
+gates, `BENCH_AP_PASSWORD` handling) were already
 duplicated in `tests_hardware/README.md`; the two still-genuinely-open items (a real, long-duration
 memory-soak run not yet executed; two bench-rig capabilities — a programmable GPIO fault-injection
 harness, a second WiFi test client — flagged as not currently provisioned) are now tracked in

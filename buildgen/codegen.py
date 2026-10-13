@@ -647,7 +647,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         notification = _singleton_var(ctx, "notification")
         lines.append('async def _notification_status() -> "JsonDict":')
         lines.append(f"    data = await {notification}.get_data()")
-        lines.append(f'    return {{"Triggered": data.Triggered, "TS": data.TS, "PauseTime": await {notification}.get_override_led()}}')
+        lines.append(f'    return {{"Triggered": data.Triggered, "State": data.State, "TS": data.TS, "PauseTime": await {notification}.get_override_led()}}')
         lines.append("")
 
 

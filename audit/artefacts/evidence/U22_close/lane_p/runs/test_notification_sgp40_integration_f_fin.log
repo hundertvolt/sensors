@@ -1,0 +1,4 @@
+PASS test_real_sensor_reading_above_threshold_flows_through_to_a_real_ramp
+PASS test_recovers_and_triggers_normally_after_a_prior_fault
+PASS test_i2c_bus_fault_degrades_to_not_triggered_and_stays_isolated_to_sgp40s_own_log
+3/3 passed, 0 failed, 0 skipped

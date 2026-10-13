@@ -1,0 +1,1 @@
+ruff_scoped rc=0 (lint.sh's 8 scopes): All checks passed!

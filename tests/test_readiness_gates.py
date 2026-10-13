@@ -294,8 +294,8 @@ def test_notification_service_answers_before_and_after_a_failed_setup() -> None:
     svc = NotificationService(_signal, _no_local_time, (), cfg_path=_blocked_dir("NOTIFY"), log=LogConfig(None, 4, None))
     calls = _reader_calls(svc)
     calls.update({
-        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (False, None)),
-        "get_dict_data": ((), lambda r: r == {"NOTIFY": {"Triggered": False, "TS": None}}),
+        "get_data": ((), lambda r: isinstance(r, tuple) and tuple(r) == (False, None, None)),
+        "get_dict_data": ((), lambda r: r == {"NOTIFY": {"Triggered": False, "State": None, "TS": None}}),
         "get_dict_cfg": ((), lambda r: r == {"NOTIFY": {"error": "unavailable"}}),
         "get_override_led": ((), lambda r: r == 0),
         "get_timer_starters": ((), lambda r: r == []),

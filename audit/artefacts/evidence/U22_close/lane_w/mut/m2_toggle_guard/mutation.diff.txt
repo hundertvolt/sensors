@@ -1,0 +1,23 @@
+# mutant m2_toggle_guard against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m2_toggle_guard
+@@ -536,7 +536,7 @@
+                 self.pr.err("LED on() failed:", e)
+ 
+     def _led_toggle(self) -> None:
+-        if self._led is not None and self._conn_phase != _PHASE_SILENT:  # dark while silent, see _led_on()
++        if self._led is not None:  # dark while silent, see _led_on()
+             try:  # see _led_on()'s comment
+                 self._led.toggle()
+             except Exception as e:
+@@ -731,8 +731,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:

@@ -33,9 +33,16 @@ STAT_WRONG_PASSWORD = -3
 # @tunable l2.twin_wifi_connect_delay_s = 0.7
 _CONNECT_DELAY_S = 0.7
 
+# twin-only test knob: the home network's access point is down for every interface object until switched back
+_access_point_up = [True]
 _country_code = ["DE"]
 _hostname_value = ["SensorNode"]
 _CONNECTED_IFCONFIG = ("192.168.1.42", "255.255.255.0", "192.168.1.1", "192.168.1.1")
+_MAX_STAS = 32  # extmod/network_cyw43.c:377 (v1.29.0): the stations buffer's size
+
+
+def set_access_point_up(*, up: bool) -> None:
+    _access_point_up[0] = up
 
 
 def country(code: "str | None" = None) -> str:
@@ -72,27 +79,22 @@ class WLAN:
         # Test/Step-5-run fault injection - method name -> exception to raise once armed, same
         # shape as every chip fake's FaultInjector in this package.
         self.raise_on: dict[str, Exception] = {}
+        # twin-only test knob: rp2's stations answer with the radio down (network_cyw43.c:371-388)
+        self.stations_chip_down = False
 
     def _maybe_raise(self, method: str) -> None:
         exc = self.raise_on.get(method)
         if exc is not None:
             raise exc
 
-    def active(self, value: "bool | None" = None) -> bool:
-        self._maybe_raise("active")
-        if value is not None:
-            self._active = bool(value)
-        return self._active
-
-    def script_connect_outcomes(self, outcomes: "list[int]") -> None:
-        # A FIFO consumed one entry per COMPLETED _run_connect() below: a disconnect() that
-        # cancels a pending attempt never reaches the assignment past its await, so it consumes
-        # nothing. An exhausted queue falls back to always-succeeds, as before this existed.
-        self._scripted_outcomes = list(outcomes)
-
     async def _run_connect(self) -> None:
         await asyncio.sleep(_CONNECT_DELAY_S)
-        outcome = self._scripted_outcomes.pop(0) if self._scripted_outcomes else STAT_GOT_IP
+        if not _access_point_up[0]:  # nothing to join, so no scripted outcome is consumed
+            outcome = STAT_NO_AP_FOUND
+        elif self._scripted_outcomes:
+            outcome = self._scripted_outcomes.pop(0)
+        else:
+            outcome = STAT_GOT_IP
         if outcome == STAT_GOT_IP:
             self._connected = True
             self._status = STAT_GOT_IP
@@ -104,6 +106,16 @@ class WLAN:
             self._connected = False
             self._status = outcome
             self._ifconfig = ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0")
+
+    def active(self, value: "bool | None" = None) -> bool:
+        self._maybe_raise("active")
+        if value is not None:
+            self._active = bool(value)
+        return self._active
+
+    def config(self, **kwargs: object) -> None:  # recorded verbatim, never inspected
+        self._maybe_raise("config")
+        self.config_calls.append(kwargs)
 
     def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
@@ -117,6 +129,10 @@ class WLAN:
             self._connect_task.cancel()
         self._connect_task = asyncio.get_event_loop().create_task(self._run_connect())
 
+    def deinit(self) -> None:
+        self._maybe_raise("deinit")
+        self.deinit_called = True
+
     def disconnect(self) -> None:
         self._maybe_raise("disconnect")
         self.disconnect_called = True
@@ -126,13 +142,19 @@ class WLAN:
         self._connected = False
         self._status = STAT_IDLE
 
-    def deinit(self) -> None:
-        self._maybe_raise("deinit")
-        self.deinit_called = True
+    def ifconfig(self) -> "tuple[str, str, str, str]":
+        self._maybe_raise("ifconfig")
+        return self._ifconfig
 
     def isconnected(self) -> bool:
         self._maybe_raise("isconnected")
         return self._connected
+
+    def script_connect_outcomes(self, outcomes: "list[int]") -> None:
+        # A FIFO consumed one entry per COMPLETED _run_connect() with the access point up: a
+        # disconnect() that cancels a pending attempt never reaches the assignment past its await, so
+        # it consumes nothing. An exhausted queue falls back to always-succeeds.
+        self._scripted_outcomes = list(outcomes)
 
     def status(self, param: "str | None" = None) -> "int | list[Any]":  # "stations" returns the
     # station list, every other query an int - matching real WLAN.status() (SPECIFICATION.md A.4).
@@ -140,13 +162,7 @@ class WLAN:
         if param == "rssi":
             return self._rssi
         if param == "stations":
+            if self.stations_chip_down:  # cyw43_ensure_up() failed: the count stays at the buffer size, the bytes unfilled (cyw43_ctrl.c:717-723)
+                return [(bytes(6),) for _ in range(_MAX_STAS)]
             return self._stations
         return self._status
-
-    def config(self, **kwargs: object) -> None:  # recorded verbatim, never inspected
-        self._maybe_raise("config")
-        self.config_calls.append(kwargs)
-
-    def ifconfig(self) -> "tuple[str, str, str, str]":
-        self._maybe_raise("ifconfig")
-        return self._ifconfig

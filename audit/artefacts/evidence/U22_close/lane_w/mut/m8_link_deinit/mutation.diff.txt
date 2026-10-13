@@ -1,0 +1,24 @@
+# mutant m8_link_deinit against the lane snapshot prestreak/asy_wifi_service.py
+--- base/asy_wifi_service.py
++++ mutant/m8_link_deinit
+@@ -731,8 +731,8 @@
+         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+ 
+     async def _run_silent_mode(self) -> None:
+-        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+-        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
++        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never
++        # WLAN.scan(), which holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+         if not self._hotspot_timer_running:
+             await self._arm_hotspot_timer()  # a failed arm is persisted and retried next iteration
+         if not self._silent_attempt_due:
+@@ -742,9 +742,6 @@
+             if not self._wlan_isconnected_or_false():
+                 await self._attempt_sta_connect()
+             await self._handle_sta_connection_result()  # silent is never ESTABLISHED: no retry wait is ever due here
+-        if self._conn_phase == _PHASE_STA_ESTABLISHED:  # a link ends the period: a later loss takes the 60 s retry
+-            self._hotspot_timer.deinit()
+-            self._hotspot_timer_running = False
+ 
+     async def _run_sta_mode(self) -> None:
+         async with self.wifi_mode_lock:

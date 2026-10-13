@@ -28,7 +28,7 @@ Site = tuple[str, str, str]
 # of these files passes; a function-level import there does not.
 _NAMED_EXCEPTIONS: dict[str, str] = {
     "buildgen/validate.py": "loads toolchain/micropython_overrides.py by path: it is no package",
-    "digital_twin/run_generic_integration.py": "the module its device config names",
+    "digital_twin/run_generic_integration.py": "the module its device config names, or a twin test's plan-picked device",
     "ext/freezefs/ffsextract.py": "vendored, build-time only; its extract mode is never used",
     "tests/_boot_contiguity_probe.py": "a device module by its derived name",
     "tests/_digital_twin_construction_scenarios.py": "a device module by its derived name",

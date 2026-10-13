@@ -78,7 +78,7 @@
       "62": {"owner": "wifi", "name": "WLAN_STA_START", "text": "starting a STA connect raised"},
       "63": {"owner": "wifi", "name": "WLAN_STA_POLL", "text": "polling the STA status raised"},
       "64": {"owner": "wifi", "name": "WLAN_STA_DISCONNECT", "text": "the STA disconnect raised"},
-      "65": {"owner": "wifi", "name": "WLAN_OFF", "text": "permanently deactivating the WLAN raised"},
+      "65": {"owner": "wifi", "name": "WLAN_OFF", "text": "permanently deactivating the WLAN raised", "retired": true},
       "66": {"owner": "wifi", "name": "WLAN_GIVE_UP", "text": "repeated WLAN hardware failures; the task gives up and restarts"},
       "67": {"owner": "ntp", "name": "NTP_DNS", "text": "the NTP server name did not resolve"},
       "68": {"owner": "ntp", "name": "NTP_IMPLAUSIBLE", "text": "the reply's time is implausible"},
@@ -175,10 +175,10 @@
       "71": {"owner": "bmp3xx", "name": "BMP_CHIP_RESET", "text": "a chip self-reset was read (EVENT por_detected); the stored configuration is re-applied"},
       "73": {"owner": "scd30", "name": "SCD_NOT_READY", "text": "five consecutive data-ready signals brought no new measurement (a data-ready line stuck high?)"},
       "75": {"owner": "isl29125", "name": "ISL_CAL_TIMEOUT", "text": "a gain-ratio calibration window closed without a stable reading"},
-      "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read; the hotspot timer is left as it was"},
+      "77": {"owner": "wifi", "name": "WLAN_STATIONS_UNKNOWN", "text": "the hotspot's station list could not be read (the query raised, or the chip-down 32-entry answer); counted as no client"},
       "78": {"owner": "wifi", "name": "WLAN_STATUS_UNREADABLE", "text": "the WLAN status could not be read; the last link state and uptime are kept"},
       "79": {"owner": "wifi", "name": "WLAN_TO_HOTSPOT", "text": "repeated STA connect failures reached the limit; the unit falls back to its hotspot"},
-      "80": {"owner": "wifi", "name": "WLAN_DEACTIVATED", "text": "a second STA failure streak after the hotspot ran; the WLAN is deactivated until a power cycle"},
+      "80": {"owner": "wifi", "name": "WLAN_SILENT", "text": "a second STA failure streak after the hotspot ran; Wi-Fi goes silent: no hotspot, the LED dark, one connect attempt every hotspot_time_min until a link"},
       "81": {"owner": "wifi", "name": "WLAN_NO_VERDICT", "text": "a STA connect poll ended without a verdict (still connecting, or joined without an IP address)"}
     }
   },
@@ -219,6 +219,13 @@
       "1": {"text": "suitable for Calibrate Gain Ratio"},
       "2": {"text": "too dark"},
       "3": {"text": "too bright"}
+    },
+    "NotifyState": {
+      "0": {"text": "every signal evaluated"},
+      "1": {"text": "not evaluated by setting (AutoOn off, paused, or outside the window)"},
+      "2": {"text": "not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed)"},
+      "3": {"text": "evaluated in part (a value unavailable, stale or not numeric)"},
+      "4": {"text": "the service's own configuration unreadable"}
     }
   }
 }

@@ -125,9 +125,13 @@ the UDP shim (see "Running the twin's own tests" below).
   around the Unix port's own BSD sockets, so it transparently reaches the real network once
   "connected". `ifconfig()` reports a plausible static address rather than a discovered one (this
   MicroPython build's `socket.socket` has no `getsockname()`) — harmless, since nothing in `src/`
-  constructs a socket from that value. **AP-mode fidelity gap**: `WLAN.active()`/`config()` don't
-  simulate address assignment on hotspot activation, so `ifconfig()[0]` reads `"0.0.0.0"` in AP
-  mode instead of a realistic address — real hardware's cyw43 driver does return a real IP here.
+  constructs a socket from that value. Two twin-only knobs model what the WiFi service has to ride
+  out: `set_access_point_up(up=False)` takes the home network's access point away from every
+  interface object until it is switched back, and a `WLAN` object's `stations_chip_down` makes its
+  hotspot's `status("stations")` answer 32 unfilled entries, as rp2 does when its radio cannot be
+  brought up. **AP-mode fidelity gap**: `WLAN.active()`/`config()` don't simulate address
+  assignment on hotspot activation, so `ifconfig()[0]` reads `"0.0.0.0"` in AP mode instead of a
+  realistic address — real hardware's cyw43 driver does return a real IP here.
 - `_http_client.py` — minimal hand-rolled HTTP/1.1 client over `asyncio.open_connection()`, used to
   drive real requests against `WebserverService` in Unix-port integration runs (no HTTP client
   library is frozen into the pinned Unix-port build). Every response it sees is `Connection: close`
@@ -246,6 +250,11 @@ value}}` shape, so `/networking`/`/notification` always returned `{}` and `/syst
 dropped its `ntp`-sourced fields — masked by `tests/test_asy_webserver_service.py`'s own uniform
 fakes, which happened to return an already-flat shape. Every module's config dict now has the one
 nested shape (SPECIFICATION.md C.6), unwrapped by `_cfg_values()` in `src/asy_webserver_service.py`.
+
+`tests/test_digital_twin_wifi_modes.py` is the same tier at the product's real waits: one boot of a
+generated device's real graph, the first plan wiring a neopixel and a FRAM, walks the Wi-Fi modes
+after a hotspot ran (the stations rule, a settings change landing in the fresh-boot state, the
+silent mode and its later link), in a file of its own for that wall time.
 
 ### Booting a generated device
 

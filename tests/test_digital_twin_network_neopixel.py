@@ -19,6 +19,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from neopixel import NeoPixel
 from network import (
+    AP_IF,
     STA_IF,
     STAT_CONNECT_FAIL,
     STAT_CONNECTING,
@@ -27,16 +28,13 @@ from network import (
     STAT_NO_AP_FOUND,
     STAT_WRONG_PASSWORD,
     WLAN,
+    set_access_point_up,
 )
 
 # @tunable l2.network_neopixel_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
 # @tunable l2.network_neopixel_poll_ms = 20
 _POLL_MS = 20
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
 
 
 async def _wait_until_connected(wlan: WLAN, timeout_s: float = _WAIT_TIMEOUT_S) -> None:
@@ -53,6 +51,10 @@ async def _wait_until_settled(wlan: WLAN, timeout_s: float = _WAIT_TIMEOUT_S) ->
             await asyncio.sleep_ms(_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
+
+
+def run(coro: "Coroutine[Any, Any, T]") -> "T":
+    return asyncio.run(coro)
 
 
 def test_wlan_starts_disconnected() -> None:
@@ -291,6 +293,46 @@ def test_wlan_connect_calls_stays_bounded_across_many_calls() -> None:
         assert wlan.connect_calls[-1] == ("ssid", "password")
 
     run(scenario())
+
+
+def test_a_downed_access_point_fails_every_interface_object_until_switched_back() -> None:
+    async def scenario() -> None:
+        first = WLAN(STA_IF)
+        first.connect("ssid", "password")
+        await _wait_until_connected(first)  # an address the downed access point must take away
+        set_access_point_up(up=False)
+        try:
+            first.script_connect_outcomes([STAT_WRONG_PASSWORD])
+            first.connect("ssid", "password")
+            await _wait_until_settled(first)
+            assert (first.status(), first.isconnected(), first.ifconfig()) == (STAT_NO_AP_FOUND, False, ("0.0.0.0", "0.0.0.0", "0.0.0.0", "0.0.0.0"))
+            second = WLAN(STA_IF)  # the service constructs a new interface object on every mode switch
+            second.connect("ssid", "password")
+            await _wait_until_settled(second)
+            assert (second.status(), second.isconnected(), second.ifconfig()[0]) == (STAT_NO_AP_FOUND, False, "0.0.0.0")
+            set_access_point_up(up=True)
+            first.connect("ssid", "password")
+            second.connect("ssid", "password")
+            await _wait_until_settled(first)
+            await _wait_until_settled(second)
+            assert first.status() == STAT_WRONG_PASSWORD  # the outcome scripted while the access point was down stayed queued
+            assert (second.status(), second.isconnected()) == (STAT_GOT_IP, True)
+        finally:
+            set_access_point_up(up=True)
+
+    run(scenario())
+
+
+def test_a_chip_down_stations_answer_is_32_unfilled_entries() -> None:
+    wlan = WLAN(AP_IF)
+    client = (b"\x02\x00\x00\x00\x00\x01",)
+    wlan._stations = [client]
+    wlan.stations_chip_down = True
+    stations = wlan.status("stations")
+    assert isinstance(stations, list)
+    assert len(stations) == 32 and all(entry == (bytes(6),) for entry in stations), stations
+    wlan.stations_chip_down = False
+    assert wlan.status("stations") == [client]
 
 
 def test_neopixel_records_committed_frames() -> None:

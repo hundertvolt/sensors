@@ -255,6 +255,22 @@ def test_each_status_group_lists_the_keys_its_generated_source_returns(repo_root
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_notification_status_publishes_why_its_signals_were_not_evaluated(repo_root: Path, src_dir: Path, device: str) -> None:
+    # State rides beside Triggered in the published order, its codes the catalog's NotifyState table (SPECIFICATION.md A.4).
+    source = generate_device(device_toml(device), src_dir, repo_root / "ext").module_source
+    status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
+    group = next((g for g in status["groups"] if g["key"] == "notification"), None)
+    if group is None:
+        pytest.skip(f"{device} has no notification instance")
+    assert [f["key"] for f in group["fields"]] == _returned_keys(source, "_notification_status") == ["Triggered", "State", "TS", "PauseTime"]
+    assert group["fields"][1] == {
+        "key": "State", "label": "Evaluation State", "kind": "readonly",
+        "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
+        "codes": {num: row["text"] for num, row in _CATALOG["status"]["NotifyState"].items()},
+    }
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_networking_status_carries_the_address_once_and_says_what_the_link_counts(repo_root: Path, src_dir: Path, device: str) -> None:
     status = next(s for s in _generate(repo_root, src_dir, device)["sections"] if s["key"] == "status")
     fields = {f["key"]: f for f in next(g for g in status["groups"] if g["key"] == "networking")["fields"]}
@@ -403,6 +419,10 @@ def _tagged_code_tables(src_dir: Path) -> "dict[str, str]":
     return {t.field_name: t.codes for p in sorted(src_dir.glob("*.py")) for t in parse_web_tags(p, "fixture", "x") if t.codes is not None}
 
 
+# The Status page's own rows whose key is not their table's name; every other catalog row names its table by its key.
+_STATUS_ROW_TABLES = {"State": "NotifyState"}
+
+
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path, src_dir: Path, device: str) -> None:
     # A catalog row (the Status page's own fields) names its table by its key; a tagged field by codes=.
@@ -411,7 +431,7 @@ def test_every_field_codes_table_equals_its_catalog_status_table(repo_root: Path
     for _section, group in _field_groups(_generate(repo_root, src_dir, device)):
         for f in group["fields"]:
             if "codes" in f:
-                table = named.get(f["key"], f["key"])
+                table = named.get(f["key"], _STATUS_ROW_TABLES.get(f["key"], f["key"]))
                 assert table in tables, f"{f['key']} carries codes but the catalog has no status table {table!r}"
                 assert f["codes"] == {num: row["text"] for num, row in tables[table].items()}, f["key"]
 

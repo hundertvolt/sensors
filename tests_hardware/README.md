@@ -12,8 +12,8 @@ worth knowing before trusting a run's results.
 go-ahead first, given directly in that session's own conversation** - see CLAUDE.md's own hard rule
 on this. Once granted, this file has everything else needed: prerequisites below, environment
 variables, the critical safety facts folded into "Known assumptions and open findings" (the
-`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the stage-6 permanent-WLAN-
-deactivation risk, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
+`--allow-flash-cycle`/long-soak opt-in gates in "Running" below, the role reversal's stage-6
+fallback, `BENCH_AP_PASSWORD` handling in "Environment variables" below).
 
 ## Prerequisites
 
@@ -743,16 +743,23 @@ a live question:
   `nmcli device wifi connect`'s own syntax, which *was* confirmed directly against real `nmcli
   --help` output (installed in that sandbox specifically to check it). See
   `bench_control.BenchBridge.own_ip_on()`/`gateway_ip()`'s own docstrings.
-- **A permanent-WLAN-deactivation risk in the role-reversal scenario's own stage 6, found during a
-  second, deeper re-audit of this tier's claims against `src/asy_wifi_service.py`**: by stage 6 the
-  DUT has necessarily already been in hotspot mode since stage 0 (`_hotspot_started_once == True`),
-  so a failed real credential PUT (5 failed STA attempts) leads to `_PHASE_DEACTIVATED` - a terminal
-  state only a real power-cycle clears (SPECIFICATION.md Part A.4; owner, 2026-07-13, `368fa83`) -
-  NOT a graceful fall-back to hotspot the way an *earlier* failure in the scenario would.
-  `test_hotspot_role_reversal.py`'s `joined_hotspot` fixture already recovers from this via a
-  `board.hard_reset()` fallback in its own teardown, but a first real run hitting this path is worth
-  recognizing for what it is (an expected, designed-for recovery, not a new bug) rather than being
-  surprised by it.
+- **What a failed stage-6 credential does**: a credentials change lands in the fresh-boot state
+  (owner, 2026-10-08, paraphrase), so a failed real-credential PUT reopens the DUT's hotspot once
+  more although it has run since stage 0; with no client its window ends in one more streak and then
+  the silent mode, which retries once per `hotspot_time_min` (SPECIFICATION.md Part A.4). Nothing is
+  terminal; `test_hotspot_role_reversal.py`'s `joined_hotspot` still recovers with
+  `board.hard_reset()` rather than waiting that out. Two stage-6 cases pin this path:
+  `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot` (`persistence_write`: it owns one
+  flash write, a well-formed wrong password, which the real-credentials test after it restores) and
+  `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, about 20 min on `dev` (two
+  `hotspot_time_min` windows). That second case writes nothing and runs on the real-credentials
+  test's write: `persistence_write` is only its AND-gate on that write and `long_soak` gates its
+  length, so it needs the whole module in one run with `--soak-tier` and
+  `--allow-persistence-writes`. The bench runner excludes `long_soak`, and the soak runner's own
+  `-m long_soak` with `--allow-persistence-writes` selects the case without the write it needs,
+  which then fails its precondition check. A candidate invocation, not yet run on hardware:
+  `scripts/run_bench_soak_tests.sh --tier short --allow-persistence-writes -m role_reversal` (pytest
+  takes the last `-m`). Both cases compare WIFI's history before and after and never clear it.
 - ~~Captive-portal hotspot-mode redirect fallback (SPECIFICATION.md Part A.5) - real-hardware
   verification status: NEVER ACTUALLY RUN under a valid configuration.~~ — **resolved: confirmed
   working on real hardware (2026-09-03), on the real `dev` build via
@@ -1027,8 +1034,8 @@ tests closed these (54 -> 65, `bench/test_network_resilience.py` plus two new
   never increments `_connection_failures` and never reaches the hotspot-fallback path at all. This is
   a structurally *different, safer* branch than the one SPECIFICATION.md Part E.6.4's role-reversal
   scenario exercises (a never-yet-connected DUT) - confirmed by reading the real source before
-  designing these tests, specifically to rule out accidentally tripping that scenario's own disclosed
-  permanent-WLAN-deactivation risk. "WiFi available but no internet access" is treated as equivalent
+  designing these tests, specifically to stay off that scenario's hotspot fallback. "WiFi available
+  but no internet access" is treated as equivalent
   to "NTP/DNS unreachable" for this device: it has no other internet-dependent feature (no outbound
   fetch of remote content) to distinguish a general internet outage from an NTP/DNS-specific one -
   the pre-existing `test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing` already

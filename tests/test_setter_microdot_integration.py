@@ -28,6 +28,7 @@ from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request
 
 import asy_api_response as ar
+import asy_wifi_service
 from asy_base_classes import ValueRef
 from asy_bmp3xx_driver import BMP3XX_Reader
 from asy_crc_checks import CRC8
@@ -301,6 +302,50 @@ def test_mocked_set_wifi_led_applies_its_own_field_without_reconnecting() -> Non
     # setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi status LED must
     # never reconnect the WiFi connection.
     assert client._reconn_wifi is False
+
+
+class _YieldOnlyAsyncio:
+    # asy_wifi_service's view of asyncio, each sleep one yield: the trigger's grace and settle are not under test here.
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    async def sleep(self, _seconds: float) -> None:
+        await asyncio.sleep(0)
+
+
+def _wifi_const(name: str) -> int:
+    # A phase's value from src/asy_wifi_service.py's source: a const() is not a module attribute on MicroPython.
+    with open("src/asy_wifi_service.py") as f:
+        for line in f:
+            if line.startswith(name + " = const("):
+                return int(line.split("const(", 1)[1].split(")", 1)[0])
+    raise AssertionError(name + " not found in src/asy_wifi_service.py")
+
+
+def test_an_identity_change_lands_the_unit_in_the_fresh_boot_state() -> None:
+    # (owner, 2026-10-08): "Any change of credentials, no matter from which side, lands in the same mode as "initial
+    # connection attempt after a fresh boot"" - here from the hotspot after its boot streak and from an established link.
+    async def select(mode: int) -> bool:
+        return mode >= 0
+
+    seeking = _wifi_const("_PHASE_STA_SEEKING")
+    for phase in (_wifi_const("_PHASE_HOTSPOT"), _wifi_const("_PHASE_STA_ESTABLISHED")):
+        client = make_wifi_client()
+        client._select_wifi_mode = select  # type: ignore[method-assign]  # the mode switch is not under test
+        client._conn_phase, client._hotspot_started_once = phase, True
+        resp = run(_simulated_set_network_endpoint(client, _FakeRequest({"cmd": "setNetwork", "SSID": "NewNet", "PW": "newpassword"})))
+        assert resp["result"] == {"SSID": "Valid", "PW": "Valid"}, (phase, resp)
+        assert (client._reconn_wifi, client._reconnect_fresh) == (True, True), phase
+        asy_wifi_service.asyncio = _YieldOnlyAsyncio()  # type: ignore[assignment]
+        try:
+            run(client._handle_reconnect_trigger())
+        finally:
+            asy_wifi_service.asyncio = asyncio
+        assert (client._connection_failures, client._hotspot_started_once, client._conn_phase) == (0, False, seeking), phase
+        assert (client._reconn_wifi, client._reconnect_fresh) == (False, False), phase
+    led_only = make_wifi_client()
+    run(_simulated_set_wifi_led_endpoint(led_only, _FakeRequest({"cmd": "setWiFiLED", "LEDWifiOn": False})))
+    assert (led_only._reconn_wifi, led_only._reconnect_fresh) == (False, False)
 
 
 def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:

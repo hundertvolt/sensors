@@ -47,7 +47,6 @@ _ERR_WLAN_AP_START = const(61)
 _ERR_WLAN_STA_START = const(62)
 _ERR_WLAN_STA_POLL = const(63)
 _ERR_WLAN_STA_DISCONNECT = const(64)
-_ERR_WLAN_OFF = const(65)
 _ERR_WLAN_GIVE_UP = const(66)
 _WRN_STORED_DEFAULT = const(10)
 _WRN_CFG_READ = const(13)
@@ -58,7 +57,7 @@ _WRN_WLAN_STATUS_UNKNOWN = const(39)
 _WRN_WLAN_STATIONS_UNKNOWN = const(77)
 _WRN_WLAN_STATUS_UNREADABLE = const(78)
 _WRN_WLAN_TO_HOTSPOT = const(79)
-_WRN_WLAN_DEACTIVATED = const(80)
+_WRN_WLAN_SILENT = const(80)
 _WRN_WLAN_NO_VERDICT = const(81)
 
 # Schema tuples for ConfigManager.get_*_values().
@@ -172,7 +171,7 @@ _LED_HOTSPOT_CLIENT_ON_S = const(1.5)  # a station on the hotspot: an even slow 
 # @tunable wifi.led_hotspot_client_off_s = 1.5
 _LED_HOTSPOT_CLIENT_OFF_S = const(1.5)
 # @tunable wifi.led_deactivated_on_s = 0.1
-_LED_DEACTIVATED_ON_S = const(0.1)  # deactivated: the hotspot pattern inverted, a short blink every 3 s
+_LED_DEACTIVATED_ON_S = const(0.1)  # no readable Wi-Fi configuration: the hotspot pattern inverted, a short blink every 3 s
 # @tunable wifi.led_deactivated_off_s = 2.9
 _LED_DEACTIVATED_OFF_S = const(2.9)
 # @tunable wifi.reconnect_caller_grace_s = 5
@@ -193,12 +192,14 @@ _PHASE_STA_SEEKING = const(0)  # STA mode, has not connected successfully since 
 _PHASE_STA_ESTABLISHED = const(1)  # STA mode, connected at least once since the last reset - live
 # wlan.isconnected() still distinguishes "connected" from "disconnected, retrying every 60s".
 _PHASE_HOTSPOT = const(2)  # AP/hotspot fallback mode active
-_PHASE_DEACTIVATED = const(3)  # terminal - WLAN fully deactivated until a power cycle or reset; survives a task restart
+_PHASE_DEACTIVATED = const(3)  # terminal - no readable Wi-Fi configuration: the radio stays unused until a reboot; survives a task restart
+_PHASE_SILENT = const(4)  # Silent after a second failed streak: no hotspot, the LED dark, one connect attempt per hotspot_time_min; survives a task restart
 
 # @tunable wifi.refresh_s = 5
 _WIFI_REFRESH_S = const(5)  # _connect_loop()'s loop period between connection checks
 
 _STAT_JOINED_NO_IP = const(2)  # cyw43 CYW43_LINK_NOIP (cyw43.h:100): joined, no IP yet; network exports no name for it (extmod/modnetwork.c:197-202, v1.29.0)
+_STATIONS_UNSET = const(32)  # status("stations") with a chip that cannot come up: the binding's 32-entry buffer, unfilled (network_cyw43.c:377-380, cyw43_ctrl.c:719-723, v1.29.0)
 # CYW43_PM_VALUE(NO_POWERSAVE, 200, 1, 1, 10): power save off, PM_PERFORMANCE's listen fields
 # (network_cyw43.c:43-52, v1.29.0); legacy's word.
 _PM_NO_POWERSAVE = const(0xA11140)
@@ -264,6 +265,8 @@ class WifiService(SensorReaderConfig):
         self._conn_phase = _PHASE_STA_SEEKING
         self._connection_failures = 0
         self._hotspot_started_once = False
+        self._reconnect_fresh = False  # set by the settings hook beside _reconn_wifi: that reconnect lands in the fresh-boot state
+        self._silent_attempt_due = False  # set by the watcher while silent, taken by _run_silent_mode()
         self._hw_op_failed = False  # this loop iteration's flag feeding _error_check(), see _connect_loop()
         self._tick_armed: bool | None = None  # the uptime tick's last arm; None until start_uptime_timer() ran
         # SSID/PW/Country/Hostname are persist-only (read fresh from cfgmgr each connection attempt);
@@ -276,15 +279,16 @@ class WifiService(SensorReaderConfig):
             # It stays: two flashes are not spent testing a harmless 100 ms wait (owner, 2026-10-05, paraphrase).
             await asyncio.sleep(_HOTSPOT_STATIONS_SETTLE_S)
             try:
-                stations = self._wlan.status("stations")
+                # The 1.29 stub types status(str) as int; "stations" returns a list of 1-tuples (network_cyw43.c:371-388).
+                # Remove the ignore when the stub types it (warn_unused_ignores then flags it).
+                stations: list[tuple[bytes]] = self._wlan.status("stations")  # type: ignore[assignment]
                 self.pr.all("Connected stations:", stations)
-            except Exception as e:  # A failed query is unknown, never 'no client': None leaves the hotspot timer as it is (the caller persists it).
+            except Exception as e:  # A failed check confirms no client: the caller counts it as none and persists it (owner, 2026-10-08).
                 self.pr.err("Could not fetch connected clients:", e)
                 return None
             else:
-                # The 1.29 stub types status(str) as int; "stations" returns a list of 1-tuples (network_cyw43.c:371-388).
-                # Remove the ignore when the stub types it (warn_unused_ignores then flags it).
-                return stations  # type: ignore[return-value]
+                # A chip that cannot come up leaves the binding's 32-entry buffer unfilled: a failed check, never 32 clients.
+                return None if len(stations) == _STATIONS_UNSET else stations
 
     async def _set_mgr_cfg(self, data: "JsonMapping", cfg_vals: "ConfigSchema") -> "tuple[bool, WriteValidity]":
         # Refuses a radio value outside its byte bound or shape before it is stored (C.7.4); the rest of the
@@ -313,6 +317,22 @@ class WifiService(SensorReaderConfig):
             await self.pr.wrn_s("Missing WLAN configuration!", wrnno=_WRN_CFG_READ)
         else:
             await self.set_wifi_led(status=led_cfg)
+
+    async def _arm_hotspot_timer(self) -> bool:
+        # The one arm path of the window's timer, which is the silent mode's period too. PERIODIC, per C.9: a dropped soft
+        # callback is re-fired one period later; the callback only sets the flag, _hotspot_timeout_loop() does the rest.
+        try:
+            self._hotspot_timer.init(
+                period=self._hotspot_time,
+                mode=Timer.PERIODIC,
+                callback=lambda _b: self._hotspot_timeout_trigger_event.set(),
+            )
+        except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) -
+            # _hotspot_timer_running stays False so the next refresh cycle retries arming it.
+            await self.pr.err_s("Could not start hotspot timer:", e, errno=_ERR_TIMER)
+            return False
+        self._hotspot_timer_running = True
+        return True
 
     async def _attempt_sta_connect(self) -> None:
         self.pr.evt("Establishing WLAN connection")
@@ -394,31 +414,22 @@ class WifiService(SensorReaderConfig):
                         self._hw_op_failed = True
                 if self._reconn_wifi:
                     await self._handle_reconnect_trigger()
+                evidence = True  # an idle silent iteration made no radio call: it neither counts nor heals the streak
                 if self._conn_phase == _PHASE_HOTSPOT:
                     await self._run_hotspot_mode()
+                elif self._conn_phase == _PHASE_SILENT:
+                    evidence = await self._run_silent_mode()
                 else:
                     await self._run_sta_mode()
                 # Consecutive-failure streak over real WLAN-hardware exceptions (separate from
                 # _connection_failures' AP-reachability fallback): gives up on the whole task,
                 # matching a Reader's _read_loop() returning False.
-                if not await self._error_check((None,), condition=self._hw_op_failed):
+                if (evidence or self._hw_op_failed) and not await self._error_check((None,), condition=self._hw_op_failed):
                     await self.pr.err_s(
                         "Giving up after repeated WLAN hardware failures, restarting task.", errno=_ERR_WLAN_GIVE_UP,
                     )
                     return
             await asyncio.sleep(_WIFI_REFRESH_S)
-
-    async def _deactivate_wlan_permanently(self) -> None:
-        await self.pr.wrn_s("Permanently no WLAN connection, no connection to hotspot. Deactivating WLAN!", wrnno=_WRN_WLAN_DEACTIVATED)
-        self._conn_phase = _PHASE_DEACTIVATED
-        try:
-            self._wlan.disconnect()
-            self._wlan.active(False)
-            await asyncio.sleep(_WLAN_DOWN_SETTLE_S)
-            self._wlan.deinit()
-        except Exception as e:
-            self._hw_op_failed = True
-            await self.pr.err_s("Error deactivating WLAN:", e, errno=_ERR_WLAN_OFF)
 
     async def _disconnect_sta_and_wait(self) -> None:
         try:
@@ -455,10 +466,15 @@ class WifiService(SensorReaderConfig):
             self._ledflash.cancel()
             self._ledflash = None
         self._reconn_wifi = False
+        fresh = self._reconnect_fresh
+        self._reconnect_fresh = False
+        if fresh:  # the settings hook's fresh-boot state: a fresh streak, the hotspot available once more (owner, 2026-10-08)
+            self._connection_failures = 0
+            self._hotspot_started_once = False
         leaving_hotspot = self._conn_phase == _PHASE_HOTSPOT
-        if not leaving_hotspot:
-            # _leave_hotspot_mode() below already lands on this same value via its own transition -
-            # only the plain-STA-reconnect path needs it set here.
+        if not leaving_hotspot and (fresh or self._conn_phase != _PHASE_SILENT):
+            # _leave_hotspot_mode() below already lands on this same value via its own transition - only the
+            # plain-STA-reconnect path needs it set here; a restart's own reconnect keeps the silent mode.
             self._conn_phase = _PHASE_STA_SEEKING
         self.pr.evt("WLAN reconnect triggered!")
         await asyncio.sleep(_RECONNECT_CALLER_GRACE_S)  # allow final tasks of calling function
@@ -475,21 +491,9 @@ class WifiService(SensorReaderConfig):
         return await self._on_sta_disconnected()
 
     async def _hotspot_client_absent(self) -> None:
-        if not self._hotspot_timer_running:
+        if not self._hotspot_timer_running:  # retry STA once the window ends with no client (maybe a router back after power loss)
             self.pr.evt("No client connected - hotspot timer started")
-            try:
-                # PERIODIC, per C.9: a dropped soft callback is simply re-fired one period later, and
-                # the first one delivered ends the repeats - reconnect_wifi() deinits this timer.
-                # The callback only sets the flag; _hotspot_timeout_loop() does the reconnect.
-                self._hotspot_timer.init(
-                    period=self._hotspot_time,
-                    mode=Timer.PERIODIC,
-                    callback=lambda _b: self._hotspot_timeout_trigger_event.set(),
-                )
-                self._hotspot_timer_running = True  # try to reconnect once after hotspot time if no client connected (maybe router reboot after power loss)
-            except (MemoryError, OSError) as e:  # alarm-pool exhaustion (ENOMEM) -
-                # _hotspot_timer_running stays False so the next refresh cycle retries arming it.
-                await self.pr.err_s("Could not start hotspot timer:", e, errno=_ERR_TIMER)
+            await self._arm_hotspot_timer()
         self._run_led_pattern(_LED_HOTSPOT_ON_S, _LED_HOTSPOT_OFF_S)
 
     def _hotspot_client_connected(self) -> None:
@@ -501,7 +505,10 @@ class WifiService(SensorReaderConfig):
     async def _hotspot_timeout_loop(self) -> None:
         while True:
             await self._hotspot_timeout_trigger_event.wait()
-            self.reconnect_wifi()
+            if self._conn_phase == _PHASE_SILENT:
+                self._silent_attempt_due = True  # a fire while one is due adds none
+            else:
+                self._on_hotspot_window_end()
 
     async def _leave_hotspot_mode(self) -> None:
         self._conn_phase = _PHASE_STA_SEEKING
@@ -520,7 +527,8 @@ class WifiService(SensorReaderConfig):
                 self.pr.err("LED off() failed:", e)
 
     def _led_on(self) -> None:
-        if self._led is not None:
+        # Silent mode: dark whatever LEDWifiOn says, until a link (owner, 2026-10-08: 'It should look like turned off.').
+        if self._led is not None and self._conn_phase != _PHASE_SILENT:
             try:  # self._led may be a caller-supplied ext_led (LEDControl Protocol, not necessarily a
                 # real Pin) - could misbehave, so this degrades silently rather than feeding
                 # _hw_op_failed/_error_check().
@@ -529,7 +537,7 @@ class WifiService(SensorReaderConfig):
                 self.pr.err("LED on() failed:", e)
 
     def _led_toggle(self) -> None:
-        if self._led is not None:
+        if self._led is not None and self._conn_phase != _PHASE_SILENT:  # dark while silent, see _led_on()
             try:  # see _led_on()'s comment
                 self._led.toggle()
             except Exception as e:
@@ -542,13 +550,24 @@ class WifiService(SensorReaderConfig):
     async def _manage_hotspot_stations(self) -> None:
         self.pr.all("Hotspot mode is active")
         stations = await self._get_hotspot_stations()
-        if stations is None:  # unknown: neither transition runs, so the timer stays as it was
-            await self.pr.wrn_s("Hotspot stations unknown, hotspot timer left as it was", wrnno=_WRN_WLAN_STATIONS_UNKNOWN)
+        # Unconfirmed is no client (owner, 2026-10-08): a glitch cannot end the window under a client, whose next good check stops it.
+        if stations is None:
+            await self.pr.wrn_s("Hotspot stations unknown, counted as no client", wrnno=_WRN_WLAN_STATIONS_UNKNOWN)
+            await self._hotspot_client_absent()
             return
         if len(stations) > 0:  # at least one client connected
             self._hotspot_client_connected()
         else:  # no client connected
             await self._hotspot_client_absent()
+
+    def _on_hotspot_window_end(self) -> None:
+        # The window's end: one more STA streak with the hotspot already used, then the silent mode (no fresh-boot flag).
+        self._hotspot_timer.deinit()
+        self._hotspot_timer_running = False
+        if self._ledflash is not None:
+            self._ledflash.cancel()
+            self._ledflash = None
+        self._reconn_wifi = True
 
     def _on_sta_connected(self) -> None:
         self.pr.one("WLAN connection established")
@@ -562,7 +581,7 @@ class WifiService(SensorReaderConfig):
         retry_due = self._conn_phase == _PHASE_STA_ESTABLISHED
         if retry_due:
             self.pr.evt("WLAN connection was previously successful, retrying in 1 minute...")
-        else:
+        elif self._conn_phase != _PHASE_SILENT:  # silent: one attempt per period, never a streak
             await self._register_sta_connection_failure()
         self._led_off()
         self.pr.all("WLAN status:", self._wlan_status_or_none())
@@ -653,7 +672,15 @@ class WifiService(SensorReaderConfig):
             return
         self._connection_failures = 0
         if self._hotspot_started_once:
-            await self._deactivate_wlan_permanently()
+            # Silent, never off (owner, 2026-10-08: "Don't permanently switch WiFi off, only stop retrying to connect."):
+            # the radio stays as the failed attempt left it, and the first attempt is due one period from now.
+            self._conn_phase = _PHASE_SILENT
+            self._silent_attempt_due = False
+            if self._ledflash is not None:
+                self._ledflash.cancel()
+                self._ledflash = None
+            self._led_off()
+            await self.pr.wrn_s("No WLAN connection after the hotspot ran - silent mode, one connect attempt per hotspot period", wrnno=_WRN_WLAN_SILENT)
         else:
             self._conn_phase = _PHASE_HOTSPOT
             await self.pr.wrn_s("Permanently no WLAN connection - activating hotspot!", wrnno=_WRN_WLAN_TO_HOTSPOT)
@@ -667,9 +694,10 @@ class WifiService(SensorReaderConfig):
             self._dns_server_task = None
         self._connection_failures = 0
         self._hotspot_started_once = False
-        if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED):
-            # DEACTIVATED survives a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it through _leave_hotspot_mode(),
-            # after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's restart did (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).
+        if self._conn_phase not in (_PHASE_HOTSPOT, _PHASE_DEACTIVATED, _PHASE_SILENT):
+            # DEACTIVATED (no configuration) and SILENT survive a restart (A.4); HOTSPOT is kept only so reconn_wifi below leaves it
+            # through _leave_hotspot_mode(), after which STA starts a fresh streak with hotspot_started_once cleared, as legacy's restart did
+            # (legacy/firmware/python/CommonDrivers/async_connect.py:176-181).
             self._conn_phase = _PHASE_STA_SEEKING
         self._hotspot_timer.deinit()
         self._hotspot_timer_running = False
@@ -693,13 +721,34 @@ class WifiService(SensorReaderConfig):
 
     def _run_led_pattern(self, on_s: float, off_s: float) -> None:
         # One flash task; asking for the pattern already running keeps its phase (a task that ended on a fault
-        # is not running: the next request starts it again).
+        # is not running: the next request starts it again). None while silent: dark until a link, see _led_on().
+        if self._conn_phase == _PHASE_SILENT:
+            return
         if self._ledflash is not None and not self._ledflash.done() and self._led_pattern == (on_s, off_s):
             return
         if self._ledflash is not None:
             self._ledflash.cancel()
         self._led_pattern = (on_s, off_s)
         self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+
+    async def _run_silent_mode(self) -> bool:  # True: an attempt ran, so the hardware streak has evidence to judge
+        # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a
+        # scan: WLAN's scan() holds the VM up to 10 s (extmod/network_cyw43.c:236-246, v1.29.0), past the watchdog.
+        if not self._hotspot_timer_running and not await self._arm_hotspot_timer():
+            # Persisted and retried next iteration; with no period no attempt is ever due, so the failed arm is this
+            # iteration's hardware failure and feeds the streak, as the uptime tick's does (agent, 2026-10-12).
+            self._hw_op_failed = True
+        if not self._silent_attempt_due:
+            return False
+        self._silent_attempt_due = False
+        async with self.wifi_mode_lock:
+            if not self._wlan_isconnected_or_false():
+                await self._attempt_sta_connect()
+            await self._handle_sta_connection_result()  # silent is never ESTABLISHED: no retry wait is ever due here
+        if self._conn_phase == _PHASE_STA_ESTABLISHED:  # a link ends the period: a later loss takes the 60 s retry
+            self._hotspot_timer.deinit()
+            self._hotspot_timer_running = False
+        return True
 
     async def _run_sta_mode(self) -> None:
         async with self.wifi_mode_lock:
@@ -916,12 +965,10 @@ class WifiService(SensorReaderConfig):
         return (self._conn_phase != _PHASE_HOTSPOT) and (self._wlan_status_or_none() == network.STAT_GOT_IP)
 
     def reconnect_wifi(self) -> None:
-        self._hotspot_timer.deinit()
-        self._hotspot_timer_running = False
-        if self._ledflash is not None:
-            self._ledflash.cancel()
-            self._ledflash = None
-        self._reconn_wifi = True
+        # The settings hook: a credentials change lands in the fresh-boot state, a fresh streak and the hotspot once more
+        # (owner, 2026-10-08). The teardown is the window end's; the flag is what makes the reconnect a fresh boot.
+        self._on_hotspot_window_end()
+        self._reconnect_fresh = True
 
     async def setup(self) -> bool:
         ok = await super().setup()

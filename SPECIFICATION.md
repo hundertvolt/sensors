@@ -349,28 +349,55 @@ features as today's deployed units, not a feature change.
   `BMP_CHIP_RESET` and writes the stored configuration back under the setter lock before converting; a write-back that
   fails fails the cycle into the ladder. ERR_REG (0x02) is read in the same burst as the data, and a set `fatal_err`
   fails the cycle (EVENT: BMP388 DS001 4.3.7, BMP390 DS002 4.3.8, BMP384 DS003 4.3.7; ERR_REG: 4.3.2, 4.3.3, 4.3.2).
-- Legacy `neopixel_signal.py` (LED hardware + hardcoded threshold monitoring) was split:
+- Legacy `neopixel_signal.py` (LED hardware plus hardcoded threshold monitoring) was split:
   `asy_neopixel_driver.py`'s `NeopixelDriver` (pure LED hardware; also serves
   `asy_wifi_service.py`'s `LEDControl` Protocol) and `asy_notification_service.py`'s
-  `NotificationSignal` (plain data holder) + `NotificationService(SensorReaderConfig)` (generic
-  threshold signalling — owns sleep-window/interval/`AutoOn`/global `FlashBri`/`FlashDur`, one
-  combined `ConfigManager`/logger). `led_signal()` (the REST command) is refused at once while a
-  signal is queued or running (owner, 2026-09-29): an external caller could flood the device into
-  exhaustion (owner, 2026-10-02); `request_signal()` (internal) waits for a running signal up to a
-  deadline, then queues and returns — never when its own ramp ends — because internal requests are
-  bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
+  `NotificationService` (generic threshold signalling — owns the sleep window, interval, `AutoOn`
+  and the global `FlashBri`/`FlashDur`, one combined `ConfigManager` and logger). `led_signal()`
+  (the REST command) is refused at once while a signal is queued or running (owner, 2026-09-29),
+  and the refusal tells the caller to try again later: an external caller could flood the device
+  into exhaustion (owner, 2026-10-02); `request_signal()` (internal) waits for a running signal up
+  to a deadline, then queues and returns — never when its own ramp ends — because internal requests
+  are bounded in number and rate (owner, 2026-10-02: 'internal LED commands are guaranteed to be
   bounded by number and frequency, they won't flood the device'; legacy queued them without a
   bound). Values are sanitised when the request enters: colour bytes clamped to 0-255 (non-finite
   → 0), the duration floored at 0.1 s and capped at 60 s, a non-numeric value refused; a cancelled
-  or failed ramp ends dark with the slot free. The notification signals are passed at construction
-  (`signals=`, C.14.3): the constructor validates each in check order, prints a refusal at once and
-  builds the combined schema, and `setup()` persists each refusal once. The active window runs
-  from On to Off, and an On time later than Off spans midnight (owner, 2026-09-26); the LED pause
-  counts down measured monotonic time (`ticks_ms()`), never wake-ups or the clock.
+  or failed ramp ends dark with the slot free. The pixel reports no faults (`NeoPixel.write()` hands
+  `machine.bitstream()` only arguments the class builds itself, and the driver clamps every frame
+  value before storing it), so its recovery is the task's: the supervisor restarts an ended overlay
+  or signal task, and each (re)start writes a defined state — the signal task black, then the
+  overlay restored; the overlay task the current overlay (agent, 2026-09-30) — and the overlay task
+  rewrites the overlay at least once per `led.overlay_refresh_ms` (Part N, five minutes, the default
+  `FlashInterval`) with no change pending, so a pixel that lost its state in a supply dip (the
+  WS2812's power-lost reset, after which it shows only new data: WS2812 datasheet, Features and
+  General description) shows the right overlay again; a running signal holds the overlay lock, so a
+  refresh never cuts into a ramp (agent, 2026-10-06). A notification flash the LED refuses, because
+  a signal is still running, is persisted as `NOTIFY_SIGNAL_DROPPED`; with no LED wired (the default
+  sink) nothing is logged. The notification signals are passed at construction (`signals=`,
+  C.14.3): the constructor validates each in check order, prints a refusal at once and builds the
+  combined schema, and `setup()` persists each refusal once. The active window runs from On to Off,
+  and an On time later than Off spans midnight (owner, 2026-09-26). The window needs local time,
+  which counts from the boot's first NTP sync and keeps running when later syncs fail, so the alerts
+  continue through a network outage (agent, 2026-10-06). The LED pause counts down measured
+  monotonic time (`ticks_ms()`), never wake-ups or the clock. A producer value whose timestamp is
+  older than `notify.sample_max_age_s` (Part N, three hours) is unavailable, like a missing one; a
+  value with no timestamp yet counts as current (agent, 2026-10-06). The published notification
+  sample, `/status`'s `notification` block (A.8), says whether its signals were evaluated: its
+  `State` takes the codes of the table below (agent, 2026-10-06); `Triggered` keeps its meaning.
   `NotificationSignal.color` is a per-channel weight (0/1) scaled by the shared `FlashBri` at
   trigger time. Config field names carry no "Led" prefix (`WarnCO2`, not `LedWarnCO2`); the new
   API is the only reference and no legacy spelling or `legacy/firmware/html_raw/` compatibility is
   kept (owner, 2026-09-26).
+
+<!-- catalog: status.NotifyState -->
+| `State` | Meaning |
+|---|---|
+| 0 | every signal evaluated |
+| 1 | not evaluated by setting (AutoOn off, paused, or outside the window) |
+| 2 | not evaluated: no local time (no NTP sync yet this boot, or the clock callback failed) |
+| 3 | evaluated in part (a value unavailable, stale or not numeric) |
+| 4 | the service's own configuration unreadable |
+
 - The legacy task supervisor is a hand-rolled loop duplicated per device file; every generated
   `sensortask_<device>.py`'s `main()` instead calls `SystemService.start_tasks()`, `start_timers()`
   and `supervise_tasks()`, which runs the supervisor as its own task (A.2 for the escalation; its
@@ -389,21 +416,38 @@ features as today's deployed units, not a feature change.
   2026-10-08, to 'Bound how long a hotspot client holds the unit?': 'a, because the user may
   want to do other settings after setting the wifi, still using the same coupled device. it
   only must be sure that once no clients are connected to the hotspot anymore, the device
-  will try to connect to the actual wifi settings without a reboot required.'). A second
-  failed STA streak after a hotspot phase deactivates
-  Wi-Fi permanently, a terminal state that task restarts keep and only a power cycle clears (owner,
-  2026-08-11, `acc4993`); it shows its own LED pattern, as "Missing WLAN configuration" does (owner,
-  2026-09-29) — 0.1 s on, 2.9 s off — and like every Wi-Fi pattern it follows the Wi-Fi LED setting:
-  dark while `LEDWifiOn` is off, shown as soon as it is switched on (owner, 2026-10-02). The fallback
-  to the hotspot and the permanent deactivation each persist a WIFI warning, and so does a connect
-  poll that ends without a verdict (joined, no IP within the poll window), so the history says why
-  a unit was offline. Power saving is off, a connect attempt polls up to 5 s, a mode switch
-  disconnects, deactivates and waits; repeated WLAN hardware errors first re-initialise the radio
-  (power-cycled by the driver) before the task gives up — the participant rung (C.7) — and the
-  supervisor takes over after that. A radio observation that fails is unknown, not a state: a failed
-  stations query leaves the hotspot timer as it was, and a failed status read in the uptime loop
-  keeps the last link state and uptime; each failure persists one WIFI warning (agent, 2026-10-06).
-  A CYW43 `isconnected()` false positive is recovered by a power cycle or `hard_reset()` (F.2).
+  will try to connect to the actual wifi settings without a reboot required.'). A second failed STA
+  streak after a hotspot phase puts Wi-Fi into the silent mode, never off (owner, 2026-10-08: 'Don't
+  permanently switch WiFi off, only stop retrying to connect.'): no hotspot, the status LED dark
+  whatever `LEDWifiOn` says ('It should look like turned off.'), and one connect attempt every
+  `hotspot_time_min` on the hotspot window's own timer, uncapped ('not capped'); an attempt that
+  links is a normal connection, LED included. The availability check is that connect attempt, not a
+  scan: `WLAN.scan()` holds the VM up to 10 s (`extmod/network_cyw43.c:236-246`), past the 8,388 ms
+  watchdog (owner, 2026-10-08: 'a, go ahead …', to that design). Task restarts keep the silent mode,
+  and only a reboot opens the hotspot again ('Entering the hotspot mode only through a reboot, as
+  is.'). A change of a Wi-Fi setting that reconnects (A.8; new credentials among them), from the
+  hotspot page or the home network, lands in the state a fresh boot gives — a fresh STA streak and
+  the hotspot available once more (owner, 2026-10-08: 'Any change of credentials, no matter from
+  which side, lands in the same mode as "initial connection attempt after a fresh boot". All
+  further steps follow normally.'); no request reaches a silent unit, and the end of a hotspot
+  window keeps its meaning: one more STA streak, then the silent mode. With no readable Wi-Fi
+  configuration the radio stays unused, a state task restarts keep until a reboot reads the
+  configuration again; it shows its own LED pattern (owner, 2026-09-29) — 0.1 s on, 2.9 s off — and
+  like every Wi-Fi pattern it follows the Wi-Fi LED setting: dark while `LEDWifiOn` is off, shown as
+  soon as it is switched on (owner, 2026-10-02). The fallback to the hotspot and the entry into the
+  silent mode each persist a WIFI warning, and so does a connect poll that ends without a verdict
+  (joined, no IP within the poll window), so the history says why a unit was offline. Power saving
+  is off, a connect attempt polls up to 5 s, a mode switch disconnects, deactivates and waits;
+  repeated WLAN hardware errors first re-initialise the radio (power-cycled by the driver) before the
+  task gives up — the participant rung (C.7) — and the supervisor takes over after that. A stations
+  check counts only a confirmed client: a query that raises, or the chip-down answer of 32 unfilled
+  entries (F.1), counts as no client and persists one WIFI warning, as legacy's check counted it
+  (owner, 2026-10-08: 'yes, record it that way'); a glitch cannot close the hotspot under a client,
+  whose next good check stops the window again, and a radio that can no longer list its stations
+  cannot hold an unattended unit on its hotspot. A failed status read in the uptime loop is unknown,
+  not a state: it keeps the last link state and uptime and persists one WIFI warning (agent,
+  2026-10-06). A CYW43 `isconnected()` false positive is recovered by a power cycle or `hard_reset()`
+  (F.2).
   Every delay named here is a Part N `wifi.*` row. The hotspot's DHCP server holds eight leases,
   each kept 24 h for its client's MAC; with all eight held, a further client's request is ignored,
   with no NAK and nothing Python can read (`shared/netutils/dhcpserver.h:32`, `dhcpserver.c:68,
@@ -412,17 +456,19 @@ features as today's deployed units, not a feature change.
 - **Functional behaviors confirmed intentional by the project owner** (owner, 2026-07-13, `368fa83`)
   **— don't "fix" these:** air-quality LED sequencing (one color per condition, paused between
   flashes); FRAM SGP40 backup "0 = disabled" for `BackupPeriod`/`BackupMaxAge`
-  (`DEVICE_REFERENCE.md`); permanent WiFi deactivation after a second STA failure streak,
-  `_PHASE_DEACTIVATED` special-cased through task restarts the same way `_PHASE_HOTSPOT` already is
-  — only a physical power-cycle clears it (the task-restart guard owner-directed, 2026-08-11,
-  `acc4993`); STA never auto-falls-back to hotspot once connected successfully even once in a task's
-  lifetime — only a human resubmitting credentials or a full task restart resets this; the web UI
-  shows raw numbers only, no color-coding (the LED is the at-a-glance indicator); every FRAM chunk
-  of a fully built device fits its part: the summed layout (wozi about 17 chunks on the 8 KB
-  MB85RS64V, dev about 21 on the 256 KB MB85RS2MTA) is checked once per build — a `None` chunk from
-  `get_chunk()` per generated device at the mock level and on the board by the capacity device
-  script; no runtime field or error number reports it (owner, 2026-09-16: 'we do not even add
-  errno/wrnno for the out of FRAM memory … Handle via mpremote.').
+  (`DEVICE_REFERENCE.md`); after a second STA failure streak following a hotspot phase Wi-Fi goes
+  silent, never off: no hotspot, the LED dark, one quiet connect attempt every `hotspot_time_min`,
+  uncapped; task restarts keep it and only a reboot opens the hotspot again (owner, 2026-10-08:
+  'Don't permanently switch WiFi off, only stop retrying to connect.'); STA never auto-falls-back to
+  hotspot once connected successfully even once in a task's lifetime — only a change of a Wi-Fi
+  setting that reconnects (A.8; new credentials among them), which lands in the fresh-boot state
+  (owner, 2026-10-08), or a full task restart resets this; the web UI shows raw numbers only, no
+  color-coding (the LED is the at-a-glance indicator); every FRAM chunk of a fully built device
+  fits its part: the summed layout (wozi about 17 chunks on the 8 KB MB85RS64V, dev about 21 on the
+  256 KB MB85RS2MTA) is checked once per build — a `None` chunk from `get_chunk()` per generated
+  device at the mock level and on the board by the capacity device script; no runtime field or
+  error number reports it (owner, 2026-09-16: 'we do not even add errno/wrnno for the out of FRAM
+  memory … Handle via mpremote.').
 - **SGP40 compensation** (owner, 2026-09-26: 'If configured (wired up between both sensors inside
   the TOML): Skip if unavailable, else runs.'): with a temperature/humidity source wired in the
   device TOML the SGP40 skips its read while that value is unavailable, no fallback substitution,
@@ -909,9 +955,9 @@ settings.
   `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
   `ConfigManager` (`CFGMGR_<name>`).
 - **Code tables**: every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState`
-  (M.3), `CalLight` (M.1.5) — has one source, the `status` section of
-  `buildgen/error_catalog.json`, from which the website's labels are generated; a SPEC table copied
-  from it carries a `<!-- catalog: status.<name> -->` marker. The record lives in
+  (M.3), `CalLight` (M.1.5), the notification's `State` (`NotifyState`, A.4) — has one source, the
+  `status` section of `buildgen/error_catalog.json`, from which the website's labels are generated;
+  a SPEC table copied from it carries a `<!-- catalog: status.<name> -->` marker. The record lives in
   `machine.mem_backup()` region 0 and the boot phase in region 1 — RAM that survives a reset, never
   flash or FRAM (owner, 2026-09-26); `machine.reset_cause()` alone cannot tell these apart (F.5.4).
 
@@ -950,9 +996,12 @@ settings.
   non-credential PUT?', whose (a) reads 'keep it: any Wi-Fi field reconnects, on every device'),
   about 5 s after the PUT even with a client still joined (owner, 2026-10-08: 'If Wifi is changed,
   connect to it in reasonable time. Further settings can be done within the Wifi, no need to keep
-  it on the hotspot. Otherwise, it might be stuck with stale clients which connected.'); NTP
-  fields fire `ntp_force_sync()`, `LEDWifiOn` and `DNSFallback` fire nothing — one
-  `SettingsGroup` per subset keeps these independent. `/system` — settings +
+  it on the hotspot. Otherwise, it might be stuck with stale clients which connected.'), in the
+  state a fresh boot gives — a fresh STA streak, the hotspot available once more (owner,
+  2026-10-08: 'Any change of credentials, no matter from which side, lands in the same mode as
+  "initial connection attempt after a fresh boot".'); NTP fields fire `ntp_force_sync()`,
+  `LEDWifiOn` and `DNSFallback` fire nothing — one `SettingsGroup` per subset keeps these
+  independent. `/system` — settings +
   `"SystemCmd": "reboot"|"bootloader"|"mempause"|"resetconfig"|"erasefram"`: a command runs only on
   its exact word, matched as
   a whole string — no alias, prefix or case variant does (owner, 2026-09-30); `mempause`'s fixed
@@ -2962,6 +3011,13 @@ adds `compensated and` (a cycle skipped for want of a compensation value) and IS
 self._unsettled_cycle` (a cycle discarded past the settle bound, M.1.4). **A call site with just
 one pass/fail flag** passes a fixed one-element sentinel and drives the flag through `condition=`
 (`_error_check((None,), condition=<flag>)`), not a ternary swapping the whole tuple.
+`WifiService`'s connect loop is one, judging its WLAN-hardware streak once per iteration; in the
+silent mode (A.4) an iteration with no attempt due and no failed radio or timer operation is no
+evidence, so the streak neither counts nor heals, and a connect that always raises still climbs to
+the participant rung and the give-up. A period that cannot be armed is such a failure: with no
+period no attempt is ever due, so each failed arm counts, as a failed re-arm of the uptime tick
+does, and the streak climbs the same way while task restarts keep the silent mode (agent,
+2026-10-12).
 
 A per-field get/set forward always logs via `err_s()`/`wrn_s()` on failure, never a bare
 `except Exception: return None` — a transient bus fault on a REST-triggered get/set must stay
@@ -2975,12 +3031,14 @@ failure, `SOCKET_TEARDOWN`), `UART.deinit()`, `I2C.deinit()`, `SPI.deinit()` (C.
 with a logger persists its own failure instead (`WebserverService._close_writer()`).
 
 `WifiService`'s radio observations (`status()`, `isconnected()`, `ifconfig()`, the stations query,
-the LED helpers) stay print-only as routine observations, except a failed stations query and a
-failed status read in the uptime loop, each persisted once per failure since the state is then
-unknown and kept; the persisted ones are also the connect-attempt tier (a poll that ends without a
-verdict included), the fallback to the hotspot, the permanent deactivation and the timer arms
-(agent, 2026-10-06). The resolver resolves only names RFC 1035 can encode (one name of at most 255
-octets on the wire, no empty label); anything else resolves to `None`.
+the LED helpers) stay print-only as routine observations, except a failed stations check — a raise,
+or the chip-down 32-entry answer, counted as no client (owner, 2026-10-08) — and a failed status
+read in the uptime loop, unknown and the last state kept, each persisted once per failure; the
+persisted ones are also the connect-attempt tier (a poll that ends without a verdict and every
+silent-mode attempt included), the fallback to the hotspot, the entry into the silent mode and the
+timer arms (agent, 2026-10-06; the silent mode, owner, 2026-10-08). The resolver resolves only
+names RFC 1035 can encode (one name of at most 255 octets on the wire, no empty label); anything
+else resolves to `None`.
 
 ### C.7.1 Running `errno`/`wrnno` table
 
@@ -3042,13 +3100,15 @@ err=None)`, a console line and no entry, so the memory gates see it (I.4(e)).
 ### C.7.2 Which failures may end a task
 
 A task ends — and the supervisor restarts it — **only when the restart re-initialises something
-real**: a sensor's `_init_<sensor>()` re-probes and soft-resets its chip, and the WiFi service's
-restart forces a fresh WLAN object. A failure the task can meet again unchanged after a restart is
-routine and **handled in place**: log it (under the repeat rule, C.7.1), keep counting it, retry,
-and recover on the next success. Ending instead buys nothing and spends the reboot budget (C.4.1's
-"a restart is not free"): the NTP task used to end after six failed syncs, so an unreachable server
-restarted it about once a minute and rebooted the device about every four minutes (owner,
-2026-09-24). The legacy client never gave up.
+real**: a sensor's `_init_<sensor>()` re-probes and soft-resets its chip, and the WiFi service
+gives up only after its participant rung re-initialised the radio (`_recover_device()`, a fresh
+WLAN object, C.7), while its restart itself only disconnects a STA that is up (from the hotspot it
+switches to a new STA interface) and starts a fresh streak. A failure the task can meet again
+unchanged after a restart is routine and **handled in place**: log it (under the repeat rule,
+C.7.1), keep counting it, retry, and recover on the next success. Ending instead buys nothing and
+spends the reboot budget (C.4.1's "a restart is not free"): the NTP task used to end after six
+failed syncs, so an unreachable server restarted it about once a minute and rebooted the device
+about every four minutes (owner, 2026-09-24). The legacy client never gave up.
 
 - **NTP** (`asy_ntp_client.py`) keeps no failure streak (`max_module_error` is gone from its
   constructor). While unsynced it retries on a backoff: its `timing: NtpTiming`'s `retry_s` (default
@@ -3277,11 +3337,10 @@ contract: a function that needs its caller to hold a lock ends in `_locked`.
 
 | Holder | Bound |
 |---|---|
-| connect attempt (`_run_sta_mode()`) | up to 10 × 0.5 s, one step once `STAT_GOT_IP` |
+| connect attempt (`_run_sta_mode()`), the silent mode's one per `hotspot_time_min` (`_run_silent_mode()`) included | up to 10 × 0.5 s, one step once `STAT_GOT_IP` |
 | STA disconnect wait (`_wait_for_sta_disconnect()`) | up to 20 × 0.5 s = 10 s |
 | mode switch (`_select_wifi_mode()`), and the radio's re-initialisation through it (`_recover_device()`, A.4) | 2 + 1 + 1 s |
 | hotspot bring-up | config reads and one `config()`/`active()` sequence |
-| permanent deactivation | 2 s, once |
 | hotspot stations query | 0.1 s |
 | status read and the 1 Hz snapshot (the uptime loop) | one to three radio calls: `status()`, then `ifconfig()` and, on a STA link, `status("rssi")` |
 | NTP attempt (`NTPClient`), its DNS resolution inside the lock (owner, 2026-07-28) | the DHCP server plus up to three `DNSFallback` servers × (`dns.timeout_ms` 500 + one 20 ms poll step) + `ntp.fetch_timeout_ms` 5,000 + 20 ms ≈ 7.1 s with every server silent, plus 0.5 s per failed socket setup (≤ 9.1 s) |
@@ -3291,7 +3350,8 @@ missed meanwhile, and uptime and sync age are measured ticks, so nothing underco
 getters read the snapshot and never wait; a PUT reconnect only sets the reconnect flag
 (`reconnect_wifi()`) and is served at the next iteration; NTP waits at most one WiFi hold (≤ 10 s)
 and the WiFi loop at most one NTP attempt (≤ 9.1 s), both below the watchdog, which only the
-supervisor feeds and a waiting task leaves unaffected. The 60 s STA-retry wait is outside the lock.
+supervisor feeds and a waiting task leaves unaffected. The 60 s STA-retry wait and the wait between
+two silent-mode attempts are outside the lock.
 
 **Cancellation leaves shared state consistent** (agent, 2026-10-08): every task path in UART, NET
 and REST restores its locks, busy flags and indicators in `finally` and re-raises
@@ -3469,7 +3529,7 @@ this table, with its reason, lifetime, cancel path and the top that persists its
 |---|---|---|---|---|
 | Config flush | `ConfigManager.write_config()` (`asy_config_manager.py`) | the flash write runs apart from the request that staged it (F.2) | one per staged write, until the write lands; a superseded one returns without writing; never cancelled, awaited by `flush_pending()` | `_flush_staged()`: `CFG_FILE_WRITE` for the write, `UNEXPECTED` for any other failure |
 | Captive DNS | `WifiService._configure_hotspot_ap()` on entering hotspot mode (`asy_wifi_service.py`) | it exists only in hotspot mode | hotspot mode; cancelled on leaving it, recreated on the next AP start | `CaptiveDNS.run()`: catches, persists `UNEXPECTED`, backs off |
-| LED flash | `WifiService._run_led_pattern()` (`asy_wifi_service.py`) | it exists only in the hotspot without a client, with a station on it, and in the deactivated WLAN | one task: a different pattern cancels it and starts its own; also cancelled by `_reset_wlan_connect_state()`, `_handle_reconnect_trigger()` and `reconnect_wifi()`; a cancel touches no LED | `_flash_led()`: persists `UNEXPECTED` and ends; the next request for the pattern restarts it |
+| LED flash | `WifiService._run_led_pattern()` (`asy_wifi_service.py`) | it exists only in the hotspot without a client, with a station on it, and with no readable Wi-Fi configuration — never in the silent mode, which is dark (A.4) | one task: a different pattern cancels it and starts its own; also cancelled by `_reset_wlan_connect_state()`, `_handle_reconnect_trigger()`, the window end (`_on_hotspot_window_end()`, which `reconnect_wifi()` runs too) and the entry into the silent mode; a cancel touches no LED | `_flash_led()`: persists `UNEXPECTED` and ends; the next request for the pattern restarts it |
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
 | Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` at the escalation |
 | Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | none of its own: each step's failure is persisted where it happens (a flush's `CALLBACK` entry) or printed once FRAM is paused, and the next boot's `ResetReason` carries the outcome |
@@ -3486,8 +3546,10 @@ business logic inside a callback; re-arming runs in the task it wakes, and every
 one waiter; the reset timer's one-shot sets the flag its reset task waits on. **A timer whose fire must not be lost
 is `PERIODIC`** — a soft callback can be silently dropped when MicroPython's fixed-depth scheduler
 queue is full (F.1); a periodic timer self-heals next tick, a dropped one-shot never fires again.
-The WiFi hotspot shutoff is one, stopped by `reconnect_wifi()` on its first delivered fire
-(confirmed on silicon 2026-09-25: back in STA after the 8-minute window with no reboot). Each
+The WiFi hotspot window is one, ended by its first delivered fire, which deinits it (confirmed on
+silicon 2026-09-25: back in STA after the 8-minute window with no reboot); in the silent mode (A.4)
+the same timer runs on, armed through the one arm path `_arm_hotspot_timer()`, each delivered fire
+one connect attempt, so a dropped fire delays that attempt by one period. Each
 remaining `ONE_SHOT` states why a dropped fire is acceptable or backstopped: the stagger wait
 (C.9.1) and the reset timer — `ONE_SHOT` by the owner's choice (owner, 2026-07-18: 'brittle wrt.
 wdt timeout settings'), with nothing fed once it is armed — by the watchdog; the NTP retry by
@@ -3502,8 +3564,9 @@ failure wakes the task waiting on it, which persists the failure (`TIMER`) once 
 restart re-arms first. Any other failed arm is re-armed at the task's next opportunity and
 persisted on a second failure, then the task ends for the supervisor: NTP's check and sync-age
 timers when the sync task starts and at each of its wakes, the WiFi uptime tick at the connection
-loop's next iteration; a failed hotspot-timer arm persists `TIMER` and is retried on the next cycle. The 1 s
-tick timers (system uptime, WiFi uptime, NTP sync age) share
+loop's next iteration; a failed hotspot-timer arm persists `TIMER` and is retried on the next cycle,
+and in the silent mode, where it leaves no attempt due, it also counts toward the WiFi task's
+hardware streak (C.7). The 1 s tick timers (system uptime, WiFi uptime, NTP sync age) share
 `arm_tick_timer()`; they start with the timer starters and never take a stagger slot. System
 uptime, WiFi uptime, NTP sync age and the LED pause are measured in ticks (`TickSeconds`, G.2), never
 counted wake-ups. Wall-clock consumers survive an RTC step, pinned by
@@ -3849,8 +3912,9 @@ namedtuple with every field `None` before any real read (`SCD30(None, None, None
 etc., C.4.1) — so `get_data()` is always safe to call immediately, returning a namedtuple whose
 individual fields may be `None`. Every direct-reference consumer tolerates that as a normal,
 expected input, not an exceptional one, the same way `NotificationService._check_one()` already
-does for its own `None` field (treated as "not triggered," not an error): `SGP40_Reader.
-_read_sgp()` reads each field via `getattr(..., None)` and, if either is still `None`, skips this
+does for its own `None` field (the signal not evaluated, published as `State` 3, A.4 — not an
+error): `SGP40_Reader._read_sgp()` reads each field via `getattr(..., None)` and, if either is
+still `None`, skips this
 cycle's compensated read (A.4's already-documented degrade behavior) without logging anything — only
 a genuine exception from the producer's own `get_data()` (a violation of its never-raises contract)
 still logs (`SOURCE`, `errno` 15, C.7.1). Fixed this way after `float()` being called on the
@@ -4223,6 +4287,11 @@ exactly once and stays device-generic; the wrappers carry one call each and no l
 splitting them too: each drives seconds-to-tens-of-seconds of real wall clock through mandatory
 infrastructure plus SCD30/SGP40 only (never `bmp3xx`), so the mechanism each proves is already
 device-independent and a ×6 parametrization would buy nothing.
+`tests/test_digital_twin_wifi_modes.py` boots one device for the same reason, the first generated
+plan wiring the neopixel and the FRAM the scenario reads, never a named one: one boot walks the Wi-Fi
+modes after a hotspot ran (the stations rule, a reconnecting settings change landing in the
+fresh-boot state, the silent mode) at the product's own waits, about 100 s, in a file of its own so
+neither file nears the per-file limit (agent, 2026-10-12).
 
 ## E.3 Running
 
@@ -4610,10 +4679,13 @@ model). `tests_hardware/bench/test_hotspot_role_reversal.py` closes this on real
 bench rig's one radio temporarily becomes a *client* of the DUT's own hotspot, then flips back —
 sequential, safe because of a real, source-traced ~15-20s timing budget from a credential PUT to
 the DUT's first STA attempt, comfortably inside a scripted `nmcli connection up`. **Load-bearing
-finding**: by the scenario's last stage the DUT has necessarily been in hotspot mode since stage 0,
-so a failed real-credential PUT lands in `_PHASE_DEACTIVATED` (a terminal state, A.4) rather than
-falling back to hotspot — hence the fixture's real `hard_reset()` fallback if the reachability wait
-times out. The hotspot's SSID/password are fully deterministic, needing no scan/discovery.
+finding**: a credentials change lands in the fresh-boot state (A.4), so a failed real-credential
+PUT in the last stage reopens the DUT's hotspot once more, although the hotspot has run since stage
+0; with no client its window ends in one more streak and then the silent mode, which retries once
+per `hotspot_time_min` — hence the fixture's real `hard_reset()` fallback if the reachability wait
+times out, rather than waiting that out. A wrong-password case proves the reopened hotspot; an
+opt-in case proves the silent mode and its quiet relink. The hotspot's SSID/password are fully
+deterministic, needing no scan/discovery.
 
 ### E.6.5 L1 vs. L2: overlap scan
 
@@ -4987,7 +5059,8 @@ path that loader relies on; names `importlib` in a comment);
 `tests_scripts/test_buildgen_validate.py` (a test of the named loader in `buildgen/validate.py`);
 `tests_scripts/test_js_coverage_report_dir.py` (names `importlib` in a comment; reads import
 statements by AST); `buildgen/validate.py` (loads `toolchain/micropython_overrides.py` by path: it
-is no package); `digital_twin/run_generic_integration.py` (the module its device config names);
+is no package); `digital_twin/run_generic_integration.py` (the module its device config names, and the
+device module `tests/test_digital_twin_wifi_modes.py` picks from the generated plans);
 `tests/_boot_contiguity_probe.py`, `tests/_digital_twin_construction_scenarios.py`,
 `tests/_sensortask_scenarios.py` and `tests/_webserver_concurrency_scenarios.py` (a device module by
 its derived name); `tests/test_asy_isl29125_driver.py` (`__import__("time")` inside two test
@@ -5272,11 +5345,14 @@ status 2, `CYW43_LINK_NOIP` — joined, no IP yet; `network` exports no name for
 (`lib/cyw43-driver/src/cyw43.h:100`; `extmod/modnetwork.c:197-202`), named `_STAT_JOINED_NO_IP` in
 `asy_wifi_service.py`; the power-management word `0xA11140`, `CYW43_PM_VALUE(NO_POWERSAVE, 200, 1,
 1, 10)` — power save off with `PM_PERFORMANCE`'s listen fields (`extmod/network_cyw43.c:43-51`),
-legacy's word, named `_PM_NO_POWERSAVE`. One defect: a `status("stations")` whose ioctl fails
-returns an empty list (`lib/cyw43-driver/src/cyw43_ctrl.c:725-728`), but if the chip cannot be
-brought up (`:719-723`) it returns 32 entries of uninitialised data
-(`extmod/network_cyw43.c:377-388`), read as a client present — the hotspot then stays up and the
-failing chip surfaces through the connect-attempt tier (agent, 2026-09-30). A second: a
+legacy's word, named `_PM_NO_POWERSAVE`; the stations answer of a chip that cannot be brought up,
+32 entries (the binding's buffer size, `extmod/network_cyw43.c:377`), named `_STATIONS_UNSET`. One
+defect: a `status("stations")` whose ioctl fails returns an empty list
+(`lib/cyw43-driver/src/cyw43_ctrl.c:725-728`), but if the chip cannot be brought up (`:719-723`)
+it returns 32 entries of uninitialised data (`extmod/network_cyw43.c:377-388`), so `WifiService`
+counts an answer of exactly that size as a failed check — no client and one WIFI warning (A.4;
+owner, 2026-10-08) — a count far beyond the one configuring client the hotspot serves (A.4). A
+second: a
 `status("rssi")` discards `cyw43_wifi_get_rssi()`'s result (`extmod/network_cyw43.c:366-368`), so
 an inactive STA's `-EPERM` (`lib/cyw43-driver/src/cyw43_ctrl.c:672-677`) or a failed ioctl returns
 whatever the uninitialised value holds; the snapshot reads it only on the selected STA with a link,
@@ -6221,6 +6297,12 @@ backend-only or frontend-only validation/coercion policy change in this project.
 - **Current UTC timestamp** — `asy_base_classes.py`'s `utc_now()`: `None` until the NTP client has
   set the clock this boot (its one writer, `set_utc_valid()`); never computed inside a read's `try`
   (agent, 2026-09-29; owner-reviewed, 2026-10-02).
+- **A stale producer sample** — one rule, written in one shape at its two consumers: with
+  `utc_now()` set and the sample's `TS` an `int` older than the consumer's bound, the value counts as
+  unavailable, while a sample without a `TS` counts as current — `asy_sgp40_driver.py`'s
+  `_current_value()` (`sgp40.comp_max_age_s`) and `asy_notification_service.py`'s `_check_one()`
+  (`notify.sample_max_age_s`), both three hours (A.4). A third consumer takes the same shape; two
+  sites do not yet make a shared helper (agent, 2026-10-08).
 - **Hourly window counter** — `asy_base_classes.py`'s `HourlyWindowCounter`: a count of events in
   the last 24 hours at hourly resolution, in 24 integer bins allocated once at construction; the bins
   advance lazily on the next `add(now_s)` or `total(now_s)` from the uptime seconds the caller passes
@@ -8774,7 +8856,7 @@ when the key is absent.
 | `[device]` | `hostname` | yes | string equal to `SensorStation<name>` | `WifiService`'s `Hostname` default; the hotspot's own SSID |
 | `[device]` | `hotspot_password` | yes | string of 8..63 characters (WPA2, `_VAL_HOTSPOT_PW`'s bounds) | `WifiService`'s `HotspotPW` default |
 | `[device]` | `conn_fail_to_hotspot` | yes | int ≥ 1 | `WifiService`: failed connects before the hotspot opens (C.7.2) |
-| `[device]` | `hotspot_time_min` | yes | int 1..35791 (the hotspot `Timer` period, 60000 × minutes, is a signed machine int) | `WifiService`: the hotspot window |
+| `[device]` | `hotspot_time_min` | yes | int 1..35791 (the hotspot `Timer` period, 60000 × minutes, is a signed machine int) | `WifiService`: the hotspot window, and the silent mode's connect-attempt period (A.4) |
 | `[device]` | `max_connections` | no | int ≥ 1 that the firmware's lwIP pools serve: `toolchain/versions.toml`'s `[lwip]` table, checked by `toolchain/micropython_overrides.py`'s ensemble check (H.7); default `_DEFAULT_MAX_CONNECTIONS` (6) | `ServingLimits.max_connections` |
 | `[device]` | `backlog` | no | int from `max_connections` to `max_connections` + 1; default `max_connections` + 1 | `ServingLimits.backlog` (H.7) |
 | `[device]` | `ntp_retry_s` | no | int ≥ NTP's 10 s check tick (`_NTP_CHECK_INTERV`); default `_DEFAULT_RETRY_S` (10) | `NtpTiming`'s unsynced retry interval (C.7.2) |
@@ -9936,12 +10018,12 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `ntp.sync_retries` | 3 | `src/asy_ntp_client.py` — `3`; `tests/test_asy_ntp_client.py` — `3` | — | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:15` | unknown until measured | the retry schedule changes |
 | `ntp.retry_interval_s` | 15 s | `src/asy_ntp_client.py` — `15`; `tests/test_asy_ntp_client.py` — `15` | — | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:16` | unknown until measured | the retry schedule changes |
 | `ntp.backoff_mult` | 2 | `src/asy_ntp_client.py` — `2` | the unsynced retry interval's growth up to `ntp.retry_max_s_default` | estimated (agent, `c20f80b`) — measurement owed: the retry count until a returning server is noticed, L2 | unknown until measured | the retry schedule changes |
-| `ntp.retry_s_default` | 10 s | `src/asy_ntp_client.py` — `10` | ≥ `ntp.check_interval_s` (the build check) | estimated (agent, `bab72bc`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
-| `ntp.retry_max_s_default` | 600 s | `src/asy_ntp_client.py` — `600` | the unsynced retry cap | estimated (agent, `bab72bc`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
+| `ntp.retry_s_default` | 10 s | `src/asy_ntp_client.py` — `10` | ≥ `ntp.check_interval_s` (the build check) | estimated (agent, `c3df14e`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
+| `ntp.retry_max_s_default` | 600 s | `src/asy_ntp_client.py` — `600` | the unsynced retry cap | estimated (agent, `c3df14e`) — measurement owed: the unsynced retry cadence a returning server needs, L2 | unknown until measured | the retry schedule changes |
 | `ntp.plausible_min_unix` | 1735689600 (2025-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `1735689600` | every accepted NTP reply | estimated (agent, `90171f8`) — measurement owed: none: a floor below any real reply | predates the source itself | raise the lower bound to the release date at each release; any change of the NTP-era handling (2036 wrap) |
 | `ntp.plausible_max_unix` | 4102444800 (2100-01-01T00:00:00Z) | `src/asy_ntp_client.py` — `4102444800` | every accepted NTP reply; below 2**32, the device clock's range | estimated (agent, `90171f8`) — measurement owed: none: a ceiling past the 2036 era wrap | past the 2036 era wrap, under 2**32 | review before 2099-01-01; any change of the NTP-era handling (2036 wrap) |
 | `wifi.hotspot_stations_settle_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the stations query needs no other status command close before it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:258` | unknown until measured | the CYW43 driver or the pin moves |
-| `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)`, both the mode switch and the deactivation path | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |
+| `wifi.wlan_down_settle_s` | 2 s | `src/asy_wifi_service.py` — `2` | after `disconnect()` and `active(False)` in the mode switch | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:157` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_deinit_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after `deinit()` | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:160` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.wlan_mode_settle_s` | 1 s | `src/asy_wifi_service.py` — `1` | after the interface mode change | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:164` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.sta_retry_after_loss_s` | 60 s | `src/asy_wifi_service.py` — `60` | the retry of a previously successful connection; `l2.bus_hazard_concurrency_flap_window_s` must outlast it; the messages stating the 60 s retry in `tests/test_digital_twin_bus_hazard_concurrency.py` and `tests/test_asy_wifi_service.py`; `l4.network_resilience_flap_step_s` stays short against it in both bench flapping tests | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:345` | unknown until measured | the CYW43 driver or the pin moves |
@@ -9949,8 +10031,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `wifi.led_hotspot_off_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the hotspot LED pattern without a client; `wifi.led_deactivated_on_s` mirrors it | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:146` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.led_hotspot_client_on_s` | 1.5 s | `src/asy_wifi_service.py` — `1.5` | the LED pattern while a station is on the hotspot, with `wifi.led_hotspot_client_off_s` | chosen: a station on the hotspot, an even slow blink unlike the hotspot, deactivated and steady-link patterns (agent, 2026-10-06) | distinct from every other Wi-Fi pattern by its even phases | a Wi-Fi LED pattern is added or changed |
 | `wifi.led_hotspot_client_off_s` | 1.5 s | `src/asy_wifi_service.py` — `1.5` | the LED pattern while a station is on the hotspot, with `wifi.led_hotspot_client_on_s` | chosen: a station on the hotspot, an even slow blink unlike the hotspot, deactivated and steady-link patterns (agent, 2026-10-06) | distinct from every other Wi-Fi pattern by its even phases | a Wi-Fi LED pattern is added or changed |
-| `wifi.led_deactivated_on_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the deactivated WLAN's LED pattern, with `wifi.led_deactivated_off_s`; `wifi.led_hotspot_off_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
-| `wifi.led_deactivated_off_s` | 2.9 s | `src/asy_wifi_service.py` — `2.9` | the deactivated WLAN's LED pattern, with `wifi.led_deactivated_on_s`; `wifi.led_hotspot_on_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
+| `wifi.led_deactivated_on_s` | 0.1 s | `src/asy_wifi_service.py` — `0.1` | the LED pattern with no readable Wi-Fi configuration, with `wifi.led_deactivated_off_s`; `wifi.led_hotspot_off_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
+| `wifi.led_deactivated_off_s` | 2.9 s | `src/asy_wifi_service.py` — `2.9` | the LED pattern with no readable Wi-Fi configuration, with `wifi.led_deactivated_on_s`; `wifi.led_hotspot_on_s` mirrored | chosen: the hotspot pattern inverted (agent, 2026-09-30); it shows through the Wi-Fi LED setting like every pattern (owner, 2026-10-02) | mostly dark with a short blink, unlike every other Wi-Fi pattern | a Wi-Fi LED pattern is added or changed |
 | `wifi.reconnect_caller_grace_s` | 5 s | `src/asy_wifi_service.py` — `5` | lets the calling function's final tasks finish | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:204` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.reconnect_settle_s` | 3 s | `src/asy_wifi_service.py` — `3` | one settle after a reconnect | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:225` | unknown until measured | the CYW43 driver or the pin moves |
 | `wifi.sta_disconnect_poll_s` | 0.5 s | `src/asy_wifi_service.py` — `0.5` | with `wifi.sta_disconnect_wait_iters` (20) the 10 s disconnect wait, a derived Dependant | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:220` | unknown until measured | the CYW43 driver or the pin moves |
@@ -9960,7 +10042,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `wifi.refresh_s` | 5 s | `src/asy_wifi_service.py` — `5` | the connection-check loop period | legacy `legacy/firmware/python/CommonDrivers/async_connect.py:19` | unknown until measured | the CYW43 driver or the pin moves |
 | `udp.retry_backoff_s` | 0.5 s | `src/asy_udp_socket.py` — `0.5` | — | legacy `legacy/firmware/python/CommonDrivers/asy_udp_socket.py:42` | unknown until measured | the socket setup path changes |
 | `udp.poll_wait_ms` | 20 ms | `src/asy_udp_socket.py` — `20` | every UDP wait with a deadline: the resolver's and the NTP fetch's exchanges, each ending at most one step past `dns.timeout_ms` or `ntp.fetch_timeout_ms`; C.8's NTP hold bound | estimated (agent, `6438bdc`; the 20 ms rate owner-confirmed, 2026-07-19) — measurement owed: the latency an exchange's poll step adds and the event-loop share it takes, L4 | unknown until measured | the poller or a caller's timeout changes |
-| `udp.poll_idle_ms` | 100 ms | `src/asy_udp_socket.py` — `100` | the captive DNS listener's first answer after silence (at most one idle step late) and its idle poll rounds (10 per second); C.7.5's burst bound (four datagrams per idle poll) | estimated (agent, 2026-09-30, `8f61712`): idle poll rounds cut from 50 to 10 per second against at most 100 ms added to the first answer after silence — measurement owed: the event-loop share an idle captive-DNS listener's polling takes and its first-query latency, L2 (twin) and L4 (bench) (owner, 2026-10-05: kept, its measurement owed) | unknown until measured | the measurement lands, or the listener's latency need changes |
+| `udp.poll_idle_ms` | 100 ms | `src/asy_udp_socket.py` — `100` | the captive DNS listener's first answer after silence (at most one idle step late) and its idle poll rounds (10 per second); C.7.5's burst bound (four datagrams per idle poll) | estimated (agent, 2026-09-30, `f1f800e`): idle poll rounds cut from 50 to 10 per second against at most 100 ms added to the first answer after silence — measurement owed: the event-loop share an idle captive-DNS listener's polling takes and its first-query latency, L2 (twin) and L4 (bench) (owner, 2026-10-05: kept, its measurement owed) | unknown until measured | the measurement lands, or the listener's latency need changes |
 | `dns_server.recv_backoff_initial_s` | 0.5 s | `src/asy_captive_dns.py` — `0.5` | the backoff series `tests/test_asy_captive_dns.py`'s gap bands bracket: `l1.captive_dns_gap_initial_min_ms`/`_max_ms`, `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket and the loop share the retries take, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.recv_backoff_max_s` | 5.0 s | `src/asy_captive_dns.py` — `5.0` | `l1.captive_dns_gap_cap_min_ms`/`_max_ms` bracket it, below the uncapped next step; `l4.hotspot_role_reversal_dns_recovery_timeout_s`, the bench's post-flood query deadline, is sized against it | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket and the loop share the retries take, L2 | unknown until measured | the serve loop's receive path changes |
 | `dns_server.recv_backoff_mult` | 2 | `src/asy_captive_dns.py` — `2` | the doubled and quadrupled gap bands of `tests/test_asy_captive_dns.py`: `l1.captive_dns_gap_doubled_min_ms`/`_max_ms` and `l1.captive_dns_gap_quad_min_ms`/`_max_ms` | estimated (agent, `01699e2`) — measurement owed: the receive-failure rate of a broken socket, L2 | unknown until measured | the serve loop's receive path changes |
@@ -9969,9 +10051,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `led.refresh_hz` | 20 Hz | `src/asy_neopixel_driver.py` — `20` | a module constant every `NeopixelDriver` takes (tests set the attribute after construction); the ramp's step count per signal; the frame period `neopixel_dt` (derived, 50 ms), also `request_signal()`'s poll interval while it waits for a running signal | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | unknown until measured | the LED driver's refresh path changes |
 | `led.overlay_brightness` | 50 | `src/asy_neopixel_driver.py` — `50` | a module constant every `NeopixelDriver` takes; the overlay colour's brightness | legacy `legacy/firmware/python/IndividualDrivers/neopixel_signal.py:11` | of 255 | the overlay's appearance is reviewed |
 | `led.signal_wait_ms` | 120000 ms | `src/asy_neopixel_driver.py` — `120000` | `_MAX_SIGNAL_S` (60 s, the REST ceiling of `t`; the wait is twice it); the notification service's `_trigger_signal()` waits at most this long for a running signal | estimated (agent, 2026-10-06) — measurement owed: wall time of a t = 60 s ramp under bench API load, L4 | 2× the nominal 60 s | `_MAX_SIGNAL_S` changes, or the signal task's restart path changes |
+| `led.overlay_refresh_ms` | 300000 ms | `src/asy_neopixel_driver.py` — `300000` | the overlay task's bounded wait: with no change pending the overlay is rewritten at least this often, so a pixel blanked by a supply dip shows the right overlay again (A.4); every overlay wake, a change or the refresh, runs the wait through `asyncio.wait_for_ms()`, whose two short-lived tasks (the flag wait promoted to a task, and its runner, `extmod/asyncio/funcs.py:24-30`) are built per wake, not per period | the default notification `FlashInterval`, about once per notification cycle (agent, 2026-10-06) | a pixel blanked between two rewrites shows a wrong overlay for at most one period | a `FlashInterval` default change |
 | `notify.loop_tick_s` | 1 s | `src/asy_notification_service.py` — `1` | `_pause_loop()`'s round: a measured pause ends at most one round late (`l1.asy_notification_service_override_bound_ms` allows the pause plus one round); `l4.sensor_config_push_over_real_hardware_override_poll_s` × `l4.sensor_config_push_over_real_hardware_override_poll_tries`: ten ticks over the bench's 3 s countdown; `l1.asy_notification_service_override_secs` leaves one full round with the override active | estimated (agent, `da9b4ab`) — measurement owed: none for the value, the pause's lateness bound; the loop share, L2 | unknown until measured | the pause loop changes |
 | `notify.min_sleep_s` | 0.1 s | `src/asy_notification_service.py` — `0.1` | the monitor loop's shortest sleep | estimated (agent, `454f6a2`) — measurement owed: the monitor loop's cycle cost, L2 | unknown until measured | the monitor loop changes |
 | `notify.cfg_fail_interval_s` | 600 s | `src/asy_notification_service.py` — `600.0` | the interval used while its config reads fail | estimated (agent, `da9b4ab`) — measurement owed: none: a fallback while the config is unreadable | twice the `FlashInterval` default | the `FlashInterval` range changes |
+| `notify.sample_max_age_s` | 10800 s | `src/asy_notification_service.py` — `10800` | `_check_one()`: a producer sample whose `TS` is older counts as unavailable, the signal not evaluated (`State` 3, A.4); the same rule and value as `sgp40.comp_max_age_s` (G.2) | three times the longest configurable producer interval, BMP3XX `SampleInterval` 3600 s, so a slow producer is never cut off (agent, 2026-10-06) | a producer late by up to three intervals still counts | a producer's interval maximum changes |
 | `scd30.cmd_response_wait_s` | 0.05 s | `src/asy_scd30_driver.py` — `0.05` | every command-and-read exchange | owner decision (owner, 2026-07-13, `144873f`: owner-tested) | 16.7× the > 3 ms between write and read (Interface Description 1.4.4, 1.4.5; M.2) | the bus speed or the chip's firmware changes |
 | `scd30.asc_enable_wait_s` | 0.01 s | `src/asy_scd30_driver.py` — `0.01` | — | legacy `legacy/firmware/python/IndividualDrivers/asy_scd30_driver.py:286` | datasheet margin owed | the chip's firmware changes |
 | `scd30.soft_reset_wait_s` | 2.5 s | `src/asy_scd30_driver.py` — `2.5` | — | estimated (agent, `7267509`) — measurement owed: the chip's ready time after a soft reset on the dev bench, L3 (the Interface Description's boot time is the floor) | 1.25× the boot-up time < 2 s (Interface Description 1.1; M.2) | the chip's firmware changes |
@@ -10027,14 +10111,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
 | `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `.github/workflows/ci.yml` — `3`; `.github/actions/setup-micropython-toolchain/action.yml` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; and CI's own retried `uv sync` | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
 | `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `.github/workflows/ci.yml` — `10`; `.github/actions/setup-micropython-toolchain/action.yml` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
-| `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `8c38f9d`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
-| `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `8c38f9d`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
-| `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `8c38f9d`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
-| `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, under `firmware-build-verify`'s 15-minute limit with its other steps | estimated (agent, `5b6dc1b`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
-| `tool.bench_bridge_recovery_arm_s` | 300 s | `toolchain/setup_toolchain.py` — `300` | the recovery timer's window around a bridge creation or channel re-pin (B.13); must cover the change plus `tool.bench_bridge_up_poll_s` | estimated (agent, `5b6dc1b`) — measurement owed: a real bridge creation's wall time and its time to a DHCP lease on the bench Pi4 (B.13 measured about 30 s to a lease, 2026-09-04), L4 | arm ≥ the sequence + the poll + 60 s | the bridge sequence or the bench host changes |
-| `tool.bench_bridge_up_poll_s` | 90 s | `toolchain/setup_toolchain.py` — `90` | how long `br0` may take after `up` to hold an address and the default route before the change counts as failed and the timer stays armed (B.13) | estimated (agent, `5b6dc1b`) — measurement owed: as `tool.bench_bridge_recovery_arm_s`, L4 | 3× the single 30 s lease measured on the bench Pi4 (2026-09-04) | the bridge sequence or the bench host changes |
-| `tool.node_shasums_timeout_s` | 60 s | `toolchain/setup_toolchain.py` — `60` | `curl --max-time` for the Node `SHASUMS256.txt`; `run()` allows each attempt that plus 30 s, so curl names a stall first | estimated (agent, `8c38f9d`) — measurement owed: the fetch on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
-| `tool.node_tarball_timeout_s` | 600 s | `toolchain/setup_toolchain.py` — `600` | `curl --max-time` for the Node tarball, plus 30 s as above | estimated (agent, `8c38f9d`) — measurement owed: the download on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
+| `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `65088de`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
+| `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `65088de`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
+| `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `65088de`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
+| `tool.apt_step_timeout_s` | 150 s | `toolchain/setup_toolchain.py` — `150` | one apt attempt: the list `update` (once, non-fatal) and each `install --download-only` attempt (B.4); worst case 150 + 3 × 150 + 10 + 20 = 630 s of fetching, under `firmware-build-verify`'s 15-minute limit with its other steps | estimated (agent, `65088de`) — measurement owed: the download share of the apt step on CI (the whole step took 27-66 s on run 37799699030), the sandbox and the bench Pi4, L0 | about 2.3× the longest whole apt step seen on CI | a mirror's failure pattern or the package list changes |
+| `tool.bench_bridge_recovery_arm_s` | 300 s | `toolchain/setup_toolchain.py` — `300` | the recovery timer's window around a bridge creation or channel re-pin (B.13); must cover the change plus `tool.bench_bridge_up_poll_s` | estimated (agent, `65088de`) — measurement owed: a real bridge creation's wall time and its time to a DHCP lease on the bench Pi4 (B.13 measured about 30 s to a lease, 2026-09-04), L4 | arm ≥ the sequence + the poll + 60 s | the bridge sequence or the bench host changes |
+| `tool.bench_bridge_up_poll_s` | 90 s | `toolchain/setup_toolchain.py` — `90` | how long `br0` may take after `up` to hold an address and the default route before the change counts as failed and the timer stays armed (B.13) | estimated (agent, `65088de`) — measurement owed: as `tool.bench_bridge_recovery_arm_s`, L4 | 3× the single 30 s lease measured on the bench Pi4 (2026-09-04) | the bridge sequence or the bench host changes |
+| `tool.node_shasums_timeout_s` | 60 s | `toolchain/setup_toolchain.py` — `60` | `curl --max-time` for the Node `SHASUMS256.txt`; `run()` allows each attempt that plus 30 s, so curl names a stall first | estimated (agent, `65088de`) — measurement owed: the fetch on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
+| `tool.node_tarball_timeout_s` | 600 s | `toolchain/setup_toolchain.py` — `600` | `curl --max-time` for the Node tarball, plus 30 s as above | estimated (agent, `65088de`) — measurement owed: the download on CI and the bench Pi4, L0 | unknown until measured | the download source or the uplink changes |
 | `dev.uart_poll_wait_ms` | 2 ms | `devices/dev.toml` — `2`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `2`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `2`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `2`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `2`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `2` | `uart.timeout_floor`, `uart.rxbuf_floor` | estimated (agent, `4f8caf5`) — measurement owed: the crossover link's throughput at 2 ms on the dev bench, L3 (J.6: a protocol instance needs a single-digit rate) | unknown until measured | a bench window, baud, `payload_size` or `timeout` change |
 | `dev.uart_poll_idle_ms` | 50 ms | `devices/dev.toml` — `50`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `50`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `50`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `50`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `50` | `uart.timeout_floor` (`buildgen/validate.py`); `tests_hardware/device_scripts/uart_idle_poll_rate.py` counts it | measured 2026-09-12, dev bench, 2 interleaved runs: an idle listener 1244/1233 poll rounds over 3 s at 2 ms against 60/60 at 50 ms (F.5.9); 1/20 of the 1000 ms reply budget (agent, 2026-09-11, `7cf989d`) | 13.3× the reply timeout's floor (J.7: 2·2 + 50 + 21 = 75 ms against 1000 ms) | a bench window, baud, `payload_size` or `timeout` change |
 | `dev.uart_rxbuf` | 512 B | `devices/dev.toml` — `512`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `512`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `512`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `512` | `uart.rxbuf_floor` | estimated (agent, `4f8caf5`) — measurement owed: the ring's peak fill and the largest write on the dev bench, L3 | unknown until measured | a bench window, baud, `payload_size` or `timeout` change |
@@ -10096,6 +10180,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | about 3.4 KB over `dev`'s demand, against an estimated budget | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
 | `l1.sensortask_led_refusal_ms` | 100 ms | `tests/_sensortask_scenarios.py` — `100` | the second back-to-back `LightCmdLED` dispatch's own `timeout_ms` bound | estimated (agent, 2026-10-06) — measurement owed: elapsed of a refused dispatch at both GC stages on the slowest host, L1; the refusal is synchronous, so the bound sits far above it | against that measurement, once taken | the REST LED path or the host class changes |
 | `l1.sensortask_locked_status_ms` | 5000 ms | `tests/_sensortask_scenarios.py` — `5000` | the bound on a `GET /status` taken while a test task holds `wifi_mode_lock`; it only ends a regression that waits on the lock instead of letting it hang the file | measured (agent, 2026-10-08): one `GET /status` took 86-194 ms on `build-standard` and 129-318 ms on `build-settrace` | more than 15× the slowest measured read | a `GET /status` nears 1 s on the coverage lane |
+| `l1.sensortask_notify_cycle_rounds` | 200 | `tests/_sensortask_scenarios.py` — `200` | the scheduler rounds `_one_notification_cycle()` gives one monitor cycle of the built notification service to store its sample, in the per-device `State` scenario; a hang guard | estimated (agent, `7b548af`) — measurement owed: the rounds one monitor cycle takes to store a sample that flashes nothing, at both GC stages on the slowest host, L1 (it is expected within a few) | against that measurement, once taken | the monitor loop's await structure changes |
 | `l1.asy_notification_service_max_rounds` | 200 | `tests/test_asy_notification_service.py` — `200` | a hang guard in scheduler rounds for the coordinator's waits | measured at most 2 rounds used (agent, 2026-10-06, single observation, x86 VM) | 100x the observed use | the coordinator's await structure changes |
 | `l1.notification_neopixel_wait_until_timeout_ms` | 10000 ms | `tests/test_notification_neopixel_integration.py` — `10000` | a hang guard; above the product's own 2 × FlashDur settle | measured longest wait 1004 ms (agent, 2026-10-06, single observation, x86 VM) | about 10x the observed wait | FlashDur's settle or the signal path changes |
 | `l1.captive_dns_wait_until_timeout_ms` | 1000 ms | `tests/test_asy_captive_dns.py` — `1000` | — | estimated (agent, `639e992`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -10163,7 +10248,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_uart_link_driver_round_poll_s` | 0.005 s | `tests/test_asy_uart_link_driver.py` — `0.005` | — | estimated (agent, `83c1c57`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_uart_link_driver_ticker_step_ms` | 1 ms | `tests/test_asy_uart_link_driver.py` — `1` | — | estimated (agent, `794d66f`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_uart_link_driver_task_end_rounds` | 200 rounds | `tests/test_asy_uart_link_driver.py` — `200` | the poll rounds of `POLL_WAIT_MS` (1 ms) on the shared poll-round clock within which every task of a refused construction must have ended, for both roles | estimated (agent, 2026-10-07): the 200 ms task-end bound in poll rounds — measurement owed: the poll rounds both roles' tasks take to end after a refused construction, L1 | 199 rounds over the one needed | `POLL_WAIT_MS` or the exercise period changes |
-| `l1.asy_base_classes_piece_rounds` | 50 | `tests/test_asy_base_classes.py` — `50` | the rounds of each measured `PieceBuffer` loop (built and dropped; written and copied out) and of its ambient control in the retention test | estimated (agent, `64ca641`) — measurement owed: the smallest count at which a planted per-round retention of one block fails the test, and the test's elapsed at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.asy_base_classes_piece_rounds` | 50 | `tests/test_asy_base_classes.py` — `50` | the rounds of each measured `PieceBuffer` loop (built and dropped; written and copied out) and of its ambient control in the retention test | estimated (agent, `c11ca0a`) — measurement owed: the smallest count at which a planted per-round retention of one block fails the test, and the test's elapsed at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_bmp3xx_driver_event_wait_s` | 1 s | `tests/test_asy_bmp3xx_driver.py` — `1` | — | estimated (agent, `4448a6f`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_dns_client_prompt_return_max_ms` | 200 ms | `tests/test_asy_dns_client.py` — `200` | — | estimated (agent, `a6abe13`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_dns_client_fake_server_wait_ms` | 2000 ms | `tests/test_asy_dns_client.py` — `2000` | — | estimated (agent, `2db8c30`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -10264,13 +10349,13 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.uart_comm_hazard_retention_per_failure_max_bytes` | 16.0 B | `tests/test_uart_comm_hazard.py` — `16.0` | — | estimated (agent, `fd333ce`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_uart_comm_prompt_hold_ms` | 5 ms | `tests/test_asy_uart_comm.py` — `5` | — | estimated (agent, `4d5154d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_fram_manager_read_wait_s` | 5 s | `tests/test_asy_fram_manager.py` — `5` | — | estimated (agent, `892a591`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.lwip_host_write_bound_ms` | 250 ms | `tests/lwip_host/test_modlwip_eagain.py` — `250` | every timed `write()` of the host file; the unpatched `ERR_MEM` loop holds one for up to 10,000 ms | estimated (agent, `a2d7ee2`) — measurement owed: the slowest patched write on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here (2026-10-08, both GC stages) 0.16 ms under load, 0.06 ms quiet | over 1,500× the slowest write here, 40× under the unpatched 10,000 ms (a control build: 10,000-10,065 ms) | the host build, the pin's `modlwip.c` or the host class changes |
-| `l1.lwip_host_connect_bound_ms` | 200 ms | `tests/lwip_host/test_modlwip_eagain.py` — `200` | a handshake slower than this counts the pcb pool as exhausted, so it also sets test (1)'s pair count | estimated (agent, `a2d7ee2`) — measurement owed: the slowest handshake on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 1.19 ms under load, 1.48 ms quiet, 117 pairs a run | over 100× the slowest handshake here | the host build or the host class changes |
-| `l1.lwip_host_recovery_s` | 15 s | `tests/lwip_host/test_modlwip_eagain.py` — `15` | the drain and capacity-recovery waits; covers modlwip's 10 s close-abort (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`) | estimated (agent, `a2d7ee2`) — measurement owed: the slowest recovery on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 126.6 ms under load, 120.1 ms quiet, the close-abort never reached | 5 s over the 10 s close-abort | the close linger or the host class changes |
-| `l1.lwip_host_rounds` | 20 | `tests/lwip_host/test_modlwip_eagain.py` — `20` | test (6)'s load, drain and close rounds; 20 take 16.8 s of the file's 23.7-24.4 s here | estimated (agent, `a2d7ee2`) — measurement owed: the file's wall time against `runner.per_file_timeout_s` on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; capacity was 10,400 B in every round here | the file uses about a tenth of the 240 s per-file limit here | the file's wall time nears the per-file limit |
-| `l1.lwip_host_spin_rounds` | 1000 | `tests/lwip_host/test_modlwip_eagain.py` — `1000` | test (7)'s rounds; 5.1-5.2 s here | estimated (agent, `a2d7ee2`) — measurement owed: test (7)'s wall time on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1 | enough rounds that one slow round shows; a tenth of the file's time here | the file's wall time nears the per-file limit |
-| `l1.lwip_host_spin_round_max_us` | 20000 µs | `tests/lwip_host/test_modlwip_eagain.py` — `20000` | one `drain()` round at the patched edge (a `write()` returning `None`, a timeout-0 poll), which on this host includes select's 1 ms `poll()` sleep (F.7 row 30); rounds that ran a collection are counted and left out | estimated (agent, `a2d7ee2`) — measurement owed: the slowest spin round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 8,536 µs under load, 5,896 µs quiet | 2.3× the slowest round here, 2.5× under an unpatched round's 50,000 µs sleep; a failed bound goes to the owner as a change to the override, never a larger bound (owner, 2026-09-30) | the override, the pin's `modlwip.c` or the host class changes |
-| `l1.lwip_host_spin_round_alloc_max_b` | 64 B | `tests/lwip_host/test_modlwip_eagain.py` — `64` | the heap one spin round allocates, a `gc.mem_alloc()` delta | estimated (agent, `a2d7ee2`) — measurement owed: the allocation per round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 32 B in every round of every run, one 32 B GC block for the memoryview slice `drain()` makes | two GC blocks of the 64-bit host | the spin's per-round work or the GC block size changes |
+| `l1.lwip_host_write_bound_ms` | 250 ms | `tests/lwip_host/test_modlwip_eagain.py` — `250` | every timed `write()` of the host file; the unpatched `ERR_MEM` loop holds one for up to 10,000 ms | estimated (agent, `65088de`) — measurement owed: the slowest patched write on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here (2026-10-08, both GC stages) 0.16 ms under load, 0.06 ms quiet | over 1,500× the slowest write here, 40× under the unpatched 10,000 ms (a control build: 10,000-10,065 ms) | the host build, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_connect_bound_ms` | 200 ms | `tests/lwip_host/test_modlwip_eagain.py` — `200` | a handshake slower than this counts the pcb pool as exhausted, so it also sets test (1)'s pair count | estimated (agent, `65088de`) — measurement owed: the slowest handshake on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 1.19 ms under load, 1.48 ms quiet, 117 pairs a run | over 100× the slowest handshake here | the host build or the host class changes |
+| `l1.lwip_host_recovery_s` | 15 s | `tests/lwip_host/test_modlwip_eagain.py` — `15` | the drain and capacity-recovery waits; covers modlwip's 10 s close-abort (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`) | estimated (agent, `65088de`) — measurement owed: the slowest recovery on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 126.6 ms under load, 120.1 ms quiet, the close-abort never reached | 5 s over the 10 s close-abort | the close linger or the host class changes |
+| `l1.lwip_host_rounds` | 20 | `tests/lwip_host/test_modlwip_eagain.py` — `20` | test (6)'s load, drain and close rounds; 20 take 16.8 s of the file's 23.7-24.4 s here | estimated (agent, `65088de`) — measurement owed: the file's wall time against `runner.per_file_timeout_s` on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; capacity was 10,400 B in every round here | the file uses about a tenth of the 240 s per-file limit here | the file's wall time nears the per-file limit |
+| `l1.lwip_host_spin_rounds` | 1000 | `tests/lwip_host/test_modlwip_eagain.py` — `1000` | test (7)'s rounds; 5.1-5.2 s here | estimated (agent, `65088de`) — measurement owed: test (7)'s wall time on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1 | enough rounds that one slow round shows; a tenth of the file's time here | the file's wall time nears the per-file limit |
+| `l1.lwip_host_spin_round_max_us` | 20000 µs | `tests/lwip_host/test_modlwip_eagain.py` — `20000` | one `drain()` round at the patched edge (a `write()` returning `None`, a timeout-0 poll), which on this host includes select's 1 ms `poll()` sleep (F.7 row 30); rounds that ran a collection are counted and left out | estimated (agent, `65088de`) — measurement owed: the slowest spin round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 8,536 µs under load, 5,896 µs quiet | 2.3× the slowest round here, 2.5× under an unpatched round's 50,000 µs sleep; a failed bound goes to the owner as a change to the override, never a larger bound (owner, 2026-09-30) | the override, the pin's `modlwip.c` or the host class changes |
+| `l1.lwip_host_spin_round_alloc_max_b` | 64 B | `tests/lwip_host/test_modlwip_eagain.py` — `64` | the heap one spin round allocates, a `gc.mem_alloc()` delta | estimated (agent, `65088de`) — measurement owed: the allocation per round on CI at `TEST_PARALLELISM=4` and on the bench Pi4, L1; here 32 B in every round of every run, one 32 B GC block for the memoryview slice `drain()` makes | two GC blocks of the 64-bit host | the spin's per-round work or the GC block size changes |
 
 **L2 (digital twin)**
 
@@ -10386,6 +10471,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_churn_transfers` | 10 | `tests/test_digital_twin_uart_link.py` — `10` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
 | `l2.isl29125_autorange_red_scene_window_s` | 20 s | `tests/test_digital_twin_isl29125_autorange.py` — `20` | the red-dominant scene's twin time at a 5 s `SampleInterval`: its read cycles are bounded by the window's intervals plus two | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.wifi_modes_wait_poll_s` | 0.25 s | `tests/test_digital_twin_wifi_modes.py` — `0.25` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `85c82b9`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
+| `l2.wifi_modes_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_wifi_modes.py` — `25.0` | each wait for a Wi-Fi transition of the scenario, and its short waits (the first attempt, the lit frame) | estimated (agent, `85c82b9`) — measurement owed: the longest single transition's elapsed at both GC stages on the slowest host that runs it, L2; derived from the product's timeline: a window end or settings change reaches the next phase within `wifi.refresh_s` 5 + `wifi.reconnect_caller_grace_s` 5 + the mode switch 4 + `wifi.reconnect_settle_s` 3 + one attempt (`l2.twin_wifi_connect_delay_s` 0.7 and the poll), about 18 s | about 7 s over that path, against an estimate | a `wifi.*` delay on that path or the twin's connect delay changes |
+| `l2.wifi_modes_run_bound_s` | 200.0 s | `tests/test_digital_twin_wifi_modes.py` — `200.0` | the backstop of the file's one scenario (one boot through the stations rule, the settings change and the silent mode); stays under `runner.per_file_timeout_s` | estimated (agent, `85c82b9`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; about twice the 101.3, 101.6 and 101.9 s it took here at the two GC stages and under settrace (agent, 2026-10-12, one run each) | about twice the run measured here, 40 s under the 240 s per-file limit | the scenario's stages or a `wifi.*` delay on its path change |
 
 **L3/L4 (real hardware)**
 
@@ -10486,6 +10574,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.hotspot_role_reversal_dns_recovery_timeout_s` | 8.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `8.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.hotspot_role_reversal_raw_socket_timeout_s` | 10.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `10.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.hotspot_role_reversal_reassociate_cycles` | 3 | `tests_hardware/bench/test_hotspot_role_reversal.py` — `3` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.hotspot_role_reversal_derived_wait_margin_s` | 30.0 s | `tests_hardware/bench/test_hotspot_role_reversal.py` — `30.0` | added to each wait the two Wi-Fi-mode bench cases derive from the Wi-Fi service's own timeline (`devices/dev.toml`'s `conn_fail_to_hotspot`/`hotspot_time_min` and the `wifi.*` constants): the reopen bound `_streak_bound_s()` (refresh + grace + mode switch + settle + `conn_fail_to_hotspot` × (connect poll + refresh) + mode switch), the leave wait (refresh + grace), the window-end wait (window + 2 × refresh + grace) and the relink wait (window + connect poll + refresh) | estimated (agent, `45f5c23`) — measurement owed: each derived wait's elapsed on the dev bench, L4; sized for the bench's scan cadence (an `nmcli` rescan of up to 15 s plus its 2 s poll) and a link loss NetworkManager notices late | against that measurement, once taken | a `wifi.*` constant, `conn_fail_to_hotspot`/`hotspot_time_min` or the bench host changes |
 | `l4.memory_stress_bench_fetch_timeout_s` | 5.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `5.0` | — | estimated (agent, `33719a4`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.memory_stress_bench_join_timeout_s` | 10.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `10.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.memory_stress_bench_hammer_duration_s` | 120.0 s | `tests_hardware/bench/test_memory_stress_bench.py` — `120.0` | — | estimated (agent, `4dfb00d`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |

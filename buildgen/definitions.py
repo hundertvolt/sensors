@@ -693,6 +693,11 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
     if "notification" in have:
         groups.append({"key": "notification", "label": "Notification Status", "fields": [
             {"key": "Triggered", "label": "Currently Triggered", "kind": "readonly"},
+            {
+                "key": "State", "label": "Evaluation State", "kind": "readonly",
+                "description": "Whether the last notification cycle evaluated every signal, and why not, as a numeric code.",
+                "codes": _status_codes("NotifyState", model.device, "State"),
+            },
             {"key": "TS", "label": "Last Trigger Timestamp", "kind": "readonly", "format": "epoch"},
             {"key": "PauseTime", "label": "Remaining Pause Time", "unit": "s", "kind": "readonly"},
         ]})

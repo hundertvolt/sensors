@@ -16,6 +16,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from types import ModuleType
     from typing import Any, NamedTuple
 
     import network
@@ -275,6 +276,12 @@ def _wire_uart_crossover(module: "Any", plan: "dict[str, Any]") -> "Any | None":
     return link
 
 
+def load_module(name: str) -> "ModuleType":
+    # A generated device module by name, at the one named load site (SPECIFICATION.md F.1): this runner's boot, and a
+    # twin test that picks its device from the generated plans.
+    return __import__(name)
+
+
 async def main(config: RunConfig) -> None:
     global _watchdog
     install()  # before the firmware: start_tasks() keeps it, so every task death prints (Part I.4(e))
@@ -305,7 +312,7 @@ async def main(config: RunConfig) -> None:
         f"mem_sample_interval_ms={run.mem_sample_interval_ms!r}",
     )
 
-    module = __import__(config.module)
+    module = load_module(config.module)
     watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS)
     _watchdog = watchdog
     main_task = asyncio.get_event_loop().create_task(

@@ -1,0 +1,8 @@
+window 120.0 s, 305802276 reads; gaps <1ms,<5,<10,<20,<50,>=50 ms: [305802032, 239, 5, 0, 0, 0]
+this thread: on-CPU 118747.2 ms, guest run-queue wait 10.4 ms
+steal ticks (USER_HZ) per cpu over the window: cpu 158, cpu0 81, cpu1 22, cpu2 47, cpu3 9
+gap 7.09 ms: guest run-queue wait in it ~0.00 ms (since the previous >=1 ms gap), on-CPU 21.24 ms
+gap 6.67 ms: guest run-queue wait in it ~0.00 ms (since the previous >=1 ms gap), on-CPU 3.17 ms
+gap 5.63 ms: guest run-queue wait in it ~0.00 ms (since the previous >=1 ms gap), on-CPU 187.02 ms
+gap 5.41 ms: guest run-queue wait in it ~0.15 ms (since the previous >=1 ms gap), on-CPU 2347.06 ms
+gap 5.02 ms: guest run-queue wait in it ~0.07 ms (since the previous >=1 ms gap), on-CPU 915.82 ms

@@ -575,33 +575,41 @@ Conventions every merged change below applies (stated once, not repeated per cha
 - **From**: A.U0.25 (A13 restructure, A49, L05, L06, C03), A.U10.24 (FRAM headroom → summed layout), A.U18.29
   (`:271-273`), A.U36.530 (static `AmbPres` item), A.U9.01 (the midnight clause leaves the list), A.U26.07 Change
   (cites the L06 read-back note, read-only).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `SPECIFICATION.md:269-285`.
 - **Change**: heading "**Functional behaviours confirmed intentional by the project owner** (owner, 2026-07-13,
   `368fa83`) — don't "fix" these:" over the owner's bullets: air-quality LED sequencing (one colour per condition,
-  paused between flashes); `BackupPeriod`/`BackupMaxAge` "0 = disabled" (`DEVICE_REFERENCE.md`); permanent Wi-Fi
-  deactivation after a second STA failure streak — `_PHASE_DEACTIVATED` survives task restarts, only a physical power
-  cycle clears it (owner, 2026-08-11, `acc4993`); a restart in hotspot mode leaves the hotspot and starts a fresh STA
-  failure streak, as legacy's restart did (agent, 2026-09-30); STA never falls back to the hotspot once connected
-  successfully in a task's lifetime — only a human resubmitting credentials or a task restart resets this; the web UI
-  shows raw numbers, no colour-coding of measured values (the LED is the at-a-glance indicator), the one coloured cue
-  being the ISL29125 calibration-light code's tone (owner, 2026-09-28); SCD30 pressure compensation comes from a
-  manually set, static `AmbPres` on every device, a device with a barometric sensor included; a device without one has
-  no live compensation at all — an accepted limitation (owner, 2026-07-13, `b64857d`: 'intentionally rely on a
-  manually-set static `AmbPres` config value instead, and that's fine as-is'); and A.U10.24's FRAM bullet verbatim
-  ("every FRAM chunk of a fully built device fits its part: the summed layout … (owner, 2026-09-16: 'we do not even add
-  errno/wrnno for the out of FRAM memory … Handle via mpremote.')", its byte sums taken from the per-device test U20
-  adds). Then three separate bullets, each with its own tag: A.U0.25's SGP40 compensation text verbatim (owner,
-  2026-09-26 quote); "`asy_uart_driver.py` exposes no hardware flow control (owner, 2026-07-23, `c9006dc`)"; "SCD30's
-  `get_ambient_pressure()` reuses the set command word — leave as is, no alternate documented read-back exists to switch
-  to (owner, 2026-07-22, `75f2e11`)". The midnight-window sentence goes from the list (the window spans midnight since
-  U9; A.4's notification bullet states it, M.SPEC.014).
+  paused between flashes); `BackupPeriod`/`BackupMaxAge` "0 = disabled" (`DEVICE_REFERENCE.md`); after a second STA
+  failure streak following a hotspot phase Wi-Fi goes silent, never off: no hotspot, the LED dark, one quiet connect
+  attempt every `hotspot_time_min`, uncapped; task restarts keep it and only a reboot opens the hotspot again (owner,
+  2026-10-08: 'Don't permanently switch WiFi off, only stop retrying to connect.'); a restart in hotspot mode leaves the
+  hotspot and starts a fresh STA failure streak, as legacy's restart did (agent, 2026-09-30); STA never falls back to
+  the hotspot once connected successfully in a task's lifetime — only a credentials change, which lands in the
+  fresh-boot state (owner, 2026-10-08), or a task restart resets this; the web UI shows raw numbers, no colour-coding of
+  measured values (the LED is the at-a-glance indicator), the one coloured cue being the ISL29125 calibration-light
+  code's tone (owner, 2026-09-28); SCD30 pressure compensation comes from a manually set, static `AmbPres` on every
+  device, a device with a barometric sensor included; a device without one has no live compensation at all — an accepted
+  limitation (owner, 2026-07-13, `b64857d`: 'intentionally rely on a manually-set static `AmbPres` config value instead,
+  and that's fine as-is'); and A.U10.24's FRAM bullet verbatim ("every FRAM chunk of a fully built device fits its part:
+  the summed layout … (owner, 2026-09-16: 'we do not even add errno/wrnno for the out of FRAM memory … Handle via
+  mpremote.')", its byte sums taken from the per-device test U20 adds). Then three separate bullets, each with its own
+  tag: A.U0.25's SGP40 compensation text verbatim (owner, 2026-09-26 quote); "`asy_uart_driver.py` exposes no hardware
+  flow control (owner, 2026-07-23, `c9006dc`)"; "SCD30's `get_ambient_pressure()` reuses the set command word — leave as
+  is, no alternate documented read-back exists to switch to (owner, 2026-07-22, `75f2e11`)". The midnight-window
+  sentence goes from the list (the window spans midnight since U9; A.4's notification bullet states it, M.SPEC.014).
+  (1) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) Stage U22, with M.SRC_NET.223: HEAD's
+  list (`SPECIFICATION.md:412-425`) takes the two item texts above now — its permanent-deactivation item ("permanent
+  WiFi deactivation after a second STA failure streak, … only a physical power-cycle clears it (the task-restart guard
+  owner-directed, 2026-08-11, `acc4993`)") becomes the silent-mode item, and its "only a human resubmitting credentials
+  or a full task restart resets this" becomes "only a credentials change, which lands in the fresh-boot state (owner,
+  2026-10-08), or a full task restart resets this"; the U36 rewrite keeps both.
 - **Resolved**: A.U0.25 moves the midnight sentence out as an interim "must" text; A.U9.01 (U9) implements it, and its
   Blast routes "U22 rewrites the C03 sentence" to A.U9.01 — merged end state: no midnight sentence in the list.
   A.U10.24 and A.U0.25 both touch the FRAM-headroom item; A.U10.24's Blast says "A-C merges onto this text". The
   "no colour-coding" item is false after A.U23.20's owner-backed CalLight tone (OR76.a, AC_NOTES 26) — narrowed
   (adherence fix, no action names it). A.U18.29's restart sentence is an agent statement inside the owner list: kept
   with its agent tag beside the owner's item it refines.
-- **Unit**: U36 (A.U36.530 is the latest; the U0/U9/U10/U18 wording folds in, C8).
+- **Unit**: U36 (A.U36.530 is the latest; the U0/U9/U10/U18 wording folds in, C8). Stage U22 ((1), HEAD's two items).
 - **Depends**: A.U9.01, A.U10.24 (U20's byte sums), A.U18.29, A.U23.20.
 - **Blast carried by**: DEVICE_REFERENCE commissioning section → A.U36.531 (DOCS).
 - **Kind**: doc
@@ -960,6 +968,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   defaults), OR137.a (1)-(5) (`HTTPDropped` as a 24-hour window), OR138.a (1)-(2) (`ConfigFaults`; the reset deletes
   every file unread), OR140.a (3) (website confirmation, API one command per request), OR140.a (5) (the LED refusal
   tells the caller to retry), OR140.a (12) (no SCD30 write during a sequence), F21 tag form (A-C review fold).
+  OR152 (owner requirement, 2026-10-08; U22 start fold, execution-time delta); OR150 (owner, 2026-10-08) carried.
 - **Site**: `SPECIFICATION.md:580-634` (A.8).
 - **Change**: A.8 becomes, in order:
   1. Opening: "The normative REST reference is generated per device: `buildgen/api_reference.py` writes
@@ -1089,6 +1098,13 @@ Conventions every merged change below applies (stated once, not repeated per cha
   (16) (A-C fold, silent-failure scan SF-A11, 2026-10-06) Item 5's "`mempause`'s fixed 300 s lives in the command
   callback" gains "; the pause ends at a deadline the uptime pass tests once a second, so it cannot be lost and ends at
   most a second late (C.9)". Stage U36, with item 5's text (this entry's main change); the code is U11's (M.SRC_CORE.012 (1)).
+  (17) (A-C fold, owner requirement 2026-10-08, execution-time delta OR152; OR150 carried) Item 5's `/networking`
+  sentence is HEAD's after U19 (every Wi-Fi field fires `reconnect_wifi()`, also from the hotspot page: the reconnect
+  leaves the hotspot and tries the stored network, about 5 s after the PUT even with a client still joined, with its two
+  owner quotes of 2026-10-08), gaining after "tries the stored network": "in the state a fresh boot gives — a fresh STA
+  streak, the hotspot available once more (owner, 2026-10-08: 'Any change of credentials, no matter from which side,
+  lands in the same mode as "initial connection attempt after a fresh boot".')". Stage U22 (HEAD's bullet,
+  `SPECIFICATION.md:947-953`, with M.SRC_NET.223); the U36 rewrite keeps it.
 - **Resolved**: (a) A.U19.12 and A.U36.544 RF063 rewrite the same "One open exception" sentence; both mechanisms exist
   in the merged product (M.SRC_CORE.038 lock; `get_config_snapshot()` at HEAD) — one sentence states both. (b)
   A.S0930.41 supersedes A.S0930.30's A.8 paragraph ("becomes"); A.S0930.30's purposes and A.S0930.31's behaviour stay.
@@ -1098,13 +1114,13 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U6.21 follows A.U10.40 (`UTCTime`). (f) GAP-G13 (M_SRC_CORE): `coerce_numeric()` becomes private and typed callers
   use the per-kind validators; the policy text names them. (g) `/status` code 20 (A.U30.19) joins the table though
   A.U30.19 placed it "(11-15 are A.U11.05's)" — consistent.
-- **Unit**: Stage 1 U11: item 4's table with codes 0-6 and 10 + p (A.U11.05 lands the field; A.U14.01's F.5.4
-  paragraph cites "A.8"); Stage 2 U36: the whole section as above. Fold stages, each with the code it states: U19
-  (item 3's `HTTPDropped` window and item 5's "`HTTPDropped`'s window included", with the window counter and its
-  webserver use); U20 (item 3's `ConfigFaults`; item 6's delete-unread, failed-delete and SCD30 sentences, with the
-  `/status` generated block, the delete path and the system-command tests); U23 (item 6's website-confirmation clause,
-  with the website's confirm dialogs); item 6's "written once with its defaults" with the U20 stage (the absent-file
-  write lands in U11, earlier).
+- **Unit**: Stage 1 U11: item 4's table with codes 0-6 and 10 + p (A.U11.05 lands the field; A.U14.01's F.5.4 paragraph
+  cites "A.8"); Stage 2 U36: the whole section as above. Fold stages, each with the code it states: U19 (item 3's
+  `HTTPDropped` window and item 5's "`HTTPDropped`'s window included", with the window counter and its webserver use);
+  U20 (item 3's `ConfigFaults`; item 6's delete-unread, failed-delete and SCD30 sentences, with the `/status` generated
+  block, the delete path and the system-command tests); U22 ((17) item 5's fresh-boot clause, with M.SRC_NET.223); U23
+  (item 6's website-confirmation clause, with the website's confirm dialogs); item 6's "written once with its defaults"
+  with the U20 stage (the absent-file write lands in U11, earlier).
   A-C2 step order: A.S0930.12's part lands in U20, not U11 (it follows A.S0930.12's own change, which lands in U20); A.S0930.31's part lands in U20, not U11 (it follows A.S0930.31's own change, which lands in U20); A.S0930.32's part lands in U20, not U11 (it needs A.S0930.13, which lands in U20); A.S0930.33's part lands in U20, not U11 (it follows A.S0930.33's own change, which lands in U20).
 - **Depends**: A.U19.20, A.U10.40, A.U11.01-.08, A.U19.10, A.U32.06, A.U23.22, A.S0930.* , A.U30.19, A.U6.27,
   M.SPEC.056, M.SPEC.103; M.SPEC.111 (the window counter's G.2 entry); M.SRC_CORE.043/.047 (absent-file write, fault
@@ -2224,6 +2240,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   and a warning for one occurrence in one log — its allow-list keeping only reasons that still hold),
   A.U35.37 (normal situations log nothing), A.U6.26 (no C.7 text), A.U14.19 (nothing); OR140.a (7) (every layer that
   meets a fault keeps its own persisted entry, as today) (A-C review fold).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `SPECIFICATION.md:1816-1900` (C.7).
 - **Change**: (1) First paragraph → "`self.pr` is `PrintLogHistory` (in-memory) or `PrintLogHistoryStore` (FRAM-backed),
   chosen from the module's `log: LogConfig` (`fram`, `history_length`, `debug`); `make_logger(log, name)` is the same
@@ -2301,6 +2318,13 @@ Conventions every merged change below applies (stated once, not repeated per cha
   per failure since the state is then unknown and kept; the persisted ones are also the connect-attempt tier (a poll
   that ends without a verdict included), the fallback to the hotspot, the permanent deactivation and the timer arms
   (agent, 2026-10-06)". Stage 8 U18.
+  (15) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) (14)'s WIFI sentence becomes "stay
+  print-only as routine observations, except a failed stations check — a raise, or the chip-down 32-entry answer,
+  counted as no client (owner, 2026-10-08) — and a failed status read in the uptime loop, unknown and the last state
+  kept, each persisted once per failure; the persisted ones are also the connect-attempt tier (a poll that ends without
+  a verdict and every silent-mode attempt included), the fallback to the hotspot, the entry into the silent mode and the
+  timer arms (agent, 2026-10-06; the silent mode, owner, 2026-10-08)". Stage U22 (HEAD's C.7 paragraph,
+  `SPECIFICATION.md:2977-2982`, with M.SRC_NET.223 and .224).
 - **Resolved**: (a) A.U26.22 says "SPEC C.7 is U36's" and A.U16.01 (U16) rewrites the same sentence: Stage U16 lands
   A.U16.01's "read and save the log first … then clear" and U36 adds "the one save primitive" pointer once A.U26.22's
   primitive exists — one sentence. (b) A.U3.10 places "one event, one entry" in C.7 and A.U35.37's rule (G5/R21) is the
@@ -2314,7 +2338,8 @@ Conventions every merged change below applies (stated once, not repeated per cha
   HEAD's per-layer behaviour); Stage 4 U5
   ((1) `LogConfig`); Stage 5 U10 ((1) boot batch/pre-setup, (8) ladder, (10)); Stage 6 U11 ((1) degrade, (3), (4), (5));
   Stage 7 U16 ((1) pitfall, FRAM escalation, unreadable chunk); Stage 8 U18 ((10) UDP, (11) WIFI/resolver); Stage 9 U30
-  ((11) `report_if_fatal()`); Stage 10 U35/U36 ((7) normal situations, (1) save primitive).
+  ((11) `report_if_fatal()`); Stage 10 U35/U36 ((7) normal situations, (1) save primitive); fold stage
+  U22 ((15), HEAD's WIFI sentence).
   A-C2 step order: A.U2.14's part lands in U3, not U2 (it follows A.U2.14's own change, which lands in U3); A.U2.22's part lands in U3, not U2 (it needs A.U2.02, which lands in U3); A.U10.R01's part lands in U13, not U10 (it follows A.U10.R01's own change, which lands in U13).
 - **Depends**: A.U2.22, A.U3.10 (its kept half), A.U3.11 (narrowed), A.U5.01, A.U10.10, A.U10.11, A.U10.R01, A.U11.13, A.U11.16,
   A.U11.31, A.U13.16, A.U16.01, A.U16.06, A.U16.17, A.U18.09, A.U18.15, A.U18.36, A.U19.14, A.U26.22, A.U30.19,
@@ -2514,6 +2539,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   A.U18.32 (the STA-retry sentence goes), A.U18.34 (the `wifi_mode_lock` hold table), A.U18.10 (≤ 3 fallback servers bound
   the NTP hold), A.U36.544 (`_config_lock` sentence), A.U11.27 (`_set_lock`), M_SRC_SENS GAP-13 (`_threshold_lock`;
   resolver form), A.U18.07 + A.U18.31 + A.U35.48 (cancellation line — no action creates it: gap fill).
+  OR151 (owner requirement, 2026-10-08; U22 start fold, execution-time delta).
 - **Site**: `SPECIFICATION.md:2029-2058` (C.8 lock layers, FRAM scope, known-inconsistency paragraph).
 - **Change**: (1) Opening paragraph: lock names as A.U10.18 lands them (`I2C.bus_lock`/`SPI.bus_lock`, a device session's
   `session_lock`); after "reversing risks a real deadlock" A.U12.18's sentence ("Every per-call input a multi-step operation
@@ -2546,6 +2572,10 @@ Conventions every merged change below applies (stated once, not repeated per cha
   in UART, NET and REST restores its locks, busy flags and indicators in `finally` and re-raises `CancelledError`, never
   swallowing it in a widened `except`: the captive DNS re-raises after its cleanup, and the LED flash task leaves the LED
   to its canceller. A test sweep cancels every such path at each of its awaits (agent)."
+  (6) (A-C fold, owner requirement 2026-10-08, execution-time delta OR151) (4)'s hold table loses its
+  permanent-deactivation row ("2 s, once"), and its connect-attempt row reads "connect attempt (`_run_sta_mode()`), the
+  silent mode's one per `hotspot_time_min` included | up to 10 × 0.5 s, one step once `STAT_GOT_IP`". Stage U22 (HEAD's
+  table, `SPECIFICATION.md:3277-3288`, with M.SRC_NET.223).
 - **Resolved**: (a) A.U10.16 lists "the `Locked*` `_value_lock`s (leaf)" and A.U10.17 (same unit) drops those locks —
   the table has no `Locked*` rows (M.SRC_CORE). (b) A.U10.16's resolver names `self.i2c_<chip>`; A.U10.35 makes them
   private — the table states `self._i2c_<chip>` (GAP-13). (c) A.U18.07/A.U18.31/A.U35.48 each say "C.8's cancellation
@@ -2553,7 +2583,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   requirement (G6/R54; agent decision, OR2.c).
 - **Unit**: Stage 1 U10 ((1) names, (2)); Stage 2 U11 (`_set_lock` row); Stage 3 U12 ((1) per-call input); Stage 4 U15
   ((1) derived value, `_threshold_lock` row); Stage 5 U16 ((3)); Stage 6 U18 ((4), (5) first two instances); S0930 ((3)
-  erase); U35 ((5) sweep sentence); U36 (`_config_lock` read/write wording, A.U36.544).
+  erase); U35 ((5) sweep sentence); U36 (`_config_lock` read/write wording, A.U36.544); fold stage U22 ((6)).
   A-C2: "S0930" is not a unit; its parts land in the units SUPP_owner_0930 states: A.S0930.17 in U16, A.S0930.30 in U36.
 - **Depends**: A.U10.16-.18, A.U11.27, A.U12.18, A.U15.S01, A.U16.10, A.U16.13, A.U18.07, A.U18.31-.34, A.U35.48,
   A.S0930.17, M.SRC_SENS.080.
@@ -3165,6 +3195,7 @@ Conventions every merged change below applies (stated once, not repeated per cha
   attached), A.U25.01 (E.6.5 points to the fidelity table), A.U26.44 (device-script convention: board facts from `BENCH`),
   A.U0.44 L61 (`:3108-3109`, `:3190-3191`), A.U36.548 (G9/R11); OR139.a (1)-(5) (the rollover round on the tick-offset
   test image) (A-C review fold).
+  OR151, OR152 (owner requirements, 2026-10-08; U22 start fold, execution-time deltas).
 - **Site**: `SPECIFICATION.md:3103-3193`.
 - **Change**: (1) E.6 intro: `:3108-3109` "— don't force further sharing onto genuinely backend-specific coverage." →
   "— further sharing is not forced onto genuinely backend-specific coverage (agent, 2026-09-04, `8080538`)."; the
@@ -3190,10 +3221,17 @@ Conventions every merged change below applies (stated once, not repeated per cha
   millisecond counts wrap about 15 minutes after boot: the rollover runner flashes it — one flash cycle, counted in the
   round's budget — polls for about two hours with the standard health verdicts, and the next round flashes its own
   image; the driven-clock proofs at L1 and L2 stay the per-commit proof (owner, 2026-10-01)."
+  (8) (A-C fold, owner requirements 2026-10-08, execution-time deltas OR151/OR152) E.6.4's load-bearing finding becomes:
+  "**Load-bearing finding**: a credentials change lands in the fresh-boot state (A.4), so a failed real-credential PUT
+  in the last stage reopens the DUT's hotspot once more, although the hotspot has run since stage 0; with no client its
+  window ends in one more streak and then the silent mode, which retries once per `hotspot_time_min` — hence the
+  fixture's real `hard_reset()` fallback if the reachability wait times out, rather than waiting that out. A
+  wrong-password case proves the reopened hotspot; an opt-in case proves the silent mode and its quiet relink." Stage
+  U22 (HEAD's E.6.4, `SPECIFICATION.md:4605-4615`, with M.HW_BENCH.073 (1)).
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: Stage 1 U0 ((1), (6) tags); Stage 2 U7 ((2) table, (3), (4) run record); Stage 3 U25/U26 ((6) pointers, (1)
   collectible); Stage 4 U27 ((4) `-m`; (7) with the rollover runner M.SCR.074, after M.SPEC.162's U21 subsection);
-  Stage 5 U36 ((2) slot, (4) A.U36.009, history; "B.14.5" → "B.14.4" with M.SPEC.162).
+  Stage 5 U36 ((2) slot, (4) A.U36.009, history; "B.14.5" → "B.14.4" with M.SPEC.162); fold stage U22 ((8)).
 - **Depends**: A.U7.01, A.U7.14, A.U7.18, A.U7.24, A.U7.25, A.U25.01, A.U26.31, A.U26.44, A.U27.19, A.U36.007, A.U36.009,
   M.SPEC.162, M.SCR.074 (the runner, as the fold amends it).
 - **Blast carried by**: README hardware table → A.U7.01/A.U36.008 (DOCS); `tests_hardware/README.md` → A.U7.18/A.U26.* (HW);
@@ -5272,6 +5310,7 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   A.U10.43 (unit suffixes), A.U29.03 + A.U0.33 (`:6136` comment), A.U36.511 (9) (`:6131`), A.U5.07 + A.U9.04 (`:6245-6248`
   LED wiring), C7 names (`:6116`, `:6120`); OR141.a (1) (`bench` and `hardware_family` stay in `[device]`, checked,
   never emitted), OR143.a (2) (the cap and the ring size declared and checked together) (A-C review fold).
+  OR151 (owner requirement, 2026-10-08; U22 start fold, execution-time delta).
 - **Site**: `SPECIFICATION.md:6111-6259`.
 - **Change**: (1) `:6116` "NotificationCoordinator" → "the notification service"; `:6120` WiFi knob names as A.U10.43 lands
   them. (2) The example: `:6131` "the 6 real files are devices/*.toml." → "the real files are devices/*.toml."; `:6136`
@@ -5285,10 +5324,13 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
   `max_transfer_bytes` (declared together, checked together by the build, two values; owner, 2026-10-05; J.6) (A-C review
   fold), the I2C bus `timeout` upper bound (A.U31.08), each numeric `[device]` and bus field's range (A.U20.34). (4) One sentence for the banner order and form (A.U20.29) and one for the `name_ext` rule (every
   non-singleton instance states it); the closing sentence names `tests_scripts/test_toml_schema_contract.py`.
+  (5) (A-C fold, owner requirement 2026-10-08, execution-time delta OR151) The `hotspot_time_min` row's consumer →
+  "`WifiService`: the hotspot window, and the silent mode's connect-attempt period (A.4)"; its range clause stays (the
+  same `Timer` serves both). Stage U22 (HEAD's row, `SPECIFICATION.md:8777`, with M.SRC_NET.223).
 - **Resolved**: — (no conflict among the constituents)
 - **Unit**: Stage 1 U0 ((2) `:6136` tag); Stage 2 U5/U9 (LED lines); Stage 3 U10 (key names); Stage 4 U20 ((3) table, (4);
   the ring-size and `max_transfer_bytes` rows with their keys and joint check); Stage 5 U26/U29/U31 (rows `bench`, A.11
-  pointer, `timeout` bound); Stage 6 U36 ((1), `:6131`; `crc` row with A.S0930.01).
+  pointer, `timeout` bound); Stage 6 U36 ((1), `:6131`; `crc` row with A.S0930.01); fold stage U22 ((5)).
 - **Depends**: A.U5.07, A.U10.43, A.U20.19, A.U20.29, A.U20.34, A.U20.35, A.U26.01, A.U29.03, A.U31.08, A.S0930.01;
   M.GEN.066 (the two TOML keys and their joint check).
 - **Blast carried by**: `devices/*.toml` banners → A.U20.29 (GEN); the table's test → A.U20.35 (TSC).
@@ -5728,6 +5770,69 @@ Part L's class names follow C7 (`WifiService` for `AsyConnTime`, `NotificationSe
 - **Unit**: U26 (with the rename); M.SPEC.131's U36 rewrite of I.5 keeps the new name.
 - **Depends**: A.U26.35, A.U26.74, M.SPEC.065, M.SPEC.131.
 - **Blast carried by**: CLAUDE.md wear rule and `tests_hardware/README.md` → A.U26.74 (DOCS, HW_BENCH).
+- **Kind**: doc
+
+## SPECIFICATION.md — U22 start fold (OR151, OR152): the parts whose earlier carriers landed
+
+### M.SPEC.163 The silent mode, the fresh-boot reconnect and the stations rule where their SPEC texts landed: A.4, C.9, F.1, Part N
+- **From**: OR151, OR152 (owner requirements, 2026-10-08) (U22 start fold, execution-time deltas); the texts M.SPEC.017
+  (A.4's Wi-Fi bullet), M.SPEC.066 (C.9) and M.SPEC.158 (F.1's CYW43 values) landed in U18, and so did the U18 Part N
+  rows.
+- **Site**: `SPECIFICATION.md` A.4 (the Wi-Fi state-machine bullet, `:378-406`), C.9 (the task table's LED-flash row
+  `:3472`; the `PERIODIC` paragraph's WiFi sentence `:3489-3490`), F.1 (the CYW43 values paragraph `:5269-5278`), Part N
+  (rows `wifi.wlan_down_settle_s`, `wifi.led_deactivated_on_s`, `wifi.led_deactivated_off_s`, `:9944`, `:9952-9953`).
+- **Change**: (1) A.4's Wi-Fi bullet, three replacements, the rest as HEAD has it. (a) "A second failed STA streak after
+  a hotspot phase deactivates Wi-Fi permanently, … shown as soon as it is switched on (owner, 2026-10-02)." → "A second
+  failed STA streak after a hotspot phase puts Wi-Fi into the silent mode, never off (owner, 2026-10-08: 'Don't
+  permanently switch WiFi off, only stop retrying to connect.'): no hotspot, the status LED dark whatever `LEDWifiOn`
+  says ('It should look like turned off.'), and one connect attempt every `hotspot_time_min` on the hotspot window's own
+  timer, uncapped ('not capped'); an attempt that links is a normal connection, LED included. The availability check is
+  that connect attempt, not a scan: `WLAN.scan()` holds the VM up to 10 s (`extmod/network_cyw43.c:236-246`), past the
+  8,388 ms watchdog (owner, 2026-10-08: 'a, go ahead …', to that design). Task restarts keep the silent mode, and only a
+  reboot opens the hotspot again ('Entering the hotspot mode only through a reboot, as is.'). A credentials change, from
+  the hotspot page or the home network, lands in the state a fresh boot gives — a fresh STA streak and the hotspot
+  available once more (owner, 2026-10-08: 'Any change of credentials, no matter from which side, lands in the same mode
+  as "initial connection attempt after a fresh boot". All further steps follow normally.'); no request reaches a silent
+  unit, and the end of a hotspot window keeps its meaning: one more STA streak, then the silent mode. With no readable
+  Wi-Fi configuration the radio stays unused, a state task restarts keep until a reboot reads the configuration again;
+  it shows its own LED pattern (owner, 2026-09-29) — 0.1 s on, 2.9 s off — and like every Wi-Fi pattern it follows the
+  Wi-Fi LED setting: dark while `LEDWifiOn` is off, shown as soon as it is switched on (owner, 2026-10-02)." (b) "The
+  fallback to the hotspot and the permanent deactivation each persist a WIFI warning" → "The fallback to the hotspot and
+  the entry into the silent mode each persist a WIFI warning". (c) "A radio observation that fails is unknown, not a
+  state: a failed stations query leaves the hotspot timer as it was, and a failed status read in the uptime loop keeps
+  the last link state and uptime; each failure persists one WIFI warning (agent, 2026-10-06)." → "A stations check
+  counts only a confirmed client: a query that raises, or the chip-down answer of 32 unfilled entries (F.1), counts as
+  no client and persists one WIFI warning, as legacy's check counted it (owner, 2026-10-08: 'yes, record it that way');
+  a glitch cannot close the hotspot under a client, whose next good check stops the window again, and a radio that can
+  no longer list its stations cannot hold an unattended unit on its hotspot. A failed status read in the uptime loop is
+  unknown, not a state: it keeps the last link state and uptime and persists one WIFI warning (agent, 2026-10-06)."
+  (2) C.9: "The WiFi hotspot shutoff is one, stopped by `reconnect_wifi()` on its first delivered fire (confirmed on
+  silicon 2026-09-25: back in STA after the 8-minute window with no reboot)." → "The WiFi hotspot window is one, ended
+  by its first delivered fire, which deinits it (confirmed on silicon 2026-09-25: back in STA after the 8-minute window
+  with no reboot); in the silent mode (A.4) the same timer runs on, each delivered fire one connect attempt, so a
+  dropped fire delays that attempt by one period." The task table's LED-flash row "it exists only in the hotspot without
+  a client, with a station on it, and in the deactivated WLAN" → "it exists only in the hotspot without a client, with a
+  station on it, and with no readable Wi-Fi configuration — never in the silent mode, which is dark (A.4)".
+  (3) F.1's CYW43 values: the list gains "the stations answer of a chip that cannot be brought up, 32 entries (the
+  binding's buffer size, `extmod/network_cyw43.c:377`), named `_STATIONS_UNSET`"; the defect's end "read as a client
+  present — the hotspot then stays up and the failing chip surfaces through the connect-attempt tier (agent,
+  2026-09-30)." → "so `WifiService` counts an answer of exactly that size as a failed check — no client and one WIFI
+  warning (A.4; owner, 2026-10-08) — a count far beyond the one configuring client the hotspot serves (A.4)."
+  (4) Part N: `wifi.wlan_down_settle_s`'s Dependants "after `disconnect()` and `active(False)`, both the mode switch and
+  the deactivation path" → "after `disconnect()` and `active(False)` in the mode switch"; `wifi.led_deactivated_on_s`'s
+  and `wifi.led_deactivated_off_s`'s "the deactivated WLAN's LED pattern" → "the LED pattern with no readable Wi-Fi
+  configuration"; their IDs, values, Sites, Basis, Margin and triggers unchanged.
+- **Resolved**: Earlier texts these supersede, by the owner's later decisions (owner, 2026-09-26: 'in case of changes by
+  myself take my most recent decision'): the permanent deactivation (owner, 2026-07-13, `368fa83`; 2026-08-11,
+  `acc4993`), the deactivated pattern for the second streak (owner, 2026-09-29; 2026-10-02) and the stations rule
+  (agent, 2026-10-06). The no-configuration state keeps its pattern, and the `wifi.led_deactivated_*` IDs and
+  `_PHASE_DEACTIVATED` keep their names: the state they name remains, legacy's own word for it (`wlan_deactivated`), and
+  a rename would move tags, rows and test mirrors for no behaviour (agent, 2026-10-08).
+- **Unit**: U22.
+- **Depends**: M.SRC_NET.223, M.SRC_NET.224; M.GEN.034 (the catalog texts, its U22 stage).
+- **Blast carried by**: SPEC's other statements of the old behaviour, each in its later carrier with a U22 stage: A.4's
+  owner list → M.SPEC.016 (1); A.8 → M.SPEC.021 (17); C.7 → M.SPEC.058 (15); C.8's hold table → M.SPEC.064 (6); E.6.4 →
+  M.SPEC.082 (8); L.3's `hotspot_time_min` row → M.SPEC.146 (5).
 - **Kind**: doc
 
 ## Gaps for other clusters
@@ -7189,3 +7294,16 @@ for it.
 - F27: `readline_until_complete()` lives in a layer without its own logger (C.7.1); which layer writes the over-cap entry
   is decided at execution.
 - OR144: the datasheet push precondition of M.SPEC.005 (Depends) and M.SPEC.019 (Unit) is stated as satisfied.
+
+## U22 start fold (2026-10-08)
+
+Folded per the U22 start-fold brief (lead, 2026-10-08): owner requirements OR151 and OR152 (`audit/REGISTER.md`, parked
+deltas). A change of U21 or earlier is landed and its text left as is; the new behaviour is a new change in U22, and a
+later change carrying the point is amended in place with a U22 stage where the point lands there.
+
+| item | M-ID(s) | action |
+|---|---|---|
+| OR151 | M.SPEC.163 (1) (a), (b), (2), (3) list, (4) | added |
+| OR151 | M.SPEC.016 (1), .058 (15), .064 (6), .082 (8), .146 (5) | amended |
+| OR152 | M.SPEC.163 (1) (a) credentials sentence, (c), (3) | added |
+| OR152 | M.SPEC.016 (1), .021 (17), .058 (15), .082 (8) | amended |

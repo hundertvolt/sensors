@@ -332,8 +332,9 @@ information):
   turns doesn't need to be re-confirmed turn by turn. `tests_hardware/README.md` is the durable
   technical reference (prerequisites, environment variables, safety facts like the
   `--allow-flash-cycle`/long-soak opt-in gates and the hotspot role-reversal scenario's stage-6
-  permanent-WLAN-deactivation risk) for what a session with that go-ahead actually needs to know —
-  this rule is just the standing gate for whether to start at all.
+  fallback (a failed credential reopens the DUT's hotspot once, then its silent mode)) for what a
+  session with that go-ahead actually needs to know — this rule is just the standing gate for
+  whether to start at all.
 - **A destructive test of the bench host's own network/access config (tearing down `br0`/its
   slaves, revoking `dialout`, anything that can cut the very connection a session is using to reach
   the host) must keep a recovery dead-man's-switch continuously armed (owner, 2026-09-26) for the
