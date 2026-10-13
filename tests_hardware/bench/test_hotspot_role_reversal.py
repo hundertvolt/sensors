@@ -367,7 +367,7 @@ def test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link(joined_ho
         assert res.status_code == 200, f"GET {path} over the hotspot link -> {res.status_code}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("notification/autoConfig")
 def test_representative_put_round_trips_over_the_hotspot_link(joined_hotspot: str) -> None:
     # /notification's WarnCO2: _shared_rest_roundtrip.py's mock/twin shape over a real wireless
     # hotspot link. /networking's SSID/PW/Country/Hostname are excluded, being stage 6's. Accepts
@@ -473,7 +473,7 @@ def test_concurrent_multi_client_burst_is_out_of_scope_here(joined_hotspot: str)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "BenchBridge", joined_hotspot: str) -> None:
     # post_fct (the /networking group's reconnect_wifi() hook) fires if ANY field validates, so
     # sending PW alone keeps `results` to one entry and one invalid field prevents it. A password
@@ -487,7 +487,7 @@ def test_invalid_credentials_rejected_without_triggering_reconnect(bench: "Bench
     assert bench.gateway_ip() == joined_hotspot, "DUT appears to have reconnected after a PUT that should have been entirely rejected"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # A credentials change lands in the fresh-boot state (owner, 2026-10-08, paraphrase): its streak fails (a wrong key, the
     # bench AP down while the radio is the DUT's client) and the hotspot opens once more. One owned flash write; the next test restores it.
@@ -508,7 +508,7 @@ def test_a_wrong_password_over_the_hotspot_reopens_the_hotspot(bench: "BenchBrid
     assert gained.count(to_hotspot) == 1 and silent not in gained, f"expected one more WLAN_TO_HOTSPOT and no WLAN_SILENT in WIFI's history, gained {gained!r}"
 
 
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str) -> None:
     # bench.ap_password() reads the real PSK via `nmcli --show-secrets` by default now, so this
     # test needs no manual BENCH_AP_PASSWORD setup (still honored as an explicit override) - see
@@ -525,7 +525,7 @@ def test_real_credentials_put_succeeds_and_confirms_accepted_values(bench: "Benc
 
 
 @pytest.mark.long_soak
-@pytest.mark.persistence_write
+@pytest.mark.persistence_write("networking/identity")
 def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(
     bench: "BenchBridge", joined_hotspot: str, hotspot_ssid: str, dut_ip: str, request: pytest.FixtureRequest, result_note: "Callable[[str], None]",
 ) -> None:

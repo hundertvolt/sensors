@@ -11,7 +11,8 @@ hotspot_time_min = 8
 # Simultaneous-connection admission ceiling, kept below the firmware's own lwIP
 # MEMP_NUM_TCP_PCB (toolchain/versions.toml) with margin - SPECIFICATION.md Part H.7. backlog
 # is omitted, so it derives max_connections + 1 - already the deepest queue buildgen allows.
-max_connections = 6
+# 5, not 6: the MQTT client's held connection takes the sixth (owner, 2026-10-07: 'Web connections 6->5').
+max_connections = 5
 
 # Mandatory-infra-to-instance links; each optional, absence disables that link (owner, 2026-09-09).
 [device.wiring]
@@ -157,6 +158,14 @@ field = "VOC"
 [instance.wiring.warn_hum]
 source = "scd30"
 field = "Hum"
+
+# The MQTT client: dev only, off until enabled over REST (owner, 2026-10-07: 'dev only, off
+# (Recommended)'); its connection is paid for by max_connections above.
+[[instance]]
+driver = "mqtt"
+
+[instance.wiring]
+fram_target = "fram"
 
 # --- multi-instance services ----------------------------------------------------------------------
 #

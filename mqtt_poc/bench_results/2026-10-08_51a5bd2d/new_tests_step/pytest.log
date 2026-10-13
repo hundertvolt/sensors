@@ -1,0 +1,18 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 8 items
+
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_password_broker_admits_the_stored_credentials PASSED [ 12%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff PASSED [ 25%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.invalid] PASSED [ 37%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.local] PASSED [ 50%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[1.0] PASSED [ 62%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[5.0] PASSED [ 75%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[9.0] PASSED [ 87%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[13.0] PASSED [100%]
+
+======================== 8 passed in 860.63s (0:14:20) =========================

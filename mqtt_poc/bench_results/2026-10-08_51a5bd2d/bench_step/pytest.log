@@ -1,0 +1,157 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 66 items
+
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_client_connects_and_announces_itself_online PASSED [  1%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_every_sensor_publishes_strict_json_on_its_own_topic PASSED [  3%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_command_is_received_and_shown PASSED [  4%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_killed_broker_is_reconnected_after_its_restart PASSED [  6%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_stalled_broker_is_detected_by_the_pingresp_deadline PASSED [  7%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_silent_path_loss_is_detected_and_recovered PASSED [  9%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reset_path_ends_the_connection_and_attempts_stay_bounded PASSED [ 10%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_duplicate_client_id_is_bounded_by_the_backoff PASSED [ 12%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_flood_leaves_rest_serving_and_the_session_up PASSED [ 13%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_qos1_burst_is_acknowledged_in_full PASSED [ 15%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_oversized_inbound_message_is_discarded_and_framing_kept PASSED [ 16%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_is_found_by_the_bench_hosts_local_name PASSED [ 18%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_no_task_ended_and_only_expected_codes_were_logged PASSED [ 19%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link PASSED [ 21%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reboot_reconnects_from_the_stored_settings PASSED [ 22%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_faults_run_clean_at_micropythons_default_gc PASSED [ 24%]
+tests_hardware/bench/test_mqtt_broker_faults.py::test_disabling_the_client_publishes_offline_and_ends_the_session PASSED [ 25%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp PASSED [ 27%]
+tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp PASSED [ 28%]
+tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing PASSED [ 30%]
+tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response PASSED [ 31%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot FAILED [ 33%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response PASSED [ 34%]
+tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source FAILED [ 36%]
+tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly PASSED [ 37%]
+tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry PASSED [ 39%]
+tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly PASSED [ 40%]
+tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures PASSED [ 42%]
+tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body PASSED [ 43%]
+tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one PASSED [ 45%]
+tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status PASSED [ 46%]
+tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap PASSED [ 48%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver PASSED [ 50%]
+tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane PASSED [ 51%]
+tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly PASSED [ 53%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held PASSED [ 54%]
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall PASSED [ 56%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run PASSED [ 57%]
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default PASSED [ 59%]
+tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot PASSED [ 60%]
+tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network PASSED [ 62%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared PASSED [ 63%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname PASSED [ 65%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value PASSED [ 66%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window PASSED [ 68%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease PASSED [ 69%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet PASSED [ 71%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server PASSED [ 72%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip PASSED [ 74%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way PASSED [ 75%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly PASSED [ 77%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped PASSED [ 78%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored SKIPPED [ 80%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops PASSED [ 81%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link PASSED [ 83%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link PASSED [ 84%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link PASSED [ 86%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link PASSED [ 87%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link PASSED [ 89%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly PASSED [ 90%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management PASSED [ 92%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here PASSED [ 93%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect PASSED [ 95%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values PASSED [ 96%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown PASSED [ 98%]
+tests_hardware/bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability PASSED [100%]
+
+=================================== FAILURES ===================================
+_ test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot _
+
+board = <harness.Board object at 0x7fa97f4440>
+bench = <bench_control.BenchBridge object at 0x7fa99792b0>
+dut_ip = '192.168.85.57'
+
+    @pytest.mark.persistence_write("networking/ntp")
+    def test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+        # The real-hardware form of test_asy_ntp_client.py's retry-after-one-dropped-request test:
+        # the retry timer alone recovers, with no reboot. A guaranteed block_udp_ports() rather than
+        # netem loss, so the outage outlasts the 5s NTP fetch timeout (NtpTiming.fetch_timeout_ms) but clears inside the 15s retry.
+        get_before = http_client.fetch(dut_ip, 80, "GET", "/networking", timeout_s=_PROBE_TIMEOUT_S)
+        assert get_before.status_code == 200, f"GET /networking failed: {get_before.status_code} {get_before.body!r}"
+        original_host = get_before.json()["NTPHost"]
+    
+        def _synced() -> bool:
+            status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
+            return status.get("networking", {}).get("NTPSynced") is True
+    
+        # dut_ip only waits for HTTP reachability, not specifically for NTP sync to finish - confirmed
+        # directly (NTPLastSyncAge showed sync completing only ~12s after dut_ip returned), so this is
+        # a real precondition worth waiting for, not asserting instantly.
+>       wait_until(_synced, timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts")
+
+tests_hardware/bench/test_network_resilience.py:359: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+check_fn = <function test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot.<locals>._synced at 0x7fa97e3100>
+timeout_s = 30.0, poll_interval_s = 2.0
+description = "test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts"
+
+    def wait_until(
+        check_fn: Callable[[], bool],
+        timeout_s: float,
+        poll_interval_s: float = _WAIT_UNTIL_POLL_S,
+        description: str = "condition",
+    ) -> bool:
+        # Bounded poll-until-condition wait, test-harness-only (never used to change src/'s own real
+        # timing - SPECIFICATION.md Part F.3). Polls `check_fn()` until truthy or `timeout_s` elapses,
+        # treating a raising check as not-yet-ready; always returns True or raises TimeoutError.
+        deadline = time.monotonic() + timeout_s
+        last_exc: BaseException | None = None
+        while time.monotonic() < deadline:
+            try:
+                if check_fn():
+                    return True
+            except Exception as exc:
+                last_exc = exc
+            time.sleep(poll_interval_s)
+        try:
+            if check_fn():
+                return True
+        except Exception as exc:
+            last_exc = exc
+        detail = f" (last error: {last_exc!r})" if last_exc is not None else ""
+>       raise TimeoutError(f"timed out after {timeout_s}s waiting for: {description}{detail}")
+E       TimeoutError: timed out after 30.0s waiting for: test precondition: DUT to report NTP-synced before this test's own transient-outage fault starts
+
+tests_hardware/harness.py:267: TimeoutError
+_____ test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source ______
+
+board = <harness.Board object at 0x7fa97f4440>
+bench = <bench_control.BenchBridge object at 0x7fa99792b0>
+dut_ip = '192.168.85.57'
+
+    def test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source(board: Board, bench: BenchBridge, dut_ip: str) -> None:
+        # A connect()'d client socket that only accepts datagrams from its true peer must silently drop
+        # a reply from anywhere else - checkable via GET /status's UTCTime, since an accepted reply's
+        # crafted Transmit Timestamp (2050-01-01) directly sets the RTC (asy_ntp_client.py's _parse_ntp_reply()).
+        get_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
+        assert get_before.status_code == 200, f"GET /status failed: {get_before.status_code} {get_before.body!r}"
+        utc_before = get_before.json()["system"]["UTCTime"]
+>       assert utc_before is not None, "GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test"
+E       AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test
+E       assert None is not None
+
+tests_hardware/bench/test_network_resilience.py:471: AssertionError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot
+FAILED tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source
+============= 2 failed, 63 passed, 1 skipped in 2583.29s (0:43:03) =============

@@ -1,0 +1,10 @@
+{
+ "DSTOffset": 3600,
+ "build": {
+  "BuildDate": "2026-10-08T16:56:05Z",
+  "FirmwareVersion": "2.0b0",
+  "WebsiteVersion": "2.0b0"
+ },
+ "DebugLevel": 5,
+ "GMTOffset": 3600
+}

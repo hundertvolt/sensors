@@ -471,6 +471,8 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
+      - name: Install mosquitto (tests_scripts/test_mqtt_probe.py's broker)
+        uses: ./.github/actions/install-mosquitto
       - name: Run unit tests
         run: scripts/test.sh
 
@@ -492,6 +494,8 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      - name: Install mosquitto (tests_scripts/test_mqtt_probe.py's broker)
+        uses: ./.github/actions/install-mosquitto
       - name: Run unit tests at the shipped gc.threshold
         # @tunable gc.threshold_bytes = 32768
         run: GC_THRESHOLD=32768 scripts/test.sh
@@ -530,6 +534,8 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
+      - name: Install mosquitto (tests_scripts/test_mqtt_probe.py's broker)
+        uses: ./.github/actions/install-mosquitto
       # Report steps are `always() && hashFiles(...)` and continue-on-error, so a red test never
       # swallows what did render. The instrumented rerun measures src/ and digital_twin/ from one
       # run.
@@ -602,8 +608,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.digital_twin_e2e_timeout_min = 20
-    timeout-minutes: 20
+    # @tunable ci.digital_twin_e2e_timeout_min = 30
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -614,6 +620,10 @@ jobs:
           persist-credentials: false
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
+      # Run 12's broker, on every leg since the device set is data: a device without the MQTT client
+      # skips the run.
+      - name: Install mosquitto
+        uses: ./.github/actions/install-mosquitto
       - name: Run digital-twin clean/build/test cycle
         run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
       - name: Upload digital-twin subprocess logs

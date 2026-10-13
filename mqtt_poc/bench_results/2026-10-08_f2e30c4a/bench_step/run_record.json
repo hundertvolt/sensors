@@ -1,0 +1,917 @@
+{
+ "tests": [
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_the_client_connects_and_announces_itself_online",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "connected within 1.6s of the first poll; MQTTState 'connected'"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_every_sensor_publishes_strict_json_on_its_own_topic",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "largest measurement payload 244 B of the 384 B slot"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_command_is_received_and_shown",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_killed_broker_is_reconnected_after_its_restart",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "reconnected 4.2s after the restart (outage 5s)"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_stalled_broker_is_detected_by_the_pingresp_deadline",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "stall detected in 19.3s; reconnected 9.4s after the resume"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_silent_path_loss_is_detected_and_recovered",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "path loss detected in 22.2s ('no pingresp'); reconnected 11.9s after the restore"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reset_path_ends_the_connection_and_attempts_stay_bounded",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "reset path ended the connection in 9.3s; reconnected 11.7s after the restore"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_duplicate_client_id_is_bounded_by_the_backoff",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "0 retakes in 20s against 1 by the duplicate; reconnected 40.0s after it left"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_flood_leaves_rest_serving_and_the_session_up",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "3001 of 3001 messages taken; GET /status under the flood: max 1.91s, median 1.82s"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_inbound_qos1_burst_is_acknowledged_in_full",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "500 QoS 1 messages acknowledged in 7.1s"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_oversized_inbound_message_is_discarded_and_framing_kept",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_is_found_by_the_bench_hosts_local_name",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "raspberrypi.local resolved to 192.168.85.75 and connected within 1.7s"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_no_task_ended_and_only_expected_codes_were_logged",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_password_broker_admits_the_stored_credentials",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "connected to the password broker in 1.6s; password masked as '********'; back on the anonymous broker in 1.5s"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_wrong_password_is_refused_logged_and_retried_on_the_backoff",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "5 refused attempts in 40s, 5 MQTT log entries, codes [82, 116, 117, 119, 120]; connected 1.5s after the correction (47s in all)"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.invalid]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize",
+    "persistence_write"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "no-such-broker.invalid: MQTT_DNS first logged 1.7s after the PUT, 5 entries in 40s; reconnected 1.7s after the restore"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_unresolvable_broker_name_is_logged_and_retried_on_the_backoff[no-such-broker.local]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize",
+    "persistence_write"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "no-such-broker.local: MQTT_DNS first logged 4.2s after the PUT, 5 entries in 40s; reconnected 1.6s after the restore"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[1.0]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "stall 1s after the connect: detected in 24.13s (expected 24.0s); reconnected 62.1s after the resume"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[5.0]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "stall 5s after the connect: detected in 20.30s (expected 20.0s); reconnected 63.3s after the resume"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[9.0]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "stall 9s after the connect: detected in 16.23s (expected 16.0s); reconnected 61.6s after the resume"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_stall_detection_follows_the_ping_schedule[13.0]",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "parametrize"
+   ],
+   "user_properties": [
+    [
+     "result_note",
+     "stall 13s after the connect: detected in 12.28s (expected 12.0s); reconnected 61.5s after the resume"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_an_ap_outage_pauses_the_client_and_it_returns_with_the_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "recovery",
+     "reconnected 15.3s after a recovery hard reset; 0 failed attempt(s) logged"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_a_reboot_reconnects_from_the_stored_settings",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "connected 13.0s after the reset; the broker published the will on the takeover"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_the_broker_faults_run_clean_at_micropythons_default_gc",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": [
+    [
+     "result_note",
+     "timeline ['connected', 'reconnected after kill', 'stall detected', 'reconnected after stall', 'connected after floods', 'reconnected after takeover', 'done']; free heap min 528 B over 42 samples"
+    ]
+   ]
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_mqtt_broker_faults.py::test_disabling_the_client_publishes_offline_and_ends_the_session",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source",
+   "outcome": "failed",
+   "when": "call",
+   "reason": "AssertionError: GET /status's UTCTime is null: the DUT has not synced NTP yet, so its clock is no signal for this test",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly",
+   "outcome": "failed",
+   "when": "call",
+   "reason": "AssertionError: 'WEBSERVER' error log was not empty as expected (counter=7): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}, {'type': 'W', 'num': 48}], 'counter': 7}",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures",
+   "outcome": "failed",
+   "when": "call",
+   "reason": "AssertionError: 'WEBSERVER' error log was not empty as expected (counter=16): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}, {'type': 'W', 'num': 48}], 'counter': 16}",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status",
+   "outcome": "failed",
+   "when": "call",
+   "reason": "AssertionError: 'WEBSERVER' error log was not empty as expected (counter=8): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 60}], 'counter': 8}",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "over_provisioned_image"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_dut_enters_hotspot_mode_after_ssid_cleared",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_ssid_matches_configured_hostname",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_hotspot_password_matches_known_fixed_value",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_associates_within_bounded_window",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_bench_radio_receives_a_valid_dhcp_lease",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_leased_ip_falls_within_the_aps_own_subnet",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_repeated_associate_disassociate_cycles_dont_wedge_the_dhcp_server",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_arbitrary_hostname_resolves_to_the_aps_own_ip",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_devices_own_hostname_resolves_the_same_way",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_genuine_root_domain_query_is_answered_correctly",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_truncated_packet_is_silently_dropped",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_spoofed_off_subnet_source_address_is_ignored",
+   "outcome": "skipped",
+   "when": "setup",
+   "reason": "Raw-socket feasibility on the bench Rpi4 not yet checked - spoofing an off-subnet UDP source address needs either a raw socket (CAP_NET_RAW) or a second network namespace with a routable off-subnet address, neither confirmed practical here yet. Flagged rather than guessed at - implement once a concrete spoofing mechanism is confirmed to work.",
+   "markers": [
+    "role_reversal",
+    "skip"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_dns_flood_backoff_curve_recovers_once_flood_stops",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_every_get_endpoint_reachable_and_shaped_over_the_hotspot_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_representative_put_round_trips_over_the_hotspot_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write",
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_nonsense_path_redirects_to_root_over_the_hotspot_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_put_to_nonsense_path_is_405_not_a_redirect_over_the_hotspot_link",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_malformed_http_request_over_real_wireless_degrades_cleanly",
+   "outcome": "failed",
+   "when": "call",
+   "reason": "AssertionError: 'WEBSERVER' error log was not empty as expected (counter=1): {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 61}], 'counter': 1}",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_rapid_associate_disassociate_churn_doesnt_wedge_station_management",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_concurrent_multi_client_burst_is_out_of_scope_here",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_invalid_credentials_rejected_without_triggering_reconnect",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write",
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_real_credentials_put_succeeds_and_confirms_accepted_values",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "persistence_write",
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_role_flip_back_and_reachability_are_asserted_in_fixture_teardown",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  },
+  {
+   "nodeid": "tests_hardware/bench/test_hotspot_role_reversal.py::test_post_condition_sta_connected_state_inferred_from_reachability",
+   "outcome": "passed",
+   "when": "call",
+   "reason": "",
+   "markers": [
+    "role_reversal"
+   ],
+   "user_properties": []
+  }
+ ],
+ "collection": [],
+ "deselected": [],
+ "options": {
+  "keyword": "",
+  "markexpr": "not long_soak and not multi_day_rollover",
+  "markers": false,
+  "maxfail": null,
+  "strict_config": null,
+  "strict_markers": null,
+  "strict": null,
+  "pythonwarnings": null,
+  "max_warnings": null,
+  "collectonly": false,
+  "pyargs": false,
+  "ignore": null,
+  "ignore_glob": null,
+  "deselect": null,
+  "confcutdir": null,
+  "noconftest": false,
+  "keepduplicates": false,
+  "collect_in_virtualenv": false,
+  "continue_on_collection_errors": false,
+  "importmode": "prepend",
+  "inifilename": null,
+  "rootdir": null,
+  "basetemp": null,
+  "durations": null,
+  "durations_min": null,
+  "showfixtures": false,
+  "show_fixtures_per_test": false,
+  "version": 0,
+  "help": false,
+  "plugins": [
+   "_pytest_run_record"
+  ],
+  "disable_plugin_autoload": false,
+  "traceconfig": false,
+  "debug": null,
+  "override_ini": null,
+  "verbose": 1,
+  "no_header": false,
+  "no_summary": false,
+  "fold_skipped": true,
+  "force_short_summary": false,
+  "reportchars": "fE",
+  "disable_warnings": false,
+  "showlocals": false,
+  "tbstyle": "auto",
+  "xfail_tb": false,
+  "showcapture": "all",
+  "fulltrace": false,
+  "color": "auto",
+  "code_highlight": "yes",
+  "usepdb": false,
+  "usepdb_cls": null,
+  "trace": false,
+  "capture": "fd",
+  "runxfail": false,
+  "pastebin": null,
+  "assertmode": "rewrite",
+  "xmlpath": null,
+  "junitprefix": null,
+  "doctestmodules": false,
+  "doctestreport": "udiff",
+  "doctestglob": [],
+  "doctest_ignore_import_errors": false,
+  "doctest_continue_on_failure": false,
+  "lf": false,
+  "failedfirst": false,
+  "newfirst": false,
+  "cacheshow": null,
+  "cacheclear": false,
+  "last_failed_no_failures": "all",
+  "setuponly": false,
+  "setupshow": false,
+  "setupplan": false,
+  "stepwise": false,
+  "stepwise_skip": false,
+  "stepwise_reset": false,
+  "log_level": null,
+  "log_format": null,
+  "log_date_format": null,
+  "log_cli_level": null,
+  "log_cli_format": null,
+  "log_cli_date_format": null,
+  "log_file": null,
+  "log_file_mode": null,
+  "log_file_level": null,
+  "log_file_format": null,
+  "log_file_date_format": null,
+  "log_auto_indent": null,
+  "logger_disable": [],
+  "run_record": "/home/nico/programming/sensors/build/archive/run_bench_hardware_suite_scope_mqtt_bench_f2e30c4a/20261008T180034Z/run_record.json",
+  "device": null,
+  "soak_tier": null,
+  "allow_flash_cycle": false,
+  "allow_multi_day_rollover_wait": false,
+  "allow_neopixel_sweep": false,
+  "allow_persistence_writes": false,
+  "allow_persistence_writes_to": [
+   "networking/identity,networking/mqtt,networking/ntp,notification/autoConfig"
+  ],
+  "allow_scd30_extra_write": false,
+  "file_or_dir": [
+   "tests_hardware/bench/test_mqtt_broker_faults.py",
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py::test_concurrent_get_sensors_under_real_multi_client_load_survives_an_ntp_transient_outage_and_retry",
+   "tests_hardware/bench/test_network_resilience.py::test_ntp_recovers_via_its_own_retry_timer_after_a_transient_outage_with_no_reboot",
+   "tests_hardware/bench/test_network_resilience.py::test_ntp_server_sends_garbage_instead_of_a_valid_response",
+   "tests_hardware/bench/test_network_resilience.py::test_dns_server_sends_garbage_instead_of_a_valid_response",
+   "tests_hardware/bench/test_network_resilience.py::test_ntp_connected_socket_rejects_a_reply_from_an_unexpected_source",
+   "tests_hardware/bench/test_network_resilience.py::test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly",
+   "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_sync_succeeds_over_genuine_udp",
+   "tests_hardware/bench/test_wifi_networking.py::test_real_dns_resolution_succeeds_over_genuine_udp",
+   "tests_hardware/bench/test_wifi_networking.py::test_real_ntp_handles_a_genuinely_unreachable_server_without_crashing",
+   "tests_hardware/bench/test_network_resilience.py::test_connections_at_and_above_the_real_socket_limit_degrade_cleanly",
+   "tests_hardware/bench/test_network_resilience.py::test_the_board_holds_exactly_the_connection_ceiling_this_tree_configures",
+   "tests_hardware/bench/test_network_resilience.py::test_a_full_ceiling_of_concurrent_requests_is_each_served_a_complete_body",
+   "tests_hardware/bench/test_network_resilience.py::test_a_concurrent_page_load_is_byte_identical_to_an_uncontended_one",
+   "tests_hardware/bench/test_network_resilience.py::test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status",
+   "tests_hardware/bench/test_network_resilience.py::test_the_largest_body_any_schema_can_produce_still_fits_under_the_cap",
+   "tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver",
+   "tests_hardware/bench/test_end_to_end_timing.py::test_cold_boot_to_first_http_response_latency_is_sane",
+   "tests_hardware/bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly",
+   "tests_hardware/bench/test_heap_under_connection_ceiling.py",
+   "tests_hardware/bench/test_serving_heap_at_default_gc.py",
+   "tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot",
+   "tests_hardware/bench/test_rest_endpoints_over_sta.py::test_real_static_website_content_serves_over_the_normal_bridge_network",
+   "tests_hardware/bench/test_hotspot_role_reversal.py"
+  ]
+ },
+ "markexpr": "not long_soak and not multi_day_rollover",
+ "collect_only": false,
+ "session_notes": [],
+ "exitstatus": 1
+}

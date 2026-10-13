@@ -1,0 +1,119 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.5, pytest-9.1.1, pluggy-1.6.0 -- /home/nico/programming/sensors/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/nico/programming/sensors
+configfile: pyproject.toml
+plugins: platformdirs-4.12.3
+collecting ... collected 5 items
+
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_heap_at_peak_while_a_full_ceiling_is_held [HW] ceiling=5 held=1-5, at ceiling 115/142 | after boot: free=36960 largest_free_run=33472 placeable2048B=16 | at peak (worst of 69 samples): largest_free_run=21440 slots=12
+PASSED
+tests_hardware/bench/test_heap_under_connection_ceiling.py::test_report_the_boards_own_connection_wall [HW] board admitted 5 simultaneous connections against a configured ceiling of 5
+PASSED
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run [HW] need route:/status: largest free run 320 B, churn 53984 B
+[HW] need route:/: largest free run 320 B, churn 22352 B
+[HW] need status:networking: largest free run 256 B, churn 1376 B
+[HW] need route:/measurements: largest free run 256 B, churn 10640 B
+[HW] need route:/sensors: largest free run 256 B, churn 22304 B
+[HW] need route:/networking: largest free run 192 B, churn 10464 B
+[HW] need cfg:ISL29125: largest free run 160 B, churn 2976 B
+[HW] need cfg:SCD30: largest free run 160 B, churn 5792 B
+[HW] need cfg:BMP3XX: largest free run 160 B, churn 2784 B
+[HW] need route:/system: largest free run 160 B, churn 4848 B
+[HW] need status:system: largest free run 128 B, churn 1152 B
+[HW] need errcount:CFGMGR_SCD30: largest free run 128 B, churn 368 B
+[HW] need errcount:NOTIFY: largest free run 128 B, churn 368 B
+[HW] need errcount:SCD30: largest free run 128 B, churn 368 B
+[HW] need errcount:UART_resp: largest free run 128 B, churn 368 B
+[HW] need errcount:NEOPIXEL: largest free run 128 B, churn 368 B
+[HW] need errcount:CFGMGR_ISL29125: largest free run 128 B, churn 368 B
+[HW] need errcount:CFGMGR_NTP: largest free run 128 B, churn 368 B
+[HW] need errcount:CFGMGR_SYSTEM: largest free run 128 B, churn 368 B
+[HW] need errcount:FRAM: largest free run 128 B, churn 368 B
+[HW] need errcount:ISL29125: largest free run 128 B, churn 368 B
+[HW] need errcount:DNSSRV: largest free run 128 B, churn 368 B
+[HW] need errcount:CFGMGR_BMP3XX: largest free run 128 B, churn 368 B
+[HW] need cfg:SGP40: largest free run 128 B, churn 848 B
+[HW] need settings:notification:0: largest free run 128 B, churn 960 B
+[HW] need settings:system:0: largest free run 128 B, churn 352 B
+[HW] need settings:system:1: largest free run 128 B, churn 960 B
+[HW] need settings:networking:0: largest free run 128 B, churn 1328 B
+[HW] need settings:networking:1: largest free run 128 B, churn 1328 B
+[HW] need settings:networking:2: largest free run 128 B, churn 960 B
+[HW] need settings:networking:3: largest free run 128 B, churn 1168 B
+[HW] need route:/notification: largest free run 128 B, churn 5120 B
+[HW] need status:notification: largest free run 96 B, churn 480 B
+[HW] need maintenance:SGP40: largest free run 96 B, churn 144 B
+[HW] need data:ISL29125: largest free run 96 B, churn 624 B
+[HW] need data:SGP40: largest free run 96 B, churn 528 B
+[HW] need data:SCD30: largest free run 96 B, churn 560 B
+[HW] need data:BMP3XX: largest free run 96 B, churn 528 B
+[HW] need maintenance:UARTLINK: largest free run 80 B, churn 80 B
+[HW] need errcount:WIFI: largest free run 80 B, churn 368 B
+[HW] need errcount:CFGMGR_NOTIFY: largest free run 80 B, churn 368 B
+[HW] need errcount:UART_init: largest free run 80 B, churn 368 B
+[HW] need errcount:MQTT: largest free run 80 B, churn 368 B
+[HW] need errcount:CFGMGR_MQTT: largest free run 80 B, churn 368 B
+[HW] need errcount:CFGMGR_WIFI: largest free run 80 B, churn 368 B
+[HW] need errcount:SGP40: largest free run 80 B, churn 368 B
+[HW] need errcount:NTP: largest free run 80 B, churn 368 B
+[HW] need errcount:SYSTEM: largest free run 80 B, churn 368 B
+[HW] need errcount:CFGMGR_SGP40: largest free run 80 B, churn 368 B
+[HW] need errcount:BMP3XX: largest free run 80 B, churn 368 B
+[HW] need errcount:WEBSERVER: largest free run 80 B, churn 320 B
+PASSED
+tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default FAILED
+tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot ERRCOUNT before ResetErrors: {'CFGMGR_SCD30': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'WIFI': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'NOTIFY': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_NOTIFY': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'SCD30': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'UART_init': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'UART_resp': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'MQTT': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'NEOPIXEL': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_MQTT': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_ISL29125': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_WIFI': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_NTP': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'SGP40': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 33}, {'type': 'W', 'num': 35}], 'counter': 2}, 'CFGMGR_SYSTEM': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'NTP': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'E', 'num': 71}], 'counter': 3}, 'FRAM': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'SYSTEM': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'ISL29125': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 31}], 'counter': 1}, 'CFGMGR_SGP40': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'DNSSRV': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'BMP3XX': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'CFGMGR_BMP3XX': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}], 'counter': 0}, 'WEBSERVER': {'history': [{'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'N', 'num': 0}, {'type': 'W', 'num': 49}, {'type': 'W', 'num': 51}, {'type': 'W', 'num': 49}, {'type': 'W', 'num': 51}, {'type': 'E', 'num': 14}], 'counter': 6}}
+PASSED
+
+=================================== FAILURES ===================================
+__________________ test_serving_sweep_at_the_reactive_default __________________
+
+isolated_board = <harness.Board object at 0x7fabf9d2b0>
+dut_ip = '192.168.85.57'
+
+    def test_serving_sweep_at_the_reactive_default(isolated_board: Board, dut_ip: str) -> None:
+        # Ascending levels up past the configured ceiling, on one boot: the realistic case is a running
+        # device whose heap carries every earlier burst. The bar is I.4(e): not one allocation failure.
+        ceiling = configured_max_connections()
+        levels = list(range(4, ceiling + 3, 2))
+        tallies: dict[int, dict[str, int]] = {}
+        stop = threading.Event()
+        driver = threading.Thread(target=sweep_levels, args=(dut_ip, levels, stop, tallies), daemon=True)
+        driver.start()
+        try:
+>           output = isolated_board.run_isolated(DEVICE_SCRIPTS / "serving_at_default_gc.py", timeout_s=_SERVING_SCRIPT_TIMEOUT_S)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests_hardware/bench/test_serving_heap_at_default_gc.py:151: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <harness.Board object at 0x7fabf9d2b0>
+script_path = PosixPath('/home/nico/programming/sensors/tests_hardware/device_scripts/serving_at_default_gc.py')
+soft_reset_after = True, timeout_s = 900.0, allow_recovery = True
+
+    def run_isolated(self, script_path: str | Path, *, soft_reset_after: bool = True, timeout_s: float | None = None, allow_recovery: bool = True) -> str:
+        # Isolated-driver mode: `mpremote run <script>` against the real frozen src/ drivers,
+        # re-arming the watchdog first, never leaving main.py running (tests_hardware/README.md).
+        # allow_recovery=False when the disconnect IS the outcome - else the 10s grace is measured.
+        # @tunable wdt.timeout_ms = 8000
+        args = ["exec", "import machine; machine.WDT(timeout=8000)", "run", str(script_path)]
+        if soft_reset_after:
+            args.append("soft-reset")
+        result = self._mpremote(*args, timeout_s=timeout_s, allow_recovery=allow_recovery)
+        if result.returncode != 0:
+            # See exec()'s own comment: a device-side traceback lands on mpremote's stdout, not
+            # stderr - both are included here for the same reason.
+>           raise HardwareTestFailureError(f"mpremote run {script_path} failed (exit {result.returncode}):\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}")
+E           harness.HardwareTestFailureError: mpremote run /home/nico/programming/sensors/tests_hardware/device_scripts/serving_at_default_gc.py failed (exit 1):
+E           stdout:
+E           Traceback (most recent call last):
+E             File "<stdin>", line 13, in <module>
+E           ImportError: can't import name _StaticRoutes
+E           
+E           stderr:
+
+tests_hardware/harness.py:509: HardwareTestFailureError
+=========================== short test summary info ============================
+FAILED tests_hardware/bench/test_serving_heap_at_default_gc.py::test_serving_sweep_at_the_reactive_default
+=================== 1 failed, 4 passed in 399.25s (0:06:39) ====================

@@ -12,7 +12,7 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_dns_client
 import asy_udp_socket
-from asy_dns_client import _build_query, _parse_response, ipv4_to_int, resolve_ipv4
+from asy_dns_client import _build_query, _parse_response, host_name_ok, ipv4_to_int, resolve_ipv4
 from asy_print_log import PrintLogHistory
 
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
@@ -123,6 +123,15 @@ def test_ipv4_to_int_valid() -> None:
     assert ipv4_to_int("0.0.0.0") == 0
     assert ipv4_to_int("255.255.255.255") == 0xFFFFFFFF
     assert ipv4_to_int("192.168.4.1") == (192 << 24) | (168 << 16) | (4 << 8) | 1
+
+
+def test_host_names_are_ipv4_literals_or_rfc_1123_labels() -> None:
+    # The hostName shape NTPHost and MQTTHost share; an all-digit label is a valid RFC 1123 label, so "256.1.1.1" passes here
+    # and is refused by the DNS answer instead, as js/mock-server.js's hostName rule does.
+    for good in ("192.168.1.10", "0.0.0.0", "broker", "broker.local", "mqtt-1.example.org", "a" * 63, "256.1.1.1"):
+        assert host_name_ok(good), good
+    for bad in ("", "-broker", "broker-", "bro ker", "a..b", ".a", "a.", "a" * 64, "ä.de", "x" * 254, "a_b", None, 5):
+        assert not host_name_ok(bad), bad
 
 
 def test_ipv4_to_int_rejects_wrong_octet_count() -> None:
@@ -745,6 +754,117 @@ def test_a_reply_longer_than_512_bytes_warns_and_tries_the_next_server() -> None
     assert _resolve_against(((_SECOND_HOST, cut),)) == (None, truncated)
     # Control: exactly 512 bytes is a whole message and parses as before, with nothing logged.
     assert _resolve_against(((_HOST, _padded_reply(_DNS_UDP_MAX, "192.0.2.15")),)) == ("192.0.2.15", (0, []))
+
+
+# ---------------------------------------------------------------------------
+# .local names: a one-shot multicast DNS query (RFC 6762 SS5.1), with the group pointed at a loopback fake
+# ---------------------------------------------------------------------------
+
+
+def _with_mdns_responder(port: int, scenario: "Callable[[], Coroutine[Any, Any, T]]") -> "T":
+    # Points the module's mDNS group at loopback for one test, restoring it afterwards.
+    group, mdns_port = asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT
+    asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT = _HOST, port
+    try:
+        return run(scenario())
+    finally:
+        asy_dns_client._MDNS_GROUP, asy_dns_client._MDNS_PORT = group, mdns_port
+
+
+def test_build_query_without_recursion_clears_rd_and_nothing_else() -> None:
+    plain = _build_query(b"broker.local", b"\x12\x34")
+    mdns = _build_query(b"broker.local", b"\x12\x34", recursion=False)
+    assert mdns[2:4] == b"\x00\x00"
+    assert mdns[:2] + mdns[4:] == plain[:2] + plain[4:]
+
+
+def test_a_local_name_is_asked_over_multicast_and_never_a_unicast_server() -> None:
+    mdns_port, unicast_port = make_port(), make_port()
+
+    async def scenario() -> "tuple[str | None, list[bytes], list[bytes]]":
+        responder, unicast = FakeDNSServer(_HOST, mdns_port), FakeDNSServer(_HOST, unicast_port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(lambda q: _make_response(q, _a_answer("192.168.1.50"), ancount=1, flags=b"\x84\x00")))
+            result = await resolve_ipv4("Broker.LOCAL", dns_servers=(_HOST,), timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
+            await answering
+            return result, responder.received, unicast.received
+        finally:
+            responder.close()
+            unicast.close()
+
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, unicast_port):
+        result, asked, unicast_asked = _with_mdns_responder(mdns_port, scenario)
+    assert result == "192.168.1.50"
+    assert len(asked) == 1 and asked[0][2:4] == b"\x00\x00"  # RD clear, as RFC 6762 SS18.6 asks
+    assert b"\x06broker\x05local\x00" in asked[0]  # lowercased, like every DNS name here
+    assert unicast_asked == []
+
+
+def test_a_local_reply_with_the_cache_flush_bit_and_no_question_is_still_read() -> None:
+    port = make_port()
+
+    def bare_answer(query: bytes) -> bytes:
+        # QDCOUNT 0, and the A record's class carries RFC 6762 SS10.2's cache-flush bit.
+        header = bytes(query[0:2]) + b"\x84\x00" + b"\x00\x00" + _be16(1) + b"\x00\x00\x00\x00"
+        return header + b"\xc0\x0c\x00\x01\x80\x01" + (120).to_bytes(4, "big") + _be16(4) + bytes([10, 0, 0, 7])
+
+    async def scenario() -> "str | None":
+        responder = FakeDNSServer(_HOST, port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(bare_answer))
+            result = await resolve_ipv4("pi.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=_make_pr())
+            await answering
+            return result
+        finally:
+            responder.close()
+
+    assert _with_mdns_responder(port, scenario) == "10.0.0.7"
+
+
+def test_an_unanswered_local_name_returns_none_after_its_bounded_tries() -> None:
+    port = make_port()  # nobody answers here
+
+    async def scenario() -> "tuple[str | None, int]":
+        started = time.ticks_ms()
+        result = await resolve_ipv4("absent.local", timeout_ms=_NO_REPLY_TIMEOUT_MS, tries=2, pr=_make_pr())
+        return result, time.ticks_diff(time.ticks_ms(), started)
+
+    result, elapsed_ms = _with_mdns_responder(port, scenario)
+    assert result is None
+    assert elapsed_ms < 2 * _NO_REPLY_TIMEOUT_MS + _PROMPT_RETURN_MAX_MS  # two waits, each bounded, nothing more
+
+
+def _resolve_local_against(reply: "Callable[[bytes], bytes]") -> "tuple[str | None, tuple[int, list[int]]]":
+    # One .local lookup answered once by a loopback responder, with what reached the caller's logger.
+    port = make_port()
+    pr = _make_pr()
+
+    async def scenario() -> "tuple[str | None, tuple[int, list[int]]]":
+        responder = FakeDNSServer(_HOST, port)
+        try:
+            answering = asyncio.create_task(responder.answer_once(reply))
+            result = await resolve_ipv4("broker.local", timeout_ms=_REPLY_TIMEOUT_MS, tries=1, pr=pr)
+            await answering
+            return result, await _warnings(pr)
+        finally:
+            responder.close()
+
+    return _with_mdns_responder(port, scenario)
+
+
+def test_a_local_reply_longer_than_512_bytes_warns_and_is_not_used() -> None:
+    # RFC 6762 SS6.7: a one-shot query's reply is a conventional DNS reply, so the unicast path's 512-byte bound holds.
+    assert _resolve_local_against(_padded_reply(_DNS_UDP_MAX + 1, "192.0.2.21")) == (None, (1, [code("W", "DNS_REPLY_TRUNCATED")]))
+    assert _resolve_local_against(_padded_reply(_DNS_UDP_MAX, "192.0.2.22")) == ("192.0.2.22", (0, []))
+
+
+def test_a_failed_local_socket_teardown_logs_one_warning_and_keeps_the_answer() -> None:
+    asy_udp_socket.UDPSocket.disconnect = _close_failing_disconnect  # type: ignore[method-assign]
+    try:
+        result = _resolve_local_against(lambda q: _make_response(q, _a_answer("10.20.30.42"), ancount=1))
+    finally:
+        asy_udp_socket.UDPSocket.disconnect = _REAL_DISCONNECT  # type: ignore[method-assign]
+    assert result == ("10.20.30.42", (1, [code("W", "SOCKET_TEARDOWN")]))
 
 
 if __name__ == "__main__":

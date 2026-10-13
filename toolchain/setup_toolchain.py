@@ -209,12 +209,13 @@ BOARD_BY_ID_GLOB = "usb-MicroPython_Board_in_FS_mode_*-if00"
 
 
 # Every command a tier runs that a minimal host may lack, with its package: curl fetches Node; the bench
-# row is what the bridge set-up and bench_control.py run (`timeout` wraps the tcpdump capture).
+# row is what the bridge set-up and bench_control.py run (`timeout` wraps the tcpdump capture), and
+# avahi-daemon answers the DUT's `.local` lookup of this host (the MQTT bench tier, SPECIFICATION.md A.11).
 _TIER_COMMANDS: dict[str, tuple[tuple[str, str], ...]] = {
     "generic": (("curl", "curl"),),
     "bench": (
         ("nmcli", "network-manager"), ("ip", "iproute2"), ("iptables", "iptables"), ("sysctl", "procps"), ("modprobe", "kmod"),
-        ("iw", "iw"), ("tc", "iproute2"), ("tcpdump", "tcpdump"), ("timeout", "coreutils"),
+        ("iw", "iw"), ("tc", "iproute2"), ("tcpdump", "tcpdump"), ("timeout", "coreutils"), ("avahi-daemon", "avahi-daemon"),
     ),
 }
 

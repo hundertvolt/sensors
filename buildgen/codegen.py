@@ -28,6 +28,33 @@ _DNS_TIMEOUT_MS = 500
 _DNS_TRIES = 1
 # @tunable ntp.fetch_timeout_ms = 5000
 _NTP_FETCH_TIMEOUT_MS = 5000
+# The MQTT client's timings, emitted only into a device carrying it and passed whole as MqttConfig (Part A.11).
+# @tunable mqtt.response_timeout_ms = 10000
+_MQTT_RESPONSE_TIMEOUT_MS = 10000
+# @tunable mqtt.connect_timeout_ms = 10000
+_MQTT_CONNECT_TIMEOUT_MS = 10000
+# @tunable mqtt.backoff_min_ms = 2000
+_MQTT_BACKOFF_MIN_MS = 2000
+# @tunable mqtt.backoff_max_ms = 60000
+_MQTT_BACKOFF_MAX_MS = 60000
+# @tunable mqtt.stable_after_ms = 30000
+_MQTT_STABLE_AFTER_MS = 30000
+# @tunable mqtt.qos1_retry_ms = 10000
+_MQTT_QOS1_RETRY_MS = 10000
+# @tunable mqtt.drain_timeout_ms = 5000
+_MQTT_DRAIN_TIMEOUT_MS = 5000
+# @tunable mqtt.tick_ms = 100
+_MQTT_TICK_MS = 100
+# @tunable mqtt.link_poll_ms = 1000
+_MQTT_LINK_POLL_MS = 1000
+# @tunable mqtt.idle_recheck_ms = 60000
+_MQTT_IDLE_RECHECK_MS = 60000
+_MQTT_CONSTS = (
+    ("_MQTT_RESPONSE_TIMEOUT_MS", _MQTT_RESPONSE_TIMEOUT_MS),
+    ("_MQTT_CONNECT_TIMEOUT_MS", _MQTT_CONNECT_TIMEOUT_MS), ("_MQTT_BACKOFF_MIN_MS", _MQTT_BACKOFF_MIN_MS), ("_MQTT_BACKOFF_MAX_MS", _MQTT_BACKOFF_MAX_MS),
+    ("_MQTT_STABLE_AFTER_MS", _MQTT_STABLE_AFTER_MS), ("_MQTT_QOS1_RETRY_MS", _MQTT_QOS1_RETRY_MS), ("_MQTT_DRAIN_TIMEOUT_MS", _MQTT_DRAIN_TIMEOUT_MS),
+    ("_MQTT_TICK_MS", _MQTT_TICK_MS), ("_MQTT_LINK_POLL_MS", _MQTT_LINK_POLL_MS), ("_MQTT_IDLE_RECHECK_MS", _MQTT_IDLE_RECHECK_MS),
+)
 
 # The keywords main() and build_system() take after the required watchdog, each with its annotation and default.
 _BOOT_KEYWORDS = (("cfg_path", 'str = ""'), ("debug", "int | None = None"), ("web_host", 'str = "0.0.0.0"'), ("web_port", "int = 80"))
@@ -263,6 +290,19 @@ def _build_args_notification(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str],
     return pos, kw
 
 
+def _build_args_mqtt(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
+    # conn's bound methods as NTP takes them, MqttConfig from the emitted _MQTT_* constants with the device's hostname as
+    # the client id default, and every sensor as a measurement source, in construction order.
+    order = {node: i for i, node in enumerate(ctx.model.construction_order)}
+    sensors = sorted((s for s in ctx.model.instances.values() if s.driver_info is not None and s.driver_info.kind == "sensor"), key=lambda s: order.get(s.key, 0))
+    timing = ", ".join(name for name, _value in _MQTT_CONSTS)
+    config = f"MqttConfig({_text(_table(ctx.model.doc['device'])['hostname'])!r}, {timing}, _DNS_TIMEOUT_MS, _DNS_TRIES)"
+    pos = ["conn.get_wifi_mode_lock()", "conn.network_available_locked", "conn.get_dns_server_ip", config]
+    sources = "(" + ", ".join(ctx.instance_var(s.key) for s in sensors) + ("," if len(sensors) == 1 else "") + ")"
+    kw: list[tuple[str, str]] = [("sources", sources), ("cfg_path", "cfg_path"), _fram_kw(spec, ctx)]
+    return pos, kw
+
+
 def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[tuple[str, str]]]":
     # Forwards bus, role, name_ext and the log config; the CRC is the bus's (A.7). One TransferLimits: the
     # protocol's defaults read from its source (no TOML key) and the TOML's receive cap, else the default one.
@@ -289,6 +329,7 @@ _BUILD_ARGS_HANDLERS: "dict[str, Callable[[InstanceSpec, _Ctx], tuple[list[str],
     "neopixel": _build_args_neopixel,
     "notification": _build_args_notification,
     "uart_link": _build_args_uart_link,
+    "mqtt": _build_args_mqtt,
 }
 
 
@@ -367,6 +408,8 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
         names = [default_class_name(f) for f in _defaulted_wiring_fields(spec)]
         if spec.driver == "sgp40" and _fram_var(spec, ctx) is not None:
             names.append("SgpBackup")
+        if spec.driver == "mqtt":
+            names.append("MqttConfig")
         for name in names:
             if name not in extras:
                 extras.append(name)
@@ -406,6 +449,8 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
     lines.append(f"_DNS_TRIES = const({_DNS_TRIES})")
     lines.append(f"_NTP_FETCH_TIMEOUT_MS = const({_NTP_FETCH_TIMEOUT_MS})")
+    if "mqtt" in have:
+        lines.extend(f"{name} = const({value})" for name, value in _MQTT_CONSTS)
     lines.append(f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})")
     lines.append(f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})")
     lines.append(f"_BUILD_DATE = const({build_date!r})")
@@ -586,6 +631,25 @@ def _singleton_var(ctx: _Ctx, driver: str) -> str:
     return ctx.instance_var(next(key for key, spec in ctx.model.instances.items() if spec.driver == driver))
 
 
+def _emit_networking_status(lines: "list[str]", ctx: _Ctx, have: "set[str]") -> None:
+    # GET /status's networking object; a device carrying the MQTT client merges its fields in, every other device
+    # keeps the plain return.
+    lines.append('async def _networking_status() -> "JsonDict":')
+    # One snapshot per response (the WiFi service refreshes it each second); no call reads the radio.
+    lines.append("    wifi_data = await conn.get_data()")
+    lines.append("    ntp_data = await ntp.get_data()")
+    lines.append('    status: "JsonDict" = {' if "mqtt" in have else "    return {")
+    lines.append('        "WifiUptime": await conn.get_wifi_uptime(), "Mode": wifi_data.Mode, "Connected": wifi_data.Connected,')
+    lines.append('        "IPv4": wifi_data.IP, "Subnet": wifi_data.Subnet, "Gateway": wifi_data.Gateway, "DNS": wifi_data.DNS, "RSSI": wifi_data.RSSI,')
+    lines.append('        "NTPSynced": ntp_data.Synced, "NTPLastSyncAge": ntp_data.LastSyncAge, "NTPLastSync": ntp_data.TS,')
+    lines.append('        "HTTPDropped": await webserver.get_dropped_count(), "WifiTS": wifi_data.TS,')
+    lines.append("    }")
+    if "mqtt" in have:
+        lines.append(f"    status.update({_singleton_var(ctx, 'mqtt')}.get_link_status())")
+        lines.append("    return status")
+    lines.append("")
+
+
 def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> None:
     lines.append('def _gmtimestruct_to_dict(t: tuple[int, ...] | None) -> "JsonDict | None":')
     lines.append("    if t is None:")
@@ -619,17 +683,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append(f"    backup_ts, restore_ts = await {var}.get_mem_status()")
         lines.append('    return {"BackupTS": backup_ts, "RestoreTS": restore_ts}')
         lines.append("")
-    lines.append('async def _networking_status() -> "JsonDict":')
-    # One snapshot per response (the WiFi service refreshes it each second); no call reads the radio.
-    lines.append("    wifi_data = await conn.get_data()")
-    lines.append("    ntp_data = await ntp.get_data()")
-    lines.append("    return {")
-    lines.append('        "WifiUptime": await conn.get_wifi_uptime(), "Mode": wifi_data.Mode, "Connected": wifi_data.Connected,')
-    lines.append('        "IPv4": wifi_data.IP, "Subnet": wifi_data.Subnet, "Gateway": wifi_data.Gateway, "DNS": wifi_data.DNS, "RSSI": wifi_data.RSSI,')
-    lines.append('        "NTPSynced": ntp_data.Synced, "NTPLastSyncAge": ntp_data.LastSyncAge, "NTPLastSync": ntp_data.TS,')
-    lines.append('        "HTTPDropped": await webserver.get_dropped_count(), "WifiTS": wifi_data.TS,')
-    lines.append("    }")
-    lines.append("")
+    _emit_networking_status(lines, ctx, have)
     lines.append('async def _system_status() -> "JsonDict":')
     # UTCTime waits for the first NTP sync as LocalTime does: rp2's RTC starts at its reset epoch.
     lines.extend(("    local_time = await ntp.cettime()", "    utc = time.gmtime() if await ntp.ntp_issynced() else None"))
@@ -677,6 +731,10 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
     for section in dict.fromkeys(row[0] for row in SETTINGS_GROUPS):
         lines.append(f'                "{section}": [')
         lines.extend(_settings_group_lines(section))
+        if section == "networking" and "mqtt" in have:
+            # Computed from the client's own schema, as notification's group is; a PUT reconnects with the new settings.
+            mqtt = _singleton_var(ctx, "mqtt")
+            lines.append(f"                    SettingsGroup({mqtt}, cm.schema_names({mqtt}.get_cfg_schema()), post_fct={mqtt}.reconnect),")
         lines.append("                ],")
     if "notification" in have:
         # Computed from the notification's own schema, so its keys follow the wired signals.

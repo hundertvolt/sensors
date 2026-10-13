@@ -776,6 +776,11 @@ def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
     assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur"}
 
 
+def test_parse_web_tags_real_mqtt_field_names(src_dir: Path) -> None:
+    tags = parse_web_tags(src_dir / "asy_mqtt_client.py", "dev", "mqtt")
+    assert {t.field_name for t in tags} == {"MQTTEnable", "MQTTHost", "MQTTPort", "MQTTUser", "MQTTPW", "MQTTClientId", "MQTTPrefix", "MQTTPubInterval", "MQTTPingInterval", "MQTTPersistent", "MQTTWillTopic", "MQTTOnlineMsg", "MQTTWillMsg", "MQTTWillQoS", "MQTTWillRetain"}
+
+
 def test_parse_web_group_tags_inventory_of_every_src_file(src_dir: Path) -> None:
     # The full (section, submitGroup) set per file, so a group dropped or added anywhere is seen.
     found = {}
@@ -787,6 +792,7 @@ def test_parse_web_group_tags_inventory_of_every_src_file(src_dir: Path) -> None
     assert found == {
         "asy_bmp3xx_driver.py": sensor_cards,
         "asy_isl29125_driver.py": sensor_cards,
+        "asy_mqtt_client.py": [("networking", "mqtt")],
         "asy_notification_service.py": [("notification", "autoConfig")],
         "asy_ntp_client.py": [("networking", "dns"), ("networking", "ntp")],
         "asy_scd30_driver.py": sensor_cards,
@@ -802,5 +808,6 @@ def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> Non
     assert {name for name, found in tags.items() if any(t.hidden is None for t in found)} == {
         "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
         "asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py", "asy_notification_service.py",
+        "asy_mqtt_client.py",
     }
     assert {name for name, found in tags.items() if any(t.hidden is not None for t in found)} == {"asy_sgp40_driver.py", "asy_webserver_service.py"}

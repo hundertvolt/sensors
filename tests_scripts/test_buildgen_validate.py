@@ -986,7 +986,7 @@ def test_a_settings_group_repeating_a_key_is_rejected(tmp_path: Path, src_dir: P
 
 def _generated_settings_groups(module_source: str) -> "list[tuple[str, str, tuple[str, ...], str | None]]":
     # Every SettingsGroup the generated webserver is built with, as SETTINGS_GROUPS rows in order;
-    # notification's group, computed from its schema at boot, is no row.
+    # notification's and the MQTT client's groups, computed from their schemas at boot, are no rows.
     rows: list[tuple[str, str, tuple[str, ...], str | None]] = []
     settings = [n.value for n in ast.walk(ast.parse(module_source)) if isinstance(n, ast.keyword) and n.arg == "settings"]
     assert len(settings) == 1 and isinstance(settings[0], ast.Dict)
@@ -995,7 +995,10 @@ def _generated_settings_groups(module_source: str) -> "list[tuple[str, str, tupl
         if key.value == "notification":
             continue
         for call in groups.elts:
-            assert isinstance(call, ast.Call) and isinstance(call.args[0], ast.Name) and isinstance(call.args[1], ast.Tuple)
+            assert isinstance(call, ast.Call) and isinstance(call.args[0], ast.Name)
+            if ast.unparse(call.args[1]) == f"cm.schema_names({call.args[0].id}.get_cfg_schema())":
+                continue
+            assert isinstance(call.args[1], ast.Tuple)
             fields = tuple(str(ast.literal_eval(e)) for e in call.args[1].elts)
             assert len(call.keywords) <= 1
             hook = f"{call.keywords[0].arg}={ast.unparse(call.keywords[0].value)}" if call.keywords else None
@@ -2393,6 +2396,20 @@ def test_a_max_connections_leaving_fewer_than_three_spare_pcbs_is_rejected(tmp_p
     doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS + 1
     with pytest.raises(BuildError, match=r"MEMP_NUM_TCP_PCB \(\d+\) < max_connections \+ 3"):
         _build(tmp_path, src_dir, doc)
+
+
+def test_a_device_carrying_mqtt_pays_its_connection_from_the_web_ceiling(tmp_path: Path, src_dir: Path, overrides: ModuleType) -> None:
+    # The MQTT client holds one connection more than the web ceiling admits (owner, 2026-10-07: 'Web connections 6->5'):
+    # the highest ceiling a device without it may state is refused once it carries the client.
+    doc = base_doc()
+    doc["device"]["max_connections"] = _lwip_pcbs() - overrides.SPARE_TCP_PCBS
+    _build(tmp_path, src_dir, doc)
+    doc["instance"].append({"driver": "mqtt"})
+    with pytest.raises(BuildError, match=r"plus the MQTT client's own connection") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.field == "max_connections"
+    doc["device"]["max_connections"] -= 1
+    _build(tmp_path, src_dir, doc)
 
 
 def test_a_max_connections_below_one_is_rejected(tmp_path: Path, src_dir: Path) -> None:

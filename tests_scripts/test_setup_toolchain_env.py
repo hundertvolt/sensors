@@ -302,7 +302,7 @@ def test_present_commands_install_nothing_and_are_looked_up_on_the_build_path(se
 
 
 def test_missing_commands_are_installed_together(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    present = {"nmcli", "iptables", "sysctl", "modprobe", "tcpdump", "timeout"}
+    present = {"nmcli", "iptables", "sysctl", "modprobe", "tcpdump", "timeout", "avahi-daemon"}
     _commands_present(setup_toolchain, monkeypatch, present)
     installs: list[list[str]] = []
 
@@ -323,7 +323,7 @@ def test_a_command_still_missing_after_its_install_is_named(setup_toolchain: Mod
 
 
 def test_a_missing_command_under_skip_apt_says_what_to_install(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    _commands_present(setup_toolchain, monkeypatch, {"nmcli", "ip", "iptables", "sysctl", "modprobe", "tc", "timeout"})
+    _commands_present(setup_toolchain, monkeypatch, {"nmcli", "ip", "iptables", "sysctl", "modprobe", "tc", "timeout", "avahi-daemon"})
     monkeypatch.setattr(setup_toolchain, "ensure_apt_packages", lambda packages, *, skip: pytest.fail("installed under --skip-apt"))
     with pytest.raises(setup_toolchain.SetupError, match="'iw', 'tcpdump' not on PATH and --skip-apt is set - install iw, tcpdump by hand"):
         setup_toolchain.ensure_commands(setup_toolchain._TIER_COMMANDS["bench"], skip_apt=True)
@@ -384,6 +384,11 @@ def test_the_bench_tier_checks_commands_then_sudo_then_builds_the_bridge(setup_t
     assert setup_toolchain.run_env(args, setup_toolchain.VERSIONS_PATH, setup_toolchain.load_versions(setup_toolchain.VERSIONS_PATH)) == 0
     bench_commands = len(setup_toolchain._TIER_COMMANDS["bench"])
     assert steps == ["setup:bench", "deps", "dialout", "device", f"commands:{bench_commands}", "sudo", "bridge:throwaway-psk"]
+
+
+def test_the_bench_tier_installs_avahi_for_the_mqtt_bench_hosts_local_name(setup_toolchain: ModuleType) -> None:
+    # The DUT resolves the bench host's `.local` name through its mDNS responder (SPECIFICATION.md A.11).
+    assert ("avahi-daemon", "avahi-daemon") in setup_toolchain._TIER_COMMANDS["bench"]
 
 
 # --- uplink / free WiFi interface detection ------------------------------------------------------

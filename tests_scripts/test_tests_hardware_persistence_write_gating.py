@@ -1,6 +1,6 @@
-"""Verifies tests_hardware/conftest.py's persistence-write gating: --allow-persistence-writes is the
-single global permission for any limited-endurance write (SCD30 NVM and the RP2040 flash filesystem
-alike), --allow-scd30-extra-write only narrows further. Real --collect-only run, no hardware."""
+"""Verifies tests_hardware/conftest.py's persistence-write gating: --allow-persistence-writes permits every
+limited-endurance write, --allow-persistence-writes-to only the named groups, --allow-scd30-extra-write
+narrows further on top of either. Real --collect-only run, no hardware."""
 
 import json
 import os
@@ -130,3 +130,57 @@ def test_every_wear_gate_deselection_carries_the_flag_that_would_select_it(repo_
 def test_the_extra_write_deselection_names_its_own_flag_once_the_global_one_is_given(repo_root: Path, tmp_path: Path) -> None:
     tags = _deselected_by(repo_root, tmp_path, "--allow-persistence-writes")
     assert tags == {_EXTRA_TEST: ["--allow-scd30-extra-write"]}, tags
+
+
+# ---------------------------------------------------------------------------
+# The scoped permission (owner, 2026-10-08: "it makes absolutely no sense globally enable persistence writes,
+# as writing the scd30 for mqtt tests is nonsense, so scope it correctly"): a group's writes run, no other's.
+# ---------------------------------------------------------------------------
+
+_MQTT = "tests_hardware/bench/test_mqtt_broker_faults.py"
+_MQTT_WRITER = "test_the_broker_is_found_by_the_bench_hosts_local_name"
+
+
+def test_a_scoped_permission_runs_its_own_groups_writes(repo_root: Path) -> None:
+    gated = _collect(repo_root, target=_MQTT)
+    scoped = _collect(repo_root, "--allow-persistence-writes-to=networking/mqtt", target=_MQTT)
+    assert _MQTT_WRITER not in gated
+    assert _MQTT_WRITER in scoped, f"--allow-persistence-writes-to=networking/mqtt must select the MQTT writer:\n{scoped}"
+    assert "deselected" not in scoped, scoped
+
+
+def test_a_scoped_permission_leaves_every_other_groups_writes_deselected(repo_root: Path, tmp_path: Path) -> None:
+    # Under the MQTT permission the SCD30's NVM stays out of reach; each deselection names the group that would select it.
+    output = _collect(repo_root, "--allow-persistence-writes-to=networking/mqtt")
+    assert _ROUTINE_TEST not in output and _EXTRA_TEST not in output
+    assert "7 deselected" in output, output
+    tags = _deselected_by(repo_root, tmp_path, "--allow-persistence-writes-to=networking/mqtt")
+    assert set(tags) and all(flags == ["--allow-persistence-writes-to=sensors/SCD30"] for flags in tags.values()), tags
+
+
+def test_the_scd30_group_runs_the_routine_writes_and_the_extra_flag_still_narrows(repo_root: Path) -> None:
+    scoped = _collect(repo_root, "--allow-persistence-writes-to=sensors/SCD30")
+    assert _ROUTINE_TEST in scoped and _EXTRA_TEST not in scoped
+    assert "1 deselected" in scoped, scoped
+    both = _collect(repo_root, "--allow-persistence-writes-to=sensors/SCD30", "--allow-scd30-extra-write")
+    assert "deselected" not in both, both
+
+
+def test_groups_combine_by_comma_and_by_repetition(repo_root: Path) -> None:
+    for args in (["--allow-persistence-writes-to=networking/mqtt,sensors/SCD30"], ["--allow-persistence-writes-to=networking/mqtt", "--allow-persistence-writes-to=sensors/SCD30"]):
+        output = _collect(repo_root, *args, _MQTT)  # both modules: the SCD30 group's and the MQTT one's
+        assert _MQTT_WRITER in output and _ROUTINE_TEST in output, f"{args}:\n{output}"
+        assert "1 deselected" in output, f"{args}: only the extra-write test stays out:\n{output}"
+
+
+def test_an_unknown_group_is_a_usage_error_not_a_silent_deselection(repo_root: Path) -> None:
+    # A typo would otherwise deselect the very test the run was meant to permit, and read as a wear gate.
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", _MQTT, "--collect-only", "-q", "--allow-persistence-writes-to=networking/mqqt"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 4, f"expected pytest's usage-error exit 4:\n{result.stdout}\n{result.stderr}"
+    assert "no such group ['networking/mqqt']" in result.stdout + result.stderr

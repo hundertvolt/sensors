@@ -104,6 +104,24 @@ _BUILD_GROUP: JsonDict = {
     ],
 }
 
+# GET /status networking's MQTT fields, in asy_mqtt_client.get_link_status()'s order (Part A.11).
+_MQTT_STATUS_FIELDS: "tuple[JsonDict, ...]" = (
+    {"key": "MQTTState", "label": "MQTT State", "kind": "readonly", "description": "disabled, waiting (no network), connecting, connected, backoff, or no memory."},
+    {"key": "MQTTConnected", "label": "MQTT Connected", "kind": "readonly"},
+    {"key": "MQTTBroker", "label": "MQTT Broker IP", "kind": "readonly"},
+    {"key": "MQTTUptime", "label": "MQTT Connection Uptime", "unit": "s", "kind": "readonly"},
+    {"key": "MQTTConnects", "label": "MQTT Connects", "kind": "readonly"},
+    {"key": "MQTTTeardowns", "label": "MQTT Connections Lost", "kind": "readonly"},
+    {"key": "MQTTLastReason", "label": "MQTT Last End Reason", "kind": "readonly"},
+    {"key": "MQTTTxMsgs", "label": "MQTT Messages Sent", "kind": "readonly"},
+    {"key": "MQTTTxDropped", "label": "MQTT Messages Dropped", "kind": "readonly", "description": "Outbound messages not sent: queue full, refused, or QoS 1 given up."},
+    {"key": "MQTTRxMsgs", "label": "MQTT Messages Received", "kind": "readonly"},
+    {"key": "MQTTRxDropped", "label": "MQTT Messages Discarded", "kind": "readonly", "description": "Inbound packets too large to parse, or QoS 1 acknowledgements that found no room."},
+    {"key": "MQTTPingTimeouts", "label": "MQTT Ping Timeouts", "kind": "readonly", "description": "Connections closed because the broker stopped answering while Wi-Fi was up."},
+    {"key": "MQTTShortSessions", "label": "MQTT Short Sessions", "kind": "readonly", "description": "Sessions the broker ended right after they began - another client with this client ID?"},
+    {"key": "MQTTLastRxTopic", "label": "MQTT Last Received Topic", "kind": "readonly"},
+)
+
 # Errcount module catalog (H.6): (have-key, label, has_cfgmgr_companion) rows. A have-key is an
 # instance's own `driver` string, plus the five mandatory keys that are never [[instance]]
 # entries. Generator-owned like the catalogs above: cosmetic labels, owned by no source file.
@@ -121,6 +139,7 @@ _ERRCOUNT_CATALOG: "tuple[tuple[str, str, bool], ...]" = (
     ("notification", "Notification Service", True),
     ("uart_link", "UART Link", False),  # no CFGMGR_ companion: UARTComm has no config schema - its
     # parameters are an out-of-band two-implementation wire contract, never runtime-writable (Part J.6)
+    ("mqtt", "MQTT Client", True),
     ("webserver", "Web Server", False),
 )
 # The mandatory modules' files: each one's logger name is its own `_NAME`, read from the file.
@@ -134,7 +153,7 @@ _NAME_EXT_LABEL: "dict[str, str]" = {"init": "Initiator", "resp": "Responder"}
 _CFGMGR_LABEL: "dict[str, str]" = {
     "wifi": "Wi-Fi Config Store", "ntp": "NTP Config Store", "system": "System Config Store",
     "scd30": "SCD30 Config Store", "sgp40": "SGP40 Config Store", "bmp3xx": "BMP3xx Config Store", "isl29125": "ISL29125 Config Store",
-    "notification": "Notification Config Store",
+    "notification": "Notification Config Store", "mqtt": "MQTT Config Store",
 }
 
 
@@ -549,7 +568,7 @@ def _logger_name(src_dir: Path, key: str, device: str) -> str:
     return parse_name_constant(src_dir / _MANDATORY_ERRCOUNT_FILES[key], device, key)
 
 
-def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]") -> JsonDict:
+def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTags]", have: "set[str]") -> JsonDict:
     wifi_path = src_dir / "asy_wifi_service.py"
     ntp_path = src_dir / "asy_ntp_client.py"
     wifi_tags = _load_driver_tags(cache, wifi_path, device, "wifi")
@@ -561,9 +580,12 @@ def _networking_section(src_dir: Path, device: str, cache: "dict[Path, _DriverTa
         _mandatory_group("networking", "wifiLed", "wifiLed", [(wifi_tags, wifi_path)], device),
         _mandatory_group("networking", "ntp", "ntp", [(ntp_tags, ntp_path)], device),
         _mandatory_group("networking", "dns", "dns", [(ntp_tags, ntp_path)], device),
-        # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
-        _errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _logger_name(src_dir, "dns", device), "label": dns_label}], _load_catalog()),
     ]
+    if "mqtt" in have:  # a singleton service: its group key is the literal "mqtt"
+        mqtt_path = src_dir / "asy_mqtt_client.py"
+        groups.append(_mandatory_group("networking", "mqtt", "mqtt", [(_load_driver_tags(cache, mqtt_path, device, "mqtt"), mqtt_path)], device))
+    # The captive DNS server's history is shown with the networking data (owner, 2026-09-26).
+    groups.append(_errcount_shell("dnsErrors", "Captive DNS Error History", [{"key": _logger_name(src_dir, "dns", device), "label": dns_label}], _load_catalog()))
     section["groups"] = groups
     return section
 
@@ -665,6 +687,8 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
         {"key": "NTPLastSync", "label": "NTP Last Sync Time", "kind": "readonly", "format": "epoch", "description": "Unix timestamp of the last successful sync."},
         {"key": "HTTPDropped", "label": "Dropped Connections", "kind": "readonly", "description": "Web connections dropped in the last 24 hours, hourly resolution."},
     ]
+    if "mqtt" in have:
+        networking_fields += [dict(field) for field in _MQTT_STATUS_FIELDS]
     # The order GET /status publishes the system keys in (codegen's _system_status()).
     system_fields: list[JsonValue] = [
         {"key": "SysUptime", "label": "System Uptime", "unit": "s", "kind": "readonly"},
@@ -789,7 +813,7 @@ def generate_definitions(model: DeviceModel, src_dir: Path) -> JsonDict:
     sections: list[JsonValue] = [
         measurements,
         sensors,
-        _networking_section(src_dir, model.device, cache),
+        _networking_section(src_dir, model.device, cache, have),
         _system_section(src_dir, model.device, cache),
         _status_section(model, have, cache, src_dir),
     ]

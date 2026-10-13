@@ -1,0 +1,1152 @@
+{
+ "networking": {
+  "NTPLastSyncAge": 3481,
+  "IP": "192.168.85.57",
+  "MQTTState": "disabled",
+  "IPv4": "192.168.85.57",
+  "NTPLastSync": 1791475081,
+  "Mode": "STA",
+  "MQTTPingTimeouts": 0,
+  "DNS": "192.168.85.1",
+  "MQTTConnects": 0,
+  "RSSI": -27,
+  "MQTTTxMsgs": 0,
+  "Connected": true,
+  "WifiUptime": 3487,
+  "Gateway": "192.168.85.1",
+  "MQTTUptime": 0,
+  "Subnet": "255.255.255.0",
+  "MQTTConnected": false,
+  "MQTTShortSessions": 0,
+  "MQTTBroker": null,
+  "MQTTTeardowns": 0,
+  "MQTTLastReason": "none",
+  "MQTTLastRxTopic": null,
+  "MQTTRxDropped": 0,
+  "MQTTTxDropped": 0,
+  "NTPSynced": true,
+  "MQTTRxMsgs": 0
+ },
+ "system": {
+  "LocalTime": {
+   "Weekday": 3,
+   "Yearday": 281,
+   "Year": 2026,
+   "Minute": 56,
+   "MDay": 8,
+   "Month": 10,
+   "Hour": 18,
+   "Second": 2
+  },
+  "UTCTime": {
+   "Weekday": 3,
+   "Yearday": 281,
+   "Year": 2026,
+   "Minute": 56,
+   "MDay": 8,
+   "Month": 10,
+   "Hour": 16,
+   "Second": 2
+  },
+  "BootSignature": 1791475081,
+  "MemPaused": false,
+  "SysUptime": 3494
+ },
+ "notification": {
+  "TS": 1791478376,
+  "PauseTime": 0,
+  "Triggered": false
+ },
+ "sensors": {
+  "UARTLINK": {
+   "Failures": 0,
+   "Transfers": 3175
+  },
+  "SGP40": {
+   "BackupTS": 1791478556,
+   "RestoreTS": 1791475047
+  }
+ },
+ "errcount": {
+  "CFGMGR_SCD30": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "WIFI": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "NOTIFY": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_NOTIFY": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "SCD30": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "UART_init": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "UART_resp": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "MQTT": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "NEOPIXEL": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_MQTT": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_ISL29125": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_WIFI": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_NTP": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "SGP40": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_SYSTEM": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "NTP": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "FRAM": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "SYSTEM": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "ISL29125": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "W",
+     "num": 31
+    }
+   ],
+   "counter": 1
+  },
+  "CFGMGR_SGP40": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "DNSSRV": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "BMP3XX": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "CFGMGR_BMP3XX": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    }
+   ],
+   "counter": 0
+  },
+  "WEBSERVER": {
+   "history": [
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "N",
+     "num": 0
+    },
+    {
+     "type": "E",
+     "num": 14
+    }
+   ],
+   "counter": 2
+  }
+ }
+}
