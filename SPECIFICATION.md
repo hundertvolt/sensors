@@ -4517,9 +4517,13 @@ passed 8/8 (CLAUDE.md's known-hang note). Two retries absorb transient contentio
 retry is reported as `RETRIED-PASS`, a root-cause item, never as a plain pass; a third consecutive
 timeout on one file is a real failure. The timeout's first signal is SIGINT, which the interpreter
 delivers at a safe point (B.14.1) and microtest turns into its `ABORT` line naming the hung test
-with its traceback (E.2); `--kill-after` (`runner.kill_after_s`) stays the hard stop, and a file it
-kills past its timeout (137: the file caught the interrupt and ran on) is reported on a line of its
-own and retried like a 124 timeout. The summary names each `ABORT` line (E.10). An aborted run's
+with its traceback (E.2). It must arrive once: `timeout` signals its child and then its whole group,
+and a second SIGINT while the first is still pending makes the Unix port `exit(1)` at once with no
+output (`ports/unix/unix_mphal.c`, `sighandler()`), so `timeout`'s child is a shell that catches it
+and the interpreter receives only the group's. `--kill-after` (`runner.kill_after_s`) stays the
+hard stop, and a file it kills past its timeout (137: the file caught the interrupt and ran on) is
+reported on a line of its own and retried like a 124 timeout. The summary names each `ABORT` line
+(E.10). An aborted run's
 EXIT trap stops every background job by pid, each attempt's `timeout` group included, sends SIGKILL
 to what is still running after twice `runner.kill_after_s`, and waits for them all before it
 releases the port lock (E.1). `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S` and

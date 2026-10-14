@@ -7,6 +7,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -1379,6 +1380,26 @@ def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and
     code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_x.py": (status, log, None)})
     assert code == 1, out
     assert "  - tests/test_x.py: 1 of 3 tests failed (ABORT test_b_hangs: KeyboardInterrupt:)\n" in _block(out), _block(out)
+
+
+_SIGNAL_COUNTER = (
+    "import os, signal, time\nr, w = os.pipe()\nos.set_blocking(w, False)\nos.set_blocking(r, False)\n"
+    "signal.set_wakeup_fd(w)\nsignal.signal(signal.SIGINT, lambda *_: None)\nseen = 0\nwhile True:\n"
+    "    try:\n        seen += len(os.read(r, 64))\n    except BlockingIOError:\n        pass\n"
+    "    with open(os.environ['COUNT_FILE'], 'w') as f:\n        f.write(str(seen))\n    time.sleep(0.01)\n"
+)
+
+
+def test_the_timeout_interrupts_the_files_process_once(repo_root: Path, tmp_path: Path) -> None:
+    # timeout signals its child and then its group; a second SIGINT while the first is pending makes the Unix port
+    # exit(1) at once with no ABORT line, so exactly one may reach the interpreter (one wakeup byte per delivery here).
+    counter = tmp_path / "counter.py"
+    counter.write_text(_SIGNAL_COUNTER)
+    count = tmp_path / "count"
+    attempt = f'exec env COUNT_FILE="{count}" {sys.executable} -I "{counter}"'
+    results = _run_file_job(repo_root, tmp_path, attempt, attempt, limits=_JobLimits(attempts=1, kill_after_s=1))
+    assert (results / "test_x.status").read_text() == "FAIL\n"
+    assert count.read_text() == "1", f"the interpreter got {count.read_text()} SIGINTs"
 
 
 def test_a_file_that_ignores_the_interrupt_is_killed_and_the_run_says_why(repo_root: Path, tmp_path: Path) -> None:

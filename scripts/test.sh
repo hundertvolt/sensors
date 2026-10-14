@@ -523,12 +523,12 @@ run_test_file() {
         # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
         # own, so sed can never mask a real 124/1 from the command it pipes.
         #
-        # SIGINT first, which the interpreter delivers at a safe point (SPECIFICATION.md B.14.1) and microtest turns into
-        # its ABORT line naming the hung test with its traceback; --kill-after stays the hard stop. The subshell records
-        # its pid, which exec hands on to timeout, for the EXIT trap.
+        # SIGINT first (delivered at a safe point, SPECIFICATION.md B.14.1; microtest's ABORT line names the hung test), and
+        # --kill-after the hard stop. timeout signals its child, then its group, and a second SIGINT still pending makes the
+        # port exit(1) at once (unix_mphal.c): its child is a shell catching it, so the interpreter gets one. The pid is timeout's.
         # @tunable runner.kill_after_s = 10
         # @tunable l1.unix_heapsize = 16M
-        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
