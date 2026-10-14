@@ -7138,8 +7138,10 @@ banner hidden again — within the boot time plus the poll back-off cap, with no
 matrix expects exactly one word per case (`valid`, `unchanged` or `invalid`), reading each case's
 current value from the twin first; it sends each never-"Unchanged" field of the sensors section
 twice, both Valid, and drives the four action fields through the page with probes of their own,
-in this order: `ResetErrors` (its confirmation answered, then every error-count row read as `0` in
-place), `LightCmdLED` (lit for 10 s, a second send answered Failed while it runs, an out-of-range
+in this order: `ResetErrors` (every backup interval set to "Backups off" first: without NTP each
+SGP40 backup warns, the one counter that climbs by itself; then its confirmation answered and every
+error-count row read as `0` in place), `LightCmdLED` (lit for 10 s, a second send answered Failed
+while it runs, an out-of-range
 one Invalid), `PauseTime` (two sends Valid, the remaining time read on the status page, 3601
 Invalid) and `SystemCmd`'s `mempause` last, since a `ResetErrors` while it holds storage answers
 Failed. `reboot`, `bootloader`, `resetconfig` and `erasefram` end the twin process, so the unit

@@ -83,6 +83,24 @@ function statusGroupKey(defs, fieldKey) {
     return group.key;
 }
 
+/**
+ * Sets every backup interval to "Backups off" through the page. The twin has no NTP, so each SGP40 backup warns (once a
+ * minute by default): the one counter that climbs by itself, which a reset's all-zero read would otherwise race.
+ * @param {SiteDefinitions} defs
+ */
+async function turnBackupsOff(defs) {
+    const sensors = defs.sections.find((section) => section.key === "sensors");
+    const cards = (sensors?.groups ?? []).flatMap((group) => ("fields" in group ? group.fields : []).filter((field) => field.key === "BackupPeriod").map((field) => ({ groupKey: group.key, field })));
+    for (const { groupKey, field } of cards) {
+        const off = field.specialValues?.find((special) => special.meaning === "Backups off");
+        expect(off, `${groupKey}'s BackupPeriod declares no "Backups off" value`).toBeDefined();
+        const value = off?.value;
+        // eslint-disable-next-line no-await-in-loop -- one card after another, as a visitor applies them
+        const applied = await commands.applyField({ sectionKey: "sensors", groupKey, fieldKey: field.key, field, value, expectRenderedValue: value, readCaption: false });
+        expect(["valid", "unchanged"]).toContain(applied.applyStatus);
+    }
+}
+
 // The four action fields' probes, run in this order: mempause holds storage for five minutes, and a ResetErrors after
 // it answers Failed (the FRAM logs cannot be cleared then). Reboot, bootloader, resetconfig and erasefram end the
 // twin process: covered by the unit tier's shutdown scenarios (reboot on silicon too), not driven here.
@@ -90,6 +108,8 @@ function statusGroupKey(defs, fieldKey) {
 const ACTION_PROBES = {
     async ResetErrors(testCase) {
         const { device, defs, sectionKey, groupKey, field } = testCase;
+        // A backup round that read its interval before this PUT ends long before the reset, two served requests later.
+        await turnBackupsOff(defs);
         const archived = await commands.archiveErrcount(`${device}-before-reset`);
         expect(archived).toContain(`build/archive/live_twin/`);
         const applied = await commands.applyField({ sectionKey, groupKey, fieldKey: field.key, field, value: true, expectRenderedValue: null, confirmMessage: confirmationFor(testCase, true), readCaption: false });
