@@ -1,11 +1,18 @@
 import asyncio
 import sys
-import time
 
+# asy_webserver_service imports the vendored ext/microdot.py, which scripts/test.sh's MICROPYPATH leaves out (the
+# convention of tests/test_asy_webserver_service.py).
+sys.path.insert(0, "ext")
+
+from _async_harness import cancel_all, run
 from _error_codes import code
+from _fake_time import DrivenTime
+from _recording_print import record_prints
+from _src_const import src_const
 
 import asy_neopixel_driver
-import asy_print_log as print_log_module
+import asy_webserver_service
 from asy_base_classes import RegionBuffer
 from asy_neopixel_driver import NeopixelDriver, _clamp_byte
 from asy_print_log import LogConfig
@@ -26,49 +33,22 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
-    # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
-    # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
-    return driver._pixel
+_OVERLAY_REFRESH_MS: int = src_const("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")  # type: ignore[assignment]  # src_const() answers object
+_SIGNAL_WAIT_MS: int = src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")  # type: ignore[assignment]
 
 
-def make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
-    # freq=100, against the shipped 20 Hz, keeps every ramp's step count high enough - 5 per direction at the
-    # t=0.1 floor - to observe mid-ramp state; the fixed values are the driver's own state, set from outside.
-    # A test outside _DrivenClock drives real asyncio.sleep(), so fast ramps keep its runtime short.
-    driver = NeopixelDriver(0, log=LogConfig(None, 10, debug))
-    driver.neopixel_freq = neopixel_freq
-    driver.neopixel_dt = 1.0 / neopixel_freq
-    driver._overlay_bri = led_overl_bri
-    run(driver.setup())  # the boot batch's setup(), before any task starts
-    return driver
+def _colours(driver: NeopixelDriver) -> "list[tuple[int, ...]]":
+    return [w[0] for w in _pixel(driver).writes]
 
 
-async def _start_all_tasks(driver: NeopixelDriver) -> "list[asyncio.Task[None]]":
-    starters = driver.get_task_starters()
-    tasks = [s() for s in starters]
-    await asyncio.sleep(0)  # let each task reach its first await (event.wait()) before returning
-    return tasks
+def _event_driver() -> NeopixelDriver:
+    return _make_driver(debug=4)  # DebugLevel 4 (events, SPEC A.8): event-level console lines reach record_prints()
 
 
-async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
-    for t in tasks:
-        t.cancel()
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
-    # One yield: a cancelled overlay task's bounded wait ends its runner one hop after its waiter, so neither
-    # outlives the scenario into the next test's asyncio.run().
-    await asyncio.sleep(0)
-
-
-_TICKS_PERIOD = 1 << 30  # rp2's ticks_ms() period (MICROPY_PY_TIME_TICKS_PERIOD on a 32-bit port)
+def _frame_added(driver: NeopixelDriver) -> "Callable[[], bool]":
+    # True once the pixel has a frame more than now.
+    n = len(_pixel(driver).writes)
+    return lambda: len(_pixel(driver).writes) > n
 
 
 class _YieldOnlyAsyncio:
@@ -102,78 +82,50 @@ class _YieldOnlyAsyncio:
         return await inner
 
 
-class _DrivenClock:
-    # Local driven clock until the shared one lands: the driver module's asyncio becomes _YieldOnlyAsyncio
-    # and its ticks_ms() reads `now`, which only the test moves; leaving the block restores both.
+class _DrivenClock(DrivenTime):
+    # The shared driven 2**30 clock as the driver module's `time`, and _YieldOnlyAsyncio as its asyncio, for the
+    # block: `now` moves only when the test moves it; leaving the block restores both.
     def __init__(self) -> None:
-        self.now = 0
+        super().__init__(asy_neopixel_driver)
 
     def __enter__(self) -> "_DrivenClock":
+        super().__enter__()
         asy_neopixel_driver.asyncio = _YieldOnlyAsyncio  # type: ignore[assignment]
-        asy_neopixel_driver.time = self  # type: ignore[assignment]
         return self
 
-    def __exit__(self, *_exc: object) -> None:
+    def __exit__(self, *exc_info: object) -> None:
         asy_neopixel_driver.asyncio = asyncio
-        asy_neopixel_driver.time = time
-
-    def ticks_ms(self) -> int:
-        return self.now
-
-    @staticmethod
-    def ticks_add(ticks: int, delta: int) -> int:
-        return (ticks + delta) % _TICKS_PERIOD
-
-    @staticmethod
-    def ticks_diff(ticks1: int, ticks2: int) -> int:
-        return (ticks1 - ticks2 + _TICKS_PERIOD // 2) % _TICKS_PERIOD - _TICKS_PERIOD // 2
+        super().__exit__(*exc_info)
 
 
-async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
-    # A bound in yields, not milliseconds: under _DrivenClock every ramp frame is one yield, and an overlay wake two
-    # (its flag's waiter, then the bounded wait's own check).
-    for _ in range(max_yields):
-        if predicate():
-            return True
-        await asyncio.sleep(0)
-    return predicate()
+def _last_colour_is(driver: NeopixelDriver, colour: "tuple[int, ...]") -> "Callable[[], bool]":
+    return lambda: _colours(driver)[-1:] == [colour]
 
 
-class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, so every
-    # console line a logger emits is captured with its arguments; restore() removes the shadow.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        print_log_module.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **_kwargs: object) -> None:
-        self.lines.append(args)
-
-    def restore(self) -> None:
-        del print_log_module.print  # type: ignore[attr-defined]
+def _make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
+    # freq=100, against the shipped 20 Hz, keeps every ramp's step count high enough - 5 per direction at the
+    # t=0.1 floor - to observe mid-ramp state; the fixed values are the driver's own state, set from outside.
+    # A test outside _DrivenClock drives real asyncio.sleep(), so fast ramps keep its runtime short.
+    driver = NeopixelDriver(0, log=LogConfig(None, 10, debug))
+    driver.neopixel_freq = neopixel_freq
+    driver.neopixel_dt = 1.0 / neopixel_freq
+    driver._overlay_bri = led_overl_bri
+    run(driver.setup())  # the boot batch's setup(), before any task starts
+    return driver
 
 
-def _src_const(name: str) -> int:
-    # The shipped value, read from the source: a const() is not a module attribute on MicroPython.
-    with open("src/asy_neopixel_driver.py") as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(", 1)[1].split(")", 1)[0])
-    raise AssertionError(name + " not found in src/asy_neopixel_driver.py")
+async def _never_synced() -> bool:
+    return False
 
 
-def _colours(driver: NeopixelDriver) -> "list[tuple[int, ...]]":
-    return [w[0] for w in _pixel(driver).writes]
+def _pixel(driver: NeopixelDriver) -> "neopixel.NeoPixel":
+    # tests/neopixel.py's fake, reached through the driver's own attribute - that fake is what
+    # `neopixel` resolves to here (it is not excluded from mypy, unlike tests/network.py).
+    return driver._pixel
 
 
-def _frame_added(driver: NeopixelDriver) -> "Callable[[], bool]":
-    # True once the pixel has a frame more than now.
-    n = len(_pixel(driver).writes)
-    return lambda: len(_pixel(driver).writes) > n
-
-
-def _event_driver() -> NeopixelDriver:
-    return make_driver(debug=4)  # DebugLevel 4 (events, SPEC A.8): event-level console lines reach _PrintRecorder
+def _red(colour: "tuple[int, ...]") -> bool:
+    return colour[0] > 0 and colour[1] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -182,14 +134,15 @@ def _event_driver() -> NeopixelDriver:
 
 
 def test_init_bakes_name_into_the_logger() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     assert driver.pr.name == "NEOPIXEL"
 
 
 def test_the_frame_rate_and_overlay_brightness_are_fixed_values_no_caller_passes() -> None:
     driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
-    freq = _src_const("_NEOPIXEL_FREQ_HZ")
-    assert (driver.neopixel_freq, driver.neopixel_dt, driver._overlay_bri) == (freq, 1.0 / freq, _src_const("_LED_OVERL_BRI"))
+    freq = src_const("src/asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")
+    assert isinstance(freq, int)
+    assert (driver.neopixel_freq, driver.neopixel_dt, driver._overlay_bri) == (freq, 1.0 / freq, src_const("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"))
     refused = []
     for keyword in ("neopixel_freq", "led_overl_bri"):
         try:
@@ -200,20 +153,20 @@ def test_the_frame_rate_and_overlay_brightness_are_fixed_values_no_caller_passes
 
 
 def test_get_error_counter_forwards_to_the_real_print_log() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     log = run(driver.get_error_counter())
     assert log["NEOPIXEL"]["ErrCount"] == 0
 
 
 def test_get_error_counter_reflects_a_real_logged_error() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     run(driver.pr.err_s("boom", errno=1))
     log = run(driver.get_error_counter())
     assert log["NEOPIXEL"]["ErrCount"] == 1
 
 
 def test_reset_error_counter_returns_true_and_clears() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     run(driver.pr.err_s("boom", errno=1))
     assert run(driver.reset_error_counter()) is True
     assert run(driver.get_error_counter())["NEOPIXEL"]["ErrCount"] == 0
@@ -225,20 +178,20 @@ def test_reset_error_counter_returns_true_and_clears() -> None:
 
 
 def test_on_sets_pixel_to_overlay_brightness_and_records_a_write() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.on()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (42, 42, 42)
 
 
 def test_off_sets_pixel_to_black_and_records_a_write() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -246,20 +199,20 @@ def test_off_sets_pixel_to_black_and_records_a_write() -> None:
         await asyncio.sleep(0.05)
         driver.off()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
 
 def test_toggle_flips_from_off_to_on() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.toggle()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert driver._overlay_on is True
@@ -267,7 +220,7 @@ def test_toggle_flips_from_off_to_on() -> None:
 
 
 def test_toggle_flips_from_on_to_off() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -275,7 +228,7 @@ def test_toggle_flips_from_on_to_off() -> None:
         await asyncio.sleep(0.05)
         driver.toggle()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert driver._overlay_on is False
@@ -283,7 +236,7 @@ def test_toggle_flips_from_on_to_off() -> None:
 
 
 def test_repeated_on_is_idempotent_no_crash_one_more_write() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
 
     async def scenario() -> int:
         tasks = await _start_all_tasks(driver)
@@ -292,7 +245,7 @@ def test_repeated_on_is_idempotent_no_crash_one_more_write() -> None:
         n_before = len(_pixel(driver).writes)
         driver.on()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return n_before
 
     n_before = run(scenario())
@@ -301,7 +254,7 @@ def test_repeated_on_is_idempotent_no_crash_one_more_write() -> None:
 
 
 def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
-    driver = make_driver(led_overl_bri=99)
+    driver = _make_driver(led_overl_bri=99)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -316,7 +269,7 @@ def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
         assert (99, 99, 99) not in [w[0] for w in _pixel(driver).writes]
         await asyncio.sleep(0.2)  # let the ramp fully finish and the overlay task pick up the restore
         await ramp  # long since returned (it only queues) - awaited so no task reference dangles
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (99, 99, 99)
@@ -325,8 +278,8 @@ def test_overlay_write_deferred_while_ramp_holds_the_overlay_lock() -> None:
 def test_the_overlay_is_rewritten_once_per_refresh_period() -> None:
     # A WS2812 reports nothing, so only a rewrite puts a pixel blanked by a supply dip right: one frame per period
     # with nothing pending, none before it, none into a running ramp, and black while the overlay is off.
-    driver = make_driver(led_overl_bri=42)
-    period = _src_const("_OVERLAY_REFRESH_MS")
+    driver = _make_driver(led_overl_bri=42)
+    period = _OVERLAY_REFRESH_MS
     grey = (42, 42, 42)
 
     async def scenario(clock: _DrivenClock) -> "tuple[list[tuple[int, ...]], ...]":
@@ -358,7 +311,7 @@ def test_the_overlay_is_rewritten_once_per_refresh_period() -> None:
         await _run_until(lambda: len(_pixel(driver).writes) > n, 20)
         await _run_until(lambda: False, 20)
         off_refresh = _colours(driver)[n:]
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return early, refreshed, after_ramp, off_refresh
 
     with _DrivenClock() as clock:
@@ -373,7 +326,7 @@ def test_the_overlay_is_rewritten_once_per_refresh_period() -> None:
 def test_an_overlay_wake_leaves_one_flag_registration_and_no_task_behind() -> None:
     # Guard on the bounded wait's per-wake tasks (a waiter and a runner, extmod/asyncio/funcs.py, v1.29.0): each wake
     # ends both, the IO queue keeps only the flag the next wait registers, and a cancel leaves no task behind.
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
     core = sys.modules["asyncio.core"]
     real_create_task = core.create_task
     created: list[asyncio.Task[object]] = []
@@ -397,7 +350,7 @@ def test_an_overlay_wake_leaves_one_flag_registration_and_no_task_behind() -> No
             core.create_task = real_create_task  # type: ignore[attr-defined]  # the swap undone
         pending = len([t for t in created if not t.done()])
         streams = [entry[2] for entry in core._io_queue.map.values()]
-        await _cancel_all([overlay])
+        await cancel_all([overlay], settle_yields=1)
         return len(created), pending, streams, len([t for t in created if not t.done()])
 
     created_n, pending, streams, left = run(scenario())
@@ -413,13 +366,13 @@ def test_an_overlay_wake_leaves_one_flag_registration_and_no_task_behind() -> No
 
 
 def test_request_signal_ramps_up_then_down_and_ends_at_black() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         await driver.request_signal(50, 60, 70, 0.1)
         await asyncio.sleep(0.15)  # let the animation task actually finish committing frames
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     writes = [w[0] for w in _pixel(driver).writes]
@@ -428,7 +381,7 @@ def test_request_signal_ramps_up_then_down_and_ends_at_black() -> None:
 
 
 def test_request_signal_restores_overlay_on_state_after_ramp() -> None:
-    driver = make_driver(led_overl_bri=77)
+    driver = _make_driver(led_overl_bri=77)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -436,28 +389,28 @@ def test_request_signal_restores_overlay_on_state_after_ramp() -> None:
         await asyncio.sleep(0.05)
         await driver.request_signal(10, 0, 0, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (77, 77, 77)
 
 
 def test_request_signal_restores_overlay_off_state_after_ramp() -> None:
-    driver = make_driver(led_overl_bri=77)
+    driver = _make_driver(led_overl_bri=77)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         # overlay never turned on - default state is off
         await driver.request_signal(10, 0, 0, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
 
 def test_two_concurrent_request_signal_calls_run_strictly_sequentially() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -466,7 +419,7 @@ def test_two_concurrent_request_signal_calls_run_strictly_sequentially() -> None
             driver.request_signal(0, 10, 0, 0.1),
         )
         await asyncio.sleep(0.3)  # both ramps' worth of real time, plus margin
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     writes = [w[0] for w in _pixel(driver).writes]
@@ -480,27 +433,27 @@ def test_two_concurrent_request_signal_calls_run_strictly_sequentially() -> None
 
 
 def test_request_signal_always_returns_true_even_back_to_back() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         r1 = await driver.request_signal(1, 0, 0, 0.1)
         r2 = await driver.request_signal(0, 1, 0, 0.1)
         await asyncio.sleep(0.3)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return r1 and r2
 
     assert run(scenario()) is True
 
 
 def test_request_signal_below_floor_still_produces_at_least_one_step_each_direction() -> None:
-    driver = make_driver(neopixel_freq=20)  # the shipped rate
+    driver = _make_driver(neopixel_freq=20)  # the shipped rate
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         await driver.request_signal(10, 0, 0, 0.0)  # below the 0.1s floor
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     writes = [w[0] for w in _pixel(driver).writes]
@@ -512,13 +465,13 @@ def test_request_signal_low_freq_boundary_never_divides_by_zero() -> None:
     # freq=1 with the 0.1s floor: int(0.1 * 0.5 * 1) == 0 without an explicit steps>=1 clamp - a
     # real ZeroDivisionError risk in the original code's steps_inv = 1.0/steps, not just a
     # theoretical one. Regression test for the exact boundary flagged in the promotion plan.
-    driver = make_driver(neopixel_freq=1)
+    driver = _make_driver(neopixel_freq=1)
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         result = await driver.request_signal(10, 0, 0, 0.0)
         await asyncio.sleep(1.5)  # freq=1 -> dt=1s per step, needs real time to actually finish
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result
 
     result = run(scenario())
@@ -527,13 +480,13 @@ def test_request_signal_low_freq_boundary_never_divides_by_zero() -> None:
 
 
 def test_request_signal_large_t_accepted() -> None:
-    driver = make_driver(neopixel_freq=20)
+    driver = _make_driver(neopixel_freq=20)
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         result = await driver.request_signal(5, 0, 0, 1.0)
         await asyncio.sleep(1.1)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result
 
     result = run(scenario())
@@ -547,13 +500,13 @@ def test_request_signal_large_t_accepted() -> None:
 
 
 def test_led_signal_returns_true_and_eventually_ramps_when_idle() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         result = driver.led_signal(30, 0, 0, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result
 
     assert run(scenario()) is True
@@ -561,7 +514,7 @@ def test_led_signal_returns_true_and_eventually_ramps_when_idle() -> None:
 
 
 def test_led_signal_returns_false_for_a_second_call_before_the_first_dispatches() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> "tuple[bool, bool]":
         # No task started: led_signal() decides on _start_signal_event alone, with no await.
@@ -578,7 +531,6 @@ def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued()
     # The busy signal is _start_signal_event, set for the whole ramp; an external request while it is set is
     # refused, never queued (owner, 2026-10-02).
     driver = _event_driver()
-    recorder = _PrintRecorder()
 
     async def scenario() -> "tuple[bool, bool, bool]":
         tasks = await _start_all_tasks(driver)
@@ -588,14 +540,11 @@ def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued()
         result = driver.led_signal(0, 10, 0, 0.1)
         ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
         await _run_until(driver._start_signal_event.is_set, 40)  # a queued request would start here
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return busy, result, ended
 
-    with _DrivenClock():
-        try:
-            busy, result, ended = run(scenario())
-        finally:
-            recorder.restore()
+    with _DrivenClock(), record_prints() as recorder:
+        busy, result, ended = run(scenario())
     assert busy is True
     assert result is False
     assert ended is True
@@ -604,7 +553,7 @@ def test_led_signal_is_refused_at_once_while_a_ramp_runs_and_nothing_is_queued()
 
 
 def test_led_signal_is_refused_while_an_internal_request_is_queued_and_no_task_runs() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> "tuple[bool, bool, bool, bool]":
         queued = await driver.request_signal(10, 0, 0, 0.1)  # no signal task yet: the request stays queued
@@ -613,7 +562,7 @@ def test_led_signal_is_refused_while_an_internal_request_is_queued_and_no_task_r
         ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
         accepted = driver.led_signal(0, 10, 0, 0.1)
         await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return queued, refused, ended, accepted
 
     with _DrivenClock():
@@ -623,13 +572,13 @@ def test_led_signal_is_refused_while_an_internal_request_is_queued_and_no_task_r
 
 
 def test_led_signal_color_and_duration_pass_through_unmodified() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.led_signal(12, 34, 56, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert (12, 34, 56) in [w[0] for w in _pixel(driver).writes]
@@ -638,13 +587,13 @@ def test_led_signal_color_and_duration_pass_through_unmodified() -> None:
 def test_led_signal_accepts_fractional_t_without_truncating() -> None:
     # Regression test for the old `t: int` annotation bug - a fractional duration like 1.5 must
     # actually be honored (more steps/longer ramp), not silently truncated to 1.
-    driver = make_driver(neopixel_freq=20)
+    driver = _make_driver(neopixel_freq=20)
 
     async def scenario() -> int:
         tasks = await _start_all_tasks(driver)
         driver.led_signal(10, 0, 0, 1.5)
         await asyncio.sleep(1.6)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return len(_pixel(driver).writes)
 
     n_writes = run(scenario())
@@ -658,14 +607,14 @@ def test_led_signal_accepts_fractional_t_without_truncating() -> None:
 
 
 def test_external_and_internal_requests_back_to_back_both_eventually_run() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.led_signal(10, 0, 0, 0.1)
         await driver.request_signal(0, 10, 0, 0.1)
         await asyncio.sleep(0.3)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     writes = [w[0] for w in _pixel(driver).writes]
@@ -674,7 +623,7 @@ def test_external_and_internal_requests_back_to_back_both_eventually_run() -> No
 
 
 def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishes() -> None:
-    driver = make_driver(led_overl_bri=88)
+    driver = _make_driver(led_overl_bri=88)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
@@ -689,7 +638,7 @@ def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishe
         assert (88, 88, 88) not in [w[0] for w in _pixel(driver).writes]  # not visible mid-ramp
         await asyncio.sleep(0.3)
         await ramp  # long since returned (it only queues) - awaited so no task reference dangles
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     # off() was the last call before the ramp finished - restored state must be off, not on.
@@ -698,9 +647,8 @@ def test_overlay_calls_during_active_ramp_only_become_visible_after_ramp_finishe
 
 def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs() -> None:
     driver = _event_driver()
-    wait_ms = _src_const("_SIGNAL_WAIT_MS")
-    frame_ms = 1000 // 100  # make_driver()'s 100 Hz
-    recorder = _PrintRecorder()
+    wait_ms = _SIGNAL_WAIT_MS
+    frame_ms = 1000 // 100  # _make_driver()'s 100 Hz
 
     async def scenario(clock: _DrivenClock) -> "tuple[bool, bool, bool]":
         driver._start_signal_event.set()  # a signal is queued and its task never runs
@@ -720,11 +668,8 @@ def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs
             result = True
         return pending_before, gave_up and result is False, driver._rgbt is rgbt_before
 
-    with _DrivenClock() as clock:
-        try:
-            pending_before, gave_up_false, untouched = run(scenario(clock))
-        finally:
-            recorder.restore()
+    with _DrivenClock() as clock, record_prints() as recorder:
+        pending_before, gave_up_false, untouched = run(scenario(clock))
     assert pending_before is True
     assert gave_up_false is True
     assert untouched is True  # the dropped request never replaced the queued values
@@ -734,7 +679,7 @@ def test_request_signal_gives_up_at_its_deadline_when_the_signal_task_never_runs
 
 
 def test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> "tuple[bool, int]":
         tasks = await _start_all_tasks(driver)
@@ -745,7 +690,7 @@ def test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends() 
         frames_at_return = len(_pixel(driver).writes)
         result = await second
         await _run_until(lambda: not driver._start_signal_event.is_set(), 40)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result, frames_at_return
 
     with _DrivenClock():
@@ -759,20 +704,20 @@ def test_request_signal_behind_a_running_ramp_returns_true_only_after_it_ends() 
 
 
 def test_cancelling_the_signal_task_mid_ramp_leaves_the_pixel_dark_and_the_slot_free() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> "tuple[tuple[int, ...], bool, list[tuple[int, ...]]]":
         tasks = await _start_all_tasks(driver)
         signal = tasks[1]  # get_task_starters() order: overlay, then signal
         await driver.request_signal(10, 0, 0, 0.5)
         assert await _run_until(lambda: any(c[0] > 0 for c in _colours(driver)), 20)
-        await _cancel_all([signal])
+        await cancel_all([signal], settle_yields=1)
         last = _colours(driver)[-1]
         busy = driver._start_signal_event.is_set()
         n = len(_pixel(driver).writes)
         restarted = driver.start_asy_signal()
         await _run_until(lambda: False, 60)  # a replayed ramp of 0.5 s at 100 Hz would show within these steps
-        await _cancel_all([t for t in tasks if t is not signal] + [restarted])
+        await cancel_all([t for t in tasks if t is not signal] + [restarted], settle_yields=1)
         return last, busy, _colours(driver)[n:]
 
     with _DrivenClock():
@@ -783,7 +728,7 @@ def test_cancelling_the_signal_task_mid_ramp_leaves_the_pixel_dark_and_the_slot_
 
 
 def test_a_frame_write_failing_mid_ramp_ends_the_task_with_the_slot_free() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     fault = OSError("injected pixel write fault")
 
     async def scenario() -> "tuple[object, bool]":
@@ -800,7 +745,7 @@ def test_a_frame_write_failing_mid_ramp_ends_the_task_with_the_slot_free() -> No
             raised = e
         _pixel(driver).raise_on_write = None
         accepted = driver.led_signal(0, 10, 0, 0.1)  # the slot is free again
-        await _cancel_all([t for t in tasks if t is not signal])
+        await cancel_all([t for t in tasks if t is not signal], settle_yields=1)
         return raised, accepted
 
     with _DrivenClock():
@@ -810,31 +755,37 @@ def test_a_frame_write_failing_mid_ramp_ends_the_task_with_the_slot_free() -> No
 
 
 def test_a_restarted_overlay_task_reapplies_the_overlay() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
     grey = (42, 42, 42)
 
     async def scenario() -> "list[tuple[int, ...]]":
         overlay = driver.start_asy_overlay()
         driver.on()
         assert await _run_until(lambda: _colours(driver)[-1:] == [grey], 20)
-        await _cancel_all([overlay])
+        await cancel_all([overlay], settle_yields=1)
         n = len(_pixel(driver).writes)
         restarted = driver.start_asy_overlay()  # no on(): the restart alone
         await _run_until(lambda: len(_pixel(driver).writes) > n, 20)
         await _run_until(lambda: False, 20)
-        await _cancel_all([restarted])
+        await cancel_all([restarted], settle_yields=1)
         return _colours(driver)[n:]
 
     with _DrivenClock():
         assert run(scenario()) == [grey]
 
 
-def _red(colour: "tuple[int, ...]") -> bool:
-    return colour[0] > 0 and colour[1] == 0
+async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
+    # A bound in yields, not milliseconds: under _DrivenClock every ramp frame is one yield, and an overlay wake two
+    # (its flag's waiter, then the bounded wait's own check).
+    for _ in range(max_yields):
+        if predicate():
+            return True
+        await asyncio.sleep(0)
+    return predicate()
 
 
 def test_a_signal_task_ended_mid_ramp_restarts_dark_and_restores_the_overlay() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
     grey = (42, 42, 42)
     fault = OSError("injected pixel write fault")
 
@@ -857,7 +808,7 @@ def test_a_signal_task_ended_mid_ramp_restarts_dark_and_restores_the_overlay() -
         await _run_until(lambda: len(_pixel(driver).writes) >= n + 2, 20)
         await _run_until(lambda: False, 20)
         alive = not overlay.done()
-        await _cancel_all([overlay, restarted])
+        await cancel_all([overlay, restarted], settle_yields=1)
         return _colours(driver)[n:], alive
 
     with _DrivenClock():
@@ -900,12 +851,24 @@ class _SupervisorPasses:
         self._gate.set()
 
 
-async def _never_synced() -> bool:
-    return False
+def _single_signal_frames(t: float) -> "list[tuple[int, ...]]":
+    # The signal task alone at the real 20 Hz: its start frame, the ramp, then the final black.
+    driver = _make_driver(neopixel_freq=20)
+
+    async def scenario() -> bool:
+        signal = driver.start_asy_signal()
+        await driver.request_signal(255, 0, 0, t)
+        ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 4000)
+        await cancel_all([signal], settle_yields=1)
+        return ended
+
+    with _DrivenClock():
+        assert run(scenario()) is True
+    return _colours(driver)
 
 
 def test_the_supervisor_restarts_a_failed_signal_task_with_one_system_entry() -> None:
-    driver = make_driver(led_overl_bri=42)
+    driver = _make_driver(led_overl_bri=42)
     svc = SystemService(_never_synced)
     grey = (42, 42, 42)
     fault = OSError("injected pixel write fault")
@@ -928,8 +891,8 @@ def test_the_supervisor_restarts_a_failed_signal_task_with_one_system_entry() ->
         restarted = await _run_until(lambda: svc._tasks[1] is not signal, 20)
         await _run_until(lambda: False, 20)
         alive = not overlay.done()
-        await _cancel_all([sup])
-        await _cancel_all([t for t in svc._tasks if t is not None])
+        await cancel_all([sup], settle_yields=1)
+        await cancel_all([t for t in svc._tasks if t is not None], settle_yields=1)
         return _colours(driver)[n:], restarted, alive
 
     with _DrivenClock(), _SupervisorPasses() as passes:
@@ -954,7 +917,7 @@ def test_setup_initialises_the_logger_and_the_driver_before_any_task() -> None:
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         started_uninitialised = driver.pr.initialized is False  # no task sets the logger up
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return started_uninitialised
 
     assert run(scenario()) is True
@@ -971,18 +934,18 @@ class _FakeFramChunk:
     def get_buffer(self) -> RegionBuffer:
         return self._buffer
 
-    async def write_into(self, buf: RegionBuffer) -> bool:
-        data = buf.get_data_buf()
-        if data is None:
-            return False
-        self.buf[:] = data
-        return True
-
     async def read_into(self, buf: RegionBuffer) -> bool:
         data = buf.get_data_buf()
         if data is None:
             return False
         data[:] = self.buf
+        return True
+
+    async def write_into(self, buf: RegionBuffer) -> bool:
+        data = buf.get_data_buf()
+        if data is None:
+            return False
+        self.buf[:] = data
         return True
 
 
@@ -1021,23 +984,23 @@ def test_the_log_config_sets_the_loggers_length_and_level() -> None:
 
 
 def test_in_memory_variant_works_without_fram() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     assert type(driver.pr).__name__ == "PrintLogHistory"  # not the FRAM-backed subclass
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         await driver.request_signal(1, 0, 0, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     assert _pixel(driver).writes[-1][0] == (0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
-# _clamp_byte() - a real NeoPixel's __setitem__ writes straight into a bytearray and raises ValueError for
-# an out-of-range int (confirmed against micropython-lib's real neopixel.py). The callers are correctly-
-# typed int/float, all being our own code, but can still legitimately be out-of-range or NaN.
+# _clamp_byte(): a real NeoPixel stores into a bytearray, so an out-of-range int wraps silently (0x12C stores as
+# 0x2C, py/binary.c) and a float raises TypeError (micropython-lib neopixel.py); every value is clamped where the
+# request enters.
 # ---------------------------------------------------------------------------
 
 
@@ -1048,7 +1011,7 @@ def test_clamp_byte_direct() -> None:
     assert _clamp_byte(256) == 255
     assert _clamp_byte(300) == 255
     assert _clamp_byte(3.9) == 3  # int() truncates, matches every other rgb value in this file
-    assert _clamp_byte(value=True) == 1  # bool is a legitimate int subtype for a byte value
+    assert _clamp_byte(value=True) == 1  # a bool counts as 0/1 for a byte value (the clamp's own rule)
     # int(inf) raises OverflowError, int(nan) ValueError (Part F.1, v1.29.0). Regression test for the gap
     # _clamp_byte()'s original except (TypeError, ValueError) clause missed entirely.
     assert _clamp_byte(float("inf")) == 0
@@ -1059,16 +1022,18 @@ def test_clamp_byte_direct() -> None:
 
 
 def test_request_signal_infinite_rgb_clamped_not_raised() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
-    async def scenario() -> None:
+    async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
-        await driver.request_signal(float("inf"), 0, float("-inf"), 0.1)  # type: ignore[arg-type]
+        accepted = await driver.request_signal(float("inf"), 10, float("-inf"), 0.1)  # type: ignore[arg-type]
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
+        return accepted
 
-    run(scenario())  # would raise OverflowError out of the pixel write if unclamped
+    assert run(scenario()) is True  # would raise OverflowError out of the pixel write if unclamped
     writes = [w[0] for w in _pixel(driver).writes]
+    assert any(w[1] > 0 for w in writes)  # the request played: its green channel ramped
     assert all(w[0] == 0 for w in writes)  # inf clamped to 0, not the byte ceiling
     assert all(w[2] == 0 for w in writes)
     assert writes[-1] == (0, 0, 0)
@@ -1080,13 +1045,13 @@ def test_request_signal_infinite_rgb_clamped_not_raised() -> None:
 
 
 def test_request_signal_infinite_duration_falls_back_to_floor_not_raised() -> None:
-    driver = make_driver(neopixel_freq=20)
+    driver = _make_driver(neopixel_freq=20)
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         result = await driver.request_signal(10, 0, 0, float("inf"))
         await asyncio.sleep(0.15)  # only survivable if t fell back to the 0.1s floor, not inf
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result
 
     result = run(scenario())  # would raise OverflowError computing steps if unclamped
@@ -1095,13 +1060,13 @@ def test_request_signal_infinite_duration_falls_back_to_floor_not_raised() -> No
 
 
 def test_request_signal_nan_duration_falls_back_to_floor_not_raised() -> None:
-    driver = make_driver(neopixel_freq=20)
+    driver = _make_driver(neopixel_freq=20)
 
     async def scenario() -> bool:
         tasks = await _start_all_tasks(driver)
         result = await driver.request_signal(10, 0, 0, float("nan"))
         await asyncio.sleep(0.15)  # only survivable if t fell back to the 0.1s floor - NaN >= 0.1 is False
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
         return result
 
     result = run(scenario())
@@ -1110,61 +1075,64 @@ def test_request_signal_nan_duration_falls_back_to_floor_not_raised() -> None:
 
 
 def test_request_signal_out_of_range_rgb_clamped_not_raised() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         await driver.request_signal(300, -5, 999, 0.1)  # a future misbehaving caller
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
-    run(scenario())  # would raise ValueError out of the pixel write if unclamped
+    run(scenario())  # an unclamped value would wrap (or raise TypeError for a float)
     writes = [w[0] for w in _pixel(driver).writes]
     assert any(w[0] == 255 for w in writes)  # 300 clamped to the byte ceiling
     assert all(w[1] == 0 for w in writes)  # -5 clamped to the floor
     assert any(w[2] == 255 for w in writes)  # 999 clamped to the byte ceiling
+    assert not any(w[0] == 44 or w[1] == 251 or w[2] == 231 for w in writes)  # 300, -5 and 999 wrapped: absent
     assert writes[-1] == (0, 0, 0)
 
 
 def test_led_signal_out_of_range_rgb_clamped_not_raised() -> None:
-    driver = make_driver()
+    driver = _make_driver()
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.led_signal(-10, 500, 0, 0.1)
         await asyncio.sleep(0.15)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
     run(scenario())
     writes = [w[0] for w in _pixel(driver).writes]
     assert all(w[0] == 0 for w in writes)
     assert any(w[1] == 255 for w in writes)
+    assert not any(w[0] == 246 or w[1] == 244 for w in writes)  # -10 and 500 wrapped: absent
 
 
 def test_overlay_bri_out_of_range_clamped_not_raised() -> None:
-    driver = make_driver(led_overl_bri=999)
+    driver = _make_driver(led_overl_bri=999)
 
     async def scenario() -> None:
         tasks = await _start_all_tasks(driver)
         driver.on()
         await asyncio.sleep(0.05)
-        await _cancel_all(tasks)
+        await cancel_all(tasks, settle_yields=1)
 
-    run(scenario())  # would raise ValueError out of the pixel write if unclamped
+    run(scenario())  # an unclamped value would wrap (or raise TypeError for a float)
     assert _pixel(driver).writes[-1][0] == (255, 255, 255)
+    assert (231, 231, 231) not in _colours(driver)  # 999 wrapped: absent
 
 
 def test_a_non_numeric_signal_value_is_refused_without_a_frame() -> None:
     cases = ((None, 0, 0, 0.5), ("10", 0, 0, 0.5), (10, 0, 0, "1"))
     for r, g, b, t in cases:
-        driver = make_driver()
+        driver = _make_driver()
 
         async def scenario(d: NeopixelDriver = driver, r: object = r, g: object = g, b: object = b, t: object = t) -> "tuple[bool, bool]":
             internal = await d.request_signal(r, g, b, t)  # type: ignore[arg-type]
             external = d.led_signal(r, g, b, t)  # type: ignore[arg-type]
             tasks = await _start_all_tasks(d)
             await _run_until(lambda: False, 20)  # a valid request's first ramp frame would show within these
-            await _cancel_all(tasks)
+            await cancel_all(tasks, settle_yields=1)
             return internal, external
 
         with _DrivenClock():
@@ -1173,20 +1141,13 @@ def test_a_non_numeric_signal_value_is_refused_without_a_frame() -> None:
         assert _colours(driver) and all(c == (0, 0, 0) for c in _colours(driver))  # only the tasks' own start frames
 
 
-def _single_signal_frames(t: float) -> "list[tuple[int, ...]]":
-    # The signal task alone at the real 20 Hz: its start frame, the ramp, then the final black.
-    driver = make_driver(neopixel_freq=20)
-
-    async def scenario() -> bool:
-        signal = driver.start_asy_signal()
-        await driver.request_signal(255, 0, 0, t)
-        ended = await _run_until(lambda: not driver._start_signal_event.is_set(), 4000)
-        await _cancel_all([signal])
-        return ended
-
-    with _DrivenClock():
-        assert run(scenario()) is True
-    return _colours(driver)
+# Every cancel_all() here takes one settling yield: a cancelled overlay task's bounded wait ends its runner one hop
+# after its waiter, so neither outlives the scenario.
+async def _start_all_tasks(driver: NeopixelDriver) -> "list[asyncio.Task[None]]":
+    starters = driver.get_task_starters()
+    tasks = [s() for s in starters]
+    await asyncio.sleep(0)  # let each task reach its first await (event.wait()) before returning
+    return tasks
 
 
 def test_a_long_signal_is_capped_at_sixty_seconds() -> None:
@@ -1206,23 +1167,39 @@ def test_a_negative_duration_takes_the_floor() -> None:
 
 
 def test_get_task_starters_returns_the_overlay_and_signal_starters() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     assert [s.__name__ for s in driver.get_task_starters()] == ["start_asy_overlay", "start_asy_signal"]
 
 
 def test_get_timer_starters_returns_empty_list() -> None:
-    driver = make_driver()
+    driver = _make_driver()
     assert driver.get_timer_starters() == []
 
 
-def test_on_off_toggle_satisfy_led_control_protocol_signatures() -> None:
-    driver = make_driver()
-    assert callable(driver.on)
-    assert callable(driver.off)
-    assert callable(driver.toggle)
-    driver.on()
-    driver.off()
-    driver.toggle()  # no exception for any of the three, no task running at all
+def test_on_off_toggle_drive_the_pixel_through_the_overlay_task() -> None:
+    driver = _make_driver(led_overl_bri=42)
+    grey = (42, 42, 42)
+
+    async def scenario() -> "list[tuple[int, ...]]":
+        tasks = await _start_all_tasks(driver)
+        seen = []
+        for call, colour in ((driver.on, grey), (driver.off, (0, 0, 0)), (driver.toggle, grey)):
+            call()
+            assert await _run_until(_last_colour_is(driver, colour), 20), (call, _colours(driver))
+            seen.append(_colours(driver)[-1])
+        await cancel_all(tasks, settle_yields=1)
+        return seen
+
+    with _DrivenClock():
+        assert run(scenario()) == [grey, (0, 0, 0), grey]
+
+
+def test_the_driver_ceiling_on_a_signal_equals_the_rest_ceiling_on_t() -> None:
+    # Two copies of one limit: the driver caps t at _MAX_SIGNAL_S, the REST schema refuses a T above its maximum;
+    # if they drift, the driver silently clamps a T the API let through.
+    t_field = asy_webserver_service._LIGHT_CMD_FIELDS[3]
+    assert t_field[0] == "T"
+    assert src_const("src/asy_neopixel_driver.py", "_MAX_SIGNAL_S") == t_field[4]
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from _bmp3xx_chip import Bmp3xxChip
 from _twin_common import Walk
+from _twin_random import FixedRandom
 
 
 def _read(chip: Bmp3xxChip, reg: int, nbytes: int) -> bytes:
@@ -59,17 +60,6 @@ def _forward(cal_raw: bytes, adc_p: int, adc_t: int) -> "tuple[float, float]":
     return pressure / 100, temperature
 
 
-class _FixedRandom:
-    def __init__(self, uniform_values: "list[float] | None" = None) -> None:
-        self._uniform_values = list(uniform_values or [])
-
-    def uniform(self, a: float, b: float) -> float:
-        assert self._uniform_values, "uniform() called more times than scripted"
-        value = self._uniform_values.pop(0)
-        assert a <= value <= b, f"scripted value {value} outside requested range [{a},{b}]"
-        return value
-
-
 def test_chip_id_register_reports_a_recognized_id() -> None:
     chip = Bmp3xxChip()
     reply = _read(chip, 0x00, 1)
@@ -92,7 +82,7 @@ def test_calibration_block_is_not_degenerate() -> None:
 def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
     # First 2 values: the uniform draw at construction. Last 2: the step delta the forced-mode
     # trigger below draws - zeroed so the final decoded value stays exactly at the constructed one.
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])  # CONTROL = forced mode, press+temp enabled
     status = _read(chip, 0x03, 1)[0]
     assert status & 0x60 == 0x60  # STATUS_DATA_READY (both drdy_press|drdy_temp)
@@ -101,7 +91,7 @@ def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
 
 
 def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formula() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     burst = _read(chip, 0x04, 6)
     cal_raw = _read(chip, 0x31, 21)
@@ -116,13 +106,13 @@ def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formul
 
 
 def test_construction_draws_an_initial_value_within_range_without_a_forced_mode_trigger() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[23.5, 1013.25]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[23.5, 1013.25]))
     assert chip._temp_c == 23.5
     assert chip._pressure_hpa == 1013.25
 
 
 def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
     assert chip._temp_c == 20.0 and chip._pressure_hpa == 1000.0  # construction draw
     _write(chip, 0x1B, [0x13])
     assert chip._temp_c == 20.5  # 20.0 + 0.5
@@ -132,7 +122,7 @@ def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_d
 def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
     chip = Bmp3xxChip(
         pressure=Walk(950.0, 1050.0, 5.0),
-        random_source=_FixedRandom(uniform_values=[20.0, 1048.0, 0.0, 5.0]),
+        random_source=FixedRandom(uniform_values=[20.0, 1048.0, 0.0, 5.0]),
     )
     _write(chip, 0x1B, [0x13])
     assert chip._pressure_hpa == 1050.0  # 1048.0 + 5.0 would be 1053.0 - clamped to the pressure walk's hi
@@ -141,19 +131,17 @@ def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
 def test_forced_mode_trigger_step_is_clamped_to_the_configured_min() -> None:
     chip = Bmp3xxChip(
         temp=Walk(15.0, 30.0, 1.0),
-        random_source=_FixedRandom(uniform_values=[15.4, 1000.0, -1.0, 0.0]),
+        random_source=FixedRandom(uniform_values=[15.4, 1000.0, -1.0, 0.0]),
     )
     _write(chip, 0x1B, [0x13])
     assert chip._temp_c == 15.0  # 15.4 + -1.0 would be 14.4 - clamped to the temp walk's lo
 
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
-    chip = Bmp3xxChip(
-        temp=Walk(15.0, 30.0, 0.1),
-        pressure=Walk(950.0, 1050.0, 0.5),
-        random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.1, 0.5]),
-    )
-    _write(chip, 0x1B, [0x13])  # would violate the default 1.0/5.0 bounds - proves the override took
+    random = FixedRandom(uniform_values=[20.0, 1000.0, 0.1, 0.5])
+    chip = Bmp3xxChip(temp=Walk(15.0, 30.0, 0.1), pressure=Walk(950.0, 1050.0, 0.5), random_source=random)
+    _write(chip, 0x1B, [0x13])
+    assert random.calls[2:] == [(-0.1, 0.1), (-0.5, 0.5)], random.calls  # the step draws take the walks' own steps
 
 
 def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> None:
@@ -168,7 +156,7 @@ def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
     # Construction draw: 20.0/1000.0. The first trigger's step delta is zeroed, so it stays there; the
     # second's sits at this chip's default temp/pressure walk step boundary - proving each trigger
     # draws its own fresh step, not the same value twice, while staying within the walk's bound.
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
     cal_raw = _read(chip, 0x31, 21)
     _write(chip, 0x1B, [0x13])
     burst1 = _read(chip, 0x04, 6)
@@ -196,7 +184,7 @@ def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
 
 
 def test_soft_reset_command_restores_command_ready_status() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     assert _read(chip, 0x03, 1)[0] & 0x60  # data ready, not command-ready-only
     _write(chip, 0x7E, [0xB6])  # CMD register, soft reset opcode
@@ -219,7 +207,7 @@ def test_event_reports_por_detected_after_power_up_and_a_soft_reset_and_clears_o
 
 
 def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> None:
-    chip = Bmp3xxChip(random_source=_FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     block = _read(chip, 0x02, 8)
     assert block[0] == 0x00

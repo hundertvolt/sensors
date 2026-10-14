@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
-import { GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { GENERATED_DEFINITIONS, staleAgainst } from "./_generated_definitions.js";
 import { readIntConst } from "./_source_constants.js";
 import definitionsSource from "../js/definitions.js?raw";
 import pollManagerSource from "../js/poll-manager.js?raw";
@@ -373,7 +373,24 @@ describe("loadDefinitions", () => {
         const assertion = expect(pending).rejects.toThrow(/timed out/i);
         await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
         await assertion;
+    });
+});
 
-        vi.useRealTimers();
+describe("the generated-definitions loader's TOML stamp", () => {
+    const TOML = 'name = "fixture-device"\n';
+    // sha256 of TOML's UTF-8 bytes, as sha256sum prints it.
+    const TOML_SHA256 = "7dd835ef5e55c7c98444b97605ce72fb468a0a1d9ac2d9734b1d256b50b8b1cf";
+
+    it("passes a stamp naming exactly the TOMLs, each with its own hash", async () => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), { tomls: { "fixture-device": TOML_SHA256 } })).toEqual([]);
+    });
+
+    it.each([
+        ["a TOML changed since generation", { tomls: { "fixture-device": "0".repeat(64) } }, ["fixture-device: changed since the tree was generated"]],
+        ["a TOML the stamp does not name", { tomls: {} }, ["fixture-device: no stamp"]],
+        ["a stamped device with no TOML", { tomls: { "fixture-device": TOML_SHA256, "gone-device": TOML_SHA256 } }, ["gone-device: stamped, but no such TOML"]],
+        ["no stamp at all", undefined, ["no TOML stamp"]],
+    ])("reports %s", async (_case, stamp, problems) => {
+        expect(await staleAgainst(new Map([["fixture-device", TOML]]), stamp)).toEqual(problems);
     });
 });

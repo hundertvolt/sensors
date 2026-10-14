@@ -5,6 +5,7 @@ Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2
 import asyncio
 import json
 import os
+import select
 import sys
 import time
 
@@ -14,18 +15,24 @@ import time
 sys.path.insert(0, "ext")
 
 import machine
+import microtest
 import network
 import rp2
+from _async_harness import cancel, run
 from _boot_recorder import BootRecorder
-from _bus_hazard_catalog import scd_data_frame, scd_register_frame
+from _bus_hazard_catalog import adapter_for, scd_data_frame, scd_register_frame
 from _error_codes import code
+from _fast_sleep import FastAsyncSleep
 from _fram_chip_fake import FakeMB85RS64V
-from _generated_module import boot_entry_watchdog, boot_generated, write_offline_ntp_config
+from _generated_module import boot_entry_watchdog, boot_generated, fram_fake_class, write_offline_ntp_config
+from _generated_tree import require_fresh
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
+from _src_const import src_const
+from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from microdot import Request, Response
@@ -36,6 +43,7 @@ import asy_ntp_client
 import asy_scd30_driver
 import asy_spi_driver
 import asy_system_service
+import asy_uart_driver
 import asy_webserver_service
 import asy_wifi_service
 from asy_base_classes import SensorReader
@@ -46,11 +54,10 @@ from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
 
-# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
-# not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
-# sync with asy_wifi_service.py's own definitions if those ever change.
-_PHASE_STA_SEEKING = 0
-_PHASE_HOTSPOT = 2
+require_fresh()  # every scenario boots a generated module or reads its plan
+
+_PHASE_STA_SEEKING = src_const("src/asy_wifi_service.py", "_PHASE_STA_SEEKING")
+_PHASE_HOTSPOT = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 
 # Every pair of read triggers stays at least this far apart (SPECIFICATION.md Part C.9.1); estimated,
 # measurement owed: the worst-case read duration per driver on the bench, in a hardware session.
@@ -81,59 +88,20 @@ if TYPE_CHECKING:
     T = TypeVar("T")
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+def _strict(body: "bytes | bytearray | str") -> "Any":
+    # strict_loads() for this file's deep reads of a response body (the module is on the explicit-Any baseline).
+    return strict_loads(body)
 
 
 def status_body(res: "Response") -> bytes:
     # GET /status streams a list of already-json.dumps()-encoded fragments (see
-    # asy_webserver_service.py's _build_status_pieces()); draining it the way a real client would
-    # keeps every json.loads(...) assertion on a /status response working unchanged.
+    # asy_webserver_service.py's _build_status_pieces()), drained as a real client reads them.
     return drain_json_response_body(res.body)
 
 
 # Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
 # build/generated_src/ before scripts/test.sh ever runs this file (scripts/_generate_sensortask_modules.py).
 _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
-
-
-_BLANK = bytes(4096)
-
-
-class _FakeMB85RS2MTA(FakeMB85RS64V):
-    # dev's real FRAM: a 256KB MB85RS2MTA with its own RDID (DS501-00032 p.10), not the base fake's 8KB
-    # MB85RS64V. A subclass, since build_system() offers no post-construction hook.
-    SIZE = 0x40000
-    RDID = bytes([0x04, 0x7F, 0x48, 0x03])
-    # One array for every build of the process, blank at each construction: a fresh 256 KB array needs one free
-    # run that long, which a long scenario's survivors left nowhere on the settrace binary (12 MemoryErrors).
-    _array: "bytearray | None" = None
-    _holder: "_FakeMB85RS2MTA | None" = None
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        self.SIZE = 0  # shadows the class value while the base constructor runs, so it allocates no array
-        super().__init__(*args, **kwargs)
-        del self.SIZE
-        cls = _FakeMB85RS2MTA
-        if cls._array is None:
-            cls._array = bytearray(self.SIZE)
-        for start in range(0, self.SIZE, len(_BLANK)):
-            cls._array[start : start + len(_BLANK)] = _BLANK
-        if cls._holder is not None:
-            cls._holder.memory = None  # type: ignore[assignment]  # an earlier build's chip fails loudly, never writes this one
-        cls._holder = self
-        self.size = self.SIZE
-        self.memory = cls._array
-        self._addr_width = 3  # the 3-byte address of a part above 64 KB (DS501-00032 p.9)
-
-
-# Same "keyed by the real chip's own max_size" table digital_twin/machine.py's _FRAM_RDID_BY_MAX_SIZE
-# uses, for the identical reason - derived from each device's own real FRAM. A third real size needs
-# one new entry here, the same narrow addition twin_wiring.py's own table would need.
-_FRAM_FAKE_BY_MAX_SIZE: "dict[int, type[FakeMB85RS64V]]" = {
-    0x2000: FakeMB85RS64V,
-    0x40000: _FakeMB85RS2MTA,
-}
 
 
 def _wiring_plan(device: str) -> "dict[str, Any]":
@@ -147,25 +115,6 @@ def _expected_facts(device: str) -> "dict[str, Any]":
     with open(f"build/generated_src/sensortask_{device}_expected.json") as f:
         facts: dict[str, Any] = json.load(f)
     return facts
-
-
-def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
-    # Public because tests/_boot_contiguity_probe.py boots the same devices from its own script
-    # entry point: shared rather than copied, so the RDID table above stays the one place the
-    # tests tier maps a device to its real chip.
-    plan = _wiring_plan(device)
-    (spi_attachment,) = plan["spi"].values()  # every real device has exactly one FRAM/SPI instance
-    return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
-
-
-def _src_const(path: str, name: str) -> str:
-    # A shipped const()'s literal, read from its source: a const() is not a module attribute on MicroPython.
-    with open(path) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                literal: str = line.split("const(", 1)[1].split(")", 1)[0]
-                return literal
-    raise AssertionError(name + " not found in " + path)
 
 
 # ---------------------------------------------------------------------------
@@ -190,9 +139,6 @@ def _tmp_cfg_dir() -> str:
 # _boot()/reflective helpers - the mechanism every parametrized scenario below shares.
 # ---------------------------------------------------------------------------
 
-_OPTIONAL_INSTANCE_NAMES = ("scd30", "sgp40", "bmp3xx", "isl29125", "neopixel", "notification")
-
-
 def _reset_peripherals() -> None:
     # Each build is a boot: rp2's soft reset frees every DMA channel and stops every timer (ports/rp2/main.c
     # v1.29.0, rp2_dma_deinit(), soft_timer_deinit()). A timer left armed kept its run's whole graph alive.
@@ -202,13 +148,59 @@ def _reset_peripherals() -> None:
     machine.Timer.all_timers.clear()
 
 
+def seed_occupants(device: str) -> None:
+    # Every I2C occupant of the plan present before the boot: its bus the per-id fake the product's own construction
+    # then reuses, power-cycled, and each occupant seeded by its catalog adapter (attached, its register model).
+    for bus_name, attachments in _wiring_plan(device)["buses"].items():
+        bus_id = int(bus_name[len("i2c") :])
+        machine.I2C.reset_id(bus_id)
+        # A valid SCL/SDA pair of the block (ports/rp2/machine_i2c.h:67-68); the product's construction sets its own.
+        fake_bus = machine.I2C(bus_id, scl=machine.Pin(2 * bus_id + 1), sda=machine.Pin(2 * bus_id))
+        for attachment in attachments:
+            adapter_for(attachment["driver"]).seed(fake_bus, attachment["address"], 0)
+
+
+class _BoundedPoll:
+    # select.poll() as a UART driver built inside _BoundedUartPolls gets it: a LinkPoller over the registered fake, never
+    # a real poll over a Python object (CLAUDE.md "Known hang cause"; tests/machine.py counts any such query).
+    def __init__(self) -> None:
+        self._poller: machine.LinkPoller | None = None
+
+    def ipoll(self, timeout_ms: int = -1) -> "list[tuple[None, int]]":
+        assert self._poller is not None, "ipoll() before register()"
+        return self._poller.ipoll(timeout_ms)
+
+    def register(self, obj: "machine.UART", mask: int = select.POLLIN | select.POLLOUT) -> None:
+        self._poller = machine.LinkPoller(obj, mask=mask)
+
+    def unregister(self, _obj: object) -> None:
+        self._poller = None
+
+
+class _BoundedUartPolls:
+    # For the block, asy_uart_driver's select.poll() is _BoundedPoll: every UART the boot constructs polls its fake.
+    class _Select:
+        POLLIN = select.POLLIN
+        POLLOUT = select.POLLOUT
+        poll = _BoundedPoll
+
+    def __enter__(self) -> "_BoundedUartPolls":
+        asy_uart_driver.select = self._Select  # type: ignore[assignment]
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        asy_uart_driver.select = select
+
+
 async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "tuple[Any, Any]":
     # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
     # several devices' own modules get booted in this one process across this file's full run.
     asy_spi_driver._SPI = fram_fake_class(device) if chip is None else chip  # type: ignore[misc]
     _reset_peripherals()
+    seed_occupants(device)
     module = __import__(f"sensortask_{device}")
-    return await boot_generated(module, device, cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
+    with _BoundedUartPolls():
+        return await boot_generated(module, device, cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
 
 
 def build(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
@@ -224,12 +216,18 @@ def _device_of(module: "Any") -> str:
     return name[len("sensortask_") :]
 
 
+def _constructed(module: object) -> "list[str]":
+    # Every module build_system() constructs but the webserver, in construction order: buildgen's expected facts.
+    names: list[str] = _expected_facts(_device_of(module))["boot_sequence"]["construction"]
+    return names
+
+
 def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
-    # Reflective, but the oracle is the wiring plan buildgen wrote from devices/<device>.toml,
-    # never the built module's attributes: reading the module back cannot tell "device has no
-    # bmp3xx" from "buildgen silently dropped a declared driver". fram is excluded, always present.
+    # The plan's drivers built as a module of the same name, fram aside (always present): the oracle is what buildgen
+    # wrote from devices/<device>.toml, never the built module's attributes - reading the module back cannot tell
+    # "device has no bmp3xx" from "buildgen silently dropped a declared driver".
     plan_instances = set(_wiring_plan(_device_of(module))["instances"])
-    return tuple(name for name in _OPTIONAL_INSTANCE_NAMES if name in plan_instances)
+    return tuple(name for name in _constructed(module) if name in plan_instances and name != "fram")
 
 
 def _has(module: "Any", name: str) -> bool:
@@ -248,7 +246,7 @@ def _has(module: "Any", name: str) -> bool:
 def _has_uart_link(module: "Any") -> bool:
     # uart_link doesn't fit _has()'s one-driver-one-attribute shape: a device that has it always
     # has exactly two instances (uart_link_init/uart_link_resp - buildgen/twin_wiring.py's own
-    # instance_label() naming), never a single "module.uart_link". Only "dev" has it today.
+    # instance_label() naming), never a single "module.uart_link".
     present = "uart_link" in set(_wiring_plan(_device_of(module))["instances"])
     init = getattr(module, "uart_link_init", None)
     resp = getattr(module, "uart_link_resp", None)
@@ -300,25 +298,24 @@ def _ram_only_config_logs(module: "Any") -> "list[str]":
 
 
 _READER_OWNERS = (("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("isl29125", "ISL29125"))
-_STATUS_BYTES_PER_BLOCK = 2  # mirrors asy_fram_manager.py's _NUM_STATUS_BYTES (const(), not importable); keep in sync
+_STATUS_BYTES_PER_BLOCK = src_const("src/asy_fram_manager.py", "_NUM_STATUS_BYTES")
 
 
 def _expected_fram_chunk_owners(module: "Any") -> "list[str]":
-    # SPECIFICATION.md Part A.7's "Real FRAM chunk order": construction order, the NeoPixel first (conn's
-    # ext_led), each module's own log then its FRAM-backed config log, conn's captive DNS after conn's two.
-    owners = ["NEOPIXEL", "WIFI", "CFGMGR_WIFI", "DNSSRV", "NTP", "CFGMGR_NTP", "SYSTEM", "CFGMGR_SYSTEM"]
-    for attr, name in _READER_OWNERS:
-        if _has(module, attr):
-            reader = getattr(module, attr)
-            owners.append(name)
-            if getattr(type(reader), "_CFG_LOG_FRAM", True):  # derived from the class, never named
-                owners.append("CFGMGR_" + name)
-            if attr == "sgp40":
-                owners.append(reader.name + "_VOC")  # the VOC backup's owner, read from the built reader
-    owners += ["NOTIFY", "CFGMGR_NOTIFY"]
-    if _has_uart_link(module):
-        owners += ["UART_init", "UART_resp"]  # no config store: the link's parameters are a wire contract
-    owners.append("WEBSERVER")
+    # SPECIFICATION.md Part A.7's "Real FRAM chunk order", derived: the build's construction order (its expected facts)
+    # and the webserver last, each FRAM-wired module's loggers in its own order but a config log its class keeps off
+    # FRAM (_CFG_LOG_FRAM, read from the class, never named), an SGP40's VOC backup after its logs.
+    facts = _expected_facts(_device_of(module))
+    owners = []
+    for name in facts["boot_sequence"]["construction"] + ["webserver"]:
+        if name not in facts["fram_wired"]:
+            continue
+        obj = getattr(module, name)
+        store = getattr(obj, "cfgmgr", None)
+        ram_config = store.pr if store is not None and not getattr(type(obj), "_CFG_LOG_FRAM", True) else None
+        owners += [logger.name for logger in obj.get_loggers() if logger is not ram_config]
+        if isinstance(obj, SGP40_Reader):
+            owners.append(obj.name + "_VOC")  # the VOC backup's owner, read from the built reader
     return owners
 
 
@@ -339,12 +336,9 @@ def _fram_chip(module: "Any") -> "Any":
 
 
 def _sensor_reader_owners(module: "Any") -> "list[Any]":
-    # Every SensorReader/SensorReaderConfig instance real construction wires a task/timer starter
-    # for - reflective over the same optional-instance set _present_optional_instances() derives,
-    # plus the mandatory infra modules every real device always has.
-    owners = [getattr(module, name) for name in ("scd30", "bmp3xx", "sgp40", "neopixel", "notification") if _has(module, name)]
-    owners += [module.sysfunct, module.conn, module.ntp]
-    return owners
+    # Every module the build constructs, in its construction order (the services, each declared driver, a uart_link
+    # pair's two instances): each may wire task, timer and trigger starters. A new driver joins with no edit here.
+    return [getattr(module, name) for name in _constructed(module)]
 
 
 class _NoopHolder:  # Request.sock's stand-in: a static route hands its opened file to the writer's hold()
@@ -419,7 +413,7 @@ def _scenario_scd30_clock_stretch(device: str) -> None:
     # sits on must override it. Looked up through scd30 itself, not assumed to be i2c0.
     module = build(device)
     if not _has(module, "scd30"):
-        return  # every real device has scd30 today, but this stays correct if a future one doesn't
+        raise microtest.Skip(f"{device} declares no scd30")
     scd_bus = module.scd30._scd._i2c_scd30.i2c_device.i2c
     assert scd_bus._i2c is not None
     assert scd_bus._i2c.freq == 50000
@@ -793,30 +787,32 @@ async def _main_until_supervised(module: "Any", device: str, recorder: "BootReco
     # stagger wait is fired, the Timer fake never firing one itself. The tasks main() started are stopped after.
     asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
     _reset_peripherals()
+    seed_occupants(device)
     cfg_path = _tmp_cfg_dir()
     write_offline_ntp_config(cfg_path)
-    main = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0))
-    try:
-        for _ in range(100000):
-            if main.done():
-                break
+    with _BoundedUartPolls():
+        main = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0))
+        try:
+            for _ in range(100000):
+                if main.done():
+                    break
+                await asyncio.sleep(0)
+                timer = module.sysfunct._sequencer_timer
+                if timer.callback is not None:
+                    timer.trigger()
+            assert main.done(), "main() never reached supervise_tasks()"
+            await main
+        except Exception as e:
+            if not recorder.stopped_by(e):
+                raise
+        else:
+            raise AssertionError("main() returned")
+        finally:
+            main.cancel()
+            for task in module.sysfunct._tasks:
+                if task is not None:
+                    task.cancel()
             await asyncio.sleep(0)
-            timer = module.sysfunct._sequencer_timer
-            if timer.callback is not None:
-                timer.trigger()
-        assert main.done(), "main() never reached supervise_tasks()"
-        await main
-    except Exception as e:
-        if not recorder.stopped_by(e):
-            raise
-    else:
-        raise AssertionError("main() returned")
-    finally:
-        main.cancel()
-        for task in module.sysfunct._tasks:
-            if task is not None:
-                task.cancel()
-        await asyncio.sleep(0)
 
 
 @_register("boot_sequence_matches_the_generated_expectation")
@@ -852,22 +848,8 @@ def _scenario_no_dropped_logger(device: str) -> None:
         PrintLog.__init__ = real_init  # type: ignore[method-assign]
     names = [logger.name for logger in made]
     assert len(set(names)) == len(names), f"two loggers share a name, so one of them has no errcount entry: {sorted(names)}"
-    errcount = json.loads(status_body(_dispatch(module, "GET", "/status")))["errcount"]
+    errcount = _strict(status_body(_dispatch(module, "GET", "/status")))["errcount"]
     assert sorted(errcount) == sorted(names), (sorted(errcount), sorted(names))
-
-
-def _bmp3xx_devices() -> "frozenset[str]":
-    # Which of _DEVICES declare a bmp3xx, from each device's buildgen-computed wiring plan rather
-    # than a hardcoded literal - used only where a scenario must know this BEFORE construction;
-    # every other scenario derives it afterwards by reflecting on the built module.
-    return frozenset(d for d in _DEVICES if "bmp3xx" in _wiring_plan_driver_names(d))
-
-
-def _wiring_plan_driver_names(device: str) -> "frozenset[str]":
-    plan = _wiring_plan(device)
-    names = {a["driver"] for attachments in plan["buses"].values() for a in attachments}
-    names |= {a["driver"] for a in plan["spi"].values()}
-    return frozenset(names)
 
 
 @_register("notify_service_cfgmgr_exists_once_build_system_completes")
@@ -957,7 +939,7 @@ def _scenario_collect_level_setters(device: str) -> None:
 
 
 def _system_debug_level(module: "Any") -> object:
-    return json.loads(status_body(_dispatch(module, "GET", "/system")))["DebugLevel"]
+    return _strict(status_body(_dispatch(module, "GET", "/system")))["DebugLevel"]
 
 
 @_register("debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one")
@@ -976,7 +958,7 @@ def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
     # mutable value anywhere.
     module = build(device)
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
-    assert json.loads(res.body)["result"]["DebugLevel"] == "Valid"
+    assert _strict(res.body)["result"]["DebugLevel"] == "Valid"
     for pr in _all_loggers(module):
         assert pr.level == 1, f"{pr.name!r} did not observe the DebugLevel PUT"
 
@@ -985,7 +967,7 @@ def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
 def _scenario_debug_level_survives_reboot(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
     module = build(device, cfg_path=cfg_path)
-    assert json.loads(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
+    assert _strict(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
     run(module.sysfunct.cfgmgr.flush_pending())
 
     module = build(device, cfg_path=cfg_path)  # simulated reboot - same cfg_path, fresh objects
@@ -1001,10 +983,37 @@ def _scenario_debug_level_survives_reboot(device: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _count_calls(owners: "list[object]", method: str) -> "list[int]":
+    # Shadows `method` on each owner with a counting wrapper (an instance attribute over the bound method, removed by
+    # _uncount()); the list holds each owner's call count, in owner order.
+    counts = [0] * len(owners)
+    for i, owner in enumerate(owners):
+        real = getattr(owner, method)
+
+        def counting(i: int = i, real: "Callable[[], object]" = real) -> object:
+            counts[i] += 1
+            return real()
+
+        setattr(owner, method, counting)
+    return counts
+
+
+def _uncount(owners: "list[object]", method: str) -> None:
+    for owner in owners:
+        delattr(owner, method)
+
+
 @_register("collect_task_starters_includes_every_constructed_module")
 def _scenario_collect_task_starters(device: str) -> None:
     module = build(device)
-    starters = module._collect_task_starters()
+    owners = _sensor_reader_owners(module) + [module.webserver]
+    counts = _count_calls(owners, "get_task_starters")
+    try:
+        starters = module._collect_task_starters()
+    finally:
+        _uncount(owners, "get_task_starters")
+    # Each owner asked exactly once: an owner returning [] proves nothing by membership below.
+    assert counts == [1] * len(owners), [(getattr(owners[i], "name", owners[i]), counts[i]) for i in range(len(owners))]
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
     # The webserver's serving task is supervised like every other: its own starter is collected; so is the
@@ -1015,22 +1024,26 @@ def _scenario_collect_task_starters(device: str) -> None:
     # MicroPython bound methods don't expose __self__ (confirmed against the real Unix-port
     # interpreter - that is a CPython-only assumption), but they compare equal when bound to the
     # same (instance, function) pair, so membership via == still proves real ownership.
-    for owner in _sensor_reader_owners(module) + [module.fram, module.webserver]:
+    for owner in owners:
         for expected in owner.get_task_starters():
             assert expected in starters, f"no task starter bound to {owner!r}"
 
 
 @_register("collect_timer_starters_includes_every_constructed_module")
 def _scenario_collect_timer_starters(device: str) -> None:
-    # Every constructed module is checked, not just those currently contributing a timer:
-    # neopixel/notification/webserver/fram all return [] today, but this proves _collect_timer_starters()
-    # actually calls each of them rather than picking modules by name.
+    # Every constructed module is asked, not just those contributing a timer: each owner's get_timer_starters()
+    # runs exactly once under a counting wrapper, so an owner returning [] proves the collector calls it too.
     module = build(device)
-    starters = module._collect_timer_starters()
+    owners = _sensor_reader_owners(module) + [module.webserver]
+    counts = _count_calls(owners, "get_timer_starters")
+    try:
+        starters = module._collect_timer_starters()
+    finally:
+        _uncount(owners, "get_timer_starters")
+    assert counts == [1] * len(owners), [(getattr(owners[i], "name", owners[i]), counts[i]) for i in range(len(owners))]
     assert len(starters) > 0
     assert all(callable(s) for s in starters)
-    for owner in _sensor_reader_owners(module) + [module.fram, module.webserver]:
-        assert owner is not None
+    for owner in owners:
         for expected in owner.get_timer_starters():
             assert expected in starters, f"no timer starter bound to {owner!r}"
 
@@ -1066,12 +1079,9 @@ async def _cancel_reset_task(sysfunct: "Any") -> None:
 
 
 def _system_const(name: str) -> int:
-    # A const() of asy_system_service.py, read from its source (const() folds the name away on import).
-    with open("src/asy_system_service.py") as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(")[1].split(")")[0])
-    raise AssertionError(name + " not found in src/asy_system_service.py")
+    value = src_const("src/asy_system_service.py", name)
+    assert isinstance(value, int), (name, value)
+    return value
 
 
 class _StaggerClock:
@@ -1329,6 +1339,40 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     assert pass_waits[0] == _system_const("_TASK_CHECK_TIME") * 1000, waits.waits_ms  # the pass ends in one sleep, escalated or not
 
 
+@_register("every_task_starter_runs_under_the_real_supervisor")
+def _scenario_every_task_starter_runs_under_the_real_supervisor(device: str) -> None:
+    # The collected starters handed to the real SystemService: start_tasks(), then the supervisor's first pass to its
+    # _TASK_CHECK_TIME sleep. Every constructed module's and the webserver's task is started and alive there: none
+    # ended or restarted, no reset armed - the real consumer, not a list membership.
+    module, _watchdog = run(_boot(device, web_host="127.0.0.1", web_port=0))
+    sysfunct = module.sysfunct
+    starters = module._collect_task_starters()
+    pass_end = _system_const("_TASK_CHECK_TIME") * 1000
+    waits = _AsyncioWaits()
+    dead: list[object] = []
+
+    async def first_pass() -> None:
+        await sysfunct.start_tasks(starters)
+        started = list(sysfunct._tasks)
+        sup = asyncio.create_task(sysfunct.supervise_tasks())
+        await _until(lambda: pass_end in waits.waits_ms[len(starters) :] or sup.done(), "the supervisor never ended its first pass")
+        # The task start_tasks() started, still in its slot (a pass restarts a missing or ended one) and running.
+        dead.extend(n for n, task in enumerate(started) if task is None or task.done() or sysfunct._tasks[n] is not task)
+        await _stop_supervising(sysfunct, sup)
+
+    asy_system_service.asyncio = waits  # type: ignore[assignment]
+    try:
+        run(first_pass())
+    finally:
+        asy_system_service.asyncio = asyncio
+    assert sysfunct._task_starters == starters and len(sysfunct._tasks) == len(starters), "start_tasks() took another list"
+    assert dead == [], f"{device}: task(s) {dead} not running after the first supervisor pass"
+    assert sysfunct._reset_armed is False
+    for owner in _sensor_reader_owners(module) + [module.webserver]:
+        for starter in owner.get_task_starters():
+            assert starter in starters, f"no task starter bound to {owner!r}"
+
+
 @_register("every_module_and_logger_reaches_the_fan_in_collectors_exactly_once")
 def _scenario_fan_in_inventory(device: str) -> None:
     # Every constructed module's error sources and loggers are collected; every logger reachable one level
@@ -1409,7 +1453,7 @@ def _scenario_no_non_finite_float_on_the_wire(device: str) -> None:
             res = _dispatch(module, "GET", route)
             assert res.status_code == 200, (route, res.status_code)
             body = drain_json_response_body(res.body)  # strict RFC 8259: a bare nan or inf fails here
-            parsed = json.loads(body)
+            parsed = _strict(body)
             if route == "/measurements":
                 for obj in readers:
                     if obj.name in module.webserver._sensors:  # every sensor answers here; the other readers feed /status
@@ -1436,7 +1480,7 @@ def _scenario_serving_demand(device: str) -> None:
     module = build(device)
     webserver = module.webserver
     ssid = "K\u00fcche-W\u00e4sche"  # non-ASCII: a body's byte count differs from its character count
-    assert json.loads(_dispatch(module, "PUT", "/networking", {"SSID": ssid}).body)["result"] == {"SSID": "Valid"}
+    assert _strict(_dispatch(module, "PUT", "/networking", {"SSID": ssid}).body)["result"] == {"SSID": "Valid"}
     if _has(module, "scd30"):  # its config snapshot answered, so /sensors carries SCD30's whole map
         _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
     filled: list[list[bytes]] = []
@@ -1461,10 +1505,11 @@ def _scenario_serving_demand(device: str) -> None:
             sizes[route] = (sum(len(piece) for piece in pieces), len(pieces))
             assert int(res.headers["Content-Length"]) == sizes[route][0], route
             if route == "/networking":
-                assert json.loads(drain_json_response_body(iter(sent)))["SSID"] == ssid
+                assert _strict(drain_json_response_body(iter(sent)))["SSID"] == ssid
     finally:
         asy_webserver_service._PieceWriter = real_writer  # type: ignore[misc]
-    head = int(_src_const("src/asy_webserver_service.py", "_MAX_HEAD_BYTES"))
+    head = src_const("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")
+    assert isinstance(head, int), head
     body_cap = Request.max_content_length  # this device's ServingLimits, set by the build above
     largest_body = max(size for size, _ in sizes.values())
     most_pieces = max(count for _, count in sizes.values())
@@ -1558,15 +1603,15 @@ def _scenario_main_call_order(device: str) -> None:
 
 # Not the generic dispatch/aggregation logic (tests/test_asy_webserver_service.py's uniform-fake
 # suite covers that in full depth), and not concurrent-connection behavior
-# (tests/_webserver_concurrency_scenarios.py, also parametrized across all 6 devices).
+# (tests/_webserver_concurrency_scenarios.py, also parametrized per device).
 # ---------------------------------------------------------------------------
 
 
 @_register("webserver_pr_is_fram_backed_when_device_wires_fram")
 def _scenario_webserver_pr_fram_backed(device: str) -> None:
-    # WP1/CLAUDE.md's implicit-FRAM-wiring rule (SPECIFICATION.md Part A.7): every device's TOML
-    # declares [device.wiring].fram_target, so webserver's self.pr is FRAM-backed on all 6, like
-    # conn/ntp/sysfunct. No device-level fram_target is covered at the codegen level instead.
+    # The implicit FRAM-wiring rule (SPECIFICATION.md A.7): every device's TOML declares [device.wiring].fram_target,
+    # so webserver's self.pr is FRAM-backed on every device, like conn/ntp/sysfunct. No device-level fram_target is
+    # covered at the codegen level instead.
     module = build(device)
     assert module.webserver is not None
     assert isinstance(module.webserver.pr, PrintLogHistoryStore)
@@ -1582,13 +1627,13 @@ def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
     expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
     res = _dispatch(module, "GET", "/measurements")
     assert res.status_code == 200
-    measurements = json.loads(status_body(res))
+    measurements = _strict(status_body(res))
     assert_sensor_payload_not_self_wrapped(measurements, expected)
 
     if _has(module, "scd30"):  # its config snapshot answered, so SCD30's map is read rather than marked unavailable
         _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
     res = _dispatch(module, "GET", "/sensors")
-    sensors = json.loads(status_body(res))
+    sensors = _strict(status_body(res))
     assert_sensor_payload_not_self_wrapped(sensors, expected)
     assert all("error" not in fields for fields in sensors.values()), sensors  # the marker is no sensor's config
 
@@ -1597,9 +1642,9 @@ def _scenario_webserver_measurements_and_sensors_get(device: str) -> None:
 def _scenario_sensors_put_sgp40(device: str) -> None:
     module = build(device)
     if not _has(module, "sgp40"):
-        return  # every real device has sgp40 today, but this stays correct if a future one doesn't
+        raise microtest.Skip(f"{device} declares no sgp40")
     res = _dispatch(module, "PUT", "/sensors", {"SGP40": {"BackupPeriod": 5}})
-    body = json.loads(res.body)
+    body = _strict(res.body)
     assert body["result"] == {"SGP40": {"BackupPeriod": "Valid"}}
     assert run(module.sgp40.cfgmgr.get_dict(["BackupPeriod"])) == {"BackupPeriod": 5}
 
@@ -1618,12 +1663,13 @@ def _scenario_sensors_put_scd30(device: str) -> None:
     fake_i2c = module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c
     _queue_scd30_snapshot(fake_i2c, 2)
     res = _dispatch(module, "PUT", "/sensors", {"SCD30": {"MeasInterval": 4}})
-    body = json.loads(res.body)
+    body = _strict(res.body)
     assert body["result"] == {"SCD30": {"MeasInterval": "Valid"}}
+    # Set measurement interval 0x4600, argument 4 and its CRC-8 (Interface Description 1.4.3, p.9).
     assert ("writeto", 0x61, bytes([0x46, 0x00, 0x00, 0x04, 0x45]), True) in list(fake_i2c.log)
     _queue_scd30_snapshot(fake_i2c, 4)
     res = _dispatch(module, "GET", "/sensors")
-    assert json.loads(status_body(res))["SCD30"]["MeasInterval"] == 4
+    assert _strict(status_body(res))["SCD30"]["MeasInterval"] == 4
 
 
 def _config_snapshot_chips(module: "Any") -> "list[tuple[Any, Any]]":
@@ -1648,7 +1694,7 @@ def _scenario_sensors_get_marks_a_failed_chip_read(device: str) -> None:
     def get_sensors(faulted: "Any") -> "dict[str, Any]":
         if _has(module, "scd30") and faulted is not module.scd30:  # its six replies, as the PUT scenario above queues them
             _queue_scd30_snapshot(module.scd30._scd._i2c_scd30.i2c_device.i2c._i2c, 2)
-        sensors: dict[str, Any] = json.loads(status_body(_dispatch(module, "GET", "/sensors")))
+        sensors: dict[str, Any] = _strict(status_body(_dispatch(module, "GET", "/sensors")))
         return sensors
 
     before = get_sensors(None)
@@ -1673,11 +1719,11 @@ def _scenario_networking_put_ssid_group(device: str) -> None:
     module = build(device)
     assert module.conn is not None
     res = _dispatch(module, "PUT", "/networking", {"LEDWifiOn": False})
-    assert json.loads(res.body)["result"] == {"LEDWifiOn": "Valid"}
+    assert _strict(res.body)["result"] == {"LEDWifiOn": "Valid"}
     assert (module.conn._reconn_wifi, module.conn._reconnect_fresh) == (False, False)  # LEDWifiOn alone must never reconnect
 
     res = _dispatch(module, "PUT", "/networking", {"Hostname": "TestHost"})
-    assert json.loads(res.body)["result"] == {"Hostname": "Valid"}
+    assert _strict(res.body)["result"] == {"Hostname": "Valid"}
     # setNetwork's own field group did change; through the generated hook the change lands in the fresh-boot state.
     assert (module.conn._reconn_wifi, module.conn._reconnect_fresh) == (True, True)
 
@@ -1686,7 +1732,7 @@ def _scenario_networking_put_ssid_group(device: str) -> None:
 def _scenario_networking_put_unknown_key(device: str) -> None:
     # A key no settings group of the endpoint lists is answered in the OK envelope, never dropped unanswered.
     module = build(device)
-    body = json.loads(_dispatch(module, "PUT", "/networking", {"NoSuchKey": 1}).body)
+    body = _strict(_dispatch(module, "PUT", "/networking", {"NoSuchKey": 1}).body)
     assert (body["res"], body["result"]) == ("OK", {"NoSuchKey": "Invalid"})
 
 
@@ -1698,7 +1744,7 @@ def _scenario_networking_put_ntp(device: str) -> None:
     assert module.ntp is not None
     module.ntp._ntp_retries = 3
     res = _dispatch(module, "PUT", "/networking", {"NTPHost": "time.example.org"})
-    assert json.loads(res.body)["result"] == {"NTPHost": "Valid"}
+    assert _strict(res.body)["result"] == {"NTPHost": "Valid"}
     assert module.ntp._ntp_retries == 0  # post_asy_fct fired
 
 
@@ -1709,10 +1755,10 @@ def _scenario_networking_put_ntp_clears_synced(device: str) -> None:
     module = build(device)
     assert module.ntp is not None
     run(module.ntp._set_meas_data(NTP(Synced=True, LastSyncAge=0, TS=1767225600)))
-    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is True
+    assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is True
     res = _dispatch(module, "PUT", "/networking", {"NTPHost": "time.example.org"})
-    assert json.loads(res.body)["result"] == {"NTPHost": "Valid"}
-    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is False
+    assert _strict(res.body)["result"] == {"NTPHost": "Valid"}
+    assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["NTPSynced"] is False
 
 
 @_register("webserver_networking_put_dns_fallback_stores_a_list_and_refuses_a_malformed_one")
@@ -1722,10 +1768,10 @@ def _scenario_networking_put_dns_fallback(device: str) -> None:
     module = build(device, offline_ntp=False)
     assert module.ntp is not None
     res = _dispatch(module, "PUT", "/networking", {"DNSFallback": ""})
-    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
-    assert json.loads(status_body(_dispatch(module, "GET", "/networking")))["DNSFallback"] == ""
+    assert _strict(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert _strict(status_body(_dispatch(module, "GET", "/networking")))["DNSFallback"] == ""
     res = _dispatch(module, "PUT", "/networking", {"DNSFallback": "8.8.8.8,"})
-    assert json.loads(res.body)["result"] == {"DNSFallback": "Invalid"}
+    assert _strict(res.body)["result"] == {"DNSFallback": "Invalid"}
     assert run(module.ntp.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}
 
 
@@ -1739,11 +1785,7 @@ async def _start_hotspot_once(conn: "Any") -> None:
         asy_wifi_service.asyncio = asyncio
     task = conn._dns_server_task
     if task is not None and not task.done():
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
 
 
 @_register("webserver_networking_put_hotspot_pw_configures_the_next_hotspot_and_reads_back_masked")
@@ -1752,9 +1794,9 @@ def _scenario_networking_put_hotspot_pw(device: str) -> None:
     conn = module.conn
     assert conn is not None
     res = _dispatch(module, "PUT", "/networking", {"HotspotPW": "newpass123"})
-    assert json.loads(res.body)["result"] == {"HotspotPW": "Valid"}
+    assert _strict(res.body)["result"] == {"HotspotPW": "Valid"}
     assert conn._reconn_wifi is True  # the identity group's reconnect
-    assert json.loads(status_body(_dispatch(module, "GET", "/networking")))["HotspotPW"] == "********"
+    assert _strict(status_body(_dispatch(module, "GET", "/networking")))["HotspotPW"] == "********"
     run(_start_hotspot_once(conn))
     assert [c["password"] for c in conn._wlan.config_calls if "password" in c] == ["newpass123"]
 
@@ -1767,9 +1809,9 @@ def _scenario_networking_put_mask_string(device: str) -> None:
     assert module.conn is not None
     for field in ("PW", "HotspotPW"):
         res = _dispatch(module, "PUT", "/networking", {field: "********"})
-        assert json.loads(res.body)["result"] == {field: "Valid"}, field
+        assert _strict(res.body)["result"] == {field: "Valid"}, field
         assert run(module.conn.cfgmgr.get_dict([field])) == {field: "********"}
-        assert json.loads(status_body(_dispatch(module, "GET", "/networking")))[field] == "********"
+        assert _strict(status_body(_dispatch(module, "GET", "/networking")))[field] == "********"
 
 
 @_register("webserver_system_put_debug_level_propagates_to_every_logger")
@@ -1777,7 +1819,7 @@ def _scenario_system_put_debug_level(device: str) -> None:
     module = build(device)
     assert module.sysfunct is not None and module.conn is not None
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
-    assert json.loads(res.body)["result"]["DebugLevel"] == "Valid"
+    assert _strict(res.body)["result"]["DebugLevel"] == "Valid"
     assert _system_debug_level(module) == 1
     assert module.conn.pr.level == 1  # pushed via the registry
 
@@ -1787,7 +1829,7 @@ def _scenario_system_put_gmt_offset(device: str) -> None:
     module = build(device)
     assert module.ntp is not None and module.conn is not None
     res = _dispatch(module, "PUT", "/system", {"GMTOffset": 7200})
-    assert json.loads(res.body)["result"] == {"GMTOffset": "Valid"}
+    assert _strict(res.body)["result"] == {"GMTOffset": "Valid"}
     assert run(module.ntp.cfgmgr.get_dict(["GMTOffset"])) == {"GMTOffset": 7200}
     assert module.conn._reconn_wifi is False  # unrelated to the networking settings groups
 
@@ -1883,12 +1925,12 @@ async def _boot_supervised(device: str, gate: "_StepGate", **kwargs: "Any") -> "
     return module, sup
 
 
-async def _command_to_reset(module: "Any", sup: "asyncio.Task[None]", gate: "_StepGate", body: "dict[str, Any]", at_step: "Any" = None) -> "dict[str, Any]":
-    # The command over REST, every held step let through (at_step(step) run first at each), then the armed reset
-    # fired and the supervisor's task ended: the run stops where a real unit restarts. Returns the PUT's results.
+async def _command_to_reset(module: "Any", sup: "asyncio.Task[None]", gate: "_StepGate", body: "dict[str, Any]", at_step: "Any" = None, armed: "Callable[[dict[str, object]], Coroutine[object, object, None]] | None" = None) -> None:
+    # The command over REST, every held step let through (at_step(step) run first at each), armed(result) once the
+    # reset is armed, then the timer fired: the reset never returns, so its exception ends the run where a unit restarts.
     sysfunct = module.sysfunct
     fired = machine.reset_count + machine.bootloader_count
-    result: dict[str, Any] = json.loads((await _dispatch_async(module, "PUT", "/system", body)).body)["result"]
+    result: dict[str, Any] = _strict((await _dispatch_async(module, "PUT", "/system", body)).body)["result"]
     assert result["SystemCmd"] == "Valid", result
     task = sysfunct._shutdown_task
     while True:
@@ -1900,14 +1942,10 @@ async def _command_to_reset(module: "Any", sup: "asyncio.Task[None]", gate: "_St
         gate.open()
     await task
     assert sysfunct._reset_armed and machine.reset_count + machine.bootloader_count == fired, "the sequence ended unarmed or reset early"
+    if armed is not None:
+        await armed(result)
     sysfunct._reset_timer.trigger()  # the fake Timer fires only on request; its callback wakes the reset task
     await _until(sysfunct._reset_task.done, "the armed reset never ran")
-    sup.cancel()
-    try:
-        await sup
-    except asyncio.CancelledError:
-        pass
-    return result
 
 
 def _run_gated(gate: "_StepGate", coro: "Coroutine[Any, Any, T]") -> "T":
@@ -1918,20 +1956,32 @@ def _run_gated(gate: "_StepGate", coro: "Coroutine[Any, Any, T]") -> "T":
         asy_system_service.asyncio = asyncio
 
 
+def _run_to_reset(gate: "_StepGate", coro: "Coroutine[object, object, None]", word: str = "reboot") -> None:
+    # A command run ends in its reset, which never returns (machine.bootloader() for "bootloader"): that exception
+    # leaves the event loop, and the run ends there as a unit restarts; the harness ends what was still running.
+    expected = machine.SimulatedBootloaderEntryError if word == "bootloader" else machine.SimulatedResetError
+    counts = (machine.reset_count, machine.bootloader_count)
+    try:
+        _run_gated(gate, coro)
+    except expected:
+        after = (machine.reset_count, machine.bootloader_count)
+        assert after == (counts[0] + (word != "bootloader"), counts[1] + (word == "bootloader")), (word, counts, after)
+        return
+    raise AssertionError(f"{word}: the run ended without its reset")
+
+
 @_register("webserver_system_put_reboot_cmd_arms_the_real_reset_timer")
 def _scenario_system_put_reboot(device: str) -> None:
     # "Valid", then the controlled shutdown arms the reset with region 0's reboot code; the fired timer resets the unit
     # once and the reset cause reads WDT. One coroutine from the boot to the reset: never a nested asyncio.run().
     gate = _StepGate()
-    before = machine.reset_count
 
     async def scenario() -> None:
         module, sup = await _boot_supervised(device, gate)
         await _command_to_reset(module, sup, gate, {"SystemCmd": "reboot"})
 
-    _run_gated(gate, scenario())
+    _run_to_reset(gate, scenario())
     assert machine.mem_backup(0)[1] == _system_const("_RR_REBOOT")
-    assert machine.reset_count == before + 1
     assert machine.reset_cause() == machine.WDT_RESET
 
 
@@ -1940,15 +1990,16 @@ def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
     # A commanded reboot must not drop a still-staged write: unlike the accepted power-loss residual risk (owner,
     # 2026-09-26; Part F.2) this path waits the flush out, in the sequence's own flush step. A write after it is refused.
     gate = _StepGate()
+    seen: list[object] = []
+    answers: list[object] = []
 
-    async def scenario() -> "tuple[list[object], dict[str, Any]]":
+    async def scenario() -> None:
         module, sup = await _boot_supervised(device, gate)
         _hold_each_step(module, gate)
         wifi = module.conn.cfgmgr
         wifi.commit = lambda: None  # its flush waits on a commit no one sends: still staged when the command comes
-        staged = json.loads((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": False})).body)["result"]
+        answers.append(_strict((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": False})).body)["result"])
         del wifi.commit
-        seen: list[object] = []
 
         async def at_step(step: str) -> None:
             if step in ("S2", "S3"):  # just before and just after the sequence's own flush step
@@ -1956,15 +2007,16 @@ def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
                     with open(store._config_file) as f:
                         seen.append((step, store._pending_flush is None, json.load(f)[key]))
 
-        result = await _command_to_reset(module, sup, gate, {"DebugLevel": 1, "SystemCmd": "reboot"}, at_step)
-        assert result == {"DebugLevel": "Valid", "SystemCmd": "Valid"} and staged == {"LEDWifiOn": "Valid"}, (staged, result)
-        late = json.loads((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": True})).body)["result"]
-        return seen, late
+        async def armed(result: "dict[str, object]") -> None:  # past the flush step, the reset armed: too late for a write
+            answers.append(result)
+            answers.append(_strict((await _dispatch_async(module, "PUT", "/networking", {"LEDWifiOn": True})).body)["result"])
 
-    seen, late = _run_gated(gate, scenario())
+        await _command_to_reset(module, sup, gate, {"DebugLevel": 1, "SystemCmd": "reboot"}, at_step, armed)
+
+    _run_to_reset(gate, scenario())
+    assert answers == [{"LEDWifiOn": "Valid"}, {"DebugLevel": "Valid", "SystemCmd": "Valid"}, {"LEDWifiOn": "Failed"}], answers
     assert seen[:1] == [("S2", False, True)], seen  # the networking write still staged, the file on its old value
     assert seen[2:] == [("S3", True, False), ("S3", True, 1)], seen  # on flash, not merely scheduled, after S2
-    assert late == {"LEDWifiOn": "Failed"}, late
 
 
 def _scd30_readers(module: "Any") -> "list[Any]":
@@ -2007,7 +2059,7 @@ async def _every_write_refused(module: "Any", word: str, accepted: "Any") -> "li
     wrong: list[object] = []
 
     async def put(path: str, body: "dict[str, Any]") -> "dict[str, Any]":
-        answer: dict[str, Any] = json.loads((await _dispatch_async(module, "PUT", path, body)).body)["result"]
+        answer: dict[str, Any] = _strict((await _dispatch_async(module, "PUT", path, body)).body)["result"]
         return answer
 
     for reader in _scd30_readers(module):
@@ -2032,21 +2084,6 @@ async def _every_write_refused(module: "Any", word: str, accepted: "Any") -> "li
     if again != {"SystemCmd": "Valid"} or module.sysfunct._shutdown_task is not accepted:
         wrong.append(("/system", word, again))
     return wrong
-
-
-class _StaticI2C:
-    # rp2's machine.I2C(id) is one object per bus (machine_i2c.c): kept so for one scenario, a controller a recovery
-    # rebuilds keeps the log and replies a count reads; every bus is fresh per build again afterwards.
-    def __init__(self, device: str) -> None:
-        self.ids = [int(name[len("i2c") :]) for name in _wiring_plan(device)["buses"] if name.startswith("i2c")]
-
-    def __enter__(self) -> "_StaticI2C":
-        for bus_id in self.ids:
-            machine.I2C.reset_id(bus_id)
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        machine.I2C.reset_registry()
 
 
 def _scd30_commands(reader: "Any", word: int) -> int:
@@ -2117,14 +2154,13 @@ def _scenario_only_the_api_writes_the_scd30(device: str) -> None:
         answers: list[object] = []
         for reader in readers:
             _queue_scd30_snapshot(_scd30_bus(reader), 2)
-            answers.append(json.loads((await _dispatch_async(module, "PUT", "/sensors", {reader.name: {"MeasInterval": 4}})).body)["result"])
+            answers.append(_strict((await _dispatch_async(module, "PUT", "/sensors", {reader.name: {"MeasInterval": 4}})).body)["result"])
         return after_setup, window, answers + [scd30_nvm_writes(_scd30_bus(reader)) for reader in readers]
 
     asy_system_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
     asy_scd30_driver.asyncio = _AsyncioWaits()  # type: ignore[assignment]
     try:
-        with _StaticI2C(device):
-            after_setup, window, after_put = run(scenario())
+        after_setup, window, after_put = run(scenario())
     finally:
         asy_system_service.asyncio = asyncio
         asy_scd30_driver.asyncio = asyncio
@@ -2144,14 +2180,14 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
     # SCD30 NVM write happens from the acceptance to the reset (owner, 2026-10-02: no SCD30 write while it runs).
     for word, steps in (("reboot", "S1 S2 S3 S4 S6"), ("bootloader", "S1 S2 S3 S4 S6"), ("resetconfig", "S1 S2 S3 S4 S5 S6"), ("erasefram", "S1 S2 S3 S4 S5 S6")):
         gate = _StepGate()
+        wrong: list[object] = []
+        nvm: list[list[dict[int, int]]] = []
 
-        async def scenario(word: str = word, gate: "_StepGate" = gate) -> "tuple[list[object], list[dict[int, int]], list[dict[int, int]]]":
+        async def scenario(word: str = word, gate: "_StepGate" = gate, wrong: "list[object]" = wrong, nvm: "list[list[dict[int, int]]]" = nvm) -> None:
             module, sup = await _boot_supervised(device, gate)
             _hold_each_step(module, gate)
             for logger in _fram_stores(module):  # a log in every store, so a ResetErrors that cleared one shows
                 await logger.err_s("written before the command", errno=code("E", "INIT"))
-            nvm: list[list[dict[int, int]]] = []
-            wrong: list[object] = []
 
             async def at_step(step: str) -> None:
                 if not nvm:  # the first step runs right after the acceptance
@@ -2160,14 +2196,15 @@ def _scenario_writes_refused_during_the_shutdown(device: str) -> None:
                     wrong.append((step, "FRAM paused" if module.fram.get_pause() else "FRAM not paused"))
                 wrong.extend((step, w) for w in await _every_write_refused(module, word, module.sysfunct._shutdown_task))
 
-            await _command_to_reset(module, sup, gate, {"SystemCmd": word}, at_step)
-            return wrong, nvm[0], [scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)]
+            async def armed(_result: "dict[str, object]") -> None:  # the last moment before the reset
+                nvm.append([scd30_nvm_writes(_scd30_bus(reader)) for reader in _scd30_readers(module)])
 
-        with _StaticI2C(device):
-            wrong, accepted, reset = _run_gated(gate, scenario())
+            await _command_to_reset(module, sup, gate, {"SystemCmd": word}, at_step, armed)
+
+        _run_to_reset(gate, scenario(), word)
         assert gate.passed == steps.split(), (word, gate.passed)
         assert wrong == [], (word, wrong)
-        assert reset == accepted, (word, accepted, reset)
+        assert len(nvm) == 2 and nvm[1] == nvm[0], (word, nvm)
 
 
 @_register("resetconfig_over_a_damaged_config_file_boots_next_on_every_default")
@@ -2175,18 +2212,21 @@ def _scenario_resetconfig_over_a_damaged_file(device: str) -> None:
     # NTP's file corrupted before the boot: the boot repairs it and still lists NTP in ConfigFaults; "Reset to
     # defaults" deletes every file, and the next boot over the same directory writes each once, its defaults alone.
     cfg_path = _tmp_cfg_dir()
-    ntp_name = json.loads(_src_const("src/asy_ntp_client.py", "_NAME"))
+    ntp_name = src_const("src/asy_ntp_client.py", "_NAME")
+    assert isinstance(ntp_name, str), ntp_name
     with open(asy_config_manager.config_filename(cfg_path, ntp_name), "w") as f:
         f.write("{not json")
     gate = _StepGate()
 
-    async def scenario() -> "list[str]":
-        module, sup = await _boot_supervised(device, gate, cfg_path=cfg_path)
-        faults: list[str] = json.loads(drain_json_response_body((await _dispatch_async(module, "GET", "/status")).body))["system"]["ConfigFaults"]
-        await _command_to_reset(module, sup, gate, {"SystemCmd": "resetconfig"})
-        return faults
+    faults: list[object] = []
 
-    assert _run_gated(gate, scenario()) == [ntp_name]
+    async def scenario() -> None:
+        module, sup = await _boot_supervised(device, gate, cfg_path=cfg_path)
+        faults.extend(_strict(drain_json_response_body((await _dispatch_async(module, "GET", "/status")).body))["system"]["ConfigFaults"])
+        await _command_to_reset(module, sup, gate, {"SystemCmd": "resetconfig"})
+
+    _run_to_reset(gate, scenario())
+    assert faults == [ntp_name], faults
     assert machine.mem_backup(0)[1] == _system_const("_RR_CONFIG_RESET")
     assert [name for name in os.listdir(cfg_path) if name.startswith("config_")] == [], os.listdir(cfg_path)
     module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: the defaults alone, NTP's included
@@ -2195,7 +2235,7 @@ def _scenario_resetconfig_over_a_damaged_file(device: str) -> None:
     for store in stores:
         with open(store._config_file) as f:
             assert json.load(f) == _store_defaults(store), store.module_name
-    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["ConfigFaults"] == []
+    assert _strict(status_body(_dispatch(module, "GET", "/status")))["system"]["ConfigFaults"] == []
 
 
 @_register("webserver_system_put_invalid_cmd_is_rejected_without_side_effects")
@@ -2203,15 +2243,39 @@ def _scenario_system_put_invalid_cmd(device: str) -> None:
     module = build(device)
     before = machine.reset_count
     res = _dispatch(module, "PUT", "/system", {"SystemCmd": "bogus"})
-    assert json.loads(res.body)["result"]["SystemCmd"] == "Invalid"
+    assert _strict(res.body)["result"]["SystemCmd"] == "Invalid"
     assert machine.reset_count == before
 
 
 @_register("webserver_notification_put_light_cmd_led_dispatches_to_the_real_pixel_driver")
 def _scenario_notification_put_light_cmd_led(device: str) -> None:
+    # The command reaches the real pixel driver: its running signal task ramps the device's pixel to (10, 20, 30) and
+    # back to black within the command's T, each frame as the NeoPixel fake received it.
     module = build(device)
-    res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Valid"
+    if not _has(module, "neopixel"):
+        raise microtest.Skip(f"{device} declares no neopixel")
+    pixel = module.neopixel
+    frames = pixel._pixel.writes
+    answers: list[object] = []
+    ramp: list[float] = []
+    start: list[int] = []
+
+    async def scenario(sleeps: FastAsyncSleep) -> None:
+        task = pixel.start_asy_signal()
+        await asyncio.sleep(0)  # its start: one black frame, then it waits for a signal
+        start.append(len(frames))
+        answers.append(_strict((await _dispatch_async(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 1.0}})).body)["result"]["LightCmdLED"])
+        await _until(lambda: not pixel._start_signal_event.is_set(), "the signal never ended")
+        ramp.extend(sleeps.of(task))
+        await cancel(task)
+
+    with FastAsyncSleep() as sleeps:
+        run(scenario(sleeps))
+    assert answers == ["Valid"], answers
+    assert frames.dropped == 0 and sleeps.dropped == 0, (frames.dropped, sleeps.dropped)
+    signal = [frame[0] for frame in list(frames)[start[0] :]]
+    assert (10, 20, 30) in signal and signal[-1] == (0, 0, 0), signal
+    assert sum(ramp) <= 1.0 + 1e-9, ramp  # the whole ramp, up and down, within T
 
 
 @_register("webserver_notification_put_light_cmd_led_accepts_integral_float_rgb_and_int_t_coerced")
@@ -2221,7 +2285,7 @@ def _scenario_notification_light_cmd_led_integral_float(device: str) -> None:
     # directions a real client could plausibly send.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10.0, "G": 20.0, "B": 30.0, "T": 1}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Valid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Valid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_fractional_rgb")
@@ -2231,7 +2295,7 @@ def _scenario_notification_light_cmd_led_rejects_fractional(device: str) -> None
     # becomes a silent 12).
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10.5, "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_field")
@@ -2241,7 +2305,7 @@ def _scenario_notification_light_cmd_led_rejects_non_numeric_field(device: str) 
     # coerces between the two numeric types, so this is now rejected too.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": "10", "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_non_numeric_t")
@@ -2251,14 +2315,14 @@ def _scenario_notification_light_cmd_led_rejects_non_numeric_t(device: str) -> N
     # rejection holds for T's own float-typed branch, not just the int-typed ones.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": "soon"}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_missing_field")
 def _scenario_notification_light_cmd_led_rejects_missing_field(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30}})  # T missing
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_rgb")
@@ -2268,14 +2332,14 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_rgb(device: str) -
     # promoted callback used to silently clamp. Rejected exactly like a missing/non-numeric field.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 256, "G": 20, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_negative_rgb")
 def _scenario_notification_light_cmd_led_rejects_negative_rgb(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": -1, "B": 30, "T": 1.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_rejects_out_of_range_t")
@@ -2284,9 +2348,9 @@ def _scenario_notification_light_cmd_led_rejects_out_of_range_t(device: str) -> 
     # 0.1 and never bounded a too-large one at all.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 0.1}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 100.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Invalid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Invalid"
 
 
 @_register("webserver_notification_put_light_cmd_led_accepts_lower_boundary_rgb_and_t")
@@ -2296,14 +2360,14 @@ def _scenario_notification_light_cmd_led_lower_boundary(device: str) -> None:
     # the first still queued and be refused.
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 0, "G": 255, "B": 0, "T": 0.5}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Valid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Valid"
 
 
 @_register("webserver_notification_put_light_cmd_led_accepts_upper_boundary_rgb_and_t")
 def _scenario_notification_light_cmd_led_upper_boundary(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"LightCmdLED": {"R": 255, "G": 0, "B": 255, "T": 60.0}})
-    assert json.loads(res.body)["result"]["LightCmdLED"] == "Valid"
+    assert _strict(res.body)["result"]["LightCmdLED"] == "Valid"
 
 
 @_register("webserver_notification_light_cmd_led_refuses_a_second_flash_at_once")
@@ -2313,11 +2377,11 @@ def _scenario_notification_light_cmd_led_refuses_while_busy(device: str) -> None
     module = build(device)
     flash = {"LightCmdLED": {"R": 10, "G": 20, "B": 30, "T": 1.0}}
     first = _dispatch(module, "PUT", "/notification", flash)
-    assert json.loads(first.body)["result"]["LightCmdLED"] == "Valid"
+    assert _strict(first.body)["result"]["LightCmdLED"] == "Valid"
     t0 = time.ticks_ms()
     second = _dispatch(module, "PUT", "/notification", flash, timeout_ms=_LED_REFUSAL_MS)
     elapsed_ms = time.ticks_diff(time.ticks_ms(), t0)
-    assert json.loads(second.body)["result"]["LightCmdLED"] == "Failed"
+    assert _strict(second.body)["result"]["LightCmdLED"] == "Failed"
     assert elapsed_ms < _LED_REFUSAL_MS, f"the refusal took {elapsed_ms} ms; a busy LED is refused at once, not waited out"
 
 
@@ -2325,14 +2389,14 @@ def _scenario_notification_light_cmd_led_refuses_while_busy(device: str) -> None
 def _scenario_notification_put_pause_time(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"PauseTime": 30})
-    assert json.loads(res.body)["result"]["PauseTime"] == "Valid"
+    assert _strict(res.body)["result"]["PauseTime"] == "Valid"
 
 
 @_register("webserver_notification_put_flat_field_round_trips_through_the_real_coordinator")
 def _scenario_notification_put_flat_field(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "PUT", "/notification", {"WarnCO2": 1800})
-    assert json.loads(res.body)["result"]["WarnCO2"] == "Valid"
+    assert _strict(res.body)["result"]["WarnCO2"] == "Valid"
     assert module.notification is not None
     assert run(module.notification.cfgmgr.get_dict(["WarnCO2"])) == {"WarnCO2": 1800}
 
@@ -2341,11 +2405,10 @@ def _scenario_notification_put_flat_field(device: str) -> None:
 def _scenario_status_get(device: str) -> None:
     module = build(device)
     res = _dispatch(module, "GET", "/status")
-    body = json.loads(status_body(res))
+    body = _strict(status_body(res))
     assert set(body.keys()) == {"networking", "system", "notification", "sensors", "errcount"}
-    # SGP40 and UARTLINK are the only maintenance-status sources any real device has today (VOC
-    # backup/restore timestamps; UART transfer/failure counts) - reflective, not hardcoded, since a
-    # future device with neither would otherwise go stale silently here.
+    # SGP40 and UARTLINK are the maintenance-status sources (VOC backup/restore timestamps; UART transfer/failure
+    # counts), each expected where the device declares it - reflective, so a device with neither stays honest here.
     expected_sensors = set()
     if _has(module, "sgp40"):
         expected_sensors.add("SGP40")
@@ -2405,11 +2468,7 @@ def _one_notification_cycle(notification: "Any") -> None:
             if notification._datastruct is not before:
                 break
             await asyncio.sleep(0)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return notification._datastruct is not before
 
     assert run(cycle()), "no monitor cycle stored its sample"
@@ -2421,14 +2480,14 @@ def _scenario_status_notification_state(device: str) -> None:
     # it with every producer readable; a whole-day window keeps the answer off the hour of the run.
     module = build(device)
     if not _has(module, "notification"):
-        return
+        raise microtest.Skip(f"{device} declares no notification")
     notification = module.notification
     window = {"OnH": 0, "OnM": 0, "OffH": 23, "OffM": 59}
-    result = json.loads(_dispatch(module, "PUT", "/notification", window).body)["result"]
+    result = _strict(_dispatch(module, "PUT", "/notification", window).body)["result"]
     assert all(result[key] in ("Valid", "Unchanged") for key in window), result  # OnM keeps its default 0
 
     def state() -> object:
-        return json.loads(status_body(_dispatch(module, "GET", "/status")))["notification"]["State"]
+        return _strict(status_body(_dispatch(module, "GET", "/status")))["notification"]["State"]
 
     assert state() is None
     _one_notification_cycle(notification)
@@ -2506,7 +2565,7 @@ def _scenario_status_config_faults(device: str) -> None:
     with _ReadFails(unreadable_path):
         module = build(device, cfg_path=cfg_path)
     faulted = [unreadable, unparseable, not_object, bounded]
-    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert system["ConfigFaults"] == [store.module_name for store in stores if store in faulted], system["ConfigFaults"]
     assert system["ConfigUnpersisted"] == [], system["ConfigUnpersisted"]
     with open(unreadable_path) as f:
@@ -2524,11 +2583,11 @@ def _scenario_status_config_unpersisted(device: str) -> None:
     with WriteCountingOpen(asy_config_manager, fail_writes=True):
         module = build(device, cfg_path=cfg_path)
     names = [store.module_name for store in _storing_stores(module)]
-    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
-    assert json.loads(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
+    assert _strict(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
     run(module.sysfunct.cfgmgr.flush_pending())
-    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert system["ConfigUnpersisted"] == [name for name in names if name != module.sysfunct.cfgmgr.module_name], system
 
 
@@ -2547,7 +2606,7 @@ def _scenario_status_snapshot_under_the_held_lock(device: str) -> None:
         res = _dispatch(module, "GET", "/status", timeout_ms=_LOCKED_STATUS_MS)
     finally:
         conn.wifi_mode_lock.release()
-    networking = json.loads(status_body(res))["networking"]
+    networking = _strict(status_body(res))["networking"]
     assert "IP" not in networking
     got = {key: networking[key] for key in ("Mode", "Connected", "IPv4", "Subnet", "Gateway", "DNS", "RSSI")}
     assert got == {"Mode": "STA", "Connected": True, "IPv4": "192.168.1.42", "Subnet": "255.255.255.0", "Gateway": "192.168.1.1", "DNS": "192.168.1.53", "RSSI": -61}
@@ -2573,7 +2632,7 @@ def _scenario_status_ap_mode_rssi(device: str) -> None:
 
     conn._wlan.status = status
     run(conn._update_wifi_snapshot(connected=True))
-    networking = json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]
+    networking = _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]
     assert (networking["Mode"], networking["Connected"], networking["IPv4"], networking["RSSI"]) == ("AP", True, "192.168.4.1", None)
     assert "rssi" not in queries, queries
 
@@ -2583,19 +2642,19 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
     # rp2's RTC starts at its reset epoch (ports/rp2/main.c), a plausible-looking wrong date, so
     # UTCTime and UnixTime are gated on the first sync exactly as LocalTime is.
     module = build(device)
-    system = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]
+    system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert system["UTCTime"] is None and system["LocalTime"] is None and system["UnixTime"] is None
 
     async def synced() -> bool:
         return True
 
     module.ntp.ntp_issynced = synced
-    utc = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["UTCTime"]
+    utc = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]["UTCTime"]
     assert isinstance(utc, dict), utc
     assert set(utc.keys()) == {"Year", "Month", "MDay", "Hour", "Minute", "Second", "Weekday", "Yearday"}
     asy_base_classes.set_utc_valid()  # the boot's first sync: the clock every age on the page is read against
     try:
-        unix = json.loads(status_body(_dispatch(module, "GET", "/status")))["system"]["UnixTime"]
+        unix = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]["UnixTime"]
         now = time.mktime(time.gmtime())
     finally:
         asy_base_classes.set_utc_valid(valid=False)
@@ -2606,15 +2665,15 @@ def _scenario_status_utc_time_waits_for_ntp_sync(device: str) -> None:
 def _scenario_system_get_build_info(device: str) -> None:
     # SPECIFICATION.md Part L.7: every generated device embeds FIRMWARE_VERSION/WEBSITE_VERSION
     # plus a build timestamp under GET /system's "build" sub-entry, beside the flat Debug/GMT/DST
-    # fields - the only proof of that flat shape. Build-info values are checked for shape only.
+    # fields - the only proof of that flat shape. The values are the ones the build embedded in the module.
     module = build(device)
     res = _dispatch(module, "GET", "/system")
-    body = json.loads(status_body(res))
+    body = _strict(status_body(res))
     build_info = body.pop("build")
     assert set(body.keys()) == {"DebugLevel", "GMTOffset", "DSTOffset"}
-    assert isinstance(build_info["FirmwareVersion"], str) and build_info["FirmwareVersion"]
-    assert isinstance(build_info["WebsiteVersion"], str) and build_info["WebsiteVersion"]
-    assert isinstance(build_info["BuildDate"], str) and build_info["BuildDate"]
+    source = f"build/generated_src/sensortask_{device}.py"
+    names = (("FirmwareVersion", "_FIRMWARE_VERSION"), ("WebsiteVersion", "_WEBSITE_VERSION"), ("BuildDate", "_BUILD_DATE"))
+    assert build_info == {key: src_const(source, name) for key, name in names}, build_info
 
 
 @_register("webserver_system_get_sends_the_unavailable_marker_for_an_unreadable_system_store")
@@ -2624,7 +2683,7 @@ def _scenario_system_get_unreadable_store(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
     os.mkdir(cfg_path + "config_SYSTEM.cfg")
     module = build(device, cfg_path=cfg_path)
-    body = json.loads(status_body(_dispatch(module, "GET", "/system")))
+    body = _strict(status_body(_dispatch(module, "GET", "/system")))
     groups = module.webserver._settings["system"]
     system_fields = [field for group in groups if group.module is module.sysfunct for field in group.fields]
     others = [(group.module, field) for group in groups if group.module is not module.sysfunct for field in group.fields]
@@ -2641,8 +2700,8 @@ def _scenario_status_put_reset_errors(device: str) -> None:
     run(module.conn.pr.err_s("simulated", errno=99))
     assert (run(module.conn.get_error_counter()))["WIFI"]["ErrCount"] == 1
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
-    assert json.loads(res.body)["res"] == "OK"
-    assert json.loads(res.body)["result"]["ResetErrors"] == "Valid"
+    assert _strict(res.body)["res"] == "OK"
+    assert _strict(res.body)["result"]["ResetErrors"] == "Valid"
     assert (run(module.conn.get_error_counter()))["WIFI"]["ErrCount"] == 0
 
 
@@ -2659,8 +2718,8 @@ def _scenario_status_reset_errors_not_undone(device: str) -> None:
     sgp.pr.initialized = False  # what the boot window looks like: bytes on the chip, RAM side not yet set up
 
     res = _dispatch(module, "PUT", "/status", {"ResetErrors": True})
-    assert json.loads(res.body)["res"] == "OK"
-    assert json.loads(res.body)["result"]["ResetErrors"] == "Valid"
+    assert _strict(res.body)["res"] == "OK"
+    assert _strict(res.body)["result"]["ResetErrors"] == "Valid"
     run(sgp.pr.setup())  # ... and only now does _init_sgp() get there
 
     log = run(sgp.get_error_counter())
@@ -2700,9 +2759,9 @@ def _scenario_http_dropped_counts_a_refusal(device: str) -> None:
     log = run(webserver.get_error_counter())["WEBSERVER"]
     assert log["ErrCount"] == 1, log
     assert (log["ErrType"][-1], log["ErrNum"][-1]) == ("W", code("W", "HTTP_REFUSED")), log
-    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 1
-    assert json.loads(_dispatch(module, "PUT", "/status", {"ResetErrors": True}).body)["result"] == {"ResetErrors": "Valid"}
-    assert json.loads(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 0
+    assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 1
+    assert _strict(_dispatch(module, "PUT", "/status", {"ResetErrors": True}).body)["result"] == {"ResetErrors": "Valid"}
+    assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -2767,7 +2826,7 @@ def _scenario_hotspot_real_routes_unaffected(device: str) -> None:
     res = _dispatch(module, "GET", "/measurements")
     assert res.status_code == 200
     expected = {name.upper() for name in _present_optional_instances(module) if name in ("scd30", "sgp40", "bmp3xx", "isl29125")}
-    assert_sensor_payload_not_self_wrapped(json.loads(status_body(res)), expected)
+    assert_sensor_payload_not_self_wrapped(_strict(status_body(res)), expected)
 
 
 @_register("is_hotspot_active_wiring_directory_traversal_still_404s_in_hotspot_mode")
@@ -2802,13 +2861,15 @@ def _scenario_hotspot_put_unmatched_405(device: str) -> None:
 #
 # One device per call: each tests/test_sensortask_<device>.py calls this once, for its own device,
 # so the scenarios run as one independent Unix-port process per device instead of one process
-# building all 6 object graphs for every scenario (this module's docstring has the rationale).
+# building every device's object graph for every scenario (this module's docstring has the rationale).
 # ---------------------------------------------------------------------------
 
 
 def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
     global _scratch
     assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    defined = sorted(name for name in globals() if name.startswith("_scenario_"))
+    assert len(defined) == len(_SCENARIOS), f"{len(defined)} _scenario_* functions, {len(_SCENARIOS)} registered: one lacks its @_register"
     _scratch = TmpScratch(f"sensortask_{device}")
 
     tests: dict[str, Callable[[], None]] = {}

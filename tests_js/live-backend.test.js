@@ -1,6 +1,5 @@
 // Exercises the real website's own JS in a real browser against a live digital-twin backend for every device (real
-// REST API over real HTTP, SPECIFICATION.md Part H.7). Skips itself with a clear message if the MicroPython
-// toolchain/frozen website aren't built yet, rather than failing the suite.
+// REST API over real HTTP, SPECIFICATION.md Part H.7). A missing interpreter or build fails the suite; it never skips.
 import { commands } from "vitest/browser";
 import { describe, expect, it } from "vitest";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
@@ -31,10 +30,6 @@ describe.each(DEVICE_IDS)("live digital-twin backend: %s", (device) => {
         async () => {
             const result = await commands.runLiveBackendSmoke(device, SMOKE_TIMEOUT_MS);
 
-            if (result.skipped) {
-                console.warn(`Skipping live-backend smoke check: ${result.reason}`);
-                return;
-            }
 
             expect(result.titleHasSensorStation).toBe(true);
             expect(result.deviceName).toContain(displayNameOf(device));
@@ -50,10 +45,6 @@ describe.each(DEVICE_IDS)("live digital-twin backend, concurrent browser session
         async () => {
             const result = await commands.runLiveBackendConcurrentTabs(device, CONCURRENT_TABS_TIMEOUT_MS);
 
-            if (result.skipped) {
-                console.warn(`Skipping live-backend concurrent-tab check: ${result.reason}`);
-                return;
-            }
 
             const { tabs, loadedFirstPass, loadedAfterRetry } = result;
             // eslint-disable-next-line no-console -- a pass keeps its evidence: one line of counts per device
@@ -71,12 +62,8 @@ describe.each(DEVICE_IDS)("live digital-twin backend, device restart: %s", (devi
         async () => {
             const result = await commands.runLiveBackendRestartRecovery(device, RESTART_RECOVERY_TIMEOUT_MS);
 
-            if (result.skipped) {
-                console.warn(`Skipping live-backend restart-recovery check: ${result.reason}`);
-                return;
-            }
 
-            expect(result).toEqual({ skipped: false, bannerShown: true, recovered: true, reloaded: false });
+            expect(result).toEqual({ bannerShown: true, recovered: true, reloaded: false });
         },
         RESTART_RECOVERY_TIMEOUT_MS,
     );

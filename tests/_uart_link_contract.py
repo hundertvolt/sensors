@@ -34,7 +34,7 @@ _UARTRSR = 0x004  # read: OE 0x08, BE 0x04, FE 0x01; a write (UARTECR) clears th
 _UARTIMSC = 0x038  # RXIM 0x10, RTIM 0x40
 _UARTDMACR = 0x048  # RXDMAE 0x01
 _RX_DREQ = (21, 23)
-_DMA_TRANS_COUNT_TRIG = 0x5000001C  # channel n's AL1_TRANS_COUNT_TRIG at + 0x40 * n
+_CH0_AL1_TRANS_COUNT_TRIG = 0x5000001C  # channel n's AL1_TRANS_COUNT_TRIG at + 0x40 * n
 _RUN = 2**29  # the paced channel's transfer count, the driver's (a multiple of every legal ring size)
 
 
@@ -76,19 +76,19 @@ def check_write_boundaries_are_not_preserved(make: "LinkFactory") -> None:
 
 def check_pollin_follows_fifo_content(make: "LinkFactory") -> None:
     a, b, link = make()
-    assert not (b.ioctl(3, select.POLLIN) & select.POLLIN)
+    assert not (b.poll_mask(select.POLLIN) & select.POLLIN)
     a.write(b"q")
     link.settle()
-    assert b.ioctl(3, select.POLLIN) & select.POLLIN
+    assert b.poll_mask(select.POLLIN) & select.POLLIN
     b.read()
-    assert not (b.ioctl(3, select.POLLIN) & select.POLLIN)
+    assert not (b.poll_mask(select.POLLIN) & select.POLLIN)
 
 
 def check_pollout_follows_writable_gate(make: "LinkFactory") -> None:
     a, _b, _link = make()
-    assert a.ioctl(3, select.POLLOUT) & select.POLLOUT
+    assert a.poll_mask(select.POLLOUT) & select.POLLOUT
     a.writable = False
-    assert not (a.ioctl(3, select.POLLOUT) & select.POLLOUT)
+    assert not (a.poll_mask(select.POLLOUT) & select.POLLOUT)
 
 
 def check_short_write_returns_real_count(make: "LinkFactory") -> None:
@@ -275,7 +275,7 @@ def _arm_ring(uart: "machine.UART", ring_size: int, first_count: int = _RUN) -> 
     while (1 << log2) < ring_size:  # MicroPython's int has no bit_length()
         log2 += 1
     data, reload = rp2.DMA(), rp2.DMA()
-    reload.config(read=array("I", [_RUN]), write=_DMA_TRANS_COUNT_TRIG + 0x40 * data.channel, count=1, ctrl=reload.pack_ctrl(inc_read=False, inc_write=False))
+    reload.config(read=array("I", [_RUN]), write=_CH0_AL1_TRANS_COUNT_TRIG + 0x40 * data.channel, count=1, ctrl=reload.pack_ctrl(inc_read=False, inc_write=False))
     ctrl = data.pack_ctrl(size=0, inc_read=False, inc_write=True, ring_sel=True, ring_size=log2, treq_sel=_RX_DREQ[uart.id], chain_to=reload.channel)
     data.config(read=_UART_BASES[uart.id], write=ring, count=first_count, ctrl=ctrl, trigger=True)
     return ring, data, reload

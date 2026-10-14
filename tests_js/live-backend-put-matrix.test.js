@@ -142,27 +142,19 @@ const config = await commands.getLiveMatrixConfig();
 // Sharded in CI only, via $PUT_MATRIX_SHARD relayed by getLiveMatrixConfig(): this one file is
 // most of the web tier's wall clock, so parallel shards keep it clear of its own budget. Unset
 // locally, so `npm test` and `npm run test:put-matrix` still run every case.
-const CASES = config.skipped
-    ? []
-    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => collectPutFieldCases(device, /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)), NO_DATA))), config.shard);
+const CASES = shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => collectPutFieldCases(device, /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device)), NO_DATA))), config.shard);
 // The never-"Unchanged" class of the sensors section (the action fields of the other sections have their own
 // probes above): two identical sends, both Valid.
-const NEVER_UNCHANGED_CASES = config.skipped
-    ? []
-    : shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
-        const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
-        return defs.sections
-            .filter((section) => section.key === "sensors")
-            .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
-                .filter((field) => neverUnchanged(field) && field.kind !== "composite")
-                .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
-    })), config.shard);
-const ACTION_CASES = config.skipped ? [] : shardPutFieldCases(DEVICE_IDS.flatMap(actionCasesOf), config.shard);
+const NEVER_UNCHANGED_CASES = shardPutFieldCases(dedupePutFieldCases(DEVICE_IDS.flatMap((device) => {
+    const defs = /** @type {SiteDefinitions} */ (GENERATED_DEFINITIONS.get(device));
+    return defs.sections
+        .filter((section) => section.key === "sensors")
+        .flatMap((section) => section.groups.flatMap((group) => ("fields" in group ? group.fields : [])
+            .filter((field) => neverUnchanged(field) && field.kind !== "composite")
+            .map((field) => ({ device, defs, sectionKey: section.key, groupKey: group.key, field, putPath: /** @type {string} */ (section.rest.put), currentValue: undefined }))));
+})), config.shard);
+const ACTION_CASES = shardPutFieldCases(DEVICE_IDS.flatMap(actionCasesOf), config.shard);
 const devicesWithCases = [...new Set([...CASES, ...NEVER_UNCHANGED_CASES, ...ACTION_CASES].map((testCase) => testCase.device))];
-
-if (config.skipped) {
-    it.skip(`live-backend PUT matrix (skipped: ${config.reason})`, () => { /* never runs: a skipped placeholder needs no body */ });
-}
 
 describe.each(devicesWithCases)("live PUT matrix on %s", (device) => {
     beforeAll(async () => {

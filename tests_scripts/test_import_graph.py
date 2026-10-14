@@ -3,6 +3,7 @@ acyclic, no sensor driver importing another, names imported where they are defin
 holds a dynamic-import site, and outside the images only F.1's named host and test files load dynamically."""
 
 import ast
+import contextlib
 import os
 import shutil
 import subprocess
@@ -189,18 +190,26 @@ def _importlib_sites(path: str, node: ast.AST) -> list[Site]:
     return []
 
 
+def _run_as_source(call: ast.Call) -> bool:
+    # A call whose string argument is code or a module to load: exec, compile, __import__, importlib.import_module.
+    func = call.func
+    if isinstance(func, ast.Name):
+        return func.id in {"exec", "compile", "__import__", "import_module"}
+    return isinstance(func, ast.Attribute) and func.attr == "import_module" and isinstance(func.value, ast.Name) and func.value.id == "importlib"
+
+
 def host_sites(path: str, source: str) -> list[Site]:
-    # Outside an image: every __import__ call and importlib import or use, launcher source held in a
-    # string literal included.
+    # Outside an image: every __import__ call and importlib import or use, and the same inside a string
+    # handed to a call that runs it; a string anywhere else is data, whatever names it holds.
     sites: list[Site] = []
     for node in ast.walk(ast.parse(source, filename=path)):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "__import__":
             sites.append((path, node.lineno, "__import__"))
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and ("importlib" in node.value or "__import__(" in node.value):
-            try:
-                sites.extend((path, node.lineno, what) for _, _, what in host_sites(path, node.value))
-            except SyntaxError:
-                pass
+        if isinstance(node, ast.Call) and _run_as_source(node):
+            for arg in (*node.args, *(k.value for k in node.keywords)):
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    with contextlib.suppress(SyntaxError):
+                        sites.extend((path, arg.lineno, what) for _, _, what in host_sites(path, arg.value))
         sites.extend(_importlib_sites(path, node))
     return sites
 
@@ -305,7 +314,7 @@ def test_each_image_site_kind_is_caught(source: str, what: str) -> None:
 
 def test_an_unnamed_host_site_fails_and_a_named_file_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "tools").mkdir()
-    (tmp_path / "tools" / "loader.py").write_text("import importlib.util\nmod = __import__('json')\nrun = 'import importlib'\n", encoding="utf-8")
+    (tmp_path / "tools" / "loader.py").write_text("import importlib.util\nmod = __import__('json')\nexec('import importlib')\n", encoding="utf-8")
     (tmp_path / "buildgen").mkdir()
     (tmp_path / "buildgen" / "validate.py").write_text("import importlib.util\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "REPO_ROOT", tmp_path)
@@ -314,6 +323,14 @@ def test_an_unnamed_host_site_fails_and_a_named_file_passes(tmp_path: Path, monk
         ("tools/loader.py", 2, "__import__"),
         ("tools/loader.py", 3, "import importlib"),
     ]
+
+
+def test_a_plain_string_naming_importlib_is_no_site_and_a_string_run_as_source_is() -> None:
+    # Only a string handed to exec/compile/__import__/importlib.import_module is source; a name in a string is data.
+    plain = "name = 'importlib'\nkind = 'import importlib'\ncalls = ['__import__(x)']\n"
+    assert host_sites("tools/data.py", plain) == []
+    launched = "exec('import importlib')\ncode = compile('import importlib.util', 'f', 'exec')\n"
+    assert host_sites("tools/run.py", launched) == [("tools/run.py", 1, "import importlib"), ("tools/run.py", 2, "import importlib.util")]
 
 
 def test_an_injected_cycle_driver_edge_reexport_and_fram_import_each_fail() -> None:

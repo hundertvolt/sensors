@@ -1,28 +1,12 @@
-import asyncio
 import os
 
+from _async_harness import run
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C, Pin
 
 import asy_config_manager as cm
-
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import TypeVar
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
 
 _scratch = TmpScratch("write_counters")
 _DIR = _scratch.dir()
@@ -38,6 +22,7 @@ def _remove(path: str) -> None:
 
 
 def _bus() -> I2C:
+    I2C.reset_id(0)  # a power-cycled controller: each call is an empty bus
     return I2C(0, scl=Pin(1), sda=Pin(0))
 
 

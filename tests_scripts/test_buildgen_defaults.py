@@ -31,7 +31,7 @@ def test_default_class_name(toml_field: str, expected_class: str) -> None:
 
 
 def test_find_default_class_sgp40_temperature_source(src_dir: Path) -> None:
-    class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "dev", "sgp40", "temperature_source")
+    class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "fixture", "sgp40", "temperature_source")
     assert class_node is not None
     assert class_node.name == "_DefaultTemperatureSource"
     params = default_init_params(class_node)
@@ -39,7 +39,7 @@ def test_find_default_class_sgp40_temperature_source(src_dir: Path) -> None:
 
 
 def test_find_default_class_sgp40_humidity_source(src_dir: Path) -> None:
-    class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "dev", "sgp40", "humidity_source")
+    class_node = find_default_class(src_dir / "asy_sgp40_driver.py", "fixture", "sgp40", "humidity_source")
     assert class_node is not None
     assert class_node.name == "_DefaultHumiditySource"
     params = default_init_params(class_node)
@@ -47,7 +47,7 @@ def test_find_default_class_sgp40_humidity_source(src_dir: Path) -> None:
 
 
 def test_find_default_class_notification_signal_sink(src_dir: Path) -> None:
-    class_node = find_default_class(src_dir / "asy_notification_service.py", "dev", "notification", "signal_sink")
+    class_node = find_default_class(src_dir / "asy_notification_service.py", "fixture", "notification", "signal_sink")
     assert class_node is not None
     assert class_node.name == "_DefaultSignalSink"
     assert default_class_defines_attr(class_node, "request_signal")
@@ -57,13 +57,13 @@ def test_find_default_class_notification_signal_sink(src_dir: Path) -> None:
 def test_find_default_class_not_declared_returns_none(src_dir: Path) -> None:
     # asy_scd30_driver.py has no _Default<Field> class for fram_target - it is not a defaultable
     # field; only the two required=True wiring fields need this mechanism.
-    assert find_default_class(src_dir / "asy_scd30_driver.py", "dev", "scd30", "fram_target") is None
+    assert find_default_class(src_dir / "asy_scd30_driver.py", "fixture", "scd30", "fram_target") is None
 
 
 def test_default_init_params_required_and_optional(tmp_path: Path) -> None:
     path = tmp_path / "asy_fake_driver.py"
     path.write_text("class _DefaultFoo:\n    def __init__(self, required_one, optional_one=5):\n        pass\n")
-    class_node = find_default_class(path, "dev", "fake", "foo")
+    class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     params = default_init_params(class_node)
     assert params[0].name == "required_one" and not params[0].has_default
@@ -73,7 +73,7 @@ def test_default_init_params_required_and_optional(tmp_path: Path) -> None:
 def test_default_init_params_keyword_only_parameters_join_the_schema(tmp_path: Path) -> None:
     path = tmp_path / "asy_fake_driver.py"
     path.write_text("class _DefaultFoo:\n    def __init__(self, *, need, opt=1):\n        pass\n")
-    class_node = find_default_class(path, "dev", "fake", "foo")
+    class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     assert default_init_params(class_node) == (DefaultParam("need", has_default=False), DefaultParam("opt", has_default=True))
 
@@ -83,7 +83,7 @@ def test_default_init_params_no_init_means_zero_params(tmp_path: Path) -> None:
     # arguments - real, legal shape for {default = true} with no other keys at all.
     path = tmp_path / "asy_fake_driver.py"
     path.write_text("class _DefaultFoo:\n    pass\n")
-    class_node = find_default_class(path, "dev", "fake", "foo")
+    class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     assert default_init_params(class_node) == ()
 
@@ -92,7 +92,7 @@ def test_find_default_class_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "asy_broken_driver.py"
     path.write_text("def f(:\n")
     with pytest.raises(BuildError, match="syntax error") as raised:
-        find_default_class(path, "dev", "broken", "foo")
+        find_default_class(path, "fixture", "broken", "foo")
     assert raised.value.rule == "source.syntax-error"
 
 

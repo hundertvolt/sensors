@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 def test_parse_mem_samples_extracts_timestamp_and_byte_count_pairs(ci_suite: ModuleType) -> None:
     log_text = (
-        "digital_twin/run_generic_integration.py starting - device='wozi' ...\n"
+        "digital_twin/run_generic_integration.py starting - device='fixture_device' ...\n"
         "MEM_SAMPLE 1789361162.123 1355680\n"
         "SYSTEM some other verbose log line\n"
         "MEM_SAMPLE 1789361162.456 1348800"
@@ -30,7 +30,7 @@ def test_parse_mem_samples_extracts_timestamp_and_byte_count_pairs(ci_suite: Mod
 
 
 def test_parse_mem_samples_returns_empty_list_when_sampler_was_never_armed(ci_suite: ModuleType) -> None:
-    log_text = "digital_twin/run_generic_integration.py starting - device='wozi' ...\nOK: something"
+    log_text = "digital_twin/run_generic_integration.py starting - device='fixture_device' ...\nOK: something"
     assert ci_suite._parse_mem_samples(log_text) == []
 
 

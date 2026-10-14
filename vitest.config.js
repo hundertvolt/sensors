@@ -14,6 +14,7 @@ import {
     stopLiveMatrix,
 } from "./tests_js/_live_matrix_command.js";
 import { probeLintRule } from "./tests_js/_lint_command.js";
+import { probePortLock } from "./tests_js/_port_lock.js";
 
 // The dev sandbox pre-installs Chromium at this fixed path; CI runners lack it and run
 // `npx playwright install chromium` first (ci.yml's web-unit-tests job), so Playwright
@@ -29,6 +30,10 @@ const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChr
 export default defineConfig({
     test: {
         include: ["tests_js/**/*.test.js"],
+        // No spy or fake timer one test set reaches the next, whatever path it ended on: spies are restored
+        // before each test, real timers return after each (tests_js/_test_setup.js; SPECIFICATION.md H.8).
+        restoreMocks: true,
+        setupFiles: ["tests_js/_test_setup.js"],
         // Every run ends with the runner summary block (SPECIFICATION.md E.10), after vitest's own report.
         reporters: ["default", "./tests_js/_summary_reporter.js"],
         // Backstop, not a fix for a known hang (CLAUDE.md "Code quality tooling": hanging tests
@@ -65,6 +70,7 @@ export default defineConfig({
                 remountAndReadField,
                 archiveErrcount,
                 probeLintRule,
+                probePortLock,
             },
         },
     },

@@ -456,6 +456,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # test.sh's pytest tier runs JS on the first Node on PATH: the pinned one, as the web jobs set it up (no npm install, no cache).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       # Retried sync first: `uv run` builds the whole dev group, actionlint-py's binary download
@@ -490,6 +494,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # test.sh's pytest tier runs JS on the first Node on PATH: the pinned one, as the web jobs set it up (no npm install, no cache).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run unit tests at the shipped gc.threshold
@@ -515,6 +523,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # test.sh's pytest tier runs JS on the first Node on PATH: the pinned one, as the web jobs set it up (no npm install, no cache).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       # scripts/test.sh's pytest tier shells out to `uv run`, which implicitly builds the WHOLE

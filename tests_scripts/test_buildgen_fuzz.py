@@ -1,6 +1,6 @@
-"""Seeded mutation fuzz of the build (SPECIFICATION.md Part L.5): mutated device documents run through
-validation, ordering and code generation, and the only outcomes allowed are a generated module or a
-BuildError - any other exception is a generator bug, reported with the seed and the case that hit it."""
+"""Seeded mutation fuzz of the build (SPECIFICATION.md Part L.5): a mutated device document builds or fails with a
+BuildError, any other exception being a generator bug; a real device rewritten only in ways that keep it valid
+(instance, bus and key order, its name) must build. Each failure names the seed and the case that hit it."""
 
 import copy
 import random
@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
-from _toml_fixtures import base_doc, write_doc
+from _toml_fixtures import array_at, base_doc, table_at, write_doc
 
 from buildgen.codegen import generate_module_source
 from buildgen.errors import BuildError
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
 _SEED = 20261008
 _CASES = 2000
+_VALID_CASES = 30
 # One value of each TOML type a retyped leaf takes; _dump_scalar() writes the list and the table as real TOML.
 _RETYPED: "tuple[object, ...]" = (7, -1, "x", True, [1, "a"], {"k": 1}, {})
 _PIN_KEYS = frozenset({"scl_pin", "sda_pin", "sck_pin", "mosi_pin", "miso_pin", "tx_pin", "rx_pin", "cs_pin", "irq_pin", "pin"})
@@ -142,3 +143,52 @@ def test_a_mutated_device_builds_or_fails_with_a_build_error(tmp_path: Path, rep
             raise
         built += 1
     assert built and refused, f"the corpus never reached one of the two outcomes: {built} built, {refused} refused"
+
+
+def _reordered(value: object) -> object:
+    # The same TOML value with every table's keys in reverse order: equal as TOML, different as text.
+    if isinstance(value, dict):
+        return {k: _reordered(v) for k, v in reversed(value.items())}
+    return [_reordered(v) for v in value] if isinstance(value, list) else value
+
+
+def _rewrite(rng: random.Random, doc: "TomlDoc", kind: str) -> None:
+    # One rewrite that keeps a valid document valid, in place.
+    if kind == "reverse-instances":
+        array_at(doc, "instance").reverse()
+    elif kind == "shuffle-instances":
+        rng.shuffle(array_at(doc, "instance"))
+    elif kind == "reverse-buses":
+        doc["bus"] = dict(reversed(table_at(doc, "bus").items()))
+    elif kind == "reverse-keys":
+        reordered = _reordered(doc)
+        assert isinstance(reordered, dict)
+        doc.clear()
+        doc.update(reordered)
+    elif kind == "rename":
+        table_at(doc, "device")["name"], table_at(doc, "device")["hostname"] = "Fuzzed", "SensorStationFuzzed"
+
+
+_REWRITES = ("reverse-instances", "shuffle-instances", "reverse-buses", "reverse-keys", "rename")
+
+
+def test_a_real_device_rewritten_only_in_order_or_name_builds(tmp_path: Path, repo_root: Path) -> None:
+    # The mutation corpus above reaches generation by chance; here every case is valid by construction and must generate.
+    src_dir = repo_root / "src"
+    rng = random.Random(_SEED)  # noqa: S311 - a seeded case generator, no secret
+    built = 0
+    for case in range(_VALID_CASES):
+        device = DEVICE_NAMES[case % len(DEVICE_NAMES)]
+        doc: TomlDoc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
+        did = rng.sample(_REWRITES, rng.randint(1, 3))
+        for kind in did:
+            _rewrite(rng, doc, kind)
+        path = write_doc(tmp_path, "fixture", doc)
+        try:
+            model = build_model(path, src_dir)
+            generate_module_source(model, build_construction_order(model), "2026-01-01T00:00:00Z", src_dir)
+        except Exception as e:
+            e.add_note(f"seed {_SEED} case {case}: {device} after {did} must build")
+            raise
+        built += 1
+    assert built == _VALID_CASES

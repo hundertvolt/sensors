@@ -6,10 +6,13 @@ import ast
 import sys
 import threading
 import time
-from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
+
+from buildgen.validate import device_max_connections
 
 TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
 sys.path.insert(0, str(TESTS_HARDWARE))
@@ -22,7 +25,12 @@ import http_client  # noqa: E402
 _STOP_WAIT_S = 2.0  # how soon a set stop must end the script-server wait
 
 
-def _fetch_answering(outcomes: list[int | None]) -> Callable[..., http_client.HttpResponse]:
+class _Fetch(Protocol):
+    # http_client.fetch()'s stand-in: any arguments, one answer.
+    def __call__(self, *args: object, **kwargs: object) -> http_client.HttpResponse: ...
+
+
+def _fetch_answering(outcomes: list[int | None]) -> _Fetch:
     # Each call takes the next outcome: a status code, or None for a cut-off answer; the last repeats.
     def fetch(*_args: object, **_kwargs: object) -> http_client.HttpResponse:
         outcome = outcomes.pop(0) if len(outcomes) > 1 else outcomes[0]
@@ -133,12 +141,9 @@ def test_wait_for_script_server_stops_waiting_for_the_script_when_its_test_ends(
     assert time.monotonic() - started < _STOP_WAIT_S
 
 
-def test_configured_max_connections_is_the_builds_own_ceiling_for_every_device() -> None:
-    from buildgen.validate import device_max_connections
-
-    for toml in sorted((harness.REPO_ROOT / "devices").glob("*.toml")):
-        want = device_max_connections(toml, harness.REPO_ROOT / "src")
-        assert harness.configured_max_connections(toml.stem) == want, toml.name
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_configured_max_connections_is_the_builds_own_ceiling_for_every_device(device: str) -> None:
+    assert harness.configured_max_connections(device) == device_max_connections(device_toml(device), harness.REPO_ROOT / "src")
 
 
 class _HeldSocket:

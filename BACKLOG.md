@@ -685,6 +685,33 @@ gates, traps).
   measured maximum (`max-depth` 4, `max-nested-callbacks` 4 and `max-classes-per-file` 1 already
   sat at theirs). No dependency, pin, lock or toolchain change: the chroot legs' lint,
   typecheck and `scripts/test.sh` runs cover it, and `env --tier generic` installs nothing new.
+  **2026-10-13, the test tiers' shared infrastructure: one new dev-group pin, the pinned Node for
+  the pytest tier, shell and host Python, no installer change**: `pyproject.toml`'s dev group gains
+  `coverage==7.16.2` (`uv.lock` re-locked with it), which `uv sync` installs; `scripts/test.sh
+  --coverage` runs the backgrounded pytest tier under it (`coverage run
+  --source=buildgen,scripts,toolchain`) and renders two more reports, the generated modules' and the
+  host build chain's (`htmlcov_generated/`, `htmlcov_host/` and their markdown summaries, all four
+  in `.gitignore`), any render failure ending the run with exit 3. The new sourced
+  `scripts/_port_lock.sh` takes the product's fixed ports — 53 in `scripts/test.sh` and
+  `scripts/run_unix_port_integration.sh`, 53 and 18080 in `scripts/run_digital_twin_ci.sh` — as lock
+  directories under `${XDG_RUNTIME_DIR:-/tmp}`, which must be a writable directory (exit 2
+  otherwise); `scripts/test.sh` sends the per-file timeout's SIGINT first and stops every background
+  job before it releases the lock; `scripts/run_unix_port_integration.sh` requires `--device` (exit
+  2 without it); `scripts/_generate_sensortask_modules.py` removes every generated file it did not
+  write and writes two freshness stamps last; `scripts/_render_coverage.py` writes XML only when
+  given `--xml-file`. `tests_scripts/test_live_twin_ceiling_parser.py` now requires the Node first
+  on `PATH` to be `.nvmrc`'s major (24), so `.github/workflows/ci.yml`'s `unit-tests`,
+  `unit-tests-gc-threshold` and `unit-tests-coverage` set it up (`actions/setup-node@v7`,
+  `node-version-file: .nvmrc`, no cache). On the web side `eslint.config.js` turns on the installed
+  `@eslint-community/eslint-plugin-eslint-comments`' `require-description` and
+  `no-unlimited-disable`, `vitest.config.js` restores spies and timers after every test, and
+  `tsconfig.json`/`tsconfig.node.json` place two new Node-context helpers; `pyproject.toml`,
+  `host_typecheck.ini` and `digital_twin/typecheck.ini` lose ANN401 and explicit-`Any` baseline
+  entries. The chroot legs' `uv sync` installs the new pin, and their lint, typecheck and
+  `scripts/test.sh` runs cover the rest provided the pinned Node is first on `PATH` (Debian trixie's
+  apt Node 20 fails the major check); the host-coverage step, which runs the new pin, runs only
+  under `scripts/test.sh --coverage`, beyond the recipe's plain `scripts/test.sh`, and `env --tier
+  generic` installs nothing new.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

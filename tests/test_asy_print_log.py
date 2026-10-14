@@ -2,43 +2,23 @@ import asyncio
 from collections import deque
 
 import micropython
+from _async_harness import run
 from _error_codes import code
-from _fram_chip_fake import FakeMB85RS64V
+from _fram_builders import make_fram_manager
+from _recording_print import record_prints
 
 import asy_print_log as print_log_module
-import asy_spi_driver
 from asy_base_classes import RegionBuffer
-from asy_fram_manager import FRAMChunk, FRAMManager
+from asy_fram_manager import FRAMChunk
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLog, PrintLogHistory, PrintLogHistoryStore, console, make_logger
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as test_asy_fram_driver.py/test_asy_fram_manager.py.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     from asy_crc_checks import CRCBase
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-def make_fram_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS64V]":
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(bus, 1, max_size=max_size)
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip
 
 
 class _RaisingFramChunk:
@@ -119,11 +99,8 @@ def test_set_level_valid_value_passes_through() -> None:
 
 def test_set_level_refuses_non_int_and_out_of_range_values() -> None:
     pr = PrintLog(2, name="P")
-    rec = _PrintRecorder()
-    try:
+    with record_prints() as rec:
         refused = [pr.set_level(v) for v in (True, 2.0, None, 6, -1)]  # type: ignore[arg-type]
-    finally:
-        rec.restore()
     assert refused == [False] * 5
     assert pr.level == 2
     assert [line[:2] for line in rec.lines] == [("P", "PrintLog: invalid level refused:")] * 5  # each one says so at level 2
@@ -135,22 +112,16 @@ def test_each_level_prints_exactly_its_lines() -> None:
     expected = {0: [], 1: ["e"], 5: ["e", "w", "o", "v", "a"]}
     for level, lines in expected.items():
         pr = PrintLog(level)
-        rec = _PrintRecorder()
-        try:
+        with record_prints() as rec:
             pr.err("e")
             pr.wrn("w")
             pr.one("o")
             pr.evt("v")
             pr.all("a", sep="-")
-        finally:
-            rec.restore()
         assert [line[1] for line in rec.lines] == lines, level
     pr = PrintLog(5)
-    rec = _PrintRecorder()
-    try:
+    with record_prints() as rec:
         pr.all("a", "b", sep="-", end="!")
-    finally:
-        rec.restore()
     assert rec.kwargs == [{"sep": "-", "end": "!"}]  # the keywords reach print() as given
 
 
@@ -178,13 +149,10 @@ def test_name_is_stored_verbatim_when_given() -> None:
 
 def test_console_prints_each_call_once_with_its_name_first() -> None:
     err = MemoryError("injected for the console line")  # worded clear of the memory gates' markers
-    rec = _PrintRecorder()
-    try:
+    with record_prints() as rec:
         console("UDPSocket", err)
         console("RegionBuffer", "text", 3)
         console("Named", "what", None)  # no error: the two-argument line
-    finally:
-        rec.restore()
     assert rec.lines == [("UDPSocket", err), ("RegionBuffer", "text", 3), ("Named", "what")]
     assert str(rec.lines[0][1]) == "injected for the console line"  # print() writes the caught error's own text
     assert rec.kwargs == [{}, {}, {}]  # print()'s own separator and line end
@@ -366,22 +334,6 @@ def test_a_negative_code_is_counted_diagnosed_and_takes_no_slot() -> None:
     assert [d[:3] for d in hist.diags if "is invalid!" in d] == [("PrintLog: Error number", -3, "is invalid!"), ("PrintLog: Error number", -1, "is invalid!")]
 
 
-class _PrintRecorder:
-    # Local stand-in for a shared print recorder: shadows print() inside asy_print_log only, so every
-    # console line a logger emits is captured with its arguments; restore() removes the shadow.
-    def __init__(self) -> None:
-        self.lines: list[tuple[object, ...]] = []
-        self.kwargs: list[dict[str, object]] = []
-        print_log_module.print = self  # type: ignore[attr-defined]
-
-    def __call__(self, *args: object, **kwargs: object) -> None:
-        self.lines.append(args)
-        self.kwargs.append(kwargs)
-
-    def restore(self) -> None:
-        del print_log_module.print  # type: ignore[attr-defined]
-
-
 class _CountingFramChunk:
     # Counts the write-throughs a store makes and keeps the last payload; a read waits on read_gate when set, then
     # answers read_result (False: blank, None: unreadable, True: `stored` copied into the buffer).
@@ -421,12 +373,9 @@ def _sustained_identical_code_spends_one_slot(hist: "PrintLogHistory", writes: "
     writes_before = 0 if writes is None else writes.writes
     run(hist.err_s("earlier", errno=3))
     run(hist.wrn_s("earlier", wrnno=2))
-    rec = _PrintRecorder()
-    try:
+    with record_prints() as rec:
         for _ in range(10):
             run(hist.err_s("sustained", errno=5))
-    finally:
-        rec.restore()
     assert list(hist.history) == [0, 3, 0x80 + 2, 5]  # the earlier entries intact, one slot for the ten
     assert hist._err_count == 12
     assert [line for line in rec.lines if "sustained" in line] == [(hist.name, "sustained")] * 10  # console unfiltered
@@ -562,11 +511,10 @@ class _RaisingDeque:
 def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> None:
     original_deque = print_log_module.deque
     print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
-    rec = _PrintRecorder()
     try:
-        hist = PrintLogHistory(history_length=10, level=1, name="H")
+        with record_prints() as rec:
+            hist = PrintLogHistory(history_length=10, level=1, name="H")
     finally:
-        rec.restore()
         print_log_module.deque = original_deque  # type: ignore[misc]
     assert len(hist.history) == 0
     assert [line for line in rec.lines if any("injected for the history ring" in str(a) for a in line)] == [rec.lines[0]]
@@ -580,11 +528,10 @@ def test_a_failed_history_allocation_prints_its_text_with_logging_off() -> None:
     # The logging layer cannot log into itself: its own caught allocation failure is an ungated console line.
     original_deque = print_log_module.deque
     print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
-    rec = _PrintRecorder()
     try:
-        hist = PrintLogHistory(history_length=10, name="H")
+        with record_prints() as rec:
+            hist = PrintLogHistory(history_length=10, name="H")
     finally:
-        rec.restore()
         print_log_module.deque = original_deque  # type: ignore[misc]
     assert hist.level == 0
     assert [(line[:2], str(line[2])) for line in rec.lines] == [(("H", "PrintLog: history allocation failed:"), "injected for the history ring")]
@@ -1187,11 +1134,8 @@ def test_each_ram_only_store_shows_one_entry_under_its_own_name() -> None:
     )
     for store, chunk, text in cases:
         writes_before = 0 if chunk is None else chunk.writes
-        rec = _PrintRecorder()
-        try:
+        with record_prints() as rec:
             assert run(store.setup()) is False
-        finally:
-            rec.restore()
         log = run(store.get_log())[store.name]
         assert log["ErrCount"] == 1, (store.name, log)
         assert log["ErrNum"].count(code("E", "LOG_RAM_ONLY")) == 1, (store.name, log)
@@ -1243,21 +1187,15 @@ def test_a_none_data_buffer_fails_write_and_read_without_raising() -> None:
 def test_each_caught_chunk_allocation_failure_prints_its_text_once_with_logging_off() -> None:
     # One ungated console line per occurrence, carrying the error's own text: the chunk's allocation, a read, a write.
     err = MemoryError("injected for the chunk allocation")
-    rec = _PrintRecorder()
-    try:
+    with record_prints() as rec:
         store = PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True, error=err), history_length=4, name="A")
-    finally:
-        rec.restore()
     assert store.fram is None
     assert rec.lines == [("A", "PrintLog: FRAM allocation failed:", err)]
     for kwargs, text in (({"raise_on_read": True}, "injected for the history read"), ({"raise_on_write": True}, "injected for the history write")):
         err = MemoryError(text)
         store = PrintLogHistoryStore(_RaisingFramManager(_RaisingFramChunk(error=err, **kwargs)), history_length=4, name="B")
-        rec = _PrintRecorder()
-        try:
+        with record_prints() as rec:
             results = [run(store._read() if "raise_on_read" in kwargs else store._write()) for _ in range(2)]
-        finally:
-            rec.restore()
         assert results == ([None, None] if "raise_on_read" in kwargs else [False, False]), (text, results)
         what = "read" if "raise_on_read" in kwargs else "write"
         assert rec.lines == [("B", "PrintLog: FRAM history " + what + " failed:", err)] * 2, (text, rec.lines)
@@ -1266,17 +1204,11 @@ def test_each_caught_chunk_allocation_failure_prints_its_text_once_with_logging_
 def test_an_allocator_refusal_prints_only_its_gated_line() -> None:
     # A chunk the allocator refused is no heap failure: the gated line at a level, nothing with logging off.
     for level, lines in ((None, []), (1, [("R", "PrintLog: FRAM allocation failed!")])):
-        rec = _PrintRecorder()
-        try:
+        with record_prints() as rec:
             PrintLogHistoryStore(_RaisingFramManager(None), history_length=4, level=level, name="R")
-        finally:
-            rec.restore()
         assert rec.lines == lines, (level, rec.lines)
-    rec = _PrintRecorder()
-    try:  # a heap failure at a level prints its one ungated line, not the gated one too
+    with record_prints() as rec:  # a heap failure at a level prints its one ungated line, not the gated one too
         PrintLogHistoryStore(_RaisingFramManager(None, raise_on_get_chunk=True, error=MemoryError("injected for one line")), history_length=4, level=1, name="R")
-    finally:
-        rec.restore()
     assert [line[:2] for line in rec.lines] == [("R", "PrintLog: FRAM allocation failed:")]
 
 

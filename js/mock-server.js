@@ -4,7 +4,7 @@
  * everything outside this file targets the real API.
  */
 
-import { FAILED, INVALID, UNCHANGED, VALID } from "./api-contract.js";
+import { FAILED, INVALID, UNCHANGED, VALID, isUnavailable } from "./api-contract.js";
 import { isRecord, neverUnchanged } from "./definitions.js";
 
 // src/asy_base_classes.py's COUNTER_CAP: 2**30 - 1, no counter exceeds it.
@@ -63,6 +63,17 @@ function isHostLabel(value) {
 function isIpv4Literal(value) {
     const octets = value.split(".");
     return octets.length === 4 && octets.every((octet) => /^[0-9]+$/.test(octet) && Number(octet) <= IPV4_OCTET_MAX);
+}
+
+/**
+ * Whether a request carries a JSON body as Microdot reads one: Request.json parses only under the exact type
+ * application/json before any ";" (ext/microdot.py), so the server's _body_as_dict() refuses every other request.
+ * @param {RequestInit | undefined} init
+ * @returns {boolean}
+ */
+function isJsonRequest(init) {
+    const contentType = new Headers(init?.headers).get("Content-Type");
+    return contentType !== null && contentType.split(";")[0] === "application/json";
 }
 
 /**
@@ -165,6 +176,25 @@ function coerceAndValidate(field, rawValue) {
         return { valid: typeof rawValue === "boolean", value: Boolean(rawValue) };
     }
     return { valid: true, value: rawValue };
+}
+
+/**
+ * One errcount group's share of the composed data (see composeMockData()): each module takes its driver's
+ * sample; a module with no sample throws, as a group does, rather than composing a healthy zero.
+ * @param {import("./definitions.js").MockDeviceData} data
+ * @param {import("./definitions.js").MockSamples} samples
+ * @param {import("./definitions.js").ErrcountGroup} group
+ * @param {string} where
+ */
+function composeErrcountGroup(data, samples, group, where) {
+    for (const module of group.modules) {
+        const name = sampleNameFor(Object.keys(samples.errcount), module.key);
+        const sample = name === undefined ? undefined : samples.errcount[name];
+        if (sample === undefined) {
+            throw new Error(`mock samples: no sample for module "${where}/${module.key}"`);
+        }
+        data.status.errcount[module.key] = structuredClone(sample);
+    }
 }
 
 /**
@@ -565,8 +595,8 @@ function writeAtPath(root, path, value) {
 }
 
 /**
- * Builds one device's mock data: each group takes the sample of the driver whose logger name its
- * key equals or prefixes with `_`, filtered to the group's fields.
+ * Builds one device's mock data: each group and errcount module takes the sample of the driver whose
+ * logger name its key equals or prefixes with `_`, filtered to the group's fields; one with no sample throws.
  * @param {import("./definitions.js").SiteDefinitions} defs
  * @param {import("./definitions.js").MockSamples} samples
  * @returns {import("./definitions.js").MockDeviceData}
@@ -581,10 +611,7 @@ export function composeMockData(defs, samples) {
         for (const group of section.groups) {
             const where = `${section.key}/${group.key}`;
             if (!("fields" in group)) {
-                for (const module of group.modules) {
-                    const name = sampleNameFor(Object.keys(samples.errcount), module.key);
-                    data.status.errcount[module.key] = structuredClone((name === undefined ? undefined : samples.errcount[name]) ?? { counter: 0, history: [] });
-                }
+                composeErrcountGroup(data, samples, group, where);
                 continue;
             }
             composeGroup(data, samples, section.key, group, where);
@@ -635,14 +662,15 @@ export function installMockFetch(defs, initialData, controls) {
             return jsonResponse(handleGet(getSection));
         }
         if (method === "PUT" && putSection !== undefined) {
-            return jsonResponse(handlePut(putSection, String(init?.body ?? "")));
+            return jsonResponse(isJsonRequest(init) ? handlePut(putSection, String(init?.body ?? "")) : makeResponse(1));
         }
         return jsonResponse(makeResponse(405), 405);
     };
 
     /**
      * One GET answer: measurements jitter with each TS set to the clock, uptimes step and saturate, the
-     * clock's Unix time goes into UnixTime and WifiTS, and every mask: true field is masked.
+     * clock's Unix time goes into UnixTime and WifiTS unless that source is the unavailable marker, and
+     * every mask: true field is masked.
      * @param {import("./definitions.js").Section} section
      * @returns {unknown}
      */
@@ -661,8 +689,13 @@ export function installMockFetch(defs, initialData, controls) {
         if (section.key === "status") {
             stepCounter(state.status.system, "SysUptime");
             stepCounter(state.status.networking, "WifiUptime");
-            state.status.system.UnixTime = unixTime;
-            state.status.networking.WifiTS = unixTime;
+            // A source the server sent as the unavailable marker stays exactly that marker.
+            if (!isUnavailable(state.status.system)) {
+                state.status.system.UnixTime = unixTime;
+            }
+            if (!isUnavailable(state.status.networking)) {
+                state.status.networking.WifiTS = unixTime;
+            }
             return state.status;
         }
         const answer = { ...flatConfigOf(section.key) };

@@ -676,25 +676,31 @@ information):
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
-  hang is fixed. **The `needs:` edge is for SEQUENCING only — `unit-tests` and
-  `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they still run when the job they
-  follow fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also implies success-gating, which
-  was never chosen here (that job's own comment says the sequencing "isn't required" for the hang)
-  and is actively harmful: a red `lint-and-typecheck` silently SKIPS every Python test lane. That is
-  not hypothetical — it is why `unit-tests`, `digital-twin-e2e` and `firmware-build-verify` had
-  never once run on the branch that introduced `select = ["ALL"]`, and it concealed that for the
-  branch's whole life. Keep the sequencing; never restore the gating. `digital-twin-e2e` is the
-  exception — its `needs: unit-tests` comment states fail-fast as the actual intent, so it stays
-  gated.
-- **Known hang cause, fixed**: a MicroPython Unix-port `select.poll()`/`ioctl()` call against a
-  non-fd Python object (e.g. `tests/machine.py`'s pure-Python fake-stream `ioctl()`) never detects
-  readiness on GitHub Actions runners specifically (not reproducible locally) — any test awaiting a
-  stream read/write with `timeout_ms=-1` through that real-poll path hangs forever.
-  `test_asy_uart_driver.py` hit this via `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` branch;
-  fixed by switching every such test to the bounded `_StepPoller` test double already used
-  elsewhere in that file. **Rule: any test double for `uart.poller` (or an equivalent fake-stream
-  object) must be a bounded fake like `_StepPoller`, never backed by a real `select.poll()`.** Don't
-  re-diagnose this specific symptom as a new code bug if it recurs elsewhere.
+  hang is fixed. The per-file `timeout` sends SIGINT first, which microtest turns into an `ABORT`
+  line naming the hung test with its traceback; `--kill-after` stays the hard stop, and a file it
+  kills past its timeout (exit 137) is retried like a timeout (124). **The `needs:` edge is for
+  SEQUENCING only — `unit-tests` and `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they
+  still run when the job they follow fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also
+  implies success-gating, which was never chosen here (that job's own comment says the sequencing
+  "isn't required" for the hang) and is actively harmful: a red `lint-and-typecheck` silently SKIPS
+  every Python test lane. That is not hypothetical — it is why `unit-tests`, `digital-twin-e2e` and
+  `firmware-build-verify` had never once run on the branch that introduced `select = ["ALL"]`, and
+  it concealed that for the branch's whole life. Keep the sequencing; never restore the gating.
+  `digital-twin-e2e` is the exception — its `needs: unit-tests` comment states fail-fast as the
+  actual intent, so it stays gated.
+- **Known hang cause, fixed**: a real `select.poll()` asks each registered stream object for a file
+  descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of
+  the object's own `ioctl()` (`extmod/modselect.c`, SPECIFICATION.md F.7). `tests/machine.py`'s fake
+  UART answered 0, so a real poll over it watched fd 0, the test process's stdin, which never turns
+  ready on GitHub Actions runners (not reproducible locally) — any test awaiting a stream read/write
+  with `timeout_ms=-1` through that real-poll path hung forever. Both machine fakes now answer
+  `EINVAL` as rp2 does, and `tests/machine.py` counts a real poll's queries of a fake UART, which
+  fails the test that made them in its after-each check. `test_asy_uart_driver.py` hit this via
+  `asy_uart_driver.py`'s `ready()`'s `timeout_ms=-1` branch; fixed by switching every such test to
+  the bounded `_StepPoller` test double already used elsewhere in that file. **Rule: any test double
+  for `uart.poller` (or an equivalent fake-stream object) must be a bounded fake like `_StepPoller`,
+  never backed by a real `select.poll()`.** Don't re-diagnose this specific symptom as a new code
+  bug if it recurs elsewhere.
 - **Known hang cause #2, fixed**: a digital-twin integration test that drives the real
   `sensortask_wozi.build_system()`/`start_tasks()` task graph to a clean, non-cancelled
   completion (e.g. the digital twin's now-retired `--soak` flag finishing normally, not via
@@ -732,13 +738,19 @@ information):
   reproducer (`create_task()` a parked sleeper, then `asyncio.run()` inside the running coroutine),
   and **not** load-, heap-size- or timing-dependent: it is deterministic and uncatchable, so
   `microtest.py`'s own `except Exception` never sees it and the file simply dies mid-run with no
-  summary line. **Rule: a test helper that calls `asyncio.run()` (this repo's `run()` wrappers in
-  `tests/_uart_comm_harness.py` and friends, and anything calling `hazard_pair()`/`build_pair()`
-  style builders that run their own setup) must only ever be called from synchronous test-function
-  scope, never from inside a coroutine** - build the fixture at the top of the test, then pass it
-  into the one coroutine `run()` drives. Audited across `tests/`, `digital_twin/` and `src/`: no
-  other call site does this. Don't re-diagnose a test file that segfaults partway through with no
-  closing `P/T passed` line as a memory bug in the code under test.
+  summary line. **Rule: a test helper that drives a coroutine (`tests/_async_harness.py`'s
+  `run()`/`run_timed()`, the one `asyncio.run()` caller in `tests/`, and anything calling a
+  `hazard_pair()`-style builder that runs its own setup) must only ever be called from synchronous
+  test-function scope, never from inside a coroutine** - build the fixture at the top of the test,
+  then pass it into the one coroutine `run()` drives. The harness refuses a nested call with a
+  `RuntimeError` naming that fix, and `tests_scripts/test_microtest.py` fails on any other
+  `asyncio.run()` in `tests/`. Don't re-diagnose a test file that segfaults partway through with no
+  closing `P/T passed` line as a memory bug in the code under test. **The same family's second
+  crash**: awaiting a finished task again, after another task awaited it and the loop's queued
+  handler call cleared its data, raises `None` in 1.29.0's C asyncio (`extmod/modasyncio.c`,
+  `task_iternext()`) and segfaults the Unix port (SPECIFICATION.md F.1); the harness's reap and
+  `cancel()` pass over such a task, so a file dying with `Segmentation fault` in a reap is this, not
+  a memory bug.
 - **Known intermittent-`MemoryError` cause #2, fixed**: a real SIGINT landing inside a
   `gc_collect()` leaves the MicroPython Unix port's heap **permanently locked** — the stuck
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
@@ -794,15 +806,25 @@ information):
   Don't diagnose a consistent (not intermittent) failure in a live-clock assertion as a new code bug
   before checking the runner's `$TZ`.
 - **Two suites that both bind real ports must never run at the same time.** `scripts/test.sh`'s
-  MicroPython tier serves real HTTP and a real port-53 DNS server, and so does `npm test`'s mock
-  server, so running them concurrently makes a test connect to the *other* suite's listener. It does
+  MicroPython tier serves real HTTP and a real port-53 DNS server, and so do `npm test`'s live-tier
+  twins, so running them concurrently makes a test connect to the *other* suite's listener. It does
   not look like contention: a 200/404 mix
   (`AssertionError: [200, 404, 200, 404, 'rejected', 'rejected']`), an empty body where stub content
   was expected, a 404 for a page that plainly exists - exactly what a broken static mount or a bad
   merge would produce. Confirmed 2026-09-13: nine failures across
   `test_digital_twin_webserver_concurrency.py` and the static-site integration tests on a merge
   commit, all nine gone on a re-run with nothing else running. Run the two tiers one after the
-  other; don't re-diagnose this pattern as a code or merge defect. `scripts/test.sh`'s own
+  other; don't re-diagnose this pattern as a code or merge defect. **A per-port lock enforces it**
+  (`scripts/_port_lock.sh`, and `tests_js/_port_lock.js` for the live tier): `scripts/test.sh`
+  holds 53, `scripts/run_digital_twin_ci.sh` 53 and 18080, `scripts/run_unix_port_integration.sh`
+  and every live-tier twin 53, each lock a directory
+  `${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/` holding `pid` and `runner`. A runner's
+  children inherit its locks through the owner chain (`SENSORS_PORT_LOCK_OWNER`,
+  `SENSORS_PORT_LOCKS_HELD`), a dead holder's lock is taken over, and an unrelated second suite
+  fails at once (a shell runner exits 1) with `port <port> is held by <runner> (pid <pid>) - run the
+  suites one after the other (CLAUDE.md)`. The lock root follows `XDG_RUNTIME_DIR`, so suites in
+  separate network namespaces, which cannot collide on a port, pass separate runtime directories
+  and do not refuse each other. `scripts/test.sh`'s own
   backgrounded `tests_scripts/` tier is a deliberate non-instance: its HTTP ports are ephemeral
   (`_free_port()` binds port 0), and the one fixed port a booted twin also wants - captive DNS on
   53 - is `SO_REUSEADDR` and degrades to "not connected" after its retries rather than failing the
@@ -851,8 +873,8 @@ information):
   did, though that was never a deliberate choice.
 - **`method-assign` stays globally enabled, and `src/` must never suppress it** (owner,
   2026-09-10). `tests/` and `digital_twin/` reassign methods to mock them — that IS the project's
-  mocking mechanism, MicroPython having no `unittest.mock` — and each of those ~157 sites carries
-  its own inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
+  mocking mechanism, MicroPython having no `unittest.mock` — and each such site carries its own
+  inline `# type: ignore[method-assign]` rather than a central `[[tool.mypy.overrides]]`
   exemption, deliberately: a scope-wide override would stop marking the individual real sites.
   Shipped firmware code has no business reassigning a method at all, so a suppression appearing in
   `src/` is the defect, not the type error. mypy itself cannot express that rule (it only ever sees

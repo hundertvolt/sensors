@@ -1,37 +1,50 @@
-"""Fake `neopixel` module for asy_neopixel_driver.py's tests - the MicroPython Unix port build has
-no real `neopixel` module (confirmed directly: `import neopixel` raises ImportError). Resolved ahead of any real module because tests/ precedes .frozen on MICROPYPATH, the same convention tests/machine.py/tests/network.py already establish.
-"""
-# Unlike I2C/SPI (tests/machine.py), there is no raw bus transaction to mock at the driver boundary here: a
-# real rp2 NeoPixel.write() is a single busy-wait bit-bang call with no return value and no error path at
-# all (confirmed against ports/rp2/machine_bitstream.c).
-#
-# So rather than modelling a transaction, this fake records every `NeoPixel[i] = rgb` and `.write()` call,
-# letting tests assert on the actual sequence of colors committed to the pixel.
+"""Fake `neopixel` module for the unit tier: the Unix port has none (`import neopixel` raises ImportError), and tests/
+precedes .frozen on MICROPYPATH, as for tests/machine.py. Models micropython-lib's driver
+(micropython/drivers/led/neopixel/neopixel.py:9-46): a bytearray in G-R-B order, so an unclamped value wraps or raises."""
+
+from machine import Pin, _CallLog
 
 
 class NeoPixel:
-    # pin is stored but never read here (a real neopixel.NeoPixel bit-bangs it) - pure pass-through.
-    def __init__(self, pin: object, n: int, bpp: int = 3) -> None:
+    # As the library: pin.init(OUT) at construction, buf the strip's bytes, ORDER mapping RGB(W) to G-R-B(-W) slots.
+    # A real write() is one machine.bitstream() call with no error path (ports/rp2/machine_bitstream.c); the fake
+    # keeps each written frame instead, decoded back to RGB tuples. Not modelled: the wire timing itself.
+    TEST_API = ("writes", "raise_on_write")
+    ORDER = (1, 0, 2, 3)
+
+    def __init__(self, pin: Pin, n: int, bpp: int = 3, timing: int = 1) -> None:
         self.pin = pin
         self.n = n
         self.bpp = bpp
-        self._buf: list[tuple[int, ...]] = [(0,) * bpp for _ in range(n)]
-        # Every committed frame (i.e. every write() call), as a snapshot of the whole buffer at
-        # that point - not just the single pixel a test happened to set, since a real strip could
-        # have n > 1 (this driver only ever uses n=1, but the fake stays general).
-        self.writes: list[list[tuple[int, ...]]] = []
-        # Test-only fault injection, in the same spirit as tests/machine.py's Timer.raise_on_arm and
-        # tests/network.py's WLAN.raise_on - kept even though a real rp2 NeoPixel.write() never raises, so a
-        # test can still exercise defensive code in asy_neopixel_driver.py if it ever adds any.
+        self.buf = bytearray(n * bpp)
+        self.pin.init(pin.OUT)
+        self.timing = timing
+        # Every frame write() sent, newest 4096, as a list of RGB tuples - `writes[-1][0] == (r, g, b)` reads the
+        # last colour of the first pixel; `writes.dropped` counts the frames a long run let go.
+        self.writes = _CallLog()
+        # Test-only knob: no silicon fault reaches write(), but a raise here is the only way a unit test
+        # reaches the supervisor's restart of the driver.
         self.raise_on_write: Exception | None = None
 
-    def __setitem__(self, i: int, value: "tuple[int, ...]") -> None:
-        self._buf[i] = value
-
     def __getitem__(self, i: int) -> "tuple[int, ...]":
-        return self._buf[i]
+        offset = i * self.bpp
+        return tuple(self.buf[offset + self.ORDER[k]] for k in range(self.bpp))
+
+    def __len__(self) -> int:
+        return self.n
+
+    def __setitem__(self, i: int, v: "tuple[int, ...]") -> None:
+        # The library's store, one component at a time: a bytearray store wraps an int out of 0-255 (py/binary.c) and
+        # raises TypeError on a float, the earlier components already written; a short tuple raises IndexError.
+        offset = i * self.bpp
+        for k in range(self.bpp):
+            self.buf[offset + self.ORDER[k]] = v[k]
+
+    def fill(self, v: "tuple[int, ...]") -> None:
+        for i in range(self.n):
+            self[i] = v
 
     def write(self) -> None:
         if self.raise_on_write is not None:
             raise self.raise_on_write
-        self.writes.append(list(self._buf))
+        self.writes.append([self[i] for i in range(self.n)])

@@ -7,9 +7,9 @@
 # `setup_toolchain.py setup`, which builds and verifies every artifact together - there is no lighter
 # Unix-port-only entry point (SPECIFICATION.md Part B).
 #
-# --coverage runs the same tests under build-settrace, the only variant compiled with
-# MICROPY_PY_SYS_SETTRACE, and renders two reports (src/ and digital_twin/) from one raw dump.
-# The whole pipeline, and why it needs its own binary: SPECIFICATION.md Parts E.5 and E.5.2.
+# --coverage runs the same tests under build-settrace (the only variant with MICROPY_PY_SYS_SETTRACE),
+# renders src/, digital_twin/ and the generated modules from one raw dump, and traces tests_scripts/
+# for the host build chain's report. Pipeline and binary: SPECIFICATION.md Parts E.5 and E.5.2.
 #
 # Also rebuilds frozen_modules/frozen_html.py before every run - the real wozi website every
 # generated sensortask_<device>.py imports at module level. Why frozen_modules/ rather than
@@ -108,10 +108,17 @@ if [ -n "${TEST_PARALLELISM:-}" ] && [[ ! "$TEST_PARALLELISM" =~ ^[1-9][0-9]*$ ]
     exit 2
 fi
 
+# Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
+# here, before anything is swept or built (CLAUDE.md); _cleanup's EXIT trap below releases it too.
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_port_lock.sh
+trap port_lock_release_all EXIT
+port_lock_take 53 scripts/test.sh
+
 # The previous coverage reports are evidence too: moved into build/archive/test_sh_coverage/ (the
 # newest three runs kept), never overwritten in place.
 if [ "$coverage" = "1" ]; then
-    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin coverage.xml coverage_digital_twin.xml coverage_summary.md coverage_summary_digital_twin.md
+    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin htmlcov_generated htmlcov_host coverage.xml coverage_digital_twin.xml coverage_summary.md coverage_summary_digital_twin.md coverage_summary_generated.md coverage_summary_host.md
 fi
 
 # One bounded sweep of the whole tests/_tmp tree before any test file runs, not a per-file one -
@@ -334,16 +341,45 @@ evidence_archived=0
 tests_scripts_inner_pidfile="$(mktemp)"
 # shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
 _cleanup() {
-    # Killing the subshell alone is not enough: its `timeout` child would be reparented and run out
-    # its budget with pytest under it. The subshell records that pid, so both are signalled exactly,
-    # with no dependency on pkill/procps that a --variant=minbase chroot lacks.
-    if [ -n "$tests_scripts_pid" ]; then
-        inner="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
-        if [ -n "$inner" ]; then
-            kill "$inner" 2>/dev/null || true
-        fi
-        kill "$tests_scripts_pid" 2>/dev/null || true
+    # Every background job still running (`jobs -rp`, so never a reaped, recycled pid) and the timeout each runs, by
+    # its recorded pid and group (timeout leads one): a killed subshell's timeout child would be reparented and run
+    # out its budget. No pkill/procps either, which a --variant=minbase chroot lacks.
+    local pid running groups="" attempts left signalled=" " sig=TERM
+    # @tunable runner.kill_after_s = 10
+    local kill_after_s=10
+    local deadline=$((SECONDS + 2 * kill_after_s))
+    running=" $(jobs -rp | tr '\n' ' ')"
+    if [ -n "$tests_scripts_pid" ] && [[ "$running" == *" $tests_scripts_pid "* ]]; then
+        groups="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
     fi
+    # Waited for until none is left (a zombie awaiting its reaper counts as gone), so port 53 below is never released
+    # under a test still holding it; timeout's own --kill-after is the hard stop, this loop's SIGKILL the backstop.
+    while :; do
+        left=""
+        attempts=""
+        if [ -n "$results_dir" ]; then
+            attempts="$(cat "$results_dir"/*.attempt_pid 2>/dev/null || true)"
+        fi
+        for pid in $(jobs -rp) $groups $attempts; do
+            if [ ! -r "/proc/$pid/stat" ] || [[ "$(cat "/proc/$pid/stat" 2>/dev/null || true)" == *") Z "* ]]; then
+                continue
+            fi
+            left+=" $pid"
+            if [[ "$signalled" != *" $pid "* ]] || [ "$sig" = KILL ]; then
+                kill -s "$sig" -- "$pid" "-$pid" 2>/dev/null || true
+                signalled+="$pid "
+            fi
+        done
+        if [ -z "$left" ]; then
+            break
+        fi
+        if [ "$SECONDS" -ge "$deadline" ] && [ "$sig" = TERM ]; then
+            echo "== background jobs still running $((2 * kill_after_s))s after the stop:$left - killing them" >&2
+            sig=KILL
+        fi
+        sleep 0.1
+    done
+    wait 2>/dev/null || true
     # A run that ended before its own archive step (an abort under `set -e`) moves every log it has
     # into build/archive/test_sh/ first; if even that fails, the results dir is kept and named.
     if [ -n "$results_dir" ] && [ -d "$results_dir" ] && [ "${evidence_archived:-0}" = "0" ]; then
@@ -355,6 +391,7 @@ _cleanup() {
         fi
     fi
     rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
+    port_lock_release_all
 }
 trap _cleanup EXIT
 # Created before the pytest job, which writes its run record into it. One shared results_dir
@@ -362,8 +399,15 @@ trap _cleanup EXIT
 # cannot mutate a bash array the parent would see.
 results_dir="$(mktemp -d)"
 (
-    # @tunable runner.kill_after_s = 10
-    PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
+    # --coverage runs this same tier under coverage.py over the host build chain, report-only: its data
+    # stays in results_dir for the render step at the end, and the test result is the tier's own.
+    if [ "$coverage" = "1" ]; then
+        # @tunable runner.kill_after_s = 10
+        PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run coverage run --data-file="$results_dir/host.coverage" "--source=buildgen,scripts,toolchain" -m pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
+    else
+        # @tunable runner.kill_after_s = 10
+        PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
+    fi
     inner_pid=$!
     echo "$inner_pid" >"$tests_scripts_inner_pidfile"
     if wait "$inner_pid"; then
@@ -444,9 +488,13 @@ run_test_file() {
     local test_file="$1"
     local status_file="$2"
     local binary="${3:-$micropython_bin}"
-    local tag cmd file_timeout_s attempt ec log_file
+    local tag cmd file_timeout_s attempt attempt_start ec log_file attempt_pidfile
     tag="$(basename "$test_file" .py)"
     log_file="$results_dir/$tag.log"
+    # The EXIT trap's stop: it signals the running attempt's timeout through this pid file; the job then ends rather
+    # than start another attempt (the trap runs once the attempt's pipeline is done, sed and tee included).
+    attempt_pidfile="$results_dir/$tag.attempt_pid"
+    trap 'rm -f "$attempt_pidfile"; exit 143' TERM
     echo "== Running $test_file"
     # Every segment of MICROPYPATH below is load-bearing. ".frozen" explicitly, because
     # MICROPYPATH REPLACES the default sys.path rather than extending it, and that default is what
@@ -470,16 +518,22 @@ run_test_file() {
     for attempt in $(seq 1 "$max_attempts"); do
         # Each attempt opens with this line, so the summary reads its counts and skips from the deciding one.
         echo "[$tag] == attempt $attempt/$max_attempts" >>"$log_file"
+        attempt_start=$SECONDS
         # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
         # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
         # own, so sed can never mask a real 124/1 from the command it pipes.
+        #
+        # SIGINT first, which the interpreter delivers at a safe point (SPECIFICATION.md B.14.1) and microtest turns into
+        # its ABORT line naming the hung test with its traceback; --kill-after stays the hard stop. The subshell records
+        # its pid, which exec hands on to timeout, for the EXIT trap.
         # @tunable runner.kill_after_s = 10
         # @tunable l1.unix_heapsize = 16M
-        if MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" stdbuf -oL -eL timeout --kill-after=10 "$file_timeout_s" "$binary" -X heapsize=16M "${cmd[@]}" 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
         fi
+        rm -f "$attempt_pidfile"
         if [ "$ec" -eq 0 ]; then
             _flag_memory_errors "$tag" "$log_file"
             # A pass that needed a retry is reported apart, a root-cause item (E.3.1), never a plain PASS.
@@ -489,17 +543,20 @@ run_test_file() {
                 echo "RETRIED-PASS $attempt/$max_attempts" >"$status_file"
             fi
             return 0
-        elif [ "$ec" -eq 124 ] && [ "$attempt" -lt "$max_attempts" ]; then
-            echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
-            continue
-        else
-            if [ "$ec" -eq 124 ]; then
-                echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+        elif [ "$ec" -eq 124 ] || { [ "$ec" -eq 137 ] && [ $((SECONDS - attempt_start)) -ge "$file_timeout_s" ]; }; then
+            if [ "$ec" -eq 137 ]; then
+                # Caught the interrupt and ran on: the hard stop's SIGKILL exits 137, not timeout's 124 - a timeout all the same.
+                echo "== $test_file did not end on the timeout's interrupt - killed by --kill-after on attempt $attempt/$max_attempts" >&2
             fi
-            _flag_memory_errors "$tag" "$log_file"
-            echo "FAIL" >"$status_file"
-            return 0
+            if [ "$attempt" -lt "$max_attempts" ]; then
+                echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+                continue
+            fi
+            echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
         fi
+        _flag_memory_errors "$tag" "$log_file"
+        echo "FAIL" >"$status_file"
+        return 0
     done
 }
 
@@ -580,14 +637,14 @@ source scripts/_summary_block.sh
 summary_unit files
 
 # _failing_tests <tag> <failed>, the deciding attempt on stdin: " (FAIL <test>: <its first failure line>; ...)" in
-# microtest's own FAIL line form, at most five, then "+N more" for the closing line's failures left unnamed.
-# Prints nothing when no FAIL line is found, so the count alone stands as before.
+# microtest's own FAIL or ABORT line form, at most five, then "+N more" for the closing line's failures left unnamed.
+# Prints nothing when no such line is found, so the count alone stands as before.
 _failing_tests() {
     awk -v p="[$1] " -v failed="$2" -v cap=5 '
         function keep(detail) { if (pending != "") { n++; if (n <= cap) out = out (n > 1 ? "; " : "") pending (detail != "" ? " " detail : ""); pending = "" } }
         index($0, p) != 1 { next }
         { line = substr($0, length(p) + 1); sub(/[ \t\r]+$/, "", line) }
-        line ~ /^FAIL [A-Za-z_][A-Za-z0-9_]*:$/ { keep(""); pending = line; next }
+        line ~ /^(FAIL|ABORT) [A-Za-z_][A-Za-z0-9_]*:$/ { keep(""); pending = line; next }
         pending == "" { next }
         line ~ /^(PASS|SKIP) / || line ~ /^[0-9]+\/[0-9]+ passed, / { keep(""); next }
         line == "Traceback (most recent call last):" || line ~ /^  File / { next }
@@ -750,7 +807,7 @@ else
     summary_gc_stage "-1 (reactive default)"
 fi
 
-# Both `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
+# Each `|| coverage_render_failed=1` rather than bare: under `set -e` a renderer failure would
 # abort here with ITS exit code, which the caller cannot tell from a failed test. Coverage is a
 # report and never gates, but the test result under this binary must (exit 3 below).
 coverage_render_failed=0
@@ -759,6 +816,11 @@ if [ "$coverage" = "1" ]; then
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md || coverage_render_failed=1
     echo "== Rendering digital_twin/ coverage report"
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
+    echo "== Rendering the generated modules' coverage report"
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md || coverage_render_failed=1
+    echo "== Rendering the host build chain's coverage report (buildgen/, scripts/, toolchain/)"
+    uv run coverage html --data-file="$results_dir/host.coverage" -d htmlcov_host || coverage_render_failed=1
+    uv run coverage report --data-file="$results_dir/host.coverage" --format=markdown >coverage_summary_host.md || coverage_render_failed=1
 fi
 
 if [ "${#memory_error_files[@]}" -gt 0 ]; then

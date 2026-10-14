@@ -136,8 +136,11 @@ def test_dew_point_out_of_range_humidity() -> None:
 
 
 def test_dew_point_boundary_values_accepted() -> None:
-    assert mh.dew_point(-40.0, 0.1) is not None
-    assert mh.dew_point(50.0, 100.0) is not None
+    # Ice pair 22.46/272.62 at -40 degC, 0.1 %: a = 22.46 * -40 / 232.62 = -3.86209, ln 0.001 = -6.90776,
+    # b = 22.46 * 272.62 / 232.62 = 26.32209, so 272.62 * (a + ln) / (b - ln) = -88.357 degC.
+    assert approx(present(mh.dew_point(-40.0, 0.1)), -88.357, tol=1e-3)
+    # RH 100 % makes the log term 0: the formula then returns the air temperature itself.
+    assert approx(present(mh.dew_point(50.0, 100.0)), 50.0)
 
 
 def test_dew_point_never_exceeds_air_temperature() -> None:
@@ -201,8 +204,11 @@ def test_pressure_at_height_out_of_range_dh() -> None:
 
 
 def test_pressure_at_height_boundary_values_accepted() -> None:
-    assert mh.pressure_at_height(300.0, -9000.0, -40.0) is not None
-    assert mh.pressure_at_height(1250.0, 9000.0, 85.0) is not None
+    # p0 * exp(-dh * gM / (R * T)) with gM / R = 0.0341626 K/m: at -40 degC and dh -9000 m the exponent is
+    # 9000 * 0.0341626 / 233.15 = 1.318737, so 300 * e**1.318737 = 1121.609 hPa; at 85 degC and dh 9000 m it is
+    # -9000 * 0.0341626 / 358.15 = -0.858477, so 1250 * e**-0.858477 = 529.759 hPa.
+    assert approx(present(mh.pressure_at_height(300.0, -9000.0, -40.0)), 1121.609, tol=1e-3)
+    assert approx(present(mh.pressure_at_height(1250.0, 9000.0, 85.0)), 529.759, tol=1e-3)
 
 
 def test_pressure_at_height_no_exception_near_absolute_zero() -> None:
@@ -364,8 +370,9 @@ def test_rgb_to_hsb_nan_and_inf_rejected() -> None:
 
 
 def test_rgb_to_hsb_boundary_values_accepted() -> None:
-    assert mh.rgb_to_hsb(0.0, 0.0, 0.0) is not None
-    assert mh.rgb_to_hsb(1.0, 1.0, 1.0) is not None
+    # Hexcone: no chroma gives hue and saturation 0, and the brightness is the largest channel.
+    assert mh.rgb_to_hsb(0.0, 0.0, 0.0) == (0.0, 0.0, 0.0)
+    assert mh.rgb_to_hsb(1.0, 1.0, 1.0) == (0.0, 0.0, 1.0)
 
 
 def test_rgb_to_hsb_grey_has_zero_hue_and_saturation() -> None:
@@ -529,8 +536,9 @@ def test_chromaticity_xy_d65_white_point() -> None:
 
 
 def test_chromaticity_xy_boundary_sum_accepted() -> None:
-    assert mh.chromaticity_xy(1e-12, 0.0, 0.0) is not None
-    assert mh.chromaticity_xy(1e9, 0.0, 0.0) is not None
+    # x = X / (X + Y + Z), y = Y / (X + Y + Z): the whole sum in X gives (1, 0) at both ends of the window.
+    assert mh.chromaticity_xy(1e-12, 0.0, 0.0) == (1.0, 0.0)
+    assert mh.chromaticity_xy(1e9, 0.0, 0.0) == (1.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -577,9 +585,9 @@ def test_cct_mccamy_out_of_span_result_is_rejected_not_clamped() -> None:
 
 
 def test_cct_mccamy_boundary_domain_values_accepted_or_rejected_on_their_own_merits() -> None:
-    # 0.0/1.0 are in-domain chromaticities; whether the *result* is in-span is a separate question
-    # already covered above - this only asserts the domain gate itself doesn't reject them outright.
-    assert mh.cct_mccamy(0.0, 0.0) is not None
+    # 0.0 is an in-domain chromaticity: n = (0 - 0.3320) / (0.1858 - 0) = -1.786868, and
+    # 449 n**3 + 3525 n**2 + 6823.3 n + 5520.33 = 2021.28 K, inside the 2000-12500 K span.
+    assert approx(present(mh.cct_mccamy(0.0, 0.0)), 2021.28, tol=0.01)
 
 
 def test_cct_mccamy_tracks_the_planckian_locus_within_its_stated_error() -> None:

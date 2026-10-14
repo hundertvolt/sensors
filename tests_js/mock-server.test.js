@@ -209,13 +209,16 @@ function defsWith(key, change) {
     return { ...DEFS, sections: DEFS.sections.map((section) => ({ ...section, groups: groups(section) })) };
 }
 
+// The page's PUT header (js/render.js): without it the server, and the mock with it, refuses the body as code 1.
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
 /**
  * PUTs `body` as JSON text; resolves to the parsed envelope.
  * @param {string} path
  * @param {unknown} body
  */
 function putJson(path, body) {
-    return fetch(path, { method: "PUT", body: JSON.stringify(body) }).then((response) => response.json());
+    return fetch(path, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) }).then((response) => response.json());
 }
 
 /**
@@ -266,16 +269,16 @@ describe("installMockFetch", () => {
 
     it("validates PUT /sensors against field min/max and reports Valid/Invalid/Unchanged", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const invalid = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 3000 } }) });
+        const invalid = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { MeasInterval: 3000 } }) });
         expect((await invalid.json()).result.SCD30.MeasInterval).toBe("Invalid"); // 3000 > max 1800
 
-        const unchanged = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 5 } }) });
+        const unchanged = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { MeasInterval: 5 } }) });
         expect((await unchanged.json()).result.SCD30.MeasInterval).toBe("Unchanged"); // fixture already has MeasInterval: 5
     });
 
     it("marks an in-range changed value as Valid and persists it for the next GET", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const put = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { MeasInterval: 10 } }) });
+        const put = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { MeasInterval: 10 } }) });
         // The whole envelope, as make_response(0, result=...) builds it: the catalog's text for code 0.
         expect(await put.json()).toEqual({ res: "OK", code: 0, descr: "Command executed", result: { SCD30: { MeasInterval: "Valid" } } });
 
@@ -336,10 +339,10 @@ describe("installMockFetch", () => {
 
     it("validates PUT /networking against the networking group's own field defs", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const response = await fetch("/networking", { method: "PUT", body: JSON.stringify({ Hostname: "" }) });
+        const response = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ Hostname: "" }) });
         expect((await response.json()).result.Hostname).toBe("Invalid"); // below minLength: 1
 
-        const ok = await fetch("/networking", { method: "PUT", body: JSON.stringify({ Hostname: "new-name" }) });
+        const ok = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ Hostname: "new-name" }) });
         expect((await ok.json()).result.Hostname).toBe("Valid");
         expect((await (await fetch("/networking")).json()).Hostname).toBe("new-name");
     });
@@ -367,32 +370,32 @@ describe("installMockFetch", () => {
 
     it.each(SHAPE_CASES)("answers a %s field (%s) PUT of %j with %s, as the server's shape check does", async (_shape, key, value, expected) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const response = await fetch("/networking", { method: "PUT", body: JSON.stringify({ [key]: value }) });
+        const response = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ [key]: value }) });
         expect((await response.json()).result[key]).toBe(expected);
     });
 
     it("accepts a string field's schema special before its length bounds, as the server does", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const open = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "" }) });
+        const open = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PW: "" }) });
         expect((await open.json()).result.PW).toBe("Valid"); // "" = open network, though below minLength 8
-        const short = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "short" }) });
+        const short = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PW: "short" }) });
         expect((await short.json()).result.PW).toBe("Invalid"); // not a special: the bound still holds
     });
 
     it("bounds a byte-bounded string in UTF-8 bytes, not characters", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const tooLong = await fetch("/networking", { method: "PUT", body: JSON.stringify({ SSID: "é".repeat(32) }) });
+        const tooLong = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SSID: "é".repeat(32) }) });
         expect((await tooLong.json()).result.SSID).toBe("Invalid"); // 32 characters, 64 bytes
-        const fits = await fetch("/networking", { method: "PUT", body: JSON.stringify({ SSID: "é".repeat(16) }) });
+        const fits = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SSID: "é".repeat(16) }) });
         expect((await fits.json()).result.SSID).toBe("Valid"); // 16 characters, 32 bytes
     });
 
     it.each([["reboot"], ["bootloader"], ["mempause"], ["resetconfig"], ["erasefram"]])("validates PUT /system's SystemCmd against the fixed real command set: %j answers Valid", async (word) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const ok = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: word }) });
+        const ok = await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: word }) });
         expect((await ok.json()).result.SystemCmd).toBe("Valid");
 
-        const bad = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
+        const bad = await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: "not-a-real-command" }) });
         expect((await bad.json()).result.SystemCmd).toBe("Invalid");
     });
 
@@ -404,7 +407,7 @@ describe("installMockFetch", () => {
         expect(words.length).toBeGreaterThan(0);
         uninstall = installMockFetch(defs, composeMockData(defs, /** @type {import("../js/definitions.js").MockSamples} */ (samples)));
         const answers = await Promise.all(words.map(async (word) => {
-            const response = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: word }) });
+            const response = await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: word }) });
             return (await response.json()).result.SystemCmd;
         }));
         expect(answers).toEqual(words.map(() => "Valid"));
@@ -413,7 +416,7 @@ describe("installMockFetch", () => {
     // One argument per case: it.each() spreads an array case into its arguments.
     it.each([["Reboot"], ["reboot "], [" reboot"], ["reb"], ["rebootx"], ["ResetConfig"], ["reset_config"], ["resetconfig "], ["EraseFRAM"], ["erase_fram"], [" erasefram"], [1], [null], [["reboot"]], [{}]])("answers the SystemCmd near miss %j with Invalid: only the whole word runs a command", async (value) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const response = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: value }) });
+        const response = await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: value }) });
         expect((await response.json()).result.SystemCmd).toBe("Invalid");
     });
 
@@ -427,27 +430,27 @@ describe("installMockFetch", () => {
     it("answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included", async () => {
         // Mirrors _apply_settings_groups(): every submitted key gets a word, an unknown one "Invalid".
         uninstall = installMockFetch(DEFS, DATA);
-        const networking = await (await fetch("/networking", { method: "PUT", body: JSON.stringify({ NoSuchKey: 1, SystemCmd: "reboot" }) })).json();
+        const networking = await (await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ NoSuchKey: 1, SystemCmd: "reboot" }) })).json();
         expect(networking.res).toBe("OK");
         expect(networking.result).toEqual({ NoSuchKey: "Invalid", SystemCmd: "Invalid" });
 
-        const system = await (await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot", Bogus: 1, PauseTime: 60 }) })).json();
+        const system = await (await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: "reboot", Bogus: 1, PauseTime: 60 }) })).json();
         expect(system.result).toEqual({ SystemCmd: "Valid", Bogus: "Invalid", PauseTime: "Invalid" });
 
-        const notification = await (await fetch("/notification", { method: "PUT", body: JSON.stringify({ Bogus: 1 }) })).json();
+        const notification = await (await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ Bogus: 1 }) })).json();
         expect(notification.result).toEqual({ Bogus: "Invalid" });
     });
 
     it("never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it)", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+        await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: "reboot" }) });
 
         const get = await fetch("/system");
         expect("SystemCmd" in (await get.json())).toBe(false);
 
         // A repeat submission must still report Valid, not Unchanged - SystemCmd is dispatched
         // fresh every time, it never "changes" or "stays the same" against a stored value.
-        const again = await fetch("/system", { method: "PUT", body: JSON.stringify({ SystemCmd: "reboot" }) });
+        const again = await fetch("/system", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SystemCmd: "reboot" }) });
         expect((await again.json()).result.SystemCmd).toBe("Valid");
     });
 
@@ -457,18 +460,18 @@ describe("installMockFetch", () => {
         // checked_int(), so a fraction is rejected outright rather than truncated (Part A.8).
         uninstall = installMockFetch(DEFS, DATA);
 
-        const tooLarge = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 3601 }) });
+        const tooLarge = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: 3601 }) });
         expect((await tooLarge.json()).result.PauseTime).toBe("Invalid");
-        const negative = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: -1 }) });
+        const negative = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: -1 }) });
         expect((await negative.json()).result.PauseTime).toBe("Invalid");
-        const fractional = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60.5 }) });
+        const fractional = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: 60.5 }) });
         expect((await fractional.json()).result.PauseTime).toBe("Invalid");
-        const list = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: [60] }) });
+        const list = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: [60] }) });
         expect((await list.json()).result.PauseTime).toBe("Invalid");
-        const object = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: { s: 60 } }) });
+        const object = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: { s: 60 } }) });
         expect((await object.json()).result.PauseTime).toBe("Invalid");
 
-        const ok = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
+        const ok = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: 60 }) });
         expect((await ok.json()).result.PauseTime).toBe("Valid");
 
         // Never leaks into GET /notification's flat settings...
@@ -477,7 +480,7 @@ describe("installMockFetch", () => {
         expect((await (await fetch("/status")).json()).notification.PauseTime).toBe(60);
 
         // A repeat submission of the same value must still report Valid, not Unchanged.
-        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ PauseTime: 60 }) });
+        const again = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PauseTime: 60 }) });
         expect((await again.json()).result.PauseTime).toBe("Valid");
     });
 
@@ -519,41 +522,41 @@ describe("installMockFetch", () => {
         vi.setSystemTime(Date.now());
         uninstall = installMockFetch(DEFS, DATA);
 
-        const notADict = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: "not-a-dict" }) });
+        const notADict = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: "not-a-dict" }) });
         expect((await notADict.json()).result.LightCmdLED).toBe("Invalid");
 
-        const missingSubfield = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30 } }) });
+        const missingSubfield = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30 } }) });
         expect((await missingSubfield.json()).result.LightCmdLED).toBe("Invalid");
 
-        const extraMember = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1, X: 0 } }) });
+        const extraMember = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1, X: 0 } }) });
         expect((await extraMember.json()).result.LightCmdLED).toBe("Invalid");
 
-        const nonNumeric = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: "abc", G: 20, B: 30, T: 1 } }) });
+        const nonNumeric = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: "abc", G: 20, B: 30, T: 1 } }) });
         expect((await nonNumeric.json()).result.LightCmdLED).toBe("Invalid");
-        const boolT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: true } }) });
+        const boolT = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: true } }) });
         expect((await boolT.json()).result.LightCmdLED).toBe("Invalid");
 
         // A fractional R/G/B is rejected, never truncated.
-        const fractionalRgb = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10.5, G: 20, B: 30, T: 1 } }) });
+        const fractionalRgb = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10.5, G: 20, B: 30, T: 1 } }) });
         expect((await fractionalRgb.json()).result.LightCmdLED).toBe("Invalid");
 
         // A fractional t is fine - it's float-typed, a blanket accept regardless of shape.
-        const fractionalT = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1.5 } }) });
+        const fractionalT = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1.5 } }) });
         expect((await fractionalT.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(1500);
 
         // Out-of-range members are rejected (legacy led_cmd()'s bounds).
-        const outOfRange = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 9999, G: -50, B: 30, T: 999 } }) });
+        const outOfRange = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 9999, G: -50, B: 30, T: 999 } }) });
         expect((await outOfRange.json()).result.LightCmdLED).toBe("Invalid");
-        const r256 = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 256, G: 0, B: 0, T: 1 } }) });
+        const r256 = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 256, G: 0, B: 0, T: 1 } }) });
         expect((await r256.json()).result.LightCmdLED).toBe("Invalid");
 
         // Boundary values (0/255 for R/G/B, 0.5/60.0 for T) are still accepted - only genuinely
         // outside the range is rejected.
-        const lowerBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 0, G: 255, B: 0, T: 0.5 } }) });
+        const lowerBoundary = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 0, G: 255, B: 0, T: 0.5 } }) });
         expect((await lowerBoundary.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(500);
-        const upperBoundary = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 255, G: 0, B: 255, T: 60.0 } }) });
+        const upperBoundary = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 255, G: 0, B: 255, T: 60.0 } }) });
         expect((await upperBoundary.json()).result.LightCmdLED).toBe("Valid");
         advanceMockClockMs(60000);
 
@@ -562,7 +565,7 @@ describe("installMockFetch", () => {
 
         // ...and a repeat identical submission still reports Valid, never Unchanged (dispatched
         // fresh every call, exactly like SystemCmd/PauseTime).
-        const again = await fetch("/notification", { method: "PUT", body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1 } }) });
+        const again = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 1 } }) });
         expect((await again.json()).result.LightCmdLED).toBe("Valid");
     });
 
@@ -573,18 +576,18 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const flash = JSON.stringify({ LightCmdLED: { R: 10, G: 20, B: 30, T: 2 } });
 
-        const first = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        const first = await (await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: flash })).json();
         expect(first.result.LightCmdLED).toBe("Valid");
         expect(first.descr).not.toBe(LED_BUSY_DESCR);
-        const second = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        const second = await (await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: flash })).json();
         expect([second.res, second.code, second.descr, second.result.LightCmdLED]).toEqual(["OK", 0, LED_BUSY_DESCR, "Failed"]);
 
         advanceMockClockMs(1999); // still inside the first flash
-        const stillBusy = await (await fetch("/notification", { method: "PUT", body: flash })).json();
+        const stillBusy = await (await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: flash })).json();
         expect([stillBusy.descr, stillBusy.result.LightCmdLED]).toEqual([LED_BUSY_DESCR, "Failed"]);
 
         advanceMockClockMs(1); // the first flash's t has passed; neither refusal extended it
-        const afterward = await fetch("/notification", { method: "PUT", body: flash });
+        const afterward = await fetch("/notification", { method: "PUT", headers: JSON_HEADERS, body: flash });
         expect((await afterward.json()).result.LightCmdLED).toBe("Valid");
     });
 
@@ -592,10 +595,10 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         expect((await getJson("/sensors")).SCD30.ForceCalRef).toBe(400);
 
-        const outOfRange = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 399 } }) });
+        const outOfRange = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ForceCalRef: 399 } }) });
         expect((await outOfRange.json()).result.SCD30.ForceCalRef).toBe("Invalid");
 
-        const applied = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
+        const applied = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
         expect((await applied.json()).result.SCD30.ForceCalRef).toBe("Valid");
 
         // The chip reports the most recently used reference within one power-up and 400 after power-up
@@ -604,7 +607,7 @@ describe("installMockFetch", () => {
 
         // Resubmitting the value just applied still reports Valid, never Unchanged - a direct
         // hardware write is re-run every request.
-        const resubmit = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
+        const resubmit = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ForceCalRef: 900 } }) });
         expect((await resubmit.json()).result.SCD30.ForceCalRef).toBe("Valid");
     });
 
@@ -613,26 +616,26 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         for (const value of [1013, 1013, 950]) {
             // eslint-disable-next-line no-await-in-loop -- each PUT must follow the last one's store
-            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { AmbPres: value } }) });
+            const res = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { AmbPres: value } }) });
             // eslint-disable-next-line no-await-in-loop -- same reasoning as above
             expect((await res.json()).result.SCD30.AmbPres).toBe("Valid");
         }
         expect((await (await fetch("/sensors")).json()).SCD30.AmbPres).toBe(950);
-        const outOfRange = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { AmbPres: 600 } }) });
+        const outOfRange = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { AmbPres: 600 } }) });
         expect((await outOfRange.json()).result.SCD30.AmbPres).toBe("Invalid");
     });
 
     it("dispatches PUT /sensors' ContMeas as a command: bool-only, never persisted or reported by GET", async () => {
         uninstall = installMockFetch(DEFS, DATA);
 
-        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: "not-a-bool" } }) });
+        const wrongType = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ContMeas: "not-a-bool" } }) });
         expect((await wrongType.json()).result.SCD30.ContMeas).toBe("Invalid");
 
         // True (keep running) and False (stop) both report Valid in the mock - there's no real I2C
         // bus here to ever produce the real driver's "Failed" (a genuine stop-attempt bus fault).
-        const stop = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: false } }) });
+        const stop = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ContMeas: false } }) });
         expect((await stop.json()).result.SCD30.ContMeas).toBe("Valid");
-        const resume = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: { ContMeas: true } }) });
+        const resume = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: { ContMeas: true } }) });
         expect((await resume.json()).result.SCD30.ContMeas).toBe("Valid");
 
         // ContMeas has no schema entry on the real backend (the sensor can't report whether
@@ -643,14 +646,14 @@ describe("installMockFetch", () => {
     it("dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all", async () => {
         uninstall = installMockFetch(DEFS, DATA);
 
-        const wrongType = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: "not-a-bool" } }) });
+        const wrongType = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SGP40: { ResetVOC: "not-a-bool" } }) });
         expect((await wrongType.json()).result.SGP40.ResetVOC).toBe("Invalid");
 
         // A command-only, repeatable trigger (SPECIFICATION.md C.5.2.1): every request re-fires it,
         // reported Valid every time, never Unchanged.
-        const first = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
+        const first = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
         expect((await first.json()).result.SGP40.ResetVOC).toBe("Valid");
-        const again = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
+        const again = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SGP40: { ResetVOC: true } }) });
         expect((await again.json()).result.SGP40.ResetVOC).toBe("Valid");
 
         // ResetVOC is a special-alone schema field, deliberately excluded from get_dict_cfg() -
@@ -665,7 +668,7 @@ describe("installMockFetch", () => {
         const before = await (await fetch("/networking")).json();
         expect([before.PW, before.HotspotPW]).toEqual(["********", "********"]);
 
-        const applied = await fetch("/networking", { method: "PUT", body: JSON.stringify({ PW: "a-real-new-password", HotspotPW: "a-new-hotspot-pw" }) });
+        const applied = await fetch("/networking", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ PW: "a-real-new-password", HotspotPW: "a-new-hotspot-pw" }) });
         expect((await applied.json()).result).toEqual({ PW: "Valid", HotspotPW: "Valid" });
 
         // Still masked after a real, accepted write - GET never reflects the actual stored value.
@@ -699,6 +702,18 @@ describe("installMockFetch", () => {
         const now = Math.floor(Date.now() / 1000);
         expect([body.system.UnixTime, body.networking.WifiTS]).toEqual([now, now]);
     });
+
+    it.each([["system", "networking", "WifiTS"], ["networking", "system", "UnixTime"]])(
+        "writes no clock value into a /status %s source sent as the unavailable marker; the %s source still gets its %s",
+        async (degraded, healthy, clockKey) => {
+            vi.setSystemTime(new Date("2026-10-13T06:00:00.900Z"));
+            const status = { ...DATA.status, system: {}, networking: {}, [degraded]: { error: "unavailable" } };
+            uninstall = installMockFetch(DEFS, { ...DATA, status });
+            const body = await getJson("/status");
+            expect(body[degraded]).toEqual({ error: "unavailable" });
+            expect(body[healthy][clockKey]).toBe(Math.floor(Date.now() / 1000));
+        },
+    );
 
     it("steps SysUptime and WifiUptime by one per GET /status and saturates both at COUNTER_CAP", async () => {
         const status = { ...DATA.status, system: { SysUptime: COUNTER_CAP - 1 }, networking: { WifiUptime: COUNTER_CAP - 1 } };
@@ -745,11 +760,10 @@ describe("installMockFetch", () => {
         // The ISL29125's body is the first with a third level; without the recursion those leaves
         // sit static forever, which reads as a broken renderer. Math.random is pinned to its maximum
         // so the expectations are exact: below 1 the spread is 5% and the rounding keeps 4 decimals.
-        const random = vi.spyOn(Math, "random").mockReturnValue(1);
+        vi.spyOn(Math, "random").mockReturnValue(1);
         vi.setSystemTime(new Date("2026-10-13T06:00:00.900Z"));
         uninstall = installMockFetch(DEFS, DATA);
         const body = await (await fetch("/measurements")).json();
-        random.mockRestore();
 
         expect(body.ISL29125.TS).toBe(Math.floor(Date.now() / 1000)); // the timestamp: the clock, never jittered
         expect(body.ISL29125.CCT).toBeNull(); // a null leaf is not a number - left alone
@@ -795,7 +809,7 @@ describe("installMockFetch", () => {
 
     it("omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC", async () => {
         uninstall = installMockFetch(DEFS, DATA);
-        const accepted = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
+        const accepted = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
         expect((await accepted.json()).result.ISL29125.Calibrate).toBe("Valid");
 
         const body = await (await fetch("/sensors")).json();
@@ -809,7 +823,7 @@ describe("installMockFetch", () => {
             // Sequential is the point: each PUT must be accepted after the previous one already
             // fired, which running them in parallel would not show.
             // eslint-disable-next-line no-await-in-loop -- see the comment above
-            const res = await fetch("/sensors", { method: "PUT", body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
+            const res = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ ISL29125: { Calibrate: true } }) });
             // eslint-disable-next-line no-await-in-loop -- same reasoning as above
             expect((await res.json()).result.ISL29125.Calibrate).toBe("Valid");
         }
@@ -834,6 +848,7 @@ describe("installMockFetch", () => {
         uninstall = installMockFetch(DEFS, DATA);
         const response = await fetch("/sensors", {
             method: "PUT",
+            headers: JSON_HEADERS,
             body: JSON.stringify({ BOGUS: { SomeField: 1 }, SCD30: { MeasInterval: 10 } }),
         });
         const body = await response.json();
@@ -844,7 +859,7 @@ describe("installMockFetch", () => {
 
     it.each([[5], [null], [[1]], ["x"]])("answers a PUT /sensors entry %j that is not an object with Invalid in place of its field map", async (entry) => {
         uninstall = installMockFetch(DEFS, DATA);
-        const body = await (await fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: entry }) })).json();
+        const body = await (await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ SCD30: entry }) })).json();
         expect(body.result).toEqual({ SCD30: "Invalid" });
     });
 
@@ -903,7 +918,7 @@ describe("installMockFetch", () => {
         const controls = { nextFailure: /** @type {import("../js/mock-server.js").MockFailure | undefined} */ ("malformed-body") };
         uninstall = installMockFetch(DEFS, DATA, controls);
 
-        const response = await fetch("/sensors", { method: "PUT", body: "not valid json {" });
+        const response = await fetch("/sensors", { method: "PUT", headers: JSON_HEADERS, body: "not valid json {" });
         expect(response.ok).toBe(true); // HTTP-level success, per SPECIFICATION.md Part A.8
         const body = await response.json();
         expect(body).toEqual({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
@@ -934,11 +949,31 @@ describe("installMockFetch", () => {
         "answers PUT %s with the body %s by make_response(1), HTTP 200",
         async (path, body) => {
             uninstall = installMockFetch(DEFS, DATA);
-            const response = await fetch(path, { method: "PUT", body });
+            const response = await fetch(path, { method: "PUT", headers: JSON_HEADERS, body });
             expect(response.status).toBe(200);
             expect(await response.json()).toEqual({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
         },
     );
+
+    // Mirrors Microdot's Request.json: a body is parsed only under the exact type application/json before any
+    // ";", so _body_as_dict() refuses every other request, whatever its body says.
+    it.each([["no Content-Type", {}], ["text/plain", { "Content-Type": "text/plain;charset=UTF-8" }], ["a differently cased type", { "Content-Type": "Application/JSON" }]])(
+        "answers a PUT with %s by make_response(1), HTTP 200, and applies nothing",
+        async (_case, headers) => {
+            uninstall = installMockFetch(DEFS, DATA);
+            const response = await fetch("/networking", { method: "PUT", headers, body: JSON.stringify({ Hostname: "new-name" }) });
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({ res: "ERR", code: 1, descr: "Invalid JSON request", result: {} });
+            expect((await getJson("/networking")).Hostname).toBe("fixture-host");
+        },
+    );
+
+    it("accepts the JSON type with a parameter, as Microdot reads only the type before the first \";\" (guard)", async () => {
+        uninstall = installMockFetch(DEFS, DATA);
+        const headers = { "Content-Type": "application/json; charset=utf-8" };
+        const response = await fetch("/networking", { method: "PUT", headers, body: JSON.stringify({ Hostname: "new-name" }) });
+        expect((await response.json()).result).toEqual({ Hostname: "Valid" });
+    });
 
     it("injects a group-failure on the next PUT: every attempted key answers Failed in an OK envelope, then once only", async () => {
         const controls = /** @type {MockFetchControls} */ ({ nextFailure: "group-failure" });

@@ -12,6 +12,7 @@ import micropython
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import unix_port_unretrieved_report
+from _async_harness import run
 from unix_port_unretrieved_report import MARKER, install, report_unretrieved
 
 try:
@@ -115,11 +116,11 @@ def _deaths(n_tasks: int) -> None:
             await asyncio.sleep(0)
         assert all(task.done() for task in tasks)
 
-    asyncio.run(scenario())
+    run(scenario())
 
 
 def _settled_alloc() -> int:
-    # Read after asyncio.run() returned, so the run's own main task and any stale queue link it held are gone.
+    # Read after run() returned, so the run's own main task and any stale queue link it held are gone.
     gc.collect()
     return gc.mem_alloc()
 

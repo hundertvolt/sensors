@@ -1,5 +1,5 @@
 """Unit tests for digital_twin/run_generic_integration.py: parse_args() (pure), _collect_chips() (the generalized fault/hang chip lookup), and one real end-to-end smoke boot. The soak/memory-trend-check machinery itself (formerly this file's own _soak() coverage) moved host-side (SPECIFICATION.md's "Driver/DUT process separation" Part, 2026-09-14) - see scripts/_digital_twin_ci_suite.py's own Run 11 and tests_scripts/test_digital_twin_ci_suite_soak.py instead.
-The smoke test reuses the hand-written sensortask_wozi module plus wozi's own build/generated_src/sensortask_wozi_wiring_plan.json (buildgen-generated, same file machine.configure_i2c_wiring("wozi") itself loads), not a real buildgen-generated module - buildgen needs tomllib/CPython and can't run inside this MicroPython process at all; proving a genuinely *generated* module boots is tests_scripts/test_digital_twin_generated_boot.py's job instead. This file only proves run_generic_integration.py's own generic machinery works, using a well-understood module as the payload."""
+The smoke test boots a generated module through the generic entry point: sensortask_wozi with its own build/generated_src/sensortask_wozi_wiring_plan.json, both as buildgen wrote them (the same plan machine.configure_i2c_wiring("wozi") loads). Every device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; this file proves run_generic_integration.py's own generic machinery with one module as the payload."""
 
 import asyncio
 import sys
@@ -11,7 +11,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
     from typing import Any, TypeVar
 
     T = TypeVar("T")
@@ -23,10 +22,14 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import machine
 import network
 import run_generic_integration
+from _async_harness import run, run_timed
+from _generated_tree import require_fresh
 from _tmp_scratch import TmpScratch
 from _twin_common import Injections, StatePaths
 from machine import I2C, SPI, Pin
 from run_generic_integration import RunConfig, RunLimits, _apply_fault, _apply_hang, _collect_chips, _serve_until, main, parse_args
+
+require_fresh()  # the smoke boot loads a generated module and its plan
 
 # @tunable l2.run_generic_integration_run_bound_s = 5.0
 _RUN_BOUND_S = 5.0
@@ -35,10 +38,6 @@ _MAIN_RUN_BOUND_S = 15.0
 
 
 _scratch = TmpScratch("rgi")
-
-
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = _RUN_BOUND_S) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +171,7 @@ def test_serving_ends_at_once_when_the_stop_file_already_exists() -> None:
     with open(stop, "w"):
         pass
     start = time.ticks_ms()
-    run_timed(_serve_until(30.0, stop))
+    run_timed(_serve_until(30.0, stop), _RUN_BOUND_S)
     assert time.ticks_diff(time.ticks_ms(), start) < 1000  # a 30 s bound, left on the first look
 
 
@@ -191,20 +190,20 @@ def test_serving_ends_once_the_stop_file_appears() -> None:
         await writer
         return time.ticks_diff(time.ticks_ms(), start)
 
-    elapsed = run_timed(scenario())
+    elapsed = run_timed(scenario(), _RUN_BOUND_S)
     assert 300 <= elapsed < 3000, elapsed  # after the write, long before the 30 s bound
 
 
 def test_serving_without_the_stop_file_lasts_the_whole_duration() -> None:
     for stop in (None, _scratch.path("stop_never")):
         start = time.ticks_ms()
-        run_timed(_serve_until(0.4, stop))
+        run_timed(_serve_until(0.4, stop), _RUN_BOUND_S)
         assert time.ticks_diff(time.ticks_ms(), start) >= 400, stop
 
 
 # ---------------------------------------------------------------------------
-# _collect_chips() - the generalized fault/hang lookup (replaces run_wozi_integration.py's/
-# run_dev_integration.py's own hardcoded {"scd30": sensortask_wozi.i2c0._i2c.devices[0x61], ...})
+# _collect_chips() - the generalized fault/hang lookup: each chip of the plan, found through the module's bus
+# attribute the plan names, keyed by its driver (and by its qualified name when it has a name_ext)
 # ---------------------------------------------------------------------------
 
 
@@ -230,13 +229,17 @@ def test_collect_chips_keys_a_single_instance_driver_by_its_plain_name() -> None
     Pin.reset_registry()
     plan = {"buses": {"i2c0": [{"driver": "scd30", "name_ext": "", "address": 0x61, "irq_pin": 6}]}, "spi": {}}
     machine.configure_wiring(plan)
-    module = _FakeModule()
-    bus0 = _FakeBusWrapper(i2c=I2C(0, scl=Pin(13), sda=Pin(12), freq=50000))
-    module.i2c0 = bus0
-    chips = _collect_chips(module, plan)
-    assert bus0._i2c is not None
-    assert chips["scd30"] is bus0._i2c.devices[0x61]
-    assert "scd30_" not in "".join(chips)  # no name_ext -> no qualified key emitted
+
+    async def scenario() -> None:  # one run: the twin SCD30's refresh timer is a task, ended with the run
+        module = _FakeModule()
+        bus0 = _FakeBusWrapper(i2c=I2C(0, scl=Pin(13), sda=Pin(12), freq=50000))
+        module.i2c0 = bus0
+        chips = _collect_chips(module, plan)
+        assert bus0._i2c is not None
+        assert chips["scd30"] is bus0._i2c.devices[0x61]
+        assert "scd30_" not in "".join(chips)  # no name_ext -> no qualified key emitted
+
+    run(scenario())
 
 
 def test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too() -> None:
@@ -249,18 +252,22 @@ def test_collect_chips_keys_a_multi_instance_driver_by_its_qualified_name_too() 
         "spi": {},
     }
     machine.configure_wiring(plan)
-    module = _FakeModule()
-    bus0 = _FakeBusWrapper(i2c=I2C(0, scl=Pin(13), sda=Pin(12), freq=50000))
-    bus1 = _FakeBusWrapper(i2c=I2C(1, scl=Pin(19), sda=Pin(18), freq=50000))
-    module.i2c0 = bus0
-    module.i2c1 = bus1
-    chips = _collect_chips(module, plan)
-    assert bus0._i2c is not None and bus1._i2c is not None
-    assert chips["scd30_primary"] is bus0._i2c.devices[0x61]
-    assert chips["scd30_secondary"] is bus1._i2c.devices[0x61]
-    # The plain "scd30" key still exists (first instance wins) - parse_fault_spec()'s own
-    # vocabulary (launch.py) can only ever address a driver by its plain name, never per-instance.
-    assert chips["scd30"] is bus0._i2c.devices[0x61]
+
+    async def scenario() -> None:  # one run, as the test above
+        module = _FakeModule()
+        bus0 = _FakeBusWrapper(i2c=I2C(0, scl=Pin(13), sda=Pin(12), freq=50000))
+        bus1 = _FakeBusWrapper(i2c=I2C(1, scl=Pin(19), sda=Pin(18), freq=50000))
+        module.i2c0 = bus0
+        module.i2c1 = bus1
+        chips = _collect_chips(module, plan)
+        assert bus0._i2c is not None and bus1._i2c is not None
+        assert chips["scd30_primary"] is bus0._i2c.devices[0x61]
+        assert chips["scd30_secondary"] is bus1._i2c.devices[0x61]
+        # The plain "scd30" key still exists (first instance wins) - parse_fault_spec()'s own
+        # vocabulary (launch.py) can only ever address a driver by its plain name, never per-instance.
+        assert chips["scd30"] is bus0._i2c.devices[0x61]
+
+    run(scenario())
 
 
 def test_collect_chips_includes_fram_from_the_spi_bus() -> None:
@@ -287,7 +294,7 @@ def test_collect_chips_skips_a_bus_var_the_module_never_constructed() -> None:
 # ---------------------------------------------------------------------------
 # main() - one real, short, bounded end-to-end smoke test: boots the real sensortask_wozi object graph via
 # the GENERIC entry point rather than a static import, wired from a JSON-dumped copy of machine's "wozi"
-# plan, with one real injected fault - the shape the retired run_wozi_integration.py's own test used.
+# plan, with one real injected fault.
 #
 # No soak driving here any more (SPECIFICATION.md's "Driver/DUT process separation" Part): that moved host-
 # side to the CI suite's Run 11, which drives requests against a real boot at scale. This only proves main()

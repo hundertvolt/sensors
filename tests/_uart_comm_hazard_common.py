@@ -1,7 +1,8 @@
 """The comm-hazard tier's shared pieces: its pair, reply budgets, CRC modes and the registration running every check
 in both, imported by test_uart_comm_hazard.py and test_uart_comm_cancel_sweep.py (SPECIFICATION.md Part J.7)."""
 
-from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get, run
+from _async_harness import run
+from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, accept_set, echo_get
 
 from asy_crc_checks import CRC16
 
@@ -54,7 +55,7 @@ def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: b
         payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
         get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(),
     )
-    assert run(pair.setup()) is True
+    assert run(pair.setup(), RUN_LIMIT_S) is True
     return pair
 
 

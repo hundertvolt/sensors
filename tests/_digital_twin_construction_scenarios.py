@@ -1,4 +1,4 @@
-"""Shared scenario library: digital-twin-tier construction/wiring/REST across all 6 real devices
+"""Shared scenario library: digital-twin-tier construction/wiring/REST across every generated device
 (SPECIFICATION.md Part L.4), fast, no real wall-clock waits. Not a test file - the export is
 register_for_device(); SPECIFICATION.md Part E.2.1 has the per-device split and why it exists."""
 
@@ -24,7 +24,9 @@ prewarm_poll_set()
 patch_asy_udp_socket_for_unix_port()
 
 import machine  # noqa: E402
+from _async_harness import cancel, run_timed  # noqa: E402
 from _generated_module import boot_generated  # noqa: E402
+from _generated_tree import require_fresh  # noqa: E402
 from _shared_rest_roundtrip import assert_named_modules_constructed, assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -34,18 +36,10 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
+    from typing import Any
 
-    T = TypeVar("T")
-
-
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
-
-
-# @tunable l2.construction_scenarios_run_timeout_s = 10.0
-_RUN_TIMEOUT_S = 10.0
+require_fresh()  # every scenario boots a generated module and reads its plan
 
 
 # Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
@@ -53,18 +47,14 @@ _RUN_TIMEOUT_S = 10.0
 _DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
 
 
+# @tunable l2.construction_scenarios_run_timeout_s = 10.0
+_RUN_TIMEOUT_S = 10.0
+
+
 def _wiring_plan(device: str) -> "dict[str, Any]":
     with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
         plan: dict[str, Any] = json.load(f)
     return plan
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
 
 
 # Per-test config-file isolation via tests/_tmp_scratch.py - own scratch key and port range per device,
@@ -161,7 +151,7 @@ def _scenario_measurements_and_sensors_shape(device: str) -> None:
             assert res.status_code == 200
             assert_sensor_payload_not_self_wrapped(res.json(), expected)
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
@@ -204,7 +194,7 @@ def _scenario_bus_fault_degrades(device: str) -> None:
             # an unhandled exception reaching the HTTP layer.
             assert "SGP40" in res.json()
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_TIMEOUT_S)
 
@@ -222,6 +212,8 @@ def _scenario_bus_fault_degrades(device: str) -> None:
 def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
     global _scratch, _next_port
     assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    defined = sorted(name for name in globals() if name.startswith("_scenario_"))
+    assert len(defined) == len(_PARAM_SCENARIOS), f"{len(defined)} _scenario_* functions, {len(_PARAM_SCENARIOS)} registered: one lacks its @_register_param"
     _scratch = TmpScratch(f"dtcs_{device}")
     _next_port = _PORT_BASE_BY_DEVICE[device]
 

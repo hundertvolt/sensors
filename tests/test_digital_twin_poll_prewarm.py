@@ -8,20 +8,7 @@ import sys
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import unix_port_poll_prewarm
-from microtest import run
 from unix_port_poll_prewarm import _PORT_SCAN_BASE, _PORT_SCAN_WINDOW, _bind_free_listener, prewarm_poll_set
-
-
-def _port_of(addr: "bytearray") -> int:
-    # getaddrinfo() returns a packed sockaddr on this port, not the (host, port) tuple CPython
-    # gives: bytes 2-3 are the port in network order, after the AF_INET family word (SPECIFICATION.md F.7 row 3).
-    return (addr[2] << 8) | addr[3]
-
-
-# The helper tests scan a band of their own: the real one is live under every concurrently
-# running file's import-time prewarm, and a test filling it would starve those of a port.
-_TEST_BASE = 17500
-_TEST_WINDOW = 8
 
 
 def _hold(port: int) -> "socket.socket":
@@ -30,6 +17,18 @@ def _hold(port: int) -> "socket.socket":
     holder.bind(socket.getaddrinfo("127.0.0.1", port)[0][-1])
     holder.listen(1)
     return holder
+
+
+# The helper tests scan a band of their own: the real one is live under every concurrently
+# running file's import-time prewarm, and a test filling it would starve those of a port.
+_TEST_BASE = 17500
+_TEST_WINDOW = 8
+
+
+def _port_of(addr: "bytearray") -> int:
+    # getaddrinfo() returns a packed sockaddr on this port, not the (host, port) tuple CPython
+    # gives: bytes 2-3 are the port in network order, after the AF_INET family word (SPECIFICATION.md F.7 row 3).
+    return (addr[2] << 8) | addr[3]
 
 
 def test_a_port_another_process_already_holds_is_skipped_not_fatal() -> None:
@@ -140,4 +139,6 @@ def test_the_band_stays_clear_of_the_canned_http_servers_and_this_files_own() ->
 
 
 if __name__ == "__main__":
-    run(globals())
+    import microtest
+
+    microtest.run(globals())

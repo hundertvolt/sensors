@@ -173,12 +173,13 @@ pure `MICROPYPATH` ordering, the same mechanism `tests/machine.py` already uses 
 the unit-test suite. `run_generic_integration.py` also drives real HTTP over real sockets against
 the real `WebserverService` — never Microdot's `app.dispatch_request()` bypass, the same "full
 HTTP" standard the real system meets. The dedicated entry point, `scripts/run_unix_port_integration.sh`,
-does exactly this — for `wozi` by default, or any real device via `--device`:
+does exactly this for any real device, named by its required `--device` (without it the script prints its
+usage and the valid device names and exits 2):
 
 ```bash
-scripts/run_unix_port_integration.sh                       # wozi: just launch + serve forever, no flags
-scripts/run_unix_port_integration.sh --device dev           # dev, same shape
-scripts/run_unix_port_integration.sh --fault sgp40:writeto  # manual fault-injection exploration
+scripts/run_unix_port_integration.sh --device wozi                        # just launch + serve forever
+scripts/run_unix_port_integration.sh --device dev                         # dev, same shape
+scripts/run_unix_port_integration.sh --device wozi --fault sgp40:writeto  # manual fault-injection exploration
 ```
 
 Under the hood (builds the toolchain, generates every device's `sensortask_<device>.py` +

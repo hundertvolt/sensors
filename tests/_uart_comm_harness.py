@@ -1,5 +1,5 @@
 """Shared harness for the UARTComm tests: two real instances over tests/machine.py's crossover
-link, driven as concurrent tasks the way the dev bench drives them across its jumper.
+link, driven as concurrent tasks the way a bench board drives them across its jumper.
 Kept out of the test files themselves so the mock and hazard tiers build the pair identically."""
 
 import asyncio
@@ -22,7 +22,8 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, Protocol, TypeVar
+    from types import ModuleType
+    from typing import Protocol, TypeVar
 
     from asy_base_classes import PieceBuffer
     from asy_crc_checks import CRCBase
@@ -62,33 +63,31 @@ class Pair:
         crc_a: "CRCBase | None" = None,
         crc_b: "CRCBase | None" = None,
         limits: TransferLimits | None = None,
-        **comm_kwargs: "Any",
     ) -> None:
         # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
         # and is invisible to it (SPECIFICATION.md Part J). Both ends must agree, so a test that
         # passes only one models a mismatched pair rather than a protected link.
-        DMA.reset_registry()  # no per-test reset exists, and each link's ring holds two of the twelve channels
+        DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
         self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_a)
         self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_b)
         self.fake_a = fake_of(self.driver_a)
         self.fake_b = fake_of(self.driver_b)
         self.link = UARTLink(self.fake_a, self.fake_b)
         self.fake_a.rx_rate = self.fake_b.rx_rate = float("inf")  # bytes land at once, not on the fake clock
-        # A bounded stand-in, never a real select.poll(): the Unix port does not re-evaluate a
-        # Python object's ioctl() after registration (CLAUDE.md's known CI hang). Only TX polls.
+        # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known hang cause").
+        # Only TX polls.
         self.driver_a.poller = LinkPoller(self.fake_a, mask=select.POLLOUT)  # type: ignore[assignment]
         self.driver_b.poller = LinkPoller(self.fake_b, mask=select.POLLOUT)  # type: ignore[assignment]
         # A test needing other receive limits passes one limits, which then carries its frame and timeout too.
         assert limits is None or (payload_size, timeout) == (PAYLOAD_SIZE, TIMEOUT_MS), "frame and timeout go through limits"
         limits = limits if limits is not None else transfer_limits(payload_size=payload_size, timeout=timeout)
-        self.initiator = UARTComm(self.driver_a, ROLE_INITIATOR, limits=limits, name="UART_A", **comm_kwargs)
+        self.initiator = UARTComm(self.driver_a, ROLE_INITIATOR, limits=limits, name="UART_A")
         self.responder = UARTComm(
             self.driver_b,
             ROLE_RESPONDER,
             limits=limits,
             callbacks=ResponderCallbacks(get_callback, set_callback, message_callback),
             name="UART_B",
-            **comm_kwargs,
         )
 
     async def _listen_rounds(self, rounds: int) -> None:
@@ -104,7 +103,7 @@ class Pair:
     def wire_from_responder(self) -> bytes:
         return bytes(self.link.direction_from(self.fake_b).wire_log)
 
-    async def with_listener(self, work: "Coroutine[Any, Any, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
+    async def with_listener(self, work: "Coroutine[object, object, T]", rounds: int = 1, *, listener_may_stall: bool = False) -> "T":
         # Runs the responder's listen loop alongside the initiator's call: a stop-and-wait exchange
         # only progresses when both ends are scheduled. A listener still short of its rounds after the
         # drain fails the exchange, unless the test declares the stall (a frame it cut on purpose).
@@ -119,11 +118,11 @@ class PollRoundClock:
     def __init__(self, stall_after: int = 0, stall_ms: int = 0) -> None:
         self._stall = [0, stall_after, stall_ms, 0]  # countdown (0 = idle), its start, the stall, whether it fired
         self._paced = [True]  # False: a sleep only yields (pace())
-        self._saved: tuple[Any, Any, Any, Any] | None = None
+        self._saved: tuple[ModuleType, ModuleType, ModuleType, ModuleType] | None = None
 
     def __enter__(self) -> "PollRoundClock":
         self._saved = (asy_uart_comm.time, asy_uart_comm.asyncio, asy_uart_driver.time, asy_uart_driver.asyncio)
-        now: list[Any] = [time.ticks_ms()]  # the real value: deadlines stored before entry stay comparable
+        now = [time.ticks_ms()]  # the real value: deadlines stored before entry stay comparable
         stall = self._stall
         paced = self._paced
 
@@ -134,7 +133,7 @@ class PollRoundClock:
             @staticmethod
             def ticks_ms() -> int:
                 now[0] = time.ticks_add(now[0], 1)
-                return int(now[0])
+                return now[0]  # type: ignore[return-value]  # the stub's opaque ticks type, an int at run time
 
         class _Asyncio:
             # Only what the two modules use at run time: a new attribute there fails here until it is added.
@@ -196,7 +195,7 @@ def accept_set(exp_size: "int | None" = None) -> "CommCallback":
     return callback
 
 
-async def awaited_with_listener(work: "Coroutine[Any, Any, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool) -> "T":
+async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: "asyncio.Task[None]", rounds: int, *, may_stall: bool) -> "T":
     # The initiator's own failure wins: a stall behind it is its consequence, never reported over it.
     try:
         result = await work
@@ -209,9 +208,19 @@ async def awaited_with_listener(work: "Coroutine[Any, Any, T]", listener: "async
     return result
 
 
-async def build_pair(**kwargs: "Any") -> Pair:
-    pair = Pair(**kwargs)
-    await pair.setup()
+async def build_pair(
+    payload_size: int = PAYLOAD_SIZE,
+    timeout: int = TIMEOUT_MS,
+    get_callback: "CommCallback | None" = None,
+    set_callback: "CommCallback | None" = None,
+    message_callback: "MessageCallback | None" = None,
+    crc_a: "CRCBase | None" = None,
+    crc_b: "CRCBase | None" = None,
+    limits: TransferLimits | None = None,
+) -> Pair:
+    # Pair's own parameters, passed through.
+    pair = Pair(payload_size, timeout, get_callback, set_callback, message_callback, crc_a, crc_b, limits)
+    assert await pair.setup(), "Pair.setup() failed - both roles must be ready before the test's own assertions mean anything"
     return pair
 
 
@@ -238,11 +247,6 @@ def fake_of(driver: UART) -> FakeUART:
 
 def frames(wire: bytes, frame_size: int) -> "list[bytes]":
     return [wire[i : i + frame_size] for i in range(0, len(wire), frame_size)]
-
-
-def run(coro: "Coroutine[Any, Any, T]", limit: int = RUN_LIMIT_S) -> "T":
-    # Every test is bounded: a protocol wedge must surface as a fast FAIL, never as a hung file.
-    return asyncio.run(asyncio.wait_for(coro, limit))
 
 
 def transfer_limits(

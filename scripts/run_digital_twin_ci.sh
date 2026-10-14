@@ -32,6 +32,14 @@ EOF
 fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# The suite's twins bind the product's ports 53 (Run 7's captive DNS) and 18080: one suite holds them at a
+# time, and a second exits 1 here, before anything is built (CLAUDE.md). The EXIT trap releases them.
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_port_lock.sh
+trap port_lock_release_all EXIT
+port_lock_take 53 scripts/run_digital_twin_ci.sh
+port_lock_take 18080 scripts/run_digital_twin_ci.sh
+
 device="${1:-wozi}"
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export.

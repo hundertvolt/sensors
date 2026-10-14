@@ -1,0 +1,25 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______________ test_a_generated_device_modules_lines_are_traced _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-8073/test_a_generated_device_module0')
+
+    def test_a_generated_device_modules_lines_are_traced(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        # build/generated_src/ is measured like src/: a device module imported by a test reaches the dump.
+        out, module = tmp_path / "raw.json", f"sensortask_{DEVICE_NAMES[0]}"
+        probe = _probe(tmp_path, f"import sys\nsys.path.insert(0, 'ext')\nimport {module}\nsys.exit(0)\n")  # microdot is in ext/, as the libraries add it
+        completed = _run(repo_root, settrace_bin, probe, out)
+        assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+>       assert f"build/generated_src/{module}.py" in json.loads(out.read_text())
+E       assert 'build/generated_src/sensortask_arzi.py' in {'src/asy_webserver_service.py': [4, 5, 6, 7, 10, 11, ...], 'src/asy_i2c_driver.py': [8, 9, 10, 11, 13, 14, ...], 'src/asy_config_manager.py': [8, 9, 10, 11, 13, 15, ...], 'src/asy_uart_driver.py': [10, 11, 12, 13, 15, 16, ...], ...}
+E        +  where {'src/asy_webserver_service.py': [4, 5, 6, 7, 10, 11, ...], 'src/asy_i2c_driver.py': [8, 9, 10, 11, 13, 14, ...], 'src/asy_config_manager.py': [8, 9, 10, 11, 13, 15, ...], 'src/asy_uart_driver.py': [10, 11, 12, 13, 15, 16, ...], ...} = <function loads at 0x7f655b204ae0>('{"src/asy_webserver_service.py": [4, 5, 6, 7, 10, 11, 12, 14, 15, 16, 17, 19, 20, 21, 22, 24, 131, 138, 143, 178, 191...167, 170, 192, 198, 205, 208, 215, 223], "src/math_helpers.py": [6, 8, 53, 72, 90, 102, 124, 137, 151, 174, 196, 210]}')
+E        +    where <function loads at 0x7f655b204ae0> = json.loads
+E        +    and   '{"src/asy_webserver_service.py": [4, 5, 6, 7, 10, 11, 12, 14, 15, 16, 17, 19, 20, 21, 22, 24, 131, 138, 143, 178, 191...167, 170, 192, 198, 205, 208, 215, 223], "src/math_helpers.py": [6, 8, 53, 72, 90, 102, 124, 137, 151, 174, 196, 210]}' = read_text()
+E        +      where read_text = PosixPath('/tmp/pytest-of-root/pytest-8073/test_a_generated_device_module0/raw.json').read_text
+
+tests_scripts/test_coverage_runner.py:232: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_coverage_runner.py::test_a_generated_device_modules_lines_are_traced
+1 failed, 15 deselected in 0.24s

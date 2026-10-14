@@ -34,6 +34,7 @@ import machine  # noqa: E402
 import run_generic_integration  # noqa: E402
 import sensortask_wozi  # noqa: E402
 import unix_port_unretrieved_report  # noqa: E402
+from _async_harness import cancel, release_finished, run_timed  # noqa: E402
 from _shared_rest_roundtrip import assert_sensor_payload_not_self_wrapped  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 
@@ -74,14 +75,6 @@ _BIND_POLL_S = 0.01
 _HOTSPOT_RUN_BOUND_S = 35.0
 # @tunable l2.sensortask_integration_reboot_run_bound_s = 30.0
 _REBOOT_RUN_BOUND_S = 30.0
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
-
-
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
@@ -140,14 +133,6 @@ async def _start_webserver() -> "asyncio.Task[None]":
     # 0.05s bound because its own fixture is never constructed with fram=.
     await asyncio.sleep(1.0)
     return task
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
 
 
 def _make_dns_query(labels: "list[str]", query_id: bytes = b"\x12\x34") -> bytes:
@@ -297,7 +282,7 @@ def test_every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly() -
             assert res.status_code == 200
             assert set(res.json().keys()) == {"networking", "system", "notification", "sensors", "errcount"}
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -316,7 +301,7 @@ def test_static_site_is_served_over_real_http() -> None:
             assert res.status_code == 200
             assert len(res.body) > 0
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -337,7 +322,7 @@ def test_put_round_trips_through_a_real_twin_backed_driver_over_real_http() -> N
             # interpreter instead of raising a clean error (found via this exact bug, the hard way).
             assert await sensortask_wozi.notification.cfgmgr.get_dict(["WarnCO2"]) == {"WarnCO2": 1800}
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -364,7 +349,7 @@ def test_reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup
             assert log["SGP40"]["ErrCount"] == 0
             assert 99 not in log["SGP40"]["ErrNum"], "setup() restored the pre-reset history over a reset that returned 200"
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -435,7 +420,7 @@ def test_put_pause_time_round_trips_and_counts_down_over_real_http() -> None:
             assert reached_zero, "PauseTime never reached 0 - the real _pause_loop() task isn't decrementing it"
         finally:
             for task in tasks:
-                await _cancel(task)
+                await cancel(task)
 
     run_timed(scenario(), timeout_s=_LONG_RUN_BOUND_S)
 
@@ -456,7 +441,7 @@ def test_sensors_put_round_trips_a_real_scd30_field_over_real_http() -> None:
             assert res.status_code == 200
             assert res.json()["result"] == {"SCD30": {"MeasInterval": "Valid"}}
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -530,7 +515,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
                 f"no red frame with the window {on_h}:00-{off_h}:00 around local {hour}:{local.minute:02d}"
             )
             assert await _wait_until_async(triggered, _WINDOW_WAIT_S), "the cycle that flashed never reported Triggered"
-            await _cancel(tasks.pop())  # the monitor now sleeps its whole FlashInterval; the next window gets a fresh cycle
+            await cancel(tasks.pop())  # the monitor now sleeps its whole FlashInterval; the next window gets a fresh cycle
             assert await _wait_until(lambda: not pixel._start_signal_event.is_set(), _WINDOW_WAIT_S)
             seen = len(pixel._pixel.writes)
 
@@ -540,7 +525,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
             assert _red_frames(list(pixel._pixel.writes)[seen:]) == [], "a cycle outside the window flashed"
         finally:
             for task in tasks:
-                await _cancel(task)
+                await cancel(task)
 
     try:
         run_timed(scenario(), timeout_s=3 * _WINDOW_WAIT_S)
@@ -609,7 +594,7 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
             assert watchdog.would_have_triggered_count == 0
         finally:
             for task in tasks:
-                await _cancel(task)
+                await cancel(task)
 
     run_timed(scenario(), timeout_s=_LONG_RUN_BOUND_S)
 
@@ -676,19 +661,19 @@ def test_start_and_check_tasks_restarts_a_real_dead_task_from_the_real_full_task
         finally:
             SystemService._start_task = real_start_task  # type: ignore[method-assign]
             if supervisor_task is not None:
-                await _cancel(supervisor_task)  # the outer wrapper; its supervisor task and every real
+                await cancel(supervisor_task)  # the outer wrapper; its supervisor task and every real
                 # started task are cancelled on their own below (this file's watchdog-section comment).
             if sysfunct._supervisor_task is not None:
-                await _cancel(sysfunct._supervisor_task)
+                await cancel(sysfunct._supervisor_task)
             for tasks in started.values():
                 for task in tasks:
                     if task is not None:
-                        await _cancel(task)
+                        await cancel(task)
             # Defensive: the real _connect_loop task can independently reach hotspot activation and start its
             # own CaptiveDNS task within this window. The loop above does not cancel it, being spawned inside
             # WifiService, and left running it would hold UDP port 53 into the next section.
             if sensortask_wozi.conn is not None and sensortask_wozi.conn._dns_server_task is not None:
-                await _cancel(sensortask_wozi.conn._dns_server_task)
+                await cancel(sensortask_wozi.conn._dns_server_task)
             # This starts the REAL full task list, twice for the one restarted - a known failure mode on
             # this file's shared heap otherwise, where orphaned task references starved a later
             # build_system() with a real MemoryError before this collect() was added.
@@ -834,6 +819,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                     assert await _yield_until_above(lambda: starts[status_idx], restarts), "the dead status task was never restarted"
                     fed = watchdog.feed_count
                     assert await _yield_until_above(lambda: watchdog.feed_count, fed + _DECAY_PASSES - 1), "the supervisor stopped passing"
+                    release_finished()  # the harness's own finished tasks are not the system's heap
                     gc.collect()
                     drift[death] = gc.mem_alloc()
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
@@ -842,16 +828,16 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
             del sysfunct._start_task
             asy_system_service.asyncio = asyncio  # type: ignore[attr-defined]
             if supervisor is not None:
-                await _cancel(supervisor)
+                await cancel(supervisor)
             if sysfunct._supervisor_task is not None:
-                await _cancel(sysfunct._supervisor_task)
+                await cancel(sysfunct._supervisor_task)
             for task in latest:
                 # A dead one stays: the supervisor awaited it already, and a second await of a task whose first
                 # one raced asyncio's pending handler entry raises None, a segfault (SPECIFICATION.md Part F.1).
                 if task is not None and not task.done():
-                    await _cancel(task)
+                    await cancel(task)
             if sensortask_wozi.conn is not None and sensortask_wozi.conn._dns_server_task is not None:
-                await _cancel(sensortask_wozi.conn._dns_server_task)
+                await cancel(sensortask_wozi.conn._dns_server_task)
             gc.collect()  # same reason as the restart test above: the full task list ran
 
     run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
@@ -932,11 +918,11 @@ def test_wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server_a
             assert res.status_code == 302
             assert res.headers["Location"] == "/"
         finally:
-            await _cancel(wifi_task)
-            await _cancel(pixel_task)
-            await _cancel(webserver_task)
+            await cancel(wifi_task)
+            await cancel(pixel_task)
+            await cancel(webserver_task)
             if conn._dns_server_task is not None:
-                await _cancel(conn._dns_server_task)
+                await cancel(conn._dns_server_task)
             gc.collect()  # see the task-supervisor-restart section's own comment above - this test
             # starts several real background tasks (wifi, pixel, hotspot DNS, webserver) too.
 
@@ -986,7 +972,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
                     "the real VOC backup write never completed"
                 )
             finally:
-                await _cancel(task)
+                await cancel(task)
 
             # Simulated reboot: persist the twin's FRAM image to disk, then rebuild the object graph fresh
             # from the SAME cfg_path and FRAM state - the twin analogue of a device losing power and cold-
@@ -1010,7 +996,7 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
                     "the real VOC backup restore never completed after the simulated reboot"
                 )
             finally:
-                await _cancel(task2)
+                await cancel(task2)
         finally:
             machine.configure_fram_state_path(None)  # module-level, process-wide - must not leak
             # into any other test in this file regardless of run order (MicroPython's globals()
@@ -1050,7 +1036,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
                 sgp1._read_event.set()
                 assert await _wait_until(lambda: sgp1._last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the first real VOC backup write never completed"
             finally:
-                await _cancel(task)
+                await cancel(task)
             machine.flush_fram()
             with open(state_path) as f:
                 flushed_state = f.read()
@@ -1064,7 +1050,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
                 sgp1._read_event.set()
                 assert await _wait_until(lambda: sgp1._last_backup is not None, timeout_s=_WAIT_TIMEOUT_S), "the second real VOC backup write never completed"
             finally:
-                await _cancel(task2)
+                await cancel(task2)
             with open(state_path) as f:
                 unflushed_check = f.read()
             assert unflushed_check == flushed_state, "the second backup's own write leaked onto disk despite never being flushed - flush_fram() may no longer be the only real persistence trigger"
@@ -1086,7 +1072,7 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
                 sgp2._read_event.set()
                 assert await _wait_until(lambda: sgp2._restored_from is not None, timeout_s=_WAIT_TIMEOUT_S), "the real VOC backup restore never completed after the simulated crash-reboot"
             finally:
-                await _cancel(task3)
+                await cancel(task3)
         finally:
             machine.configure_fram_state_path(None)  # see the reboot-survival test's own comment above
             gc.collect()  # this test builds the whole real object graph twice in one run
@@ -1126,7 +1112,7 @@ def test_mempause_over_real_http_reaches_the_real_fram_manager_and_unpauses() ->
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/status")
             assert res.json()["system"]["MemPaused"] is False
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
 

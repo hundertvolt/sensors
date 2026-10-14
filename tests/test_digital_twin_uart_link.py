@@ -26,7 +26,9 @@ patch_asy_udp_socket_for_unix_port()
 import rp2  # noqa: E402
 import run_generic_integration  # noqa: E402
 import sensortask_dev  # noqa: E402
+from _async_harness import run  # noqa: E402
 from _error_codes import code  # noqa: E402
+from _src_const import src_const  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402
 from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  # noqa: E402
@@ -42,17 +44,20 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from types import ModuleType
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
     T = TypeVar("T")
 
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
 
+    from asy_base_classes import PieceBuffer
+
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("twin_uart")
 _DEV_WIRING_PLAN = "build/generated_src/sensortask_dev_wiring_plan.json"  # written by buildgen before any test runs
+_BANNER: bytes = src_const("src/asy_uart_link_driver.py", "_BANNER")  # type: ignore[assignment]  # src_const() answers object
 
 # @tunable l2.uart_link_run_limit_s = 30
 _RUN_LIMIT_S = 30
@@ -109,7 +114,7 @@ async def _boot_dev(cfg_path: str) -> None:
 def _build_dev() -> None:
     configure_i2c_wiring("dev")  # dev's own chips: wozi's default plan puts an 8 KB FRAM under dev's 256 KB manager
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
-    run(_boot_dev(_tmp_cfg_dir()))
+    _run(_boot_dev(_tmp_cfg_dir()))
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
@@ -127,7 +132,7 @@ def _claim_every_free_channel() -> "list[rp2.DMA]":
 
 def _errnos(comm: UARTComm) -> "list[int]":
     # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
-    entry = run(comm.get_error_counter())[comm.name]
+    entry = _run(comm.get_error_counter())[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
 
@@ -153,39 +158,40 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         link.direction_from(fake_a).wire_log.clear()
         link.direction_from(fake_b).wire_log.clear()
 
-    async def scenario() -> "tuple[int, int]":
+    async def hammered(rounds: int) -> int:
         noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(_HAMMER_NOISE_CONSUMERS)]
         try:
-            for _ in range(_HAMMER_WARMUP_ROUNDS):  # absorb one-time cost before the window opens
-                await exchange(initiator.uart_get(0x01))
-            clear_wire_logs()
-            gc.collect()
-            before = gc.mem_free()
             ok = 0
-            for i in range(_HAMMER_ROUNDS):
+            for i in range(rounds):
                 if await exchange(initiator.uart_get(0x01)) is not None:
                     ok += 1
                 if not i % 20:
                     clear_wire_logs()
-            clear_wire_logs()
-            gc.collect()
-            return ok, before - gc.mem_free()
+            return ok
         finally:
             for task in noise:
                 task.cancel()
             await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
 
+    # The warm-up absorbs one-time cost; the window is its own run, so the heap is read with no run's task record held.
     try:
-        ok, leaked = run(scenario(), limit=_HAMMER_LIMIT_S)
+        _run(hammered(_HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
+        clear_wire_logs()
+        gc.collect()
+        before = gc.mem_free()
+        ok = _run(hammered(_HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
+        clear_wire_logs()
+        gc.collect()
+        leaked = before - gc.mem_free()
     finally:
         gc.threshold(original)
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed at gc.threshold({threshold})"
-    counts = run(initiator.get_error_counter())
+    counts = _run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({threshold})"
     assert leaked < _LEAK_BUDGET_BYTES, f"{leaked} bytes retained across {_HAMMER_ROUNDS} hammered transactions at gc.threshold({threshold})"
 
 
-async def _settle_listener(listener: "asyncio.Task[Any]") -> None:
+async def _settle_listener(listener: "asyncio.Task[object]") -> None:
     try:
         await asyncio.wait_for(listener, _LISTENER_SETTLE_S)
     except asyncio.TimeoutError:
@@ -208,9 +214,9 @@ async def _uptime_noise(dev: "ModuleType") -> None:
 
 
 def build_linked_system() -> "TwinLink":
-    # The real dev object graph, its two UART peripherals joined the way the bench jumper joins
-    # them (GP0<->GP9, GP1<->GP8). The pollers are then swapped for the bounded stand-in: a real
-    # select.poll() never re-checks a Python object's ioctl(), so readiness would never be seen.
+    # The real dev object graph, its two UART peripherals joined the way the bench jumper joins them (GP0<->GP9,
+    # GP1<->GP8), its pollers swapped for the twin's own LinkPoller.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known hang cause").
     _build_dev()
     dev = sensortask_dev
     assert dev.uart0 is not None and dev.uart1 is not None
@@ -221,7 +227,7 @@ def build_linked_system() -> "TwinLink":
     return link
 
 
-async def exchange(work: "Coroutine[Any, Any, T]") -> "T":
+async def exchange(work: "Coroutine[object, object, T]") -> "T":
     # The initiator's call returning does not mean the responder is finished: it still has its last
     # read to complete, and the twin delivers by real wire time. Cutting the listener off would
     # strand a frame for the next exchange - a harness artefact, so the harness waits it out.
@@ -251,11 +257,11 @@ def fakes() -> "tuple[TwinUART, TwinUART]":
     return fake_a, fake_b
 
 
-def run(coro: "Coroutine[Any, Any, T]", limit: int = _RUN_LIMIT_S, clock: "PollRoundClock | None" = None) -> "T":
+def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S, clock: "PollRoundClock | None" = None) -> "T":
     # Every run on the poll-round clock (SPECIFICATION.md J.7): both ends share this interpreter, so on the wall
     # clock a host stall would spend the peer's reply budget and fail a correct link.
     with clock if clock is not None else PollRoundClock():
-        return asyncio.run(asyncio.wait_for(coro, limit))
+        return run(coro, limit)
 
 
 def test_every_build_starts_with_every_dma_channel_free() -> None:
@@ -282,8 +288,8 @@ def test_the_generic_runner_joins_the_two_buses_its_wiring_plan_names() -> None:
     assert link is not None, "the runner wired no link for dev's uart_link pair"
     assert link.endpoints == fakes(), "the runner joined other UARTs than dev's two buses"
     assert sensortask_dev.uart_link_init is not None
-    answer = run(exchange(sensortask_dev.uart_link_init._comm.uart_get(0x01)))
-    assert copied_out(answer) == b"dev-uart-crossover", "the runner's jumper carried no banner"
+    answer = _run(exchange(sensortask_dev.uart_link_init._comm.uart_get(0x01)))
+    assert copied_out(answer) == _BANNER, "the runner's jumper carried no banner"
 
 
 def test_both_instances_are_constructed_and_registered() -> None:
@@ -365,13 +371,13 @@ def test_a_get_and_a_set_both_complete_with_no_errors_counted() -> None:
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
 
-    answer = run(exchange(initiator.uart_get(0x01)))
-    assert copied_out(answer) == b"dev-uart-crossover"
+    answer = _run(exchange(initiator.uart_get(0x01)))
+    assert copied_out(answer) == _BANNER
 
-    assert run(exchange(initiator.uart_set(0x02, b"round trip"))) is True
+    assert _run(exchange(initiator.uart_set(0x02, b"round trip"))) is True
 
     for comm in (initiator, responder):
-        counts = run(comm.get_error_counter())
+        counts = _run(comm.get_error_counter())
         assert counts[comm.name]["ErrCount"] == 0, f"{comm.name} counted an error on a clean link"
 
 
@@ -380,7 +386,7 @@ def test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact() -> None:
     dev = sensortask_dev
     assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     payload = bytes((i * 5) & 0xFF for i in range(140))  # spans three data chunks at payload_size 48
-    assert run(exchange(dev.uart_link_init._comm.uart_set(0x02, payload))) is True
+    assert _run(exchange(dev.uart_link_init._comm.uart_set(0x02, payload))) is True
     # The responder's _last_echo is only ever written by _message_callback, which exchange()'s harness-
     # controlled uart_listen() round does not invoke - so it stays unset here, the same "the callback stores
     # nothing itself" fact the original test recorded, now checked against the real storage location.
@@ -395,12 +401,12 @@ def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
     initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
     direction = link.direction_from(fakes()[1])
     direction.silent = True
-    assert run(exchange(initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
+    assert _run(exchange(initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
     assert initiator._holdoff_active is True
 
     direction.silent = False
-    run(responder.clear(), limit=_EXCHANGE_LIMIT_S)
-    assert run(exchange(initiator.uart_set(0x02, b"back")), limit=_EXCHANGE_LIMIT_S) is True
+    _run(responder.clear(), limit=_EXCHANGE_LIMIT_S)
+    assert _run(exchange(initiator.uart_set(0x02, b"back")), limit=_EXCHANGE_LIMIT_S) is True
 
 
 def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
@@ -413,7 +419,7 @@ def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
     limits = transfer_limits(payload_size=initiator._payload_size + 8, timeout=initiator._timeout)
     callbacks = ResponderCallbacks(echo_get(b"v"), accept_set(), None)
     responder = UARTComm(dev.uart1, ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH")
-    assert run(responder.setup()) is True
+    assert _run(responder.setup()) is True
 
     async def scenario() -> None:
         for _ in range(4):  # the diagnostic waits for a streak of resyncs, so one failed exchange must not trip it
@@ -422,7 +428,7 @@ def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
             await responder.clear()
             await _settle_listener(listener)
 
-    run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    _run(scenario(), limit=_EXCHANGE_LIMIT_S)
     unintelligible = code("E", "UART_LINK_UNINTELLIGIBLE")
     responder_codes, initiator_codes = _errnos(responder), _errnos(initiator)
     assert unintelligible in responder_codes, f"the mismatched responder never reported the link unintelligible: {responder_codes}"
@@ -456,7 +462,7 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
+    assert _run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
     assert len(ticks) > 5, "other tasks made no progress during the transfer"
 
 
@@ -467,14 +473,14 @@ def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
     assert dev.uart_link_init is not None and dev.sysfunct is not None
     initiator = dev.uart_link_init._comm
 
-    async def scenario() -> "list[Any]":
+    async def scenario() -> "list[PieceBuffer | None]":
         noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]
         results = [await exchange(initiator.uart_get(0x01))]
         for task in noise:
             await task
         return results
 
-    results = run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    results = _run(scenario(), limit=_EXCHANGE_LIMIT_S)
     assert results[0] is not None
 
 
@@ -500,7 +506,7 @@ def test_a_collection_length_pause_mid_transfer_does_not_break_the_link() -> Non
         finally:
             background.cancel()
 
-    assert run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
+    assert _run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
 
 
 def test_a_maximum_length_train_completes_and_still_yields() -> None:
@@ -528,13 +534,13 @@ def test_a_maximum_length_train_completes_and_still_yields() -> None:
 
     clock = PollRoundClock(stall_after=_MAX_TRAIN_STALL_AFTER, stall_ms=_MAX_TRAIN_STALL_MS)
     clock.arm()
-    completed = run(scenario(), limit=_MAX_TRAIN_LIMIT_S, clock=clock)
+    completed = _run(scenario(), limit=_MAX_TRAIN_LIMIT_S, clock=clock)
     assert clock.disarm(), "the planted host stall never fired: the train did not reach it"
     assert completed is True, "the maximum-length train did not complete"
     # Progress, not a rate: the ticker must have been scheduled throughout, which it cannot be if
     # any step held the loop for the whole transfer.
     assert len(ticks) > 50, f"other tasks ran only {len(ticks)} times across a 254-chunk transfer"
-    counts = run(initiator.get_error_counter())
+    counts = _run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, "the longest legal transfer logged an error"
 
 
@@ -558,23 +564,25 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
         link.direction_from(fake_a).wire_log.clear()
         link.direction_from(fake_b).wire_log.clear()
 
-    async def scenario() -> "tuple[int, int]":
-        _clear_wire_logs()
-        gc.collect()
-        before = gc.mem_free()
+    async def transfers() -> int:
         ok = 0
         for i in range(rounds):
             if await exchange(initiator.uart_get(0x01)) is not None:
                 ok += 1
             if not i % 20:
                 _clear_wire_logs()
-        _clear_wire_logs()
-        gc.collect()
-        return ok, before - gc.mem_free()
+        return ok
 
-    ok, leaked = run(scenario(), limit=_HAMMER_LIMIT_S)
+    # The heap is read outside the run, so the record of the tasks a run made is gone by then.
+    _clear_wire_logs()
+    gc.collect()
+    before = gc.mem_free()
+    ok = _run(transfers(), limit=_HAMMER_LIMIT_S)
+    _clear_wire_logs()
+    gc.collect()
+    leaked = before - gc.mem_free()
     assert ok == rounds, f"only {ok}/{rounds} transfers succeeded across a full UID wrap"
-    counts = run(initiator.get_error_counter())
+    counts = _run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"{rounds} clean transfers logged an error"
     # Buffers are preallocated per instance, so a steady-state loop must not grow the heap. The
     # bound is generous - this asserts "no per-transfer leak", not an allocation budget.
@@ -616,7 +624,7 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
             background.cancel()
             await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
 
-    results = run(scenario(), limit=_CHURN_LIMIT_S)
+    results = _run(scenario(), limit=_CHURN_LIMIT_S)
     assert all(isinstance(r, bool) for r in results), "a transfer returned something other than its documented bool"
     assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
 

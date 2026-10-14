@@ -10,26 +10,7 @@ sys.path.insert(0, "digital_twin")
 from _crc8 import crc8, word
 from _sgp40_chip import Sgp40Chip
 from _twin_common import Walk
-
-
-class _FixedRandom:
-    # Deterministic stand-in for the real `random` module's subset Sgp40Chip actually calls -
-    # scripted return values, one per call, in order.
-    def __init__(self, randint_values: "list[int] | None" = None, getrandbits_values: "list[int] | None" = None) -> None:
-        self._randint_values = list(randint_values or [])
-        self._getrandbits_values = list(getrandbits_values or [])
-
-    def randint(self, a: int, b: int) -> int:
-        assert self._randint_values, "randint() called more times than scripted"
-        value = self._randint_values.pop(0)
-        assert a <= value <= b, f"scripted value {value} outside requested range [{a},{b}]"
-        return value
-
-    def getrandbits(self, k: int) -> int:
-        assert self._getrandbits_values, "getrandbits() called more times than scripted"
-        value = self._getrandbits_values.pop(0)
-        assert 0 <= value < (1 << k)
-        return value
+from _twin_random import FixedRandom
 
 
 def test_crc8_matches_datasheet_worked_example() -> None:
@@ -43,7 +24,7 @@ def test_word_appends_correct_crc_trailer() -> None:
 
 
 def test_get_serial_number_command_replies_with_word0_zero() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000], getrandbits_values=[0x1234, 0x5678]))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[30000], getrandbits_values=[0x1234, 0x5678]))
     chip.handle_writeto(b"\x36\x82")
     reply = chip.handle_readfrom_into(9)
     assert reply[0:3] == word(0x0000)
@@ -63,7 +44,7 @@ def test_self_test_command_replies_pass() -> None:
 def test_measure_raw_default_command_replies_with_a_ticks_value_in_range() -> None:
     # First value: the draw at construction. Second: the step delta measure_raw below draws -
     # zeroed so the reply stays exactly at the constructed initial value.
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000, 0]))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[30000, 0]))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")  # datasheet's own no-compensation example
     reply = chip.handle_readfrom_into(3)
     assert reply == word(30000)
@@ -73,7 +54,7 @@ def test_measure_raw_steps_from_the_previous_value_on_every_call() -> None:
     # Construction draws 30000; each call below steps by its own fresh delta rather than a
     # fresh independent draw - proving both that the walk is real and that each call gets its own
     # scripted delta (not the same one reused).
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000, 500, -800]))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[30000, 500, -800]))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     first = chip.handle_readfrom_into(3)
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
@@ -92,33 +73,33 @@ def test_measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_ra
 
 
 def test_custom_range_is_honored() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[100, 0]), raw=Walk(50, 150, 1000))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[100, 0]), raw=Walk(50, 150, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
     assert reply == word(100)
 
 
 def test_construction_draws_an_initial_value_within_range_without_a_measure_raw_command() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[29500]))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[29500]))
     assert chip._raw == 29500
 
 
 def test_measure_raw_step_is_clamped_to_the_configured_max() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[33800, 1000]), raw=Walk(26000, 34000, 1000))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[33800, 1000]), raw=Walk(26000, 34000, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
     assert reply == word(34000)  # 33800 + 1000 would be 34800 - clamped to the walk's hi
 
 
 def test_measure_raw_step_is_clamped_to_the_configured_min() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[26300, -1000]), raw=Walk(26000, 34000, 1000))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[26300, -1000]), raw=Walk(26000, 34000, 1000))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
     reply = chip.handle_readfrom_into(3)
     assert reply == word(26000)  # 26300 + -1000 would be 25300 - clamped to the walk's lo
 
 
 def test_raw_step_is_configurable_via_the_constructor() -> None:
-    chip = Sgp40Chip(random_source=_FixedRandom(randint_values=[30000, 50]), raw=Walk(26000, 34000, 50))
+    chip = Sgp40Chip(random_source=FixedRandom(randint_values=[30000, 50]), raw=Walk(26000, 34000, 50))
     chip.handle_writeto(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")  # would violate the default 1000 bound - proves the override took
     reply = chip.handle_readfrom_into(3)
     assert reply == word(30050)

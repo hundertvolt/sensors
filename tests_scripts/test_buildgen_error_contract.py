@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import pytest
 import tomllib
 from _script_loader import load_script_module
-from _toml_fixtures import TomlDoc, base_doc, dump_toml, write_doc
+from _toml_fixtures import TomlDoc, TomlValue, array_at, base_doc, dump_toml, instance_of, instances, table, table_at, with_uart_pair, write_doc
 
 from buildgen import api_reference, buildspec, codegen, definitions, generate, model, validate
 from buildgen.codegen import generate_boot_entry_source, generate_module_source
@@ -44,26 +44,26 @@ def _compare_a_string_timeout(_tmp: Path) -> None:
     check_requires_tags(tags, {"timeout": "200000"}, _DEVICE, "scd30", "i2c0")
 
 
-def _doc_bus_timeout(value: object) -> "Callable[[TomlDoc], None]":
+def _doc_bus_timeout(value: "TomlValue | None") -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
         if value is None:
-            del doc["bus"]["i2c0"]["timeout"]
+            del table_at(doc, "bus", "i2c0")["timeout"]
         else:
-            doc["bus"]["i2c0"]["timeout"] = value
+            table_at(doc, "bus", "i2c0")["timeout"] = value
 
     return edit
 
 
 def _doc_extra_instance(instance: TomlDoc) -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        doc["instance"].append(instance)
+        array_at(doc, "instance").append(instance)
 
     return edit
 
 
-def _doc_instance_field(driver: str, key: str, value: object) -> "Callable[[TomlDoc], None]":
+def _doc_instance_field(driver: str, key: str, value: "TomlValue") -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        next(i for i in doc["instance"] if i["driver"] == driver)[key] = value
+        instance_of(doc, driver)[key] = value
 
     return edit
 
@@ -74,50 +74,41 @@ def _doc_unchanged(_doc: TomlDoc) -> None:
 
 def _drop(*path: str) -> "Callable[[TomlDoc], None]":
     def edit(doc: TomlDoc) -> None:
-        table = doc
+        node = doc
         for key in path[:-1]:
-            table = _instance(doc, key[1:]) if key.startswith("@") else table[key]
-        del table[path[-1]]
+            node = instance_of(doc, key[1:]) if key.startswith("@") else table_at(node, key)
+        del node[path[-1]]
 
     return edit
 
 
 def _i2c0_renamed_i2c7(doc: TomlDoc) -> None:
-    doc["bus"]["i2c7"] = doc["bus"].pop("i2c0")
-    for instance in doc["instance"]:
+    table_at(doc, "bus")["i2c7"] = table_at(doc, "bus").pop("i2c0")
+    for instance in instances(doc):
         if instance.get("bus") == "i2c0":
             instance["bus"] = "i2c7"
 
 
-def _instance(doc: TomlDoc, driver: str) -> TomlDoc:
-    found: TomlDoc = next(i for i in doc["instance"] if i["driver"] == driver)
-    return found
-
-
 def _paired(*edits: "Callable[[TomlDoc], None]") -> "Callable[[TomlDoc], None]":
-    # base_doc() plus a UART crossover pair on uart0/uart1 (scd30's IRQ moved off GP8, one of uart1's pins), then the edits.
+    # base_doc() plus with_uart_pair()'s crossover pair on uart0/uart1, then the edits.
     def edit(doc: TomlDoc) -> None:
-        _instance(doc, "scd30")["irq_pin"] = 6
-        knobs = {"baudrate": 115200, "rxbuf": 512, "txbuf": 512, "poll_wait_ms": 2, "poll_idle_ms": 50}
-        doc["bus"]["uart0"] = {"tx_pin": 16, "rx_pin": 17, **knobs}
-        doc["bus"]["uart1"] = {"tx_pin": 8, "rx_pin": 9, **knobs}
-        doc["instance"] += [{"driver": "uart_link", "name_ext": "init", "bus": "uart0", "role": "initiator"}, {"driver": "uart_link", "name_ext": "resp", "bus": "uart1", "role": "responder"}]
+        with_uart_pair(doc)
         for further in edits:
             further(doc)
 
     return edit
 
 
-def _set(*path_and_value: object) -> "Callable[[TomlDoc], None]":
+def _set(*path_and_value: "TomlValue") -> "Callable[[TomlDoc], None]":
     # _set("bus", "i2c0", "timeout", 0); a key "@scd30" steps into that driver's [[instance]].
     *path, value = path_and_value
 
     def edit(doc: TomlDoc) -> None:
-        table = doc
+        node = doc
         for key in path[:-1]:
             assert isinstance(key, str)
-            table = _instance(doc, key[1:]) if key.startswith("@") else table.setdefault(key, {})
-        table[str(path[-1])] = value
+            node = instance_of(doc, key[1:]) if key.startswith("@") else table(node.setdefault(key, {}))
+        node[str(path[-1])] = value
 
     return edit
 
@@ -257,7 +248,7 @@ _ROWS: "dict[str, Row]" = {
     "source.fields-unreadable": Row("generate", f"[{_DEVICE}/scd30] ", edits=((_SCD30, "async def get_data(self) -> SCD30:", "async def get_data(self) -> tuple:"),)),
     "wiring.cycle": Row(
         "generate", f"[{_DEVICE}] ",
-        doc=lambda d: next(i for i in d["instance"] if i["driver"] == "scd30")["wiring"].update({"fake_dep": "sgp40"}),
+        doc=lambda d: table_at(instance_of(d, "scd30"), "wiring").update({"fake_dep": "sgp40"}),
         edits=((_SCD30, _SCD30_TRIGGER_LIMITS, _SCD30_TRIGGER_LIMITS + "\n# @wiring fake_dep SGP40_Reader fake_dep required kwarg"),),
     ),
     # buildgen/tag_comments.py, limits.py, requires_tag.py, wiring.py, value_wiring.py, web_tag.py
@@ -371,7 +362,7 @@ _ROWS: "dict[str, Row]" = {
     "bus.uart-rxbuf-floor": Row("generate", f"[{_DEVICE}/uart_link_init.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 79))),
     "bus.uart-rx-ring": Row("generate", f"[{_DEVICE}/uart_link_init.rx_ring] ", doc=_paired(_set("bus", "uart0", "rx_ring", 64))),
     "bus.unused": Row("generate", f"[{_DEVICE}.i2c1] ", doc=_set("bus", "i2c1", {"scl_pin": 7, "sda_pin": 6, "frequency": 50000})),
-    "bus.uart-shared": Row("generate", f"[{_DEVICE}/uart_link_resp.bus] ", doc=_paired(_drop("bus", "uart1"), lambda d: d["instance"][-1].__setitem__("bus", "uart0"))),
+    "bus.uart-shared": Row("generate", f"[{_DEVICE}/uart_link_resp.bus] ", doc=_paired(_drop("bus", "uart1"), lambda d: table_at(d, "instance", -1).__setitem__("bus", "uart0"))),
     "bus.fixed-address-collision": Row("generate", f"[{_DEVICE}/scd30_b] ", doc=_doc_extra_instance({"driver": "scd30", "name_ext": "b", "bus": "i2c0", "irq_pin": 9, "trigger_s": 3})),
     "bus.address-collision": Row(
         "generate", f"[{_DEVICE}/bmp3xx_b.address] ",
@@ -391,14 +382,14 @@ _ROWS: "dict[str, Row]" = {
     "instance.bus-undeclared": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", "i2c1")),
     "instance.bus-kind": Row("generate", f"[{_DEVICE}/scd30.bus] ", doc=_set("@scd30", "bus", "spi0")),
     "instance.no-bus-kind-row": Row("generate", f"[{_DEVICE}/scd30] ", patch=_no_bus_kind_row_for_scd30),
-    "instance.uart-role": Row("generate", f"[{_DEVICE}/uart_link_resp.role] ", doc=_paired(lambda d: d["instance"][-1].__setitem__("role", "peer"))),
-    "instance.uart-crc-mode": Row("generate", f"[{_DEVICE}/uart_link_init.crc] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("crc", "crc32"))),
+    "instance.uart-role": Row("generate", f"[{_DEVICE}/uart_link_resp.role] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "peer"))),
+    "instance.uart-crc-mode": Row("generate", f"[{_DEVICE}/uart_link_init.crc] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("crc", "crc32"))),
     "instance.irq-pull-up-type": Row("generate", f"[{_DEVICE}/scd30.irq_pull_up] ", doc=_set("@scd30", "irq_pull_up", 1)),
     "instance.field-unknown": Row("generate", f"[{_DEVICE}/scd30.colour] ", doc=_set("@scd30", "colour", 1)),
-    "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("max_transfer_bytes", 47))),
-    "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: d["instance"][-1].__setitem__("role", "initiator"))),
+    "instance.uart-transfer-cap": Row("generate", f"[{_DEVICE}/uart_link_init.max_transfer_bytes] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("max_transfer_bytes", 47))),
+    "instance.uart-link-pair": Row("generate", f"[{_DEVICE}] ", doc=_paired(lambda d: table_at(d, "instance", -1).__setitem__("role", "initiator"))),
     "instance.uart-baud-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.baudrate] ", doc=_paired(_set("bus", "uart1", "baudrate", 57600))),
-    "instance.uart-crc-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.crc] ", doc=_paired(lambda d: d["instance"][-2].__setitem__("crc", "crc16"))),
+    "instance.uart-crc-mismatch": Row("generate", f"[{_DEVICE}/uart_link_resp.crc] ", doc=_paired(lambda d: table_at(d, "instance", -2).__setitem__("crc", "crc16"))),
     "instance.uart-timeout-max": Row("generate", f"[{_DEVICE}/uart_link_init] ", doc=_paired(), edits=(("asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS = const(1000)", "_DEFAULT_TIMEOUT_MS = const(100000000)"),)),
     "instance.requires-without-bus": Row(
         "generate", f"[{_DEVICE}/neopixel] ",
@@ -583,7 +574,7 @@ def test_a_bus_less_device_generates(tmp_path: Path, capsys: pytest.CaptureFixtu
     doc: TomlDoc = base_doc()
     del doc["bus"]
     doc["instance"] = [{"driver": "neopixel", "pin": 15}]
-    doc["device"]["wiring"] = {"led_target": "neopixel"}
+    table_at(doc, "device")["wiring"] = {"led_target": "neopixel"}
     out = tmp_path / "out"
     assert generate.main([str(write_doc(tmp_path, _DEVICE, doc)), "--out-dir", str(out)]) == 0, capsys.readouterr().err
     assert sorted(p.name for p in out.iterdir()) == [f"sensortask_{_DEVICE}.py", f"sensortask_{_DEVICE}_main.py", f"sensortask_{_DEVICE}_main_noautostart.py"]

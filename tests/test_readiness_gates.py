@@ -2,7 +2,6 @@
 fail exactly as its contract says - a sentinel, False, "Failed" per key, or its documented raise - never an
 AttributeError; setup() itself answers a bool (SPECIFICATION.md Part C.13)."""
 
-import asyncio
 import os
 import sys
 from collections import namedtuple
@@ -10,6 +9,7 @@ from collections import namedtuple
 # The webserver's row needs the real vendored ext/microdot.py, which scripts/test.sh's MICROPYPATH leaves out.
 sys.path.insert(0, "ext")
 
+from _async_harness import run
 from _error_codes import code
 from _fram_chip_fake import FakeMB85RS64V
 from _tmp_scratch import TmpScratch
@@ -39,12 +39,10 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import TypeVar
+    from collections.abc import Callable
 
     from asy_print_log import ErrorLog
 
-    T = TypeVar("T")
     Check = Callable[[object], bool]
     Call = tuple[tuple[object, ...], Check] | tuple[tuple[object, ...], Check, dict[str, object]]  # (args, check[, kwargs])
     Calls = dict[str, Call]
@@ -52,10 +50,6 @@ if TYPE_CHECKING:
 _scratch = TmpScratch("readiness_gates")
 Meas = namedtuple("Meas", ["Temp", "TS"])
 _VAL_COUNT: "cm.ConfigSchema" = (("Count", "int", 5, 0, 10, None),)
-
-
-def run(coro: "Coroutine[object, object, T]") -> "T":
-    return asyncio.run(coro)
 
 
 async def _ntp_synced() -> bool:

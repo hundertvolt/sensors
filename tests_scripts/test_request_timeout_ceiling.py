@@ -13,7 +13,10 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
+
+from buildgen.validate import device_max_connections, webserver_init_default
 
 # Join bounds on the loopback fixtures' threads below.
 # @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0
@@ -120,10 +123,7 @@ def per_call_timeout_s(repo_root: Path) -> float:
 
 
 def _largest_shipped_ceiling(repo_root: Path) -> int:
-    from buildgen.validate import device_max_connections, webserver_init_default
-
-    shipped = [p for p in (repo_root / "devices").glob("*.toml") if not p.name.startswith("zz_test_")]
-    return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(p, repo_root / "src") for p in shipped])
+    return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(device_toml(d), repo_root / "src") for d in DEVICE_NAMES])
 
 
 def test_the_ceiling_probe_can_walk_its_whole_limit_inside_the_servers_own_timeouts(repo_root: Path, outer_cap_s: float, per_call_timeout_s: float) -> None:

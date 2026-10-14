@@ -10,25 +10,31 @@ import functools
 import json
 import re
 import shutil
-from datetime import datetime
+import subprocess
+import sys
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
-from _toml_fixtures import base_doc, write_doc
+from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
 import buildgen.generate as generate_module
-from buildgen.codegen import _Ctx, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
+from buildgen.codegen import _Ctx, _identifier, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
-from buildgen.generate import GeneratedDevice, generate_device
+from buildgen.generate import GeneratedDevice, generate_device, main
 from buildgen.graph import build_construction_order
 from buildgen.model import DeviceModel, TomlDoc, instance_label
 from buildgen.validate import _WDT_TIMEOUT_MS, SETTINGS_GROUPS, build_model, module_int_const
 from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,8 +55,8 @@ def fixtures_dir(repo_root: Path) -> Path:
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+def test_real_device_generates_syntactically_valid_module(device: str) -> None:
+    result = _real(device)
     tree = ast.parse(result.module_source, filename=f"sensortask_{device}.py")
     assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "build_system" for n in tree.body)
     assert any(isinstance(n, ast.AsyncFunctionDef) and n.name == "main" for n in tree.body)
@@ -60,7 +66,7 @@ def test_real_device_generates_syntactically_valid_module(repo_root: Path, src_d
 @functools.cache
 def _real(device: str) -> GeneratedDevice:
     # One generation per real device for the read-only pins below; a test that mutates builds its own.
-    return generate_device(_REPO_ROOT / "devices" / f"{device}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
+    return generate_device(device_toml(device), _REPO_ROOT / "src", _REPO_ROOT / "ext")
 
 
 def _body(source: str) -> "list[ast.stmt]":
@@ -417,8 +423,7 @@ _EMITTED_FUNCTIONS = frozenset({"build_system", "main", "_gmtimestruct_to_dict",
 @functools.cache
 def _all_sources(name: str) -> "tuple[str, str, str]":
     # The module and both boot entries of a real device or a buildgen fixture.
-    toml = _REPO_ROOT / "devices" / f"{name}.toml" if name in DEVICE_NAMES else _REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml"
-    result = generate_device(toml, _REPO_ROOT / "src", _REPO_ROOT / "ext")
+    result = _real(name) if name in DEVICE_NAMES else generate_device(_REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
     return result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source
 
 
@@ -496,8 +501,8 @@ def test_an_optional_value_wiring_field_left_out_renders_no_keyword(tmp_path: Pa
     assert text.count("# @value-wiring humidity_source humidity required") == 1
     path.write_text(text.replace("# @value-wiring humidity_source humidity required", "# @value-wiring humidity_source humidity optional"), encoding="utf-8")
     doc = base_doc()
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
-    del sgp40["wiring"]["humidity_source"]
+    sgp40 = instance_of(doc, "sgp40")
+    del table_at(sgp40, "wiring")["humidity_source"]
     source = generate_device(write_doc(tmp_path, "optional_value_wiring", doc), src, ext_dir).module_source
     compile(source, "sensortask_optional_value_wiring.py", "exec")
     (call,) = _calls(_function(source, "build_system").body, "SGP40_Reader")
@@ -537,7 +542,7 @@ def test_a_device_without_any_bus_generates(tmp_path: Path, src_dir: Path, ext_d
     doc = base_doc()
     del doc["bus"]
     doc["instance"] = [{"driver": "neopixel", "pin": 15}]
-    del doc["device"]["wiring"]["fram_target"]
+    del table_at(doc, "device", "wiring")["fram_target"]
     result = generate_device(write_doc(tmp_path, "busless", doc), src_dir, ext_dir)
     compile(result.module_source, "sensortask_busless.py", "exec")
     assert not [n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func).startswith("asy_") and ast.unparse(n.func).endswith(("I2C", "SPI", "UART"))]
@@ -551,7 +556,7 @@ def _uart_bus_calls(source: str) -> "dict[str, str]":
 def _uart_link_model(src_dir: Path) -> DeviceModel:
     # The device carrying a uart_link pair, chosen by that property, never by name.
     (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
-    model = build_model(_REPO_ROOT / "devices" / f"{device}.toml", src_dir)
+    model = build_model(device_toml(device), src_dir)
     build_construction_order(model)
     return model
 
@@ -588,9 +593,9 @@ def test_real_device_without_a_crc_key_imports_no_crc_and_passes_none(device: st
 def test_real_device_passes_each_uart_bus_its_stated_rx_ring(device: str) -> None:
     result = _real(device)
     calls = _uart_bus_calls(result.module_source)
-    for bus, table in _toml_tables(result.model.doc, "bus").items():
+    for bus, bus_table in _toml_tables(result.model.doc, "bus").items():
         if bus.startswith("uart"):
-            stated = table.get("rx_ring")
+            stated = bus_table.get("rx_ring")
             assert (f"rx_ring={stated}" in calls[bus]) if stated is not None else ("rx_ring=" not in calls[bus]), calls[bus]
 
 
@@ -605,9 +610,8 @@ def test_an_unstated_rx_ring_is_left_to_the_uart_constructor_default(src_dir: Pa
 
 
 def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
-    tables = doc.get(key, {})
-    assert isinstance(tables, dict) and all(isinstance(table, dict) for table in tables.values())
-    return cast("dict[str, TomlDoc]", tables)
+    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
+    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
 
 
 def _uart_link_lines(source: str) -> "dict[str, ast.Call]":
@@ -642,7 +646,7 @@ def test_real_device_links_keep_the_protocol_default_limits(src_dir: Path, devic
 def test_a_crc_mode_named_on_both_ends_of_the_bench_link_reaches_both_uart_buses(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # The device carrying the uart_link pair, its TOML copied with crc = "crc16" on both links.
     (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
-    text = (_REPO_ROOT / "devices" / f"{device}.toml").read_text(encoding="utf-8")
+    text = device_toml(device).read_text(encoding="utf-8")
     edited = re.sub(r'^(driver = "uart_link"\n)', r'\1crc = "crc16"\n', text, flags=re.MULTILINE)
     assert edited.count('crc = "crc16"') == 2
     path = tmp_path / f"{device}.toml"
@@ -655,17 +659,17 @@ def test_a_crc_mode_named_on_both_ends_of_the_bench_link_reaches_both_uart_buses
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_boot_entry_imports_the_right_module(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+def test_real_device_boot_entry_imports_the_right_module(device: str) -> None:
+    result = _real(device)
     assert f"from sensortask_{device} import main" in result.boot_entry_source
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(src_dir: Path, ext_dir: Path, device: str) -> None:
     # Part L.7: buildgen.version is the one source of truth for the two version constants, and
     # the build date is explicitly injected rather than computed on-device - which is what lets
     # this assert an exact match instead of a moving "now".
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
+    result = generate_device(device_toml(device), src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
     assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
     assert result.module_source.count("_WEBSITE_VERSION = const(") == 1
     assert result.module_source.count("_BUILD_DATE = const(") == 1
@@ -678,12 +682,25 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(repo
     assert result.module_source.count('"FirmwareVersion": _FIRMWARE_VERSION') == 1
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
-    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", result.module_source)
+def _build_date_problems(module_source: str, now: datetime) -> "list[str]":
+    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", module_source)
     assert match is not None
-    datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+    stamp = datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+    if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
+        return [f"the build date {match.group(1)} is not timezone-aware UTC"]
+    return [] if abs(now - stamp) <= timedelta(minutes=1) else [f"the build date {match.group(1)} is not within a minute of the generation time {now:%Y-%m-%dT%H:%M:%SZ}"]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(device_toml(device), src_dir, ext_dir)
+    assert _build_date_problems(result.module_source, datetime.now(UTC)) == []
+
+
+@pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
+def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
+    # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
+    assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
 
 
 def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
@@ -692,8 +709,8 @@ def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_main_starts_read_triggers_apart_from_the_timer_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+def test_real_device_main_starts_read_triggers_apart_from_the_timer_starters(device: str) -> None:
+    result = _real(device)
     main = ast.unparse(_function(result.module_source, "main"))
     assert "await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())" in main
     # start_timers() awaits its own stagger inline, so the old completion flag has no reader left.
@@ -740,9 +757,9 @@ def test_real_device_renders_each_wired_warn_schema_unchanged_and_bare_annotated
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(device: str) -> None:
     # One response, one consistent snapshot: every address and the RSSI come from conn.get_data()'s tuple.
-    fn = _function(generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source, "_networking_status")
+    fn = _function(_real(device).module_source, "_networking_status")
     calls = [ast.unparse(n.func) for n in ast.walk(fn) if isinstance(n, ast.Call)]
     assert calls.count("conn.get_data") == 1
     assert not [c for c in calls if c.startswith("conn.") and c not in ("conn.get_data", "conn.get_wifi_uptime")], calls
@@ -756,8 +773,8 @@ def test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio(repo
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_status_reads_the_webservers_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    fn = _function(generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source, "_networking_status")
+def test_real_device_networking_status_reads_the_webservers_drop_window(device: str) -> None:
+    fn = _function(_real(device).module_source, "_networking_status")
     returned = next(n.value for n in ast.walk(fn) if isinstance(n, ast.Return))
     assert isinstance(returned, ast.Dict)
     entries = {k.value: ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
@@ -765,9 +782,9 @@ def test_real_device_networking_status_reads_the_webservers_drop_window(repo_roo
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_led_callback_takes_the_validated_values_and_only_signals(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_led_callback_takes_the_validated_values_and_only_signals(device: str) -> None:
     # The webserver validates R/G/B/T against its own schemas, so the callback is a plain hand-over.
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+    source = _real(device).module_source
     fn = _function(source, "_notification_led_callback")
     assert ast.unparse(fn.args) == "r: int, g: int, b: int, t: float"
     assert fn.returns is not None and ast.unparse(fn.returns) == "bool"
@@ -776,8 +793,8 @@ def test_real_device_led_callback_takes_the_validated_values_and_only_signals(re
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(device: str) -> None:
+    source = _real(device).module_source
     call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "WebserverService")
     assert [k.arg for k in call.keywords] == ["routes", "serving", "uptime_s", "static", "log"]
     assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
@@ -798,9 +815,9 @@ def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dns_fallback(device: str) -> None:
     # HotspotPW reconnects with the identity group; DNSFallback needs no hook, the next NTP attempt reads it.
-    source = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir).module_source
+    source = _real(device).module_source
     assert _settings_groups(source, "networking") == [
         ("conn", ("SSID", "PW", "Country", "Hostname", "HotspotPW"), {"post_fct": "conn.reconnect_wifi"}),
         ("conn", ("LEDWifiOn",), {}),
@@ -810,16 +827,29 @@ def test_real_device_networking_settings_publish_the_hotspot_password_and_the_dn
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_writable(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_writable(src_dir: Path, device: str) -> None:
     # One source: the page's writable fields are what its PUT route's settings groups accept, group by
     # group on Networking (HotspotPW in identity, DNSFallback alone) and as one set on System.
-    toml = repo_root / "devices" / f"{device}.toml"
-    source = generate_device(toml, src_dir, ext_dir).module_source
+    toml = device_toml(device)
+    source = _real(device).module_source
     sections = {s["key"]: s for s in json.loads(json.dumps(definitions_for_toml(toml, src_dir)))["sections"]}
     shown = {page: [tuple(f["key"] for f in g["fields"] if f.get("kind") != "readonly" and not f.get("dispatch")) for g in sections[page]["groups"] if "fields" in g] for page in ("networking", "system")}
     accepted = {page: [fields for _module, fields, _hooks in _settings_groups(source, page)] for page in ("networking", "system")}
     assert shown["networking"] == accepted["networking"]
     assert sorted(k for group in shown["system"] for k in group) == sorted(k for group in accepted["system"] for k in group)
+
+
+@pytest.fixture(scope="module")
+def triggers_src(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "Callable[[tuple[str, ...]], Path]":
+    # One copy per driver set for the module, so the device-parametrized tests share its writes and its parses.
+    copies: dict[tuple[str, ...], Path] = {}
+
+    def copy_for(drivers: "tuple[str, ...]") -> Path:
+        if drivers not in copies:
+            copies[drivers] = _src_with_read_triggers(repo_root / "src", tmp_path_factory.mktemp("triggers"), drivers)
+        return copies[drivers]
+
+    return copy_for
 
 
 def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
@@ -848,16 +878,27 @@ def _trigger_modules(source: str) -> "list[str]":
     return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
 
 
-@pytest.mark.parametrize(
-    ("device", "expected"),
-    # dev: sgp40 and isl29125 share i2c1, bmp3xx sits alone on i2c0 - slots 0, 250, 500 ms;
-    # wozi: sgp40 and bmp3xx share i2c1 (scd30 keeps its own tick) - slots 0, 333 ms.
-    [("dev", ["sgp40", "bmp3xx", "isl29125"]), ("wozi", ["sgp40", "bmp3xx"])],
-)
-def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str, expected: "list[str]") -> None:
-    src = _src_with_read_triggers(src_dir, tmp_path, ("bmp3xx", "isl29125", "sgp40"))
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src, ext_dir)
-    assert _trigger_modules(result.module_source) == expected
+_TRIGGER_DRIVERS = ("bmp3xx", "isl29125", "sgp40")
+# Every device declaring two or more of them: its trigger order is a choice between bus groups.
+_SPREAD_DEVICES = [d for d in DEVICE_NAMES if sum(d in devices_with(driver) for driver in _TRIGGER_DRIVERS) >= 2]
+
+
+def _expected_spread(model: DeviceModel) -> "list[str]":
+    # The device's trigger readers in construction order with their TOML buses, through trigger_spread()
+    # (the rule itself is pinned on synthetic input below): the device's order is data, never a literal here.
+    keys = [k for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
+    return trigger_spread([(instance_label(k), str(model.instances[k].fields["bus"])) for k in keys])
+
+
+def test_the_spread_reaches_a_real_device() -> None:
+    assert _SPREAD_DEVICES, f"no device declares two of {_TRIGGER_DRIVERS}, so the spread below orders nothing"
+
+
+@pytest.mark.parametrize("device", _SPREAD_DEVICES)
+def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
+    src = triggers_src(_TRIGGER_DRIVERS)
+    result = generate_device(device_toml(device), src, ext_dir)
+    assert _trigger_modules(result.module_source) == _expected_spread(result.model)
     assert "scd30" not in _trigger_modules(result.module_source)
 
 
@@ -874,9 +915,9 @@ def _fram_var(result: GeneratedDevice) -> str:
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])
-def test_real_device_collects_the_fram_managers_starters(repo_root: Path, src_dir: Path, ext_dir: Path, device: str, collector: str) -> None:
+def test_real_device_collects_the_fram_managers_starters(device: str, collector: str) -> None:
     # A declared chip that fails setup escalates through its supervised task like any other chip.
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    result = _real(device)
     assert _fram_var(result) in _collected_modules(result.module_source, collector)
 
 
@@ -893,11 +934,12 @@ def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_o
     assert trigger_spread([]) == []
 
 
-def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path) -> None:
-    src = _src_with_read_triggers(src_dir, tmp_path, ())
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_device_whose_readers_declare_no_read_triggers_collects_none(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
+    src = triggers_src(())
     for path in src.glob("asy_*_driver.py"):
         assert "def get_trigger_starters" not in path.read_text(), path.name
-    result = generate_device(repo_root / "devices" / "dev.toml", src, ext_dir)
+    result = generate_device(device_toml(device), src, ext_dir)
     assert _trigger_modules(result.module_source) == []
     assert ast.unparse(_function(result.module_source, "_collect_trigger_starters")).rstrip().endswith("return []")
 
@@ -905,7 +947,7 @@ def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root
 def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir: Path, ext_dir: Path) -> None:
     # The mandatory synthetic novel-combination fixture (Part L.1's criterion 2): existing
     # drivers in a layout no real device uses - two SCD30s, an SGP40 compensated from each,
-    # BMP3xx at its alternate address - proving generality beyond the six hand-verified files.
+    # BMP3xx at its alternate address - proving generality beyond the hand-verified device files.
     result = generate_device(fixtures_dir / "novel_combo.toml", src_dir, ext_dir)
     ast.parse(result.module_source)
     ast.parse(result.boot_entry_source)
@@ -917,8 +959,8 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
     assert "WarnHum" not in result.module_source
-    # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond dev.toml's own
-    # i2c1/GPIO6/fram-wired instance.
+    # ISL29125 on i2c0 with no fram_target - proves the driver generalizes beyond the fram-wired
+    # i2c1 instance a real device declares.
     isl_call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "ISL29125_Reader(i2c0, 3, trigger_s=5" in isl_call
     assert "log=log_ram" in isl_call
@@ -967,11 +1009,11 @@ def test_multi_instance_same_module_merges_distinct_default_extras(tmp_path: Pat
     # Here the two sgp40 instances default DIFFERENT fields, so the merged import line must
     # carry both even though neither instance alone needs both.
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    table_at(doc, "bus")["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = instance_of(doc, "sgp40")
     sgp40["name_ext"] = "a"
-    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
-    doc["instance"].append(
+    table_at(sgp40, "wiring")["humidity_source"] = {"default": True, "relative_humidity": 35}
+    array_at(doc, "instance").append(
         {
             "driver": "sgp40",
             "name_ext": "b",
@@ -1023,7 +1065,7 @@ def test_neither_ntp_nor_notification_is_handed_a_give_up_streak(tmp_path: Path,
 
 
 def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    def ntp_line(doc: "dict[str, object]", name: str) -> str:
+    def ntp_line(doc: TomlDoc, name: str) -> str:
         source = generate_device(write_doc(tmp_path, name, doc), src_dir, ext_dir).module_source
         ast.parse(source)
         return next(line for line in source.splitlines() if line.strip().startswith("ntp = NTPClient("))
@@ -1033,8 +1075,8 @@ def test_ntp_timing_carries_the_effective_backoff_pair(tmp_path: Path, src_dir: 
     # Unstated, the src/ defaults (_DEFAULT_RETRY_S/_DEFAULT_RETRY_MAX_S) are passed as literals.
     assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 10, 600)" in unstated
     assert "max_module_error" not in unstated  # NTP keeps no give-up streak (Part C.7.2)
-    doc["device"]["ntp_retry_s"] = 30
-    doc["device"]["ntp_retry_max_s"] = 900
+    table_at(doc, "device")["ntp_retry_s"] = 30
+    table_at(doc, "device")["ntp_retry_max_s"] = 900
     assert "NtpTiming(_DNS_TIMEOUT_MS, _DNS_TRIES, _NTP_FETCH_TIMEOUT_MS, 30, 900)" in ntp_line(doc, "ntp_backoff_stated")
 
 
@@ -1043,8 +1085,8 @@ def test_device_with_no_fram_target_leaves_conn_ntp_sysfunct_and_webserver_ram_o
     # has no fram instance) must build byte-for-byte as it always has - no fram= kwarg anywhere on
     # the mandatory-infra constructors, and no forced construction-order dependency on fram either.
     doc = base_doc()
-    del doc["device"]["wiring"]["fram_target"]
-    del doc["device"]["wiring"]["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
+    del table_at(doc, "device", "wiring")["fram_target"]
+    del table_at(doc, "device", "wiring")["led_target"]  # its FRAM-logged NeoPixel would rightly precede conn
     result = generate_device(write_doc(tmp_path, "device_fram_absent", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
@@ -1067,11 +1109,11 @@ def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Pa
     # different constants. default_class_name() maps the field name alone, so the import line
     # must list the class once rather than twice.
     doc = base_doc()
-    doc["bus"]["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
-    sgp40 = next(i for i in doc["instance"] if i["driver"] == "sgp40")
+    table_at(doc, "bus")["i2c1"] = {"scl_pin": 19, "sda_pin": 18, "frequency": 50000, "timeout": 200000}
+    sgp40 = instance_of(doc, "sgp40")
     sgp40["name_ext"] = "a"
-    sgp40["wiring"]["humidity_source"] = {"default": True, "relative_humidity": 35}
-    doc["instance"].append(
+    table_at(sgp40, "wiring")["humidity_source"] = {"default": True, "relative_humidity": 35}
+    array_at(doc, "instance").append(
         {
             "driver": "sgp40",
             "name_ext": "b",
@@ -1091,8 +1133,8 @@ def test_multi_instance_same_module_dedupes_identical_default_extra(tmp_path: Pa
 
 def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"] = [i for i in doc["instance"] if i["driver"] not in ("neopixel", "notification")]
-    del doc["device"]["wiring"]["led_target"]
+    doc["instance"] = [i for i in instances(doc) if i["driver"] not in ("neopixel", "notification")]
+    del table_at(doc, "device", "wiring")["led_target"]
     result = generate_device(write_doc(tmp_path, "minimal", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "notification_led=None" in result.module_source
@@ -1104,8 +1146,8 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     # SPECIFICATION.md Part L.6.2's generated-code shape: the provider is constructed inline, at the exact
     # call-site the real wiring expression would occupy, with no separate named global.
     doc = base_doc()
-    doc["instance"][4]["wiring"]["signal_sink"] = {"default": True}
-    doc["instance"][1]["wiring"]["temperature_source"] = {"default": True, "temperature": 20}
+    table_at(doc, "instance", 4, "wiring")["signal_sink"] = {"default": True}
+    table_at(doc, "instance", 1, "wiring")["temperature_source"] = {"default": True, "temperature": 20}
     result = generate_device(write_doc(tmp_path, "with_defaults", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "_DefaultSignalSink().request_signal" in result.module_source
@@ -1121,7 +1163,7 @@ def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: 
     # confirms validate.py accepts neopixel-present-but-led_target-unwired; the generated conn
     # line then passes ext_led=None.
     doc = base_doc()
-    del doc["device"]["wiring"]["led_target"]
+    del table_at(doc, "device", "wiring")["led_target"]
     result = generate_device(write_doc(tmp_path, "no_led_target", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     conn_line = next(line for line in result.module_source.splitlines() if line.strip().startswith("conn = WifiService("))
@@ -1141,7 +1183,7 @@ def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Pa
     # One LogConfig per FRAM store, built right after it; the FRAM manager itself gets the FRAM-less
     # one, and so does any module with no fram_target (here: the notification).
     doc = base_doc()
-    del doc["instance"][4]["wiring"]["fram_target"]
+    del table_at(doc, "instance", 4, "wiring")["fram_target"]
     source = generate_device(write_doc(tmp_path, "log_configs", doc), src_dir, ext_dir).module_source
     lines = [line.strip() for line in source.splitlines()]
     assert "log_ram = LogConfig(None, DEFAULT_LOG.history_length, debug)" in lines
@@ -1158,8 +1200,8 @@ def test_every_constructor_logs_through_its_fram_targets_log_config(tmp_path: Pa
 
 def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     doc = base_doc()
-    doc["instance"] = [i for i in doc["instance"] if i["driver"] != "sgp40"]
-    del doc["instance"][0]["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
+    doc["instance"] = [i for i in instances(doc) if i["driver"] != "sgp40"]
+    del table_at(doc, "instance", 0)["wiring"]  # scd30's own optional fram_target - unrelated to sgp40's removal
     result = generate_device(write_doc(tmp_path, "nosgp40", doc), src_dir, ext_dir)
     ast.parse(result.module_source)
     assert "maintenance_sensors=()," in result.module_source
@@ -1167,7 +1209,7 @@ def test_device_without_sgp40_omits_maintenance_sensors(tmp_path: Path, src_dir:
 
 def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    del doc["device"]["hotspot_time_min"]
+    del table_at(doc, "device")["hotspot_time_min"]
     path = write_doc(tmp_path, "broken_device", doc)
     with pytest.raises(BuildError) as exc_info:
         generate_device(path, src_dir)
@@ -1175,30 +1217,25 @@ def test_build_error_reports_device_and_field(tmp_path: Path, src_dir: Path) -> 
     assert "hotspot_time_min" in str(exc_info.value)
 
 
-def test_cli_writes_module_and_boot_entry_to_out_dir(repo_root: Path, tmp_path: Path) -> None:
-    from buildgen.generate import main
-
+def test_cli_writes_module_and_boot_entry_to_out_dir(tmp_path: Path) -> None:
+    device = DEVICE_NAMES[0]
     out_dir = tmp_path / "out"
-    exit_code = main([str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out_dir)])
+    exit_code = main([str(device_toml(device)), "--out-dir", str(out_dir)])
     assert exit_code == 0
-    assert sorted(p.name for p in out_dir.iterdir()) == ["sensortask_wozi.py", "sensortask_wozi_main.py", "sensortask_wozi_main_noautostart.py"]
-    ast.parse((out_dir / "sensortask_wozi.py").read_text())
+    assert sorted(p.name for p in out_dir.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
+    ast.parse((out_dir / f"sensortask_{device}.py").read_text())
 
 
-def test_cli_prints_module_source_without_out_dir(repo_root: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from buildgen.generate import main
-
-    exit_code = main([str(repo_root / "devices" / "wozi.toml")])
+def test_cli_prints_module_source_without_out_dir(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main([str(device_toml(DEVICE_NAMES[0]))])
     assert exit_code == 0
     captured = capsys.readouterr()
     assert "async def build_system(" in captured.out
 
 
 def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from buildgen.generate import main
-
     doc = base_doc()
-    del doc["device"]["hotspot_time_min"]
+    del table_at(doc, "device")["hotspot_time_min"]
     path = write_doc(tmp_path, "broken_device", doc)
     exit_code = main([str(path), "--src-dir", str(Path(__file__).resolve().parent.parent / "src")])
     assert exit_code == 1
@@ -1211,12 +1248,14 @@ def test_cli_reports_build_error_on_stderr_and_exits_nonzero(tmp_path: Path, cap
     assert "Traceback" not in captured.err
 
 
-def test_hostname_and_hotspot_password_are_wired_into_generated_code(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_hostname_and_hotspot_password_are_wired_into_generated_code(device: str) -> None:
     # The inverse of the tripwire this replaces: hostname and hotspot_password were validated
     # and then reached nothing, so every device booted as the shared "SensorNode". They are
     # passed to WifiService now, as the two persisted fields' per-device defaults.
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "WifiConfig('SensorStationWozi', '12345678', " in result.module_source
+    stated = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))["device"]
+    result = _real(device)
+    assert f"WifiConfig({stated['hostname']!r}, {stated['hotspot_password']!r}, " in result.module_source
     ast.parse(result.module_source)
 
 
@@ -1224,16 +1263,16 @@ def test_bmp3xx_trigger_s_is_rendered_into_the_constructor_call(tmp_path: Path, 
     # trigger_s is declared only on scd30 in every real device and fixture; this pins bmp3xx's own
     # trigger_s rendering, which its @limits domain depends on.
     doc = base_doc()
-    doc["instance"].append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": 42, "wiring": {"fram_target": "fram"}})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0", "address": 0x77, "trigger_s": 42, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "trigger_s=42" in result.module_source
     ast.parse(result.module_source)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
-def test_real_device_constructs_scd30_with_the_boot_config_path(repo_root: Path, src_dir: Path, ext_dir: Path, device: str) -> None:
+def test_real_device_constructs_scd30_with_the_boot_config_path(device: str) -> None:
     # SCD30 keeps its three FRC readiness settings in a config file, so it is built like the other config readers.
-    result = generate_device(repo_root / "devices" / f"{device}.toml", src_dir, ext_dir)
+    result = _real(device)
     calls = [line for line in result.module_source.splitlines() if "SCD30_Reader(" in line]
     assert calls, f"{device} constructs no SCD30_Reader - the check holds nothing"
     for call in calls:
@@ -1244,8 +1283,8 @@ def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(t
     # irq_pin is a required positional arg (like scd30's own shape); trigger_s is optional (like
     # bmp3xx's own shape) - ISL29125_Reader is the one driver combining both.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": 5, "wiring": {"fram_target": "fram"}})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "trigger_s": 5, "wiring": {"fram_target": "fram"}})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "ISL29125_Reader(i2c0, 6, trigger_s=5" in result.module_source
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "log=log_fram" in call
@@ -1255,8 +1294,8 @@ def test_isl29125_irq_pin_and_trigger_s_are_rendered_into_the_constructor_call(t
 def test_isl29125_without_trigger_s_or_fram_target_omits_both(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
     # Both are optional - a device wiring neither must still generate a valid, minimal call.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     call = next(line for line in result.module_source.splitlines() if "ISL29125_Reader(" in line)
     assert "trigger_s" not in call
     assert "log=log_ram" in call
@@ -1269,8 +1308,8 @@ def test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call(tmp_pa
     # own default (omitted here) is True, the internal pull-up, for a board with no resistor of
     # its own.
     doc = base_doc()
-    doc["instance"].append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "irq_pull_up": False})
-    result = generate_device(write_doc(tmp_path, "dev", doc), src_dir, ext_dir)
+    array_at(doc, "instance").append({"driver": "isl29125", "name_ext": "", "bus": "i2c0", "irq_pin": 6, "irq_pull_up": False})
+    result = generate_device(write_doc(tmp_path, "fixture", doc), src_dir, ext_dir)
     assert "irq_pull_up=False" in result.module_source
     ast.parse(result.module_source)
 
@@ -1288,13 +1327,11 @@ def test_a_warn_signal_outside_the_catalog_reaching_codegen_is_an_internal_error
 def test_identifier_rejects_a_name_python_could_not_use(src_dir: Path) -> None:
     # A name_ext such as "a-b" reaches it through a TOML; driven directly for every kind of bad name -
     # it is the one guard standing between a bad name and generated source that would not parse.
-    from buildgen.codegen import _identifier
-
     for bad in ("class", "not-an-identifier", "9leading_digit", ""):
         with pytest.raises(BuildError, match="not usable as a generated Python identifier - fix: ") as exc_info:
-            _identifier(bad, "dev")
+            _identifier(bad, "fixture")
         assert exc_info.value.rule == "names.not-an-identifier"
-    assert _identifier("i2c0", "dev") == "i2c0"
+    assert _identifier("i2c0", "fixture") == "i2c0"
 
 
 def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -1306,7 +1343,7 @@ def test_codegen_has_no_build_recipe_for_an_unknown_driver(tmp_path: Path, src_d
     # Driven at the _build_call() level: an instance of such a driver can't be carried through a
     # whole build, because _check_required_fields() rejects a driver with no buildspec.py entry
     # long before codegen sees it.
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     spec = model.instances[("scd30", "")]
     spec.driver = "not_a_real_driver"
     assert spec.driver_info is not None
@@ -1322,7 +1359,7 @@ def test_notification_with_no_signal_sink_wiring_field_fails_loud(tmp_path: Path
     from buildgen.codegen import _build_args_notification, _Ctx
     from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     spec = model.instances[("notification", "")]
     spec.wiring_schema = tuple(wf for wf in spec.wiring_schema if wf.toml_field != "signal_sink")
     with pytest.raises(BuildInternalError, match="no signal_sink wiring field by codegen time"):
@@ -1337,7 +1374,7 @@ def test_instance_with_no_driver_info_fails_loud_at_codegen_time(tmp_path: Path,
     from buildgen.graph import build_construction_order
     from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)
     model.instances[("scd30", "")].driver_info = None
     with pytest.raises(BuildInternalError, match="driver_info unresolved by codegen time"):
@@ -1352,7 +1389,7 @@ def test_construction_order_entry_that_is_neither_a_bare_node_nor_an_instance_ke
     from buildgen.graph import build_construction_order
     from buildgen.validate import build_model
 
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     build_construction_order(model)
     mutated_order = [*model.construction_order, "bogus_node"]
     with pytest.raises(BuildInternalError, match="is not a known bare node or an instance key"):
@@ -1383,27 +1420,22 @@ def test_a_generator_bug_emitting_invalid_python_is_an_internal_error(tmp_path: 
 def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_root: Path) -> None:
     # The one real entry point a person invokes by hand. Run as a subprocess so the __main__ guard
     # and the process exit code are both genuinely exercised, not just main()'s return value.
-    import subprocess
-    import sys
-
+    device = DEVICE_NAMES[0]
     out = tmp_path / "out"
     result = subprocess.run(
-        [sys.executable, "-m", "buildgen.generate", str(repo_root / "devices" / "wozi.toml"), "--out-dir", str(out)],
+        [sys.executable, "-m", "buildgen.generate", str(device_toml(device)), "--out-dir", str(out)],
         cwd=repo_root,
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert sorted(p.name for p in out.iterdir()) == ["sensortask_wozi.py", "sensortask_wozi_main.py", "sensortask_wozi_main_noautostart.py"]
-    ast.parse((out / "sensortask_wozi.py").read_text())
+    assert sorted(p.name for p in out.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
+    ast.parse((out / f"sensortask_{device}.py").read_text())
 
 
 def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path, repo_root: Path) -> None:
-    import subprocess
-    import sys
-
-    bad = write_doc(tmp_path, "dev", {"device": {"name": "Test"}})
+    bad = write_doc(tmp_path, "fixture", {"device": {"name": "Test"}})
     result = subprocess.run(
         [sys.executable, "-m", "buildgen.generate", str(bad)],
         cwd=repo_root,
@@ -1437,7 +1469,7 @@ def test_the_stated_connection_ceiling_reaches_the_webserver_and_an_absent_one_i
     # worth anything if the same values are the ones the device is then built with.
     doc = base_doc()
     for key in ("max_connections", "backlog"):
-        doc["device"].pop(key, None)
-    doc["device"].update(stated)
+        table_at(doc, "device").pop(key, None)
+    table_at(doc, "device").update(stated)
     result = generate_device(write_doc(tmp_path, "ceiling", doc), src_dir, ext_dir)
     assert _webserver_keywords(result.module_source) == expected

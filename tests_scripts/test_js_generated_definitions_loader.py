@@ -1,13 +1,15 @@
-"""tests_js/_generated_definitions.js reads every device's definitions and REST reference from the directories
-scripts/_generate_sensortask_modules.py writes them to: the generator run against a temporary root, the
-loader's globs read as text, so a moved output fails here rather than in a browser tier."""
+"""tests_js/_generated_definitions.js reads every device's definitions, REST reference and TOML stamp from where
+scripts/_generate_sensortask_modules.py writes them: the generator run against a temporary root, the loader read as
+text, so a moved output or a reshaped stamp fails here rather than in a browser tier."""
 
+import hashlib
+import json
 import re
 from pathlib import Path
 from types import ModuleType
 
 import pytest
-from _devices import DEVICE_NAMES
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -39,6 +41,22 @@ def test_the_loader_globs_the_directory_the_generator_writes(generator: ModuleTy
     assert len(written) == 1, f"the generator wrote the {output} files into {sorted(written)} - expected exactly one directory"
     globbed = _helper_dirs(_HELPER.read_text(encoding="utf-8"), output)
     assert globbed == written, f"tests_js/_generated_definitions.js globs {sorted(globbed)}, but the generator writes {sorted(written)}"
+
+
+def test_the_loader_reads_the_toml_stamp_the_generator_writes(generator: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # One stamp, in the definitions directory the loader globs, naming every device by its stem with its TOML's sha256:
+    # the names and hashes tests_js/_generated_definitions.js compares, under the stem it reads the stamp by.
+    monkeypatch.setattr(generator, "REPO_ROOT", tmp_path)
+    for name in ("devices", "src", "ext"):
+        (tmp_path / name).symlink_to(repo_root / name)
+    assert generator.main() == 0
+    stamps = sorted(tmp_path.rglob("inputs_stamp.json"))
+    assert len(stamps) == 1, f"the generator wrote {len(stamps)} TOML stamps: {stamps}"
+    want = {device: hashlib.sha256(device_toml(device).read_bytes()).hexdigest() for device in DEVICE_NAMES}
+    assert json.loads(stamps[0].read_text(encoding="utf-8")) == {"tomls": want}
+    text = _HELPER.read_text(encoding="utf-8")
+    assert _helper_dirs(text, "definitions") == {str(stamps[0].parent.relative_to(tmp_path))}
+    assert 'stemOf(path) === "inputs_stamp"' in text, "the loader no longer reads the stamp by its stem"
 
 
 def test_the_glob_reader_bites() -> None:

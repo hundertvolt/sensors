@@ -9,8 +9,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
     T = TypeVar("T")
 
@@ -18,6 +17,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 import machine
 import network
+from _async_harness import run
 from _twin_common import Injections, StatePaths
 from launch import LaunchConfig, _apply_fault, _apply_hang, main, parse_args, parse_fault_spec
 
@@ -34,10 +34,6 @@ _LONG_DURATION_S = 4.5
 _LONG_MAIN_BOUND_S = 15
 # @tunable l2.launch_long_min_readings = 5
 _LONG_MIN_READINGS = 5
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------

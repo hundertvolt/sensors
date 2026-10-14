@@ -1,0 +1,59 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/zz-scratch-restore.test.js (2 tests | 1 failed) 159ms
+   ❯ restores after every test (2)
+     ✓ a leaves fake timers and a console spy on 5ms
+     × b sees real timers and the real console.error 152ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/zz-scratch-restore.test.js > restores after every test > b sees real timers and the real console.error
+AssertionError: expected true to be false // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz-scratch-restore.test.js/restores-after-every-test---b-sees-real-timers-and-the-real-console-error.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- false[39m
+[31m+ true[39m
+
+ ❯ tests_js/zz-scratch-restore.test.js:12:35
+     10|
+     11|     it("b sees real timers and the real console.error", () => {
+     12|         expect(vi.isFakeTimers()).toBe(false);
+       |                                   ^
+     13|         expect(vi.isMockFunction(console.error)).toBe(false);
+     14|     });
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=76f8f51a:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  15:39:14
+   Duration  2.04s (worker 80%, tests 18%, import 2%)
+
+== Summary: npm test ==
+Commit: e75d363 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 1 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/zz-scratch-restore.test.js > restores after every test > b sees real timers and the real console.error: expected true to be false // Object.is equality
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

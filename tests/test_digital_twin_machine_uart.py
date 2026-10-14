@@ -2,6 +2,7 @@
 Re-runs tests/_uart_link_contract.py's shared bodies against the twin backend, so the twin and
 mock link models can differ in fidelity but never in semantics."""
 
+import errno
 import select
 import sys
 import time
@@ -21,7 +22,7 @@ _WIRE_TIME_FLOOR_MS = 100
 _PUMP_DEADLINE_MS = 500
 
 
-def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
+def _make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
     UART._live.clear()  # each test constructs its own pair, never a shared module-level one
     a = UART(0, tx=Pin(0), rx=Pin(1), baudrate=115200)
     b = UART(1, tx=Pin(8), rx=Pin(9), baudrate=115200)
@@ -30,14 +31,28 @@ def make_link(**kwargs: "int | None") -> "tuple[UART, UART, UARTLink]":
 
 def test_twin_link_satisfies_the_shared_contract() -> None:
     for check in _uart_link_contract.ALL_CHECKS:
-        check(make_link)
+        check(_make_link)
+
+
+def test_ioctl_answers_einval_to_get_fileno() -> None:
+    # ports/rp2/machine_uart.c:694-697: every request but POLL is EINVAL, so a real poll never takes the fd path.
+    _a, b, _link = _make_link()
+    assert b.ioctl(10, 0) == -errno.EINVAL  # MP_STREAM_GET_FILENO
+
+
+def test_poll_mask_reports_what_the_link_delivered() -> None:
+    a, b, link = _make_link()
+    assert b.poll_mask(select.POLLIN | select.POLLOUT) == select.POLLOUT
+    a.write(b"x")
+    link.settle()
+    assert b.poll_mask(select.POLLIN) == select.POLLIN
 
 
 def test_a_second_instance_on_one_bus_id_supersedes_the_first() -> None:
     # Real machine.UART() re-inits the peripheral rather than refusing, so what has to be
     # modelled is that the displaced instance stops carrying bytes - a half-live one would
     # silently mis-route a whole link.
-    a, b, link = make_link()
+    a, b, link = _make_link()
     before = UART.superseded
     replacement = UART(a.id, tx=Pin(0), rx=Pin(1))
     assert UART.superseded == before + 1
@@ -87,7 +102,7 @@ def test_faster_baud_delivers_faster() -> None:
 def test_reads_pump_the_wire_without_settle() -> None:
     # ioctl()/read() advance the link themselves, so a real asyncio consumer polling in a loop
     # never needs settle() - that helper exists only for synchronous assertions.
-    a, b, _link = make_link()
+    a, b, _link = _make_link()
     a.write(b"pump")
     deadline = time.ticks_add(time.ticks_ms(), _PUMP_DEADLINE_MS)
     got = bytearray()
@@ -99,10 +114,8 @@ def test_reads_pump_the_wire_without_settle() -> None:
 
 
 def test_twin_poller_requeries_ioctl() -> None:
-    a, b, link = make_link()
+    a, b, link = _make_link()
     poller = LinkPoller(b)
-    import select
-
     assert poller.ipoll(0) == [(None, select.POLLOUT)]
     a.write(b"x")
     link.settle()
@@ -110,9 +123,7 @@ def test_twin_poller_requeries_ioctl() -> None:
 
 
 def test_twin_poller_is_not_a_real_select_poll() -> None:
-    import select
-
-    _a, b, _link = make_link()
+    _a, b, _link = _make_link()
     assert type(LinkPoller(b)).__name__ != type(select.poll()).__name__
 
 
@@ -142,7 +153,7 @@ def test_a_new_wiring_frees_every_dma_channel() -> None:
 
 def test_a_poller_asks_only_for_its_mask() -> None:
     # The driver registers POLLOUT alone; a bounded poller asking for POLLIN too would count as a receive poll.
-    _a, b, _link = make_link()
+    _a, b, _link = _make_link()
     b.rx_api_calls = 0
     assert LinkPoller(b, mask=select.POLLOUT).ipoll(0) == [(None, select.POLLOUT)]
     assert b.rx_api_calls == 0

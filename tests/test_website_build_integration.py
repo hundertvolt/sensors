@@ -2,20 +2,22 @@
 scripts/build_website.sh's staged, recursive merge - html/ + the production js/ module set, for one
 device - imports, mounts and serves correctly through a real WebserverService/Microdot() app."""
 
-# The real chain: html/ and js/ -> scripts/build_website.sh wozi (staged by scripts/_stage_website.py) ->
+# The real chain: html/ and js/ -> scripts/build_website.sh <device> (staged by scripts/_stage_website.py) ->
 # frozen_modules/frozen_html.py -> `import frozen_html` (mount on import) -> WebserverService. scripts/test.sh builds it
-# first; the import mounts /html once per process.
+# first, for the device it names; the import mounts /html once per process.
 
-import asyncio
-import json
 import sys
 
 sys.path.insert(0, "ext")
 
 import frozen_html  # mounts /html on import
+from _async_harness import run
+from _generated_tree import devices, require_fresh
 from microdot import Microdot, Request
 
 from asy_webserver_service import RouteSources, ServingLimits, StaticSite, WebserverService
+
+require_fresh()  # two tests read the generated definitions
 
 try:
     from typing import TYPE_CHECKING
@@ -23,7 +25,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
     from typing import Protocol, TypeVar
 
     T = TypeVar("T")
@@ -90,10 +91,6 @@ async def _uptime_s() -> int:  # the drop window's clock; dispatch only, no conn
     return 0
 
 
-def run(coro: "Coroutine[object, None, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
 def test_root_serves_the_real_index_html() -> None:
     _, app = _make_app()
     res = run(app.dispatch_request(_make_request(app, "GET", "/")))
@@ -106,9 +103,9 @@ def test_root_serves_the_real_index_html() -> None:
 def test_style_css_and_definitions_json_are_not_served_as_separate_files() -> None:
     # Both are inlined directly into index.html at build time now (SPECIFICATION.md Part H.7) instead of
     # being staged as their own files, so a page load needs one fewer connection. The nested dev-preview
-    # path and another device's definitions file were already never shipped this way either.
+    # path and every device's own definitions file were already never shipped this way either.
     _, app = _make_app()
-    for path in ("/style.css", "/definitions.json", "/definitions/wozi.json", "/definitions/dev.json"):
+    for path in ["/style.css", "/definitions.json"] + [f"/definitions/{device}.json" for device in devices()]:
         res = run(app.dispatch_request(_make_request(app, "GET", path)))
         assert res.status_code == 404, path
 
@@ -128,8 +125,15 @@ def test_inlined_definitions_and_stylesheet_replace_the_two_separately_staged_fi
     marker_start = '<script type="application/json" id="inlined-definitions">'
     start = body.index(marker_start) + len(marker_start)
     end = body.index("</script>", start)
-    data = json.loads(body[start:end])
-    assert data["device"]["id"] == "wozi"
+    # Text, not a parse: one generated device's own definitions file, verbatim but for the escaped "<" (the
+    # staging script's own inlining); a strict parse of that much JSON costs seconds on this port.
+    block = body[start:end]
+    matches = []
+    for device in devices():
+        with open(f"build/generated_src/definitions/{device}.json") as f:
+            if f.read().replace("<", "\\u003c") == block:
+                matches.append(device)
+    assert len(matches) == 1, matches
 
 
 def test_production_js_is_served_as_one_bundle_under_js() -> None:

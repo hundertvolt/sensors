@@ -5,7 +5,9 @@ every I2C bus on it, discovered from build/generated_src/ - a new device needs n
 import json
 import os
 
+from _async_harness import run
 from _bus_hazard_catalog import (
+    I2C_HAZARD_CATALOG,
     build_bus_occupants,
     fake,
     make_i2c,
@@ -15,7 +17,9 @@ from _bus_hazard_catalog import (
     scenario_each_occupant_never_touches_an_unexpected_address,
     scenario_general_call_does_not_disturb_concurrent_siblings,
     scenario_same_occupant_own_write_does_not_disturb_own_concurrent_read,
+    spi_adapter_for,
 )
+from _generated_tree import require_fresh
 
 try:
     from typing import TYPE_CHECKING
@@ -23,19 +27,11 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
+    from typing import Any
 
     from _bus_hazard_catalog import BusOccupant
     from machine import I2C as FakeI2C
-
-    T = TypeVar("T")
-
-import asyncio
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
 
 
 def _generated_src_dir() -> str:
@@ -46,19 +42,13 @@ def _generated_src_dir() -> str:
 
 
 def _all_device_wiring_plans() -> "list[tuple[str, dict[str, Any]]]":
-    # (device, plan) for every real devices/*.toml - discovered from whichever wiring-plan JSONs
-    # scripts/_generate_sensortask_modules.py already wrote, not a hand-kept device list, so a 7th
-    # device is picked up with zero edits here.
+    # (device, plan) for every generated device: whichever wiring plans the generator wrote, never a hand-kept list.
+    # os.listdir() and "/" joins: the Unix-port test build has no glob module and its os no os.path.
+    require_fresh()
     src_dir = _generated_src_dir()
-    # os.listdir() + manual filtering, not glob - MicroPython's Unix-port test build has no glob
-    # module (confirmed by grep: nothing under tests/ imports it, every existing directory scan
-    # here uses os.listdir(), e.g. test_ticks_rollover.py's own _SRC_DIR sweep).
     filenames = sorted(f for f in os.listdir(src_dir) if f.startswith("sensortask_") and f.endswith("_wiring_plan.json"))
     plans = []
     for filename in filenames:
-        # Plain "/".join(), not os.path.join() - MicroPython's os module has no .path submodule
-        # (confirmed by grep: nothing anywhere in tests/ uses it), and this only ever runs on the
-        # Unix port anyway (never a real device), so there's no Windows-separator concern to guard.
         with open(f"{src_dir}/{filename}") as f:
             plan = json.load(f)
         plans.append((plan["device"], plan))
@@ -67,11 +57,11 @@ def _all_device_wiring_plans() -> "list[tuple[str, dict[str, Any]]]":
 
 
 def _port_id_for_bus(bus_name: str) -> int:
-    # Bus names are always the literal TOML field value ("i2c0"/"i2c1", ...) - see
-    # buildgen.twin_wiring.compute_twin_wiring()'s own "buses" key, which is exactly this string -
-    # so the trailing digit IS the real hardware port id, not a separate fact to hand-maintain.
-    assert bus_name.startswith("i2c"), f"unexpected I2C bus key shape: {bus_name!r}"
-    return int(bus_name[len("i2c") :])
+    # Bus names are the TOML's own bus keys ("i2c0", "spi0", ... - buildgen.twin_wiring.compute_twin_wiring()'s
+    # "buses" and "spi" keys), so the trailing digit IS the hardware port id, not a separate fact to keep.
+    kind = bus_name.rstrip("0123456789")
+    assert kind in ("i2c", "spi") and bus_name[len(kind) :].isdigit(), f"unexpected bus key shape: {bus_name!r} (expected i2c<n> or spi<n>)"
+    return int(bus_name[len(kind) :])
 
 
 def _make_build_fresh(bus_name: str, attachments: "list[dict[str, Any]]") -> "Callable[[], tuple[FakeI2C, list[BusOccupant]]]":
@@ -82,6 +72,28 @@ def _make_build_fresh(bus_name: str, attachments: "list[dict[str, Any]]") -> "Ca
         return fake(i2c), build_bus_occupants(i2c, attachments)
 
     return build_fresh
+
+
+def _writers(attachments: "list[dict[str, Any]]") -> "list[str]":
+    # Each occupant whose catalog adapter has a safe write; an occupant missing from the catalog fails in its test.
+    writers = []
+    for attachment in attachments:
+        adapter = I2C_HAZARD_CATALOG.get(attachment["driver"])
+        if adapter is not None and adapter.write_once is not None:
+            writers.append(attachment["driver"])
+    return writers
+
+
+def _register_write_tests(namespace: "dict[str, object]", prefix: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
+    # One test per writer; a bus with no writer gets the one test that reports SKIP with the catalog's reason.
+    writers: list[str | None] = list(_writers(attachments))
+    for writer in writers or [None]:
+
+        def test_a_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets(writer: "str | None" = writer) -> None:
+            run(scenario_a_write_does_not_disturb_concurrent_sibling_reads(_make_build_fresh(bus_name, attachments), writer=writer))
+
+        name = "config" if writer is None else writer
+        namespace[f"{prefix}_a_{name}_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
 def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
@@ -120,10 +132,7 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
 
     namespace[f"{prefix}_all_real_occupants_concurrent_reads_stay_correct_and_genuinely_interleave"] = test_all_real_occupants_concurrent_reads_stay_correct_and_genuinely_interleave
 
-    def test_a_config_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets() -> None:
-        run(scenario_a_write_does_not_disturb_concurrent_sibling_reads(_make_build_fresh(bus_name, attachments)))
-
-    namespace[f"{prefix}_a_config_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_config_write_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
+    _register_write_tests(namespace, prefix, bus_name, attachments)
 
     def test_general_call_broadcast_does_not_disturb_concurrent_siblings_across_timing_offsets() -> None:
         run(scenario_general_call_does_not_disturb_concurrent_siblings(_make_build_fresh(bus_name, attachments)))
@@ -136,9 +145,28 @@ def _register_bus_tests(namespace: "dict[str, object]", device: str, bus_name: s
     namespace[f"{prefix}_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets"] = test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads_across_timing_offsets
 
 
+def _register_spi_bus_tests(namespace: "dict[str, object]", device: str, bus_name: str, attachments: "list[dict[str, Any]]") -> None:
+    # A lone SPI occupant's same-device hazards live with its driver (test_asy_fram_driver.py); a shared SPI bus
+    # needs every occupant in SPI_HAZARD_CATALOG first, and this test names the one missing.
+    _port_id_for_bus(bus_name)
+    if len(attachments) < 2:
+        return
+
+    def test_every_spi_occupant_has_a_hazard_adapter() -> None:
+        for attachment in attachments:
+            spi_adapter_for(attachment["driver"])
+
+    namespace[f"test_{device}_{bus_name}_every_spi_occupant_has_a_hazard_adapter"] = test_every_spi_occupant_has_a_hazard_adapter
+
+
 for _device, _plan in _all_device_wiring_plans():
     for _bus_name, _attachments in _plan["buses"].items():
         _register_bus_tests(globals(), _device, _bus_name, _attachments)
+    _spi_buses: "dict[str, list[dict[str, Any]]]" = {}
+    for _bus_name, _attachment in _plan.get("spi", {}).items():
+        _spi_buses.setdefault(_bus_name, []).append(_attachment)
+    for _bus_name, _attachments in _spi_buses.items():
+        _register_spi_bus_tests(globals(), _device, _bus_name, _attachments)
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +186,25 @@ def test_build_bus_occupants_fails_loud_for_a_driver_with_no_catalog_adapter() -
         assert "not_a_real_driver" in str(e)
         return
     raise AssertionError("build_bus_occupants() must fail loud for a driver with no I2C_HAZARD_CATALOG adapter")
+
+
+def test_a_shared_spi_bus_fails_loud_for_a_driver_with_no_catalog_adapter() -> None:
+    try:
+        spi_adapter_for("not_a_real_driver")
+    except KeyError as e:
+        assert "not_a_real_driver" in str(e)
+        return
+    raise AssertionError("spi_adapter_for() must fail loud for a driver with no SPI_HAZARD_CATALOG adapter")
+
+
+def test_a_bus_key_names_its_port_for_both_bus_kinds() -> None:
+    assert (_port_id_for_bus("i2c1"), _port_id_for_bus("spi0")) == (1, 0)
+    for bad in ("uart0", "i2c", "spix"):
+        try:
+            _port_id_for_bus(bad)
+        except AssertionError:
+            continue
+        raise AssertionError(f"{bad!r} was taken for a bus key")
 
 
 def test_address_sweep_scenario_fails_loud_for_a_driver_with_no_catalog_adapter() -> None:

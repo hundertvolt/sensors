@@ -197,6 +197,7 @@ module disagree.
 | B74 | `_blind_resyncs` stops at `_DIAG_RESYNC_STREAK` instead of counting on | Only the threshold test reads it; logging unchanged, no wire effect | applied-python |
 | B75 | A frame read that fails while the driver's `rx_overruns` rose persists `wrnno` 57 (`UART_RX_OVERRUN`) beside the frame's own code, so a receive overrun is named in the history instead of reading as a plain timeout or invalid frame | Logging only; the frame's code, the resync and the wire are unchanged | applied-python |
 | B76 | A delimited frame that decodes to a length other than one frame counts toward the mismatch diagnostic like the bytes of any other failed frame read (B26) | A receiver-side diagnostic; the frame is refused exactly as before. Relevant to A11 only | applied-python |
+| B77 | The bench link exerciser's banner (`asy_uart_link_driver.py`'s `_BANNER`, the payload its responder answers to `_CMD_BANNER` and its initiator compares) becomes `b"uart-crossover"`, naming the jumper it crosses, instead of `b"dev-uart-crossover"`; `dev` is the one device wiring `uart_link` | An application payload of the bench-only exerciser, not a protocol constant: the frame layout, `payload_size` and every accept/reject rule are unchanged, and the C side has no such banner | applied-python |
 
 ## Questions answered by construction (agent, 2026-09-11; verified over 20,010 cases, below)
 

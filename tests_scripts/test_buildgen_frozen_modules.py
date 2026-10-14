@@ -6,7 +6,7 @@ import ast
 from pathlib import Path
 
 import pytest
-from _devices import DEVICE_NAMES
+from _devices import DEVICE_NAMES, devices_with
 
 from buildgen.errors import BuildError
 from buildgen.frozen_modules import compute_frozen_modules
@@ -52,10 +52,13 @@ def src_dir(repo_root: Path) -> Path:
     return repo_root / "src"
 
 
-def test_wozi_frozen_modules_include_every_declared_driver(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    for driver_module in ("asy_scd30_driver", "asy_sgp40_driver", "asy_bmp3xx_driver", "asy_fram_manager", "asy_neopixel_driver", "asy_notification_service"):
-        assert driver_module in result.frozen_modules
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_frozen_modules_include_every_declared_driver(generated: "dict[str, GeneratedDevice]", device: str) -> None:
+    instances = generated[device].model.instances.values()
+    assert all(spec.driver_info is not None for spec in instances), "every declared instance resolves to its driver's module"
+    declared = {spec.driver_info.source_path.stem for spec in instances if spec.driver_info is not None}
+    assert declared, "sanity: a real device declares at least one instance"
+    assert sorted(declared - generated[device].frozen_modules) == []
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -81,19 +84,19 @@ def test_every_frozen_module_is_imported_by_the_generated_module_or_another_memb
     assert sorted(frozen - imported) == []
 
 
-def test_frozen_modules_include_transitive_dependency(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
+def test_frozen_modules_include_transitive_dependency(generated: "dict[str, GeneratedDevice]") -> None:
     # asy_sgp40_driver.py imports voc_algorithm.py and asy_crc_checks.py directly - the generated
-    # module imports neither, so this only passes if the transitive closure actually walks imports,
-    # not just the seed set.
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
+    # module of a device declaring an sgp40 imports neither, so this only passes if the transitive
+    # closure actually walks imports, not just the seed set.
+    result = generated[devices_with("sgp40")[0]]
     assert "voc_algorithm" not in _runtime_imports(result.module_source)
     assert "voc_algorithm" in result.frozen_modules
     assert "asy_crc_checks" in result.frozen_modules
 
 
-def test_frozen_modules_include_ext_microdot(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
-    assert "microdot" in result.frozen_modules
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_frozen_modules_include_ext_microdot(generated: "dict[str, GeneratedDevice]", device: str) -> None:
+    assert "microdot" in generated[device].frozen_modules
 
 
 def test_the_seed_keeps_only_imported_names_with_a_file(tmp_path: Path) -> None:
@@ -132,8 +135,8 @@ def test_a_module_in_the_closure_that_does_not_parse_fails_the_build(tmp_path: P
     # A src/ file the closure reaches but cannot parse is one BuildError naming the file, never a raw traceback.
     (tmp_path / "broken_dep.py").write_text("def broken(:\n")
     (tmp_path / "asy_realdep_driver.py").write_text("import broken_dep\n")
-    with pytest.raises(BuildError, match=r"^\[dev/broken_dep\] .*broken_dep\.py has a syntax error.* - fix: ") as caught:
-        compute_frozen_modules("import asy_realdep_driver\n", tmp_path, tmp_path, device="dev")
+    with pytest.raises(BuildError, match=r"^\[fixture/broken_dep\] .*broken_dep\.py has a syntax error.* - fix: ") as caught:
+        compute_frozen_modules("import asy_realdep_driver\n", tmp_path, tmp_path, device="fixture")
     assert caught.value.rule == "source.syntax-error"
 
 

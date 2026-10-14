@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from _devices import DEVICE_NAMES
 from _script_loader import load_script_module
 
 if TYPE_CHECKING:
@@ -19,21 +20,9 @@ _RUNNER = "tests/_coverage_runner.py"
 _RUN_TIMEOUT_S = 60
 
 
-def _probe(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / "probe_case.py"
-    path.write_text(body)
-    return path
-
-
-@pytest.fixture
-def settrace_bin(micropython_bin: Path) -> Path:
-    # NOT the rig binary: this runner installs sys.settrace, and build-standard is deliberately
-    # built without MICROPY_PY_SYS_SETTRACE (SPECIFICATION.md Part E.5.2). Asking the rig for it
-    # raises AttributeError, which is exactly what --coverage's own separate binary exists for.
-    path = micropython_bin.parent.parent / "build-settrace" / "micropython"
-    if not path.is_file():
-        pytest.fail(f"the --coverage variant is not built at {path} - setup_toolchain.py setup builds both")
-    return path
+def _grew(completed: "subprocess.CompletedProcess[str]") -> list[str]:
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    return [line for line in completed.stdout.splitlines() if line.startswith("GREW ")]
 
 
 def _outcome_of(fixture: "Callable[[Path], Path]", argument: Path) -> BaseException:
@@ -42,6 +31,12 @@ def _outcome_of(fixture: "Callable[[Path], Path]", argument: Path) -> BaseExcept
     with pytest.raises(BaseException) as caught:
         fixture(argument)
     return caught.value
+
+
+def _probe(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "probe_case.py"
+    path.write_text(body)
+    return path
 
 
 def test_a_missing_unix_port_fails_rather_than_skipping(repo_root: Path, tmp_path: Path) -> None:
@@ -156,9 +151,15 @@ sys.exit(0)
 """
 
 
-def _grew(completed: "subprocess.CompletedProcess[str]") -> list[str]:
-    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
-    return [line for line in completed.stdout.splitlines() if line.startswith("GREW ")]
+@pytest.fixture
+def settrace_bin(micropython_bin: Path) -> Path:
+    # NOT the rig binary: this runner installs sys.settrace, and build-standard is deliberately
+    # built without MICROPY_PY_SYS_SETTRACE (SPECIFICATION.md Part E.5.2). Asking the rig for it
+    # raises AttributeError, which is exactly what --coverage's own separate binary exists for.
+    path = micropython_bin.parent.parent / "build-settrace" / "micropython"
+    if not path.is_file():
+        pytest.fail(f"the --coverage variant is not built at {path} - setup_toolchain.py setup builds both")
+    return path
 
 
 def test_lines_run_for_the_first_time_leave_the_collected_heap_where_it_was(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
@@ -185,7 +186,7 @@ def test_every_traced_file_gets_its_line_table_up_front(repo_root: Path, settrac
     lister.write_text(source.replace("sys.exit(_run())", "print(json.dumps(sorted(_line_tables())))"))
     completed = subprocess.run([str(settrace_bin), str(lister)], cwd=repo_root, env={"MICROPYPATH": ".frozen"}, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
-    expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin") for p in (repo_root / prefix).rglob("*.py"))
+    expected = sorted(p.relative_to(repo_root).as_posix() for prefix in ("src", "digital_twin", "build/generated_src") for p in (repo_root / prefix).rglob("*.py"))
     assert json.loads(completed.stdout) == expected
 
 
@@ -197,3 +198,35 @@ def test_the_trace_functions_close_over_nothing(repo_root: Path) -> None:
     scopes = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
     nested = [getattr(inner, "name", "<lambda>") for outer in ast.walk(tree) if isinstance(outer, scopes) for inner in ast.walk(outer) if inner is not outer and isinstance(inner, scopes)]
     assert not nested, f"{_RUNNER} defines functions inside functions, each a closure on the per-line path: {nested}"
+
+
+def test_a_file_that_never_reaches_microtests_exit_fails_and_still_dumps(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    out, probe = tmp_path / "raw.json", _probe(tmp_path, "import math_helpers\nmath_helpers.dew_point(20.0, 50.0)\n")
+    completed = _run(repo_root, settrace_bin, probe, out)
+    assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+    assert f"runner: {probe} ended without microtest's exit - no trailer, or it never ran" in completed.stdout
+    assert "src/math_helpers.py" in json.loads(out.read_text())
+
+
+def test_a_raising_top_level_fails_and_its_lines_are_still_dumped(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    out, probe = tmp_path / "raw.json", _probe(tmp_path, "import math_helpers\nmath_helpers.dew_point(20.0, 50.0)\nraise RuntimeError('import-time failure')\n")
+    completed = _run(repo_root, settrace_bin, probe, out)
+    assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+    assert "RuntimeError" in completed.stdout + completed.stderr
+    assert "src/math_helpers.py" in json.loads(out.read_text()), "the lines run before the escape were lost"
+
+
+def test_an_exit_with_a_message_is_a_failure_not_a_crash_of_the_runner(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    out = tmp_path / "raw.json"
+    completed = _run(repo_root, settrace_bin, _probe(tmp_path, "import sys\nsys.exit('gave up')\n"), out)
+    assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+    assert out.is_file()
+
+
+def test_a_generated_device_modules_lines_are_traced(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    # build/generated_src/ is measured like src/: a device module imported by a test reaches the dump.
+    out, module = tmp_path / "raw.json", f"sensortask_{DEVICE_NAMES[0]}"
+    probe = _probe(tmp_path, f"import sys\nsys.path.insert(0, 'ext')\nimport {module}\nsys.exit(0)\n")  # microdot is in ext/, as the libraries add it
+    completed = _run(repo_root, settrace_bin, probe, out)
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    assert f"build/generated_src/{module}.py" in json.loads(out.read_text())

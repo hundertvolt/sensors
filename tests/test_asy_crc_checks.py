@@ -1,5 +1,7 @@
 import asyncio
 
+from _async_harness import run
+
 from asy_crc_checks import CRC8, CRC16, CRC32, CRCBase, CRCPass
 
 try:
@@ -8,14 +10,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Iterator
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+    from collections.abc import Iterator
 
 
 # ---------------------------------------------------------------------------
@@ -372,9 +367,10 @@ def test_init_negative_rejected() -> None:
 
 
 def test_init_boundary_values_accepted() -> None:
+    # CRC-8 poly 0x31 over 0x78, MSB first: from init 0x00 the register ends at 0x41, from 0xFF at 0xED.
     crc8 = CRC8()
-    assert run(crc8.add(bytearray(b"x"), init=0)) is not None
-    assert run(crc8.add(bytearray(b"x"), init=crc8._all_set)) is not None
+    assert run(crc8.add(bytearray(b"x"), init=0)) == bytearray(b"x\x41")
+    assert run(crc8.add(bytearray(b"x"), init=crc8._all_set)) == bytearray(b"x\xed")
 
 
 def test_check_rejects_invalid_init() -> None:
@@ -805,16 +801,16 @@ class _MemoryErrorOnCopyBuffer:
     def __init__(self, real: bytearray) -> None:
         self._real = real
 
-    def __len__(self) -> int:
-        return len(self._real)
+    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - _num_bytes] -
+    # a slice, returning a bytearray on the real type this stands in for.
+    def __getitem__(self, item: "slice[int, int, None]") -> bytearray:
+        raise MemoryError("simulated allocation failure")
 
     def __iter__(self) -> "Iterator[int]":
         return iter(self._real)
 
-    # check()'s only indexing is the trailing-CRC strip, bytearr[0 : len(bytearr) - _num_bytes] -
-    # a slice, returning a bytearray on the real type this stands in for.
-    def __getitem__(self, item: slice) -> bytearray:
-        raise MemoryError("simulated allocation failure")
+    def __len__(self) -> int:
+        return len(self._real)
 
 
 def test_check_lets_a_memoryerror_from_its_own_payload_copy_propagate() -> None:

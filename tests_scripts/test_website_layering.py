@@ -235,7 +235,7 @@ def test_a_breach_inside_a_comment_or_text_is_not_one(repo_root: Path, tmp_path:
     assert set(_layering_problems(copy)) - before == set()
 
 
-@pytest.mark.parametrize(("old", "expected"), [('        { property: "innerHTML" },\n', 'lacks { property: "innerHTML" }'), ("rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES },\n    },\n];", '"html/**/*.html" block')])
+@pytest.mark.parametrize(("old", "expected"), [('        { property: "innerHTML" },\n', 'lacks { property: "innerHTML" }'), ("rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES, ...COMMENT_RULES },\n    },\n];", '"html/**/*.html" block')])
 def test_the_eslint_sink_rule_bites_when_dropped(repo_root: Path, tmp_path: Path, old: str, expected: str) -> None:
     copy = _planted_copy(repo_root, tmp_path)
     config = (copy / "eslint.config.js").read_text(encoding="utf-8")

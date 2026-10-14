@@ -1,7 +1,6 @@
 """Deterministic unit tests for digital_twin/_fram_chip.py's own SPI opcode protocol (WREN/WRDI/RDSR/WRSR/READ/WRITE/RDID) and JSON persistence - independently reimplemented, not sharing tests/_fram_chip_fake.py.
 Also the chunk layer's tri-state read (asy_fram_manager.py) over that chip on the twin's own SPI bus."""
 
-import asyncio
 import json
 import os
 import sys
@@ -9,8 +8,10 @@ import sys
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
+from _async_harness import run
 from _error_codes import code
 from _fram_chip import _PAGE_SIZE, FramChip
+from _src_const import src_const
 from _tmp_scratch import TmpScratch
 
 import asy_base_classes
@@ -25,7 +26,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
     from typing import TypeVar
 
     from asy_fram_manager import FRAMChunk, FRAMTimestampedChunk
@@ -40,9 +40,8 @@ _OPCODE_READ = 0x03
 _OPCODE_WRITE = 0x02
 _OPCODE_RDID = 0x9F
 
-# The chunk layer's status-byte values (const() in asy_fram_manager.py, so not importable there).
-_STATUS_IDLE = 0x01
-_STATUS_BUSY = 0x02
+_STATUS_IDLE = src_const("src/asy_fram_manager.py", "_STATUS_IDLE")
+_STATUS_BUSY = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")
 _PAYLOAD = bytes(range(40))  # 41 bytes with its CRC8 byte: over the twin bus's 32-byte RX-overrun threshold
 _FAULT_TIMES = 64  # more chip reads than one chunk read makes: the fault lasts until cleared
 
@@ -98,10 +97,6 @@ def _read_mem24(chip: FramChip, addr: int, nbytes: int) -> bytes:
     buf = bytearray(nbytes)
     chip.readinto(buf)
     return bytes(buf)
-
-
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 async def _synced() -> bool:

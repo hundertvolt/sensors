@@ -5,6 +5,7 @@ import { buildErrcountGroup, buildFieldGroupCard, buildNavDrawer, buildSectionSh
 import { formatFieldValue } from "../js/field-format.js";
 import NTP_CLIENT_SOURCE from "../src/asy_ntp_client.py?raw";
 import { DEVICE_IDS, GENERATED_DEFINITIONS } from "./_generated_definitions.js";
+import { mustQuery } from "./_dom_helpers.js";
 
 /** @typedef {import("../js/definitions.js").FieldDef} FieldDef */
 /** @typedef {import("../js/definitions.js").FieldGroup} FieldGroup */
@@ -23,20 +24,6 @@ afterEach(() => {
         el.remove();
     }
 });
-
-/**
- * @template {Element} [T=HTMLElement]
- * @param {ParentNode} root
- * @param {string} selector
- * @returns {T}
- */
-function mustQuery(root, selector) {
-    const found = root.querySelector(selector);
-    if (found === null) {
-        throw new Error(`Expected to find "${selector}"`);
-    }
-    return /** @type {T} */ (found);
-}
 
 /**
  * Attaches `el` to the document until the test ends.

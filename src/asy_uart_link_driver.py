@@ -32,7 +32,7 @@ _NAME = const("UART")
 # nothing about a deployed unit's real behavior depends on either.
 _CMD_BANNER = const(0x01)
 _CMD_ECHO = const(0x02)
-_BANNER = const(b"dev-uart-crossover")
+_BANNER = const(b"uart-crossover")  # names the jumper it crosses, never a board variant
 # How often the initiator drives one real transfer across the jumper - nothing else on a live
 # system ever initiates one, so without this the link would sit idle and every claim about it
 # coexisting with the webserver would be a claim about an idle link (SPECIFICATION.md Part A.7).

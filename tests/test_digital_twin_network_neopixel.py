@@ -4,19 +4,9 @@ network.py's WLAN has real behavioral differences (a real, bounded connect() del
 import asyncio
 import sys
 
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
+from _async_harness import run
 from neopixel import NeoPixel
 from network import (
     AP_IF,
@@ -51,10 +41,6 @@ async def _wait_until_settled(wlan: WLAN, timeout_s: float = _WAIT_TIMEOUT_S) ->
             await asyncio.sleep_ms(_POLL_MS)
 
     await asyncio.wait_for(poll(), timeout_s)
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
 
 
 def test_wlan_starts_disconnected() -> None:
@@ -366,7 +352,6 @@ def test_neopixel_fault_injection() -> None:
         raise AssertionError("expected RuntimeError")
     except RuntimeError:
         pass
-
 
 
 def test_country_and_hostname_enforce_the_real_byte_bounds() -> None:

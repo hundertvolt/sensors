@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApp } from "../js/main.js";
+import { buildElements } from "./_dom_helpers.js";
 
 /** @type {import("../js/definitions.js").SiteDefinitions} */
 const DEFS = {
@@ -42,23 +43,6 @@ function buildFetchStub({ definitionsOk = true } = {}) {
  */
 function requestedUrls(stub) {
     return stub.mock.calls.map(([input]) => String(input));
-}
-
-function buildElements() {
-    const appShellEl = document.createElement("div");
-    const mainEl = document.createElement("main");
-    const drawerEl = document.createElement("nav");
-    const hamburgerEl = document.createElement("button");
-    const backdropEl = document.createElement("div");
-    const errorBannerEl = document.createElement("p");
-    errorBannerEl.className = "error-banner";
-    errorBannerEl.dataset.shown = "false";
-    const deviceNameEl = document.createElement("span");
-    const elements = { appShellEl, mainEl, drawerEl, hamburgerEl, backdropEl, errorBannerEl, deviceNameEl };
-    for (const el of Object.values(elements)) {
-        document.body.appendChild(el);
-    }
-    return elements;
 }
 
 /**

@@ -25,7 +25,7 @@ _TREQ_PERMANENT = 0x3F  # unpaced
 # rp2_dma.c's DEFAULT_DMA_CONFIG: quiet, unpaced, both addresses incrementing, word transfers, enabled.
 _DEFAULT_CTRL = (1 << 21) | (_TREQ_PERMANENT << 15) | (1 << 5) | (1 << 4) | (2 << 2) | 1
 # (name, lsb, width, read-only): the RP2040 CTRL_TRIG fields pack_ctrl() takes (rp2_dma.c:271-293, hardware/regs/dma.h).
-_FIELDS = (
+_CTRL_FIELDS = (
     ("enable", 0, 1, False),
     ("high_pri", 1, 1, False),
     ("size", 2, 2, False),
@@ -46,7 +46,7 @@ _FIELDS = (
 
 
 def _field(ctrl: int, name: str) -> int:
-    for field, lsb, width, _read_only in _FIELDS:
+    for field, lsb, width, _read_only in _CTRL_FIELDS:
         if field == name:
             return (ctrl >> lsb) & ((1 << width) - 1)
     raise KeyError(name)
@@ -208,7 +208,7 @@ class DMA:
 
     def pack_ctrl(self, **fields: int) -> int:
         value = fields.pop("default", _DEFAULT_CTRL | ((self.channel & 0xF) << 11))
-        for name, lsb, width, read_only in _FIELDS:
+        for name, lsb, width, read_only in _CTRL_FIELDS:
             if name not in fields:
                 continue
             given = int(fields.pop(name))
@@ -235,7 +235,7 @@ class DMA:
 
     @staticmethod
     def unpack_ctrl(value: int) -> "dict[str, int]":
-        return {name: (value >> lsb) & ((1 << width) - 1) for name, lsb, width, _read_only in _FIELDS}
+        return {name: (value >> lsb) & ((1 << width) - 1) for name, lsb, width, _read_only in _CTRL_FIELDS}
 
     @property
     def write(self) -> int:

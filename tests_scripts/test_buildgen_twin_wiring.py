@@ -1,14 +1,18 @@
-"""Tests for buildgen.twin_wiring: the digital twin's wiring-plan generator - proves digital_twin/machine.py's `configure_i2c_wiring("wozi"|"dev")` correctly loads and applies the real, freshly-generated plan (no hand-maintained literal exists anymore), plus shape/JSON-round-trip checks and the two synthetic fixtures (proving generality beyond the 6 real, hand-verified devices, same spirit as test_buildgen_definitions.py)."""
+"""Tests for buildgen.twin_wiring, the digital twin's wiring-plan generator: digital_twin/machine.py's
+configure_wiring() applies each device's freshly generated plan read back from its JSON file, the plan's
+shape, addresses read from the drivers, and the two synthetic fixtures beyond the real devices."""
 
 import ast
+import contextlib
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 import tomllib
-from _devices import DEVICE_NAMES
+from _devices import DEVICE_NAMES, device_toml, devices_with
+from _script_loader import load_script_module
 
 from buildgen import twin_wiring
 from buildgen.buildspec import BUS_KIND_BY_DRIVER, FIXED_ADDRESS_DRIVERS
@@ -17,6 +21,10 @@ from buildgen.errors import BuildError
 from buildgen.model import DeviceModel, InstanceSpec
 from buildgen.twin_wiring import compute_twin_wiring, fixed_address
 from buildgen.validate import build_model
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
 
 
 def _driver_address_const(src_dir: Path, driver: str) -> int:
@@ -40,19 +48,46 @@ def _toml_uart_pair(toml_path: Path) -> "dict[str, str] | None":
     return {f"{i['role']}_bus": i["bus"] for i in links}
 
 
+def _loaded_from(directory: Path, names: "set[str]") -> "list[str]":
+    return sorted(n for n in names if Path(getattr(sys.modules[n], "__file__", None) or "/").resolve().parent == directory)
+
+
+@contextlib.contextmanager
+def _on_path(directory: str) -> "Iterator[None]":
+    # A failing body restores too. Only the modules loaded from `directory` go: a stdlib module they
+    # imported shadows nothing, and dropping it would split one module into two copies in this process.
+    before, inserted = set(sys.modules), directory not in sys.path
+    if inserted:
+        sys.path.insert(0, directory)
+    try:
+        yield
+    finally:
+        if inserted:
+            sys.path.remove(directory)
+        for name in _loaded_from(Path(directory).resolve(), set(sys.modules) - before):
+            del sys.modules[name]
+
+
 @pytest.fixture
-def digital_twin_machine(repo_root: Path) -> Any:
+def digital_twin_machine(repo_root: Path) -> "Iterator[ModuleType]":
     # digital_twin/machine.py has no MicroPython-only import at module scope (only individual method
     # bodies do), so plain `import machine` under this suite's own CPython/pytest process works.
-    digital_twin_dir = str(repo_root / "digital_twin")
-    inserted = digital_twin_dir not in sys.path
-    if inserted:
-        sys.path.insert(0, digital_twin_dir)
-    import machine  # type: ignore[import-not-found]  # only resolvable once digital_twin_dir is on sys.path, above
+    with _on_path(str(repo_root / "digital_twin")):
+        import machine  # type: ignore[import-not-found]  # only resolvable once digital_twin/ is on sys.path, above
 
-    yield machine
-    if inserted:
-        sys.path.remove(digital_twin_dir)
+        yield machine
+
+
+@pytest.mark.parametrize("body", ["passes", "raises"])
+def test_the_twin_directory_leaves_no_module_and_no_path_entry_behind(repo_root: Path, body: str) -> None:
+    # The twin's `machine` would shadow any other `machine` a later test imports in this process.
+    twin_dir = (repo_root / "digital_twin").resolve()
+    modules, path = set(sys.modules), list(sys.path)
+    with contextlib.suppress(RuntimeError), _on_path(str(twin_dir)):
+        load_script_module(twin_dir / "machine.py", "zz_twin_machine_probe")
+        if body == "raises":
+            raise RuntimeError("a failing test body")
+    assert (_loaded_from(twin_dir, set(sys.modules) - modules), sys.path) == ([], path)
 
 
 @pytest.fixture
@@ -66,25 +101,20 @@ def src_dir(repo_root: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# configure_i2c_wiring() actually loads the real, generated plan - not a hand-typed literal
+# The twin applies each device's real, generated plan - not a hand-typed literal
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("device", ["wozi", "dev"])
-def test_configure_i2c_wiring_loads_the_real_generated_plan(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo_root: Path, src_dir: Path, digital_twin_machine: Any, device: str,
-) -> None:
-    # configure_i2c_wiring() reads the generated wiring plan relative to cwd, as every other twin
-    # consumer of that file does. This proves the load-and-apply mechanism end to end against a
-    # throwaway tree under a tmp cwd, so it needs no prior run and no hand-kept literal.
-    model = build_model(repo_root / "devices" / f"{device}.toml", src_dir)
-    expected = compute_twin_wiring(model)
-    generated_dir = tmp_path / "build" / "generated_src"
-    generated_dir.mkdir(parents=True)
-    (generated_dir / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(expected))
-    monkeypatch.chdir(tmp_path)
-    digital_twin_machine.configure_i2c_wiring(device)
-    assert digital_twin_machine._wiring_plan == expected
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_configure_wiring_applies_each_devices_real_generated_plan(tmp_path: Path, src_dir: Path, digital_twin_machine: "ModuleType", device: str) -> None:
+    # The plan file every twin consumer reads, written and read back as JSON, then applied: the twin
+    # holds exactly the generated plan, with no hand-kept literal. configure_i2c_wiring() is sugar over
+    # this call for two named profiles only, so the per-device proof goes through configure_wiring().
+    expected = compute_twin_wiring(build_model(device_toml(device), src_dir))
+    plan_file = tmp_path / f"sensortask_{device}_wiring_plan.json"
+    plan_file.write_text(json.dumps(expected), encoding="utf-8")
+    digital_twin_machine.configure_wiring(json.loads(plan_file.read_text(encoding="utf-8")))
+    assert digital_twin_machine._current_wiring_plan() == expected
 
 
 # ---------------------------------------------------------------------------
@@ -119,14 +149,14 @@ def test_at_least_one_shipped_device_wires_a_uart_pair(repo_root: Path) -> None:
     assert any(p is not None and set(p) == {"initiator_bus", "responder_bus"} for p in pairs)
 
 
-def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(repo_root: Path, src_dir: Path) -> None:
+@pytest.mark.parametrize("device", devices_with("bmp3xx"))
+def test_bmp3xx_address_is_read_from_the_toml_not_the_fixed_table(src_dir: Path, device: str) -> None:
     # bmp3xx is ADDRESS_CAPABLE, not FIXED_ADDRESS - proves compute_twin_wiring() actually reads
     # spec.fields["address"] for it rather than (incorrectly) falling back to a driver constant.
-    model = build_model(repo_root / "devices" / "wozi.toml", src_dir)
-    plan = compute_twin_wiring(model)
+    stated = [i["address"] for i in tomllib.loads(device_toml(device).read_text(encoding="utf-8"))["instance"] if i["driver"] == "bmp3xx"]
+    plan = compute_twin_wiring(build_model(device_toml(device), src_dir))
     bmp_attachments = [a for attachments in plan["buses"].values() for a in attachments if a["driver"] == "bmp3xx"]
-    assert len(bmp_attachments) == 1
-    assert bmp_attachments[0]["address"] == 0x77
+    assert [a["address"] for a in bmp_attachments] == stated
 
 
 # The fixed-address I2C drivers, derived: uart_link is fixed-address too, but has no address at all.
@@ -153,7 +183,7 @@ def test_the_plan_lists_every_declared_driver_once(repo_root: Path, src_dir: Pat
     assert compute_twin_wiring(build_model(repo_root / toml_path, src_dir))["instances"] == declared
 
 
-def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: Any) -> None:
+def test_twin_machine_has_no_chip_fake_for_an_unknown_driver_fails_loud(digital_twin_machine: "ModuleType") -> None:
     # _build_i2c_chip()'s analogue of the no-address-rule test below: an attachment naming a
     # driver the twin has no fake for must fail loud, not produce a bus with a missing device.
     # Driven directly, since the two sides are hand-kept in sync for one fixed driver set.
@@ -193,7 +223,7 @@ def test_a_fixed_address_driver_without_its_address_constant_fails_the_twin_rule
 
 
 # ---------------------------------------------------------------------------
-# Mandatory synthetic fixtures - proving generality beyond the 6 real, hand-verified devices
+# Mandatory synthetic fixtures - proving generality beyond the real, hand-verified devices
 # (mirrors test_buildgen_definitions.py's own fixture coverage)
 # ---------------------------------------------------------------------------
 

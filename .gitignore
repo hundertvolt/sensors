@@ -67,6 +67,10 @@ coverage_summary.md
 htmlcov_digital_twin/
 coverage_digital_twin.xml
 coverage_summary_digital_twin.md
+htmlcov_generated/
+coverage_summary_generated.md
+htmlcov_host/
+coverage_summary_host.md
 .coverage
 
 # Scratch config files written/removed by tests/test_asy_config_manager.py's real file-I/O tests.

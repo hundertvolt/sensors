@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 
 # Same import route tests_scripts/test_heap_map_parser.py uses for the same file: the repo has no
@@ -38,34 +39,35 @@ _PROBE_TIMEOUT_S = 120
 _ARM_LIVE = "collects"
 _ARM_SUPPRESSED = "suppressed"
 
-# The devices whose firmware-only control arm genuinely separates (agent, 2026-10-07): dev. wozi left it,
-# since its batch's firmware survivors (1,952-2,368 B) land low in both arms - suppressed median 270,304-484,192 B
-# deep, 7-10 high blocks - so no arm separates them; the other four devices build smaller batches still.
-_CONTROL_DEVICES = ("dev",)
+# Only the largest boot batch separates the arms (agent, 2026-10-07); the next largest one's survivors (1,952-2,368 B)
+# land low in both arms, suppressed median 270,304-484,192 B deep with 7-10 high blocks. So the control arm takes the
+# devices declaring the most [[instance]] tables, the largest batch read from the TOMLs (agent, 2026-10-13).
+_INSTANCE_COUNTS = {d: len(tomllib.loads(device_toml(d).read_text(encoding="utf-8")).get("instance", [])) for d in DEVICE_NAMES}
+_CONTROL_DEVICES = tuple(d for d in DEVICE_NAMES if _INSTANCE_COUNTS[d] == max(_INSTANCE_COUNTS.values()))
 
 # The control device's batch must still create this many bytes of new blocks, or its median is too thin
-# to measure: dev 5,280-5,856 B in both arms (1.29x over), wozi 1,952-2,368 B (1.73x under).
+# to measure: the largest batch 5,280-5,856 B in both arms (1.29x over), the next largest 1,952-2,368 B (1.73x under).
 _CONTROL_BATCH_NEW_BYTES_MIN = 4 * 1024
 
 _REQUIRED_MAPS = ("baseline", "batch_00", "after_batch", "after_starter_loop_end")
 
-# Every bound clears the worst reading across all six devices with the collects live, with margin, taken
+# Every bound clears the worst reading across every device with the collects live, with margin, taken
 # on the firmware's own blocks (the probe keeps the fakes' call logs empty) on the settrace-free binary.
 # Twin units (32 B blocks, x86-64) and twin-only - the board's own tripwire stays the hardware test.
 
 # The batch's median new block must sit at least this far BELOW the seam's top survivor.
-_BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 666,976 (2.17x); dev suppressed 153,280-156,128 ABOVE the seam
+_BATCH_MEDIAN_DEPTH_MIN = 300 * 1024  # worst live 666,976 (2.17x); the control device's suppressed arm 153,280-156,128 ABOVE the seam
 
-# The batch's own reach and band count: live -590 KB or lower and 0 on every device, dev suppressed
+# The batch's own reach and band count: live -590 KB or lower and 0 on every device, the control device's suppressed arm
 # +210,336-213,440 B and 112-119. Asserted live as tripwires for a module allocating high during the batch.
 
 # Both lists together: the highest new block, and the median's depth.
-_BOOT_REACH_MAX = 64 * 1024  # worst live -46,272 (below the seam); dev suppressed 185,920-189,024 (2.84x over)
-# A live tripwire only: dev suppressed still sits 746,944-778,880 B deep, so the control does not assert it.
+_BOOT_REACH_MAX = 64 * 1024  # worst live -46,272 (below the seam); the control device's suppressed arm 185,920-189,024 (2.84x over)
+# A live tripwire only: the control device's suppressed arm still sits 746,944-778,880 B deep, so the control does not assert it.
 _BOOT_MEDIAN_DEPTH_MIN = 256 * 1024  # worst live 739,680 (2.82x)
 
 # How many new blocks may sit more than this far above the seam: zero live on every device, 105-112 on
-# dev suppressed. A band near the suppressed reach counts only its edge; the slack is for one future
+# the control device's suppressed arm. A band near the suppressed reach counts only its edge; the slack is for one future
 # large allocation that genuinely cannot fit a low hole, not for a drift in placement.
 _HIGH_BAND = 32 * 1024
 # @tunable l0.boot_contiguity_high_band_blocks_max = 32
@@ -73,14 +75,14 @@ _HIGH_BAND_BLOCKS_MAX = 32
 
 # How much deeper the live arm must place than the suppressed one. A ratio between the two arms of
 # the same run, so it needs no absolute bound and no unit - the strictest thing this file asserts.
-# Measured on dev: the suppressed batch median and whole-sequence reach both sit ABOVE the seam, the live ones below.
+# Measured on the control device: the suppressed batch median and whole-sequence reach both sit ABOVE the seam, the live ones below.
 # @tunable l0.boot_contiguity_arm_depth_ratio_min = 1.5
 _ARM_DEPTH_RATIO_MIN = 1.5
 # @tunable l0.boot_contiguity_arm_reach_ratio_min = 4.0
 _ARM_REACH_RATIO_MIN = 4.0
 
 # Retention must be arm-independent: the collects change WHERE the next survivor is born, never how
-# much survives (MEASUREMENTS archive 7A.1's finding; dev's arms differ by 0.007% here). 1% is over 100x that.
+# much survives (MEASUREMENTS archive 7A.1's finding; the control device's arms differ by 0.007% here). 1% is over 100x that.
 # @tunable l0.boot_contiguity_retention_tolerance = 0.01
 _RETENTION_TOLERANCE = 0.01
 
@@ -206,7 +208,7 @@ def _blocks_above(before: HeapMap, after: HeapMap, band: int) -> int:
 def test_the_setup_batch_places_its_survivors_low(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
     # The setup list's collects (SystemService.run_setups()): each one resets the allocator's
     # free-scan index, so the next module's permanent objects take the lowest fitting holes instead
-    # of landing above the churn's high-water mark. Suppressing them takes dev's from ~925 KB below the seam to ~155 KB above.
+    # of landing above the churn's high-water mark. Suppressing them takes the control device's from ~925 KB below the seam to ~155 KB above.
     maps = boot_probe(device, _ARM_LIVE).maps
     seam, after = maps["batch_00"], maps["after_batch"]
     depth, reach = -_median(seam, after), _reach(seam, after)
@@ -313,21 +315,24 @@ def test_the_setup_list_reader_counts_the_returned_entries() -> None:
         _setup_list_length("def _collect_setups() -> list:\n    return [fram.setup, *rest]\n")
 
 
-def _uart_link_devices() -> list[str]:
-    # Every device whose wiring builds a UART link: the ones whose setup allocates receive rings.
-    return [device for device in DEVICE_NAMES if "uart_link" in json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())["instances"]]
+# Every device whose TOML declares a UART link: the ones whose setup allocates receive rings.
+_UART_LINK_DEVICES = devices_with("uart_link")
 
 
-@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_a_real_device_builds_a_uart_link() -> None:
+    # The floor of the ring check below, which runs on each of these devices and on no other.
+    assert _UART_LINK_DEVICES, "no device declares a uart_link, so no receive ring below is ever placed"
+
+
+@pytest.mark.parametrize("device", _UART_LINK_DEVICES)
 def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str) -> None:
     # Each link allocates its DMA ring in its own setup(), a unit of the one-time batch, so the placement
     # reset puts it low with the other survivors (SPECIFICATION.md I.4(f.1)), and its address never moves:
     # the same ring after the starter loop, nothing reallocated once the batch ended.
-    if device not in _uart_link_devices():
-        pytest.skip(f"{device} builds no UART link, so it has no receive ring")
     run = boot_probe(device, _ARM_LIVE)
     after_batch, after_loop = run.rings.get("after_batch", {}), run.rings.get("after_starter_loop_end", {})
     plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())
+    assert "uart_link" in plan["instances"] and plan["uart"], f"{device} declares a uart_link, yet its generated wiring plan builds no UART bus"
     assert len(after_batch) == len(plan["uart"]), f"{device}: the probe reported rings for {sorted(after_batch)}, not one per bus of the {len(plan['uart'])}-bus link"
     assert after_loop == after_batch, f"{device}: a receive ring moved or appeared after the setup batch: {after_batch} then {after_loop}"
     assert run.pool_start is not None, f"{device}: the probe's maps carry no heap start, so no ring can be placed"
@@ -365,7 +370,7 @@ def test_the_control_arm_is_never_empty() -> None:
 @pytest.mark.parametrize("device", _CONTROL_DEVICES)
 @pytest.mark.parametrize("arm", [_ARM_LIVE, _ARM_SUPPRESSED])
 def test_the_control_device_batch_creates_enough_firmware_survivors(boot_probe: Callable[[str, str], _ProbeRun], device: str, arm: str) -> None:
-    # A control device whose batch leaves only a few blocks makes the arms' medians noise, as wozi's do.
+    # A control device whose batch leaves only a few blocks makes the arms' medians noise, as the next largest batch's do.
     maps = boot_probe(device, arm).maps
     new_bytes = len(_offsets_above_seam(maps["batch_00"], maps["after_batch"])) * maps["batch_00"].block_bytes
     assert new_bytes >= _CONTROL_BATCH_NEW_BYTES_MIN, f"{device}/{arm}: the setup batch created only {new_bytes} B of new blocks, under the {_CONTROL_BATCH_NEW_BYTES_MIN} B a control median needs - it no longer measures placement"
@@ -392,7 +397,7 @@ def test_a_probe_that_logged_an_allocation_failure_fails_even_when_it_passed() -
     planted = "boot ok\n[E] SYSTEM: memory allocation failed, allocating 512 bytes\nRESULT: PASS\n"
     completed = subprocess.CompletedProcess(["probe"], 0, stdout=planted, stderr="")
     with pytest.raises(AssertionError, match="memory allocation failed, allocating 512 bytes"):
-        _checked_probe_run("wozi", _ARM_LIVE, completed)
+        _checked_probe_run("fixture_device", _ARM_LIVE, completed)
 
 
 def test_a_probe_in_which_a_task_died_fails_even_when_it_passed() -> None:
@@ -401,7 +406,7 @@ def test_a_probe_in_which_a_task_died_fails_even_when_it_passed() -> None:
     planted = "boot ok\nUNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved\nValueError: planted\nRESULT: PASS\n"
     completed = subprocess.CompletedProcess(["probe"], 0, stdout=planted, stderr="")
     with pytest.raises(AssertionError, match="a task died during the boot it measured"):
-        _checked_probe_run("wozi", _ARM_LIVE, completed)
+        _checked_probe_run("fixture_device", _ARM_LIVE, completed)
 
 
 def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_root: Path) -> None:

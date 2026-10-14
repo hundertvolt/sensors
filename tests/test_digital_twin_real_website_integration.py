@@ -3,7 +3,6 @@ frozen_html` mounts, and proves it over real HTTP: the Unix-port counterpart to
 scripts/build_firmware.py's real ARM build, which can only be compiled here, never executed."""
 
 import asyncio
-import json
 import sys
 
 sys.path.insert(0, "ext")  # reaches the real, vendored ext/microdot.py - same convention as
@@ -20,33 +19,14 @@ import _http_client  # noqa: E402
 import machine  # noqa: E402
 import run_generic_integration  # noqa: E402
 import sensortask_wozi  # noqa: E402
+from _async_harness import cancel, run_timed  # noqa: E402
+from _src_const import src_const  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
-
-# Mirrors asy_wifi_service.py's own _PHASE_STA_SEEKING/_PHASE_HOTSPOT values - same
-# not-importable-once-const()-folded reasoning as tests/test_asy_wifi_service.py's own copy; keep in
-# sync with asy_wifi_service.py's own definitions if those ever change.
-_PHASE_STA_SEEKING = 0
-_PHASE_HOTSPOT = 2
-
-try:
-    from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
-    TYPE_CHECKING = False
-
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
 
 # @tunable l2.real_website_integration_run_bound_s = 10.0
 _RUN_BOUND_S = 10.0
 # @tunable l2.real_website_integration_burst_run_bound_s = 30.0
 _BURST_RUN_BOUND_S = 30.0
-
-
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
 # Per-test config-file isolation via tests/_tmp_scratch.py - see that module's docstring and
@@ -85,14 +65,6 @@ async def _start_webserver() -> "asyncio.Task[None]":
     return task
 
 
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 def _decompress(body: "bytes | bytearray") -> bytes:
     # Same technique as test_website_build_integration.py's _decompress() - see its comment for why
     # deflate.DeflateIO(..., AUTO, ...) is the right call here.
@@ -102,6 +74,13 @@ def _decompress(body: "bytes | bytearray") -> bytes:
 
     d = deflate.DeflateIO(io.BytesIO(body), deflate.AUTO, 0, True)
     return d.read()  # type: ignore[no-any-return]
+
+
+def _wifi_phase(name: str) -> int:
+    # A connection phase of asy_wifi_service.py (a folded const()), read from its source.
+    value = src_const("src/asy_wifi_service.py", name)
+    assert isinstance(value, int), (name, value)
+    return value
 
 
 def test_real_website_root_serves_the_actual_production_index_html() -> None:
@@ -117,7 +96,7 @@ def test_real_website_root_serves_the_actual_production_index_html() -> None:
             body = _decompress(res.body)
             assert b"Sensor Station" in body  # the real prod index.html's own title
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -156,10 +135,12 @@ def test_real_website_inlined_definitions_matches_the_booted_devices_own_id() ->
             marker_start = '<script type="application/json" id="inlined-definitions">'
             start = body.index(marker_start) + len(marker_start)
             end = body.index("</script>", start)
-            data = json.loads(body[start:end])
-            assert data["device"]["id"] == "wozi"
+            # Text, not a parse (as test_website_build_integration.py): the device's generated definitions verbatim but
+            # for the escaped "<"; a strict parse of that much JSON costs seconds on this port.
+            with open("build/generated_src/definitions/wozi.json") as f:
+                assert body[start:end] == f.read().replace("<", "\\u003c")
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -177,7 +158,7 @@ def test_real_website_production_js_entry_is_served_not_the_prototype() -> None:
             assert b"installMockFetch" not in body
             assert b"definitions.json" in body
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -196,7 +177,7 @@ def test_real_website_static_mount_never_shadows_a_real_api_route() -> None:
             assert res.status_code == 200
             assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -221,14 +202,14 @@ def test_real_website_hotspot_mode_redirects_unmatched_path_to_root() -> None:
     async def scenario() -> None:
         await _boot(port)
         assert sensortask_wozi.conn is not None
-        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        sensortask_wozi.conn._conn_phase = _wifi_phase("_PHASE_HOTSPOT")
         task = await _start_webserver()
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
             assert res.status_code == 302
             assert res.headers["Location"] == "/"
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -242,7 +223,7 @@ def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() 
     async def scenario() -> None:
         await _boot(port)
         assert sensortask_wozi.conn is not None
-        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        sensortask_wozi.conn._conn_phase = _wifi_phase("_PHASE_HOTSPOT")
         task = await _start_webserver()
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/")
@@ -255,7 +236,7 @@ def test_real_website_hotspot_mode_still_serves_real_index_and_real_api_route() 
             assert res.status_code == 200
             assert set(res.json().keys()) == {"SCD30", "BMP3XX", "SGP40"}
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -270,22 +251,22 @@ def test_real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live() -
         await _boot(port)
         assert sensortask_wozi.conn is not None
         conn = sensortask_wozi.conn
-        assert conn._conn_phase == _PHASE_STA_SEEKING
+        assert conn._conn_phase == _wifi_phase("_PHASE_STA_SEEKING")
         task = await _start_webserver()
         try:
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
             assert res.status_code == 404
 
-            conn._conn_phase = _PHASE_HOTSPOT
+            conn._conn_phase = _wifi_phase("_PHASE_HOTSPOT")
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
             assert res.status_code == 302
             assert res.headers["Location"] == "/"
 
-            conn._conn_phase = _PHASE_STA_SEEKING
+            conn._conn_phase = _wifi_phase("_PHASE_STA_SEEKING")
             res = await _http_client.fetch("127.0.0.1", port, "GET", "/generate_204")
             assert res.status_code == 404
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -298,13 +279,13 @@ def test_real_website_put_to_unmatched_path_in_hotspot_mode_still_405() -> None:
     async def scenario() -> None:
         await _boot(port)
         assert sensortask_wozi.conn is not None
-        sensortask_wozi.conn._conn_phase = _PHASE_HOTSPOT
+        sensortask_wozi.conn._conn_phase = _wifi_phase("_PHASE_HOTSPOT")
         task = await _start_webserver()
         try:
             res = await _http_client.fetch("127.0.0.1", port, "PUT", "/generate_204", {})
             assert res.status_code == 405
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
@@ -343,7 +324,7 @@ def test_a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website
                 assert app_bytes > 1000, sizes
             assert len({tuple(pair) for pair in sizes}) == 1, sizes  # identical for every tab
         finally:
-            await _cancel(task)
+            await cancel(task)
 
     run_timed(scenario(), timeout_s=_BURST_RUN_BOUND_S)
 

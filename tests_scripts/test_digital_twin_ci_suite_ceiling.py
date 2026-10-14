@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
 
 from buildgen.validate import device_max_connections
 
@@ -76,8 +77,8 @@ def _ctx(ci_suite: ModuleType, tmp_path: Path) -> object:
     return ci_suite.RunContext(
         micropython_bin="/nonexistent",
         logs_dir=tmp_path,
-        device="wozi",
-        module="sensortask_wozi",
+        device="fixture_device",
+        module="sensortask_fixture_device",
         wiring_plan_path=tmp_path / "plan.json",
         drivers=frozenset(),
         gc_threshold=-1,
@@ -98,8 +99,9 @@ def stubbed_run(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> list[s
     return spawned
 
 
-def test_the_ceiling_is_buildgen_s_own_value(ci_suite: ModuleType) -> None:
-    assert ci_suite._configured_max_connections("wozi") == device_max_connections(_REPO_ROOT / "devices" / "wozi.toml", _REPO_ROOT / "src")
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_ceiling_is_buildgen_s_own_value(ci_suite: ModuleType, device: str) -> None:
+    assert ci_suite._configured_max_connections(device) == device_max_connections(device_toml(device), _REPO_ROOT / "src")
 
 
 @pytest.mark.usefixtures("json_server")
@@ -137,7 +139,7 @@ def test_run_11b_fails_a_200_without_a_parsed_json_body(ci_suite: ModuleType, st
 
 def test_an_unreadable_ceiling_fails_the_run_once_and_never_spawns(ci_suite: ModuleType, stubbed_run: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def broken(_device: str) -> int:
-        raise ValueError("devices/wozi.toml is not TOML")
+        raise ValueError("devices/fixture_device.toml is not TOML")
 
     monkeypatch.setattr(ci_suite, "_configured_max_connections", broken)
     ci_suite._run_11b_full_ceiling_concurrency(_ctx(ci_suite, tmp_path))

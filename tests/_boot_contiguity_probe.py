@@ -20,8 +20,8 @@ import time
 import machine
 import micropython
 import uctypes
-from _generated_module import boot_generated
-from _sensortask_scenarios import fram_fake_class
+from _async_harness import run
+from _generated_module import boot_generated, fram_fake_class
 
 import asy_spi_driver
 import asy_uart_driver
@@ -198,7 +198,7 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
 # sys.exit() unconditionally: the real supervised task graph leaves siblings parked in the shared
 # task queue, which hangs the interpreter at exit (CLAUDE.md's known hang cause #2).
 sys.exit(
-    asyncio.run(
+    run(
         _main(
             sys.argv[1],
             sys.argv[2],

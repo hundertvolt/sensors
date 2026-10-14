@@ -4,8 +4,9 @@ and an address sweep are replaced by same-instance concurrency, both-ends-transm
 
 import asyncio
 
+from _async_harness import run
 from _error_codes import code
-from _uart_comm_harness import Pair, PollRoundClock, accept_set, copied_out, echo_get, frames, run, transfer_limits
+from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, accept_set, copied_out, echo_get, frames, transfer_limits
 from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S, _TIMEOUT_MS, hazard_pair, register_both_crc_modes
 
 from asy_crc_checks import CRC16
@@ -18,24 +19,25 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any
 
     from _uart_comm_hazard_common import CrcMaker
     from machine import _LinkDirection as Direction  # one direction of the crossover link
 
     from asy_base_classes import PieceBuffer
+    from asy_uart_comm import ListenResult
 
 _FRAME = 5 + _PAYLOAD
 
-_CMD_ACK = 0x01
-_CMD_GET = 0x02
-_CMD_SET = 0x04
-_UID = 0
-_CMD = 1
-_SIZE = 2
-_CHUNKS = 3
-_CUR = 4
-_POS = 5
+# The wire layout of SPECIFICATION.md Part J.3 - the protocol's own copy, pinned to the module by tests_scripts/test_const_mirrors.py.
+_CMD_ACK = 0x01  # pins src/asy_uart_comm.py _CMD_ACK
+_CMD_GET = 0x02  # pins src/asy_uart_comm.py _CMD_GET
+_CMD_SET = 0x04  # pins src/asy_uart_comm.py CMD_SET
+_UID = 0  # pins src/asy_uart_comm.py _MSG_UID
+_CMD = 1  # pins src/asy_uart_comm.py _MSG_CMD
+_SIZE = 2  # pins src/asy_uart_comm.py _MSG_SIZE
+_CHUNKS = 3  # pins src/asy_uart_comm.py _MSG_CHUNKS
+_CUR = 4  # pins src/asy_uart_comm.py _MSG_CUR_CHUNK
+_POS = 5  # pins src/asy_uart_comm.py _MSG_PAYLOAD
 
 # @tunable l1.uart_comm_hazard_limit_s = 10
 _LIMIT_S = 10
@@ -98,17 +100,17 @@ def raw_frame(
     frame[_POS : _POS + len(payload)] = payload
     if crc is None:
         return bytes(frame)
-    framed = run(crc().add(frame))
+    framed = run(crc().add(frame), RUN_LIMIT_S)
     assert framed is not None
     return bytes(framed)
 
 
-def listen_once(pair: Pair, injected: bytes) -> "tuple[Any, bytes]":
+def listen_once(pair: Pair, injected: bytes) -> "tuple[ListenResult, bytes]":
     # Feeds one raw frame into the responder's receive path and returns what uart_listen() made of
     # it plus every byte it put back on the wire. The wire log is the real assertion: withholding
     # an ACK is the only way this protocol signals rejection.
     pair.fake_b.feed_rx(injected)
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     pair.link.settle()
     return result, pair.wire_from_responder()
 
@@ -132,7 +134,7 @@ def _check_two_tasks_initiating_at_once_never_interleave_frames(crc: "CrcMaker")
         listener.cancel()
         return results
 
-    results = run(scenario(), limit=_CONCURRENCY_LIMIT_S)
+    results = run(scenario(), _CONCURRENCY_LIMIT_S)
     assert results.count(True) <= 1  # at most one transaction ran; the other was refused
     pair.link.settle()
     emitted = pair.wire_from_initiator()
@@ -144,7 +146,7 @@ def _check_two_tasks_initiating_at_once_never_interleave_frames(crc: "CrcMaker")
 def _check_a_second_call_during_a_transaction_is_refused_with_a_sentinel(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
 
-    async def scenario() -> "tuple[Any, Any]":
+    async def scenario() -> "tuple[PieceBuffer | None, PieceBuffer | None]":
         listener = asyncio.create_task(pair.responder.uart_listen())
         first = asyncio.create_task(pair.initiator.uart_get(1))
         await asyncio.sleep_ms(_LOCK_TAKE_MS)  # let the first take the lock
@@ -154,7 +156,7 @@ def _check_a_second_call_during_a_transaction_is_refused_with_a_sentinel(crc: "C
         listener.cancel()
         return answer, refused
 
-    answer, refused = run(scenario(), limit=_CONCURRENCY_LIMIT_S)
+    answer, refused = run(scenario(), _CONCURRENCY_LIMIT_S)
     assert refused is None  # the sentinel, never a corrupted second transaction
     assert answer is not None
 
@@ -180,14 +182,14 @@ def _check_clear_racing_a_transaction_leaves_it_completed_or_cleanly_failed(crc:
         pair.link.settle()
         return sent, pair.wire_from_initiator()
 
-    sent, emitted = run(scenario(), limit=_CONCURRENCY_LIMIT_S)
+    sent, emitted = run(scenario(), _CONCURRENCY_LIMIT_S)
     assert sent in (True, False)  # a definite answer either way
     assert len(emitted) % wire_frame(crc) == 0  # never a partial frame left on the wire by the interruption
 
 
 def _check_clear_terminates_even_while_a_listener_is_parked_forever(crc: "CrcMaker") -> None:
     # The unbounded listen wait holds the bus lock, so this is the only safe interruption - and it
-    # must be bounded, which the limit= on run() is what proves.
+    # must be bounded, which the limit on run() is what proves.
     pair = hazard_pair(crc)
 
     async def scenario() -> bool:
@@ -197,7 +199,7 @@ def _check_clear_terminates_even_while_a_listener_is_parked_forever(crc: "CrcMak
         listener.cancel()
         return True
 
-    assert run(scenario(), limit=_EXCHANGE_LIMIT_S) is True
+    assert run(scenario(), _EXCHANGE_LIMIT_S) is True
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +214,7 @@ def _check_a_peer_initiating_mid_transaction_is_detected_and_both_recover(crc: "
     # A GET arrives where this side is waiting for its own ACK: the peer's violation, not noise.
     pair.fake_a.feed_rx(raw_frame(cmd=_CMD_GET, chunks=1, cur=1, crc=crc))
 
-    async def scenario() -> "tuple[bool, Any]":
+    async def scenario() -> "tuple[bool, bool]":
         first = await pair.initiator.uart_set(1, b"x")  # sees the GET instead of its ACK
         # The aborted transfer left its own chunk 1 sitting in the responder's receive path, so
         # the responder quiesces too before the link is retried - which is exactly what both sides
@@ -224,10 +226,10 @@ def _check_a_peer_initiating_mid_transaction_is_detected_and_both_recover(crc: "
         listener.cancel()
         return first, recovered
 
-    first, recovered = run(scenario(), limit=_CONCURRENCY_LIMIT_S)
+    first, recovered = run(scenario(), _CONCURRENCY_LIMIT_S)
     assert first is False
     assert recovered is True
-    counts = run(pair.initiator.get_error_counter())
+    counts = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)
     assert counts["UART_A"]["ErrCount"] > 0  # logged distinctly rather than silently absorbed
 
 
@@ -399,7 +401,7 @@ def _check_a_legal_frame_is_acknowledged_on_the_wire(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
     pair.fake_b.feed_rx(raw_frame(uid=1, cmd=_CMD_SET, size=1, chunks=2, cur=1, payload=b"\x07", crc=crc))
     pair.fake_b.feed_rx(raw_frame(uid=2, cmd=_CMD_SET, size=3, chunks=2, cur=2, payload=b"abc", crc=crc))
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     pair.link.settle()
     emitted = pair.wire_from_responder()
     assert result.cmd_id == 0x07
@@ -416,7 +418,7 @@ def _check_a_train_whose_chunks_total_changes_is_rejected_before_the_data_is_kep
     pair = hazard_pair(crc)
     pair.fake_b.feed_rx(raw_frame(uid=1, cmd=_CMD_SET, size=1, chunks=3, cur=1, crc=crc))
     pair.fake_b.feed_rx(raw_frame(uid=2, cmd=_CMD_SET, size=_PAYLOAD, chunks=2, cur=2, crc=crc))
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     assert result.cmd_id is None
     assert result.payload is None
 
@@ -425,7 +427,7 @@ def _check_a_train_with_a_stale_data_chunk_uid_is_rejected(crc: "CrcMaker") -> N
     pair = hazard_pair(crc)
     pair.fake_b.feed_rx(raw_frame(uid=10, cmd=_CMD_SET, size=1, chunks=3, cur=1, crc=crc))
     pair.fake_b.feed_rx(raw_frame(uid=99, cmd=_CMD_SET, size=_PAYLOAD, chunks=3, cur=2, crc=crc))  # not 11
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     assert result.cmd_id is None
 
 
@@ -436,7 +438,7 @@ def _check_a_three_chunk_train_ending_in_an_empty_chunk_is_rejected(crc: "CrcMak
     pair.fake_b.feed_rx(raw_frame(uid=1, cmd=_CMD_SET, size=1, chunks=3, cur=1, crc=crc))
     pair.fake_b.feed_rx(raw_frame(uid=2, cmd=_CMD_SET, size=_PAYLOAD, chunks=3, cur=2, crc=crc))
     pair.fake_b.feed_rx(raw_frame(uid=3, cmd=_CMD_SET, size=0, chunks=3, cur=3, payload=b"", crc=crc))
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     pair.link.settle()
     assert result.cmd_id is None, "a three-chunk train with an empty last chunk was delivered"
     assert len(pair.wire_from_responder()) == 2 * wire_frame(crc), "the empty last chunk was acknowledged"
@@ -464,7 +466,7 @@ def _check_a_corrupted_byte_stream_recovers_to_a_working_exchange(crc: "CrcMaker
         healthy.cancel()
         return broken, recovered
 
-    broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
+    broken, recovered = run(scenario(), _RECOVERY_LIMIT_S)
     assert broken is False
     assert recovered is True
 
@@ -486,7 +488,7 @@ def _check_a_truncated_frame_recovers_to_a_working_exchange(crc: "CrcMaker") -> 
         healthy.cancel()
         return broken, recovered
 
-    broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
+    broken, recovered = run(scenario(), _RECOVERY_LIMIT_S)
     assert broken is False
     assert recovered is True
 
@@ -506,7 +508,7 @@ def _check_injected_noise_before_a_real_frame_is_recovered_from(crc: "CrcMaker")
         healthy.cancel()
         return broken, recovered
 
-    broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
+    broken, recovered = run(scenario(), _RECOVERY_LIMIT_S)
     assert broken is False  # the noise shifts the frame, so this one cannot succeed
     assert recovered is True  # but the link is usable again afterwards
 
@@ -528,7 +530,7 @@ def _check_one_sided_silence_recovers_once_the_direction_returns(crc: "CrcMaker"
         healthy.cancel()
         return broken, recovered
 
-    broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
+    broken, recovered = run(scenario(), _RECOVERY_LIMIT_S)
     assert broken is False
     assert recovered is True
 
@@ -548,7 +550,7 @@ def _check_a_receive_overrun_recovers_to_a_working_exchange(crc: "CrcMaker") -> 
         healthy.cancel()
         return broken, recovered
 
-    broken, recovered = run(scenario(), limit=_RECOVERY_LIMIT_S)
+    broken, recovered = run(scenario(), _RECOVERY_LIMIT_S)
     assert broken is False
     assert pair.driver_b.rx_overruns == 1
     assert recovered is True
@@ -636,7 +638,7 @@ def _retention(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> None
         fake.log.append = lambda entry: None  # type: ignore[method-assign]
     clock = PollRoundClock(stall_after, stall_ms)
     with clock:
-        completed, per_transaction = run(_measure_retention(pair, clock), limit=_RETENTION_LIMIT_S)
+        completed, per_transaction = run(_measure_retention(pair, clock), _RETENTION_LIMIT_S)
     assert completed == _WARMUP + _MEASURED, completed
     # A strict zero would be brittle against interpreter-internal caches; one frame of slack still
     # catches any real per-transaction retention long before it could matter on the target.
@@ -656,7 +658,7 @@ def _check_a_long_run_of_transactions_retains_no_memory(crc: "CrcMaker") -> None
 
 def errnos(comm: UARTComm) -> "list[int]":
     # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
-    entry = run(comm.get_error_counter())[comm.name]
+    entry = run(comm.get_error_counter(), RUN_LIMIT_S)[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
 
@@ -669,7 +671,7 @@ def last_errno(comm: UARTComm) -> int:
 def _check_a_silent_peer_reports_no_ack_not_a_generic_failure(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
     pair.link.direction_from(pair.fake_b).silent = True
-    assert run(pair.with_listener(pair.initiator.uart_set(0x02, b"x"), rounds=0), limit=_LIMIT_S) is False
+    assert run(pair.with_listener(pair.initiator.uart_set(0x02, b"x"), rounds=0), _LIMIT_S) is False
     assert last_errno(pair.initiator) == code("E", "UART_NO_ACK"), f"a silent peer reported errno {last_errno(pair.initiator)}"
 
 
@@ -686,7 +688,7 @@ def _check_a_listener_whose_frame_never_arrives_reports_a_read_timeout(crc: "Crc
         await pair.responder.clear()
         await asyncio.wait_for(listener, _STEP_BOUND_S)
 
-    run(drive(), limit=_LIMIT_S)
+    run(drive(), _LIMIT_S)
     assert last_errno(pair.responder) == code("E", "TIMEOUT")
 
 
@@ -700,7 +702,7 @@ def _check_a_reentrant_call_reports_its_own_errno(crc: "CrcMaker") -> None:
         assert await pair.initiator.uart_get(0x01) is None  # refused while the first holds the link
         await asyncio.wait_for(first, _STEP_BOUND_S)
 
-    run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    run(scenario(), _EXCHANGE_LIMIT_S)
     # Read outside the coroutine: errnos() drives its own asyncio.run(), and nesting one inside a
     # running loop segfaults this interpreter rather than raising (CLAUDE.md's known segfault).
     assert code("E", "UART_REENTRANT") in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
@@ -708,7 +710,7 @@ def _check_a_reentrant_call_reports_its_own_errno(crc: "CrcMaker") -> None:
 
 def _check_a_bad_argument_reports_bad_arg_before_anything_reaches_the_wire(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
-    assert run(pair.initiator.uart_set(0x101, b"x"), limit=_STEP_BOUND_S) is False  # command id past one byte
+    assert run(pair.initiator.uart_set(0x101, b"x"), _STEP_BOUND_S) is False  # command id past one byte
     assert last_errno(pair.initiator) == code("E", "BAD_ARG")
     assert pair.wire_from_initiator() == b"", "a refused argument still put bytes on the wire"
 
@@ -717,7 +719,7 @@ def _check_an_oversized_payload_reports_payload_too_large(crc: "CrcMaker") -> No
     pair = hazard_pair(crc)
     # _CHUNKS_MAX is 255, so 254 data chunks is the ceiling; one byte past it must be refused.
     too_big = bytes(_PAYLOAD * 254 + 1)
-    assert run(pair.initiator.uart_set(0x02, too_big), limit=_EXCHANGE_LIMIT_S) is False
+    assert run(pair.initiator.uart_set(0x02, too_big), _EXCHANGE_LIMIT_S) is False
     assert last_errno(pair.initiator) == code("E", "UART_PAYLOAD_TOO_LARGE")
     assert pair.wire_from_initiator() == b"", "an oversized payload was partially sent before being refused"
 
@@ -727,7 +729,7 @@ def _check_a_peer_initiating_mid_transaction_reports_peer_initiated(crc: "CrcMak
     # A data frame where an ACK is due: the one out-of-contract case the protocol names separately,
     # because there is no arbitration and it is the peer's violation rather than link noise.
     pair.fake_a.feed_rx(raw_frame(cmd=_CMD_GET, size=1, chunks=2, cur=1, crc=crc))
-    assert run(pair.initiator.uart_get(0x01), limit=_LIMIT_S) is None
+    assert run(pair.initiator.uart_get(0x01), _LIMIT_S) is None
     assert code("E", "UART_PEER_INITIATED") in errnos(pair.initiator), f"got {errnos(pair.initiator)}"
 
 
@@ -743,7 +745,7 @@ def _check_a_size_mismatch_against_an_expected_size_reports_it_distinctly(crc: "
         + raw_frame(uid=1, cmd=_CMD_SET, size=1, chunks=2, cur=1, payload=b"\x01", crc=crc)
         + raw_frame(uid=2, cmd=_CMD_SET, size=2, chunks=2, cur=2, payload=b"vv", crc=crc),
     )
-    assert run(pair.initiator.uart_get(0x01, exp_size=5), limit=_LIMIT_S) is None
+    assert run(pair.initiator.uart_get(0x01, exp_size=5), _LIMIT_S) is None
     assert errnos(pair.initiator) == [code("E", "UART_SIZE_MISMATCH")], f"got {errnos(pair.initiator)}"
     get = raw_frame(uid=1, cmd=_CMD_GET, size=1, chunks=1, cur=1, payload=b"\x01", crc=crc)
     assert pair.wire_from_initiator() == get + ack, "the mismatched train's final chunk was acknowledged"
@@ -762,13 +764,13 @@ def _check_a_dropped_byte_mid_frame_recovers_to_a_working_exchange(crc: "CrcMake
     pair = hazard_pair(crc)
     direction = pair.link.direction_from(pair.fake_b)
     direction.drop_indices = {3}  # inside the first answer frame's header
-    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S) is None
-    assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] > 0
+    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S) is None
+    assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] > 0
 
     direction.drop_indices = set()
-    run(pair.initiator.clear(), limit=_LIMIT_S)
-    run(pair.responder.clear(), limit=_LIMIT_S)
-    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S)
+    run(pair.initiator.clear(), _LIMIT_S)
+    run(pair.responder.clear(), _LIMIT_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S)
     assert copied_out(answer) == b"v", "the link never recovered after a dropped byte"
 
 
@@ -778,12 +780,12 @@ def _check_duplicated_bytes_on_the_wire_recover_to_a_working_exchange(crc: "CrcM
     pair = hazard_pair(crc)
     direction = pair.link.direction_from(pair.fake_b)
     direction.duplicate_next = 3
-    run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S)
+    run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S)
 
     direction.duplicate_next = 0
-    run(pair.initiator.clear(), limit=_LIMIT_S)
-    run(pair.responder.clear(), limit=_LIMIT_S)
-    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S)
+    run(pair.initiator.clear(), _LIMIT_S)
+    run(pair.responder.clear(), _LIMIT_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S)
     assert copied_out(answer) == b"v", "the link never recovered after duplicated bytes"
 
 
@@ -805,9 +807,9 @@ def _check_a_frame_delivered_in_two_fragments_still_assembles(crc: "CrcMaker") -
         await asyncio.wait_for(listener, _STEP_BOUND_S)
         return answer
 
-    answer = run(scenario(), limit=_EXCHANGE_LIMIT_S)
+    answer = run(scenario(), _EXCHANGE_LIMIT_S)
     assert copied_out(answer) == b"v"
-    assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 0, (
+    assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] == 0, (
         "a fragmented but complete frame was treated as a fault"
     )
 
@@ -824,8 +826,8 @@ def _check_a_corrupted_header_byte_is_caught_by_structural_validation(crc: "CrcM
     # rejects it without needing a CRC.
     pair = hazard_pair(crc)
     pair.link.direction_from(pair.fake_b).corrupt_indices = {_CMD: 0xFF}
-    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S) is None
-    assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] > 0
+    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S) is None
+    assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] > 0
 
 
 def _answer_payload_offset(marker: int = ord("v"), crc: "CrcMaker" = None) -> int:
@@ -833,7 +835,7 @@ def _answer_payload_offset(marker: int = ord("v"), crc: "CrcMaker" = None) -> in
     # multi-frame train behind the ACK - so the payload byte's position is searched for rather than
     # computed. The sustained budget: a probe that timed out would derive an offset from a short stream.
     probe = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
-    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S) is not None, "the probe GET did not complete, so no offset can be derived from it"
+    assert run(probe.with_listener(probe.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S) is not None, "the probe GET did not complete, so no offset can be derived from it"
     wire = probe.wire_from_responder()
     offset = wire.find(bytes([marker]), wire_frame(crc))  # past the ACK frame
     assert offset > 0, f"no answer payload byte found in the responder's wire log: {wire!r}"
@@ -857,14 +859,14 @@ def _check_a_corrupted_payload_byte_is_delivered_undetected_without_a_crc(crc: "
     # which would read as "the corruption was caught" and quietly retire the claim below.
     pair = hazard_pair(crc, timeout_ms=_SUSTAINED_TIMEOUT_MS)
     pair.link.direction_from(pair.fake_b).corrupt_indices = {offset: 0xFF}
-    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S)
     wire = pair.wire_from_responder()
     # Proves the injection landed on the payload byte rather than somewhere a shifted stream put
     # it, so a future divergence names itself instead of arriving as "the frame was rejected".
     assert len(wire) > offset and wire[offset] == (ord("v") ^ 0xFF), f"the corruption did not land on the answer payload at offset {offset}: {wire!r}"
     assert answer is not None, f"no answer for a payload corruption at stream offset {offset} - this test no longer pins what it claims. Responder wire: {wire!r}"
     assert copied_out(answer) == bytes([ord("v") ^ 0xFF]), f"expected a corrupted byte, got {copied_out(answer)!r}"
-    assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] == 0, (
+    assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] == 0, (
         "a payload corruption was somehow counted - the no-CRC envelope has changed"
     )
 
@@ -880,15 +882,15 @@ def _check_with_a_crc_configured_the_same_payload_corruption_is_caught(crc: "Crc
         payload_size=_PAYLOAD, timeout=_SUSTAINED_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(),
         crc_a=CRC16(), crc_b=CRC16(),
     )
-    assert run(pair.setup()) is True
+    assert run(pair.setup(), RUN_LIMIT_S) is True
     # A byte inside the answer train, past the ACK frame. Which byte does not matter here and is
     # deliberately not pinned: the claim is that with a CRC every corruption in the frame is caught,
     # whereas the test above shows a payload byte specifically is not caught without one.
     pair.link.direction_from(pair.fake_b).corrupt_indices = {wire_frame(crc) + 7: 0xFF}
-    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S) is None, (
+    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S) is None, (
         "a CRC-protected corruption was still delivered"
     )
-    assert run(pair.initiator.get_error_counter())[pair.initiator.name]["ErrCount"] > 0
+    assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] > 0
 
 
 def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc: "CrcMaker") -> None:
@@ -900,7 +902,7 @@ def _check_a_receive_buffer_smaller_than_a_frame_is_refused_at_construction(crc:
     too_small = Driver(0, tx_pin=0, rx_pin=1, rxbuf=512, txbuf=256, rx_ring=256, poll_wait_ms=1, poll_idle_ms=1)
     comm = UARTComm(too_small, ROLE_INITIATOR, limits=transfer_limits(payload_size=255, timeout=_TIMEOUT_MS), name="UART_TINY")
     assert comm._init_errno == code("E", "UART_RXBUF"), "a receive ring below one whole frame was accepted"
-    assert run(comm.setup()) is False, "a refused construction still opened its readiness gate"
+    assert run(comm.setup(), RUN_LIMIT_S) is False, "a refused construction still opened its readiness gate"
 
 
 
@@ -924,7 +926,7 @@ def _mismatched_responder(pair: Pair, payload_size: int) -> UARTComm:
 def _check_a_payload_size_mismatch_never_delivers_wrong_data(crc: "CrcMaker") -> None:
     pair = hazard_pair(crc)
     responder = _mismatched_responder(pair, _PAYLOAD + 8)
-    assert run(responder.setup()) is True
+    assert run(responder.setup(), RUN_LIMIT_S) is True
 
     async def scenario() -> bool:
         listener = asyncio.create_task(responder.uart_listen())
@@ -939,7 +941,7 @@ def _check_a_payload_size_mismatch_never_delivers_wrong_data(crc: "CrcMaker") ->
 
     # The one configuration error the design cannot self-heal: it must fail, not deliver a
     # wrong-length payload as though it were right.
-    assert run(scenario(), limit=_MISMATCH_LIMIT_S) is False
+    assert run(scenario(), _MISMATCH_LIMIT_S) is False
     assert errnos(pair.initiator), "a payload_size mismatch produced no logged error at all"
 
 
@@ -960,11 +962,11 @@ def _check_a_peer_that_never_produces_a_valid_frame_is_diagnosed(crc: "CrcMaker"
     # counts them, so the diagnostic fires once the streak is reached (SPECIFICATION.md Part J.6).
     pair = hazard_pair(crc)
     responder = _mismatched_responder(pair, _PAYLOAD + 8)
-    assert run(responder.setup()) is True
-    run(_failed_exchanges(pair.initiator, responder, 1), limit=_RETENTION_LIMIT_S)
+    assert run(responder.setup(), RUN_LIMIT_S) is True
+    run(_failed_exchanges(pair.initiator, responder, 1), _RETENTION_LIMIT_S)
     # The diagnostic waits for a streak, so one failed exchange must not trip it and several in a row must.
     assert code("E", "UART_LINK_UNINTELLIGIBLE") not in errnos(responder), f"fired after one exchange: {errnos(responder)}"
-    run(_failed_exchanges(pair.initiator, responder, 3), limit=_RETENTION_LIMIT_S)
+    run(_failed_exchanges(pair.initiator, responder, 3), _RETENTION_LIMIT_S)
     assert code("E", "UART_LINK_UNINTELLIGIBLE") in errnos(responder), f"never fired against a mismatched peer: {errnos(responder)}"
 
 
@@ -973,7 +975,7 @@ def _check_a_peer_whose_frames_all_fail_their_crc_is_diagnosed(crc: "CrcMaker") 
     pair = hazard_pair(crc)
     to_responder = pair.link.direction_from(pair.fake_a)
     to_responder.corrupt_indices = {k * wire_frame(crc) - 1: 0x01 for k in range(1, 17)}  # each frame's last CRC byte
-    run(_failed_exchanges(pair.initiator, pair.responder, 4), limit=_RETENTION_LIMIT_S)
+    run(_failed_exchanges(pair.initiator, pair.responder, 4), _RETENTION_LIMIT_S)
     assert code("E", "UART_LINK_UNINTELLIGIBLE") in errnos(pair.responder), f"never fired against a CRC-mismatched peer: {errnos(pair.responder)}"
 
 
@@ -983,8 +985,8 @@ def _check_a_break_like_run_of_nulls_recovers_to_a_working_exchange(crc: "CrcMak
     # treat it as garbage, resync past it, and keep working.
     pair = hazard_pair(crc)
     pair.fake_a.feed_rx(bytes(wire_frame(crc) * 3))
-    run(pair.initiator.clear(), limit=_EXCHANGE_LIMIT_S)
-    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_RECOVERY_LIMIT_S)
+    run(pair.initiator.clear(), _EXCHANGE_LIMIT_S)
+    answer = run(pair.with_listener(pair.initiator.uart_get(0x01)), _RECOVERY_LIMIT_S)
     assert copied_out(answer) == b"v", "the link never recovered from a break-like null run"
 
 
@@ -1021,7 +1023,7 @@ def _recombination_check(crc: "CrcMaker", apply_faults: "Callable[[Direction, Di
         for _ in range(3):
             await _exchange_quietly(pair)
 
-    run(under_fault(), limit=_RETENTION_LIMIT_S)
+    run(under_fault(), _RETENTION_LIMIT_S)
 
     for direction in (to_initiator, to_responder):
         direction.silent = False
@@ -1030,12 +1032,12 @@ def _recombination_check(crc: "CrcMaker", apply_faults: "Callable[[Direction, Di
         direction.truncate_after = None
         direction.duplicate_next = 0
         direction.capacity = 4096
-    run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
-    run(pair.responder.clear(), limit=_RECOVERY_LIMIT_S)
+    run(pair.initiator.clear(), _RECOVERY_LIMIT_S)
+    run(pair.responder.clear(), _RECOVERY_LIMIT_S)
 
     recovered = False
     for _ in range(_RECOVERY_ATTEMPTS):  # several attempts: a resync hold-off may still be running down
-        answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+        answer = run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
         if copied_out(answer) == b"v":
             recovered = True
             break
@@ -1082,17 +1084,17 @@ def _check_silence_then_corruption_then_clean_still_converges(crc: "CrcMaker") -
     to_initiator = pair.link.direction_from(pair.fake_b)
 
     to_initiator.silent = True
-    run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+    run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
     to_initiator.silent = False
     to_initiator.corrupt_indices = {4: 0xFF}
-    run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+    run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
     to_initiator.corrupt_indices = {}
-    run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
-    run(pair.responder.clear(), limit=_RECOVERY_LIMIT_S)
+    run(pair.initiator.clear(), _RECOVERY_LIMIT_S)
+    run(pair.responder.clear(), _RECOVERY_LIMIT_S)
 
     recovered = False
     for _ in range(_RECOVERY_ATTEMPTS):
-        answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+        answer = run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
         if copied_out(answer) == b"v":
             recovered = True
             break
@@ -1143,7 +1145,7 @@ def _hammer_clean(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) -> N
 
     mid = [0]
     with clock:
-        ok, grew = run(hammer(), limit=_HAMMER_LIMIT_S)
+        ok, grew = run(hammer(), _HAMMER_LIMIT_S)
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed"
     assert not errnos(pair.initiator), f"a clean link logged errors under sustained load: {errnos(pair.initiator)}"
     # A per-transaction RATE over the span actually measured: a leak scales with the work done,
@@ -1201,7 +1203,7 @@ def _hammer_faulted(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) ->
 
     before = [0]
     with clock:  # one entry for both halves: a deadline stored on the clock stays on it
-        failures, grew = run(hammer(), limit=_HAMMER_LIMIT_S)
+        failures, grew = run(hammer(), _HAMMER_LIMIT_S)
         # The bound is per failure, so it means something only when every measured transaction failed.
         assert failures == 30, f"{failures} of the 30 measured transactions failed"
         # Same reasoning as the clean hammer, against the failure path's scale. The one-time cost absorbed in
@@ -1211,11 +1213,11 @@ def _hammer_faulted(crc: "CrcMaker", stall_after: int = 0, stall_ms: int = 0) ->
         assert per_failure < _RETENTION_PER_FAILURE_MAX_BYTES, f"{grew} bytes over 30 failures = {per_failure:.1f} B/failure"
 
         fault.clear()
-        run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
-        run(pair.responder.clear(), limit=_RECOVERY_LIMIT_S)
+        run(pair.initiator.clear(), _RECOVERY_LIMIT_S)
+        run(pair.responder.clear(), _RECOVERY_LIMIT_S)
         recovered = False
         for _ in range(_RECOVERY_ATTEMPTS):
-            answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+            answer = run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
             if copied_out(answer) == b"v":
                 recovered = True
                 break
@@ -1237,10 +1239,10 @@ def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "C
     # Every read finds its frame already waiting, so no host stall can expire a budget first (J.7):
     # the initiator runs with only the header's ACK queued, so the final one is lost by construction.
     pair.fake_a.feed_rx(first_ack)
-    assert run(pair.initiator.uart_set(0x02, b"acted-on"), limit=_LIMIT_S) is False, "a lost final ACK was reported as success"
+    assert run(pair.initiator.uart_set(0x02, b"acted-on"), _LIMIT_S) is False, "a lost final ACK was reported as success"
     assert errnos(pair.initiator) == [code("E", "UART_NO_ACK")], f"got {errnos(pair.initiator)}"
     # The responder then reads the very bytes the initiator sent, already queued on its side.
-    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+    result = run(pair.responder.uart_listen(), _LIMIT_S)
     # The asymmetry itself: the responder did the work the initiator was told failed.
     assert copied_out(result.payload) == b"acted-on", f"the responder did not actually receive the train: {result!r}"
     final_ack = raw_frame(uid=2, cmd=_CMD_ACK, size=0, chunks=1, cur=1, payload=b"", crc=crc)
@@ -1266,7 +1268,7 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
             except asyncio.TimeoutError:
                 listener.cancel()
 
-    run(cut_off_mid_train(), limit=_MISMATCH_LIMIT_S)
+    run(cut_off_mid_train(), _MISMATCH_LIMIT_S)
 
     # The peer returns as a brand-new instance: no UID history, no half-read frame, nothing.
     to_initiator.silent = False
@@ -1274,8 +1276,8 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
         pair.driver_b, ROLE_RESPONDER, limits=transfer_limits(payload_size=_PAYLOAD, timeout=pair.responder._timeout),
         callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_REBORN",
     )
-    assert run(reborn.setup()) is True  # setup() drains whatever the old instance left behind
-    run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
+    assert run(reborn.setup(), RUN_LIMIT_S) is True  # setup() drains whatever the old instance left behind
+    run(pair.initiator.clear(), _RECOVERY_LIMIT_S)
 
     async def one() -> "PieceBuffer | None":
         listener = asyncio.create_task(reborn.uart_listen())
@@ -1290,7 +1292,7 @@ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "Cr
 
     recovered = False
     for _ in range(_RECOVERY_ATTEMPTS):
-        answer = run(one(), limit=_MISMATCH_LIMIT_S)
+        answer = run(one(), _MISMATCH_LIMIT_S)
         if copied_out(answer) == b"v":
             recovered = True
             break
@@ -1304,16 +1306,16 @@ def _check_a_disconnect_then_reconnect_mid_frame_recovers(crc: "CrcMaker") -> No
     pair = hazard_pair(crc)
     to_initiator = pair.link.direction_from(pair.fake_b)
     to_initiator.truncate_after = wire_frame(crc) // 2  # cut mid-frame
-    run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+    run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
 
     to_initiator.truncate_after = None
     # Reconnection lands mid-frame: a partial frame's worth of bytes with no header at the front.
     pair.fake_a.feed_rx(bytes(range(wire_frame(crc) // 2)))
-    run(pair.initiator.clear(), limit=_RECOVERY_LIMIT_S)
+    run(pair.initiator.clear(), _RECOVERY_LIMIT_S)
 
     recovered = False
     for _ in range(_RECOVERY_ATTEMPTS):
-        answer = run(_exchange_quietly(pair), limit=_MISMATCH_LIMIT_S)
+        answer = run(_exchange_quietly(pair), _MISMATCH_LIMIT_S)
         if copied_out(answer) == b"v":
             recovered = True
             break
@@ -1327,13 +1329,13 @@ def _check_the_crc_appears_on_the_wire_big_endian_after_the_payload(crc: "CrcMak
     if crc is None:
         return  # nothing is appended without a CRC; the companion mode covers the other half
     pair = hazard_pair(crc)
-    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), limit=_EXCHANGE_LIMIT_S) is not None
+    assert run(pair.with_listener(pair.initiator.uart_get(0x01)), _EXCHANGE_LIMIT_S) is not None
     wire = pair.wire_from_initiator()
     width = crc().length()
     assert len(wire) >= wire_frame(crc)
     first = wire[:wire_frame(crc)]
     body, tail = first[:-width], first[-width:]
-    expected = run(crc().add(bytearray(body)))
+    expected = run(crc().add(bytearray(body)), RUN_LIMIT_S)
     assert expected is not None
     assert bytes(tail) == bytes(expected[-width:]), (
         f"the CRC on the wire is not what this CRC produces for that body: {bytes(tail)!r}"

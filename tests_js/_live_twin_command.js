@@ -2,28 +2,20 @@
 // and drives a real Playwright page against it directly (Vitest's own browser-mode `page` has no
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
-import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
-import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "./_memory_markers.js";
 import { readIntConst } from "./_source_constants.js";
-import { twinStartFailure } from "./_twin_start_failure.js";
+import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, holdTwinPorts, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
-const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const HOST = "127.0.0.1";
 // Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
 // full map is in SPECIFICATION.md Part E.1): a twin tier running on the same host at the same time
 // would otherwise refuse this one's bind. 19482 is _live_matrix_command.js's, in one `npm test` run.
 const PORT = 19481;
-// @tunable l0.live_twin_ready_timeout_ms = 20000
-const READY_TIMEOUT_MS = 20000;
-// @tunable l0.live_twin_shutdown_timeout_ms = 15000
-const SHUTDOWN_TIMEOUT_MS = 15000;
 // @tunable l0.live_twin_section_wait_ms = 10000
 const SECTION_WAIT_MS = 10000;
 // @tunable l0.live_twin_tab_wait_ms = 20000
@@ -33,115 +25,6 @@ const TAB_WAIT_MS = 20000;
 const POLL_MANAGER_SOURCE = readFileSync(path.join(REPO_ROOT, "js", "poll-manager.js"), "utf8");
 const OUTER_CAP_MS = readIntConst(POLL_MANAGER_SOURCE, "DEFAULT_TIMEOUT_MS");
 const POLL_BACKOFF_MAX_MS = readIntConst(POLL_MANAGER_SOURCE, "POLL_BACKOFF_MAX_MS");
-const MISSING_INTERPRETER = `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`;
-/** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
-const spawnErrors = new WeakMap();
-
-/** @param {number} ms */
-function sleep(ms) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
-
-/**
- * @param {import("node:child_process").ChildProcess} proc
- * @param {number} timeoutMs
- */
-async function waitUntilServing(proc, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        const failure = twinStartFailure({ spawnError: spawnErrors.get(proc) ?? null, exitCode: proc.exitCode, signalCode: proc.signalCode });
-        if (failure !== null) {
-            throw new Error(failure);
-        }
-        try {
-            // eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-            const res = await fetch(`http://${HOST}:${PORT}/`);
-            if (res.status === 200) {
-                return;
-            }
-        } catch {
-            // Not up yet - keep polling.
-        }
-        // eslint-disable-next-line no-await-in-loop -- same reasoning as above
-        await sleep(250);
-    }
-    throw new Error(`digital twin never started serving on ${HOST}:${PORT} within ${timeoutMs}ms`);
-}
-
-/**
- * build/generated_src first: sensortask_<device>.py exists only there (SPECIFICATION.md Part L.2),
- * generated with the device's own site (build/generated_html/<device>) by package.json's "pretest"
- * hooks, so a twin never serves another device's site.
- * @param {string} device
- */
-function spawnTwin(device) {
-    const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
-    const proc = spawn(
-        MICROPYTHON_BIN,
-        [
-            "digital_twin/run_generic_integration.py",
-            "--module",
-            `sensortask_${device}`,
-            "--wiring-plan",
-            path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
-            "--device",
-            device,
-            "--host",
-            HOST,
-            "--port",
-            String(PORT),
-            "--fram-state-path",
-            "", // in-memory only - see digital_twin/README.md's "FRAM persistence" section for this convention
-            "--scd30-state-path",
-            "", // same convention, "SCD30 persistence" section
-        ],
-        {
-            cwd: REPO_ROOT,
-            env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
-            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
-            stdio: ["ignore", "pipe", "pipe"],
-        },
-    );
-    // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process, skipping this
-    // file's try/finally: the listener keeps the error for waitUntilServing() to name.
-    proc.on("error", (err) => { spawnErrors.set(proc, err); });
-    return proc;
-}
-
-/** @param {import("node:child_process").ChildProcess} proc */
-async function stopTwin(proc) {
-    if (proc.pid === undefined || proc.exitCode !== null || proc.signalCode !== null) {
-        return; // never started (waitUntilServing() names its spawn error) or already gone
-    }
-    const exited = new Promise((resolve) => {
-        proc.once("exit", resolve);
-    });
-    // SIGINT, not SIGTERM/kill('SIGTERM'): run_generic_integration.py's own graceful-shutdown path
-    // (FRAM/SCD30 flush) only runs on KeyboardInterrupt - a plain SIGTERM would skip it, same
-    // reasoning as scripts/_digital_twin_ci_suite.py's own _shutdown().
-    proc.kill("SIGINT");
-    // The SIGKILL fallback timer is cleared once the child is gone. A plain Promise.race leaves
-    // the setTimeout pending, and a pending timer keeps Node's event loop alive - which showed up
-    // as Vitest's "something prevents Vite server from exiting" on every live-twin run.
-    /** @type {ReturnType<typeof setTimeout> | undefined} */
-    let killTimer;
-    try {
-        await Promise.race([
-            exited,
-            new Promise((resolve) => {
-                killTimer = setTimeout(() => {
-                    proc.kill("SIGKILL");
-                    resolve(undefined);
-                }, SHUTDOWN_TIMEOUT_MS);
-            }),
-        ]);
-    } finally {
-        clearTimeout(killTimer);
-    }
-    await exited; // a killed twin still holds the port until it has exited, and the next check needs it free
-}
 
 /**
  * Whether anything accepts a connection on the twin's port; a listener whose queue is full still holds it.
@@ -174,34 +57,6 @@ function portAnswers() {
 async function assertPortFree(device, when) {
     if (await portAnswers()) {
         throw new Error(`${HOST}:${PORT} still answers ${when} ${device}'s twin: another twin holds the port, and this check would test that one instead of its own`);
-    }
-}
-
-/**
- * The command's verdict once its twins have stopped: an allocation-failure marker or a restart sign anywhere in a
- * twin's output fails it (SPECIFICATION.md Part I.4(e)), quoting the lines, even when the check itself passed.
- * @param {string} what the command, for the message
- * @param {ReturnType<typeof drainChildOutput>[]} outputs every twin the command started, in order
- * @param {unknown} failure what the check itself threw, or null
- * @param {boolean} drained whether every output stream closed, so the scans saw everything
- */
-function twinVerdict(what, outputs, failure, drained) {
-    const marked = outputs.flatMap((output) => output.markerLines());
-    const reset = outputs.flatMap((output) => output.resetLines());
-    const checkFailed = failure === null ? "" : `\n(the check itself also failed: ${failure instanceof Error ? failure.message : String(failure)})`;
-    const cause = failure === null ? undefined : { cause: failure };
-    if (marked.length > 0) {
-        throw new Error(`${what}: the twin logged an allocation failure:\n${marked.join("\n")}${checkFailed}`, cause);
-    }
-    if (reset.length > 0) {
-        throw new Error(`${what}: the twin reset itself, so the page talked to a device that was not running:\n${reset.join("\n")}${checkFailed}`, cause);
-    }
-    if (!drained) {
-        throw new Error(`${what}: the twin's output did not close within ${SHUTDOWN_TIMEOUT_MS}ms of it stopping, so the allocation-failure scan is incomplete${checkFailed}`, cause);
-    }
-    if (failure !== null) {
-        const message = failure instanceof Error ? failure.message : String(failure);
-        throw new Error(`${what} failed: ${message}\n--- twin output ---\n${outputs.map((output) => output.text()).join("--- restarted twin ---\n")}`, cause);
     }
 }
 
@@ -391,13 +246,11 @@ export function configuredMaxConnections(device, devicesDir = path.join(REPO_ROO
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem, booted from its own generated module and site
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
- * @returns {Promise<{skipped: true, reason: string} | {skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>}
+ * @returns {Promise<{titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>}
  */
 export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
-    if (!existsSync(MICROPYTHON_BIN)) {
-        return { skipped: true, reason: MISSING_INTERPRETER };
-    }
+    requireInterpreter();
 
     // Fresh state every run, mirroring scripts/_digital_twin_ci_suite.py's own "clean" step -
     // FRAM/SCD30 are already in-memory-only above; config/ is the one thing that still persists
@@ -405,17 +258,17 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     await assertPortFree(device, "before starting");
-    const proc = spawnTwin(device);
+    const proc = spawnTwin({ device, port: PORT });
     const output = drainChildOutput(proc);
 
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
-    /** @returns {Promise<{skipped: false, titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>} */
+    /** @returns {Promise<{titleHasSensorStation: boolean, deviceName: string, firstStatus: string | null, resubmitStatus: string | null}>} */
     async function check() {
         clock.step("booting its twin");
-        await waitUntilServing(proc, READY_TIMEOUT_MS);
+        await waitUntilServing(proc, PORT, READY_TIMEOUT_MS);
         clock.step("reading GET /system");
         const system = /** @type {{DebugLevel?: unknown}} */ (await (await fetch(`http://${HOST}:${PORT}/system`)).json());
         const field = definitionsOf(device).sections.flatMap((section) => section.groups).flatMap((group) => group.fields ?? []).find((candidate) => candidate.key === "DebugLevel");
@@ -452,7 +305,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         await page.locator('[data-field-key="DebugLevel"]').waitFor();
         const firstStatus = await applyDebugLevel(page, value);
         const resubmitStatus = await applyDebugLevel(page, value);
-        return { skipped: false, titleHasSensorStation, deviceName, firstStatus, resubmitStatus };
+        return { titleHasSensorStation, deviceName, firstStatus, resubmitStatus };
     }
 
     /** @type {Awaited<ReturnType<typeof check>> | undefined} */
@@ -679,28 +532,26 @@ async function reloadAfterDrain(pages, index, tracker, clock, firstPassEnded) {
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem; its own ceiling sizes the tab count
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
- * @returns {Promise<{skipped: true, reason: string} | {skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>}
+ * @returns {Promise<{tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>}
  */
 export async function runLiveBackendConcurrentTabs({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
-    if (!existsSync(MICROPYTHON_BIN)) {
-        return { skipped: true, reason: MISSING_INTERPRETER };
-    }
+    requireInterpreter();
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
 
     const tabs = configuredMaxConnections(device);
     await assertPortFree(device, "before starting");
-    const proc = spawnTwin(device);
+    const proc = spawnTwin({ device, port: PORT });
     const output = drainChildOutput(proc);
 
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
-    /** @returns {Promise<{skipped: false, tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>} */
+    /** @returns {Promise<{tabs: number, loadedFirstPass: number, loadedAfterRetry: number, failures: string[]}>} */
     async function check() {
         clock.step("booting its twin");
-        await waitUntilServing(proc, READY_TIMEOUT_MS);
+        await waitUntilServing(proc, PORT, READY_TIMEOUT_MS);
         clock.step("opening its tabs");
         const own = await clock.newContext(context);
         contexts.push(own);
@@ -734,7 +585,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         if (reloadsFailed > 0) {
             failures.push(`[reset probe: the twin's HTTPDropped after the check: ${await droppedCount()}]`);
         }
-        return { skipped: false, tabs, loadedFirstPass: firstPass.filter((reason) => reason === null).length, loadedAfterRetry, failures };
+        return { tabs, loadedFirstPass: firstPass.filter((reason) => reason === null).length, loadedAfterRetry, failures };
     }
 
     /** @type {Awaited<ReturnType<typeof check>> | undefined} */
@@ -764,13 +615,11 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
  * @param {{context: import("playwright").BrowserContext}} ctx
  * @param {string} device a devices/<device>.toml stem
  * @param {number} testTimeoutMs the calling test's own timeout (checkClock())
- * @returns {Promise<{skipped: true, reason: string} | {skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean}>}
+ * @returns {Promise<{bannerShown: boolean, recovered: boolean, reloaded: boolean}>}
  */
 export async function runLiveBackendRestartRecovery({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
-    if (!existsSync(MICROPYTHON_BIN)) {
-        return { skipped: true, reason: MISSING_INTERPRETER };
-    }
+    requireInterpreter();
     rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
     const defs = definitionsOf(device);
     const landingGet = defs.sections.find((section) => section.key === defs.landingSection)?.rest.get ?? "";
@@ -778,16 +627,17 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
     const banner = (/** @type {"true" | "false"} */ shown) => `#app-main .error-banner[data-shown="${shown}"]`;
 
     await assertPortFree(device, "before starting");
-    const procs = [spawnTwin(device)];
+    const releasePorts = holdTwinPorts(); // held across both boots, so no other runner takes the port between them
+    const procs = [spawnTwin({ device, port: PORT })];
     const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
     /** @type {import("playwright").Page[]} */
     const pages = [];
-    /** @returns {Promise<{skipped: false, bannerShown: boolean, recovered: boolean, reloaded: boolean}>} */
+    /** @returns {Promise<{bannerShown: boolean, recovered: boolean, reloaded: boolean}>} */
     async function check() {
         clock.step("booting its twin");
-        await waitUntilServing(/** @type {import("node:child_process").ChildProcess} */ (procs[0]), READY_TIMEOUT_MS);
+        await waitUntilServing(/** @type {import("node:child_process").ChildProcess} */ (procs[0]), PORT, READY_TIMEOUT_MS);
         clock.step("loading its page");
         const own = await clock.newContext(context);
         contexts.push(own);
@@ -812,15 +662,15 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
             throw new Error("the check ended before its twin's restart"); // a step that outlasted the check starts no twin
         }
         clock.step("restarting its twin");
-        const restarted = spawnTwin(device);
+        const restarted = spawnTwin({ device, port: PORT });
         procs.push(restarted);
         outputs.push(drainChildOutput(restarted));
-        await waitUntilServing(restarted, READY_TIMEOUT_MS);
+        await waitUntilServing(restarted, PORT, READY_TIMEOUT_MS);
         clock.step("waiting for the page to recover");
         // A hidden banner is display: none, so it is waited for as attached, never as visible.
         const recovered = await recoveredPoll.then(() => page.locator(banner("false")).waitFor({ state: "attached", timeout: SECTION_WAIT_MS })).then(() => true, () => false);
         const marker = await page.evaluate(() => /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (globalThis)).liveRestartMarker);
-        return { skipped: false, bannerShown, recovered, reloaded: page.url() !== urlBefore || marker !== "kept" };
+        return { bannerShown, recovered, reloaded: page.url() !== urlBefore || marker !== "kept" };
     }
 
     /** @type {Awaited<ReturnType<typeof check>> | undefined} */
@@ -833,8 +683,12 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
         failure = err;
     } finally {
         clock.end();
-        const [unclosed] = await Promise.all([closeContext(contexts, pages), ...procs.map((proc) => stopTwin(proc))]);
-        failure ??= unclosed;
+        try {
+            const [unclosed] = await Promise.all([closeContext(contexts, pages), ...procs.map((proc) => stopTwin(proc))]);
+            failure ??= unclosed;
+        } finally {
+            releasePorts();
+        }
     }
     const drained = await Promise.all(outputs.map((output) => output.closed(SHUTDOWN_TIMEOUT_MS)));
     twinVerdict(`live-backend restart-recovery check for ${device}`, outputs, failure, drained.every(Boolean));

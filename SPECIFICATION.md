@@ -290,11 +290,13 @@ features as today's deployed units, not a feature change.
   reset, which the record decodes as the intended one (agent, 2026-10-07). Margin is ample (FRAM at 1MHz, 8KB chip, no chunk near that size — a two-block write+CRC readback
   completes in low single-digit ms, three orders of magnitude under both the 4s reset delay and the
   ~8s watchdog-starve wait). The `machine.reset()`/`bootloader()`-site half is enforced by
-  `tests/test_reset_call_site_invariant.py` (fails if either appears anywhere in `src/` but
-  `asy_system_service.py`). The one `WDT()` construction is the generated boot entry's first
-  statement (A.7): no `sensortask_*.py` is committed to `src/` (L.4), so that test's `WDT()` half
-  finds nothing there, and `tests_scripts/test_buildgen_generate.py` proves it on the generated
-  output for every device
+  `tests/test_reset_call_site_invariant.py` (fails if either is called or imported, through a
+  `machine` alias included, anywhere in `src/` but `asy_system_service.py` or in a generated device
+  module). The one `WDT()` construction is the generated boot entry's first statement (A.7): the
+  same test reads every device's `build/generated_src/sensortask_<device>_main.py` and fails unless
+  its first two statements import and construct the watchdog and no other construction appears
+  there, in `src/`, in a generated device module or in a no-autostart entry; and
+  `tests_scripts/test_buildgen_generate.py` proves it on the generator's output for every device
   (`test_real_device_module_constructs_no_watchdog_and_its_boot_entry_exactly_one`,
   `test_real_device_boot_entry_arms_the_watchdog_as_its_first_statement`).
 - **SCD30 read timing and first start.** The SCD30 is read on its data-ready edge, with a
@@ -3443,11 +3445,13 @@ concurrent sibling reads.
      interleaving, general-call/broadcast effects, fault isolation, parallel sessions on one
      device, and whatever else belongs in this catalog) applies regardless of which specific
      drivers are involved — live in `tests/test_bus_hazard_multi_device.py`, which runs
-     unconditionally as the permanent home for this category. It is not a staging area for the
-     generated scheme below and is never retired or thinned once a generated equivalent exists for
-     one of its scenarios (see the note at the end of this list) — extend it directly whenever a new
-     driver-agnostic hazard shape is identified, the same way a new sensor-specific one goes into
-     that driver's own file.
+     unconditionally as the permanent home for this category, a commanded shutdown's hazards
+     included (the whole-chip FRAM erase against chunk operations in flight and other callers of its
+     bus, a sensor task cancelled inside its bus session, a config file under a concurrent reader).
+     It is not a staging area for the generated scheme below and is never retired or thinned once a
+     generated equivalent exists for one of its scenarios (see the note at the end of this list) —
+     extend it directly whenever a new driver-agnostic hazard shape is identified, the same way a
+     new sensor-specific one goes into that driver's own file.
    - **Automatically assembled per-bus coverage also exists, alongside both of the above**,
      generated from a device's own real TOML wiring rather than hand-paired
      (`tests/test_bus_hazard_generated.py` + the per-driver adapter catalog in
@@ -3484,7 +3488,13 @@ optional polish (owner, 2026-09-15, `f9df9a2`):**
   sensortask_<device>_wiring_plan.json`), so a bus with 2+ real occupants automatically gets the full
   cross-sensor scenario set and every bus (single-occupant included) gets its own address/command
   sweep and its own same-device write-vs-own-read check. A new device or a re-wired bus needs *zero*
-  edits to this file to be picked up.
+  edits to this file to be picked up. **The scheme drives every writer on every shared bus**: the
+  write-under-sibling-reads scenario runs once per occupant that writes, and a bus with no writer
+  reports one SKIP naming the catalog's reason. A shared SPI bus is discovered the same way and
+  fails loud until every occupant has a `SPI_HAZARD_CATALOG` adapter (`spi_adapter_for()`); a lone
+  SPI occupant's hazards live with its driver. The host tier selects devices only through
+  `tests_scripts/_devices.py` (`DEVICE_NAMES`, `device_toml()`, `devices_with(driver)`), a neutral
+  fixture naming itself `fixture`; no `tests_scripts/` test file names a device.
 - **Every real bus-attached driver has a `tests/_bus_hazard_catalog.py` adapter** — `scd30`, `sgp40`,
   `isl29125`, `bmp3xx` today. `build_bus_occupants()`/the address-sweep scenario both fail loud
   (`KeyError`) for a driver with none, rather than silently skipping that driver's own coverage.
@@ -3771,7 +3781,9 @@ Covered fully by Part E.4: mock `tests/machine.py`'s raw bus transactions only, 
 parameter-combination/boundary/NaN-inf coverage applies to any pure computation helper a new driver
 adds. For I2C fault injection, rp2 raises what F.1 lists: `EIO`/`ETIMEDOUT` from a transfer,
 `ENODEV` only from a NAKed zero-length probe, no `OSError` from `scan()`; UART faults arrive as
-sentinels, never exceptions.
+sentinels, never exceptions. Both machine fakes raise exactly that, held by the shared contract
+(E.4): a NAKed probe raises `ENODEV`, and `scan()` never raises (`tests/machine.py`'s answers `[]`
+on a busy bus).
 
 ## C.13 Readiness-gate scheme (sync `__init__` / async `setup()`)
 
@@ -4253,19 +4265,37 @@ ahead of the generation step, are asserted by `tests_scripts/test_test_sh.py`.
 
 **Two per-file resources must stay disjoint across the suite, because the loop is concurrent**:
 each file's `TmpScratch` key (`tests/_tmp_scratch.py`; the per-device split gives each generated
-file its own) and its socket port base. A full enumeration on 2026-09-17 found two violations a
-spot-check had missed — two files allocating from the same base, harmless while the loop was
-sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral range
+file its own) and its socket port base. A key is live once per process (a second `TmpScratch` with
+it is refused) and taken once across the test tree (`tests_scripts/test_microtest.py`); a cleanup
+failure other than absence is raised naming its path. A full enumeration on 2026-09-17 found two
+violations a spot-check had missed — two files allocating from the same base, harmless while the
+loop was sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral range
 (32768-60999), where any concurrent ephemeral bind could be handed one of those exact ports,
 `tests_scripts/`'s own `_free_port()` included now that it runs alongside. For UDP both modes are
 silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
-moved below the ephemeral range, where the twin tier already sat: TCP bases sit in 17400-19999,
-each claimed by a module-level `PORT`/`_PORT*` constant in the file that binds it (the twin tier,
-`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins, the cross-browser
-smoke and `tests/test_asy_webserver_connections.py`'s `_PORT_BASE` 18600), and UDP 21000 / 22000 /
-23000 / 24000 / 25000 / 26000 / 27000 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` /
-`ntp_wifi_dns` / `ntp_fram_system` / `wifi_service`). **A new test file that binds a socket claims an unused base below 32768** — never a
-neighbour's, never inside the ephemeral range.
+moved below the ephemeral range, where the twin tier already sat: TCP bases sit in 17400-19999, each
+claimed by a module-level `PORT`/`_PORT*` constant in the file that binds it (the twin tier,
+`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins, the cross-browser smoke
+and `tests/test_asy_webserver_connections.py`'s `_PORT_BASE` 18600), and UDP 21000 / 22000 / 23000 /
+24000 / 25000 / 26000 / 27000 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` /
+`ntp_wifi_dns` / `ntp_fram_system` / `wifi_service`). **A new test file that binds a socket claims
+an unused base below 32768** — never a neighbour's, never inside the ephemeral range.
+
+**Fixed ports** the product itself binds — 53 for the captive DNS, 18080 for the CI suite's twin —
+are held by one runner at a time through a per-port lock, `scripts/_port_lock.sh` (and
+`tests_js/_port_lock.js` with the same directory, files, message and owner chain):
+`scripts/test.sh` and `scripts/run_unix_port_integration.sh` take 53, and
+`scripts/run_digital_twin_ci.sh` 53 and 18080, right after validating their arguments; every
+live-tier twin takes 53, re-entrantly with a count, released after the twin exits and at process
+exit, and the restart check holds it across both boots (H.7). A lock is the directory
+`${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/` holding `pid` and `runner`. The holder's
+descendants pass through the owner chain (`SENSORS_PORT_LOCK_OWNER`, `SENSORS_PORT_LOCKS_HELD`), a
+dead holder's lock is taken over, and an unrelated second suite fails at once with `port <port> is
+held by <runner> (pid <pid>) - run the suites one after the other (CLAUDE.md)`. A shell runner
+releases its locks from its EXIT trap, `scripts/test.sh` only once every background job it started
+has stopped (E.3.1). Suites in separate network namespaces cannot collide on a port, so each takes a
+runtime directory of its own and neither refuses the other; `tests_scripts/test_port_lock.py` and
+`tests_js/port-lock.test.js` pin the lock.
 
 **`tests/_tmp` gets one bounded `rm -rf` before any test file runs**, not a per-file sweep: every
 `TmpScratch` already wipes its own subtree regardless (`tests/_tmp_scratch.py`), so this only bounds
@@ -4291,10 +4321,62 @@ prints the archive's path.
 ## E.2 Test framework
 
 `microtest.py` is a minimal collector/runner — not CPython's `unittest`, unavailable on the Unix
-port's standard build. It calls every `test_*` function and reports PASS, FAIL or SKIP
-(`microtest.Skip(reason)`, counted and listed), closing with `<P>/<T> passed, <F> failed, <S>
-skipped`; a file that collects nothing fails, and any failure exits non-zero (a skip is not one).
-Plain `assert`.
+port's standard build. It calls every `test_*` function in sorted name order and reports PASS, FAIL
+or SKIP (`microtest.Skip(reason)`, counted and listed), closing with `<P>/<T> passed, <F> failed,
+<S> skipped`; a file that collects nothing fails, and any failure exits non-zero (a skip is not
+one). A test that returns a value fails (an `async def test_*` returns its coroutine, closed
+unrun); a `SimulatedRebootError` escaping a test fails that test alone (`reset reached without a
+catch`); any other `BaseException` aborts the file with an `ABORT <name>:` line and its traceback,
+then `<P>/<T> passed, <F> failed, <S> skipped - aborted at <name>, later tests not run` and exit 1,
+so the tests after it are reported not run, never passed. After every test microtest fails one
+that left a task on the scheduler (`left a task parked on the scheduler`, the run queue and stream
+waits cancelled and drained), runs each `microtest.after_each(fn)` hook (one that raises fails the
+test: `teardown: <repr>`), and restores `sys.path`, `gc.threshold()` and the boot value of
+`asy_base_classes`' pre-sync timestamp flag; `tests/machine.py` registers its reset that way, so no
+fake's state reaches the next test. Every test file ends with the canonical
+`microtest.run(globals())` trailer and binds `test_*` only to synchronous functions, checked by
+`tests_scripts/test_microtest.py`; `run()` always ends with `sys.exit()` (E.3). Plain `assert`.
+
+**`tests/_async_harness.py` is the one way a synchronous test drives a coroutine**: `run(coro,
+limit_s=None)`, `run_timed(coro, timeout_s)`, `cancel(task)` and `cancel_all(tasks)`; its
+`asyncio.run()` is the only one in `tests/` (`tests_scripts/test_microtest.py`). A call from inside
+a running loop raises `RuntimeError` naming the fix (CLAUDE.md, the known segfault cause). Every
+task the call creates is tracked. When the call ends, the loop gets one round first, as the board's
+loop never stops (a task left queued and due takes its step: a deferred config flush completes
+there); then each unfinished task is cancelled on its own and awaited until all have ended, nothing
+else can run, or `l1.async_harness_reap_limit_ms` (Part N) passes. A task the reap could not end is
+named and taken off every queue it was on, and a task that failed during its cancellation is
+re-raised when the run itself passed. A finished task whose data the loop cleared after another
+task awaited it is passed over (F.1: awaiting it again crashes the port); finished tasks leave the
+tracked list as it grows, and `release_finished()` drops them inside a running call, so a heap
+reading there measures only the code under test, and tests take their heap readings between harness
+runs. Over a plain `asyncio.run()` a call costs 2.0 µs more at the reactive default and 3.1 µs more
+at `gc.threshold(32768)`, and allocates nothing more (medians per call, measured 2026-10-13).
+
+**One copy of each shared test helper**, in a `tests/_*.py` module; a test file's own doubles and
+builders are private (`_Fake…`, `_make_…`, checked by `tests_scripts/test_microtest.py`), and each
+is named by its role. `_src_const.py` reads a `src/` module's folded `const()` values from its
+source (`src_const()`, `src_consts()`; `py_value()` a host file's literal), `_strict_json.py`
+checks and decodes a response body (`strict_loads()`, F.1), `_generated_tree.py` refuses a stale
+generated tree (`require_fresh()`, E.3), `_fake_time.py` holds `FakeTime`, `DrivenTime`,
+`Rp2Gmtime`, `tick()` and `UTCValid` (the boot's first NTP clock set, for a block),
+`_fast_sleep.py` `FastAsyncSleep`, `_fake_timer_arm.py` `RaiseOnArm`, `_fram_builders.py`
+`make_fram_manager()`, `_fram_chip_fake.py` `FakeMB85RS64V` and the 256 KB `FakeMB85RS2MTA`,
+`_ntp_frames.py` `make_ntp_reply()` and `FakeNtpServer`, `_recording_print.py` `record_prints()`,
+`_twin_random.py` `FixedRandom`, and `_protocols.py` the boundary protocols a typed fake stands in
+for. Every test reading a response body parses it with `strict_loads()`; the website tests identify
+a built page's inlined definitions by byte equality with
+`build/generated_src/definitions/<device>.json` instead, which is stricter and spares a strict parse
+of seconds.
+
+**The pytest tier's homes**: every `buildgen/` module has `tests_scripts/test_buildgen_<module>.py`
+(`pico_gpio`'s holds the pin table's tests) or a named home — `buildspec` in
+`tests_scripts/test_buildgen_validate.py` and `test_buildgen_source_agreement.py`, `codegen` in
+`test_buildgen_generate.py`, `errors` in every reject test (`test_buildgen_error_contract.py` among
+them), `model` in `test_buildgen_validate.py`, `api_reference` in `test_api_reference.py`,
+`jsontypes` and `signals` in `test_buildgen_definitions.py`. Its suites hold module-level
+`def test_*` functions with fixtures and `parametrize`, never a `Test*` class
+(`tests_scripts/test_code_conventions.py`).
 
 ## E.2.1 Per-device scenario libraries: one process per device
 
@@ -4356,9 +4438,11 @@ importable. **`.frozen` is a literal MicroPython sentinel, not an ordinary direc
 starting with `MP_FROZEN_PATH_PREFIX` routes to the compiled-in frozen table, never the real
 filesystem. `frozen_modules` is a separate, ordinary, gitignored directory (A.9's output) needed
 too, since `sensortask_wozi.py`'s `import frozen_html` needs it. Where the Unix-port rig differs
-from rp2 is F.7. **The second L1 file set**, `tests/lwip_host/`, runs the same way on
-`~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig differences
-are F.7's `build-lwip` rows.
+from rp2 is F.7; on it, `asyncio` (a frozen Python package) takes attribute assignments and the C
+builtin modules (`time`, `socket`) do not, so a test that must see a C module's calls replaces the
+module-level name in the module under test. **The second L1 file set**, `tests/lwip_host/`, runs the
+same way on `~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig
+differences are F.7's `build-lwip` rows.
 
 Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`,
 `tests/_webserver_concurrency_scenarios.py`, and every `tests/test_digital_twin_*.py` that does the
@@ -4371,12 +4455,20 @@ Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the git
 there, the definitions with an `index.json` manifest under `build/generated_src/definitions/` (H.5)
 and the reference as `build/generated_src/api/<device>.json` (A.8), and builds every output of a
 device before writing any, so a definitions or reference `BuildError` is a one-line `error:` and
-exit 1 with none of that device's files written —
-and `build/generated_src` prepended to `MICROPYPATH` (ahead of
-`src`) so the generated module resolves before anything else. `scripts/test.sh`/`scripts/
-typecheck.sh` already do both automatically; running one such file directly, as the invocation above
-does for `test_math_helpers.py`, needs them done by hand first or the import fails with
-`ImportError: no module named 'sensortask_wozi'`.
+exit 1 with none of that device's files written; it then removes every finished file of the tree it
+did not write (a removed device's; a `.tmp` stays, another run's write before its rename — two
+concurrent runs share those names and fail visibly, exit 1; a file it cannot remove is `error:
+cannot remove <file>: <strerror>`, exit 1) and writes two stamps last, `.inputs_stamp.json` (the
+sha256 of every input it read and the name of every file it left) and
+`definitions/inputs_stamp.json` (each TOML's sha256, which the JS loader checks, H.8) — and
+`build/generated_src` prepended to `MICROPYPATH` (ahead of `src`) so the generated module resolves
+before anything else. `scripts/test.sh`/`scripts/typecheck.sh` already do both automatically;
+running one such file directly, as the invocation above does for `test_math_helpers.py`, needs them
+done by hand first or the import fails with `ImportError: no module named 'sensortask_wozi'`. A file
+that imports a generated module or reads a plan first calls `tests/_generated_tree.py`'s
+`require_fresh()`, which refuses a missing tree, a changed input, a missing output, an orphan or an
+empty list with `build/generated_src/ is missing or stale - run: uv run
+scripts/_generate_sensortask_modules.py`, so a direct run never tests a stale tree.
 
 **Under GitHub Actions every red outcome is also an `::error` annotation** — the pytest tier first,
 then a failed file with the last 40 lines of its own log or a file that failed only the
@@ -4423,7 +4515,14 @@ specific hang — the CI hang it was written during was really `test_asy_uart_dr
 `select.poll()` against a fake UART, and an isolation run with the timeout and `stdbuf` reverted
 passed 8/8 (CLAUDE.md's known-hang note). Two retries absorb transient contention; a pass after a
 retry is reported as `RETRIED-PASS`, a root-cause item, never as a plain pass; a third consecutive
-timeout on one file is a real failure. `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S` and
+timeout on one file is a real failure. The timeout's first signal is SIGINT, which the interpreter
+delivers at a safe point (B.14.1) and microtest turns into its `ABORT` line naming the hung test
+with its traceback (E.2); `--kill-after` (`runner.kill_after_s`) stays the hard stop, and a file it
+kills past its timeout (137: the file caught the interrupt and ran on) is reported on a line of its
+own and retried like a 124 timeout. The summary names each `ABORT` line (E.10). An aborted run's
+EXIT trap stops every background job by pid, each attempt's `timeout` group included, sends SIGKILL
+to what is still running after twice `runner.kill_after_s`, and waits for them all before it
+releases the port lock (E.1). `PER_FILE_TIMEOUT_S`, `TESTS_SCRIPTS_TIMEOUT_S` and
 `TEST_PARALLELISM` are validated as positive integers before any sweep (exit 2 otherwise, E.10).
 Every attempt's output stays in the file's log, so the memory gate reads a timed-out attempt too.
 `stdbuf -oL -eL` forces line buffering, since MicroPython block-buffers 4096 bytes whenever stdout
@@ -4432,7 +4531,8 @@ is not a tty.
 The 240s default came from 180s when the real-socket webserver-concurrency scenarios grew ~35s past
 comfort. **Per-file overrides exist but the table is empty**: the per-device splits brought the two
 former monolithic files (447s/268s single-process) down to ~90s (`sensortask_*`) and ~45s
-(`webserver_concurrency_*`) standalone. Running all six of one family at once costs 114.8s/59.5s
+(`webserver_concurrency_*`) standalone; measured again on 2026-10-13, the slowest file alone,
+`tests/test_sensortask_dev.py`, takes 56s at -1 and 82s at 32768, a webserver-concurrency file 43-44s at 32768. Running all six of one family at once costs 114.8s/59.5s
 wall clock rather than 6x one file, because almost all of each build is real SPI CS-settle sleeping
 rather than CPU work (~35s of user CPU across a ~9-minute sequential six-file run) — so concurrent
 processes barely contend even past the core count. Re-measure and re-add an entry if a future device
@@ -4447,10 +4547,13 @@ GC_THRESHOLD=32768 scripts/test.sh
 
 `tests/_threshold_runner.py` then wraps each test file, applying `gc.threshold()` before the file's
 own body executes, and propagates its exit code unchanged — so the (f) stage fails a file exactly
-where the plain run would. The value is validated once in `scripts/test.sh` rather than 85 times
-inside the runner: a non-integer, or anything outside the rp2040's own 32-bit machine word, is
-rejected before the run touches the live tree (exit 2). `--coverage` has its own runner and says so
-out loud when both are given, rather than silently ignoring the threshold.
+where the plain run would. It never passes an incomplete file: one that ends without microtest's
+exit (`runner: <file> ended without microtest's exit - no trailer, or it never ran`), exits with a
+message or raises fails, and `tests/_coverage_runner.py` applies the same rules (E.5). The value is
+validated once in `scripts/test.sh` rather than 85 times inside the runner: a non-integer, or
+anything outside the rp2040's own 32-bit machine word, is rejected before the run touches the live
+tree (exit 2). `--coverage` has its own runner and says so out loud when both are given, rather than
+silently ignoring the threshold.
 
 ## E.4 Hardware-touching files: mock at the raw bus-transaction level only
 
@@ -4467,6 +4570,26 @@ proven via a minimal local raising fake instead, defense-in-depth against the Pr
 the abstract. This caught a real gap during `asy_print_log.py`'s review: `_write()`/`_read()` called
 buffer methods *before* their `try:` block started — fixed by widening both to cover the whole
 body.
+
+**Both tiers' machine fakes are held to one contract**, `tests/_machine_contract.py`, which
+`tests/test_fakes.py` runs against `tests/machine.py` and `tests/test_digital_twin_machine.py`
+against `digital_twin/machine.py`: the tiers may differ in fidelity, never in those semantics, and a
+check the twin still fails sits in that file's `_TWIN_PENDING`, each entry naming the twin change
+that closes it (the check fails exactly the listed ones, so the list only shrinks). Each
+`tests/machine.py` class cites the rp2 port fact it models, file and lines at the pin, and states
+its gaps on a `Not modelled:` line. A stand-in offers only its real
+class's surface: each `tests/machine.py` class lists its test-only names in `TEST_API`, and
+`tests_scripts/test_fake_surface_conformance.py` checks every other public name against the rp2
+type's locals-dict table in the pinned checkout (a missing checkout fails, never skips; the twin's
+classes stay pending until they declare theirs) and the webserver test's module doubles against the
+product classes they stand in for. Fault injection takes the twin's queue convention:
+`inject_fault(op, exc_type, *args, times=1, match=None, address=None)` queues `times` faults on an
+op the bus can raise on (rp2's I2C on every transfer, its SPI only on a reading one), each matching
+call raising a fresh exception, oldest first, and `pending(op)` counts what is left. The UART fake
+refuses a TX or RX pin rp2's UART cannot use (`ports/rp2/machine_uart.c:71-80, 314-323`; CTS/RTS
+not modelled). The radio shape corpus (`tests/_radio_shape_cases.json`) has product judges: each
+judge file declares the keys it judges in `_JUDGED_SHAPES`, and
+`tests_scripts/test_radio_shape_corpus.py` checks that together they name exactly the corpus keys.
 
 The fakes count every filesystem write and every SCD30 NVM write, so a test asserts the writes it
 spends: `tests/_write_counters.py`'s `WriteCountingOpen` (a module's `open`) and
@@ -4491,21 +4614,33 @@ writing the reachable case.
 scripts/test.sh --coverage
 ```
 
-Reports `src/` line coverage only. No threshold enforced anywhere — CI reports numbers, never gates.
-`coverage.py` only runs under CPython while `src/` only runs under the Unix port, so collection and
-reporting are two stages: `tests/_coverage_runner.py` runs *inside* MicroPython via `sys.settrace`,
-recording every executed line under `src/` and dumping JSON; `scripts/_render_coverage.py` (CPython)
-merges the dumps, feeds them into `coverage.py` via `CoverageData.add_lines()`, and renders
-HTML/XML/markdown. Produces (gitignored, at repo root): `htmlcov/index.html`, `coverage.xml`,
-`coverage_summary.md`; a `--coverage` run first moves the previous run's coverage outputs into the
-evidence archive (E.1). Locally nothing opens automatically. On GitHub: `coverage_summary.md`
-appends to the run's Job Summary; `htmlcov/` uploads as a downloadable artifact; `coverage.xml`
-uploads to Codecov, but that account-linking hasn't been done, so it currently no-ops silently. Runs
-in its own `unit-tests-coverage` CI job (Session 8's closing-consistency-pass PR split it out of
-`unit-tests` proper) — this pass re-runs the whole real-interpreter suite a second time under
-`sys.settrace`, so keeping it off `unit-tests`' own critical path means
-`digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own toolchain-cache
-population, never this job's report) no longer wait on it.
+Reports line coverage of `src/`, `digital_twin/` and the generated device modules
+(`build/generated_src/`), traced inside MicroPython, and of the host build chain (`buildgen/`,
+`scripts/`, `toolchain/`), measured under the pytest tier. No threshold enforced anywhere — CI
+reports numbers, never gates. `coverage.py` only runs under CPython while `src/` only runs under the
+Unix port, so collection and reporting are two stages: `tests/_coverage_runner.py` runs *inside*
+MicroPython via `sys.settrace`, recording every executed line under its traced prefixes and dumping
+JSON on every path — a file that never reaches microtest's exit fails the run, as under
+`tests/_threshold_runner.py` (E.3.1); `scripts/_render_coverage.py` (CPython) merges the dumps,
+feeds them into `coverage.py` via `CoverageData.add_lines()`, and renders HTML and markdown, and
+XML when given `--xml-file`. Under `--coverage` the backgrounded pytest tier runs as `coverage run
+--data-file=<results>/host.coverage --source=buildgen,scripts,toolchain -m pytest tests_scripts`
+(the dev group's pinned `coverage`), rendered by `coverage html` and `coverage report
+--format=markdown`; its report is report-only like the rest. Measured once on 2026-10-13, that
+traced tier took 964.6 s against the plain tier's 579 s, inside `runner.tests_scripts_timeout_s`,
+so it runs as the one pytest step (agent, 2026-10-13). Produces four reports (gitignored, at repo
+root): `src/`'s `htmlcov/index.html`, `coverage.xml` and `coverage_summary.md`; `digital_twin/`'s
+`htmlcov_digital_twin/`, `coverage_digital_twin.xml` and `coverage_summary_digital_twin.md`; the
+generated modules' `htmlcov_generated/` and `coverage_summary_generated.md`, without XML; and the
+host chain's `htmlcov_host/` and `coverage_summary_host.md`. A `--coverage` run first moves the
+previous run's coverage outputs into the evidence archive (E.1). Locally nothing opens
+automatically. On GitHub: `coverage_summary.md` appends to the run's Job Summary; `htmlcov/` uploads
+as a downloadable artifact; `coverage.xml` uploads to Codecov, but that account-linking hasn't been
+done, so it currently no-ops silently. Runs in its own `unit-tests-coverage` CI job (Session 8's
+closing-consistency-pass PR split it out of `unit-tests` proper) — this pass re-runs the whole
+real-interpreter suite a second time under `sys.settrace`, so keeping it off `unit-tests`' own
+critical path means `digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own
+toolchain-cache population, never this job's report) no longer wait on it.
 
 ### E.5.1 Reading the numbers: three systematic false-negative patterns, not missed test cases
 
@@ -4622,13 +4757,14 @@ The fix separates the two signals rather than making the whole rerun gating, whi
 
 | code | meaning | CI |
 |---|---|---|
-| `0` | every test passed and both reports rendered | job green |
+| `0` | every test passed and every report rendered | job green |
 | `1` | a test failed, or a `MemoryError` marker was seen | **job red** |
 | `3` | every test passed; only the coverage rendering failed | tolerated, job green |
 
-Both `_render_coverage.py` invocations are `|| coverage_render_failed=1`-guarded for this: under
-`set -euo pipefail` a bare call would abort the script with the *renderer's* exit code, which a
-caller cannot tell from a failed test. The summary block says which happened
+Every render — the three `_render_coverage.py` runs and the host report's `coverage html` and
+`coverage report` — is `|| coverage_render_failed=1`-guarded for this: under `set -euo pipefail` a
+bare call would abort the script with the *renderer's* exit code, which a caller cannot tell from a
+failed test. The summary block says which happened
 (`Result: PASS (coverage report not rendered)`, E.10), and the owner's decision of 2026-09-22 chose
 this split over the alternative of running one settrace-built file in a gating lane.
 
@@ -4823,6 +4959,12 @@ Two consequences, both load-bearing:
   timeout and `_shutdown()` gives the subprocess 15 s to exit, neither tied to the soak's own
   GC-dependent wall clock at all — this is what E.9's host-side move buys for free, not just where
   the request-driving code lives.
+- **A soak's memory verdict is a rate between two windows, never one absolute delta** (E.8's first
+  trap). `tests/test_asy_webserver_service.py`'s lifecycle soak reads the collected free heap after
+  a 20-cycle warm-up and again at cycles 80 and 200, and bounds the bytes kept per cycle between
+  those two readings by `l1.webserver_leak_rate_max_b` (8 B), so one-time allocations the warm-up
+  missed cancel out. Calibrated once (2026-10-13, at the reactive default): the healthy path keeps
+  0.0 B per cycle, a planted leak of one 16-byte object per cycle reads 16.0.
 
 ## E.8 Measurement traps, and the guard-is-blind trap behind them
 
@@ -4860,8 +5002,9 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
 - **`I2C.scan()` is synchronous** and blocks the loop for a 128-address sweep, so using it as "bus
   load" models nothing production does: it inflated a measured worst-case RTT from 112 ms to 574 ms.
 - **Cross-test contamination is real.** One process, one task queue, and no parent/child tracking in
-  MicroPython asyncio, so listeners parked by earlier tests keep allocating. Isolate before
-  believing a per-test number.
+  MicroPython asyncio, so listeners an earlier test left parked would keep allocating; microtest's
+  after-each check now fails such a test and cancels its tasks (E.2), but isolate before believing a
+  per-test number.
 - **A heap figure about serving load is only as good as the twin that produced it** (the
   connection-limit work, 2026-09-22/24; evidence `HEAP_FRAGMENTATION_MEASUREMENTS.md` archive §7Q/§7R/§9).
   A 64-bit twin doubles dicts, lists and frames but not strings, so it ranks the wrong allocation
@@ -5000,7 +5143,9 @@ Exit code: <n>
   `GC stage:` appears only for a runner that runs MicroPython. `Commit:` reads `unknown` outside a
   work tree.
 - `<unit>` names what is counted: files, tests, checks, runs or manual steps. `scripts/test.sh` adds
-  a second `Counts (tests):` line, summed from each file's microtest closing line (E.2).
+  a second `Counts (tests):` line, summed from each file's microtest closing line (E.2), and follows
+  a failed file's reason with the failed tests of its deciding attempt in parentheses, each in
+  microtest's own `FAIL` or `ABORT` form with its first failure line, at most five, then `+N more`.
 - Retried and recovered passes are counted apart from `passed`, never inside it. A missing or empty
   per-item verdict counts as failed ("no verdict"). `vacuous` counts items that ran and checked
   nothing; any one makes the result FAIL and raises a passing exit status (0, 3 or 4) to 1.
@@ -5254,7 +5399,10 @@ clock reads 2021-01-01 (`ports/rp2/main.c:141-145`), so every `src/` and publish
 waits for a sync: `src/`'s go through `utc_now()` (`None` until the first sync, G.2), `/status`'s
 `UTCTime` is `null` while the NTP client is not `Synced`, and the NTP client's `cettime()` answers
 `None` until the clock was first set this boot; a persisted timestamp is 64-bit (`_TS_FMT = "<Q"`,
-`asy_fram_manager.py`). The Unix port differs — 64-bit, float-accepting `gmtime()` (F.7).
+`asy_fram_manager.py`). `machine.RTC().datetime()` sets the clock from the year, month, day and
+time fields alone and ignores the weekday it is given (`ports/rp2/machine_rtc.c:84-96`), so the NTP
+client's weekday field (`tm[6] + 1`) cannot mis-set it. The Unix port differs — 64-bit,
+float-accepting `gmtime()` (F.7).
 
 **`globals()` does not preserve a module's top-level statement order** — a test starting a
 background task must keep an explicit reference and cancel it in its own `finally`, never relying
@@ -5263,7 +5411,8 @@ Unix-port interpreter outright** instead of raising: `run()` is
 `run_until_complete(create_task(coro))` on the one module-level task queue
 (`extmod/asyncio/core.py:247-248`; `new_event_loop()` runs once, at import, `:314-324`), so the
 inner call runs the scheduler again under the task that is still executing (reproduced, agent,
-2026-09-05). `await` directly instead. **`await` inside a comprehension is a
+2026-09-05); `tests/_async_harness.py` refuses a nested call with a `RuntimeError` (E.2). `await`
+directly instead. **`await` inside a comprehension is a
 `SyntaxError`** — use a plain `for` loop. **`async def ... yield ...` ("async generator") parses
 but produces a broken runtime object** (`__next__` but no `__aiter__`/`__anext__`) that **segfaults
 the interpreter** the moment execution reaches a real `await` inside it, driven via plain `next()`
@@ -5341,13 +5490,18 @@ The PC tiers install their own, always-printing report first (I.4(e)), and
 PC entry point. Two loop facts the tests rely on: a task awaited before its queued handler call runs
 never reaches the handler, and a second await of it then raises `None` and segfaults the Unix port
 (`core.py` restores `t.data` only while the state is truthy; unchanged on upstream master,
-2026-10-07), so an ended task is awaited at most once; and `py/pairheap.c`'s pop leaves
-`child_last` set, so a live task can keep the last task queued under it until its next child, which
-is why the tests read retention after `asyncio.run()` returns.
+2026-10-07; the raise is `extmod/modasyncio.c:289-293`'s `task_iternext()`), so an ended task is
+awaited at most once — `tests/_async_harness.py`'s reap and `cancel()` pass over such a task; and
+`py/pairheap.c`'s pop leaves `child_last` set, so a live task can keep the last task queued under it
+until its next child, which is why the tests read retention after `asyncio.run()` returns.
 
 **MicroPython's `json.loads()` is not a JSON validator**: `extmod/modjson.c`'s tokenizer skips
 `,` and `:` exactly like whitespace, so `'{,"a":1 "b":2}'` parses as `{"a": 1, "b": 2}`. The browser's
-`JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`. The
+`JSON.parse()` rejects that, so a test of emitted JSON checks it with `tests/_strict_json.py`, which
+also refuses a duplicate key, escaped spellings included (`json.loads()` keeps the last,
+`extmod/modjson.c:324`), and invalid UTF-8; it scans the body's UTF-8 bytes in linear time — a
+`str`'s `len()` and indexing walk its UTF-8 from the start (`py/objstrunicode.c:116-117, 164-186`)
+— and counts its error offsets in characters. The
 same skip turns a missing value into a silent shift rather than an error: tokens pair up as key and
 value in order, and a key left without a value at the closing brace is dropped
 (`extmod/modjson.c:170-177, 288-301, 315-326`, v1.29.0), so `'{"Count": , "Offset": 1.5}'` loads as
@@ -5568,7 +5722,9 @@ Two consequences the wrappers now state accurately:
   re-constructing reconfigures the same object rather than allocating a new one — nothing leaks on
   a re-`init()`, and nothing is reclaimable on a `deinit()`. `asy_i2c_driver.I2C.deinit()` /
   `asy_spi_driver.SPI.deinit()` still matter, but only because dropping `self._i2c`/`self._spi`
-  is what puts the wrapper into its documented "bus unavailable" state. Re-construction is also a
+  is what puts the wrapper into its documented "bus unavailable" state. `tests/machine.py`'s `I2C`
+  models that static object per id (a re-construction re-initialises the controller and keeps the
+  devices, faults and log); its `SPI` does not (E.4). Re-construction is also a
   re-configuration for every user of that bus id: any call with an argument beyond the id re-runs
   `i2c_init()` and resets the frequency and the timeout, each omitted one falling back to 400 kHz /
   50,000 µs (`ports/rp2/machine_i2c.c:37-38, 106-115`, v1.29.0); only a bare `machine.I2C(id)` on
@@ -6157,7 +6313,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 9 | float model | double precision, exact float formatting (`ports/unix/variants/mpconfigvariant_common.h:40-41`, `py/mpconfig.h:997-1003`) | single precision, approximate formatting (`ports/rp2/mpconfigport.h:128-129`): a result, its rounding and its text can differ | tests use exactly representable floats | L3 float device scripts | none |
 | 10 | qstr hash width | 2 bytes | 1 byte (`py/mpconfig.h:373-380` vs `ports/rp2/mpconfigport.h:104`; `py/qstr.c:45-48, 70`), so a dict's iteration order can differ | no test may depend on dict order | L3 for any order-sensitive output | none |
 | 11 | emergency exception buffer | a static 256 B buffer (`ports/unix/variants/mpconfigvariant_common.h:69-70`): a `MemoryError` always keeps its message | enabled with size 0 until `micropython.alloc_emergency_exception_buf()` (`ports/rp2/mpconfigport.h:126`, `py/objexcept.c:81-89`): under heap exhaustion the message can be empty — when its 16 B str object or its 1-tuple cannot be allocated, the exception carries no arguments and `str(e)` is `''` (`py/objexcept.c:207-251, 395-416, 478-501`); a failed text buffer alone keeps the ROM text (`:503-509`) | the generated boot entry reserves 100 B on rp2 (`micropython.alloc_emergency_exception_buf(100)`, I.4(e)); that function is compiled only where the buffer size is 0 (`py/modmicropython.c:146-148, 210-212`), so the Unix port has none, and no Unix-port run executes the boot entry itself | L3 | none |
-| 12 | `select.poll()` over a Python stream object | a real poll asks each registered object for a file descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of the object's own `ioctl()` (`extmod/modselect.c:252-268, 302-306`, `py/modio.c:84-96`); a fake answering 0 makes the poll watch fd 0, stdin, which never turns ready on GitHub runners (CLAUDE.md, the known hang cause); growing the pollfd array by a fresh allocation also rewrites a non-fd entry's `NULL` pointer into a dangling one (`extmod/modselect.c:154-186`), which can segfault | no POSIX path (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` 0, `py/mpconfig.h:1891-1893`) | `tests/test_asy_uart_driver.py`'s bounded `_StepPoller` (every `uart.poller` double is bounded), `digital_twin/unix_port_poll_prewarm.py`, `_cancel_and_join()` and `_drain_flag()` in `tests/test_asy_isl29125_driver.py` | L2/L3 | a pin re-check that finds the POSIX path changed (owner, 2026-09-29, paraphrase: a known limitation, not filed upstream) |
+| 12 | `select.poll()` over a Python stream object | a real poll asks each registered object for a file descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of the object's own `ioctl()` (`extmod/modselect.c:252-268, 302-306`, `py/modio.c:84-96`); a fake answering 0 makes the poll watch fd 0, stdin, which never turns ready on GitHub runners (CLAUDE.md, the known hang cause); growing the pollfd array by a fresh allocation also rewrites a non-fd entry's `NULL` pointer into a dangling one (`extmod/modselect.c:154-186`), which can segfault | no POSIX path (`MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` 0, `py/mpconfig.h:1891-1893`) | both machine fakes answer `MP_STREAM_GET_FILENO` with `EINVAL`, as rp2 does (`ports/rp2/machine_uart.c:694-697`), and `tests/machine.py` fails a test whose real poll queried a fake UART; `tests/test_asy_uart_driver.py`'s bounded `_StepPoller` (every `uart.poller` double is bounded), `digital_twin/unix_port_poll_prewarm.py`, `tests/_async_harness.py`'s `cancel()` and reap (a cancelled task is awaited, which unregisters its poll object) and `_drain_flag()` in `tests/test_asy_isl29125_driver.py` | L2/L3 | a pin re-check that finds the POSIX path changed (owner, 2026-09-29, paraphrase: a known limitation, not filed upstream) |
 | 13 | `ipoll(0)` | returns an always-truthy iterator, so callers test the event flags (`tests/test_asy_ntp_client.py`; `src/asy_udp_socket.py` `ready()`) | the same | — | — | none (not a divergence; kept as the harness note it is) |
 | 14 | SIGINT delivery and the test heap | pointers only: F.6, E.3.1; `MICROPY_ASYNC_KBD_INTR` is 0 in rp2 and every Unix build, the latter through B.14.1's override, which `build-lwip`'s variant header carries too | — | — | — | — |
 | 15 | exception message detail | DETAILED error reporting: messages name objects and types (`ports/unix/variants/mpconfigvariant_common.h:86-87`) | NORMAL (the ROM-level default, `py/mpconfig.h:925-941`): a `TypeError`/`ValueError`/`AttributeError` text can name less | — | L3 for any log text a check reads | none |
@@ -6250,12 +6406,12 @@ workaround.
 | Stub-gap `# type: ignore`s | the sites each names | the stub gains the missing precision; `warn_unused_ignores` then fails on each one | F.5.5 |
 | Poll-set prewarm (`modselect.c` rewrites a `NULL` `pollfd` while growing the poll array) | `digital_twin/unix_port_poll_prewarm.py` and its callers | `extmod/modselect.c` skips `NULL` entries on reallocation | F.7 |
 | UDP address shim and `getaddrinfo()` pre-resolution in tests (micropython#6924) | `digital_twin/unixport/_unix_port_udp_addr_shim.py`, the raw test sockets' pre-resolution | the Unix `modsocket.c` takes and returns `(host, port)` tuples | F.7 |
-| Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double | none: a non-fd `select.poll()` never becomes ready on GitHub runners, and the bounded fake is the test design | F.7 |
+| Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double; both machine fakes answer `MP_STREAM_GET_FILENO` with `EINVAL`, and `tests/machine.py` fails a test whose real poll queried a fake UART | none: a real `select.poll()` polls whatever descriptor a stream object answers `MP_STREAM_GET_FILENO` with, and the bounded fake is the test design | F.7 |
 | `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | F.7 |
 | Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | F.7 |
 | A settrace-free test rig beside the `sys.settrace` binary | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
-| Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope | `asyncio.run()` raises inside a running loop | F.1 |
-| Never await an ended task a second time (after a first await that raced its queued handler call, the second raises `None`) | `SystemService._supervise()` empties a slot right after logging its ended task; the twin integration test's cleanup skips ended tasks | `core.py` keeps `t.data` on the path where the task was already awaited | F.1 |
+| Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope; `tests/_async_harness.py`'s `run()`, the one `asyncio.run()` in `tests/`, refuses a nested call | `asyncio.run()` raises inside a running loop | F.1 |
+| Never await an ended task a second time (after a first await that raced its queued handler call, the second raises `None`) | `SystemService._supervise()` empties a slot right after logging its ended task; the twin integration test's cleanup skips ended tasks, and `tests/_async_harness.py`'s reap and `cancel()` pass over such a task | `core.py` keeps `t.data` on the path where the task was already awaited | F.1 |
 | `/status` collected into a list (no async generators) | `src/asy_webserver_service.py` | async generators are supported | F.1 |
 | List concatenation instead of `[*a, b]`; plain loops instead of `await` in comprehensions | `src/` | both forms compile | F.1 |
 | Shape validated before `struct.pack()` (silent truncation) | the packing sites | overflow checks leave `MICROPY_PREVIEW_VERSION_2` | F.1 |
@@ -6747,9 +6903,12 @@ the definitions; every envelope goes through `makeResponse()` with the server's 
 "Unknown error" for a code it lacks. `ForceCalRef` reads back the last applied value (400 fresh),
 as `AmbPres` does, while `ContMeas`/`ResetVOC` are never reported by GET (command-only triggers,
 C.5.2.1): an always-executed field is stored only where the composed data carries its key, a
-dispatch field never. `UnixTime`, `WifiTS` and every measurement `TS` read the browser clock
-(`Math.floor(Date.now() / 1000)`) on each GET, the measurements jitter around their samples, and
-the uptimes step once per GET, saturating at `COUNTER_CAP`. Failures are injected one at a time
+dispatch field never. A PUT whose `Content-Type` is not `application/json` (the exact type before
+any `;`, as `ext/microdot.py`'s `Request.json` reads it) answers code 1 and changes nothing.
+`UnixTime`, `WifiTS` and every measurement `TS` read the browser clock
+(`Math.floor(Date.now() / 1000)`) on each GET, the clock values never written into a source the
+server sent as the unavailable marker, the measurements jitter around their samples, and the
+uptimes step once per GET, saturating at `COUNTER_CAP`. Failures are injected one at a time
 (`controls.nextFailure`: a network error, an HTTP status, a malformed, torn or empty body, a group
 failure) and `controls.delayMs` delays every answer by a fixed time; there is no random latency and
 no partial-result injection. `tests_js/mock-server.test.js` covers each. One known gap: the browser
@@ -6986,9 +7145,17 @@ one run directory per test process). Captions are checked against `tests_js/_exp
 the text the page should show, written apart from `js/field-format.js` so the live tier never checks
 the renderer against itself (`tests_js/expected-display.test.js` pins it to hand-written texts).
 Every live command fails on a twin whose output holds a memory marker or a restart sign
-(`SimulatedResetError`, `reboot triggered`; `tests_js/_memory_markers.js`). The matrix page runs
-with reduced motion, which removes only the drawer's slide, and waits for each element on the
-frame it appears, then confirms it with the same locator wait (agent, 2026-10-13, decided on the
+(`SimulatedResetError`, `reboot triggered`; `tests_js/_memory_markers.js`). **The live tier needs
+the built toolchain**: the three twin checks and the matrix's config command each throw `MicroPython
+Unix port not built at <path>` when the Unix port is missing, so the tier fails, never skips. Every
+twin it starts goes through `tests_js/_twin_process.js` and holds the port-53 lock (E.1), the
+restart check across both boots. Each twin check takes its test's timeout and ends its own waits one
+twin stop (`l0.live_twin_shutdown_timeout_ms`, 15 s) before it, since Vitest never cancels a command
+whose test timed out — the smoke's 45 s leave its waits 30 s, the tabs' 200 s 185 s, the restart's
+180 s 165 s — and a check still running then fails naming the step it was in; each also refuses to
+start while the twin port (127.0.0.1:19481) answers, since another twin would serve it. The matrix
+page runs with reduced motion, which removes only the drawer's slide, and waits for each element on
+the frame it appears, then confirms it with the same locator wait (agent, 2026-10-13, decided on the
 owner's behalf for review); its three CI shards took 245-255 s each, every case kept (2026-10-13).
 
 ### The connection ceiling (`max_connections`, `backlog`, lwIP pcbs)
@@ -7223,7 +7390,9 @@ Mirrors Python's role split: **ESLint** (flat config, beyond `eslint:recommended
 can't share one `tsc` program's ambient globals, H.8.1) for mypy; **Vitest in real-browser mode**
 (`@vitest/browser-playwright`, real Chromium, deliberately not jsdom — same "real engine over a
 shim" principle as E.1; `testTimeout: 20000` mirrors "hanging tests never allowed") for the
-real-interpreter test principle — `npm test` ends with the runner summary block (E.10);
+real-interpreter test principle — `npm test` ends with the runner summary block (E.10), and no spy
+or fake timer outlives its test on any path (`restoreMocks: true`, real timers after every test in
+`tests_js/_test_setup.js`);
 **`@vitest/coverage-v8`** (report-only, no threshold, writing
 to `htmlcov_js/` rather than its default `coverage/`, which Python imports as a namespace package
 and which therefore shadowed the real `coverage` distribution `scripts/_render_coverage.py` needs;
@@ -7235,9 +7404,10 @@ device's staged `index.html` (`scripts/build_device_websites.sh --stage-only bui
 local check until CI runs it), **Stylelint** for CSS.
 Vitest reads every device's generated definitions from `build/generated_src/definitions/` and its
 REST reference from `build/generated_src/api/` (`API_REFERENCES`) through one loader,
-`tests_js/_generated_definitions.js`, which fails at import when either tree is missing or its
-device set differs from `devices/*.toml`; per device it runs the validator and the renderer over
-every section, and the mock PUT matrix over data composed from `mockdata/samples.json`
+`tests_js/_generated_definitions.js`, which fails at import when either tree is missing, its
+device set differs from `devices/*.toml` or a device's TOML changed since the tree was generated
+(the generator's `definitions/inputs_stamp.json`, E.3); per device it runs the validator and the
+renderer over every section, and the mock PUT matrix over data composed from `mockdata/samples.json`
 (deduplicated by definition, as the live one). `tests_js/api-reference-agreement.test.js` checks
 each reference's routes against the definitions, its result words against `js/api-contract.js` and
 its code table against the mock's; `tests_scripts/test_js_api_mirrors.py` pins every JS copy of a
@@ -7253,10 +7423,12 @@ installed ESLint, with pure style-preference bans (`no-bitwise`, `no-plusplus`, 
 `no-continue`) left out. `no-console` bans `console.log` and friends but allows `error`/`warn`,
 the real diagnostics: a section's failing GET shows the section's banner and is logged once per
 failure episode (`js/render.js`'s `"Could not refresh <section>:"`), then retried with a capped
-back-off (Part N `web.poll_backoff_max_ms`; a PUT is never retried), and a live-backend test warns
-when it skips; `scripts/*.mjs` (a CLI, where console is the output) is exempt in its own block. Over
-the shipped page (`js/`, `html/`), `no-restricted-properties` refuses the HTML sinks (H.4's
-"Rendering safety" row).
+back-off (Part N `web.poll_backoff_max_ms`; a PUT is never retried); `scripts/*.mjs` (a CLI, where
+console is the output) is exempt in its own block. Every disable comment names its rule and a
+reason after `--`, and none switches off every rule:
+`@eslint-community/eslint-comments/require-description` and `no-unlimited-disable` enforce both in
+every block. Over the shipped page (`js/`, `html/`), `no-restricted-properties` refuses the HTML
+sinks (H.4's "Rendering safety" row).
 Complexity ceilings (`complexity` 22, `max-depth` 4, `max-nested-callbacks` 4,
 `max-classes-per-file` 1) sit at the measured maximum — `js/field-format.js`'s `formatFieldValue()`
 at 22 — so they gate regression, mirror `pyproject.toml`'s mccabe/pylint
@@ -7988,6 +8160,11 @@ A delimited codec's `max_frame` is the raw frame (header, payload and CRC); `UAR
 smaller than that.
 Without a CRC, the only integrity checking left is this layer's own structural validation (command,
 chunk index, size bounds, ACK `UID` match).
+The tests keep their own copy of this layout: `tests/test_asy_uart_comm.py` and
+`tests/test_uart_comm_hazard.py` restate the commands and the header offsets, each line pinned to
+the protocol's constant (`# pins src/asy_uart_comm.py <NAME>`) and held equal to it by
+`tests_scripts/test_const_mirrors.py`, so a changed wire constant fails a test instead of moving the
+tests with it.
 
 **The CRC algorithm and its byte order are part of the wire contract and must be specified, never
 inherited.** The field-proven legacy configuration —
@@ -8273,7 +8450,9 @@ of a transaction — a step is one `asyncio.sleep_ms()` of the two UART modules,
 at synchronous scope for each, every instance must be free afterwards with the link recovering
 within two transactions, and a step past twice the clean run's awaits fails, that run measured at
 the slow-host limit below. Both files take their pair, budgets and two-mode registration from
-`tests/_uart_comm_hazard_common.py`. Their tier-map rows land with the map.
+`tests/_uart_comm_hazard_common.py`. Their tier-map rows land with the map. The link exerciser's
+checks in `tests/test_asy_uart_link_driver.py` register the same way, both CRC modes, plus one
+CRC16-only case: a corrupted frame counts one failure and the next transfer succeeds.
 
 **The mock tier's `timeout` is a scheduling budget, not a wire budget, and has to be sized as one.**
 The loopback link delivers in-memory within one event-loop turn, so nothing of the configured
@@ -8332,13 +8511,14 @@ check runs on the 240 ms arm above (agent, 2026-10-08). `PollRoundClock.pace(rea
 that limit on any host by turning every sleep into a bare yield; the cancellation sweeps count their
 clean run that way, so the step ceiling twice that count holds on a slow host too (agent, 2026-10-08).
 
-**Constraint — a loopback harness must never register a fake UART with a real `select.poll()`.** The
-Unix port does not re-evaluate a Python object's `ioctl()` after registration (the reason
-`tests/test_asy_uart_driver.py`'s `_StepPoller` exists, and the cause of a CI-only hang — CLAUDE.md's
-"Known hang cause"), and `digital_twin/unix_port_poll_prewarm.py` records a related `modselect.c`
-segfault with non-fd poll objects. The mock layer therefore supplies a paired poller stand-in
-re-querying each fake's `ioctl()` per call, installed by reassigning `uart.poller` after construction
-— the project's established mocking mechanism, keeping `src/` free of a testability seam.
+**Constraint — a loopback harness never registers a fake UART with a real `select.poll()`**
+(CLAUDE.md, the known hang cause): a real poll asks each registered object for a file descriptor and
+polls that descriptor instead of the object's own `ioctl()` (F.7 row 12). Both machine fakes answer
+`EINVAL` as rp2 does, `tests/machine.py` fails a test whose real poll queried a fake UART, and the
+mock layer supplies a bounded paired poller (`LinkPoller`) that reads each fake's `poll_mask()` per
+call, installed by reassigning `uart.poller` after construction — the project's established mocking
+mechanism, keeping `src/` free of a testability seam. The Unix port's poll growth-path defect, and
+`digital_twin/unix_port_poll_prewarm.py`'s workaround for it, are F.7's.
 
 ## J.8 Memory model
 
@@ -8500,12 +8680,11 @@ C/D alone:
   parameter's shape is fine).
 - **A constructor parameter with a real "off"/"no-op" value needs that value to actually mean
   nothing changes, checked against the real underlying API, not assumed.** `irq_pull_up=False`
-  constructs a bare `machine.Pin(id, mode=Pin.IN)` (omitting `pull=` entirely) rather than passing
-  `pull=None` explicitly — this project's own `tests/machine.py`/`digital_twin/machine.py` fakes
-  both type `pull` as a plain `int` with a `-1` sentinel, not `int | None`, so the real
-  MicroPython-idiomatic `pull=None` would need both fakes' own signatures widened for no real
-  benefit; matching SCD30's own existing no-pull construction style instead needed no fake changes
-  at all. Check what the *existing* fakes already model before introducing a new value shape.
+  constructs a bare `machine.Pin(id, mode=Pin.IN)`, omitting `pull=`; on rp2 that is the same as
+  `pull=None` — no pull, set on every configuring call (`ports/rp2/machine_pin.c:300-306`) — and
+  `tests/machine.py` treats both forms alike (the shared contract's `check_pin_pull_semantics`;
+  the twin's `Pin` is on its pending list, E.4). Check what the real API and the existing fakes
+  model before introducing a new value shape.
 
 ## K.3 Wire into `buildgen`
 
@@ -8677,7 +8856,7 @@ Run `npm run build:site` and read the generated definitions of every device carr
 (`build/generated_src/definitions/<device>.json`): each new field in its group, with its label, unit
 and range. Add the driver's sample to `mockdata/samples.json` (keyed by the driver's logger name) so
 the prototype and the mock tests render it; the composer throws naming the group when a sample is
-missing.
+missing, and an `errcount` module's missing sample too, naming its group and module.
 
 ## K.9 Documentation
 
@@ -9451,7 +9630,9 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   exactly one time" CI principle applied to error-handling paths specifically: a generator
   function's abort conditions are themselves testable units.
 - Newly-built generator/validator modules join `pyproject.toml`'s ruff/mypy scope alongside
-  `src/`/`tests/`/`digital_twin/` from day one.
+  `src/`/`tests/`/`digital_twin/` from day one, and every boot entry they generate is executed at
+  L1: `tests/test_generated_boot_entry.py` runs each device's `sensortask_<device>_main.py` and its
+  no-autostart variant with the device module and the reset record stubbed.
 - Host code evaluates annotations natively (no `from __future__ import annotations`); a
   `TYPE_CHECKING` name or a later class is quoted. `tests_scripts/test_host_annotations.py` holds
   both over `buildgen/`, `scripts/`, `toolchain/`, `tests_scripts/` and `tests_hardware/` outside
@@ -10170,14 +10351,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests/test_asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
+| `web.max_content_length` | 2048 B | `src/asy_webserver_service.py` — `2048`; `tests_hardware/bench/test_heap_under_connection_ceiling.py` — `2048` | `tests_scripts/test_request_body_cap_headroom.py` (headroom over the largest schema-permitted body); Microdot's `max_body_length`, set from it (I.6); `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | host computation over the real schemas at `NTPHost`'s 253-character bound (agent, 2026-10-07): the largest legitimate body is 1,080 B (`PUT /sensors` on `dev`); real traffic 232 B, measured 2026-09-19 (`c304b70`) (I.6) | 1.9× the largest legitimate body, ~9× real traffic; 6 × 2,048 = 12,288 B at the six-connection worst case (I.6) | a schema bound or a route's body changes (the headroom test re-derives the maximum) |
 | `web.per_call_timeout_s` | 5.0 s | `src/asy_webserver_service.py` — `5.0` | `l4` ceiling instrument: `dwell_s` and the drip interval stay below it (`tests_scripts/test_request_timeout_ceiling.py`); H.7.1; `l4.network_resilience_admitted_silence_s` plus the 1 s retry sleep stays under it (`tests_scripts/test_request_timeout_ceiling.py`) | estimated (agent, `884f3ce`) — measurement owed: a legitimate call's worst serving time on real hardware, L4 (the silicon 5.12-5.16 s of H.7.1 are the timeout firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | a route's slowest legitimate call changes |
 | `web.outer_cap_s` | 15 s | `src/asy_webserver_service.py` — `15.0`; `js/poll-manager.js` — `15000`; `scripts/_digital_twin_ci_suite.py` — `15.0` | `js/poll-manager.js` `DEFAULT_TIMEOUT_MS` equals it (H.4, `tests_scripts/test_request_timeout_ceiling.py`); the twin suite's `_RESET_ERRORS_TIMEOUT_S` (+ `l2.reset_errors_timeout_margin_s`) and `_RESET_ERRORS_BUDGET_S` (× `l2.reset_errors_budget_ratio`); the ceiling instrument's `probe_limit × dwell_s` and recycle interval stay below it; `l4.network_resilience_slowloris_socket_timeout_s` sits above it; the slowloris test's 6 header lines × `l4.network_resilience_trickle_step_s` (18 s) run past it | estimated (agent, `884f3ce`) — measurement owed: the slowest legitimate request on real hardware (`PUT /status {"ResetErrors": true}`), L4 (the silicon 15.1 s of H.7.1 is the cap firing, not the need); sizing rule 'generous, tuned around worst-case legitimate conditions' | unknown until measured | an error source joins `ResetErrors` or a route's slowest request changes |
 | `web.poll_backoff_max_ms` | 60000 ms | `js/poll-manager.js` — `60000` | after the k-th consecutive failure of a section's GET the next attempt comes min(interval × 2^(k−1), this cap) later, back to the interval after one success (`tests_js/poll-manager.test.js` reads it with `readIntConst()`) | estimated (agent, 2026-09-30) — measurement owed: the time a page takes to recover once the device answers again with its sections at the cap, the L2 live restart-recovery test | one request per minute per failing section against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
 | `web.device_watch_interval_ms` | 60000 ms | `js/shell.js` — `60000` | the shell's device watch: `GET /status` for the device clock, `GET /system` for the build compare, a changed build reloading the page once no Apply is pending; one extra watch runs when a section's failure episode ends, none while the tab is hidden (`tests_js/shell.test.js` reads it with `readIntConst()`) | estimated (agent, 2026-09-30) — measurement owed: the time a page open across a reflash takes to reload, the L2 live restart-recovery test | two requests per minute per tab against the ~2.2 requests/s the server sustains (H.7) | `web.poll_interval_ms` or the served throughput changes |
 | `web.clock_mismatch_s` | 5 s | `js/field-format.js` — `5` | an epoch value up to this far ahead of the page's estimate of the device clock reads "0 s ago", further ahead "clock mismatch" (the age display, H.4's "Divergences from the legacy site" row) | estimated (agent, 2026-10-13) — measurement owed: the `/status` latency under load, L2 (the shell's `nowS()` is `floor(Date.now()/1000 + offset)`, the offset taken when a `/status` answer arrives, so it trails the device by that request's latency plus up to 1 s of flooring) | unknown until measured | the device-clock derivation or the request path changes |
 | `web.max_pending_fragments` | 16 | `src/asy_webserver_service.py` — `16` | `_PieceWriter`'s list (64 B on the RP2040) | estimated (agent, `79cb3b1`) — measurement owed: the largest pending-fragment count a streamed route reaches under the L1 hammers | unknown until measured | a streamed route's piece shape changes |
-| `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256`; `tests/test_asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
+| `web.chunk_bytes` | 256 B | `src/asy_webserver_service.py` — `256` | one bound for JSON pieces and static-file reads; `tests/test_asy_webserver_service.py` reads it from the source (`src_const()`) | owner decision (owner, 2026-09-26) | a 256 B piece, against the ~105,000 B free after boot (I.6) | a heap-placement or serving-throughput measurement favours another piece size |
 | `web.max_header_lines` | 32 | `src/asy_webserver_service.py` — `32` | the reader proxy's head guard: a 33rd header refuses the head, answered 400 and traced as `wrnno` 61 (A.5) | estimated (agent, 2026-09-30): browsers send about 15-20 headers, curl about 4 — measurement owed: the header count of each supported browser's requests to the device, L4 | about 1.6× a browser's 20 headers | the device sets a cookie or an auth header, or a supported client sends more headers |
 | `web.max_head_bytes` | 2048 B | `src/asy_webserver_service.py` — `2048` | the reader proxy's head guard: a head (request line, headers and the blank line) past it is refused like a bad head (A.5); without it, 33 lines of `max_readline` could hold about 67 KB; the request side of the serving demand per connection (H.7) | estimated (agent, 2026-09-30): this device sets no cookie or auth header, so a browser's head stays well below one `max_readline` — measurement owed: the largest request head a supported browser sends to the device, on the dev bench, L4 | unknown until measured | the device sets a cookie or an auth header, or Microdot's `max_readline` changes |
 | `web.start_retries` | 3 attempts | `src/asy_webserver_service.py` — `3` | with `web.start_retry_s`, the last attempt comes one lwIP close linger after the first (`MICROPY_PY_LWIP_TCP_CLOSE_TIMEOUT_MS`, 10 s, `extmod/modlwip.c:61-63`); a failed `bind()`/`listen()` holds its pcb until a collection, so up to two across the attempts; the last failure persists `wrnno` 62 and ends the task (A.5) | estimated (agent, 2026-09-30): sized so the attempts span one close linger, the time a closing connection holds its pcb — measurement owed: a server start that fails with every TCP pcb held by closing connections, on the twin or the dev bench, L2/L4 | the third attempt, at 10 s, meets the pcbs the linger has freed | the close linger or the `MEMP_NUM_TCP_PCB` headroom over `max_connections` changes |
@@ -10351,10 +10532,11 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.ci_suite_ceiling_get_timeout_s` | 5.0 s | `tests_scripts/test_digital_twin_ci_suite_ceiling.py` — `5.0` | — | estimated (agent, `a91c576`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.request_timeout_ceiling_join_timeout_s` | 5.0 s | `tests_scripts/test_request_timeout_ceiling.py` — `5.0` | — | estimated (agent, `58b14ac`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.request_timeout_ceiling_hammer_join_timeout_s` | 2.0 s | `tests_scripts/test_request_timeout_ceiling.py` — `2.0` | — | estimated (agent, `45af8eb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
+| `l0.fram_less_boot_timeout_s` | 60 s | `tests_scripts/test_fram_less_boot.py` — `60` | — | estimated (agent, 2026-10-13): one construction and setup list on the Unix port takes a few seconds — measurement owed: elapsed of the boot at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the boot's construction or setup list grows |
 | `l0.isl29125_conformance_heapsize` | 8M | `tests_hardware/isl29125_conformance.py` — `8M` | — | estimated (agent, `75d222e`) — measurement owed: the conformance launcher's peak heap, L0 | against that measurement, once taken | the conformance probe grows |
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_twin_ready_timeout_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000`; `tests_js/_live_matrix_command.js` — `20000`; `scripts/cross_browser_smoke.mjs` — `20000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_twin_shutdown_timeout_ms` | 15000 ms | `tests_js/_live_twin_command.js` — `15000`; `tests_js/_live_matrix_command.js` — `15000`; `scripts/cross_browser_smoke.mjs` — `15000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_twin_ready_timeout_ms` | 20000 ms | `tests_js/_twin_process.js` — `20000`; `scripts/cross_browser_smoke.mjs` — `20000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_twin_shutdown_timeout_ms` | 15000 ms | `tests_js/_twin_process.js` — `15000`; `scripts/cross_browser_smoke.mjs` — `15000` | each live twin check ends its own waits this long before its test's timeout, the time kept for stopping its twin (H.7) | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_apply_status_timeout_ms` | 5000 ms | `tests_js/_live_matrix_command.js` — `5000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_caption_poll_timeout_ms` | 3000 ms | `tests_js/_live_matrix_command.js` — `3000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_case_timeout_ms` | 15000 ms | `tests_js/live-backend-put-matrix.test.js` — `15000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
@@ -10363,8 +10545,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.render_banner_wait_ms` | 5000 ms | `tests_js/render.test.js` — `5000` | — | estimated (agent, `9f6f6e1`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.section_render_wait_ms` | 5000 ms | `tests_js/accessibility.test.js` — `5000`; `tests_js/generated-definitions-render.test.js` — `5000`; `tests_js/site-functions.test.js` — `5000` | the wait for a rendered section's heading and every card, per device | measured (agent, 2026-10-13): the slowest section case 59 ms, `startApp` included, over 42 accessibility cases, two runs at nice 19 | about 85× | the mock gains a delay, or more requests come before the first paint |
 | `l0.live_twin_section_wait_ms` | 10000 ms | `tests_js/_live_twin_command.js` — `10000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_twin_tab_wait_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000` | — | estimated (agent, `9751814`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_concurrent_tabs_timeout_ms` | 200000 ms | `tests_js/live-backend.test.js` — `200000` | the full-ceiling tabs case per device: the twin's boot (`l0.live_twin_ready_timeout_ms`), the first pass within the page's request cap (`web.outer_cap_s`) plus 5 s, one reload of up to `l0.live_twin_tab_wait_ms` per tab of `max_connections`, the stop | estimated (agent, 2026-10-13): the sum of those waits, 20 s, 20 s, six 20 s reloads and the stop — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 10.2-23.2 s per device, one run of all six (2026-10-13) | about 8.6× the slowest device here | `max_connections`, `web.outer_cap_s` or a wait it sums changes |
+| `l0.live_twin_tab_wait_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000` | the per-tab reload slot, its drain included: the drain gets at most the slot less one `l0.live_twin_section_wait_ms`, and a drain still open then fails naming the other tabs' requests in flight (H.7.1's drain rule is what the reload waits for) | estimated (agent, `9751814`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_concurrent_tabs_timeout_ms` | 200000 ms | `tests_js/live-backend.test.js` — `200000` | the full-ceiling tabs case per device: the twin's boot (`l0.live_twin_ready_timeout_ms`), the first pass within the page's request cap (`web.outer_cap_s`) plus 5 s, one reload slot of up to `l0.live_twin_tab_wait_ms` per tab of `max_connections`, its drain included, the stop | estimated (agent, 2026-10-13): the sum of those waits, 20 s, 20 s, six 20 s reloads and the stop — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 10.2-23.2 s per device, one run of all six (2026-10-13) | about 8.6× the slowest device here | `max_connections`, `web.outer_cap_s` or a wait it sums changes |
 | `l0.live_restart_recovery_timeout_ms` | 180000 ms | `tests_js/live-backend.test.js` — `180000` | the restart-recovery case per device: two boots (`l0.live_twin_ready_timeout_ms`), the banner wait (`l0.live_twin_section_wait_ms`), the back-off cap the page may be waiting out (`web.poll_backoff_max_ms`), two stops and their drains | estimated (agent, 2026-10-13): two 20 s boots, the 10 s banner wait, the 60 s back-off cap and two stops with their drains — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 6.3-9.3 s per device, one run of all six (2026-10-13) | about 19× the slowest device here | `web.poll_backoff_max_ms` or a wait it sums changes |
 | `l0.smoke_h1_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | — | estimated (agent, `7ff3c3c`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 (the smoke) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.smoke_speculative_connections_max` | 2 | `scripts/cross_browser_smoke.mjs` — `2` | read beside `web.connections_per_page_load`: each spare socket holds a device connection slot until the server reclaims it, and a page load's 2, its one data request and 2 spares hold 5 of `max_connections`' 6 | measured (agent, 2026-10-08), counted once the page's first data request reached the proxy: Chromium one spare in 2 of 312 local page loads (the trees of fb9b92d and 7efb5f2, 36 of them beside four busy loops), where 62 more sockets still empty when the navigation finished carried that first data request within 24 ms; Edge two in 1 of 36 CI page loads (wozi, desktop, run 37763477250), both opened before the document while the data request went out on a third. The 2026-10-07 figures counted when the navigation finished, which read the socket opened for the first data request as a spare | the observed maximum | an engine's connection predictor changes, or an engine is added |
@@ -10377,7 +10559,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `l1.unix_heapsize` | 16M | `scripts/test.sh` — `16M`; `tests_scripts/test_digital_twin_boot_contiguity.py` — `16M` | every Unix-port file's heap; `test_digital_twin_bus_hazard_concurrency.py`'s dev scenario misses its 9 s budget at 8M (E.3.1); `l2.bus_hazard_concurrency_run_seconds` is that budget | measured (agent, 2026-09-17), full-suite runs: 16M passes every file; 8M fails the bus-hazard dev scenario in every isolated run (E.3.1) | the measured floor itself: changed only with a measurement and a register entry, never raised to make a failing test pass (agent, 2026-09-17; no per-file override: owner, 2026-09-17) | a file's peak heap at either GC stage changes |
 | `l1.serve_backstop_cap_mult` | 20 | `tests/test_asy_webserver_service.py` — `20` | the backstop is `outer_cap` × 20 | estimated (agent, `a035736`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 4× → 20× without a stated cause | against that measurement, once taken | the code under test or the host class changes |
-| `l1.webserver_leak_scenario_timeout_s` | 60.0 s | `tests/test_asy_webserver_service.py` — `60.0` | — | estimated (agent, `d49a0f7`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 30 → 60 s without a stated cause | against that measurement, once taken | the code under test or the host class changes |
+| `l1.webserver_leak_rate_max_b` | 8 B/cycle | `tests/test_asy_webserver_service.py` — `8` | the lifecycle soak's two windows, the collected free heap at cycles 80 and 200 after a 20-cycle warm-up (E.7) | measured 2026-10-13, `build-standard`, 1 run — single observation (2026-10-13): the healthy path keeps 0.0 B per cycle, a planted leak of one 16-byte object per cycle reads 16.0, at the reactive default | half the planted leak's rate, 8 B above the healthy reading | the serving path's per-connection allocations change |
+| `l1.async_harness_reap_limit_ms` | 5000 ms | `tests/_async_harness.py` — `5000` | how long the harness's reap lets a cancelled task run on before it names the task and takes it off every queue; a task nothing can wake again is named at once (E.2) | estimated (agent, 2026-10-13): a cancelled task's cleanup takes milliseconds here — measurement owed: the longest reap of a test's cancelled tasks at both GC stages on the slowest host that runs it, L1 | unknown until measured | a product task's cancellation path gains a wait |
 | `l1.fram_write_prompt_s` | 1.0 s | `tests/test_ntp_fram_system_integration.py` — `1.0` | stays well under `l1.fram_lock_fetch_timeout_ms` (2000 ms): the write completes promptly, not stuck behind the lock | estimated (agent, `c5478f0`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1; widened 0.2 → 1.0 s 'for scheduling-jitter headroom' | against that measurement, once taken | the code under test or the host class changes |
 | `l1.fram_lock_fetch_timeout_ms` | 2000 ms | `tests/test_ntp_fram_system_integration.py` — `2000` | `l1.fram_write_prompt_s` stays well under it | estimated (agent, `ce7b50d`) — measurement owed: per-test elapsed at both GC stages on the slowest host, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `web.serving_demand_budget_b` | 72,232 B | `tests/_sensortask_scenarios.py` — `72232` | the per-device serving-demand scenario: `max_connections` × (`web.max_head_bytes` + `web.max_content_length` + the largest GET body + 4 B per piece of the most-pieced body + `web.chunk_bytes`) stays within it (H.7); `dev`'s 68,790 B is the closest | estimated (agent, 2026-10-08): I.6's about 105,000 B free after boot less the 32,768 B contiguity reserve — measurement owed: the post-boot free heap on `dev`, L4 | about 3.4 KB over `dev`'s demand, against an estimated budget | a device's ceiling, a route's largest body, a cap or the post-boot free heap changes |
@@ -10470,7 +10653,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_notification_service_override_bound_ms` | 3200 ms | `tests/test_asy_notification_service.py` — `3200` | the most the measured override pause may outlast `l1.asy_notification_service_override_secs` (2 s) plus one `notify.loop_tick_s` round (1 s) | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | 200 ms over the 3 s the pause and one round take | the coordinator's pause loop changes |
 | `l1.asy_notification_service_next_sleep_min_s` | 59.0 s | `tests/test_asy_notification_service.py` — `59.0` | 60 s minus the `l1.asy_notification_service_elapsed_stimulus_ms` stimulus actually elapsed | estimated (agent, `da9b4ab`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_event_wait_s` | 0.2 s | `tests/test_asy_ntp_client.py` — `0.2` | — | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.asy_ntp_client_fake_server_poll_ms` | 10 ms | `tests/test_asy_ntp_client.py` — `10` | — | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.asy_ntp_client_fake_server_poll_ms` | 10 ms | `tests/test_asy_ntp_client.py` — `10`; `tests/test_ntp_fram_system_integration.py` — `10`; `tests/test_ntp_wifi_dns_integration.py` — `10` | — | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_fired_probe_s` | 0.05 s | `tests/test_asy_ntp_client.py` — `0.05` | — | estimated (agent, `c20f80b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_state_poll_ms` | 20 ms | `tests/test_asy_ntp_client.py` — `20`; `tests/test_ntp_fram_system_integration.py` — `20`; `tests/test_ntp_wifi_dns_integration.py` — `20` | — | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_serve_wait_s` | 5 s | `tests/test_ntp_fram_system_integration.py` — `5`; `tests/test_ntp_wifi_dns_integration.py` — `5` | — | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -10479,7 +10662,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_ntp_client_no_reply_fetch_timeout_ms` | 100 ms | `tests/test_asy_ntp_client.py` — `100`; `tests/test_ntp_wifi_dns_integration.py` — `100` | `l1.asy_ntp_client_past_fetch_timeout_ms` and `l1.ntp_wifi_dns_integration_past_fetch_timeout_ms` lie just past it | estimated (agent, `c20f80b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_past_fetch_timeout_ms` | 200 ms | `tests/test_asy_ntp_client.py` — `200` | — | estimated (agent, `c20f80b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_responder_poll_tries` | 500 | `tests/test_asy_ntp_client.py` — `500` | × `l1.asy_ntp_client_fake_server_poll_ms` = the loopback responder's wait | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.asy_ntp_client_fake_server_poll_tries` | 1000 | `tests/test_asy_ntp_client.py` — `1000` | × `l1.asy_ntp_client_fake_server_poll_ms` = the fake server's wait for a request | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
+| `l1.asy_ntp_client_fake_server_poll_tries` | 1000 | `tests/test_asy_ntp_client.py` — `1000`; `tests/test_ntp_fram_system_integration.py` — `1000`; `tests/test_ntp_wifi_dns_integration.py` — `1000` | × `l1.asy_ntp_client_fake_server_poll_ms` = the fake server's wait for a request | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_synced_poll_tries` | 50 | `tests/test_asy_ntp_client.py` — `50`; `tests/test_ntp_fram_system_integration.py` — `50`; `tests/test_ntp_wifi_dns_integration.py` — `50` | × `l1.asy_ntp_client_state_poll_ms` = the wait for `Synced` | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_state_poll_tries` | 200 | `tests/test_asy_ntp_client.py` — `200` | × `l1.asy_ntp_client_state_poll_ms` = the state wait's deadline | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_ntp_client_retry_armed_poll_tries` | 300 | `tests/test_asy_ntp_client.py` — `300` | × `l1.asy_ntp_client_state_poll_ms` (6 s) outlasts `ntp.fetch_timeout_ms`, after which the retry is armed | estimated (agent, `cc911be`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
@@ -11094,10 +11277,10 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | against the measured per-file maxima, owed at both GC stages | a file's elapsed approaches it |
+| `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest file alone (`tests/test_sensortask_dev.py`: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop) | two transient timeouts absorbed | the backstop rule changes |
 | `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
-| `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after SIGTERM | unknown until measured | the interpreter's signal handling changes |
+| `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | estimated (agent, `d370413`) — measurement owed: the probe's elapsed on the bench Pi4 (calibration owed) | unknown until measured | the interpreter build changes |
 | `runner.band_fast_ms` | 250 ms | `scripts/test.sh` — `250` | picks `runner.mult_fast` | measured 131-141 ms on the project's x86 sandbox, single observation; calibration on the Pi4 owed (estimated (agent, `d370413`) — measurement owed: the probe on the bench Pi4, L0) | unknown until calibrated | the host class or the interpreter build changes |
 | `runner.band_mid_ms` | 900 ms | `scripts/test.sh` — `900` | picks `runner.mult_mid` | measured ~139 ms on the bench Pi4, single observation (README.md); calibration on the Pi4 owed (estimated (agent, `d370413`) — measurement owed: the probe on the bench Pi4, L0) | unknown until calibrated | the host class or the interpreter build changes |

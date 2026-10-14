@@ -1,3 +1,4 @@
+import comments from "@eslint-community/eslint-plugin-eslint-comments";
 import js from "@eslint/js";
 import globals from "globals";
 import html from "eslint-plugin-html";
@@ -106,8 +107,7 @@ const BUG_CATCHING_RULES = {
     "prefer-template": "error",
 
     // --- console.log is debug residue; console.error/warn are real diagnostics ---
-    // a section's once-per-episode failure line (js/render.js) and the live-backend test's skip warning
-    // are real signal; scripts/*.mjs is exempt below (H.8).
+    // a section's once-per-episode failure line (js/render.js) is real signal; scripts/*.mjs is exempt below (H.8).
     "no-console": ["error", { allow: ["error", "warn"] }],
 
     // --- complexity ceilings at the measured maximum, so they gate regression: ratchet DOWN only, pinned by
@@ -130,9 +130,16 @@ const PRODUCTION_ONLY_RULES = {
     ],
 };
 
+// Every disable comment names its rule and a reason after " -- ", and none switches off every rule (SPECIFICATION.md H.8).
+const COMMENT_RULES = {
+    "@eslint-community/eslint-comments/require-description": ["error", { ignore: [] }],
+    "@eslint-community/eslint-comments/no-unlimited-disable": "error",
+};
+const COMMENT_PLUGIN = { "@eslint-community/eslint-comments": comments };
+
 // Node-context tests_js files (Vitest Commands API modules and their Node-only helpers, the summary reporter) run in the
 // real Node process, not the browser every other tests_js/*.js file runs in (SPECIFICATION.md H.7).
-const NODE_CONTEXT_TEST_FILES = ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js"];
+const NODE_CONTEXT_TEST_FILES = ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js"];
 
 export default [
     js.configs.recommended,
@@ -145,7 +152,8 @@ export default [
                 ...globals.browser,
             },
         },
-        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES },
+        plugins: COMMENT_PLUGIN,
+        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES, ...COMMENT_RULES },
     },
     {
         files: ["tests_js/**/*.js"],
@@ -157,7 +165,8 @@ export default [
                 ...globals.browser,
             },
         },
-        rules: BUG_CATCHING_RULES,
+        plugins: COMMENT_PLUGIN,
+        rules: { ...BUG_CATCHING_RULES, ...COMMENT_RULES },
     },
     {
         // Node globals, not browser ones: see NODE_CONTEXT_TEST_FILES.
@@ -169,7 +178,8 @@ export default [
                 ...globals.node,
             },
         },
-        rules: BUG_CATCHING_RULES,
+        plugins: COMMENT_PLUGIN,
+        rules: { ...BUG_CATCHING_RULES, ...COMMENT_RULES },
     },
     {
         // The repo's own root-level configs, held to the same rules as the code they lint; Node
@@ -182,7 +192,8 @@ export default [
                 ...globals.node,
             },
         },
-        rules: BUG_CATCHING_RULES,
+        plugins: COMMENT_PLUGIN,
+        rules: { ...BUG_CATCHING_RULES, ...COMMENT_RULES },
     },
     {
         // Standalone Node scripts under scripts/ (e.g. cross_browser_smoke.mjs) - real Node
@@ -197,13 +208,14 @@ export default [
         },
         // console IS this file's output channel - it is a standalone CLI smoke-check runner, not
         // browser code, so its progress/result reporting is the point rather than debug residue.
-        rules: { ...BUG_CATCHING_RULES, "no-console": "off" },
+        plugins: COMMENT_PLUGIN,
+        rules: { ...BUG_CATCHING_RULES, ...COMMENT_RULES, "no-console": "off" },
     },
     {
         // html/index.html's inline module bootstrap stays inline - scripts/_stage_website.py checks its
         // literal "../js/app.js" import (H.8) - so eslint-plugin-html lints it in place.
         files: ["html/**/*.html"],
-        plugins: { html },
+        plugins: { html, ...COMMENT_PLUGIN },
         languageOptions: {
             ecmaVersion: "latest",
             sourceType: "module",
@@ -211,6 +223,6 @@ export default [
                 ...globals.browser,
             },
         },
-        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES },
+        rules: { ...BUG_CATCHING_RULES, ...PRODUCTION_ONLY_RULES, ...COMMENT_RULES },
     },
 ];

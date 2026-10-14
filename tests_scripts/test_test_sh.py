@@ -5,10 +5,12 @@ Both are ordering/naming contracts, so they are asserted against the script's ow
 import os
 import re
 import shutil
+import signal
 import subprocess
 import time
+import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 import pytest
 from _script_loader import load_script_module
@@ -27,6 +29,8 @@ _PYTEST_LINE = "uv run pytest tests_scripts -q"
 _NESTED_RUN_TIMEOUT_S = 60
 # @tunable l0.test_sh_snippet_timeout_s = 30
 _SNIPPET_TIMEOUT_S = 30
+# The environment variable a planted run's processes carry, so its leftovers are found wherever they were reparented.
+_MARKER_VAR = "SENSORS_TEST_SH_PLANTED_RUN"
 
 
 def _test_sh_text(repo_root: Path) -> str:
@@ -349,7 +353,7 @@ def _run_cleanup_probe(repo_root: Path, tmp_path: Path, *, arm_trap: bool) -> bo
     script = tmp_path / "abort.sh"
     trap_line = "trap _cleanup EXIT" if arm_trap else ":"
     script.write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\n"
         f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\n'
         f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{pidfile}"\n'
         f"{_cleanup_body(repo_root)}\n{trap_line}\n"
@@ -396,6 +400,65 @@ def test_the_reaped_pid_is_cleared_so_the_trap_cannot_signal_a_recycled_one(repo
     assert 'tests_scripts_pid=""' in text[wait_at:wait_at + 300], "the pid must be cleared right after it is reaped"
 
 
+def test_the_exit_trap_releases_the_port_lock_on_an_aborted_run(repo_root: Path, tmp_path: Path) -> None:
+    # The one EXIT trap also gives port 53 back: a run aborted under `set -e` must not keep it held.
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    script = tmp_path / "abort.sh"
+    script.write_text(
+        f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\nport_lock_take 53 scripts/test.sh\n"
+        f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\n'
+        f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
+        f'{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\ntest -d "$XDG_RUNTIME_DIR/sensors-port-53.lock"\nfalse\n',
+    )
+    env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")}
+    done = subprocess.run(["/bin/bash", str(script)], env={**env, "XDG_RUNTIME_DIR": str(runtime)}, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    assert done.returncode == 1, done.stderr
+    assert list(runtime.iterdir()) == [], "the aborted run left port 53 held"
+
+
+# ---------------------------------------------------------------------------
+# The backgrounded pytest tier's own command: a plain run launches it as it always has; --coverage
+# runs the same tier under coverage.py over the host build chain, report-only.
+# ---------------------------------------------------------------------------
+
+
+def _launched_tier(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
+    # Runs scripts/test.sh's own launch block with uv stubbed to record its arguments, one per line.
+    text = _test_sh_text(repo_root)
+    start = text.index('results_dir="$(mktemp -d)"\n') + len('results_dir="$(mktemp -d)"\n')
+    end = text.index("tests_scripts_pid=$!\n", start) + len("tests_scripts_pid=$!\n")
+    record = tmp_path / "uv.args"
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "PYTHONPATH=$PYTHONPATH" "$@" >"{record}"\n')
+    (stub_bin / "uv").chmod(0o755)
+    script = tmp_path / "launch.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'coverage={int(coverage)}\nresults_dir="{tmp_path}"\ntests_scripts_timeout_s=30\n'
+        f'tests_scripts_status_file="{tmp_path}/status"\ntests_scripts_inner_pidfile="{tmp_path}/pid"\n'
+        + text[start:end]
+        + 'wait "$tests_scripts_pid"\n',
+    )
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    assert (tmp_path / "status").read_text() == "PASS\n"
+    return record.read_text().splitlines()
+
+
+def test_a_plain_run_launches_the_pytest_tier_untraced(repo_root: Path, tmp_path: Path) -> None:
+    record = f"--run-record={tmp_path}/tests_scripts.json"
+    assert _launched_tier(repo_root, tmp_path, coverage=False) == ["PYTHONPATH=scripts", "run", "pytest", "tests_scripts", "-q", "-p", "_pytest_run_record", record]
+
+
+def test_a_coverage_run_traces_the_host_build_chain_through_the_pytest_tier(repo_root: Path, tmp_path: Path) -> None:
+    # Report-only: the data goes to the run's scratch dir, the render step reads it from there.
+    record = f"--run-record={tmp_path}/tests_scripts.json"
+    traced = ["run", "coverage", "run", f"--data-file={tmp_path}/host.coverage", "--source=buildgen,scripts,toolchain", "-m", "pytest"]
+    assert _launched_tier(repo_root, tmp_path, coverage=True) == ["PYTHONPATH=scripts", *traced, "tests_scripts", "-q", "-p", "_pytest_run_record", record]
+
+
 # ---------------------------------------------------------------------------
 # conftest.py's own session-start reclamation. The structural check above pins that it exists and
 # targets the reserved namespace; this drives the real function against a throwaway tree, because
@@ -410,7 +473,7 @@ def test_the_session_start_reclamation_deletes_only_the_reserved_namespace(repo_
     devices = tmp_path / "devices"
     devices.mkdir()
     leaked = devices / "zz_test_broken.toml"
-    real = devices / "dev.toml"
+    real = devices / "fixture_device.toml"
     lookalike = devices / "zz_tests_not_ours.toml"
     for path in (leaked, real, lookalike):
         path.write_text("# fixture\n")
@@ -429,9 +492,15 @@ def test_the_session_start_reclamation_is_a_no_op_on_a_clean_tree(repo_root: Pat
     # suite, so an exception here (a missing devices/ directory included) fails everything at once.
     conftest = load_script_module(repo_root / "tests_scripts" / "conftest.py", "_tests_scripts_conftest_under_test")
     monkeypatch.setattr(conftest, "REPO_ROOT", tmp_path)
+
+    def listing() -> list[str]:
+        return sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+
     cast("Callable[[], None]", conftest._reclaim_leaked_device_fixtures.__wrapped__)()  # no devices/ at all
+    assert listing() == [], "the reclamation created something in a tree without devices/"
     (tmp_path / "devices").mkdir()
     cast("Callable[[], None]", conftest._reclaim_leaked_device_fixtures.__wrapped__)()  # empty devices/
+    assert listing() == ["devices"], "the reclamation wrote into an empty devices/"
 
 
 # ---------------------------------------------------------------------------
@@ -985,7 +1054,7 @@ def _fake_repo(repo_root: Path, tmp_path: Path) -> Path:
 _GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": false, "session_notes": [], "exitstatus": 0}'
 
 
-def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
+def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool | str = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
     # Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
     # memerr) contents, None meaning that file is absent; extra plants further result files. An lwIP
     # host file is discovered as the script does, and dispatched unless coverage is set.
@@ -1005,8 +1074,13 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
         (results / "tests_scripts.json").write_text(record)
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
-    # The renderer is the only `uv run` the tail makes that the fixture stands in for.
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ]; then exit {1 if render_fails else 0}; fi\nexec {shutil.which("uv")} "$@"\n')
+    # The report renders are the only `uv run`s the tail makes that the fixture stands in for: each is
+    # logged to tmp_path/renders, and fails when render_fails is True or a substring of its arguments.
+    fail = "" if render_fails is False else f'    [[ "$*" != *"{"" if render_fails is True else render_fails}"* ]] || exit 1\n'
+    (stub_bin / "uv").write_text(
+        '#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ] || [ "$2" = "coverage" ]; then\n'
+        f'    echo "$*" >>"{tmp_path}/renders"\n{fail}    exit 0\nfi\nexec {shutil.which("uv")} "$@"\n',
+    )
     (stub_bin / "uv").chmod(0o755)
     lwip_host_files = [name for name in jobs if name.startswith("tests/lwip_host/")]
     files = " ".join(name for name in jobs if not (coverage and name in lwip_host_files))
@@ -1088,10 +1162,10 @@ def test_a_no_verdict_marker_from_the_memory_gate_fails_the_file(repo_root: Path
     assert "  - tests/test_x.py: no verdict (per-file log missing or unreadable)" in _block(out)
 
 
-def _failure(name: str, *message: str) -> str:
-    # One failing test of test_x as microtest prints it: its FAIL line, then sys.print_exception's traceback.
+def _failure(name: str, *message: str, kind: str = "FAIL") -> str:
+    # One failing (or, kind ABORT, aborting) test of test_x as microtest prints it: its line, then the traceback.
     frames = f'[test_x] Traceback (most recent call last):\n[test_x]   File "tests/microtest.py", line 35, in run\n[test_x]   File "tests/test_x.py", line 9, in {name}\n'
-    return f"[test_x] FAIL {name}:\n{frames}" + "".join(f"[test_x] {line}\n" for line in message)
+    return f"[test_x] {kind} {name}:\n{frames}" + "".join(f"[test_x] {line}\n" for line in message)
 
 
 @pytest.mark.parametrize(
@@ -1121,6 +1195,15 @@ def test_at_most_five_failing_tests_are_named_and_the_rest_counted(repo_root: Pa
     assert code == 1, out
     named = "; ".join(f"FAIL test_f{i}: AssertionError: {i}" for i in range(1, min(fail_lines, 5) + 1))
     assert f"  - tests/test_x.py: {failed} of {failed} tests failed ({named}; {more})\n" in _block(out), _block(out)
+
+
+def test_an_aborted_test_is_named_in_its_files_reason_as_a_failing_one_is(repo_root: Path, tmp_path: Path) -> None:
+    # microtest's ABORT line, for the test an interrupt (the per-file timeout's first signal) or an exit ended.
+    aborted = _failure("test_c", "KeyboardInterrupt: ", kind="ABORT") + "[test_x] 1/4 passed, 2 failed, 0 skipped - aborted at test_c, later tests not run\n"
+    log = "[test_x] PASS test_a\n" + _failure("test_b", "AssertionError: x") + aborted
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_x.py": ("FAIL\n", log, None)})
+    assert code == 1, out
+    assert "Failed:\n  - tests/test_x.py: 2 of 4 tests failed (FAIL test_b: AssertionError: x; ABORT test_c: KeyboardInterrupt:)\nSkipped:" in _block(out), _block(out)
 
 
 def test_a_crash_with_no_count_line_keeps_its_reason_though_a_test_had_failed(repo_root: Path, tmp_path: Path) -> None:
@@ -1194,11 +1277,21 @@ def test_nothing_follows_the_block_on_stdout(repo_root: Path, tmp_path: Path) ->
     assert out.count("== Summary: scripts/test.sh ==") == 1
 
 
-def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False) -> Path:
-    # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose
-    # first call runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir.
+class _JobLimits(NamedTuple):
+    # A run_test_file() job's per-file timeout, attempts and the timeout's --kill-after, in place of the runner's own.
+    timeout_s: int = 1
+    attempts: int = 3
+    kill_after_s: int = 10
+
+
+_JOB_LIMITS = _JobLimits()
+
+
+def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False, limits: _JobLimits = _JOB_LIMITS, env: "dict[str, str] | None" = None) -> Path:
+    # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose first call
+    # runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir, its stderr in tmp_path/stderr.
     # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails.
-    text = _test_sh_text(repo_root)
+    text = _test_sh_text(repo_root).replace("--kill-after=10 ", f"--kill-after={limits.kill_after_s} ")
     bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_flag_memory_errors", "run_test_file")]
     assert all(bodies), "scripts/test.sh no longer defines _flag_memory_errors() and run_test_file()"
     calls = tmp_path / "calls"
@@ -1215,12 +1308,13 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     script = tmp_path / "run.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s=1\nmax_attempts=3\n'
+        f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s={limits.timeout_s}\nmax_attempts={limits.attempts}\n'
         "declare -A per_file_timeout_overrides_s=()\n"
         + "\n".join(b.group(0) for b in bodies if b)
         + f'\nrun_test_file tests/test_x.py "{results}/test_x.status"' + (f' "{stub}"' if own_binary else "") + "\n",
     )
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=120)
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=120)
+    (tmp_path / "stderr").write_text(done.stderr)
     assert done.returncode == 0, done.stderr
     return results
 
@@ -1237,6 +1331,145 @@ def test_a_pass_after_a_timeout_is_retried_pass_not_pass(repo_root: Path, tmp_pa
     # stays, and the file is reported as RETRIED-PASS 2/3 - a root-cause item, never a plain PASS.
     results = _run_file_job(repo_root, tmp_path, "sleep 30", 'echo "1/1 passed, 0 failed, 0 skipped"')
     assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/3\n"
+
+
+def _processes_carrying(token: str) -> "list[int]":
+    # Every live process whose environment holds the planted run's marker, its descendants wherever reparented.
+    needle = f"{_MARKER_VAR}={token}".encode()
+    found = []
+    for entry in Path("/proc").iterdir():
+        try:
+            if entry.name.isdigit() and needle in (entry / "environ").read_bytes().split(b"\0"):
+                found.append(int(entry.name))
+        except OSError:  # gone meanwhile, or another user's
+            continue
+    return found
+
+
+def _kill_all(pids: "list[int]") -> None:
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            continue
+
+
+# A file stuck in a busy child task its main task awaits, run as a test file under the harness.
+_HUNG_FILE = (
+    "import asyncio\nfrom _async_harness import run\n\n\ndef test_a_pass():\n    pass\n\n\ndef test_b_hangs():\n"
+    "    async def spins():\n        while True:\n            pass\n\n"
+    "    async def main():\n        await asyncio.create_task(spins())\n\n    run(main())\n\n\ndef test_c_later():\n    pass\n"
+    '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n'
+)
+
+
+def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+    # SIGINT, which microtest turns into its ABORT line and the summary names; the job leaves nothing running.
+    planted = tmp_path / "test_hung.py"
+    planted.write_text(_HUNG_FILE)
+    attempt = f'exec env MICROPYPATH="{repo_root / "tests"}:.frozen" "{micropython_bin}" "{planted}"'
+    token = uuid.uuid4().hex
+    results = _run_file_job(repo_root, tmp_path, attempt, attempt, limits=_JobLimits(timeout_s=2, attempts=1), env={**os.environ, _MARKER_VAR: token})
+    left = _processes_carrying(token)
+    _kill_all(left)
+    status, log, _ = _job_files(results)
+    assert status == "FAIL\n", log
+    assert log is not None and "[test_x] ABORT test_b_hangs:\n" in log, log
+    assert left == [], f"the job left {left} running"
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_x.py": (status, log, None)})
+    assert code == 1, out
+    assert "  - tests/test_x.py: 1 of 3 tests failed (ABORT test_b_hangs: KeyboardInterrupt:)\n" in _block(out), _block(out)
+
+
+def test_a_file_that_ignores_the_interrupt_is_killed_and_the_run_says_why(repo_root: Path, tmp_path: Path) -> None:
+    # A test catching the interrupt runs on into --kill-after's SIGKILL (137, not 124): its failure must still name the timeout.
+    ignores = "trap '' INT\nwhile :; do sleep 0.1; done"
+    results = _run_file_job(repo_root, tmp_path, ignores, ignores, limits=_JobLimits(attempts=1, kill_after_s=1))
+    assert (results / "test_x.status").read_text() == "FAIL\n"
+    assert "== tests/test_x.py did not end on the timeout's interrupt - killed by --kill-after on attempt 1/1\n" in (tmp_path / "stderr").read_text()
+
+
+def test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout(repo_root: Path, tmp_path: Path) -> None:
+    # 137 past the timeout is a timeout that ignored the interrupt: the standing retry applies to it as to 124.
+    ignores = "trap '' INT\nwhile :; do sleep 0.1; done"
+    results = _run_file_job(repo_root, tmp_path, ignores, "exit 0", limits=_JobLimits(attempts=2, kill_after_s=1))
+    assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/2\n"
+    assert "== tests/test_x.py exceeded 1s on attempt 1/2 - retrying in case of transient runner contention\n" in (tmp_path / "stderr").read_text()
+
+
+def test_a_job_that_ignores_the_stop_is_killed_after_twice_the_hard_stop_and_named(repo_root: Path, tmp_path: Path) -> None:
+    # The EXIT trap's backstop behind timeout's own hard stop: SIGKILL, said out loud, so the lock release still comes.
+    body = _cleanup_body(repo_root).replace("local kill_after_s=10\n", "local kill_after_s=1\n")
+    pidfile = tmp_path / "job.pid"
+    script = tmp_path / "abort.sh"
+    script.write_text(
+        f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\n"
+        f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\ntests_scripts_pid=""\n'
+        f'tests_scripts_inner_pidfile="{tmp_path}/inner.pid"\nevidence_archived=1\n{body}\ntrap _cleanup EXIT\n'
+        f"( trap '' TERM; echo \"$BASHPID\" >\"{pidfile}\"; while :; do sleep 0.1; done ) >/dev/null 2>&1 &\n"
+        f'until [ -s "{pidfile}" ]; do sleep 0.05; done\nfalse\n',
+    )
+    with (tmp_path / "out").open("w") as out:
+        done = subprocess.run(["/bin/bash", str(script)], stdout=subprocess.DEVNULL, stderr=out, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    job = int(pidfile.read_text())
+    alive = subprocess.run(["/bin/kill", "-0", str(job)], capture_output=True, check=False).returncode == 0
+    _kill_all([job] if alive else [])
+    assert done.returncode == 1
+    assert not alive, "the job that ignored the stop outlived the run"
+    assert f"== background jobs still running 2s after the stop: {job} - killing them\n" in (tmp_path / "out").read_text()
+
+
+def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list[str], list[str], str]":
+    # scripts/test.sh's own functions, EXIT trap and dispatch loop over two fixture files whose stub interpreter runs
+    # until signalled, then reports whether port 53's lock was still held; the run aborts once both are running.
+    # Returns the exit code, the processes it left (killed here), each stub's report, the lock root's entries, its output.
+    tree, ready, ended, runtime = (tmp_path / name for name in ("tree", "ready", "ended", "runtime"))
+    for directory in (tree / "tests", ready, ended, runtime):
+        directory.mkdir(parents=True)
+    for name in ("test_a", "test_b"):
+        (tree / "tests" / f"{name}.py").write_text("")
+    stub = tmp_path / "micropython"
+    stub.write_text(
+        '#!/usr/bin/env bash\nname="$(basename "${@: -1}" .py)"\n'
+        f"trap 'sleep 0.5; if [ -d \"{runtime}/sensors-port-53.lock\" ]; then echo held; else echo released; fi >\"{ended}/$name\"; exit 1' TERM\n"
+        f'echo "$$" >"{ready}/$name"\nwhile :; do sleep 0.1; done\n',
+    )
+    stub.chmod(0o755)
+    text = _test_sh_text(repo_root)
+    functions = re.findall(r"^[A-Za-z_]\w*\(\) \{.*?^\}", text, re.DOTALL | re.MULTILINE)
+    dispatch = text[text.index("_heavy_files_priority=(") : text.index("\nwait || true\n")]
+    script = tmp_path / "planted.sh"
+    script.write_text(
+        f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\nport_lock_take 53 scripts/test.sh\n"
+        f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\ntests_scripts_pid=""\n'
+        f'tests_scripts_inner_pidfile="{tmp_path}/inner.pid"\nevidence_archived=1\ncoverage=0\nmicropython_bin="{stub}"\n'
+        f'lwip_bin="{stub}"\nper_file_timeout_s=60\nmax_attempts=3\nmax_parallel=4\ndeclare -A per_file_timeout_overrides_s=()\n'
+        + "\n".join(functions)
+        + f'\ntrap _cleanup EXIT\nresults_dir="{tmp_path}/results"\nmkdir "$results_dir"\n{dispatch}\n'
+        + f'until [ -s "{ready}/test_a" ] && [ -s "{ready}/test_b" ]; do sleep 0.05; done\nfalse  # the abort under test, mid-loop\n',
+    )
+    token = uuid.uuid4().hex
+    # A plain run whatever mode the outer run is in: GC_THRESHOLD would route each file through the threshold runner,
+    # so the stub's last argument is the threshold, never the file, and the run waited for its readiness for ever.
+    modes = ("GC_THRESHOLD", "TEST_PARALLELISM", "PER_FILE_TIMEOUT_S", "TESTS_SCRIPTS_TIMEOUT_S")
+    env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK") and name not in modes}
+    env.update({"XDG_RUNTIME_DIR": str(runtime), _MARKER_VAR: token})
+    with (tmp_path / "out").open("w") as out:  # a file, not a pipe: a leftover holding a pipe would hold this call
+        done = subprocess.run(["/bin/bash", str(script)], cwd=tree, env=env, stdout=out, stderr=subprocess.STDOUT, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
+    left = _processes_carrying(token)
+    _kill_all(left)
+    reports = sorted(path.read_text() for path in ended.iterdir())
+    return done.returncode, left, reports, sorted(path.name for path in runtime.iterdir()), (tmp_path / "out").read_text()
+
+
+def test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock(repo_root: Path, tmp_path: Path) -> None:
+    # The EXIT trap stops the per-file jobs too, by the pids it started, and waits for them: a twin test still running
+    # would hold port 53 after the lock said it was free.
+    code, left, reports, locks, out = _planted_run(repo_root, tmp_path)
+    assert code == 1, out
+    assert left == [], f"the aborted run left {left} running\n{out}"
+    assert reports == ["held\n", "held\n"], f"each stopped test file must end while port 53 is still held: {reports}\n{out}"
+    assert locks == [], "the aborted run left port 53 held"
 
 
 def test_an_allocation_failure_in_a_timed_out_attempt_fails_the_file_its_retry_passes(repo_root: Path, tmp_path: Path) -> None:
@@ -1271,7 +1504,7 @@ def test_an_aborted_run_archives_its_logs_before_the_trap_removes_scratch(repo_r
     (results / "test_x.log").write_text("[test_x] boom\n")
     script = tmp_path / "abort.sh"
     script.write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\n"
         f'raw_dir=""\nresults_dir="{results}"\ntests_scripts_status_file="{tmp_path}/status"\n'
         f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
         f"{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\nfalse\n",
@@ -1283,14 +1516,38 @@ def test_an_aborted_run_archives_its_logs_before_the_trap_removes_scratch(repo_r
     assert (run / "results" / "test_x.log").read_text() == "[test_x] boom\n"
 
 
-def test_both_renderer_calls_tolerate_their_own_failure(repo_root: Path) -> None:
+def test_every_report_render_tolerates_its_own_failure(repo_root: Path) -> None:
     # Under `set -euo pipefail` a bare call aborts the script with the RENDERER's exit code, which
     # the caller cannot tell from a failed test - so the split above would be unreachable.
     text = _without_comments(_test_sh_text(repo_root))
-    renders = [line for line in text.splitlines() if "_render_coverage.py" in line]
-    assert len(renders) == 2, "expected exactly the src/ and digital_twin/ render calls"
+    renders = [line for line in text.splitlines() if "_render_coverage.py" in line or "uv run coverage html" in line or "uv run coverage report" in line]
+    assert len(renders) == 5, "expected the src/, digital_twin/ and generated-module renders and the host report's two"
     for line in renders:
         assert line.rstrip().endswith("|| coverage_render_failed=1"), f"unguarded renderer call: {line.strip()}"
+
+
+def test_a_coverage_run_renders_the_four_reports(repo_root: Path, tmp_path: Path) -> None:
+    # src/, digital_twin/ and the generated modules from the Unix-port dumps; the host build chain from
+    # the pytest tier's own coverage.py data. The generated one writes no XML.
+    code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1)
+    assert code == 0, out
+    raw, data = f"--raw-dir {tmp_path}/raw", f"--data-file={tmp_path}/results/host.coverage"
+    assert (tmp_path / "renders").read_text().splitlines() == [
+        f"run scripts/_render_coverage.py {raw} --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md",
+        f"run scripts/_render_coverage.py {raw} --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md",
+        f"run scripts/_render_coverage.py {raw} --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md",
+        f"run coverage html {data} -d htmlcov_host",
+        f"run coverage report {data} --format=markdown",
+    ]
+    assert (root / "coverage_summary_host.md").is_file(), "the host report's markdown goes beside the other three"
+
+
+@pytest.mark.parametrize("failing", ["htmlcov_generated", "coverage html", "coverage report"])
+def test_a_failed_new_render_alone_exits_three(repo_root: Path, tmp_path: Path, failing: str) -> None:
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails=failing)
+    assert code == 3, out
+    assert _block(out).endswith("Result: PASS (coverage report not rendered)\nExit code: 3\n")
+    assert len((tmp_path / "renders").read_text().splitlines()) == 5, "one failed render must not skip the ones after it"
 
 
 def test_ci_gates_the_coverage_reruns_test_result_but_not_its_report(repo_root: Path) -> None:

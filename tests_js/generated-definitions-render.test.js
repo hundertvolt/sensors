@@ -57,7 +57,6 @@ describe.each(DEVICE_IDS)("%s's generated definitions", (device) => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     it("pass the validator", () => {

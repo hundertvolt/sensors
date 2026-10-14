@@ -33,7 +33,9 @@ sys.path.insert(0, "digital_twin")
 
 import _http_client
 import machine
+from _async_harness import cancel, run_timed
 from _generated_module import boot_generated
+from _generated_tree import require_fresh
 from _tmp_scratch import TmpScratch
 from microdot import Request  # type: ignore[import-not-found]
 
@@ -44,17 +46,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from typing import Any
 
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
-
-
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
+require_fresh()  # every scenario boots a generated module and reads its plan
 
 
 # Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
@@ -142,14 +136,6 @@ async def _start_webserver(module: "Any") -> "asyncio.Task[None]":
     # typical here), keeping margin without ~15 call sites pushing past the per-file timeout.
     await asyncio.sleep(0.5)
     return task
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
 
 
 async def _healthy_request(host: str, port: int, path: str = "/measurements") -> int:
@@ -290,7 +276,7 @@ async def _scenario_n_healthy_up_to_max(device: str) -> None:
         results = await asyncio.gather(*(_healthy_request("127.0.0.1", port) for _ in range(ceiling)))
         assert results.count(200) == ceiling, (ceiling, results)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("connections_beyond_max_connections_are_rejected_cleanly_not_crashed", 20.0)
@@ -322,7 +308,7 @@ async def _scenario_beyond_max_rejected_cleanly(device: str) -> None:
         # guards: the server itself must still be healthy after a full-then-overflowing burst,
         # not just that each individual request resolved one way or the other
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("mixed_healthy_and_flaky_connections_dont_wedge_the_server", 15.0)
@@ -340,7 +326,7 @@ async def _scenario_mixed_healthy_and_flaky(device: str) -> None:
         # succeed regardless of the flaky ones sharing the same connection-count ceiling
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("all_flaky_connections_dont_wedge_the_server", 15.0)
@@ -352,7 +338,7 @@ async def _scenario_all_flaky(device: str) -> None:
         await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(_ceiling(module))), return_exceptions=True)
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("high_concurrency_burst_at_historical_segfault_repro_scale_survives", 60.0)
@@ -381,7 +367,7 @@ async def _scenario_high_concurrency_burst(device: str) -> None:
             assert all(r in (200, "rejected") for r in results), results
             assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("connections_at_each_count_from_one_to_max_connections_all_succeed", 20.0)
@@ -398,7 +384,7 @@ async def _scenario_each_count_up_to_max(device: str) -> None:
             # settle could still leave the next round's full ceiling one slot short under load.
             assert await _drained(module), f"round {n}'s connections never released their slots"
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds", 20.0)
@@ -418,7 +404,7 @@ async def _scenario_above_max_mixed(device: str) -> None:
         # guaranteed a slot above the ceiling, but at least one must get through
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("above_max_connections_all_flaky_survives", 20.0)
@@ -432,7 +418,7 @@ async def _scenario_above_max_all_flaky(device: str) -> None:
         await asyncio.gather(*(_flaky_connection("127.0.0.1", port) for _ in range(_ceiling(module) * 2)), return_exceptions=True)
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("connection_count_fluctuating_in_real_time_server_stays_healthy", 30.0)
@@ -478,7 +464,7 @@ async def _scenario_fluctuating_real_time(device: str) -> None:
         assert results.count(200) >= 1, results
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("existing_connections_survive_an_overflow_burst_untouched", 20.0)
@@ -514,7 +500,7 @@ async def _scenario_existing_survive_overflow(device: str) -> None:
         # overflow burst landing mid-flight - every one still completes normally with a real 200.
         assert slow_results == [200] * slow_count, slow_results
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection", 30.0)
@@ -549,7 +535,7 @@ async def _scenario_stale_slot_reclaimed(device: str) -> None:
         for writer in hanging:
             writer.close()
             await writer.wait_closed()
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("multiple_browser_like_sessions_concurrently_all_succeed", 20.0)
@@ -565,7 +551,7 @@ async def _scenario_multiple_browser_sessions(device: str) -> None:
         for page_results in results:
             assert page_results == [200, 200], results
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("realistic_mixed_openhab_polling_and_browser_session_concurrently", 20.0)
@@ -585,7 +571,7 @@ async def _scenario_openhab_and_browser(device: str) -> None:
         for page_results in gathered:
             assert page_results == [200, 200], gathered
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("realistic_mixed_polling_and_a_concurrent_real_config_write", 20.0)
@@ -611,7 +597,7 @@ async def _scenario_polling_and_config_write(device: str) -> None:
         assert write_results == [(200, "Valid")] * writes, write_results
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully", 20.0)
@@ -645,7 +631,7 @@ async def _scenario_mixed_traffic_above_ceiling(device: str) -> None:
         assert all(r in (200, "rejected") for r in flat), flat
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("every_admitted_connection_is_actually_served_a_complete_correct_response", 40.0)
@@ -682,7 +668,7 @@ async def _scenario_all_admitted_are_really_served(device: str) -> None:
                 assert elapsed_ms < 10000, f"round {round_index}: {path} took {elapsed_ms}ms - admitted but not served in any useful time"
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("a_full_ceiling_of_real_page_loads_is_served_without_truncation", 40.0)
@@ -715,7 +701,7 @@ async def _scenario_all_admitted_page_loads_complete(device: str) -> None:
         assert set(bodies) == {reference}, f"a concurrent page load differs - uncontended it is {len(reference)} bytes, under load {sizes}"
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("the_accept_queue_is_never_shallower_than_the_admission_ceiling", 20.0)
@@ -748,7 +734,7 @@ async def _scenario_backlog_covers_the_ceiling(device: str) -> None:
     finally:
         for client in clients:
             client.close()
-        await _cancel(task)
+        await cancel(task)
     assert await _drained(module), "the burst's slots never came back"
 
 
@@ -788,7 +774,7 @@ async def _scenario_closing_connection_holds_its_slot(device: str) -> None:
         assert await _still_serving("127.0.0.1", port)
     finally:
         gate.set()
-        await _cancel(task)
+        await cancel(task)
 
 
 @_register("a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", 30.0)
@@ -825,7 +811,7 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
         assert all(r in (413, "rejected") for r in over), over
         assert await _still_serving("127.0.0.1", port)
     finally:
-        await _cancel(task)
+        await cancel(task)
 
 
 # ---------------------------------------------------------------------------
@@ -848,6 +834,8 @@ async def _scenario_simultaneous_bodies(device: str) -> None:
 def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
     global _scratch, _next_port
     assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    defined = sorted(name for name in globals() if name.startswith("_scenario_"))
+    assert len(defined) == len(_SCENARIOS), f"{len(defined)} _scenario_* functions, {len(_SCENARIOS)} registered: one lacks its @_register"
     _scratch = TmpScratch(f"dtcc_{device}")
     _next_port = _PORT_BASE_BY_DEVICE[device]
 

@@ -19,7 +19,7 @@ def src_dir(repo_root: Path) -> Path:
 def _parse(tmp_path: Path, source: str) -> "tuple[LimitField, ...]":
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    return parse_limits(path, "dev", "x")
+    return parse_limits(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None" = None) -> None:
@@ -207,7 +207,7 @@ def test_parse_limits_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 
 
 def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
-    assert parse_limits(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx") == (
+    assert parse_limits(src_dir / "asy_bmp3xx_driver.py", "fixture", "bmp3xx") == (
         LimitField("address", frozenset({0x76, 0x77}), None, None),
         LimitField("trigger_s", None, 1, 3600),
     )
@@ -216,12 +216,12 @@ def test_parse_limits_real_bmp3xx_driver(src_dir: Path) -> None:
 def test_parse_limits_real_isl29125_driver(src_dir: Path) -> None:
     # No "address" limit, unlike bmp3xx - 0x44 is hard-wired with no address-select pin at all, so
     # this driver has no TOML-configurable address field for a @limits tag to describe.
-    assert parse_limits(src_dir / "asy_isl29125_driver.py", "dev", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
+    assert parse_limits(src_dir / "asy_isl29125_driver.py", "fixture", "isl29125") == (LimitField("trigger_s", None, 1, 3600),)
 
 
 def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
     # 1 s up to the chip's longest measurement interval (Interface Description 1.4.3): the stuck-pin fallback's bounds.
-    assert parse_limits(src_dir / "asy_scd30_driver.py", "dev", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
+    assert parse_limits(src_dir / "asy_scd30_driver.py", "fixture", "scd30") == (LimitField("trigger_s", None, 1, 1800),)
 
 
 def _known_fram_sizes(driver: Path) -> "frozenset[int]":
@@ -235,11 +235,11 @@ def _known_fram_sizes(driver: Path) -> "frozenset[int]":
 
 def test_fram_max_size_limits_match_the_known_product_ids(src_dir: Path) -> None:
     # The build-time set and the boot-time RDID table are two copies of one fact; a size in one only builds-then-fails.
-    (limit,) = parse_limits(src_dir / "asy_fram_manager.py", "dev", "fram")
+    (limit,) = parse_limits(src_dir / "asy_fram_manager.py", "fixture", "fram")
     assert limit.toml_field == "max_size"
     assert limit.choices == _known_fram_sizes(src_dir / "asy_fram_driver.py")
 
 
 def test_no_other_src_module_declares_an_unnoticed_limits_tag(src_dir: Path) -> None:
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_limits(p, "fixture", "x")}
     assert tagged == {"asy_bmp3xx_driver.py", "asy_fram_manager.py", "asy_isl29125_driver.py", "asy_scd30_driver.py"}

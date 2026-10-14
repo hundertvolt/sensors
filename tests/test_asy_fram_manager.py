@@ -1,7 +1,11 @@
 import asyncio
 
+from _async_harness import run
 from _error_codes import code
+from _fake_time import UTCValid
+from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
+from _src_const import src_const
 
 import asy_base_classes
 import asy_fram_manager
@@ -21,69 +25,97 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine
-    from typing import Any, TypeVar
 
     from asy_crc_checks import CRCBase
-
-    T = TypeVar("T")
     from asy_print_log import ErrorLog
 
-# Real on-chip constant values (asy_fram_manager.py's own _STATUS_* are micropython.const() and
-# compiled away - not importable - so these are hardcoded, matching test_asy_fram_driver.py's own
-# convention of hardcoding raw wire-level values rather than importing driver internals).
-_STATUS_UNINIT = 0x00
-_STATUS_IDLE = 0x01
-_STATUS_BUSY = 0x02
+# The chunk's status-byte values, read from source (tests/_src_const.py).
+_STATUS_UNINIT: int = src_const("src/asy_fram_manager.py", "_STATUS_UNINIT")  # type: ignore[assignment]  # src_const() answers object
+_STATUS_IDLE: int = src_const("src/asy_fram_manager.py", "_STATUS_IDLE")  # type: ignore[assignment]
+_STATUS_BUSY: int = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")  # type: ignore[assignment]
 
 # A status bit no real set_values_sync()/get_values_sync() return uses, so an injected failure
-# is distinguishable from every genuine one - see fail_set_values_at() below.
+# is distinguishable from every genuine one - see _fail_set_values_at() below.
 _INJECTED_FAILURE = 1 << 20
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 # @tunable l1.asy_fram_manager_read_wait_s = 5
 _READ_WAIT_S = 5
 
 
-def make_bus() -> SPI:
-    return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
+def _degraded_buffer() -> FRAMChunkBuffer:
+    # A negative size takes the same buf=None path bytearray(size) raising MemoryError takes, with
+    # no injection needed - asy_base_classes.py guards both together for exactly that reason.
+    buf = FRAMChunkBuffer(-1, 0)
+    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
+    return buf
 
 
-def make_manager(max_size: int = 0x2000, history_length: int = 10) -> tuple[FRAMManager, FakeMB85RS64V]:
-    bus = make_bus()
-    manager = FRAMManager(bus, 1, max_size=max_size, log=LogConfig(None, history_length, None))
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip
+def _degraded_timestamped_buffer() -> FRAMChunkTimestampedBuffer:
+    buf = FRAMChunkTimestampedBuffer(-1, 0, 0)
+    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
+    return buf
 
 
-async def setup_manager(manager: FRAMManager) -> bool:
-    return await manager.setup()
+def _entries(errs: "ErrorLog") -> list[tuple[int, str]]:
+    nums, types = errs["FRAM"]["ErrNum"], errs["FRAM"]["ErrType"]
+    assert isinstance(nums, list)
+    assert isinstance(types, list)
+    # (number, type) pairs of the occupied slots; zip(strict=) has no MicroPython equivalent
+    return [(num, types[index]) for index, num in enumerate(nums) if types[index] != "N"]
 
 
-async def _synced() -> bool:
-    return True
+def _erase_and_record(chip_class: "type[FakeMB85RS64V]") -> "tuple[FakeMB85RS64V, list[int], int]":
+    # One erase of a filled chip: the chip, the write summary [writes, next unit address, units in order (1/0),
+    # last 1-byte write's index, first 256-byte write's index], and the step count. Fixed-size, so a 256 KB
+    # chip's thousand writes never grow one list block (the coverage build's fragmented heap refused 16 KB).
+    manager, chip, _stores = _filled_system(chip_class)
+    summary = [0, 0, 1, -1, -1]
+    steps = [0]
+    original_sync = manager.fram.set_values_sync
+
+    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) == 256:
+            summary[2] &= int(addr_start == summary[1])
+            summary[1] += 256
+            if summary[4] < 0:
+                summary[4] = summary[0]
+        elif len(buf) == 1:
+            summary[3] = summary[0]
+        summary[0] += 1
+        return original_sync(buf, addr_start)
+
+    def step() -> None:
+        steps[0] += 1
+
+    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
+    assert run(manager.erase_chip(step)) is True
+    return chip, summary, steps[0]
 
 
-async def _not_synced() -> bool:
-    return False
+def _erase_cut_after(landed: int) -> "tuple[list[list[int]], bytearray]":
+    # One erase whose power fails after `landed` data bytes; returns each logger's ring before and the image after.
+    manager, chip, stores = _filled_system(_CuttingChip)
+    assert isinstance(chip, _CuttingChip)
+    rings = [list(store.history) for store in stores]
+    chip.cut_after = landed
+
+    async def erase() -> bool:
+        try:
+            await manager.erase_chip(lambda: None)
+        except _PowerCut:
+            return True
+        return False
+
+    assert run(erase()) is True, f"the power cut after {landed} bytes never came"
+    return rings, bytearray(chip.memory)
 
 
-async def _raising_callback() -> bool:
-    raise RuntimeError("ntp callback exploded")
+def _errnums(manager: FRAMManager) -> list[int]:
+    async def scenario() -> "ErrorLog":
+        return await manager.get_error_counter()
 
-
-class _UTCValid:
-    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit.
-    def __enter__(self) -> "_UTCValid":
-        asy_base_classes.set_utc_valid()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        asy_base_classes.set_utc_valid(valid=False)
+    return run(scenario())["FRAM"]["ErrNum"]
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +126,8 @@ class _UTCValid:
 def test_the_manager_logs_ram_only_whatever_its_log_config_names() -> None:
     # The one module that never logs into FRAM is the FRAM module itself: log.fram is ignored,
     # its length and level are taken.
-    other, _chip = make_manager()
-    manager = FRAMManager(make_bus(), 1, max_size=0x2000, log=LogConfig(other, 4, 2))
+    other, _chip = _make_manager()
+    manager = FRAMManager(_make_bus(), 1, max_size=0x2000, log=LogConfig(other, 4, 2))
     assert type(manager.pr) is PrintLogHistory
     assert manager.pr.name == "FRAM"
     assert len(manager.pr.history) == 4
@@ -103,7 +135,7 @@ def test_the_manager_logs_ram_only_whatever_its_log_config_names() -> None:
 
 
 def test_a_chunk_takes_its_fram_logger_and_pause_from_its_manager() -> None:
-    manager, _chip = make_manager()
+    manager, _chip = _make_manager()
     chunk = manager.get_chunk(4, owner="T1")
     ts_chunk = manager.get_timestamped_chunk(4, _synced, owner="T2")
     assert chunk is not None
@@ -120,7 +152,7 @@ def test_a_chunk_takes_its_fram_logger_and_pause_from_its_manager() -> None:
 def test_every_chunk_and_the_driver_log_into_the_managers_ram_history() -> None:
     # Guard: a FRAM-backed history here would write through FRAM from inside the driver lock the chunk
     # layer holds, and deadlock on it; so the chunks and the driver share the manager's RAM history.
-    manager, _chip = make_manager()
+    manager, _chip = _make_manager()
     chunk = manager.get_chunk(4, owner="T1")
     ts_chunk = manager.get_timestamped_chunk(4, _synced, owner="T2")
     assert chunk is not None and ts_chunk is not None
@@ -136,8 +168,8 @@ def test_every_chunk_and_the_driver_log_into_the_managers_ram_history() -> None:
 
 
 def test_get_chunk_sequential_allocation_offsets_match_bump_pointer_math() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk1 = manager.get_chunk(4, owner="T1")  # default crc is CRCPass, length 0
     chunk2 = manager.get_chunk(8, owner="T2")
     assert chunk1 is not None and chunk2 is not None
@@ -150,8 +182,8 @@ def test_get_chunk_sequential_allocation_offsets_match_bump_pointer_math() -> No
 def test_allocation_order_not_chunk_size_determines_offsets() -> None:
     # Whichever get_chunk()/get_timestamped_chunk() call happens first claims the lower offset regardless of
     # size, which is why call order must be fixed within one build.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     small_first = manager.get_chunk(2, owner="T1")
     big_second = manager.get_chunk(50, owner="T2")
     assert small_first is not None and big_second is not None
@@ -163,14 +195,14 @@ def test_allocation_order_not_chunk_size_determines_offsets() -> None:
 
 
 def test_get_chunk_returns_none_when_request_exceeds_remaining_capacity() -> None:
-    manager, _chip = make_manager(max_size=16)
-    run(setup_manager(manager))
+    manager, _chip = _make_manager(max_size=16)
+    run(_setup_manager(manager))
     assert manager.get_chunk(100, owner="T1") is None
 
 
 def test_get_timestamped_chunk_size_includes_the_8_byte_timestamp() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, owner="T1")
     assert chunk is not None
     assert chunk._block_addr == (0, 4 + 8 + 0 + 2)  # size(4) + ts(8) + crc(0) + status(2) = 14
@@ -185,14 +217,26 @@ def test_owner_seeds_are_nonzero_and_differ_by_owner() -> None:
             assert 0 < seed < all_set  # never zero, never the unseeded all-ones register
 
 
-def _owner_layout(chip: FakeMB85RS64V, owners: "list[str]", crc_class: "Callable[[], CRCBase]") -> "list[FRAMChunk]":
-    # One build's layout: equal-size chunks in owner order on a fresh manager over a copy of chip's bytes.
-    manager, fresh = make_manager()
-    fresh.memory[:] = chip.memory
-    run(setup_manager(manager))
-    chunks = [manager.get_chunk(6, crc=crc_class(), owner=owner) for owner in owners]
-    assert all(chunk is not None for chunk in chunks)
-    return [chunk for chunk in chunks if chunk is not None]
+def _fail_get_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
+    # The read-side mirror of _fail_set_values_at above; same seam, same sentinel.
+    original_sync = chunk.fram.get_values_sync
+    original_report = chunk.fram.report_get_values
+    seen = [0]
+
+    def failing(buf: bytearray | memoryview, addr_start: int = 0) -> int:
+        if addr_start == addr:
+            seen[0] += 1
+            if seen[0] == on_call:
+                return _INJECTED_FAILURE
+        return original_sync(buf, addr_start)
+
+    async def reporting(status: int) -> bool:
+        if status == _INJECTED_FAILURE:
+            return False
+        return await original_report(status)
+
+    chunk.fram.get_values_sync = failing  # type: ignore[method-assign]
+    chunk.fram.report_get_values = reporting  # type: ignore[method-assign]
 
 
 def test_a_chunk_written_by_another_owner_reads_blank() -> None:
@@ -202,7 +246,7 @@ def test_a_chunk_written_by_another_owner_reads_blank() -> None:
     for crc_class in (CRC8, CRC16):
         seeds = [asy_fram_manager._owner_seed(owner, crc_class()) for owner in owners]
         assert len(set(seeds)) == len(owners)
-        _manager, chip = make_manager()
+        _manager, chip = _make_manager()
         first = _owner_layout(chip, owners, crc_class)
         image = first[0].fram._spidev.spi._spi
         assert isinstance(image, FakeMB85RS64V)
@@ -224,8 +268,8 @@ def test_a_chunk_written_by_another_owner_reads_blank() -> None:
 
 
 def test_read_before_any_write_returns_none() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -236,8 +280,8 @@ def test_read_before_any_write_returns_none() -> None:
 
 
 def test_write_then_read_round_trip_no_crc() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -249,8 +293,8 @@ def test_write_then_read_round_trip_no_crc() -> None:
 
 
 def test_write_then_read_round_trip_with_crc8() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -262,8 +306,8 @@ def test_write_then_read_round_trip_with_crc8() -> None:
 
 
 def test_write_rejects_data_larger_than_chunk_size() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -274,8 +318,8 @@ def test_write_rejects_data_larger_than_chunk_size() -> None:
 
 
 def test_write_into_rejects_a_buffer_of_the_wrong_size() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     wrong_buf = FRAMChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
@@ -290,8 +334,8 @@ def test_preallocated_buffer_write_into_read_into_round_trip() -> None:
     # The "ad hoc vs. preallocated" top-level interface: write_into()/read_into() let a caller
     # reuse one buffer across calls via get_buffer(), instead of write()/read()'s own
     # fresh-allocation-per-call convenience wrapper.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     buf = chunk.get_buffer()
@@ -318,8 +362,8 @@ def test_preallocated_buffer_write_into_read_into_round_trip() -> None:
 
 
 def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -343,8 +387,8 @@ def test_corrupted_block0_status_falls_back_to_block1_and_self_heals_block0() ->
 
 
 def test_corrupted_block1_status_leaves_block0_valid_and_self_heals_block1() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -368,8 +412,8 @@ def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_a
     # "invalid, self-heal" path as a real torn-write BUSY rather than a separate failure mode.
     garbage = 0x7A  # deliberately not _STATUS_UNINIT/_STATUS_IDLE/_STATUS_BUSY
     assert garbage not in (_STATUS_UNINIT, _STATUS_IDLE, _STATUS_BUSY)
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -389,8 +433,8 @@ def test_status_byte_holding_an_unrecognized_garbage_value_is_treated_the_same_a
 
 
 def test_crc8_detects_corrupted_payload_byte_and_falls_back_to_other_block() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -410,8 +454,8 @@ def test_crc8_detects_corrupted_trailer_byte_itself_not_just_payload() -> None:
     # Every other CRC fault-injection test flips a payload byte - this flips the CRC's own on-chip
     # trailer byte (stored right after the payload, before the status bytes) instead, to prove the
     # checksum genuinely covers its own storage, not only the data it protects.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -433,8 +477,8 @@ def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -
     # A write torn between block 0 and block 1: both blocks valid (CRC_Pass, both status bytes IDLE) but
     # different, and no generation counter says which is right, so the read fails rather than guesses
     # (owner, 2026-07-18).
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     addr0, addr1 = chunk._block_addr
@@ -457,8 +501,8 @@ def test_read_reports_failure_when_both_blocks_valid_but_hold_different_data() -
 def test_a_never_written_chunk_read_twice_reports_uninitialised_both_times() -> None:
     # A blank block is never read, so it takes no busy marker and stays blank: the second read finds the
     # same blank chunk as the first, and so does a read after clear().
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     status = [addr + chunk.size + chunk.crc.length() for addr in chunk._block_addr]
@@ -479,8 +523,8 @@ def test_a_never_written_chunk_read_twice_reports_uninitialised_both_times() -> 
 def test_read_into_is_tri_state() -> None:
     # True: valid data. False: read, and no copy usable (blank, or both invalid). None: not read (a fault
     # on a block with no valid copy beside it, or a failed repair write); the stored bytes are left as they are.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     addr0, addr1 = chunk._block_addr
@@ -496,7 +540,7 @@ def test_read_into_is_tri_state() -> None:
     assert read() is False
     assert run(chunk.write(b"good")) is True
     chip.memory[addr0 + 4] = _STATUS_BUSY  # block 0 invalid, and its repair write fails
-    fail_set_values_at(chunk, addr0 + 4)
+    _fail_set_values_at(chunk, addr0 + 4)
     assert read() is None
     manager.fram.initialized = False  # the driver refuses every transfer: both blocks fault
     assert read() is None
@@ -508,8 +552,8 @@ def test_a_planted_fault_leaves_an_entry_at_every_layer_it_reaches() -> None:
     # One operation per fault: the detecting layer's entry first, then each layer it propagates
     # through adds its own, so the history shows how far the fault reached (owner, 2026-10-02).
     def entries_after(plant: "Callable[[FRAMManager, FakeMB85RS64V, FRAMChunk], None]", operation: str, crc: "CRCBase") -> "list[tuple[int, str]]":
-        manager, chip = make_manager()
-        run(setup_manager(manager))
+        manager, chip = _make_manager()
+        run(_setup_manager(manager))
         chunk = manager.get_chunk(4, crc=crc, owner="T1")
         assert chunk is not None
         assert run(chunk.write(b"good")) is True
@@ -549,24 +593,33 @@ def test_a_planted_fault_leaves_an_entry_at_every_layer_it_reaches() -> None:
     assert entries_after(crc_both, "read", CRC8()) == [e_("FRAM_DATA_CRC"), invalid, e_("FRAM_DATA_CRC"), invalid]
 
 
-def _land_altered_payload(chunk: "FRAMChunk") -> None:
-    # The verify pass's subject: block 0's payload lands with its first byte flipped, the status bytes intact.
+def _fail_set_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
+    # Address- and occurrence-selective: the same status byte is written once for the BUSY mark and
+    # once for the IDLE mark, so the BUSY and IDLE marks need different occurrences. Injected at
+    # set_values_sync(), the seam the chunk layer actually calls; the sentinel is an unused status bit.
     original_sync = chunk.fram.set_values_sync
-    payload_addr = chunk._block_addr[0]
+    original_report = chunk.fram.report_set_values
+    seen = [0]
 
-    def altering(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
-        if addr_start == payload_addr:
-            altered = bytearray(buf)
-            altered[0] ^= 0xFF
-            return original_sync(altered, addr_start)
+    def failing(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if addr_start == addr:
+            seen[0] += 1
+            if seen[0] == on_call:
+                return _INJECTED_FAILURE
         return original_sync(buf, addr_start)
 
-    chunk.fram.set_values_sync = altering  # type: ignore[method-assign]
+    async def reporting(status: int) -> bool:
+        if status == _INJECTED_FAILURE:
+            return False
+        return await original_report(status)
+
+    chunk.fram.set_values_sync = failing  # type: ignore[method-assign]
+    chunk.fram.report_set_values = reporting  # type: ignore[method-assign]
 
 
 def test_a_verify_pass_that_finds_a_mismatch_logs_fram_verify() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), verify=1, owner="T1")
     assert chunk is not None
     _land_altered_payload(chunk)
@@ -575,8 +628,8 @@ def test_a_verify_pass_that_finds_a_mismatch_logs_fram_verify() -> None:
 
 
 def test_a_verify_pass_whose_block_read_fails_the_crc_logs_fram_data_crc() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), verify=1, owner="T1")
     assert chunk is not None
     _land_altered_payload(chunk)
@@ -587,15 +640,15 @@ def test_a_verify_pass_whose_block_read_fails_the_crc_logs_fram_data_crc() -> No
 def test_an_unallocatable_check_length_logs_alloc_on_read_and_write() -> None:
     # The cross-check's scratch could not be allocated: the read cannot verify block 1 (an ALLOC entry, then
     # the block's own warning and its rewrite) and a verified write cannot verify at all.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
     assert chunk is not None
     assert run(chunk.write(b"data")) is True
     assert run(chunk.read()) == bytearray(b"data")
     assert _entries(run(manager.get_error_counter())) == [(code("E", "ALLOC"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")]
-    verified, _chip = make_manager()
-    run(setup_manager(verified))
+    verified, _chip = _make_manager()
+    run(_setup_manager(verified))
     vchunk = verified.get_chunk(4, crc=CRCPass(), check_length=-1, verify=1, owner="T1")
     assert vchunk is not None
     assert run(vchunk.write(b"data")) is False
@@ -608,8 +661,8 @@ def test_an_unallocatable_check_length_logs_alloc_on_read_and_write() -> None:
 
 
 def test_get_verify_set_verify_round_trip() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -627,8 +680,8 @@ def test_get_verify_set_verify_round_trip() -> None:
 def test_write_with_verify_enabled_succeeds_for_correct_data() -> None:
     # Exercises the real _compare_with verification path (not just a getter/setter round trip):
     # with verify=1, every write re-reads and compares both blocks against what was just written.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), verify=1, owner="T1")
     assert chunk is not None
 
@@ -647,7 +700,7 @@ def test_manager_get_pause_reflects_set_pause_directly() -> None:
     # The plain getter itself, not just its effect on chunk operations. Real callers: a deliberate
     # reboot pauses storage right before resetting so no write is left mid-flight, and an
     # operator-triggered REST "mempause" pauses writes for a bounded maintenance window.
-    manager, _chip = make_manager()
+    manager, _chip = _make_manager()
     assert manager.get_pause() is False
     manager.set_pause(value=True)
     assert manager.get_pause() is True
@@ -656,8 +709,8 @@ def test_manager_get_pause_reflects_set_pause_directly() -> None:
 
 
 def test_manager_pause_blocks_chunk_operations() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -687,12 +740,12 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
 
     # A READ fault deliberately - machine.SPI's fake makes write() non-injectable on purpose,
     # matching the real rp2 write-only path's own inability to fail (Part F.5.2).
-    manager, chip = make_manager()
-    run(setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
+    chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")  # a 41-byte block read: over the fake's 32-byte DMA threshold
     assert chunk is not None
-    run(chunk.write(b"good"))
-    chip.inject_fault("readinto", OSError(5, "SPI RX overrun"), times=1)
+    run(chunk.write(b"good" * 10))
+    chip.inject_fault("readinto", OSError, 5, "SPI RX overrun", times=1)
     manager.set_pause(value=True)
 
     async def while_paused() -> "tuple[bytearray | None, ErrorLog]":
@@ -701,6 +754,7 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
 
     paused_result, paused_errs = run(while_paused())
     assert paused_result is None  # refused by the gate
+    assert chip.pending("readinto") == 1  # the queued fault is untouched: the paused read never reached the bus
     # The refusal is logged as a WARNING (_read()'s FRAM_PAUSED), never an error, and no error
     # appears at all since nothing reached the bus. Asserting on ErrType rather than ErrCount is
     # deliberate: ErrCount counts "W" entries too, so it cannot tell "refused" from "tried".
@@ -717,7 +771,8 @@ def test_pause_short_circuits_before_the_bus_so_an_injected_fault_survives_untou
     # The fault was still queued: it fires now, on the first read that genuinely reaches the bus.
     # The read still returns data - a single transient overrun is absorbed by the dual-copy
     # fallback (Part F.5.2) - but the error counter is what proves the bus was actually touched.
-    assert result == bytearray(b"good")
+    assert result == bytearray(b"good" * 10)
+    assert chip.pending("readinto") == 0
     assert "E" in errs["FRAM"]["ErrType"]  # an error only appears once the bus is genuinely driven
 
 
@@ -725,8 +780,8 @@ def test_unpausing_restores_a_genuinely_working_bus_not_just_a_cleared_flag() ->
     # The other half of the pause lifecycle: after unpausing, a real write/read round trip must
     # land new bytes on the chip. A distinct second pattern makes a stale read impossible to
     # mistake for a fresh one.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"aaaa"))
@@ -744,8 +799,8 @@ def test_unpausing_restores_a_genuinely_working_bus_not_just_a_cleared_flag() ->
 def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
     # Every chunk logs into the manager's one history, so a pause refusing operations on several
     # chunks is still one repeated code: one slot, with ErrCount counting every refusal.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk_a = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     chunk_b = manager.get_chunk(4, crc=CRC8(), owner="T2")
     assert chunk_a is not None and chunk_b is not None
@@ -764,7 +819,7 @@ def test_a_commanded_mempause_spends_one_slot_across_chunks() -> None:
 
 
 def test_every_allocated_chunk_is_recorded_once_and_a_refused_one_never() -> None:
-    manager, _chip = make_manager(max_size=64)
+    manager, _chip = _make_manager(max_size=64)
     plain = manager.get_chunk(4, owner="T1")
     stamped = manager.get_timestamped_chunk(4, _synced, owner="T2")
     assert plain is not None and stamped is not None
@@ -775,8 +830,8 @@ def test_every_allocated_chunk_is_recorded_once_and_a_refused_one_never() -> Non
 
 
 def test_wait_idle_returns_at_once_on_an_idle_chunk_and_after_the_operation_in_flight() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, owner="T1")
     assert chunk is not None
 
@@ -802,8 +857,8 @@ def test_wait_idle_returns_at_once_on_an_idle_chunk_and_after_the_operation_in_f
 
 
 def test_quiesce_pauses_first_then_waits_out_each_chunk_and_reports_each_step() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     first = manager.get_chunk(4, owner="T1")
     second = manager.get_timestamped_chunk(4, _synced, owner="T2")
     assert first is not None and second is not None
@@ -832,8 +887,8 @@ def test_quiesce_pauses_first_then_waits_out_each_chunk_and_reports_each_step() 
 
 
 def test_clear_resets_chunk_to_reading_as_uninitialized() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -855,8 +910,8 @@ def test_clear_resets_chunk_to_reading_as_uninitialized() -> None:
 
 
 def test_timestamped_write_without_ntp_sync_stores_uninit_timestamp() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -874,8 +929,8 @@ def test_timestamped_write_without_ntp_sync_stores_uninit_timestamp() -> None:
 
 
 def test_timestamped_write_with_ntp_sync_stores_and_reads_back_valid_timestamp() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -885,7 +940,7 @@ def test_timestamped_write_with_ntp_sync_stores_and_reads_back_valid_timestamp()
         ts, age, data = await chunk.read()
         return ntp_synced, utc, ts, age, data
 
-    with _UTCValid():
+    with UTCValid():
         ntp_synced, utc, ts, age, data = run(scenario())
     assert ntp_synced is True
     assert utc is not None and utc != 0
@@ -898,11 +953,11 @@ def test_timestamped_corrupted_timestamp_byte_self_heals_when_crc_protected() ->
     # The CRC covers the whole buffer, including the embedded 8-byte timestamp prefix, not just
     # the user payload - corrupting a timestamp byte directly (not the data, not tested elsewhere)
     # must be caught the same way any other corruption in the block is.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T1")
     assert chunk is not None
-    with _UTCValid():
+    with UTCValid():
         run(chunk.write(b"data"))
     addr0, _addr1 = chunk._block_addr
     chip.memory[addr0] ^= 0xFF  # first byte of the on-chip timestamp field itself
@@ -921,8 +976,8 @@ def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
     # With crc=CRCPass() (no checksum at all), a single corrupted copy is still caught - not by
     # any CRC but by the cross-block byte comparison every read() does: block 0 looks fine alone
     # yet disagrees with block 1, the same "which is right?" hard failure, not a silent answer.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -940,11 +995,11 @@ def test_timestamped_corrupted_timestamp_byte_hard_fails_without_crc() -> None:
 
 
 def test_timestamped_read_skips_age_when_currently_not_synced() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     write_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert write_chunk is not None
-    with _UTCValid():
+    with UTCValid():
         run(write_chunk.write(b"data"))
 
     # A second handle onto the same chunk, synced at write time but not at read time.
@@ -962,8 +1017,8 @@ def test_timestamped_read_skips_age_when_currently_not_synced() -> None:
 
 
 def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_nothing() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _not_synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -980,8 +1035,8 @@ def test_timestamped_write_require_ntp_refuses_when_not_synced_and_persists_noth
 def test_a_synced_write_before_the_first_clock_set_stores_no_timestamp() -> None:
     # The NTP callback answers synced, but utc_now() is None until the NTP client sets the clock:
     # the write takes the not-synced path, and a write that requires NTP is refused.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -999,11 +1054,11 @@ def test_a_synced_write_before_the_first_clock_set_stores_no_timestamp() -> None
 
 
 def test_a_read_before_the_first_clock_set_reports_no_age() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
-    with _UTCValid():
+    with UTCValid():
         run(chunk.write(b"data"))
     ts, age, data = run(chunk.read())
     assert ts is not None  # stored while the clock was valid...
@@ -1020,8 +1075,8 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     # ntp_sync_callback is a caller-injected dependency whose generic Callable type does not
     # statically rule out misbehaving, and it was called unguarded before this promotion. See
     # tests/test_ntp_fram_system_integration.py for the same guard against the real object.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _raising_callback, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -1042,8 +1097,8 @@ def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None
     # The allocation failure makes _compare_with report block 1 "not verifiably valid", which
     # _read() heals from block 0 like any other block-1 problem - so the fix integrates with the
     # existing self-healing rather than merely avoiding a crash.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -1058,8 +1113,8 @@ def test_compare_with_zero_check_length_fails_cleanly_instead_of_hanging_forever
     # Regression for a real bug found in review: _read_chunk's streaming loop computes
     # chunk_size = min(len(buf), total_size - position), so with check_length=0 it is always 0,
     # position never advances and the loop runs forever. wait_for turns that into a clear timeout.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=0, owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -1077,8 +1132,8 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
     # Same guard, exercised via _write()'s own verify path instead of _read()'s cross-check -
     # verify treats "couldn't verify" the same as "verification failed", so the write reports
     # False (real data was physically written, but that can't be confirmed) rather than crashing.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, verify=1, owner="T1")
     assert chunk is not None
 
@@ -1091,8 +1146,8 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
 def test_oversized_write_persists_a_bad_arg_entry() -> None:
     # FRAMChunk.write's "data too large" refusal and _FRAMBaseChunk.clear()'s failure log into the one
     # PrintLogHistory every chunk of a manager shares, so they carry two different catalog codes.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -1115,8 +1170,8 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
     # drop_wren makes every fram.set_values() fail at the driver layer (WREN latch never sets,
     # asy_fram_driver.py's own _enable_write() check fails) - the first real (not memory-poked)
     # FRAM-level failure this suite exercises through the manager.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     chip.drop_wren = True
@@ -1136,8 +1191,8 @@ def test_write_fails_cleanly_when_chip_drops_wren_latch() -> None:
 def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
     # Reading also needs a real chip write (BUSY status before the read, IDLE after) - drop_wren
     # breaks that step for both blocks, so read() reports total failure instead of stale/no data.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1156,8 +1211,8 @@ def test_read_fails_cleanly_when_chip_drops_wren_latch() -> None:
 
 
 def test_clear_fails_cleanly_when_chip_drops_wren_latch() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1179,8 +1234,8 @@ def test_write_fails_cleanly_when_fram_is_write_protected() -> None:
     # Same failure shape as the WREN-drop test, but via the driver's own write-protect check
     # (asy_fram_driver.py's _write()'s first guard) - a real, commonly used failure mode (write
     # protection is a supported driver feature), not just a simulated bus glitch.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -1202,8 +1257,8 @@ def test_read_is_also_blocked_while_write_protected_and_the_data_survives_it() -
     # Intended, accepted behaviour, not a defect (owner, 2026-09-11; SPEC A.4):
     # _read_chunk() must WRITE a transient busy marker before it reads, so write protection gates
     # read() as it gates write() - yet the stored bytes come back intact once protection clears.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -1230,8 +1285,8 @@ def test_write_protect_gate_still_reaches_the_bus_unlike_the_pause_gate() -> Non
     # The two refusals look identical from outside (both hand back None) but differ where it
     # matters: set_pause() short-circuits before SPI, write protection does not - its guard sits
     # inside FRAM_SPI._write(), after _set_check_sb() already clocked the status byte off the chip.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     reads = 0
@@ -1269,8 +1324,8 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
     # Models a chip that stopped responding after a successful setup() - every FRAM_SPI call
     # short-circuits on its own `initialized` guard before touching the bus. Distinct from the
     # WREN-drop case: reads fail at the status-byte read, not the later status write.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1301,8 +1356,8 @@ def test_operations_fail_cleanly_once_fram_chip_goes_uninitialized_mid_run() -> 
 
 
 def test_read_fails_when_both_blocks_have_crc_invalid_payloads() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1326,8 +1381,8 @@ def test_block1_invalid_while_block0_valid_self_heals_block1() -> None:
     # Mirror of the block-0-corruption self-heal test - this file only ever corrupted block 0's
     # payload, and block 1 being the wrong one is a distinct code path (_compare_with's cross-check
     # inside _read()'s "block 0 already valid" branch, not the "block 0 invalid" branch).
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1346,8 +1401,8 @@ def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
     # Block 0 is invalid and needs healing from block 1; if that heal write fails, read() must
     # still report failure, not pretend block 0 is fine. _write_chunk is patched per-address
     # rather than write-protected, which would also block the BUSY write every read needs.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1374,8 +1429,8 @@ def test_read_fails_when_self_heal_write_to_block0_fails() -> None:
 
 
 def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1403,8 +1458,8 @@ def test_read_fails_when_self_heal_write_to_block1_fails() -> None:
 
 def test_read_into_rejects_a_buffer_of_the_wrong_size() -> None:
     # Mirror of the existing write_into size-mismatch test - _read()'s own BAD_ARG guard.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     wrong_buf = FRAMChunkBuffer(8, 0)  # this chunk expects 4 payload bytes, not 8
@@ -1416,8 +1471,8 @@ def test_read_into_rejects_a_buffer_of_the_wrong_size() -> None:
 
 
 def test_clear_while_paused_is_refused() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -1441,8 +1496,8 @@ def test_clear_while_paused_is_refused() -> None:
 
 
 def test_write_then_read_round_trip_with_crc16() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRC16(), owner="T1")
     assert chunk is not None
     assert chunk._block_addr == (0, 9)  # 5 data + 2 crc + 2 status per block
@@ -1455,8 +1510,8 @@ def test_write_then_read_round_trip_with_crc16() -> None:
 
 
 def test_write_then_read_round_trip_with_crc32() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(5, crc=CRC32(), owner="T1")
     assert chunk is not None
     assert chunk._block_addr == (0, 11)  # 5 data + 4 crc + 2 status per block
@@ -1472,8 +1527,8 @@ def test_check_length_of_1_still_verifies_the_whole_chunk_across_many_iterations
     # check_length only bounds how much _compare_with pulls per streaming iteration - the loop
     # keeps iterating until the whole chunk is covered, so a tiny check_length must still produce
     # a correct, fully-verified result, not a partial one.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(10, crc=CRCPass(), check_length=1, verify=1, owner="T1")
     assert chunk is not None
 
@@ -1488,8 +1543,8 @@ def test_check_length_of_1_still_verifies_the_whole_chunk_across_many_iterations
 
 
 def test_verify_counter_only_triggers_every_nth_write() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), verify=2, owner="T1")
     assert chunk is not None
 
@@ -1500,8 +1555,8 @@ def test_verify_counter_only_triggers_every_nth_write() -> None:
 
 
 def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() -> None:
-    manager, _chip = make_manager(max_size=12)
-    run(setup_manager(manager))
+    manager, _chip = _make_manager(max_size=12)
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")  # full_size = 2*(4+0+2) = 12, exact fit
     assert chunk is not None
     assert manager.get_chunk(1, owner="T2") is None  # nothing left at all
@@ -1515,8 +1570,8 @@ def test_get_chunk_allocation_succeeds_at_exact_remaining_capacity_boundary() ->
 
 
 def test_timestamped_chunk_clear_resets_to_reading_as_uninitialized() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -1534,8 +1589,8 @@ def test_timestamped_chunk_clear_resets_to_reading_as_uninitialized() -> None:
 
 
 def test_timestamped_chunk_respects_manager_pause() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
     manager.set_pause(value=True)
@@ -1562,8 +1617,8 @@ def test_timestamped_chunk_respects_manager_pause() -> None:
 
 
 def test_timestamped_chunk_write_with_verify_enabled_succeeds() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), verify=1, owner="T1")
     assert chunk is not None
 
@@ -1583,8 +1638,8 @@ def test_get_chunk_rejects_zero_size_regardless_of_crc() -> None:
     # A chunk storing nothing is never a sensible request - rejected unconditionally at the top of
     # get_chunk(), before any CRC/capacity logic, not just for the CRCPass() case that used to
     # reproduce the old spurious-CRC-error-on-read quirk (now gone, replaced by this rejection).
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     assert manager.get_chunk(0, crc=CRCPass(), owner="T1") is None
     assert manager.get_chunk(0, crc=CRC8(), owner="T2") is None
     assert manager.get_chunk(0, owner="T3") is None  # default crc
@@ -1594,8 +1649,8 @@ def test_get_timestamped_chunk_rejects_zero_size_regardless_of_crc() -> None:
     # Mirrors get_chunk()'s rejection. The timestamped variant never reproduced the old quirk
     # itself - the 8-byte timestamp header keeps total_size > 0 whatever the payload size - but a
     # zero-payload request is just as senseless, so it is rejected the same way for consistency.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     assert manager.get_timestamped_chunk(0, _synced, crc=CRCPass(), owner="T1") is None
     assert manager.get_timestamped_chunk(0, _synced, crc=CRC8(), owner="T2") is None
     assert manager.get_timestamped_chunk(0, _synced, owner="T3") is None  # default crc
@@ -1605,8 +1660,8 @@ def test_get_chunk_rejects_zero_size_even_with_abundant_remaining_capacity() -> 
     # Confirms the rejection isn't a side effect of the capacity check (e.g. some accidental
     # zero-cost-allocation math) - it happens unconditionally, even on a freshly constructed
     # manager with its entire 8KB untouched, and doesn't disturb the allocator's own bookkeeping.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     assert manager.get_chunk(0, crc=CRCPass(), owner="T1") is None
     assert manager._allocated_size == 0  # rejected before touching the bump pointer
 
@@ -1615,8 +1670,8 @@ def test_all_zero_and_all_0xff_payloads_round_trip_without_sentinel_collision() 
     # Payload content lives in a separate address range from the status bytes, and _STATUS_UNINIT
     # is 0x00 - one of the exact byte values a real payload might legitimately store. Confirms
     # there is no confusion between "chunk never written" and "chunk holds all-zero data".
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -1636,8 +1691,8 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
     # _TS_UNINIT (0) doubles as both "never written" and the literal Unix epoch, so a real UTC
     # timestamp of exactly 0 is indistinguishable from uninitialized on read. Inherited from the
     # deployed design, not introduced here - locked down as real, documented behavior.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -1657,7 +1712,7 @@ def test_epoch_zero_timestamp_reads_back_as_uninitialized_sentinel_collision() -
         async def scenario() -> tuple[bool, bool, int | None]:
             return await chunk.write(b"data")
 
-        with _UTCValid():
+        with UTCValid():
             write_ok, ntp_synced, utc = run(scenario())
     finally:
         asy_base_classes.time = original_time
@@ -1684,7 +1739,7 @@ def test_construction_raises_uncaught_valueerror_for_an_out_of_range_spi_cs() ->
     # FRAMManager.__init__ constructs FRAM_SPI(...) with no try/except - a bad spi_cs is a
     # one-time at-boot misconfiguration allowed to raise loudly rather than silently produce a
     # permanently nonfunctional manager, and that carve-out must still hold through __init__.
-    bus = make_bus()
+    bus = _make_bus()
     try:
         FRAMManager(bus, 99, max_size=0x2000)
         raised = False
@@ -1697,7 +1752,7 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
     # Real device-not-found path (asy_fram_driver.py's FRAM_SPI.setup() raises OSError) - caught
     # by FRAMManager.setup()'s own try/except, turned into a clean False + an INIT entry, not left
     # to propagate. A different, driver-owned RDID mismatch, not a caller misconfiguration.
-    manager, chip = make_manager()
+    manager, chip = _make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
 
     async def scenario() -> "tuple[bool, ErrorLog]":
@@ -1713,8 +1768,8 @@ def test_setup_fails_cleanly_when_device_id_does_not_match() -> None:
 def test_chunk_operations_fail_cleanly_when_the_bus_is_deinitialized_mid_run() -> None:
     # A deinitialised bus is reported by the driver as bus-down; the chunk layer fails the operation
     # and logs its own entry.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1749,8 +1804,8 @@ def test_get_chunk_negative_size_degrades_to_an_unusable_but_non_crashing_chunk(
     # A negative size flows straight into FRAMChunkBuffer/RegionBuffer, whose own guard
     # (asy_base_classes.py) already turns any negative size into buf=None - confirmed here at this
     # file's own boundary that the degradation is clean end to end, not just at that lower layer.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(-4, crc=CRCPass(), owner="T1")
     assert chunk is not None  # allocation bookkeeping itself doesn't reject a negative size
 
@@ -1768,8 +1823,8 @@ def test_get_chunk_negative_verify_triggers_verification_on_every_single_write()
     # Surprising but harmless: _verify_counter starts at 0 and is compared with `>=` against
     # `verify` after incrementing, so a negative verify makes (1 >= negative) true on the first
     # write and verification runs every time. Locked down as real, non-crashing behavior.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), verify=-5, owner="T1")
     assert chunk is not None
 
@@ -1784,8 +1839,8 @@ def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> Non
     # The same MemoryError-degrades-to-"not verifiably valid" guard as the huge-check_length
     # regression test, reached from a different input class: bytearray(negative_int) raises
     # MemoryError here too, the negative count being reinterpreted as a huge unsigned request.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -1797,7 +1852,7 @@ def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> Non
 
 
 def test_manager_negative_max_size_degrades_to_always_out_of_memory() -> None:
-    manager, _chip = make_manager(max_size=-100)
+    manager, _chip = _make_manager(max_size=-100)
     assert manager.get_chunk(4, owner="T1") is None
     assert manager.get_timestamped_chunk(4, _synced, owner="T2") is None
 
@@ -1805,8 +1860,8 @@ def test_manager_negative_max_size_degrades_to_always_out_of_memory() -> None:
 def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
     # negative size + negative verify + negative check_length together, all in one chunk - none
     # of these interact to produce anything worse than each one's own individual degradation.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(-4, crc=CRCPass(), verify=-1, check_length=-1, owner="T1")
     assert chunk is not None
 
@@ -1833,8 +1888,8 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
 
     # Only reachable via _read_chunk's initial busy-set step, the one call site where the "uninit"
     # flag is not hardcoded False. Previously untested.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1855,8 +1910,8 @@ def test_disagreeing_status_bytes_within_one_block_are_treated_as_invalid_and_se
 def test_a_mixed_status_pair_fails_the_check_and_keeps_its_busy_marker() -> None:
     # A blank status byte beside an idle one, on both blocks: the blank byte is left unmarked, the idle one
     # takes its busy marker, the pair disagrees, and the block stays invalid - one entry per block.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -1874,8 +1929,8 @@ def test_write_verify_fails_when_only_block_1_fails_verification() -> None:
     # The verify loop's block-1 failure was never exercised, since block 0 failing first
     # short-circuits before n=1. Isolating block 1's own verification failure needs a per-address
     # patch, the same technique as the self-heal-write-failure tests, so block 0 genuinely passes.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), verify=1, owner="T1")
     assert chunk is not None
     _addr0, addr1 = chunk._block_addr
@@ -1902,8 +1957,8 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
     # Found by construction, not inspection: _write() used to hold fram's lock only per block, so
     # two tasks writing one chunk could interleave between blocks, each reporting success while
     # leaving one task's data in block 0 and the other's in block 1.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     events: list[str] = []
@@ -1934,7 +1989,7 @@ def test_op_lock_prevents_concurrent_writes_from_interleaving_between_blocks() -
 
 
 def test_manager_setup_is_idempotent_when_called_twice() -> None:
-    manager, _chip = make_manager()
+    manager, _chip = _make_manager()
     ok1 = run(manager.setup())
     ok2 = run(manager.setup())
     assert ok1 is True
@@ -1955,8 +2010,8 @@ def test_manager_setup_is_idempotent_when_called_twice() -> None:
 def test_get_chunk_size_1_still_needs_status_byte_overhead_at_the_capacity_boundary() -> None:
     # The smallest valid (nonzero) payload still needs 2*_NUM_STATUS_BYTES=4 bytes of real
     # overhead on top of it - a manager with no room left must refuse even the smallest request.
-    manager, _chip = make_manager(max_size=6)
-    run(setup_manager(manager))
+    manager, _chip = _make_manager(max_size=6)
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(1, crc=CRCPass(), owner="T1")  # full_size = 2*(1+0+2) = 6, exact fit
     assert chunk is not None
     assert manager.get_chunk(1, crc=CRCPass(), owner="T2") is None  # no room left, even for another tiny chunk
@@ -1971,8 +2026,8 @@ def test_write_fails_cleanly_when_block_1s_write_itself_fails() -> None:
     # _write()'s own block-1-write-failure path, distinct from block 0's (its own console line) -
     # isolated the same way the self-heal write-failure tests are, by patching _write_chunk
     # per-address so only block 1's own write call fails.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     _addr0, addr1 = chunk._block_addr
@@ -1999,8 +2054,8 @@ def test_read_self_heals_block_1_when_it_reads_back_as_uninitialized() -> None:
     # Mirrors the corrupted-block-1 self-heal tests, but for the "never written" case (both status
     # bytes UNINIT, not corrupted) rather than invalid data - a distinct branch (_read()'s own
     # uninit=True path) previously unexercised.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -2021,13 +2076,13 @@ def test_handle_status_bytes_fails_cleanly_when_only_the_second_byte_write_fails
     # _set_check_sb's two calls (status byte 1, then byte 2) were previously only ever exercised
     # failing on byte 1 - byte 2 failing on its own needs an address-selective patch on
     # set_values() itself, since both bytes normally succeed or fail together under drop_wren.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     addr0, _addr1 = chunk._block_addr
     byte2_addr = addr0 + chunk.size + chunk.crc.length() + 1
-    fail_set_values_at(chunk, byte2_addr)
+    _fail_set_values_at(chunk, byte2_addr)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
@@ -2043,8 +2098,8 @@ def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
     # add_into() returning None (a real, if rare, CRC-computation failure) - the CRC objects in
     # normal use never fail on a well-formed buffer, so this patches the chunk's own crc instance
     # directly rather than contriving a real failing computation.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -2066,12 +2121,12 @@ def test_write_chunk_fails_cleanly_when_crc_computation_itself_fails() -> None:
 def test_write_chunk_fails_cleanly_when_the_payload_write_itself_fails() -> None:
     # The payload set_values() call sits at a different address than the status-byte writes
     # around it - forcing it to fail in isolation needed its own address-selective patch.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     addr0, _addr1 = chunk._block_addr
-    fail_set_values_at(chunk, addr0)
+    _fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.write(b"data")
@@ -2087,13 +2142,13 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
     # A genuine FRAM communication failure on the payload read (distinct from status-byte or
     # CRC-level corruption) needed its own address-selective patch on get_values() to isolate,
     # since block 0's status-byte reads use a different address entirely.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk._block_addr
-    fail_get_values_at(chunk, addr0)
+    _fail_get_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
@@ -2108,8 +2163,8 @@ def test_read_chunk_self_heals_from_block_1_when_block_0s_payload_read_itself_fa
 def test_read_chunk_fails_cleanly_when_incremental_crc_update_itself_fails() -> None:
     # run_inc() returning False mid-stream (distinct from the final check_inc() CRC-mismatch case)
     # was never exercised - patches the chunk's own crc instance the same way as the add_into test.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -2133,14 +2188,14 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
     # The read-idle-set step, after a successful streaming read, has its own "write status byte
     # failed" branch. Reaching it rather than the busy-set at the start of the same read, which
     # writes the same address, needs a call counter: 1st write busy-set, 2nd the idle-set.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk._block_addr
     status_byte1_addr = addr0 + chunk.size + chunk.crc.length()
-    fail_set_values_at(chunk, status_byte1_addr, on_call=2)
+    _fail_set_values_at(chunk, status_byte1_addr, on_call=2)
 
     async def scenario() -> "tuple[bytearray | None, ErrorLog]":
         result = await chunk.read()
@@ -2154,13 +2209,13 @@ def test_read_chunk_fails_cleanly_when_the_final_idle_status_write_itself_fails(
 
 def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> None:
     # The data-wipe set_values() call is distinct from clear()'s own status-byte write around it.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"good"))
     addr0, _addr1 = chunk._block_addr
-    fail_set_values_at(chunk, addr0)
+    _fail_set_values_at(chunk, addr0)
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await chunk.clear()
@@ -2175,8 +2230,8 @@ def test_clear_chunk_fails_cleanly_when_the_data_wipe_write_itself_fails() -> No
 def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
     # write_into()'s own guard, only reachable when called directly (bypassing write()'s own
     # pre-check) - the real production call shape asy_print_log.py's PrintLogHistoryStore actually uses.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(-4, crc=CRCPass(), owner="T1")  # negative size - buffer allocation fails
     assert chunk is not None
     buf = chunk.get_buffer()
@@ -2188,8 +2243,8 @@ def test_write_into_called_directly_with_an_unallocated_buffer_returns_false() -
 
 
 def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2200,8 +2255,8 @@ def test_timestamped_write_returns_false_tuple_for_a_negative_size_chunk() -> No
 
 
 def test_timestamped_write_data_larger_than_buffer_fails_with_bad_arg() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(2, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2218,8 +2273,8 @@ def test_timestamped_write_data_larger_than_buffer_fails_with_bad_arg() -> None:
 def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_returns_false() -> None:
     # Same direct-call shape as the plain chunk's own write_into() test above, for the timestamped
     # variant's tbuf-None guard (also exercises get_ts_buf()'s own None-check as a side effect).
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
     buf = chunk.get_buffer()
@@ -2231,8 +2286,8 @@ def test_timestamped_write_into_called_directly_with_an_unallocated_buffer_retur
 
 
 def test_timestamped_read_returns_none_tuple_for_a_negative_size_chunk() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(-4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2243,11 +2298,11 @@ def test_timestamped_read_returns_none_tuple_for_a_negative_size_chunk() -> None
 
 
 def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRCPass(), owner="T1")
     assert chunk is not None
-    with _UTCValid():
+    with UTCValid():
         run(chunk.write(b"data"))
     chunk._ntp_sync_callback = _raising_callback  # swap for the read-side NTP check only
 
@@ -2262,8 +2317,8 @@ def test_timestamped_read_ntp_callback_failure_during_age_computation_is_caught(
 
 
 def test_manager_reset_error_counter_clears_history() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2286,18 +2341,27 @@ def test_manager_reset_error_counter_clears_history() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _degraded_buffer() -> FRAMChunkBuffer:
-    # A negative size takes the same buf=None path bytearray(size) raising MemoryError takes, with
-    # no injection needed - asy_base_classes.py guards both together for exactly that reason.
-    buf = FRAMChunkBuffer(-1, 0)
-    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
-    return buf
+def _filled_system(chip_class: "type[FakeMB85RS64V]") -> "tuple[FRAMManager, FakeMB85RS64V, list[PrintLogHistoryStore]]":
+    manager, chip, stores = _logged_system(chip_class)
+    for n, store in enumerate(stores):
+        run(store.err_s("planted", errno=n + 1))
+    chip.memory[manager._allocated_size :] = bytes([0xA5]) * (len(chip.memory) - manager._allocated_size)
+    return manager, chip, stores
 
 
-def _degraded_timestamped_buffer() -> FRAMChunkTimestampedBuffer:
-    buf = FRAMChunkTimestampedBuffer(-1, 0, 0)
-    assert buf.get_buf() is None, "the fixture no longer produces an unallocated buffer"
-    return buf
+def _land_altered_payload(chunk: "FRAMChunk") -> None:
+    # The verify pass's subject: block 0's payload lands with its first byte flipped, the status bytes intact.
+    original_sync = chunk.fram.set_values_sync
+    payload_addr = chunk._block_addr[0]
+
+    def altering(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if addr_start == payload_addr:
+            altered = bytearray(buf)
+            altered[0] ^= 0xFF
+            return original_sync(altered, addr_start)
+        return original_sync(buf, addr_start)
+
+    chunk.fram.set_values_sync = altering  # type: ignore[method-assign]
 
 
 def test_every_accessor_on_an_unallocated_chunk_buffer_returns_none() -> None:
@@ -2317,8 +2381,8 @@ def test_the_timestamped_entry_points_degrade_on_a_foreign_unallocated_buffer() 
     # Distinct from the negative-size-chunk tests above, which degrade a chunk's OWN buffer: here
     # a healthy chunk is handed someone else's failed allocation, the shape asy_print_log.py's store
     # really uses. Documented tuples, not just falsy - each caller unpacks three values.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T1")
     assert chunk is not None
     assert run(chunk.write_into(_degraded_timestamped_buffer())) == (False, False, None)
@@ -2328,8 +2392,8 @@ def test_the_timestamped_entry_points_degrade_on_a_foreign_unallocated_buffer() 
 def test_an_unallocated_buffer_never_reaches_the_chip_at_all() -> None:
     # The property behind the two above: a degraded buffer is rejected before any SPI traffic, so a
     # failed allocation cannot leave a half-written chunk - not even the WREN that opens the envelope.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
     sent: list[bytes] = []
@@ -2350,8 +2414,8 @@ def test_an_unallocated_buffer_never_reaches_the_chip_at_all() -> None:
 def test_a_missing_chunk_buffer_logs_alloc() -> None:
     # Every chunk entry point that meets an unallocated buffer persists one ALLOC entry of its own:
     # an own buffer that failed (negative size) and a foreign one handed in, on both chunk classes.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     plain = manager.get_chunk(4, crc=CRC8(), owner="T1")
     stamped = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
     plain_unalloc = manager.get_chunk(-4, crc=CRCPass(), owner="T3")  # allocated last: a negative size moves the bump pointer back
@@ -2392,8 +2456,8 @@ def test_a_missing_chunk_buffer_logs_alloc() -> None:
 def test_rx_overrun_on_block_0s_payload_read_is_absorbed_by_the_dual_copy_recovery() -> None:
     # The headline live-path result: one transient overrun costs nothing. _read_chunk's blanket
     # except catches the OSError, _read falls through to block 1, and the caller gets its data.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")  # 41 bytes with CRC - over the 32-byte DMA threshold
     assert chunk is not None
     payload = bytes(range(40))
@@ -2420,8 +2484,8 @@ def test_rx_overrun_on_every_payload_read_fails_cleanly_instead_of_killing_the_c
     # Both copies unreadable is the genuinely unrecoverable case - it must still degrade to a
     # None result rather than propagate, since an escaping OSError would take the reader task
     # down and leave asy_system_service.py's supervisor to restart it.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")
     assert chunk is not None
     run(chunk.write(bytes(range(40))))
@@ -2444,8 +2508,8 @@ def test_a_sub_threshold_chunk_is_immune_to_a_bus_wide_overrun() -> None:
     # The 32-byte DMA threshold is a property of the live path too, not just the fake: a small
     # chunk's payload read and every 1-byte status-register read stay on the software path, so a
     # bus-wide overrun cannot touch them. This is why the fault needs a big chunk to reproduce.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")  # 5 bytes total - under the threshold
     assert chunk is not None
     run(chunk.write(b"good"))
@@ -2464,8 +2528,8 @@ def test_an_overrun_leaves_the_spi_bus_itself_reusable_rather_than_wedged() -> N
     # The failure path runs through two `async with` blocks (the manager's chunk lock and
     # SPIDevice's CS/bus lock). If either leaked, one overrun would wedge the shared SPI bus for
     # every other device on it. It does not: a second chunk reads normally once the bus recovers.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     broken = manager.get_chunk(40, crc=CRC8(), owner="T1")
     other = manager.get_chunk(40, crc=CRC8(), owner="T2")
     assert broken is not None and other is not None
@@ -2493,8 +2557,8 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
     # Intended behavior, not a defect (Part A.4): _read_chunk marks a block BUSY before reading
     # and restores IDLE only on the way out, so an interruption leaves both copies marked.
     # MB85RS64V reads are destructive internally, so an interrupted read is an interrupted restore.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(40, crc=CRC8(), owner="T1")
     assert chunk is not None
     payload = bytes(range(40))
@@ -2529,163 +2593,116 @@ def test_an_overrun_mid_read_leaves_the_chunk_unreadable_until_it_is_rewritten()
 # failure reaches keeps its own entry (owner, 2026-10-02).
 
 
-def status_byte_addrs(chunk: "FRAMChunk") -> tuple[int, int]:
-    base = chunk._block_addr[0] + chunk.size + chunk.crc.length()
-    return base, base + 1
+def _logged_system(chip_class: "type[FakeMB85RS64V]", image: "bytearray | None" = None) -> "tuple[FRAMManager, FakeMB85RS64V, list[PrintLogHistoryStore]]":
+    # A manager and three FRAM-backed loggers set up as the boot batch does them, over a copy of image.
+    manager, chip = _manager_on(chip_class)
+    if image is not None:
+        chip.memory[:] = image
+    stores = [PrintLogHistoryStore(manager, 10, None, name=name) for name in _LOGGERS]
+    assert run(_setup_manager(manager)) is True
+    for store in stores:
+        run(store.setup())
+    return manager, chip, stores
 
 
-def fail_set_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
-    # Address- and occurrence-selective: the same status byte is written once for the BUSY mark and
-    # once for the IDLE mark, so the BUSY and IDLE marks need different occurrences. Injected at
-    # set_values_sync(), the seam the chunk layer actually calls; the sentinel is an unused status bit.
-    original_sync = chunk.fram.set_values_sync
-    original_report = chunk.fram.report_set_values
-    seen = [0]
-
-    def failing(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
-        if addr_start == addr:
-            seen[0] += 1
-            if seen[0] == on_call:
-                return _INJECTED_FAILURE
-        return original_sync(buf, addr_start)
-
-    async def reporting(status: int) -> bool:
-        if status == _INJECTED_FAILURE:
-            return False
-        return await original_report(status)
-
-    chunk.fram.set_values_sync = failing  # type: ignore[method-assign]
-    chunk.fram.report_set_values = reporting  # type: ignore[method-assign]
+def _make_bus() -> SPI:
+    return SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
 
 
-def fail_get_values_at(chunk: "FRAMChunk", addr: int, *, on_call: int = 1) -> None:
-    # The read-side mirror of fail_set_values_at above; same seam, same sentinel.
-    original_sync = chunk.fram.get_values_sync
-    original_report = chunk.fram.report_get_values
-    seen = [0]
-
-    def failing(buf: bytearray | memoryview, addr_start: int = 0) -> int:
-        if addr_start == addr:
-            seen[0] += 1
-            if seen[0] == on_call:
-                return _INJECTED_FAILURE
-        return original_sync(buf, addr_start)
-
-    async def reporting(status: int) -> bool:
-        if status == _INJECTED_FAILURE:
-            return False
-        return await original_report(status)
-
-    chunk.fram.get_values_sync = failing  # type: ignore[method-assign]
-    chunk.fram.report_get_values = reporting  # type: ignore[method-assign]
+def _make_manager(max_size: int = 0x2000, history_length: int = 10) -> tuple[FRAMManager, FakeMB85RS64V]:
+    return make_fram_manager(max_size=max_size, history_length=history_length)
 
 
-def _recorded_warnings(manager: FRAMManager) -> list[str]:
-    # Every warning text the chunk layer logs: the chunks share the manager's history instance.
-    seen: list[str] = []
-    real = manager.pr.wrn_s
-
-    async def recording(*args: object, wrnno: int = 0, sep: str = " ", end: str = "\n") -> None:
-        seen.append(sep.join(str(arg) for arg in args))
-        await real(*args, wrnno=wrnno, sep=sep, end=end)
-
-    manager.pr.wrn_s = recording  # type: ignore[method-assign]
-    return seen
-
-
-def _recorded_payload_writes(chunk: "FRAMChunk") -> list[int]:
-    # The start address of every multi-byte write the chunk's driver makes (a payload, never a status byte).
-    addrs: list[int] = []
-    original_sync = chunk.fram.set_values_sync
-
-    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
-        if len(buf) > 1:
-            addrs.append(addr_start)
-        return original_sync(buf, addr_start)
-
-    chunk.fram.set_values_sync = recording  # type: ignore[method-assign]
-    return addrs
-
-
-def make_written_chunk(check_length: int = 8) -> "tuple[FRAMManager, FakeMB85RS64V, FRAMChunk]":
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+def _make_written_chunk(check_length: int = 8) -> "tuple[FRAMManager, FakeMB85RS64V, FRAMChunk]":
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=check_length, owner="T1")
     assert chunk is not None
     assert run(chunk.write(b"data")) is True
     return manager, chip, chunk
 
 
-def errnums(manager: FRAMManager) -> list[int]:
-    async def scenario() -> "ErrorLog":
-        return await manager.get_error_counter()
+def _manager_on(chip_class: "type[FakeMB85RS64V]") -> "tuple[FRAMManager, FakeMB85RS64V]":
+    return make_fram_manager(max_size=chip_class.SIZE, part=chip_class, history_length=10)
 
-    return run(scenario())["FRAM"]["ErrNum"]
+
+async def _not_synced() -> bool:
+    return False
+
+
+def _owner_layout(chip: FakeMB85RS64V, owners: "list[str]", crc_class: "Callable[[], CRCBase]") -> "list[FRAMChunk]":
+    # One build's layout: equal-size chunks in owner order on a fresh manager over a copy of chip's bytes.
+    manager, fresh = _make_manager()
+    fresh.memory[:] = chip.memory
+    run(_setup_manager(manager))
+    chunks = [manager.get_chunk(6, crc=crc_class(), owner=owner) for owner in owners]
+    assert all(chunk is not None for chunk in chunks)
+    return [chunk for chunk in chunks if chunk is not None]
 
 
 def test_write_chunk_idle_mark_failing_on_status_byte_1_logs_the_status_byte_write_failure() -> None:
-    manager, _chip, chunk = make_written_chunk()
-    byte1, _byte2 = status_byte_addrs(chunk)
-    fail_set_values_at(chunk, byte1, on_call=2)  # the IDLE mark, after the BUSY mark succeeded
+    manager, _chip, chunk = _make_written_chunk()
+    byte1, _byte2 = _status_byte_addrs(chunk)
+    _fail_set_values_at(chunk, byte1, on_call=2)  # the IDLE mark, after the BUSY mark succeeded
     assert run(chunk.write(b"more")) is False
-    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 1's IDLE mark
+    assert code("E", "FRAM_STATUS_WRITE") in _errnums(manager)  # byte 1's IDLE mark
 
 
 def test_write_chunk_idle_mark_failing_on_status_byte_2_logs_the_status_byte_write_failure() -> None:
-    manager, _chip, chunk = make_written_chunk()
-    _byte1, byte2 = status_byte_addrs(chunk)
-    fail_set_values_at(chunk, byte2, on_call=2)
+    manager, _chip, chunk = _make_written_chunk()
+    _byte1, byte2 = _status_byte_addrs(chunk)
+    _fail_set_values_at(chunk, byte2, on_call=2)
     assert run(chunk.write(b"more")) is False
-    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 2's IDLE mark
+    assert code("E", "FRAM_STATUS_WRITE") in _errnums(manager)  # byte 2's IDLE mark
 
 
 def test_read_chunk_busy_mark_status_byte_2_read_failure_logs_the_status_byte_read_failure() -> None:
-    manager, _chip, chunk = make_written_chunk()
-    _byte1, byte2 = status_byte_addrs(chunk)
-    fail_get_values_at(chunk, byte2)
+    manager, _chip, chunk = _make_written_chunk()
+    _byte1, byte2 = _status_byte_addrs(chunk)
+    _fail_get_values_at(chunk, byte2)
 
     async def scenario() -> bytearray | None:
         return await chunk.read()
 
     run(scenario())
-    assert code("E", "FRAM_STATUS_READ") in errnums(manager)  # byte 2's own "Read status byte failed!"
+    assert code("E", "FRAM_STATUS_READ") in _errnums(manager)  # byte 2's own "Read status byte failed!"
 
 
 def test_read_chunk_busy_mark_status_byte_2_not_idle_logs_fram_status_byte() -> None:
-    manager, chip, chunk = make_written_chunk()
-    _byte1, byte2 = status_byte_addrs(chunk)
+    manager, chip, chunk = _make_written_chunk()
+    _byte1, byte2 = _status_byte_addrs(chunk)
     chip.memory[byte2] = 0x7F  # neither IDLE nor UNINIT: a torn or corrupted status byte
 
     async def scenario() -> bytearray | None:
         return await chunk.read()
 
     run(scenario())
-    assert code("E", "FRAM_STATUS_BYTE") in errnums(manager)
+    assert code("E", "FRAM_STATUS_BYTE") in _errnums(manager)
 
 
 def test_read_chunk_busy_mark_status_byte_2_write_failure_logs_the_status_byte_write_failure() -> None:
-    manager, _chip, chunk = make_written_chunk()
-    _byte1, byte2 = status_byte_addrs(chunk)
-    fail_set_values_at(chunk, byte2)  # the read's own BUSY mark; the write above already finished
+    manager, _chip, chunk = _make_written_chunk()
+    _byte1, byte2 = _status_byte_addrs(chunk)
+    _fail_set_values_at(chunk, byte2)  # the read's own BUSY mark; the write above already finished
 
     async def scenario() -> bytearray | None:
         return await chunk.read()
 
     run(scenario())
-    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # the read's BUSY mark on byte 2
+    assert code("E", "FRAM_STATUS_WRITE") in _errnums(manager)  # the read's BUSY mark on byte 2
 
 
 def test_clear_chunk_status_byte_2_failure_logs_the_status_byte_write_failure_and_clears_own() -> None:
-    manager, _chip, chunk = make_written_chunk()
-    _byte1, byte2 = status_byte_addrs(chunk)
-    fail_set_values_at(chunk, byte2)
+    manager, _chip, chunk = _make_written_chunk()
+    _byte1, byte2 = _status_byte_addrs(chunk)
+    _fail_set_values_at(chunk, byte2)
 
     async def scenario() -> bool:
         return await chunk.clear()
 
     assert run(scenario()) is False
-    assert code("E", "FRAM_STATUS_WRITE") in errnums(manager)  # byte 2's UNINIT mark
-    assert code("E", "FRAM_CLEAR") in errnums(manager)  # clear()'s own entry
+    assert code("E", "FRAM_STATUS_WRITE") in _errnums(manager)  # byte 2's UNINIT mark
+    assert code("E", "FRAM_CLEAR") in _errnums(manager)  # clear()'s own entry
 
 
 # A block operation is not an opaque unit, and its scratch buffers belong to the chunk rather
@@ -2696,11 +2713,11 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
     # The per-command yields mean a block operation stays interleaved with the rest of the loop:
     # another task runs between its two status-byte pairs and can see the block marked BUSY, then
     # IDLE again. A block operation that never yielded would show only one of the two.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
-    byte1, _byte2 = status_byte_addrs(chunk)
+    byte1, _byte2 = _status_byte_addrs(chunk)
     seen: set[int] = set()
 
     async def observer() -> None:
@@ -2727,8 +2744,8 @@ def test_a_concurrent_task_observes_a_block_operation_in_progress() -> None:
 def test_every_block_operation_yields_even_when_it_returns_early() -> None:
     # A blank chip's whole read is two status-byte reads per block that find UNINIT and return, so the
     # yield after that pair must come before those early returns.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     passes = [0]
@@ -2738,7 +2755,7 @@ def test_every_block_operation_yields_even_when_it_returns_early() -> None:
             passes[0] += 1
             await asyncio.sleep(0)
 
-    async def count(coro: "Coroutine[Any, Any, Any]") -> int:
+    async def count(coro: "Coroutine[object, object, object]") -> int:
         other = asyncio.create_task(competitor())
         await asyncio.sleep(0)
         before = passes[0]
@@ -2769,7 +2786,7 @@ def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> 
     # Was a bytearray(check_length) plus two memoryviews on every _compare_with() call - and
     # _compare_with() runs on every read and on every verified write. The size is fixed for the
     # chunk's whole life, so the buffer is allocated once, at construction.
-    _manager, _chip, chunk = make_written_chunk()
+    _manager, _chip, chunk = _make_written_chunk()
     assert chunk._check_buf is not None
     assert len(chunk._check_buf) == 8
     before = id(chunk._check_buf)
@@ -2786,8 +2803,8 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
     # The (MemoryError, OverflowError) guard moves to construction with the allocation, but the
     # degradation must not change: _compare_with() reports "not verifiably valid", so a read
     # rewrites block 1 from block 0 and still returns the data (the self-heals test pins it).
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
     assert chunk is not None
     assert chunk._check_buf is None  # the allocation failed at construction, once, not per call
@@ -2805,17 +2822,13 @@ def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _entries(errs: "ErrorLog") -> list[tuple[int, str]]:
-    nums, types = errs["FRAM"]["ErrNum"], errs["FRAM"]["ErrType"]
-    assert isinstance(nums, list)
-    assert isinstance(types, list)
-    # (number, type) pairs of the occupied slots; zip(strict=) has no MicroPython equivalent
-    return [(num, types[index]) for index, num in enumerate(nums) if types[index] != "N"]
+async def _raising_callback() -> bool:
+    raise RuntimeError("ntp callback exploded")
 
 
 def test_a_block_0_that_keeps_failing_keeps_each_layers_entry_on_every_read() -> None:
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     assert chunk is not None
 
@@ -2837,8 +2850,8 @@ def test_a_block_0_that_keeps_failing_keeps_each_layers_entry_on_every_read() ->
 
 
 def test_a_recurrence_after_recovery_stays_one_slot() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
 
@@ -2858,8 +2871,8 @@ def test_a_recurrence_after_recovery_stays_one_slot() -> None:
 
 
 def test_a_held_mempause_spends_one_slot_for_paused_writes_and_reads() -> None:
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRCPass(), owner="T1")
     assert chunk is not None
     run(chunk.write(b"data"))
@@ -2885,8 +2898,8 @@ def test_a_held_mempause_spends_one_slot_for_paused_writes_and_reads() -> None:
 def test_every_chunk_operation_stays_silent_while_the_chip_is_lost() -> None:
     # The loss is the driver's one FRAM_CHIP_LOST entry: while it stands, no chunk operation reaches the bus
     # or logs, so the loggers' writes add nothing to the manager's history.
-    manager, chip = make_manager()
-    run(setup_manager(manager))
+    manager, chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_chunk(4, crc=CRC8(), owner="T1")
     ts_chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T2")
     assert chunk is not None and ts_chunk is not None
@@ -2921,14 +2934,14 @@ class _SteppedTime:
 def test_a_read_after_the_rtc_stepped_back_returns_a_negative_age() -> None:
     # Guard: the age is signed, so a clock set back after the write reads as negative (the caller treats
     # that as expired; SGP40's decision), and a forward step reads as the full span.
-    manager, _chip = make_manager()
-    run(setup_manager(manager))
+    manager, _chip = _make_manager()
+    run(_setup_manager(manager))
     chunk = manager.get_timestamped_chunk(4, _synced, crc=CRC8(), owner="T1")
     assert chunk is not None
     original_time = asy_base_classes.time
     asy_base_classes.time = _SteppedTime  # type: ignore[assignment]
     try:
-        with _UTCValid():
+        with UTCValid():
             _SteppedTime.now = 1_000_000
             assert run(chunk.write(b"data")) == (True, True, 1_000_000)
             _SteppedTime.now = 1_000_000 - 60
@@ -2968,63 +2981,43 @@ class _CuttingChip(FakeMB85RS64V):
         super().write(buf)
 
 
-def _manager_on(chip_class: "type[FakeMB85RS64V]") -> "tuple[FRAMManager, FakeMB85RS64V]":
-    asy_spi_driver._SPI = chip_class  # type: ignore[misc]
-    try:
-        return make_manager(max_size=chip_class.SIZE)
-    finally:
-        asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
+def _recorded_payload_writes(chunk: "FRAMChunk") -> list[int]:
+    # The start address of every multi-byte write the chunk's driver makes (a payload, never a status byte).
+    addrs: list[int] = []
+    original_sync = chunk.fram.set_values_sync
+
+    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        if len(buf) > 1:
+            addrs.append(addr_start)
+        return original_sync(buf, addr_start)
+
+    chunk.fram.set_values_sync = recording  # type: ignore[method-assign]
+    return addrs
 
 
 _LOGGERS = ("WIFI", "NTP", "SYSTEM")
 
 
-def _logged_system(chip_class: "type[FakeMB85RS64V]", image: "bytearray | None" = None) -> "tuple[FRAMManager, FakeMB85RS64V, list[PrintLogHistoryStore]]":
-    # A manager and three FRAM-backed loggers set up as the boot batch does them, over a copy of image.
-    manager, chip = _manager_on(chip_class)
-    if image is not None:
-        chip.memory[:] = image
-    stores = [PrintLogHistoryStore(manager, 10, None, name=name) for name in _LOGGERS]
-    assert run(setup_manager(manager)) is True
-    for store in stores:
-        run(store.setup())
-    return manager, chip, stores
+def _recorded_warnings(manager: FRAMManager) -> list[str]:
+    # Every warning text the chunk layer logs: the chunks share the manager's history instance.
+    seen: list[str] = []
+    real = manager.pr.wrn_s
+
+    async def recording(*args: object, wrnno: int = 0, sep: str = " ", end: str = "\n") -> None:
+        seen.append(sep.join(str(arg) for arg in args))
+        await real(*args, wrnno=wrnno, sep=sep, end=end)
+
+    manager.pr.wrn_s = recording  # type: ignore[method-assign]
+    return seen
 
 
-def _filled_system(chip_class: "type[FakeMB85RS64V]") -> "tuple[FRAMManager, FakeMB85RS64V, list[PrintLogHistoryStore]]":
-    manager, chip, stores = _logged_system(chip_class)
-    for n, store in enumerate(stores):
-        run(store.err_s("planted", errno=n + 1))
-    chip.memory[manager._allocated_size :] = bytes([0xA5]) * (len(chip.memory) - manager._allocated_size)
-    return manager, chip, stores
+async def _setup_manager(manager: FRAMManager) -> bool:
+    return await manager.setup()
 
 
-def _erase_and_record(chip_class: "type[FakeMB85RS64V]") -> "tuple[FakeMB85RS64V, list[int], int]":
-    # One erase of a filled chip: the chip, the write summary [writes, next unit address, units in order (1/0),
-    # last 1-byte write's index, first 256-byte write's index], and the step count. Fixed-size, so a 256 KB
-    # chip's thousand writes never grow one list block (the coverage build's fragmented heap refused 16 KB).
-    manager, chip, _stores = _filled_system(chip_class)
-    summary = [0, 0, 1, -1, -1]
-    steps = [0]
-    original_sync = manager.fram.set_values_sync
-
-    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
-        if len(buf) == 256:
-            summary[2] &= int(addr_start == summary[1])
-            summary[1] += 256
-            if summary[4] < 0:
-                summary[4] = summary[0]
-        elif len(buf) == 1:
-            summary[3] = summary[0]
-        summary[0] += 1
-        return original_sync(buf, addr_start)
-
-    def step() -> None:
-        steps[0] += 1
-
-    manager.fram.set_values_sync = recording  # type: ignore[method-assign]
-    assert run(manager.erase_chip(step)) is True
-    return chip, summary, steps[0]
+def _status_byte_addrs(chunk: "FRAMChunk") -> tuple[int, int]:
+    base = chunk._block_addr[0] + chunk.size + chunk.crc.length()
+    return base, base + 1
 
 
 def test_erase_chip_zeroes_every_byte_in_ascending_units() -> None:
@@ -3052,8 +3045,8 @@ def test_an_erased_chip_boots_like_a_new_one() -> None:
 def test_an_all_zero_block_never_validates_even_with_an_idle_status() -> None:
     # What the erase leaves, with a status byte flipped to idle: an owner-seeded CRC is never zero over zeros.
     for crc in (CRC8(), CRC16(), CRC32()):
-        manager, chip = make_manager()
-        run(setup_manager(manager))
+        manager, chip = _make_manager()
+        run(_setup_manager(manager))
         chunk = manager.get_chunk(12, crc=crc, owner="SYSTEM")
         assert chunk is not None
         for addr in chunk._block_addr:
@@ -3065,7 +3058,7 @@ def test_an_all_zero_block_never_validates_even_with_an_idle_status() -> None:
 
 
 def test_erase_refuses_a_write_protected_or_uninitialised_chip() -> None:
-    never_up, chip = make_manager()
+    never_up, chip = _make_manager()
     chip.memory[:] = bytes([0xA5]) * len(chip.memory)
     assert run(never_up.erase_ready()) is False
     assert run(never_up.erase_chip(lambda: None)) is False
@@ -3087,28 +3080,14 @@ def test_a_failed_invalidate_stops_before_pass_2() -> None:
     manager, chip, stores = _filled_system(FakeMB85RS64V)
     victim = stores[1].fram
     assert isinstance(victim, FRAMChunk)
-    fail_set_values_at(victim, victim._block_addr[0] + victim.size + victim.crc.length())
+    _fail_set_values_at(victim, victim._block_addr[0] + victim.size + victim.crc.length())
     before = bytearray(chip.memory)
     assert run(manager.erase_chip(lambda: None)) is False
     assert chip.memory[manager._allocated_size :] == before[manager._allocated_size :]  # nothing zeroed
 
 
-def _erase_cut_after(landed: int) -> "tuple[list[list[int]], bytearray]":
-    # One erase whose power fails after `landed` data bytes; returns each logger's ring before and the image after.
-    manager, chip, stores = _filled_system(_CuttingChip)
-    assert isinstance(chip, _CuttingChip)
-    rings = [list(store.history) for store in stores]
-    chip.cut_after = landed
-
-    async def erase() -> bool:
-        try:
-            await manager.erase_chip(lambda: None)
-        except _PowerCut:
-            return True
-        return False
-
-    assert run(erase()) is True, f"the power cut after {landed} bytes never came"
-    return rings, bytearray(chip.memory)
+async def _synced() -> bool:
+    return True
 
 
 def test_an_erase_cut_at_any_point_leaves_a_bootable_chip() -> None:
@@ -3156,7 +3135,7 @@ def test_the_erase_blanks_every_chunk_before_it_zeroes_a_byte() -> None:
 
 
 def test_the_watch_task_waits_while_healthy_and_ends_on_a_loss() -> None:
-    manager, chip = make_manager()
+    manager, chip = _make_manager()
     assert manager.get_task_starters() == [manager.start_asy_watch_chip]  # always one, whatever the chip does
     assert manager.get_timer_starters() == []
     assert run(manager.setup()) is True
@@ -3188,7 +3167,7 @@ def test_the_watch_task_waits_while_healthy_and_ends_on_a_loss() -> None:
 
 def test_the_watch_task_ends_at_once_for_a_chip_never_set_up() -> None:
     # A declared chip that failed its boot setup escalates like any declared chip: its task ends at once.
-    manager, chip = make_manager()
+    manager, chip = _make_manager()
     chip.rdid_response = bytes([0xFF, 0xFF, 0xFF, 0xFF])
     assert run(manager.setup()) is False
 

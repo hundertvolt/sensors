@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 import { hideBanner, renderSection, showBanner } from "../js/render.js";
+import { mustQuery } from "./_dom_helpers.js";
 
 // @tunable l0.render_wait_timeout_ms = 2000
 const WAIT_TIMEOUT_MS = 2000;
@@ -20,29 +21,12 @@ async function waitFor(check, timeoutMs = WAIT_TIMEOUT_MS) {
         if (check()) {
             return;
         }
-        // Intentionally sequential: each retry must wait out the previous delay before rechecking.
-        // eslint-disable-next-line no-await-in-loop
+        // eslint-disable-next-line no-await-in-loop -- each retry waits out the previous delay before rechecking
         await new Promise((resolve) => {
             setTimeout(resolve, WAIT_POLL_MS);
         });
     }
     throw new Error("waitFor timed out");
-}
-
-/**
- * querySelector with a runtime + type assertion that the element exists, so tests can chain
- * straight into `.value`/`.click()`/`.dataset` without every call site null-checking.
- * @template {Element} [T=HTMLElement]
- * @param {ParentNode} root
- * @param {string} selector
- * @returns {T}
- */
-function mustQuery(root, selector) {
-    const found = root.querySelector(selector);
-    if (found === null) {
-        throw new Error(`Expected to find "${selector}"`);
-    }
-    return /** @type {T} */ (found);
 }
 
 /**
@@ -375,7 +359,6 @@ describe("renderSection", () => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     /** @returns {HTMLElement} */
@@ -2030,8 +2013,9 @@ describe("renderSection", () => {
          * @param {Record<string, unknown>} values
          */
         async function anotherClientWrites(values) {
-            const response = await window.fetch("/sensors", { method: "PUT", body: JSON.stringify({ SCD30: values }) });
+            const response = await window.fetch("/sensors", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ SCD30: values }) });
             expect(response.ok).toBe(true);
+            expect((await response.json()).code).toBe(0); // HTTP 200 alone also carries a refused body's code 1
         }
 
         it("sends one GET of the section before the PUT, and a toggle and dropdown another client changed", async () => {

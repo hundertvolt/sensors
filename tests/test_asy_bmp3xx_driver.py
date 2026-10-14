@@ -2,44 +2,21 @@ import asyncio
 import errno as errno_mod
 import struct
 
+from _async_harness import cancel, run
 from _error_codes import code
-from _fram_chip_fake import FakeMB85RS64V
+from _fake_time import UTCValid
+from _fake_timer_arm import RaiseOnArm
+from _fast_sleep import FastAsyncSleep
+from _fram_builders import make_fram_manager
+from _src_const import src_const
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
-import asy_base_classes
-import asy_spi_driver
 from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3XX_Reader
-from asy_fram_manager import FRAMManager
 from asy_i2c_driver import I2C
 from asy_print_log import LogConfig, PrintLogHistoryStore
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as test_asy_print_log.py/test_asy_fram_manager.py: routes
-# FRAMManager's SPI traffic to the simulated FRAM chip instead of unavailable real hardware.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
-
-# Mirrors of asy_bmp3xx_driver.py's own underscore-prefixed micropython.const() values: const()
-# names are folded into every use site at compile time, so they are not importable module
-# attributes (SPECIFICATION.md Part E.5.1). Kept in sync by citation below, not re-derived.
-_BMP388_CHIP_ID = 0x50  # also reported by BMP384
-_BMP390_CHIP_ID = 0x60
-_REGISTER_CHIPID = 0x00
-_REGISTER_ERR = 0x02
-_REGISTER_STATUS = 0x03
-_REGISTER_PRESSUREDATA = 0x04
-_REGISTER_EVENT = 0x10
-_REGISTER_CONTROL = 0x1B
-_REGISTER_OSR = 0x1C
-_REGISTER_CONFIG = 0x1F
-_REGISTER_CAL_DATA = 0x31
-_REGISTER_CMD = 0x7E
-_OSR_SETTINGS = (1, 2, 4, 8, 16, 32)
-_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)
-_STATUS_POLL_S = 0.002
-_MEAS_TIMEOUT_MS = 300
 
 try:
     from typing import TYPE_CHECKING
@@ -47,73 +24,39 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     from typing_extensions import Self
 
     from asy_bmp3xx_driver import BMPResults  # (pressure, temperature, timestamp), the driver's own alias
-
-    T = TypeVar("T")
-    from asy_config_manager import WriteValidity
+    from asy_config_manager import ConfigSchema, WriteValidity
     from asy_print_log import ErrorLog
 
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
+# BMP388/390 register map and encodings copied from BST-BMP388-DS001 (sections 3.4 and 4.3) and BST-BMP390-DS002:
+# an independent oracle, not the driver's const() values; the project's own values below are read from its source.
+_BMP388_CHIP_ID = 0x50  # BMP388 datasheet Table 24; BMP384 reports the same (DS003 Table 24)
+_BMP390_CHIP_ID = 0x60  # BMP390 datasheet Table 25
+_REGISTER_CHIPID = 0x00  # DS001 §4.3.1
+_REGISTER_ERR = 0x02  # DS001 §4.3.2
+_REGISTER_STATUS = 0x03  # DS001 §4.3.3
+_REGISTER_PRESSUREDATA = 0x04  # DS001 §4.3.4
+_REGISTER_EVENT = 0x10  # DS001 §4.3.7
+_REGISTER_CONTROL = 0x1B  # DS001 §4.3.16, PWR_CTRL
+_REGISTER_OSR = 0x1C  # DS001 §4.3.17
+_REGISTER_CONFIG = 0x1F  # DS001 §4.3.20
+_REGISTER_CAL_DATA = 0x31  # DS001 §4.3.21, Table 23 NVM_PAR_T1
+_REGISTER_CMD = 0x7E  # DS001 §4.3.22
+_OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # DS001 §3.4.1-3.4.2, Tables 6-7: encodings 000-101
+_IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)  # DS001 §4.3.20, Table 44: iir_filter 000-111
+_STATUS_POLL_S: float = src_const("src/asy_bmp3xx_driver.py", "_STATUS_POLL_S")  # type: ignore[assignment]  # src_const() answers object
+_MEAS_TIMEOUT_MS: int = src_const("src/asy_bmp3xx_driver.py", "_MEAS_TIMEOUT_MS")  # type: ignore[assignment]  # src_const() answers object
 
 
 # @tunable l1.asy_bmp3xx_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
 
-class _UTCValid:
-    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit.
-    def __enter__(self) -> "_UTCValid":
-        asy_base_classes.set_utc_valid()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        asy_base_classes.set_utc_valid(valid=False)
-
-
 async def _settle(n: int = 5) -> None:
     for _ in range(n):
         await asyncio.sleep(0)
-
-
-class _FastAsyncSleep:
-    # I2CDevice.setup()'s _probe_for_device() makes two real asyncio.sleep(_PROBE_SETTLE_S) calls - fine for
-    # a directly-awaited coroutine, far too slow for a test driving _read_loop() through a bounded
-    # sleep(0) pump. asyncio.sleep is process-wide, so it is restored however the block exits.
-    def __enter__(self) -> "Self":
-        self._real_sleep = asyncio.sleep
-
-        async def _fast(_seconds: float) -> None:
-            await self._real_sleep(0)
-
-        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real_sleep
-
-
-class _RaiseOnArm:
-    # Same technique as the _RaiseOnArm in the asy_system_service/wifi suites - toggles
-    # tests/machine.py's shared Timer.raise_on_arm for the `with` block. `exc` picks which of
-    # start_timer()'s guarded arms runs: the OSError(ENOMEM) alarm-pool one, or MemoryError.
-    def __init__(self, exc: "type[BaseException]" = OSError) -> None:
-        self._exc = exc
-
-    def __enter__(self) -> "Self":
-        FakeTimer.raise_on_arm_exc = self._exc
-        FakeTimer.raise_on_arm = True
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        FakeTimer.raise_on_arm = False
-        FakeTimer.raise_on_arm_exc = OSError
 
 
 _ADDR = 0x77
@@ -154,9 +97,9 @@ def _adc_to_data6(adc_p: int, adc_t: int) -> bytes:
     return triplet(adc_p) + triplet(adc_t)
 
 
-def make_i2c() -> I2C:
-    # A fresh static bus 0 (this tier has no per-test reset), its construction entry dropped so the
-    # log holds only the test's own traffic.
+def _make_i2c() -> I2C:
+    # A fresh static bus 0, as a power-cycled controller, its construction entry dropped so the log holds only the
+    # test's own traffic.
     FakeI2C.reset_id(0)
     i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
     fake(i2c).log.clear()
@@ -235,8 +178,8 @@ class _SleepRecorder:
         asyncio.sleep = self._real_sleep
 
 
-def make_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
-    i2c = make_i2c()
+def _make_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
+    i2c = _make_i2c()
     fake(i2c).register_device(address)
     return i2c, BMP3XX_I2C(i2c, address=address)
 
@@ -244,7 +187,7 @@ def make_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
 def ready_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
     # A BMP3XX_I2C pre-seeded so reset()/_read() succeed immediately without any poll retries:
     # STATUS reports both cmd_rdy and data-ready, ERR_REG is clear.
-    i2c, bmp = make_bmp(address)
+    i2c, bmp = _make_bmp(address)
     seed_status(i2c, 0x10 | 0x60, address)  # cmd_rdy | drdy_press | drdy_temp
     seed_err(i2c, 0x00, address)
     return i2c, bmp
@@ -276,27 +219,39 @@ class _BadBurstRead:
 # ---------------------------------------------------------------------------
 
 
-def test_setup_accepts_bmp388_chip_id() -> None:
+def _accepts_and_refuses_the_next_id(chip_id: int) -> None:
+    # setup() reads CHIP_ID once and keeps the seeded calibration (T1 * 2**8, P5 * 2**3, DS001 §9.1); the ID one
+    # above, which no BMP3xx reports, is refused.
     i2c, bmp = ready_bmp()
-    seed_chip_id(i2c, _BMP388_CHIP_ID)
+    seed_chip_id(i2c, chip_id)
     seed_calibration(i2c)
     assert run(bmp.setup()) is True
+    assert _register_reads(i2c, _REGISTER_CHIPID) == 1
+    assert bmp._temp_calib[0] == 28617 * 256
+    assert bmp._pressure_calib[4] == 30462 * 8
+    i2c, bmp = ready_bmp()
+    seed_chip_id(i2c, chip_id + 1)
+    seed_calibration(i2c)
+    try:
+        run(bmp.setup())
+        message = ""
+    except RuntimeError as e:
+        message = str(e)
+    assert message == "failed to find BMP3XX, chip ID " + hex(chip_id + 1)
+
+
+def test_setup_accepts_bmp388_chip_id() -> None:
+    _accepts_and_refuses_the_next_id(_BMP388_CHIP_ID)
 
 
 def test_setup_accepts_bmp390_chip_id() -> None:
-    i2c, bmp = ready_bmp()
-    seed_chip_id(i2c, _BMP390_CHIP_ID)
-    seed_calibration(i2c)
-    assert run(bmp.setup()) is True
+    _accepts_and_refuses_the_next_id(_BMP390_CHIP_ID)
 
 
 def test_setup_accepts_bmp384_since_it_shares_bmp388s_chip_id() -> None:
     # Confirmed directly against datasheets/bmp3xx/bst-bmp384-ds003.pdf's own CHIP_ID register
     # table: BMP384 reports 0x50, the same as BMP388 - not a separate ID the driver needs to know.
-    i2c, bmp = ready_bmp()
-    seed_chip_id(i2c, 0x50)
-    seed_calibration(i2c)
-    assert run(bmp.setup()) is True
+    _accepts_and_refuses_the_next_id(0x50)
 
 
 def test_setup_rejects_unknown_chip_id() -> None:
@@ -351,7 +306,7 @@ def test_setup_rejects_all_ff_calibration_data() -> None:
 
 def test_read_coefficients_accepts_plausible_non_uniform_data() -> None:
     # Regression guard: the all-zero/all-ff check must not false-positive on real-looking data.
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_calibration(i2c)
     run(bmp._read_coefficients())  # must not raise
     assert bmp._temp_calib[0] == 28617 * 256
@@ -369,7 +324,7 @@ def test_reset_writes_softreset_after_cmd_rdy_ready() -> None:
 
 
 def test_reset_waits_for_cmd_rdy_before_writing() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # not ready yet
     seed_err(i2c, 0x00)
 
@@ -388,7 +343,7 @@ def test_reset_waits_for_cmd_rdy_before_writing() -> None:
 
 
 def test_reset_raises_oserror_on_cmd_rdy_timeout() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # never becomes ready
     try:
         run(bmp.reset())
@@ -401,7 +356,7 @@ def test_reset_raises_oserror_on_cmd_rdy_timeout() -> None:
 
 def test_reset_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
     # A deinitialized bus makes the status poll raise at once (bool bus results, SPECIFICATION.md C.3).
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # not ready
     i2c.deinit()
     try:
@@ -542,7 +497,7 @@ def test_read_triggers_forced_mode() -> None:
 
 
 def test_read_waits_for_data_ready_before_burst_read() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # not ready yet
     seed_calibration(i2c)
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
@@ -564,7 +519,7 @@ def test_read_waits_for_data_ready_before_burst_read() -> None:
 
 
 def test_read_raises_oserror_on_status_timeout() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # never becomes ready
     seed_calibration(i2c)
     run(bmp._read_coefficients())
@@ -577,7 +532,7 @@ def test_read_raises_oserror_on_status_timeout() -> None:
 
 
 def test_read_raises_oserror_when_bus_deinitialized_mid_poll() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_status(i2c, 0x00)  # not ready
     seed_calibration(i2c)
     run(bmp._read_coefficients())
@@ -689,7 +644,7 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_read_fails() -> None:
     # Caller side of the guard above: _read_bmp()'s blanket try/except turns that OSError into the
     # same logged READ entry as any other failed read and returns an all-None result, which
     # _store_bmp() discards - degrading like a NAKed bus instead of crashing _read_loop()'s task.
-    i2c, reader = make_clean_reader("bad_burst_reader")
+    i2c, reader = _make_clean_reader("bad_burst_reader")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -860,13 +815,13 @@ def test_filter_coefficient_rejects_invalid_values() -> None:
 
 
 def test_read_byte_returns_int() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_chip_id(i2c, 0x42)
     assert run(bmp._read_byte(_REGISTER_CHIPID)) == 0x42
 
 
 def test_read_register_returns_bytes_of_requested_length() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     seed_calibration(i2c)
     result = run(bmp._read_register(_REGISTER_CAL_DATA, 21))
     assert isinstance(result, bytes)
@@ -874,7 +829,7 @@ def test_read_register_returns_bytes_of_requested_length() -> None:
 
 
 def test_read_byte_propagates_real_bus_fault() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     fake(i2c).nak_addresses.add(_ADDR)
     try:
         run(bmp._read_byte(_REGISTER_CHIPID))
@@ -903,7 +858,7 @@ def test_reset_propagates_bus_busy_fault() -> None:
 
 
 def test_read_coefficients_propagates_bus_busy_fault() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     fake(i2c).busy = True
     try:
         run(bmp._read_coefficients())
@@ -982,18 +937,18 @@ def _tmp_cfg_path(name: str) -> str:
     return _scratch.dir(name)
 
 
-def make_reader(name: str) -> BMP3XX_Reader:
-    i2c = make_i2c()
+def _make_reader(name: str) -> BMP3XX_Reader:
+    i2c = _make_i2c()
     fake(i2c).nak_addresses.add(_ADDR)  # every bus op on this address fails
     reader = BMP3XX_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path(name))
     run(reader.setup())
     return reader
 
 
-def make_clean_reader(name: str, max_module_error: int = 5) -> "tuple[I2C, BMP3XX_Reader]":
-    # Unlike make_reader() above, the bus starts untouched (no nak_addresses/busy) - individual
+def _make_clean_reader(name: str, max_module_error: int = 5) -> "tuple[I2C, BMP3XX_Reader]":
+    # Unlike _make_reader() above, the bus starts untouched (no nak_addresses/busy) - individual
     # tests seed exactly the registers they need for setup()/reads to succeed.
-    i2c = make_i2c()
+    i2c = _make_i2c()
     reader = BMP3XX_Reader(i2c, address=_ADDR, max_module_error=max_module_error, cfg_path=_tmp_cfg_path(name))
     run(reader.setup())
     return i2c, reader
@@ -1003,7 +958,7 @@ def test_reader_set_trigger_s_logs_and_does_not_raise_on_bad_value() -> None:
     # Regression test for an exception-safety audit finding: set_trigger_s() used
     # to call int(value) unguarded, unlike every other low-level forward in this class, so a bad
     # value would raise straight out of it instead of being logged like its siblings.
-    reader = make_reader("bad_trigger")  # bus is irrelevant - set_trigger_s never touches it
+    reader = _make_reader("bad_trigger")  # bus is irrelevant - set_trigger_s never touches it
 
     async def scenario() -> "ErrorLog":
         await reader.set_trigger_s("not-a-number")  # type: ignore[arg-type]
@@ -1015,7 +970,7 @@ def test_reader_set_trigger_s_logs_and_does_not_raise_on_bad_value() -> None:
 
 
 def test_reader_set_trigger_s_accepts_whole_seconds_and_refuses_a_fraction() -> None:
-    reader = make_reader("good_trigger")
+    reader = _make_reader("good_trigger")
     assert run(reader.set_trigger_s(30)) is True
     assert run(reader._trigger_period.get_value()) == 30
     assert run(reader.set_trigger_s(45.7)) is False  # the legacy driver truncated it; the REST path never passed one
@@ -1026,7 +981,7 @@ def test_reader_set_trigger_s_accepts_whole_seconds_and_refuses_a_fraction() -> 
 
 
 def test_reader_set_trigger_s_refuses_a_bool() -> None:
-    reader = make_reader("bool_trigger")
+    reader = _make_reader("bool_trigger")
     run(reader.set_trigger_s(30))
     before = run(reader.get_error_counter())["BMP3XX"]["ErrCount"]
     assert run(reader.set_trigger_s(True)) is False
@@ -1037,7 +992,7 @@ def test_reader_set_trigger_s_refuses_a_bool() -> None:
 
 
 def test_reader_set_trigger_s_accepts_boundary_values() -> None:
-    reader = make_reader("boundary_trigger")
+    reader = _make_reader("boundary_trigger")
     run(reader.set_trigger_s(1))
     assert run(reader._trigger_period.get_value()) == 1
     run(reader.set_trigger_s(3600))
@@ -1047,7 +1002,7 @@ def test_reader_set_trigger_s_accepts_boundary_values() -> None:
 def test_reader_set_trigger_s_rejects_out_of_range_values() -> None:
     # Bound 1-3600 s, the deployed validation of this field (the legacy firmware's sensortask module,
     # legacy/firmware/modules/); a refused value is logged, never raised.
-    reader = make_reader("out_of_range_trigger")
+    reader = _make_reader("out_of_range_trigger")
     run(reader.set_trigger_s(30))  # establish a known-good baseline value first
     for bad in (0, -1, 3601, 100000):
 
@@ -1062,7 +1017,7 @@ def test_reader_set_trigger_s_rejects_out_of_range_values() -> None:
 
 def test_reader_set_trigger_s_rejects_inf_and_nan() -> None:
     # The shared checked_int() refuses NaN and +-inf like any out-of-range value.
-    reader = make_reader("inf_nan_trigger")
+    reader = _make_reader("inf_nan_trigger")
     run(reader.set_trigger_s(30))  # establish a known-good baseline value first
     for bad in (float("inf"), float("-inf"), float("nan")):
 
@@ -1079,7 +1034,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
     # _init_bmp() routes BMPSampleInterv through set_trigger_s() (which never raises) rather
     # than writing _trigger_period directly, unlike the hardware-facing values after it: a stale
     # stored interval should log and keep going, not fail init and force a task restart.
-    i2c, reader = make_clean_reader("bad_stored_trigger")
+    i2c, reader = _make_clean_reader("bad_stored_trigger")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1103,7 +1058,7 @@ def test_init_bmp_soft_degrades_on_out_of_range_stored_sample_interval() -> None
 
 
 def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure() -> None:
-    reader = make_reader("get_pov")
+    reader = _make_reader("get_pov")
 
     async def scenario() -> "tuple[int | None, ErrorLog]":
         value = await reader.get_pressure_oversampling()
@@ -1116,7 +1071,7 @@ def test_reader_get_pressure_oversampling_logs_and_returns_none_on_bus_failure()
 
 
 def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure() -> None:
-    reader = make_reader("set_pov")
+    reader = _make_reader("set_pov")
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_pressure_oversampling(8)
@@ -1129,37 +1084,27 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 
 
 # ---------------------------------------------------------------------------
-# Configuration schema: mirrors of asy_bmp3xx_driver.py's own _VAL_* const() tuples (see the
-# module-level comment on why they cannot be imported), exercised through the real ConfigManager
+# Configuration schema read from the driver's source (tests/_src_const.py), exercised through the real ConfigManager
 # attached to a BMP3XX_Reader - every field's valid range, then invalid-field recombinations.
 # ---------------------------------------------------------------------------
 
-_VAL_SAMPLE_INTERVAL = (("SampleInterval", "int", 2, 1, 3600, None),)
-_VAL_PRES_OVERS = (("PresOvers", "int", 1, None, None, _OSR_SETTINGS),)
-_VAL_TEMP_OVERS = (("TempOvers", "int", 1, None, None, _OSR_SETTINGS),)
-_VAL_FILT_COEFF = (("FiltCoeff", "int", 0, None, None, _IIR_SETTINGS),)
-_VAL_PRES_OFFSET = (("PresOffset", "float", 0.0, -500.0, 500.0, None),)
-_VAL_TEMP_OFFSET = (("TempOffset", "float", 0.0, -10.0, 10.0, None),)
-_VAL_SEA_LEVEL_OFFSET = (("SeaLevelOffset", "float", 0.0, -1000.0, 5000.0, None),)
-_VAL_MEAN_ATM_TEMP = (("MeanAtmTemp", "float", 15.0, -40.0, 50.0, None),)
+_VAL_SAMPLE_INTERVAL: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_SAMPLE_INTERVAL")  # type: ignore[assignment]  # src_const() answers object
+_VAL_PRES_OVERS: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_PRES_OVERS")  # type: ignore[assignment]
+_VAL_TEMP_OVERS: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OVERS")  # type: ignore[assignment]
+_VAL_FILT_COEFF: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_FILT_COEFF")  # type: ignore[assignment]
+_VAL_PRES_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_PRES_OFFSET")  # type: ignore[assignment]
+_VAL_TEMP_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OFFSET")  # type: ignore[assignment]
+_VAL_SEA_LEVEL_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_SEA_LEVEL_OFFSET")  # type: ignore[assignment]
+_VAL_MEAN_ATM_TEMP: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_MEAN_ATM_TEMP")  # type: ignore[assignment]
 _FULL_SCHEMA = _VAL_SAMPLE_INTERVAL + _VAL_PRES_OVERS + _VAL_TEMP_OVERS + _VAL_FILT_COEFF + _VAL_PRES_OFFSET + _VAL_TEMP_OFFSET + _VAL_SEA_LEVEL_OFFSET + _VAL_MEAN_ATM_TEMP
 
-# name -> (type, min, max), mirroring each _VAL_* tuple's own (name, type, def, min, max, special) -
-# only the genuinely continuous-range fields; PresOvers/TempOvers/FiltCoeff are discrete allowed-
-# value sets now (see _DISCRETE_FIELDS below), where "midpoint"/"one below min" have no meaning.
-_FIELD_BOUNDS = {
-    "SampleInterval": ("int", 1, 3600),
-    "PresOffset": ("float", -500.0, 500.0),
-    "TempOffset": ("float", -10.0, 10.0),
-    "SeaLevelOffset": ("float", -1000.0, 5000.0),
-    "MeanAtmTemp": ("float", -40.0, 50.0),
+# Both read off the schema rows (name, type, def, min, max, special): name -> (type, min, max) for a continuous field,
+# name -> its allowed set for a discrete one (PresOvers/TempOvers/FiltCoeff), where "one below min" means nothing.
+_FIELD_BOUNDS: "dict[str, tuple[str, int | float, int | float]]" = {
+    name: (kind, lo, hi) for name, kind, _default, lo, hi, special in _FULL_SCHEMA if special is None and lo is not None and hi is not None
 }
-
-# name -> its own legal discrete value set, mirroring _VAL_PRES_OVERS/_VAL_TEMP_OVERS/_VAL_FILT_COEFF's "special" slot.
-_DISCRETE_FIELDS: "dict[str, tuple[int, ...]]" = {
-    "PresOvers": _OSR_SETTINGS,
-    "TempOvers": _OSR_SETTINGS,
-    "FiltCoeff": _IIR_SETTINGS,
+_DISCRETE_FIELDS: "dict[str, tuple[int | float | str, ...]]" = {
+    name: special for name, _kind, _default, _lo, _hi, special in _FULL_SCHEMA if isinstance(special, tuple)
 }
 
 _ALL_FIELD_NAMES = list(_FIELD_BOUNDS) + list(_DISCRETE_FIELDS)
@@ -1171,7 +1116,7 @@ def _midpoint(kind: str, lo: "int | float", hi: "int | float") -> "int | float":
 
 
 def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint() -> None:
-    _i2c, reader = make_clean_reader("cfg_valid")
+    _i2c, reader = _make_clean_reader("cfg_valid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         for value in (lo, hi, _midpoint(kind, lo, hi)):
             ok, results = run(reader.cfgmgr.write_config({name: value}))
@@ -1183,7 +1128,7 @@ def test_config_write_accepts_every_field_at_its_valid_boundaries_and_midpoint()
 
 
 def test_config_write_rejects_single_out_of_range_field() -> None:
-    _i2c, reader = make_clean_reader("cfg_single_invalid")
+    _i2c, reader = _make_clean_reader("cfg_single_invalid")
     for name, (kind, lo, hi) in _FIELD_BOUNDS.items():
         step = 1 if kind == "int" else 0.1
         below = lo - step
@@ -1204,7 +1149,7 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
     # An int-typed field still strictly rejects a non-numeric string (str is never coerced); a
     # float-typed field now accepts and coerces an in-range int (Part A.8). Every field in
     # _FIELD_BOUNDS has 1 within its own [lo, hi], so this tests acceptance, not a range rejection.
-    _i2c, reader = make_clean_reader("cfg_wrong_type")
+    _i2c, reader = _make_clean_reader("cfg_wrong_type")
     for name, (kind, _lo, _hi) in _FIELD_BOUNDS.items():
         if kind == "int":
             ok, results = run(reader.cfgmgr.write_config({name: "nope"}))
@@ -1220,18 +1165,18 @@ def test_config_write_wrong_type_rejected_for_int_field_but_coerced_for_float_fi
         assert type(stored[name]) is float
 
 
-def test_config_write_rejects_bool_for_int_field_despite_bool_being_an_int_subclass() -> None:
-    # asy_config_manager.py's type_or_range_error() uses `type(x) is not int`, which is strict. That
-    # holds on both runtimes for different reasons: bool subclasses int on CPython, while on
-    # MicroPython it has no base type at all, so even isinstance() would reject it (Part F.1).
-    _i2c, reader = make_clean_reader("cfg_bool_reject")
+def test_config_write_rejects_a_bool_for_an_int_field_on_both_runtimes() -> None:
+    # asy_config_manager.py's type_or_range_error() uses `type(x) is not int`, strict on both runtimes: bool
+    # subclasses int on CPython, while MicroPython's bool has no base type at all (py/objbool.c), so even
+    # isinstance() would reject it there.
+    _i2c, reader = _make_clean_reader("cfg_bool_reject")
     ok, results = run(reader.cfgmgr.write_config({"SampleInterval": True}))
     assert ok is True
     assert results["SampleInterval"] == "Invalid"
 
 
 def test_config_write_rejects_multiple_invalid_fields_while_keeping_valid_ones() -> None:
-    _i2c, reader = make_clean_reader("cfg_multi_invalid")
+    _i2c, reader = _make_clean_reader("cfg_multi_invalid")
     before = run(reader.cfgmgr.get_dict(_ALL_FIELD_NAMES))
     assert before is not None
     mixed: dict[str, int | float | str | bool | None] = {
@@ -1270,7 +1215,7 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
     # So this pokes the cache directly, simulating a stale config file written before that fix, to
     # confirm _init_bmp() still degrades cleanly for a hardware-invalid value that slipped past
     # validation some other way - the same technique as the stale-sample-interval test above.
-    i2c, reader = make_clean_reader("init_bad_osr_value")
+    i2c, reader = _make_clean_reader("init_bad_osr_value")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1290,7 +1235,7 @@ def test_init_bmp_fails_and_logs_when_stored_oversampling_is_outside_hardware_do
 
 def test_mean_atm_temp_below_minus_40_is_refused_and_minus_40_yields_a_sea_level_pressure() -> None:
     # The barometric helper's domain ends at -40 degC: a stored -45 would blank SLPres every cycle.
-    i2c, reader = make_clean_reader("mean_atm_temp_floor")
+    i2c, reader = _make_clean_reader("mean_atm_temp_floor")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1313,7 +1258,7 @@ def test_mean_atm_temp_below_minus_40_is_refused_and_minus_40_yields_a_sea_level
 
 
 def test_config_write_accepts_every_legal_discrete_value() -> None:
-    _i2c, reader = make_clean_reader("discrete_valid")
+    _i2c, reader = _make_clean_reader("discrete_valid")
     for name, legal_values in _DISCRETE_FIELDS.items():
         for value in legal_values:
             ok, results = run(reader.cfgmgr.write_config({name: value}))
@@ -1327,7 +1272,7 @@ def test_config_write_accepts_every_legal_discrete_value() -> None:
 def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
     # 20 is an "in type, in old-range" int that was never a real legal OSR value (only
     # 1/2/4/8/16/32 are) - exactly the gap this validator closes.
-    _i2c, reader = make_clean_reader("discrete_invalid_osr")
+    _i2c, reader = _make_clean_reader("discrete_invalid_osr")
     for name in ("PresOvers", "TempOvers"):
         before = run(reader.cfgmgr.get_dict([name]))
         assert before is not None
@@ -1340,7 +1285,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_osr_domain() -> None:
 
 def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
     # 100 is in the old [0, 127] range but not one of the real encoded IIR coefficients.
-    _i2c, reader = make_clean_reader("discrete_invalid_iir")
+    _i2c, reader = _make_clean_reader("discrete_invalid_iir")
     before = run(reader.cfgmgr.get_dict(["FiltCoeff"]))
     ok, results = run(reader.cfgmgr.write_config({"FiltCoeff": 100}))
     assert ok is True
@@ -1349,7 +1294,7 @@ def test_write_config_rejects_a_value_outside_the_discrete_iir_domain() -> None:
 
 
 def test_write_config_rejects_wrong_type_for_a_discrete_field() -> None:
-    _i2c, reader = make_clean_reader("discrete_wrong_type")
+    _i2c, reader = _make_clean_reader("discrete_wrong_type")
     ok, results = run(reader.cfgmgr.write_config({"PresOvers": "8"}))
     assert ok is True
     assert results["PresOvers"] == "Invalid"
@@ -1361,7 +1306,7 @@ def test_write_config_rejects_wrong_type_for_a_discrete_field() -> None:
 
 
 def test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_fields() -> None:
-    i2c, reader = make_clean_reader("dict_cfg_live")
+    i2c, reader = _make_clean_reader("dict_cfg_live")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     run(reader._bmp.set_pressure_oversampling(8))
@@ -1377,7 +1322,7 @@ def test_get_dict_cfg_overlays_live_sensor_readback_on_oversampling_and_filter_f
 def test_get_dict_cfg_of_an_unreachable_sensor_is_the_unavailable_marker() -> None:
     # The marker in place of the whole map: no null a reader would take for an unset value, and no
     # config-file field beside it. The failed read keeps its one CHIP_GET entry, nothing more.
-    i2c, reader = make_clean_reader("dict_cfg_unreachable")
+    i2c, reader = _make_clean_reader("dict_cfg_unreachable")
     fake(i2c).nak_addresses.add(_ADDR)
     assert run(reader.get_dict_cfg()) == {"BMP3XX": {"error": "unavailable"}}
     assert _count(reader, "E", "CHIP_GET") == 1
@@ -1393,7 +1338,7 @@ def test_get_config_snapshot_holds_the_device_lock_once_for_the_whole_batch_not_
     # get_bits()/set_bits() never suspend in this fake, so the interleaving itself can't be
     # reproduced here the way test_asy_scd30_driver.py's version can - this proves the fix
     # mechanism instead: get_config_snapshot() takes the device-session lock once for the batch.
-    i2c, reader = make_clean_reader("config_snapshot_lock")
+    i2c, reader = _make_clean_reader("config_snapshot_lock")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
 
@@ -1421,7 +1366,7 @@ def test_get_config_snapshot_holds_the_device_lock_once_for_the_whole_batch_not_
 
 
 def test_init_bmp_succeeds_against_healthy_bus_and_applies_stored_config() -> None:
-    i2c, reader = make_clean_reader("init_ok")
+    i2c, reader = _make_clean_reader("init_ok")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1437,7 +1382,7 @@ def test_the_three_reader_level_setting_getters_all_report_the_live_sensor() -> 
     # One of the three (pressure) was reached by the FRAM-backed bus-failure test; its two
     # siblings were never called at this layer at all, so neither their pass-through nor the
     # errno each logs was pinned. They are one contract - the maintenance-status trio.
-    i2c, reader = make_clean_reader("getter_trio")
+    i2c, reader = _make_clean_reader("getter_trio")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1453,7 +1398,7 @@ def test_the_three_reader_level_setting_getters_all_report_the_live_sensor() -> 
 
 def test_each_reader_level_setting_getter_degrades_with_a_chip_get_entry_on_a_dead_bus() -> None:
     # The three getters share the catalog's CHIP_GET class (numbers name the failure class, not the call site).
-    i2c, reader = make_clean_reader("getter_trio_dead")
+    i2c, reader = _make_clean_reader("getter_trio_dead")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1474,7 +1419,7 @@ def test_each_reader_level_setting_getter_degrades_with_a_chip_get_entry_on_a_de
 
 
 def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
-    i2c, reader = make_clean_reader("init_bad_chip")
+    i2c, reader = _make_clean_reader("init_bad_chip")
     seed_chip_id(i2c, 0x99)  # unrecognized chip ID -> bmp.setup() raises RuntimeError
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1494,7 +1439,7 @@ def test_init_bmp_fails_and_logs_when_setup_raises() -> None:
 
 
 def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
-    i2c, reader = make_clean_reader("init_bad_cfg")
+    i2c, reader = _make_clean_reader("init_bad_cfg")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1516,7 +1461,7 @@ def test_init_bmp_fails_and_logs_when_config_data_unreadable() -> None:
 def test_read_bmp_captures_the_default_compensation_values_when_config_unreadable() -> None:
     # _read_bmp() captures the compensation values before the conversion; an unreadable config logs CFG_READ and
     # captures the documented [0.0, 0.0, 0.0, 15.0] fallback, so a real new conversion is stored uncompensated.
-    i2c, reader = make_clean_reader("store_fallback_cfg")
+    i2c, reader = _make_clean_reader("store_fallback_cfg")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1569,7 +1514,7 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
     # asy_base_classes.py's real _error_check(): a bus disturbance appearing after a clean init must
     # accumulate consecutive failures past max_module_error before giving up, and a later success
     # must unwind that streak - the self-healing _read_loop() relies on for a transient disconnect.
-    i2c, reader = make_clean_reader("threshold", max_module_error=2)
+    i2c, reader = _make_clean_reader("threshold", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1588,7 +1533,7 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
         outcomes.append(await reader._error_check(recovered))
         return outcomes
 
-    with _UTCValid():  # a good read's TS is a number, so only the faulted cycles count
+    with UTCValid():  # a good read's TS is a number, so only the faulted cycles count
         assert run(scenario()) == [True, True, False, True]
     # The 2nd failure runs the participant rung, whose soft reset fails on the NAKing bus (its one CHIP_SET entry).
     assert _used(reader)[-8:] == [
@@ -1598,7 +1543,7 @@ def test_reader_read_error_check_threshold_and_self_heal() -> None:
 
 
 def test_reader_error_counter_reflects_read_failures_via_print_log() -> None:
-    i2c, reader = make_clean_reader("err_counter_shape")
+    i2c, reader = _make_clean_reader("err_counter_shape")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1620,7 +1565,7 @@ def test_reader_read_bmp_triggers_exactly_one_measurement_cycle() -> None:
     # Reader-level counterpart of the single-measurement-cycle test above: confirms _read_bmp()
     # itself, not just the low-level method it calls, triggers one physical conversion per read
     # cycle rather than the two the old get_pressure()+get_temperature() pattern produced.
-    i2c, reader = make_clean_reader("single_measurement")
+    i2c, reader = _make_clean_reader("single_measurement")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1655,7 +1600,7 @@ async def _put(reader: BMP3XX_Reader, data: "dict[str, int | float | str | bool 
 
 def _healthy_reader(name: str, **stored: "int | float") -> "tuple[I2C, BMP3XX_Reader]":
     # A reader past _init_bmp() on a healthy chip, its stored config written first.
-    i2c, reader = make_clean_reader(name)
+    i2c, reader = _make_clean_reader(name)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1679,7 +1624,7 @@ def _cycle(reader: BMP3XX_Reader) -> bool:
 
 def test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config() -> None:
     i2c, reader = _healthy_reader("rung_reapply", PresOvers=8, TempOvers=4, FiltCoeff=3)
-    fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no ACK"), times=2, match=_REGISTER_ERR)  # the bursts
+    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_ERR)  # the bursts
     fake(i2c).log.clear()
     assert _cycle(reader) is True
     assert _writes_to(i2c, _REGISTER_CMD) == []  # the 1st failure: the retry is the next cycle
@@ -1695,7 +1640,7 @@ def test_two_failed_reads_reset_the_chip_and_reapply_the_stored_config() -> None
 
 def test_a_rejected_reset_logs_one_chip_set_error_and_writes_no_config() -> None:
     i2c, reader = _healthy_reader("rung_rejected", PresOvers=8)
-    fake(i2c).inject_fault("readfrom_into", OSError(errno_mod.EIO, "no ACK"), times=2, match=_REGISTER_ERR)
+    fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", times=2, match=_REGISTER_ERR)
     assert _cycle(reader) is True
     seed_err(i2c, 0x02)  # ERR_REG cmd_err: the chip refuses the soft reset (not fatal_err, bit 0)
     fake(i2c).log.clear()
@@ -1707,7 +1652,7 @@ def test_a_rejected_reset_logs_one_chip_set_error_and_writes_no_config() -> None
 
 
 def test_a_config_read_failure_at_setup_runs_no_bus_rung() -> None:
-    i2c, reader = make_clean_reader("rung_cfg_read")
+    i2c, reader = _make_clean_reader("rung_cfg_read")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -1836,7 +1781,7 @@ def test_a_reading_outside_the_operating_range_logs_read_range() -> None:
 
 
 def test_the_log_config_sets_both_loggers_length_and_level() -> None:
-    reader = BMP3XX_Reader(make_i2c(), address=_ADDR, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
+    reader = BMP3XX_Reader(_make_i2c(), address=_ADDR, cfg_path=_tmp_cfg_path("log_config"), log=LogConfig(None, 3, 2))
     for pr in (reader.pr, reader.cfgmgr.pr):
         assert len(pr.history) == 3
         assert pr.level == 2
@@ -1846,12 +1791,10 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     # asy_print_log.py's PrintLogHistoryStore path (FRAM-backed, survives a reboot) is never exercised
     # by the default in-memory tests above - this drives it through a real FRAMManager against
     # tests/_fram_chip_fake.py's simulated chip, the pattern tests/test_asy_print_log.py uses.
-    spi = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(spi, 1, max_size=0x2000)
+    manager, chip = make_fram_manager()
     run(manager.setup())
-    chip = manager.fram._spidev.spi._spi
 
-    i2c = make_i2c()
+    i2c = _make_i2c()
     fake(i2c).nak_addresses.add(_ADDR)
     cfg_path = _tmp_cfg_path("fram_backed")
     reader = BMP3XX_Reader(i2c, address=_ADDR, cfg_path=cfg_path, log=LogConfig(manager, 10, None))
@@ -1869,9 +1812,7 @@ def test_reader_uses_fram_backed_print_log_when_fram_provided() -> None:
     # Simulate a reboot: a fresh SPI bus/manager/reader wired to the SAME underlying chip memory
     # (a real reboot re-constructs everything downstream of the physical chip), replaying the same
     # get_chunk() sequence - genuinely round-trips the real dual-copy+CRC on-chip format.
-    spi2 = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager2 = FRAMManager(spi2, 1, max_size=0x2000)
-    manager2.fram._spidev.spi._spi = chip
+    manager2, _ = make_fram_manager(chip=chip)
     run(manager2.setup())
     rebooted_reader = BMP3XX_Reader(i2c, address=_ADDR, cfg_path=cfg_path, log=LogConfig(manager2, 10, None))
 
@@ -1932,7 +1873,7 @@ def test_get_config_snapshot_refuses_a_reserved_osr_encoding_instead_of_indexing
 
 
 def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
-    i2c, bmp = make_bmp()
+    i2c, bmp = _make_bmp()
     i2c.deinit()
     try:
         run(bmp._read_byte(_REGISTER_CHIPID))
@@ -1949,19 +1890,19 @@ def test_read_byte_raises_oserror_on_deinitialized_bus() -> None:
 
 
 def test_get_data_returns_all_none_before_any_successful_read() -> None:
-    reader = make_reader("get_data_initial")
+    reader = _make_reader("get_data_initial")
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)
 
 
 def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
-    i2c, reader = make_clean_reader("get_data_stored")
+    i2c, reader = _make_clean_reader("get_data_stored")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     assert run(reader._init_bmp())
-    with _UTCValid():
+    with UTCValid():
         results = run(reader._read_bmp())
     run(reader._store_bmp(results))
 
@@ -1986,26 +1927,23 @@ def test_get_data_and_get_dict_data_reflect_a_stored_reading() -> None:
 
 
 def test_get_task_starters_returns_read_and_trigger_starters() -> None:
-    reader = make_reader("task_starters")
+    reader = _make_reader("task_starters")
     assert reader.get_task_starters() == [reader.start_asy_read, reader.start_asy_trigger]
 
 
 def test_get_cfg_schema_matches_the_full_schema() -> None:
-    # get_cfg_schema() is inherited for free from asy_base_classes.py's SensorReaderConfig - no
-    # BMP3XX_Reader-specific code needed.
-    reader = make_reader("schema")
-    assert reader.get_cfg_schema() == _FULL_SCHEMA
-    assert reader.get_cfg_schema() == reader._cfg_schema
+    reader = _make_reader("schema")
+    assert reader.get_cfg_schema() == _FULL_SCHEMA  # the module's schema, read from its source
 
 
 def test_push_callbacks_registered_for_every_live_field_only() -> None:
-    reader = make_reader("push_callbacks")
+    reader = _make_reader("push_callbacks")
     assert set(reader._push_callbacks) == {"SampleInterval", "PresOvers", "TempOvers", "FiltCoeff"}
     # PresOffset/TempOffset/SeaLevelOffset/MeanAtmTemp are persist-only compensation-math inputs.
 
 
 def test_set_dict_cfg_pressure_oversampling_end_to_end_persists_and_pushes() -> None:
-    i2c, reader = make_clean_reader("set_dict_cfg_pov")
+    i2c, reader = _make_clean_reader("set_dict_cfg_pov")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     results = run(reader._set_dict_cfg({"PresOvers": 8}, reader.get_cfg_schema()))
@@ -2022,7 +1960,7 @@ def test_set_dict_cfg_pressure_oversampling_bus_failure_reports_field_as_failed(
     # BMP3xx does register a _get_callbacks entry for this field, but a blanket address NAK fails
     # the getter's own read too, so this falls through to the pre-write snapshot rung - established
     # as 4 first, distinct from both the requested 8 and the schema default (1).
-    i2c, reader = make_clean_reader("set_dict_cfg_pov_busfail")
+    i2c, reader = _make_clean_reader("set_dict_cfg_pov_busfail")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     run(reader._set_dict_cfg({"PresOvers": 4}, reader.get_cfg_schema()))
@@ -2037,7 +1975,7 @@ def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real
     # A narrower fault than the blanket NAK above: only the write half of set_bits() fails,
     # leaving reads - and the registered getter - functional. Desyncs the sensor's real register
     # state from the persisted value, so a pass can only come from the getter rung winning.
-    i2c, reader = make_clean_reader("set_dict_cfg_pov_getter_recovers")
+    i2c, reader = _make_clean_reader("set_dict_cfg_pov_getter_recovers")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     run(reader._bmp.set_pressure_oversampling(2))
@@ -2066,7 +2004,7 @@ def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real
 
 
 def test_set_dict_cfg_multi_field_discrete_and_continuous_together() -> None:
-    i2c, reader = make_clean_reader("set_dict_cfg_multi")
+    i2c, reader = _make_clean_reader("set_dict_cfg_multi")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     results = run(
@@ -2083,7 +2021,7 @@ def test_set_dict_cfg_multiple_simultaneously_invalid_discrete_fields_neither_pu
     # Both PresOvers and FiltCoeff invalid at once, not just one amid otherwise-valid fields as
     # the multi-field test above already covers. Confirms independence holds and neither push fires
     # when two discrete-set fields are both out of range, while a third valid field still persists.
-    i2c, reader = make_clean_reader("set_dict_cfg_multi_invalid")
+    i2c, reader = _make_clean_reader("set_dict_cfg_multi_invalid")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     results = run(reader._set_dict_cfg({"PresOvers": 20, "FiltCoeff": 99, "TempOvers": 4}, reader.get_cfg_schema()))
@@ -2096,7 +2034,7 @@ def test_set_dict_cfg_multiple_simultaneously_invalid_discrete_fields_neither_pu
 
 
 def test_set_dict_cfg_temperature_oversampling_end_to_end_persists_and_pushes() -> None:
-    i2c, reader = make_clean_reader("set_dict_cfg_tov")
+    i2c, reader = _make_clean_reader("set_dict_cfg_tov")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     results = run(reader._set_dict_cfg({"TempOvers": 4}, reader.get_cfg_schema()))
@@ -2108,7 +2046,7 @@ def test_set_dict_cfg_temperature_oversampling_end_to_end_persists_and_pushes() 
 def test_set_dict_cfg_sample_interv_end_to_end_persists_and_pushes() -> None:
     # SampleInterval's "push" is a pure in-memory software knob (_trigger_period), not I2C - no bus
     # seeding needed.
-    reader = make_reader("set_dict_cfg_si")
+    reader = _make_reader("set_dict_cfg_si")
     results = run(reader._set_dict_cfg({"SampleInterval": 45}, reader.get_cfg_schema()))
     assert results == {"SampleInterval": "Valid"}
     assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 45}
@@ -2119,7 +2057,7 @@ def test_set_dict_cfg_coerces_int_field_before_pushing_not_just_persisting() -> 
     # The push loop must dispatch the coerced (int) shape that was persisted, not the caller's raw
     # float: coercion accepts an integral float for an int-typed field (Part A.8), but every BMP3xx
     # push wrapper checks `type(value) is not int` and would report "Failed", reverting the write.
-    i2c, reader = make_clean_reader("set_dict_cfg_coerce_push")
+    i2c, reader = _make_clean_reader("set_dict_cfg_coerce_push")
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     results = run(reader._set_dict_cfg({"TempOvers": 4.0}, reader.get_cfg_schema()))
@@ -2130,7 +2068,7 @@ def test_set_dict_cfg_coerces_int_field_before_pushing_not_just_persisting() -> 
 
 def test_set_dict_cfg_coerces_pure_software_int_field_before_pushing() -> None:
     # Same regression as above, for the pure-software (non-I2C) SampleInterval push path.
-    reader = make_reader("set_dict_cfg_coerce_push_sw")
+    reader = _make_reader("set_dict_cfg_coerce_push_sw")
     results = run(reader._set_dict_cfg({"SampleInterval": 45.0}, reader.get_cfg_schema()))
     assert results == {"SampleInterval": "Valid"}
     assert run(reader.cfgmgr.get_dict(["SampleInterval"])) == {"SampleInterval": 45}
@@ -2141,7 +2079,7 @@ def test_push_wrapper_functions_reject_a_non_int_value_defensively() -> None:
     # _set_dict_cfg only ever invokes these with an already schema-validated int (see each
     # wrapper's own comment) - calling them directly with the wrong type exercises the defensive
     # branch a real caller can't actually reach.
-    reader = make_reader("push_wrapper_reject")
+    reader = _make_reader("push_wrapper_reject")
     for wrapper_name in ("_push_trigger_s", "_push_pressure_oversampling", "_push_temperature_oversampling", "_push_filter_coefficient"):
         wrapper = getattr(reader, wrapper_name)
         assert run(wrapper("not an int")) is False
@@ -2150,48 +2088,39 @@ def test_push_wrapper_functions_reject_a_non_int_value_defensively() -> None:
 
 
 def test_trigger_starters_hold_the_trigger_timer_and_timer_starters_nothing() -> None:
-    reader = make_reader("timer_starters")
+    reader = _make_reader("timer_starters")
     assert reader.get_trigger_starters() == [reader.start_timer]
     assert reader.get_timer_starters() == []
 
 
 def test_start_asy_read_returns_a_real_task() -> None:
-    reader = make_reader("start_read")
+    reader = _make_reader("start_read")
 
     async def scenario() -> bool:
         task = reader.start_asy_read()
         await asyncio.sleep(0)
         is_task = isinstance(task, asyncio.Task)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return is_task
 
     assert run(scenario()) is True
 
 
 def test_start_asy_trigger_returns_a_real_task() -> None:
-    reader = make_reader("start_trigger")
+    reader = _make_reader("start_trigger")
 
     async def scenario() -> bool:
         task = reader.start_asy_trigger()
         await asyncio.sleep(0)
         is_task = isinstance(task, asyncio.Task)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return is_task
 
     assert run(scenario()) is True
 
 
 def test_start_timer_arms_a_real_periodic_timer_that_drives_base_trigger_event() -> None:
-    FakeTimer.all_timers.clear()
-    reader = make_reader("start_timer")
+    reader = _make_reader("start_timer")
     reader.start_timer()
     assert reader._trigger_timer.mode == FakeTimer.PERIODIC
     assert reader._trigger_timer.period == 1000
@@ -2207,15 +2136,13 @@ def test_start_timer_arms_a_real_periodic_timer_that_drives_base_trigger_event()
         return fired
 
     assert run(scenario()) is True
-    FakeTimer.all_timers.clear()
 
 
 def test_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed() -> None:
     # Real rp2 Timer.init() raises OSError(ENOMEM) when the alarm pool is exhausted; start_timer() runs
     # inside SystemService.start_timers()' trigger sequencing and must not raise into it.
-    FakeTimer.all_timers.clear()
-    reader = make_reader("start_timer_oserror")
-    with _RaiseOnArm():
+    reader = _make_reader("start_timer_oserror")
+    with RaiseOnArm():
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None  # nothing wired to _base_trigger_event either
@@ -2223,30 +2150,26 @@ def test_start_timer_degrades_gracefully_when_the_trigger_timer_cannot_be_armed(
     # start_timer() is synchronous: it prints the failure and wakes the trigger task, which persists the
     # TIMER entry (test_a_failed_trigger_arm_ends_the_trigger_task_...), so nothing is counted here yet.
     assert run(reader.get_error_counter())["BMP3XX"]["ErrCount"] == 0
-    FakeTimer.all_timers.clear()
 
 
 def test_start_timer_degrades_gracefully_on_a_memory_error_while_arming() -> None:
     # MemoryError is not an OSError subclass (SPECIFICATION.md Part F), so start_timer()'s
     # `except (OSError, MemoryError)` needs that second arm spelled out - without it a heap-
     # exhausted arming attempt propagates straight out of this synchronous starter.
-    FakeTimer.all_timers.clear()
-    reader = make_reader("start_timer_memoryerror")
-    with _RaiseOnArm(MemoryError):
+    reader = _make_reader("start_timer_memoryerror")
+    with RaiseOnArm(MemoryError):
         reader.start_timer()  # must not raise despite the timer failing to arm
     assert reader._trigger_timer.period == -1  # never actually armed
     assert reader._trigger_timer.callback is None
     assert reader._base_trigger_event.state == 1  # the trigger task wakes to report it
-    FakeTimer.all_timers.clear()
 
 
 def test_a_failed_trigger_arm_ends_the_trigger_task_with_one_timer_entry_and_a_restart_rearms() -> None:
     for exc in (OSError, MemoryError):
-        FakeTimer.all_timers.clear()
-        reader = make_reader("trigger_arm_fails")
-        with _RaiseOnArm(exc):
+        reader = _make_reader("trigger_arm_fails")
+        with RaiseOnArm(exc):
             reader.start_timer()
-            run(asyncio.wait_for(reader._trigger_loop(), _EVENT_WAIT_S))  # its re-arm fails too: the task ends
+            run(reader._trigger_loop(), _EVENT_WAIT_S)  # its re-arm fails too: the task ends
         assert _count(reader, "E", "TIMER") == 1, exc
         arms_before = len(reader._trigger_timer.arms)
 
@@ -2259,26 +2182,19 @@ def test_a_failed_trigger_arm_ends_the_trigger_task_with_one_timer_entry_and_a_r
                 await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
             except asyncio.TimeoutError:
                 fired = False
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+            await cancel(task)
             return fired
 
         assert run(restarted()) is True, exc
         assert len(reader._trigger_timer.arms) == arms_before + 1  # one Timer.init at the restart
         assert _count(reader, "E", "TIMER") == 1
-    FakeTimer.all_timers.clear()
 
 
 def test_stop_timer_deinits_the_trigger_timer() -> None:
-    FakeTimer.all_timers.clear()
-    reader = make_reader("stop_timer")
+    reader = _make_reader("stop_timer")
     reader.start_timer()
     reader.stop_timer()
     assert reader._trigger_timer.deinit_called is True
-    FakeTimer.all_timers.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -2287,7 +2203,7 @@ def test_stop_timer_deinits_the_trigger_timer() -> None:
 
 
 def test_trigger_loop_sets_the_read_event_once_the_configured_period_elapses() -> None:
-    reader = make_reader("base_trigger")
+    reader = _make_reader("base_trigger")
     run(reader.set_trigger_s(3))
 
     async def scenario() -> "tuple[int, int, bool]":
@@ -2306,11 +2222,7 @@ def test_trigger_loop_sets_the_read_event_once_the_configured_period_elapses() -
             await asyncio.wait_for(reader._read_event.wait(), _EVENT_WAIT_S)
         except asyncio.TimeoutError:
             fired = False
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return counter_after_1, counter_after_2, fired
 
     counter_after_1, counter_after_2, fired = run(scenario())
@@ -2328,13 +2240,13 @@ def test_trigger_loop_sets_the_read_event_once_the_configured_period_elapses() -
 
 
 def test_reader_set_temperature_oversampling_applies_the_value_and_returns_true() -> None:
-    _i2c, reader = make_clean_reader("set_tov_ok")
+    _i2c, reader = _make_clean_reader("set_tov_ok")
     assert run(reader.set_temperature_oversampling(8)) is True
     assert run(reader._bmp.get_temperature_oversampling()) == 8
 
 
 def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failure() -> None:
-    reader = make_reader("set_tov_fail")
+    reader = _make_reader("set_tov_fail")
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_temperature_oversampling(4)
@@ -2347,13 +2259,13 @@ def test_reader_set_temperature_oversampling_logs_and_returns_false_on_bus_failu
 
 
 def test_reader_set_filter_coefficient_applies_the_value_and_returns_true() -> None:
-    _i2c, reader = make_clean_reader("set_fc_ok")
+    _i2c, reader = _make_clean_reader("set_fc_ok")
     assert run(reader.set_filter_coefficient(15)) is True
     assert run(reader._bmp.get_filter_coefficient()) == 15
 
 
 def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -> None:
-    reader = make_reader("set_fc_fail")
+    reader = _make_reader("set_fc_fail")
 
     async def scenario() -> "tuple[bool, ErrorLog]":
         ok = await reader.set_filter_coefficient(31)
@@ -2372,7 +2284,7 @@ def test_reader_set_filter_coefficient_logs_and_returns_false_on_bus_failure() -
 
 
 def test_read_loop_stores_a_result_after_one_trigger() -> None:
-    i2c, reader = make_clean_reader("read_loop_happy")
+    i2c, reader = _make_clean_reader("read_loop_happy")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -2384,14 +2296,10 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
         await _settle(10)  # let _init_bmp()'s reset settle (_RESET_SETTLE_S, real but small) pass
         reader._read_event.set()
         await _settle(10)
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return await reader.get_data()
 
-    with _FastAsyncSleep(), _UTCValid():
+    with FastAsyncSleep(), UTCValid():
         data = run(scenario())
     assert data.Pres is not None
     assert data.Temp is not None
@@ -2399,7 +2307,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
 
 
 def test_read_loop_gives_up_and_ends_after_max_errors() -> None:
-    i2c, reader = make_clean_reader("read_loop_giveup", max_module_error=2)
+    i2c, reader = _make_clean_reader("read_loop_giveup", max_module_error=2)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -2418,7 +2326,7 @@ def test_read_loop_gives_up_and_ends_after_max_errors() -> None:
                 return True
         return False
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         assert run(scenario()) is True, "_read_loop never gave up"
     assert _used(reader)[-1] == code("E", "GIVE_UP")
 
@@ -2426,7 +2334,7 @@ def test_read_loop_gives_up_and_ends_after_max_errors() -> None:
 def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak() -> None:
     # utc_now() is None until the NTP client sets the clock: the sample is published with TS None,
     # and the read loop's condition counts only a cycle whose measured values are gone.
-    i2c, reader = make_clean_reader("read_loop_presync", max_module_error=1)
+    i2c, reader = _make_clean_reader("read_loop_presync", max_module_error=1)
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
@@ -2440,14 +2348,10 @@ def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak
             reader._read_event.set()
             await _settle(10)
         running = not task.done()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+        await cancel(task)
         return await reader.get_data(), running
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         data, running = run(scenario())
     assert running is True
     assert data.Pres is not None
@@ -2456,14 +2360,14 @@ def test_a_read_before_the_first_sync_publishes_with_ts_none_and_steps_no_streak
 
 
 def test_a_failed_read_keeps_the_last_good_sample_and_its_timestamp() -> None:
-    i2c, reader = make_clean_reader("last_good_sample")
+    i2c, reader = _make_clean_reader("last_good_sample")
     seed_chip_id(i2c, _BMP388_CHIP_ID)
     seed_calibration(i2c)
     seed_status(i2c, 0x10 | 0x60)
     seed_err(i2c, 0x00)
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
     assert run(reader._init_bmp())
-    with _UTCValid():
+    with UTCValid():
         run(reader._store_bmp(run(reader._read_bmp())))
         good = run(reader.get_data())
         fake(i2c).nak_addresses.add(_ADDR)
@@ -2509,7 +2413,7 @@ def test_never_touches_any_address_but_its_own() -> None:
             except Exception:  # only the addresses *touched* matter for this sweep, not success
                 pass
 
-    with _FastAsyncSleep():
+    with FastAsyncSleep():
         run(exercise())
 
     touched = {entry[1] for entry in fake(i2c).log if entry[0] in ("writeto", "readfrom_into", "readfrom_mem", "writeto_mem")}
@@ -2523,7 +2427,7 @@ def test_init_bmp_runs_on_the_defaults_when_its_config_file_cannot_be_written() 
     # file each boot. Now it initialises on the validated defaults and the write is not retried.
     import asy_config_manager
 
-    i2c = make_i2c()
+    i2c = _make_i2c()
     reader = BMP3XX_Reader(i2c, address=_ADDR, cfg_path=_tmp_cfg_path("unwritable") + "missing_dir/")
     run(reader.setup())
     seed_chip_id(i2c, _BMP388_CHIP_ID)

@@ -232,7 +232,6 @@ describe("startShell", () => {
     afterEach(() => {
         stop?.();
         stop = undefined;
-        vi.useRealTimers();
         window.fetch = originalFetch;
         for (const el of Object.values(elements ?? {})) {
             el.remove();
@@ -446,7 +445,6 @@ describe("startShell", () => {
         await vi.waitFor(() => expect(requests.count("/system")).toBe(2));
 
         expect(Date.now() - startedAt).toBeLessThan(WATCH_INTERVAL_MS);
-        vi.mocked(console.error).mockRestore();
     });
 
     it("pushes one history entry per menu selection of another section, none for the current one", () => {

@@ -11,11 +11,9 @@
         "checkJs": true,
         "noEmit": true,
         "strict": true,
-        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings
-        // on the Python side. All of these were verified to hold before being switched on; the two
-        // that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
-        // in js/ rather than left off. skipLibCheck stays TRUE deliberately: the only findings it
-        // hides are inside third-party .d.ts files this project does not own.
+        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings; each held before it was
+        // switched on, and the two that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
+        // in js/, not left off. skipLibCheck stays true: the only findings it hides are in third-party .d.ts files.
         "noUncheckedIndexedAccess": true,
         "exactOptionalPropertyTypes": true,
         "noImplicitOverride": true,
@@ -29,8 +27,8 @@
         "skipLibCheck": true
     },
     "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],
-    // The Node-context tests_js files (Vitest Commands API modules, the summary reporter) are checked by
+    // The Node-context tests_js files (Vitest Commands API modules and their Node-only helpers, the summary reporter) are checked by
     // tsconfig.node.json instead, so this browser-context pass never sees Node's ambient globals as if a
     // browser had them - the same two-environment split as digital_twin/typecheck.ini (SPECIFICATION.md H.8).
-    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js"]
+    "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js"]
 }

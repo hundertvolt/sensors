@@ -41,7 +41,6 @@ SPECIFICATION.md	*(`dev` only)* two buildgen-generated `[[instance]]` entries co
 SPECIFICATION.md	**A dedicated unit-test file for the driver itself** (`tests/test_asy_<name>_dri
 SPECIFICATION.md	**A lost final ACK folds into failure**, deliberately, rather than becoming a th
 SPECIFICATION.md	**CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate
-SPECIFICATION.md	**Constraint — a loopback harness must never register a fake UART with a real `s
 SPECIFICATION.md	**Deliberately never a symlink**: [MicroPython issue #12671](https://github.com/
 SPECIFICATION.md	**FRAM chunk determinism rule** (no deallocation exists by design): every FRAM-c
 SPECIFICATION.md	**Not here, by design:** `CLAUDE.md` (AI-session operating constraints — hard ru
@@ -156,7 +155,6 @@ js/templates.js	See SPECIFICATION.md Part H.3's "One deliberate exception" note 
 pyproject.toml	---- Contradicts CLAUDE.md's own documentation rule (continued) ---- CPY001: no
 pyproject.toml	---- Deliberate, documented idiom ---- `x != x` is asy_scd30_driver.py's NaN tes
 pyproject.toml	---- Layout the frozen build requires ---- src/ and ext/ are frozen flat into on
-pyproject.toml	ANN401, category 4 - this test deliberately passes a TYPE-INVALID value to prove
 pyproject.toml	Bump deliberately, re-running lint.sh and typecheck.sh.
 pyproject.toml	S110 wants a log call at sites that are deliberately silent;
 pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they r
@@ -174,6 +172,7 @@ scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be delibe
 scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
+src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
 src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
 src/asy_isl29125_driver.py	Calibrate is deliberately absent from this schema argument: ConfigManager.get_di
 src/asy_isl29125_driver.py	Only the four hardware-backed fields have one: the software knobs have nothing t
@@ -186,6 +185,8 @@ src/asy_sgp40_driver.py	Deliberately does NOT forward reset_voc()'s own return v
 src/asy_sgp40_driver.py	Deliberately excluded from get_dict_cfg()'s own schema argument below - this key
 src/asy_sgp40_driver.py	Deliberately excludes _VAL_RESET_VOC (ResetVOC) - see that const's own comment:
 src/asy_spi_driver.py	OSError(EIO) from a 32+ byte RX overrun is deliberately not caught - it propagat
+src/asy_system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
+src/asy_system_service.py	System-settings store, deliberately not a SensorReaderConfig subclass - no measu
 src/asy_uart_comm.py	0xFF is never emitted - a deliberate off-by-one barrier, see J.3
 src/asy_uart_comm.py	A boot-time drain is expected on a live link and is deliberately not counted - p
 src/asy_uart_comm.py	A coroutine and a plain value are both accepted - a generator-like result is awa
@@ -195,11 +196,7 @@ src/asy_uart_comm.py	no machine.Timer anywhere in this module, deliberately
 src/asy_uart_driver.py	Kept deliberately, unlike SPIDevice/I2CDevice: cancel_read_timeout() infers "a r
 src/asy_uart_link_driver.py	Registered as a maintenance sensor, not a new /status key - that list is variabl
 src/asy_webserver_service.py	Only a group whose field subset intersects the request body is dispatched: one w
-src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
-src/asy_system_service.py	It pushes on "Unchanged" too, not only on a real change, so every logger's live
-src/asy_system_service.py	System-settings store, deliberately not a SensorReaderConfig subclass - no measu
 src/voc_algorithm.py	__init__ and reset() deliberately share one body (reset() is the source of truth
-tests/_bus_hazard_catalog.py	Register-addressed, not queue-based (see seed_isl_ready()) - a fixed register sn
 tests/_bus_hazard_catalog.py	Same-DEVICE hazard: an occupant's own config write concurrent with its OWN read
 tests/_fram_chip_fake.py	Different in kind from the knobs above: simulates a disturbance landing on a WRI
 tests/_sensortask_scenarios.py	Deliberately one dispatch per test: _dispatch() drives each call through its own
@@ -216,10 +213,28 @@ tests/_webserver_concurrency_scenarios.py	This deliberately revisits that exact 
 tests/_webserver_concurrency_scenarios.py	the stall: no await, so nothing is accepted until it ends
 tests/machine.py	One period elapsing with its soft callback lost to a full scheduler queue (Part
 tests/machine.py	test-only: caps bytes accepted per write() call - see write()
-tests/machine.py	write() is deliberately not injectable - the real write-only path has no failure
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
-tests/test_asy_bmp3xx_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
+tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
+tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
+tests/test_asy_captive_dns.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
+tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
+tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
+tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
+tests/test_asy_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
+tests/test_asy_config_manager.py	Deliberate consequence of _cache: write_config no longer reads the file first, o
+tests/test_asy_config_manager.py	Deliberate, longstanding asymmetry.
+tests/test_asy_config_manager.py	Deliberately not asserting mgr._cache's exact value here: whether the deferred f
+tests/test_asy_config_manager.py	One write per accepted CHANGE, zero for an unchanged, invalid or unknown value -
+tests/test_asy_config_manager.py	bool must never be coerced into an int field even though `type(True) is bool` si
+tests/test_asy_config_manager.py	empty string accepted at the min=0 boundary
+tests/test_asy_config_manager.py	lower boundary accepted
+tests/test_asy_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
+tests/test_asy_config_manager.py	upper boundary accepted
+tests/test_asy_config_manager.py	write_config()'s one deferred flush per accepted change
+tests/test_asy_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
+tests/test_asy_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
 tests/test_asy_dns_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
@@ -253,9 +268,7 @@ tests/test_asy_isl29125_driver.py	The threshold registers are compared against t
 tests/test_asy_isl29125_driver.py	Without the re-arm the recovery leaves a correctly configured chip whose fast pa
 tests/test_asy_isl29125_driver.py	deliberately out of contract
 tests/test_asy_isl29125_driver.py	the registers are compared against the RAW ADC value, so at 12 bits an unscaled
-tests/test_asy_isl29125_driver.py	type(value) is not int, deliberately NOT isinstance: isinstance(True, int) is Tr
 tests/test_asy_isl29125_driver.py	type: ignore[arg-type] # 375.0 is deliberately the wrong type
-tests/test_asy_isl29125_driver.py	type: ignore[assignment] # deliberate monkeypatch
 tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_notification_service.py	An int is always accepted and coerced for a float field (Part A.8) - a blanket a
@@ -264,21 +277,20 @@ tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, no
 tests/test_asy_notification_service.py	int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
 tests/test_asy_notification_service.py	integral float accepted for an int field, coerced
 tests/test_asy_notification_service.py	must never raise, for any of the above
-tests/test_asy_notification_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
 tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
 tests/test_asy_ntp_client.py	one must never suppress the other's slot.
 tests/test_asy_ntp_client.py	type: ignore[assignment] # deliberate monkeypatch
+tests/test_asy_print_log.py	SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard.
 tests/test_asy_scd30_driver.py	An invalid argument must never reach _send_command at all (no partial/garbage I2
 tests/test_asy_scd30_driver.py	the three getters are pure cache reads (see src/asy_scd30_driver.py on why they
-tests/test_asy_scd30_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	get_dict_cfg() deliberately passes its own BackupPeriod/BackupMaxAge/WaitTimeNTP
-tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_sgp40_driver.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_spi_driver.py	Deliberately NOT swallowed: a transfer that overran left garbage in the buffer,
 tests/test_asy_spi_driver.py	The synchronous session deliberately does not take the lock, so the caller-holds
 tests/test_asy_spi_driver.py	tests/machine.py deliberately diverges here (see its own note) so a test can tel
+tests/test_asy_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
 tests/test_asy_uart_comm.py	A caller must never believe a failed transfer succeeded.
 tests/test_asy_uart_comm.py	A demonstration, deliberately not a constraint - the module is standalone and th
 tests/test_asy_uart_comm.py	A malformed ACK accepted as valid confirmation is worse than no ACK at all.
@@ -300,9 +312,7 @@ tests/test_asy_udp_socket.py	write() semantically requires a connected socket, s
 tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n
 tests/test_asy_webserver_service.py	Accepted means APPLIED: the real field next to the padding reached the module.
 tests/test_asy_webserver_service.py	Deliberately a plain list of pre-fetched fragments handed to a sync iterator, ne
-tests/test_asy_webserver_service.py	Deliberately lightweight: sections A-E test the webserver's own dispatch/aggrega
 tests/test_asy_webserver_service.py	HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_reque
-tests/test_asy_webserver_service.py	Same defensive bound as test_asy_uart_driver.py's own run(): section F below del
 tests/test_asy_webserver_service.py	Same sys.path convention as tests/test_setter_microdot_integration.py: scripts/t
 tests/test_asy_webserver_service.py	Settled (SPECIFICATION.md H.7): the client already holds its whole response, yet
 tests/test_asy_webserver_service.py	The ".." guard aborts(404) before the try/except OSError block that consults is_
@@ -316,8 +326,6 @@ tests/test_asy_webserver_service.py	writer.close() raising is real Stream-caller
 tests/test_asy_wifi_service.py	(field, largest accepted, smallest refused) - each pair within the schema's char
 tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
 tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
-tests/test_asy_wifi_service.py	_wlan(client) is typed against the real network.WLAN stub (pyproject.toml's test
-tests/test_asy_wifi_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
@@ -344,29 +352,8 @@ tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypa
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
-tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_cfg: the schema is static, fixe
-tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
-tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_bus_hazard_multi_device.py	And BMP3xx's own address must never appear mixed into a general-call entry - the
 tests/test_bus_hazard_multi_device.py	Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance,
-tests/test_asy_captive_dns.py	"Any", not "int": mypy's time.pyi types ticks_ms() as the opaque _TicksMs marker
-tests/test_asy_captive_dns.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
-tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
-tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
-tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
-tests/test_asy_config_manager.py	Deliberate consequence of _cache (see module docstring): get_dict never re-opens
-tests/test_asy_config_manager.py	Deliberate consequence of _cache: write_config no longer reads the file first, o
-tests/test_asy_config_manager.py	Deliberate, longstanding asymmetry.
-tests/test_asy_config_manager.py	Deliberately not asserting mgr._cache's exact value here: whether the deferred f
-tests/test_asy_config_manager.py	One write per accepted CHANGE, zero for an unchanged, invalid or unknown value -
-tests/test_asy_config_manager.py	bool must never be coerced into an int field even though `type(True) is bool` si
-tests/test_asy_config_manager.py	empty string accepted at the min=0 boundary
-tests/test_asy_config_manager.py	lower boundary accepted
-tests/test_asy_config_manager.py	type_or_range_error - int<->float coercion (SPECIFICATION.md Part A.8): a JSON i
-tests/test_asy_config_manager.py	upper boundary accepted
-tests/test_asy_config_manager.py	write_config()'s one deferred flush per accepted change
-tests/test_asy_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
-tests/test_asy_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
 tests/test_digital_twin_bus_hazard_concurrency.py	A persistent one degrades to None instead of propagating, and leaves the chunk m
 tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
 tests/test_digital_twin_bus_hazard_concurrency.py	Twin-tier parity for the mock tier's pair of write-protect tests, and the accept
@@ -393,24 +380,17 @@ tests/test_digital_twin_sgp40.py	CRC trailer deliberately wrong
 tests/test_digital_twin_sgp40.py	digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separat
 tests/test_digital_twin_uart_link.py	Drives the responder's own UARTComm.uart_listen() directly rather than UARTLinkD
 tests/test_digital_twin_uart_link.py	The UID wraps at 0xFE, so this deliberately runs past one whole wrap.
-tests/test_digital_twin_uart_link.py	The pollers are then swapped for the bounded stand-in: a real select.poll() neve
 tests/test_digital_twin_unix_port_gc_unwedge.py	The wedged state itself - GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT
 tests/test_fram_integration.py	A shared physical chip does not mean shared bookkeeping - each SensorReader gets
 tests/test_fram_integration.py	And the chunk must still be usable afterwards - a wedged chunk that never takes
-tests/test_fram_integration.py	That loss is accepted behavior, not a defect (project owner, 2026-09-11): no rec
 tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
 tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
-tests/test_notification_scd30_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_notification_sgp40_integration.py	confirms the baseline genuinely settled before phase 2 starts
-tests/test_notification_sgp40_integration.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_ntp_fram_system_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_ntp_wifi_dns_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
-tests/test_asy_print_log.py	SPECIFICATION.md Part C.7: reset() deliberately has no "uninitialized" guard.
 tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
 tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
 tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
-tests/test_asy_system_service.py	exactly _NTP_WAIT_TIME - boundary is accepted, not rejected
-tests/test_asy_system_service.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary independently of the bisection a
 tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
 tests/test_tmp_scratch.py	A deliberately cheap population - the invariant is independence from sibling COU
@@ -419,7 +399,6 @@ tests/test_uart_comm_hazard.py	Byte order is part of the wire contract, not an i
 tests/test_uart_comm_hazard.py	The protocol's at-least-once seam: the final ACK is deferred until after the res
 tests/test_uart_comm_hazard.py	Which byte does not matter here and is deliberately not pinned: the claim is tha
 tests/test_uart_comm_hazard.py	what must never happen is two transactions interleaving frames on the wire.
-tests/test_voc_algorithm.py	sraw <= 0 or >= 65000 skips updating msraw (datasheet SRAW_VOC is 0-65535 ticks;
 tests_hardware/README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
 tests_hardware/README.md	# need their own deliberate, dedicated invocation, one of three named tiers (sho
 tests_hardware/README.md	**Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chun
@@ -514,8 +493,6 @@ tests_hardware/harness.py	Raised for a genuine real-hardware assertion failure -
 tests_hardware/harness.py	resolve_board_device()'s ambiguous-hardware raise is the deliberate exception: t
 tests_hardware/manual/runner.py	Deliberately no `if __name__ == "__main__":` block here - running this file dire
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
-tests_js/_live_twin_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func
 tests_js/live-backend-put-matrix.test.js	Fills+applies `value` expecting real rejection, then confirms the render never m
 tests_js/live-backend-put-matrix.test.js	wholeRange (cosmetic probe-value shape) and isFloat (the real accept/reject-frac
@@ -524,9 +501,7 @@ tests_js/mock-server.test.js	ResetVOC is a special-alone schema field, deliberat
 tests_js/mock-server.test.js	Sequential is the point: each PUT must be accepted after the previous one alread
 tests_js/render.test.js	On -> Off: a real, deliberate change from the current value (true)
 tests_js/render.test.js	min: 0 deliberately, to catch a form input coerced to the number 0 by accident (
-tests_js/vitest-commands.d.ts	Deliberately NOT `import type {...} from "./_live_twin_command.js"` (or the matr
 tests_scripts/_devices.py	A leaked live-tree fixture (tests_scripts/conftest.py's own reclamation, scripts
-tests_scripts/_toml_fixtures.py	A parsed/to-be-serialized TOML table - str keys, arbitrarily nested str/int/floa
 tests_scripts/buildgen_fixtures/malformed_missing_device_table.toml	Deliberately invalid buildgen fixture: no [device] table at all (a plausible han
 tests_scripts/buildgen_fixtures/multi_instance.toml	multi_instance.toml - axis 9's own dedicated multi-instance fixture (SPECIFICATI
 tests_scripts/buildgen_fixtures/novel_combo.toml	ISL29125 on i2c0 (dev.toml wires it on i2c1) with an irq_pin/trigger_s combo no
@@ -564,7 +539,6 @@ tests_scripts/test_persistence_write_marker_completeness.py	Pinned by name so a 
 tests_scripts/test_persistence_write_marker_completeness.py	Raw `socket` is deliberately out of scope: this tier uses it for DNS probes and
 tests_scripts/test_request_body_cap_headroom.py	Deliberately an upper bound rather than the field's own min/max: a client may se
 tests_scripts/test_request_body_cap_headroom.py	Pinned so each step is deliberate, the same way the persistence-write guard pins
-tests_scripts/test_request_body_cap_headroom.py	The measured maximum per device, pinned so that growth is deliberate and visible
 tests_scripts/test_request_timeout_ceiling.py	A constant turned into a string/None keeps the name alive while making every com
 tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
 tests_scripts/test_test_sh.py	That wording is deliberately not the interpreter's, so the widened pattern still
@@ -575,5 +549,3 @@ toolchain/micropython_overrides.py	PCBs past the ceiling: a closed connection's 
 toolchain/setup_toolchain.py	Deliberately a full clone, not `--depth 1`: a shallow clone only has one ref's h
 toolchain/setup_toolchain.py	Deliberately not an apt package - see README.md's "Website tooling" for why, and
 toolchain/setup_toolchain.py	Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat
-tsconfig.json	skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir
-tsconfig.node.json	skipLibCheck stays TRUE deliberately: the only findings it hides are inside thir

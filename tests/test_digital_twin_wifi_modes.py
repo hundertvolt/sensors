@@ -23,6 +23,7 @@ patch_asy_udp_socket_for_unix_port()
 
 import machine  # noqa: E402
 import run_generic_integration  # noqa: E402
+from _async_harness import cancel, run_timed  # noqa: E402
 from _error_codes import code  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from network import STAT_GOT_IP, set_access_point_up  # noqa: E402
@@ -74,14 +75,6 @@ async def _boot() -> "ModuleType":
     return module
 
 
-async def _cancel(task: "asyncio.Task[None]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 async def _end_hotspot_window(conn: "WifiService") -> None:
     # The window's end fired through the twin Timer's stored callback, the streak after it fast-forwarded the same way
     # (the window's end keeps the count); returns once that streak has ended in the silent mode.
@@ -101,10 +94,6 @@ def _fire(timer: "machine.Timer") -> None:
 async def _first_attempt(conn: "WifiService") -> None:
     started = await _wait_until(lambda: len(conn._wlan.connect_calls) > 0)
     assert started, "(c) the boot streak never made its first attempt"
-
-
-def _run_timed(coro: "Coroutine[object, object, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
 
 
 def _scenario_plan() -> "dict[str, object]":
@@ -127,7 +116,7 @@ async def _stop_scenario(conn: "WifiService", tasks: "list[asyncio.Task[None]]")
     conn._hotspot_timer.deinit()
     for task in tasks + [conn._dns_server_task, conn._ledflash]:
         if task is not None:
-            await _cancel(task)
+            await cancel(task)
 
 
 async def _wait_until(predicate: "Callable[[], bool]", timeout_s: float = _WAIT_TIMEOUT_S, interval_s: float = _WAIT_POLL_S) -> bool:
@@ -226,7 +215,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             while len(pixel._pixel.writes):  # every frame from here on is the silent mode's
                 pixel._pixel.writes.popleft()
             # A task restart keeps the mode and re-arms its period.
-            await _cancel(tasks.pop())
+            await cancel(tasks.pop())
             tasks.append(conn.start_asy_connect())
             rearmed = await _wait_until(lambda: conn._hotspot_timer_running)
             assert rearmed and conn._conn_phase == silent, "(b) a task restart in the silent mode lost the mode or its period"
@@ -251,7 +240,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
                 ap.stations_chip_down = False
             await _stop_scenario(conn, tasks)
 
-    _run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 if __name__ == "__main__":

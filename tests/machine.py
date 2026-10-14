@@ -1,11 +1,14 @@
-"""Test-only fake `machine` module: mocks only the raw I2C/SPI bus-transaction level (per SPECIFICATION.md Part E.4's mocking boundary) so the real drivers' own logic runs for real against it. Only implements what src/'s own imports need.
-`Timer` is also why this file has to exist beyond I2C/SPI mocking: it's what makes `from machine import Timer` resolve under mypy's `src tests` scope (see BACKLOG.md's "Timer mypy resolution" finding)."""
+"""Test-only fake `machine` module for the unit tier: models the rp2 port's raw I2C/SPI/UART/Pin/Timer/RTC/WDT surface
+(MicroPython v1.29.0), so the real drivers run against it (SPECIFICATION.md E.4). It also models rp2's zero-argument
+`Timer()`, which the board stub lacks (B.15)."""
 
 import errno
 import io
 import select
 import time
 from array import array
+
+import microtest
 
 try:
     from typing import TYPE_CHECKING
@@ -17,50 +20,89 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar
 
 
+_NUM_BANK0_GPIOS = 30  # pico-sdk rp2040 platform_defs.h:40: GPIO0-29, the ids machine_pin_find() accepts
+# The WLAN chip's three GPIOs (CYW43_WL_GPIO_COUNT, boards/RPI_PICO_W/mpconfigboard.h:20): no number reaches them on
+# rp2, only a name, so the fake keys their state by ids 30-32, past every number Pin() accepts.
+_PIN_NAMES: "dict[str, int]" = {f"GPIO{n}": n for n in range(_NUM_BANK0_GPIOS)}  # CPU names, boards/make-pins.py:95-108
+_PIN_NAMES.update({f"EXT_GPIO{n}": _NUM_BANK0_GPIOS + n for n in range(3)})
+_PIN_NAMES.update({f"GP{n}": n for n in list(range(23)) + [26, 27, 28]})  # board names, boards/RPI_PICO_W/pins.csv
+_PIN_NAMES.update({f"WL_GPIO{n}": _NUM_BANK0_GPIOS + n for n in range(3)})
+_PIN_NAMES["LED"] = _NUM_BANK0_GPIOS  # LED,EXT_GPIO0
+# Pin()'s default for an argument left out: rp2 tells an omitted argument from None by its count (machine_pin.c:317),
+# so the fake compares identity with this one object. Typed int, so every parameter can take it as its default.
+_OMITTED: int = object()  # type: ignore[assignment]
+
+
+class _PinState:
+    # One GPIO's configuration, shared by every Pin object naming it: rp2's pins are static table entries
+    # (machine_pin_find(), machine_pin.c:188). mode and pull read None until a construction or init() sets them.
+    def __init__(self) -> None:
+        self.mode: int | None = None
+        self.pull: int | None = None
+        self.alt = Pin._ALT_SIO
+        self.level = 0  # the output latch: what OUT drives, or OPEN_DRAIN's 0 = pull low, 1 = release
+        self.irq_handler: Callable[[Pin], None] | None = None
+        self.irq_trigger = Pin.IRQ_FALLING | Pin.IRQ_RISING
+        self.irq_hard = False
+
+
 class Pin:
-    IN = 0
+    # Not modelled: the per-pin alternate-function table (any alt is taken), the pads' own power-on pulls, a
+    # Pin's __call__/low()/high() forms. Tests read mode/pull/alt and the irq_* registration, which real Pin has no
+    # attribute for.
+    TEST_API = (
+        "id", "mode", "pull", "alt", "irq_handler", "irq_hard", "irq_trigger", "set_external_level", "value_log",
+        "reset_registry", "trigger_irq",
+    )  # fmt: skip
+    IN = 0  # ports/rp2/machine_pin.h:34-37 (v1.29.0), as OUT, OPEN_DRAIN and ALT
     OUT = 1
-    OPEN_DRAIN = 2  # ports/rp2/machine_pin.h:34-37 (v1.29.0), as IN/OUT/ALT
+    OPEN_DRAIN = 2
     ALT = 3
-    ALT_I2C = 3  # GPIO_FUNC_I2C (pico-sdk io_bank0.h; machine_pin.c:513)
-    _ALT_SIO = 5  # GPIO_FUNC_SIO, rp2's alt default (machine_pin.c:247)
-    # Real rp2 values (confirmed against ports/rp2/machine_pin.c: IRQ_RISING maps to the pico-sdk's
-    # GPIO_IRQ_EDGE_RISE=0x08, IRQ_FALLING to GPIO_IRQ_EDGE_FALL=0x04) - asy_scd30_driver.py only
-    # ever passes these back opaquely to irq(), but matching the real bit values costs nothing.
-    IRQ_FALLING = 0x04
+    ALT_I2C = 3  # GPIO_FUNC_I2C (pico-sdk structs/io_bank0.h:34; machine_pin.c:513)
+    _ALT_SIO = 5  # GPIO_FUNC_SIO (io_bank0.h:36), rp2's alt default (machine_pin.c:247)
+    IRQ_FALLING = 0x04  # GPIO_IRQ_EDGE_FALL / _RISE (machine_pin.c:507-508)
     IRQ_RISING = 0x08
-    # Real rp2 values (ports/rp2/machine_pin.c at v1.29.0: GPIO_PULL_UP 1, GPIO_PULL_DOWN 2).
-    # asy_isl29125_driver.py is the first driver to need one - its INT line is open-drain and needs
-    # a pull-up; SCD30's RDY is push-pull, which is why nothing needed these before.
-    PULL_UP = 1
+    PULL_UP = 1  # GPIO_PULL_UP / _DOWN (machine_pin.c:505-506)
     PULL_DOWN = 2
 
-    # Per GPIO id, shared by every Pin object on it: the level the outside world puts on the line
+    # Per GPIO id, shared by every Pin object on it: its configuration, the level the outside world puts on the line
     # (test-only, default 1: the bus pull-ups) and every level the code drove onto it.
+    _states: "ClassVar[dict[int, _PinState]]" = {}
     _external: "ClassVar[dict[int, int | Callable[[int, _CallLog], int]]]" = {}
     _value_logs: "ClassVar[dict[int, _CallLog]]" = {}
 
-    def __init__(self, id: int, mode: int = -1, pull: int = -1, *, value: object = None, alt: int = _ALT_SIO) -> None:
-        # Real rp2 Pin() raises for an invalid id: TypeError for a non-int, ValueError outside
-        # GPIO0-28. Modelled because several drivers' docstrings claim a "one-time setup, allowed to
-        # raise" contract that nothing exercised.
-        if not isinstance(id, int):
-            raise TypeError("Pin id must be an int")
-        if not (0 <= id <= 28):
-            raise ValueError("invalid pin")
-        self.id = id
-        self.mode = -1
-        self.pull = -1
-        self.alt = self._ALT_SIO
-        self._value = 0
-        self._irq_handler: Callable[[Pin], None] | None = None
-        self._irq_trigger = self.IRQ_FALLING | self.IRQ_RISING
-        self._irq_hard = False
-        self.init(mode, pull, value=value, alt=alt)
+    def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:
+        self.id = Pin._find(id)
+        state = Pin._states.get(self.id)
+        if state is None:
+            state = Pin._states[self.id] = _PinState()
+        self._state = state
+        # rp2 configures when any argument beyond the id is given, None included (machine_pin.c:317-323).
+        if mode is not _OMITTED or pull is not _OMITTED or value is not _OMITTED or alt is not _OMITTED:
+            self.init(
+                None if mode is _OMITTED else mode,
+                None if pull is _OMITTED else pull,
+                value=None if value is _OMITTED else value,
+                alt=self._ALT_SIO if alt is _OMITTED else alt,
+            )
 
     def _drive(self, level: int) -> None:
-        self._value = level
+        self._state.level = level
         Pin.value_log(self.id).append(level)
+
+    @staticmethod
+    def _find(id: object) -> int:
+        # machine_pin_find(), machine_pin.c:165-192: a Pin, a board then a CPU name, or a number below 30.
+        if isinstance(id, Pin):
+            return id.id
+        if isinstance(id, str):
+            number = _PIN_NAMES.get(id)
+            if number is None:
+                raise ValueError(f'unknown named pin "{id}"')
+            return number
+        if isinstance(id, int) and 0 <= id < _NUM_BANK0_GPIOS:
+            return id
+        raise ValueError("invalid pin")
 
     def _line(self) -> int:
         level = Pin._external.get(self.id, 1)
@@ -74,20 +116,36 @@ class Pin:
         # with (id, the line's value log), so a test can script a slave releasing SDA after k clocks.
         cls._external[id] = level
 
-    def init(self, mode: int = -1, pull: int = -1, *, value: object = None, alt: int = _ALT_SIO) -> None:
-        # Real machine.Pin.init(): an omitted/-1 mode or pull leaves the setting untouched; value= sets
-        # the level before the mode applies (machine_pin.c:264-287), and OPEN_DRAIN given no value is
-        # released (mphalport.h:158-168). The latch is not checked against the mode, as on rp2.
-        if value is not None:
-            self._value = 1 if value else 0
-        elif mode == self.OPEN_DRAIN:
-            self._value = 1
-        if mode != -1:
-            self.mode = mode
-        if mode == self.ALT:
-            self.alt = alt
-        if pull != -1:
-            self.pull = pull
+    @property
+    def alt(self) -> int:
+        return self._state.alt
+
+    def init(self, mode: "int | None" = None, pull: "int | None" = None, *, value: object = None, alt: int = _ALT_SIO) -> None:
+        # machine_pin_obj_init_helper(), machine_pin.c:250-310: a None mode keeps the mode; value= is latched only by OUT
+        # (before the mode applies) and OPEN_DRAIN (released when omitted); any other mode hands the pad to `alt`.
+        state = self._state
+        external = self.id >= _NUM_BANK0_GPIOS
+        if external and pull is not None:
+            raise ValueError("pulls are not supported for external pins")
+        if external and alt != self._ALT_SIO:
+            raise ValueError("alternate functions are not supported for external pins")
+        level = None if value is None else (1 if value else 0)
+        if mode is not None:
+            if external and mode not in (self.IN, self.OUT):
+                raise ValueError("only Pin.OUT and Pin.IN are supported for this pin")  # machine_pin_cyw43.c
+            if mode in (self.IN, self.OUT, self.OPEN_DRAIN):
+                if mode == self.OPEN_DRAIN:
+                    state.level = 1 if level is None else level
+                elif level is not None and (mode == self.OUT or external):
+                    state.level = level
+                state.mode = mode
+                state.alt = self._ALT_SIO
+            else:
+                state.mode = self.ALT
+                state.alt = alt
+        if not external:
+            # Set unconditionally, None meaning no pull (machine_pin.c:300-306): rp2 keeps the PULL_UP/PULL_DOWN bits.
+            state.pull = 0 if pull is None else pull & (self.PULL_UP | self.PULL_DOWN)
 
     def irq(
         self,
@@ -96,13 +154,29 @@ class Pin:
         *,
         hard: bool = False,
     ) -> "Pin":
-        # Real rp2 Pin.irq() replaces the previous handler outright rather than stacking, fires on
-        # every matching edge until called again, and returns the IRQ object (stood in for here by
-        # the Pin, which nothing inspects). trigger_irq() simulates one edge, as Timer.trigger() does.
-        self._irq_handler = handler
-        self._irq_trigger = trigger
-        self._irq_hard = hard
+        # Real rp2 Pin.irq() replaces the GPIO's previous handler outright, fires on every matching edge until called
+        # again, and returns the IRQ object (stood in for here by the Pin). trigger_irq() simulates one edge.
+        state = self._state
+        state.irq_handler = handler
+        state.irq_trigger = trigger
+        state.irq_hard = hard
         return self
+
+    @property
+    def irq_handler(self) -> "Callable[[Pin], None] | None":
+        return self._state.irq_handler
+
+    @property
+    def irq_hard(self) -> bool:
+        return self._state.irq_hard
+
+    @property
+    def irq_trigger(self) -> int:
+        return self._state.irq_trigger
+
+    @property
+    def mode(self) -> "int | None":
+        return self._state.mode
 
     def off(self) -> None:
         self._drive(0)
@@ -110,20 +184,26 @@ class Pin:
     def on(self) -> None:
         self._drive(1)
 
+    @property
+    def pull(self) -> "int | None":
+        return self._state.pull
+
     @classmethod
     def reset_registry(cls) -> None:
-        # Test-only: forget every planted level and value log, as a fresh board would have none.
+        # Test-only: every GPIO back to its power-on state, with no planted level or value log.
+        cls._states.clear()
         cls._external.clear()
         cls._value_logs.clear()
 
     def toggle(self) -> None:
-        self._drive(0 if self._value else 1)
+        self._drive(0 if self._state.level else 1)
 
     def trigger_irq(self) -> None:
-        # No real-hardware equivalent - fires the currently-registered handler once, standing in
+        # No real-hardware equivalent - fires the GPIO's registered handler once, standing in
         # for one real edge interrupt. No-op if irq() was never called or was disabled.
-        if self._irq_handler is not None:
-            self._irq_handler(self)
+        handler = self._state.irq_handler
+        if handler is not None:
+            handler(self)
 
     def value(self, x: object = None) -> int | None:
         # Real rp2 Pin.value() reads the pad (gpio_get(), ports/rp2/machine_pin.c): an output reads what
@@ -132,13 +212,14 @@ class Pin:
         if x is not None:
             self._drive(1 if x else 0)
             return None
-        if self.mode == self.OPEN_DRAIN:
-            return self._line() if self._value else 0
-        if self.mode == self.ALT:
+        state = self._state
+        if state.mode == self.OPEN_DRAIN:
+            return self._line() if state.level else 0
+        if state.mode == self.ALT:
             return self._line()
-        if self.mode == self.IN and (self.pull == self.PULL_UP or self.id in Pin._external):
+        if state.mode == self.IN and ((state.pull or 0) & self.PULL_UP or self.id in Pin._external):
             return self._line()
-        return self._value
+        return state.level
 
     @classmethod
     def value_log(cls, id: int) -> "_CallLog":
@@ -269,32 +350,61 @@ class _WireLog:
             self.append(byte)
 
 
+# The ops each bus fake checks its fault queue on: a fault queued for any other op could never fire (rp2's I2C can raise
+# on every transfer; its SPI only on a reading one, machine_spi.c:312-315).
+_I2C_FAULT_OPS = ("readfrom_into", "writeto", "readfrom_mem", "writeto_mem")
+_SPI_FAULT_OPS = ("readinto", "write_readinto")
+
+
+def _queue_fault(faults: "dict[str, list[tuple[type[BaseException], tuple[object, ...], int | None, int | None]]]", ops: "tuple[str, ...]", entry: "tuple[str, type[BaseException], tuple[object, ...], int, int | None, int | None]") -> None:
+    op, exc_type, args, times, match, address = entry
+    if op not in ops:
+        raise ValueError(f"{op!r} cannot raise on this bus (rp2): the fake checks only {ops}")
+    if times < 1:
+        raise ValueError("times must be at least 1")
+    faults.setdefault(op, []).extend([(exc_type, args, match, address)] * times)
+
+
+def _raise_queued(faults: "dict[str, list[tuple[type[BaseException], tuple[object, ...], int | None, int | None]]]", op: str, key: "int | None", address: "int | None") -> None:
+    # The oldest queued fault this call matches raises, a fresh exception each time; the rest stay queued.
+    queue = faults.get(op)
+    if queue:
+        for i, (exc_type, args, match, only) in enumerate(queue):
+            if (match is None or match == key) and (only is None or only == address):
+                del queue[i]
+                raise exc_type(*args)
+
+
 class I2C:
-    # rp2's I2C raises only OSError(EIO) - a NAK, a general bus fault, or a lost arbitration, which
-    # has no errno of its own here - or OSError(ETIMEDOUT) for bus-busy/clock-stretch. nak_addresses
-    # and busy below model exactly those two.
+    # rp2's I2C raises OSError(EIO) on a NAK, a bus fault or a lost arbitration, OSError(ETIMEDOUT) on a held or
+    # stretched SCL, and ENODEV only from a NAKed zero-length probe, the soft-I2C path (machine_i2c.c:127-145).
+    # Not modelled: clock-stretch timing, arbitration loss, a BMP3xx-style address/data-pair burst write.
     #
-    # An id reset_id() registered is one static object, as rp2's machine.I2C(id) (machine_i2c.c:50-53,
-    # 87): a re-construction re-initialises the controller and keeps the devices, faults and log. An id
-    # never registered builds a fresh bus at every construction, so tests without a reset share nothing.
-    _static: "ClassVar[dict[int, I2C | None]]" = {}
+    # One static object per id, as rp2's machine.I2C(id) (machine_i2c.c:50-53, 87): a re-construction re-initialises
+    # the controller and keeps the devices, faults and log. reset_id() is a test's power-cycled controller.
+    TEST_API = (
+        "id", "scl", "sda", "freq", "timeout", "deinit_called", "deinit_count", "log", "registers", "read_queue",
+        "read_queue_by_address", "nak_addresses", "attached", "busy", "raise_on_construct", "inject_fault", "pending",
+        "register_device", "reset_id", "reset_registry", "short_ack",
+    )  # fmt: skip
+    _static: "ClassVar[dict[int, I2C]]" = {}
     raise_on_construct: "ClassVar[BaseException | None]" = None  # test-only: the next construction raises it, once
     _fresh: bool
 
     def __init__(self, id: int, *, scl: Pin, sda: Pin, freq: int = 400000, timeout: int = 50000) -> None:
+        # freq and timeout take rp2's defaults on every construction with arguments (machine_i2c.c:37-38, 100-108).
         if self._fresh:
             self._fresh = False
             self.deinit_called = False
             self.deinit_count = 0
             self.log = _CallLog()
-            self.registers: dict[tuple[int, int], bytearray] = {}  # a real round trip through register writes and reads
+            self.registers: dict[tuple[int, int], bytearray] = {}  # register runs: a run's bytes are consecutive registers
             self.read_queue: list[bytes] = []  # its raw-transaction counterpart: readfrom_into() has no register to key off
-            self.read_queue_by_address: dict[int, list[bytes]] = {}  # opt-in per-address queue, checked
-            # before the shared one above - needed once two raw-word-protocol devices, with no register to key
-            # off, were driven concurrently on one bus (dev's i2c1 SCD30+SGP40). Empty by default.
+            self.read_queue_by_address: dict[int, list[bytes]] = {}  # per-address queue, checked before the shared one
             self.nak_addresses: set[int] = set()  # convenience: EIO (no ACK) on every op to this address
+            self.attached: set[int] = set()  # raw-command devices that answer a probe (a register device always does)
             self.busy = False  # convenience: ETIMEDOUT (bus/clock-stretch timeout) on every op, any address
-            self._faults: dict[str, list[tuple[BaseException, int | None]]] = {}  # op -> FIFO of (exception, match)
+            self._faults: dict[str, list[tuple[type[BaseException], tuple[object, ...], int | None, int | None]]] = {}
             self._addrsizes: dict[int, int] = {}  # register_device(): address -> register-address bits
             self._pointers: dict[int, int] = {}  # per register device: the register the next read starts at
             self._short_acks: dict[int, int] = {}  # short_ack(): address -> the next write's ACK count
@@ -310,12 +420,13 @@ class I2C:
         if pending is not None:
             cls.raise_on_construct = None
             raise pending
+        if id not in (0, 1):
+            raise ValueError(f"I2C({id}) doesn't exist")  # machine_i2c.c:82-84
         bus = cls._static.get(id)
         if bus is None:
             bus = super().__new__(cls)
             bus._fresh = True
-            if id in cls._static:
-                cls._static[id] = bus
+            cls._static[id] = bus
         return bus
 
     def _addr_bytes(self, address: int) -> int:
@@ -328,43 +439,79 @@ class I2C:
                 return 1
         return 0
 
+    def _answers(self, address: int) -> bool:
+        return address not in self.nak_addresses and (address in self.attached or self._addr_bytes(address) > 0)
+
+    def _covering(self, address: int, register: int) -> int:
+        # The byte at `register` inside a run that starts below it, else 0 (what an unseeded register reads here).
+        best = -1
+        value = 0
+        for (addr, start), run in self.registers.items():
+            if addr == address and best < start < register < start + len(run):
+                best = start
+                value = run[register - start]
+        return value
+
+    def _load(self, address: int, register: int, nbytes: int) -> bytes:
+        # A burst reads consecutive registers (the pointer auto-increments, ISL29125 FN8424 p.8; BMP388 ds001 s.5).
+        out = bytearray()
+        while len(out) < nbytes:
+            run = self.registers.get((address, register))
+            take = bytes(run[: nbytes - len(out)]) if run else bytes([self._covering(address, register)])
+            out += take
+            register += len(take)
+        return bytes(out)
+
     def _maybe_raise(self, op: str, address: int, key: int | None = None) -> None:
         if self.busy:
             raise OSError(errno.ETIMEDOUT, "bus busy / clock stretch timeout")
         if address in self.nak_addresses:
             raise OSError(errno.EIO, "no ACK from device")
-        queue = self._faults.get(op)
-        if queue:
-            for i, (exc, match) in enumerate(queue):
-                if match is None or match == key:
-                    del queue[i]
-                    raise exc
+        _raise_queued(self._faults, op, key, address)
 
     def _next_read_bytes(self, address: int, nbytes: int) -> bytes:
         per_address = self.read_queue_by_address.get(address)
         data = per_address.pop(0) if per_address else (self.read_queue.pop(0) if self.read_queue else b"")
         return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
 
+    def _store(self, address: int, register: int, data: bytes) -> None:
+        # A burst writes consecutive registers (ISL29125 FN8424 p.7): its own run, and the same bytes in every other
+        # run covering them, so a later read from any start sees one register file.
+        end = register + len(data)
+        for (addr, start), run in self.registers.items():
+            if addr == address and start != register:
+                low, high = max(start, register), min(start + len(run), end)
+                if low < high:
+                    run[low - start : high - start] = data[low - register : high - register]
+        own = self.registers.get((address, register))
+        if own is not None and len(own) > len(data):
+            own[: len(data)] = data
+        else:
+            self.registers[(address, register)] = bytearray(data)
+
     def deinit(self) -> None:
-        # Real rp2 I2C.deinit() exists only from 1.29 and is a silent no-op even there - the port
+        # Real rp2 I2C.deinit() exists only from v1.29.0 and is a silent no-op even there - the port
         # leaves the .deinit slot NULL (SPECIFICATION.md Part F.5). So every bus operation keeps
         # working afterwards here too; the counters only record that the call was forwarded.
         self.deinit_called = True
         self.deinit_count += 1
         self.log.append(("deinit",))
 
-    def inject_fault(self, op: str, exc: BaseException, times: int = 1, *, match: int | None = None) -> None:
-        # Queues `exc` to be raised on the next `times` calls to the named op (readfrom_into, writeto,
-        # readfrom_mem, writeto_mem or scan) whose key equals `match` (None: any call). The key is the
-        # register pointer of a register device (for a read, the one the last address write set), else None.
-        self._faults.setdefault(op, []).extend([(exc, match)] * times)
+    def inject_fault(self, op: str, exc_type: "type[BaseException]", *args: object, times: int = 1, match: int | None = None, address: int | None = None) -> None:
+        # Test-only: the next `times` calls to `op` raise exc_type(*args), oldest fault first. match is the register a
+        # register-device access names (the pointer for readfrom_into(), memaddr for *_mem); address filters the device.
+        _queue_fault(self._faults, _I2C_FAULT_OPS, (op, exc_type, args, times, match, address))
+
+    def pending(self, op: str) -> int:
+        # Test-only: the faults still queued for `op`.
+        return len(self._faults.get(op, ()))
 
     def readfrom_into(self, address: int, buf: object, stop: bool = True) -> None:
         nbytes = len(buf)  # type: ignore[arg-type]
         if self._addr_bytes(address):
             pointer = self._pointers.get(address, 0)
             self._maybe_raise("readfrom_into", address, pointer)
-            data = (bytes(self.registers.get((address, pointer), b"")) + bytes(nbytes))[:nbytes]
+            data = self._load(address, pointer, nbytes)
         else:
             self._maybe_raise("readfrom_into", address)
             data = self._next_read_bytes(address, nbytes)
@@ -373,8 +520,7 @@ class I2C:
 
     def readfrom_mem(self, address: int, memaddr: int, nbytes: int, *, addrsize: int = 8) -> bytes:
         self._maybe_raise("readfrom_mem", address, memaddr)
-        stored = bytes(self.registers.get((address, memaddr), bytearray(nbytes)))
-        data = (stored + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
+        data = self._load(address, memaddr, nbytes)
         self.log.append(("readfrom_mem", address, memaddr, nbytes, addrsize))
         return data
 
@@ -393,16 +539,19 @@ class I2C:
     def reset_id(cls, id: int) -> None:
         # Test-only: a power-cycled controller and devices - the next I2C(id) builds a fresh bus, which
         # every later construction of that id returns until the next reset.
-        cls._static[id] = None
+        cls._static.pop(id, None)
 
     @classmethod
     def reset_registry(cls) -> None:
         cls._static.clear()
 
     def scan(self) -> list[int]:
+        # extmod/machine_i2c.c:341-356: one zero-length probe per address 0x08-0x77, each kept when it returned 0, so a
+        # NAK or a held bus shortens the list and nothing raises.
         self.log.append(("scan",))
-        self._maybe_raise("scan", -1)
-        return sorted({addr for addr, _ in self.registers} - self.nak_addresses)
+        if self.busy:
+            return []
+        return [address for address in range(0x08, 0x78) if self._answers(address)]
 
     def short_ack(self, address: int, n: int) -> None:
         # Test-only: the next write to `address` reports only n bytes ACKed, as rp2's writeto() does for a
@@ -411,6 +560,15 @@ class I2C:
 
     def writeto(self, address: int, buf: object, stop: bool = True) -> int:
         data = bytes(buf)  # type: ignore[call-overload]
+        if not data:
+            # The probe: rp2's zero-length write takes the soft-I2C transfer, whose NAK is ENODEV (machine_i2c.c:127-145).
+            if self.busy:
+                raise OSError(errno.ETIMEDOUT, "bus busy / clock stretch timeout")
+            _raise_queued(self._faults, "writeto", None, address)
+            if not self._answers(address):
+                raise OSError(errno.ENODEV, "no device at this address")
+            self.log.append(("writeto", address, data, stop))
+            return 0
         n = self._addr_bytes(address)
         register = int.from_bytes(data[:n], "big") if n and len(data) >= n else None
         self._maybe_raise("writeto", address, register)
@@ -421,26 +579,28 @@ class I2C:
         if register is not None:
             self._pointers[address] = register
             if len(data) > n:
-                self.registers[(address, register)] = bytearray(data[n:])
+                self._store(address, register, data[n:])
         return len(data)
 
     def writeto_mem(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         self._maybe_raise("writeto_mem", address, memaddr)
-        self.registers[(address, memaddr)] = bytearray(buf)  # type: ignore[call-overload]
+        self._store(address, memaddr, bytes(buf))  # type: ignore[call-overload]
         self.log.append(("writeto_mem", address, memaddr, bytes(buf), addrsize))  # type: ignore[call-overload]
 
 
-# ports/rp2/machine_spi.c's own `dma_min_size_threshold`: a transfer shorter than this never
-# touches DMA, so it can never hit the RX-overrun check MicroPython 1.29 added there.
-_SPI_DMA_MIN_SIZE = 32
+_SPI_DMA_MIN_SIZE = 32  # ports/rp2/machine_spi.c:267 dma_min_size_threshold: a shorter transfer never takes DMA
 
 
 class SPI:
-    # SPI has no ACK/NAK, so write() cannot raise; a *reading* transfer of 32+ bytes takes the DMA
-    # path, whose 1.29 RX-overrun check raises OSError(EIO) - modelled by rx_overrun/inject_fault()
-    # (SPECIFICATION.md Part F.5). No addressing either: read_queue primes what a transfer receives.
-    MSB = 0
-    LSB = 1
+    # SPI has no ACK/NAK, so write() cannot raise; a reading transfer of 32+ bytes takes the DMA path, whose RX-overrun
+    # check raises OSError(EIO) (F.5.2) - modelled by rx_overrun and inject_fault(). read_queue primes what a read gets.
+    # Not modelled: baudrate rounding, pin muxing rules, rp2's static object per id.
+    TEST_API = (
+        "id", "sck", "mosi", "miso", "baudrate", "polarity", "phase", "bits", "firstbit", "deinit_called", "deinit_count",
+        "log", "read_queue", "rx_overrun", "rx_overrun_remaining", "inject_fault", "pending",
+    )  # fmt: skip
+    MSB = 1  # pico-sdk hardware/spi.h:184-187 SPI_MSB_FIRST, rp2's MICROPY_PY_MACHINE_SPI_MSB (mpconfigport.h:199-200)
+    LSB = 0
 
     def __init__(
         self,
@@ -453,8 +613,12 @@ class SPI:
         polarity: int = 0,
         phase: int = 0,
         bits: int = 8,
-        firstbit: int = 0,
+        firstbit: int = MSB,
     ) -> None:
+        if id not in (0, 1):
+            raise ValueError(f"SPI({id}) doesn't exist")  # machine_spi.c:162-164
+        if firstbit == self.LSB:
+            raise NotImplementedError("LSB")  # machine_spi.c:202-203: rp2 implements MSB first only
         self.id = id
         self.sck = sck
         self.mosi = mosi
@@ -470,7 +634,32 @@ class SPI:
         self.read_queue: list[bytes] = []
         self.rx_overrun = False  # convenience: EIO on every DMA-path read, like I2C's `busy`
         self.rx_overrun_remaining = 0  # counted counterpart: N transient overruns, then the bus recovers
-        self._faults: dict[str, list[Exception]] = {}  # op name -> FIFO queue, one exception per matching call
+        self._faults: dict[str, list[tuple[type[BaseException], tuple[object, ...], int | None, int | None]]] = {}
+        self._opcode: int | None = None  # the command the last write() opened: the key a fault's match= names
+
+    def _maybe_raise(self, op: str, nbytes: int, key: int | None = None) -> None:
+        # A transfer below dma_min_size_threshold takes the blocking software path, which has no overrun check and
+        # cannot raise (machine_spi.c:267-318): the overrun knobs and the fault queue alike wait for a long one.
+        if nbytes < _SPI_DMA_MIN_SIZE:
+            return
+        if self.rx_overrun:
+            raise OSError(errno.EIO, "SPI RX overrun")
+        if self.rx_overrun_remaining > 0:
+            self.rx_overrun_remaining -= 1
+            raise OSError(errno.EIO, "SPI RX overrun")
+        _raise_queued(self._faults, op, key, None)
+
+    def _next_read_bytes(self, nbytes: int) -> bytes:
+        data = self.read_queue.pop(0) if self.read_queue else b""
+        return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
+
+    def deinit(self) -> None:
+        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op that neither
+        # stops the peripheral nor releases the pins (Part F.5). This fake therefore leaves every bus
+        # operation working afterwards; the counters only record that asy_spi_driver.py forwarded the call.
+        self.deinit_called = True
+        self.deinit_count += 1
+        self.log.append(("deinit",))
 
     def init(
         self,
@@ -481,12 +670,9 @@ class SPI:
         bits: int = -1,
         firstbit: int = -1,
     ) -> None:
-        # Real rp2 SPI.init(): -1/omitted args leave the current setting untouched (confirmed
-        # against ports/rp2/machine_spi.c's allowed_args table - no "pins" kwarg accepted here,
-        # only baudrate/polarity/phase/bits/firstbit).
+        # Real rp2 SPI.init(): -1/omitted args leave the current setting untouched (ports/rp2/machine_spi.c:220-226,
+        # no pins accepted here); LSB first raises as at construction (:255-256).
         if firstbit == self.LSB:
-            # Real rp2 hardware SPI only implements MSB-first (confirmed: machine_spi_init()'s
-            # own `if (self->firstbit == SPI_LSB_FIRST) mp_raise_NotImplementedError(...)`).
             raise NotImplementedError("LSB")
         if baudrate != -1:
             self.baudrate = baudrate
@@ -500,56 +686,36 @@ class SPI:
             self.firstbit = firstbit
         self.log.append(("init", baudrate, polarity, phase, bits, firstbit))
 
-    def inject_fault(self, op: str, exc: Exception, times: int = 1) -> None:
-        # Same shape as I2C.inject_fault() above: queues `exc` for the next `times` calls to the
-        # named op (readinto or write_readinto). write() is deliberately not injectable - the real
-        # write-only path has no failure mode to model.
-        self._faults.setdefault(op, []).extend([exc] * times)
+    def inject_fault(self, op: str, exc_type: "type[BaseException]", *args: object, times: int = 1, match: int | None = None) -> None:
+        # Test-only: the next `times` reading transfers of 32+ bytes on `op` raise exc_type(*args), oldest first; match
+        # is the opcode the last write() opened. A write fault is refused: a write-only transfer ignores the overrun.
+        _queue_fault(self._faults, _SPI_FAULT_OPS, (op, exc_type, args, times, match, None))
 
-    def _maybe_raise(self, op: str, nbytes: int) -> None:
-        # DMA_MIN_SIZE_THRESHOLD is 32 in ports/rp2/machine_spi.c - a shorter transfer takes the blocking
-        # software path, which has no overrun check and cannot raise. Both knobs are gated on that, so a
-        # 1-byte read stays immune however they are set; inject_fault()'s queue deliberately is not.
-        if nbytes >= _SPI_DMA_MIN_SIZE:
-            if self.rx_overrun:
-                raise OSError(errno.EIO, "SPI RX overrun")
-            if self.rx_overrun_remaining > 0:
-                self.rx_overrun_remaining -= 1
-                raise OSError(errno.EIO, "SPI RX overrun")
-        queue = self._faults.get(op)
-        if queue:
-            raise queue.pop(0)
-
-    def deinit(self) -> None:
-        # Real rp2 machine.SPI.deinit() leaves the protocol's .deinit slot NULL: a silent no-op that neither
-        # stops the peripheral nor releases the pins (Part F.5). This fake therefore leaves every bus
-        # operation working afterwards; the counters only record that asy_spi_driver.py forwarded the call.
-        self.deinit_called = True
-        self.deinit_count += 1
-        self.log.append(("deinit",))
-
-    def _next_read_bytes(self, nbytes: int) -> bytes:
-        data = self.read_queue.pop(0) if self.read_queue else b""
-        return (data + bytes(nbytes))[:nbytes]  # always exactly nbytes, zero-padded/truncated like real hw
-
-    def write(self, buf: object) -> None:
-        self.log.append(("write", bytes(buf)))  # type: ignore[call-overload]
+    def pending(self, op: str) -> int:
+        # Test-only: the faults still queued for `op`.
+        return len(self._faults.get(op, ()))
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> None:
-        self._maybe_raise("readinto", len(buf))
+        self._maybe_raise("readinto", len(buf), self._opcode)
         data = self._next_read_bytes(len(buf))
         buf[:] = data
         self.log.append(("readinto", len(buf), write_value))
+
+    def write(self, buf: object) -> None:
+        data = bytes(buf)  # type: ignore[call-overload]
+        self._opcode = data[0] if data else None
+        self.log.append(("write", data))
 
     def write_readinto(self, buffer_out: object, buffer_in: bytearray | memoryview) -> None:
         # Real machine.SPI.write_readinto() (mp_machine_spi_write_readinto(), shared by hardware
         # and soft SPI): raises ValueError before any transfer if the two buffers' lengths differ.
         if len(buffer_out) != len(buffer_in):  # type: ignore[arg-type]
             raise ValueError("buffers must be the same length")
-        self._maybe_raise("write_readinto", len(buffer_in))
+        out = bytes(buffer_out)  # type: ignore[call-overload]
+        self._maybe_raise("write_readinto", len(buffer_in), out[0] if out else None)
         data = self._next_read_bytes(len(buffer_in))
         buffer_in[:] = data
-        self.log.append(("write_readinto", bytes(buffer_out)))  # type: ignore[call-overload]
+        self.log.append(("write_readinto", out))
 
 
 # Claimed rp2.DMA channels by number: tests/rp2.py registers here, so a UART can find the channel draining it.
@@ -562,7 +728,7 @@ _RSR_OE = 0x08  # datasheet Table 427: overrun; BE 0x04, PE 0x02, FE 0x01
 _RSR_BE = 0x04
 _IMSC_RX_IRQ = 0x50  # RXIM | RTIM (Table 435)
 _IMSC_AT_INIT = 0x70  # TXIM | RXIM | RTIM: pico-sdk uart_set_irqs_enabled(), machine_uart.c:455
-_DMACR_RXDMAE = 0x01
+_DMACR_RXDMAE = 0x01  # UARTDMACR bit 0 (RP2040 datasheet 4.2.8, Table 439)
 _DMACR_AT_INIT = 0x03  # pico-sdk uart_init() always enables both DREQs (uart.c:86-88)
 _RX_FIFO_DEPTH = 32
 _RX_DREQ = (21, 23)  # DREQ_UART0_RX, DREQ_UART1_RX (pico-sdk dreq.h)
@@ -570,17 +736,29 @@ _RX_UNPACED = float("inf")
 
 
 class UART(io.IOBase):
-    # The one fake a driver registers with a real select.poll(), which needs the C-level stream slot
-    # only io.IOBase carries - a plain class makes register() raise. Reads answer None (MP_EAGAIN)
-    # rather than raising, as rp2 does; write() is the TX mirror. Full analysis: Part F.5.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time
+    # (CLAUDE.md "Known hang cause"). io.IOBase gives it the C stream slot a driver's register() needs; reads answer
+    # None (MP_EAGAIN) rather than raising and write() is the TX mirror, as rp2 does (Part F.5).
     #
     # Receive model: with RXIM/RTIM set (every construction and init()) the RX interrupt moves each byte
     # into rx_queue, machine.UART's own buffer, as delivered. With both cleared, bytes arrive at the line
     # rate on Timer.clock_ms and go to a DMA channel draining this UART, else to the 32-byte FIFO (OE).
-    _MP_STREAM_POLL = 3  # py/stream.h
+    #
+    # Not modelled: baudrate/bits/parity/stop validation, the CTS/RTS pins, hardware flow control.
+    TEST_API = (
+        "id", "tx", "rx", "baudrate", "bits", "parity", "stop", "rxbuf", "txbuf", "timeout", "timeout_char", "invert",
+        "deinit_called", "deinit_count", "log", "rx_queue", "writable", "write_limit", "tx_pending_rounds", "rx_api_calls",
+        "rx_rate", "rx_stall_ms", "rx_fifo_dropped", "rsr", "imsc", "dmacr", "would_have_blocked_bytes",
+        "real_poll_queries", "feed_rx", "plant_rx_error", "poll_mask", "ioctl",
+    )  # fmt: skip
+    _MP_STREAM_POLL = 3  # py/stream.h:39
+    _DEFAULT_BUFFER_SIZE = 256  # ports/rp2/machine_uart.c:67-69, as MIN and MAX
     _MIN_BUFFER_SIZE = 32
     _MAX_BUFFER_SIZE = 32766
-    _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2)
+    _UART_INVERT_MASK = 3  # UART_INVERT_TX (1) | UART_INVERT_RX (2), machine_uart.c:82-84
+    # POLL requests a real select.poll() made of a UART fake: LinkPoller and the shared contract read poll_mask(), so
+    # the after-each check fails any test leaving this above 0 (a real poll over a fake is CLAUDE.md's CI hang).
+    real_poll_queries: "ClassVar[int]" = 0
     _live: "ClassVar[dict[int, UART]]" = {}  # the latest construction per id: what mem32 and the DMA reach
     # Bytes a read asked for that had not arrived. On real hardware each one costs a synchronous
     # timeout_char wait inside the C read, never yielding to asyncio (SPECIFICATION.md Part F.5.8);
@@ -603,17 +781,16 @@ class UART(io.IOBase):
         timeout_char: int = 1,
         invert: int = 0,
     ) -> None:
-        # Real make_new()/init_helper() validation against ports/rp2/machine_uart.c v1.29.0, in the
-        # source's own order (id, invert, rxbuf, txbuf - which matters when several are invalid at
-        # once). Not modeled, none of them raising: the MIN_BUFFER_SIZE clamp, baudrate/bits/stop, pins (A.6).
+        # make_new()/init_helper() validation in the source's own order (machine_uart.c:312-392 and :465: id, tx, rx,
+        # invert, rxbuf, txbuf - which matters when several are invalid at once); a buffer below MIN_BUFFER_SIZE is raised to it.
         if id not in (0, 1):
             raise ValueError(f"UART({id}) doesn't exist")
+        self._check_pin(id, tx, 0, "TX")
+        self._check_pin(id, rx, 1, "RX")
         if invert & ~self._UART_INVERT_MASK:
             raise ValueError("bad inversion mask")
-        if rxbuf > self._MAX_BUFFER_SIZE:
-            raise ValueError("rxbuf too large")
-        if txbuf > self._MAX_BUFFER_SIZE:
-            raise ValueError("txbuf too large")
+        rxbuf = self._buffer_size(rxbuf, "rxbuf")
+        txbuf = self._buffer_size(txbuf, "txbuf")
         self.id = id
         self.tx = tx
         self.rx = rx
@@ -668,6 +845,15 @@ class UART(io.IOBase):
         self._inbound += data[:taken]
         return taken
 
+    @classmethod
+    def _buffer_size(cls, size: int, name: str) -> int:
+        # rxbuf/txbuf as machine_uart.c:370-392 takes them: unset (<= 0) keeps the default, below 32 clamps, above refuses.
+        if size <= 0:
+            return cls._DEFAULT_BUFFER_SIZE
+        if size > cls._MAX_BUFFER_SIZE:
+            raise ValueError(f"{name} too large")
+        return max(size, cls._MIN_BUFFER_SIZE)
+
     def _channel(self) -> "Any":
         if not self.dmacr & _DMACR_RXDMAE:
             return None
@@ -675,6 +861,16 @@ class UART(io.IOBase):
             if channel._accept(_UART_BASES[self.id], _RX_DREQ[self.id]):
                 return channel
         return None
+
+    @staticmethod
+    def _check_pin(uart_id: int, pin: object, slot: int, name: str) -> None:
+        # rp2040's rule (machine_uart.c:71-80, 314-323): a bank-0 GPIO, TX on pin 4k and RX on 4k+1, in its UART's
+        # banks of eight (UART0 0-3, 12-19, 28-29; UART1 4-11, 20-27); mp_hal_get_pin_obj() refuses the WLAN pins.
+        number = Pin._find(pin)
+        if number >= _NUM_BANK0_GPIOS:
+            raise ValueError("expecting a regular GPIO Pin")
+        if number & 3 != slot or ((number + 4) & 8) >> 3 != uart_id:
+            raise ValueError(f"bad {name} pin")
 
     def _count_overask(self, asked: int) -> None:
         if asked > len(self.rx_queue):
@@ -748,7 +944,6 @@ class UART(io.IOBase):
         # per not-yet-arrived byte synchronously, without ever yielding to asyncio.
         self.rx_api_calls += 1
         self._update()  # rp2 drains the RX FIFO into its buffer first (machine_uart.c:505, :604)
-        self._update()  # rp2 drains the RX FIFO into its buffer first (machine_uart.c:505, :604)
         return len(self.rx_queue)
 
     def deinit(self) -> None:
@@ -767,27 +962,25 @@ class UART(io.IOBase):
         elif self._arrive(data) < len(data):
             raise ValueError("feed_rx() beyond the bytes the wire can hold")
 
-    def init(self, **settings: "Any") -> None:
+    def init(self, **settings: object) -> None:
         # Real UART.init(): re-runs uart_init() on the given settings, which re-enables the RX interrupts
-        # and both DREQs (machine_uart.c:399-455; the ring buffers are kept).
+        # and both DREQs (machine_uart.c:399-455; the ring buffers are kept); a new pin meets the same rule.
         for name, value in settings.items():
             if not hasattr(self, name) or name.startswith("_"):
                 raise TypeError(f"unexpected keyword argument '{name}'")
+            if name in ("tx", "rx"):
+                self._check_pin(self.id, value, 0 if name == "tx" else 1, name.upper())
             setattr(self, name, value)
         self._reset_block()
 
     def ioctl(self, req: int, arg: int) -> int:
+        # A real select.poll() first asks a stream for MP_STREAM_GET_FILENO (10) and on any non-error answer polls that fd
+        # instead (extmod/modselect.c:252-266): rp2 answers EINVAL to all but POLL (machine_uart.c:694-697), and so does
+        # this fake, so a real poll consults it and is counted rather than watching stdin.
         if req != self._MP_STREAM_POLL:
-            return 0
-        if arg & select.POLLIN:
-            self.rx_api_calls += 1
-        self._update()
-        ready = 0
-        if (arg & select.POLLIN) and self.rx_queue:
-            ready |= select.POLLIN
-        if (arg & select.POLLOUT) and self.writable:
-            ready |= select.POLLOUT
-        return ready
+            return -errno.EINVAL
+        UART.real_poll_queries += 1
+        return self.poll_mask(arg)
 
     def plant_rx_error(self, bits: int) -> None:
         # Test-only: sets UARTRSR bits (OE 0x08, BE 0x04, FE 0x01); a break also receives one 0x00
@@ -796,6 +989,18 @@ class UART(io.IOBase):
         self.rsr |= bits & 0x0F
         if bits & _RSR_BE:
             self._route(0, is_break=True)
+
+    def poll_mask(self, mask: int) -> int:
+        # Test-only: the POLL answer for the events in `mask` (machine_uart.c:670-678), what LinkPoller and the contract read.
+        if mask & select.POLLIN:
+            self.rx_api_calls += 1
+        self._update()
+        ready = 0
+        if (mask & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (mask & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
 
     def read(self, nbytes: int | None = None) -> bytes | None:
         self.rx_api_calls += 1
@@ -870,6 +1075,11 @@ class _LinkDirection:
     # One direction of a UARTLink: the fault knobs plus the counters and wire log that make each
     # knob assertable - every knob is an explicit schedule, never randomness. Offsets in
     # drop_indices/corrupt_indices are stream offsets within this direction, not per write() call.
+    TEST_API = (
+        "capacity", "silent", "drop_indices", "corrupt_indices", "truncate_after", "noise_before_next", "delay",
+        "duplicate_next", "offered", "delivered", "dropped_overrun", "pending", "wire_log", "record", "shape",
+    )  # fmt: skip  # wholly test-only: every public name
+
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity  # far-side FIFO bound; overflow drops the newest bytes
         self.silent = False  # one-sided silence
@@ -909,8 +1119,9 @@ class _LinkDirection:
 
 class UARTLink:
     # Byte-level crossover between two UART fakes - one independent FIFO per direction with its own
-    # fault knobs (A1/A3). The fakes keep no concept of a frame: a write lands in the far side's
+    # fault knobs. The fakes keep no concept of a frame: a write lands in the far side's
     # rx_queue and reads split where the reader asks. Never uses a real poll() - see LinkPoller.
+    TEST_API = ("endpoints", "a_to_b", "b_to_a", "direction_from", "elapse", "release_delayed", "settle", "transmit")  # all
     def __init__(self, uart_a: "UART", uart_b: "UART", capacity_a_to_b: int | None = None, capacity_b_to_a: int | None = None) -> None:
         if uart_a._link is not None or uart_b._link is not None:
             raise ValueError("UART already attached to a link")
@@ -948,11 +1159,6 @@ class UARTLink:
         if uart not in self.endpoints:
             raise ValueError("UART is not an endpoint of this link")
         return self.a_to_b if self._index(uart) == 0 else self.b_to_a
-
-    def direction_to(self, uart: "UART") -> "_LinkDirection":
-        if uart not in self.endpoints:
-            raise ValueError("UART is not an endpoint of this link")
-        return self.b_to_a if self._index(uart) == 0 else self.a_to_b
 
     def elapse(self, ms: int) -> None:
         # Fidelity seam for the shared contract's DMA checks: this model's arrivals follow Timer.clock_ms.
@@ -995,9 +1201,9 @@ class UARTLink:
 
 
 class LinkPoller:
-    # Bounded select.poll() stand-in for one UART fake, re-querying its ioctl() every call.
-    # Installed by reassigning asy_uart_driver.UART.poller, keeping src/ free of a testability seam.
-    # Never wraps a real select.poll(): the port never re-checks ioctl() - CLAUDE.md's known CI hang.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time
+    # (CLAUDE.md "Known hang cause"). Installed by reassigning asy_uart_driver.UART.poller; reads poll_mask() each call.
+    TEST_API = ("force_not_ready", "ipoll", "register", "unregister")  # wholly test-only
     def __init__(self, uart: "UART", not_ready_calls: int = 0, mask: int = select.POLLIN | select.POLLOUT) -> None:
         self._uart = uart
         self._not_ready = not_ready_calls
@@ -1010,7 +1216,7 @@ class LinkPoller:
         if self._not_ready > 0:
             self._not_ready -= 1
             return []
-        event = self._uart.ioctl(UART._MP_STREAM_POLL, self._mask)
+        event = self._uart.poll_mask(self._mask)
         return [(None, event)] if event else []
 
     def register(self, obj: object, mask: int = 0) -> None:
@@ -1021,6 +1227,11 @@ class LinkPoller:
 
 
 class Timer:
+    # Not modelled: real time (a test fires a callback with trigger()), freq/tick_hz period maths, the 16-alarm pool.
+    TEST_API = (
+        "id", "all_timers", "raise_on_arm", "raise_on_arm_exc", "clock_ms", "arms", "trigger", "drop", "deinit_called",
+        "callback", "period", "mode",
+    )  # fmt: skip
     ONE_SHOT = 0
     PERIODIC = 1
 
@@ -1028,30 +1239,69 @@ class Timer:
     # (SPECIFICATION.md F.1). Class-level, so it persists for the whole process: compare against a snapshot.
     all_timers: "ClassVar[list[Timer]]" = []
 
-    # Test-only, off by default: real rp2 Timer.init() raises OSError(ENOMEM) on an exhausted alarm
-    # pool, and a bare Timer() never reaches that path at all - hence the `if kwargs` gate below.
-    # A shared class attribute, so a test must reset it afterward.
+    # Test-only, off by default: real rp2 Timer.init() raises OSError(ENOMEM) on an exhausted alarm pool
+    # (ports/rp2/machine_timer.c:107-110), and a bare Timer() never reaches that path at all.
     raise_on_arm = False
     # Which class init() then raises. src/ guards Timer.init() with `except (OSError, MemoryError)`,
     # a real alarm allocation being able to fail either way, so set this to MemoryError to prove the
-    # sibling arm too. Shared class attribute as well; reset both.
+    # sibling arm too. Both are class knobs the after-each reset restores.
     raise_on_arm_exc: "type[BaseException]" = OSError
     # A fake clock only tests advance; each init() records (clock_ms, period, mode) in its own `arms`, so a test
     # can read when the product armed a timer without patching any module's time source.
     clock_ms: "ClassVar[int]" = 0
 
-    def __init__(self, id: int = -1, **kwargs: "Any") -> None:
+    def __init__(
+        self,
+        id: int = -1,
+        *,
+        mode: "int | None" = None,
+        callback: "Callable[[Timer], None] | None" = None,
+        period: "int | None" = None,
+        tick_hz: "int | None" = None,
+        freq: "float | None" = None,
+        hard: "bool | None" = None,
+    ) -> None:
+        # machine_timer.c:127-145: only the soft timer (-1) exists, and any keyword arms the timer at once.
+        if id != -1:
+            raise ValueError("Timer doesn't exist")
         self.id = id
         self.period = -1
         self.mode = self.PERIODIC
         self.callback: Callable[[Timer], None] | None = None
         self.deinit_called = False
         self.arms = _CallLog()  # (clock_ms, period, mode) per init(), the newest _LOG_MAXLEN
-        if kwargs:
-            self.init(**kwargs)  # may raise OSError - propagates before this instance is registered
+        if mode is not None or callback is not None or period is not None or tick_hz is not None or freq is not None or hard is not None:
+            self.init(  # may raise OSError - propagates before this instance is registered
+                mode=self.PERIODIC if mode is None else mode,
+                callback=callback,
+                period=-1 if period is None else period,
+                tick_hz=1000 if tick_hz is None else tick_hz,
+                freq=freq,
+                hard=bool(hard),
+            )
         Timer.all_timers.append(self)
 
-    def init(self, *, period: int = -1, mode: int = PERIODIC, callback: "Callable[[Timer], None] | None" = None) -> None:
+    def deinit(self) -> None:
+        self.callback = None
+        self.deinit_called = True
+
+    def drop(self) -> None:
+        # One period elapsing with its soft callback lost to a full scheduler queue (Part F.1): a
+        # ONE_SHOT never fires again, a PERIODIC simply fires next period.
+        if self.mode == self.ONE_SHOT:
+            self.callback = None
+
+    def init(
+        self,
+        *,
+        mode: int = PERIODIC,
+        callback: "Callable[[Timer], None] | None" = None,
+        period: int = -1,
+        tick_hz: int = 1000,  # rp2's keyword, taken; the period maths is not modelled
+        freq: "float | None" = None,  # likewise
+        hard: bool = False,  # likewise: a callback here always runs where trigger() calls it
+    ) -> None:
+        # The keywords machine_timer_init_helper() takes (machine_timer.c:74-112); `period` keeps the value given.
         if Timer.raise_on_arm:
             if Timer.raise_on_arm_exc is OSError:
                 raise OSError(errno.ENOMEM, "alarm pool exhausted")
@@ -1061,10 +1311,6 @@ class Timer:
         self.callback = callback
         self.deinit_called = False
         self.arms.append((Timer.clock_ms, period, mode))
-
-    def deinit(self) -> None:
-        self.callback = None
-        self.deinit_called = True
 
     def trigger(self) -> None:
         # No real-hardware equivalent - lets test code fire a callback deterministically instead of
@@ -1076,36 +1322,58 @@ class Timer:
         if callback is not None:
             callback(self)
 
-    def drop(self) -> None:
-        # One period elapsing with its soft callback lost to a full scheduler queue (Part F.1): a
-        # ONE_SHOT never fires again, a PERIODIC simply fires next period.
-        if self.mode == self.ONE_SHOT:
-            self.callback = None
+
+def _civil_seconds(year: int, month: int, day: int, hour: int, minute: int, second: int) -> int:
+    # Seconds since 1970 by pure calendar arithmetic, as shared/timeutils' (no host mktime, which reads $TZ): an
+    # out-of-range day carries over (2026-02-29 is 2026-03-01). Days from the civil date, March-based years.
+    year -= 1 if month <= 2 else 0
+    era = year // 400
+    year_of_era = year - era * 400
+    day_of_year = (153 * ((month + 9) % 12) + 2) // 5 + day - 1
+    day_of_era = year_of_era * 365 + year_of_era // 4 - year_of_era // 100 + day_of_year
+    return (era * 146097 + day_of_era - 719468) * 86400 + hour * 3600 + minute * 60 + second
+
+
+_RTC_BOOT_SECONDS = _civil_seconds(2021, 1, 1, 0, 0, 0)  # what rp2's main() starts the RTC at (ports/rp2/main.c:143)
 
 
 class RTC:
-    # Stores whatever 8-tuple it is given, unvalidated: the real rp2 setter uses only indices
-    # 0/1/2/4/5/6, extracting weekday and never writing it, so there is no validity behaviour to
-    # model (BACKLOG.md has the history of an earlier pass getting this wrong).
-    raise_exc: "Exception | None" = None  # test-only fault injection, shared class attribute like Timer.raise_on_arm
-    # Class-level, not per-instance: one physical peripheral, so a freshly constructed RTC() must
-    # read back what an earlier instance set, exactly as the real singleton does.
-    _shared_datetime: "tuple[int, ...]" = (2000, 1, 1, 0, 0, 0, 0, 0)
+    # ports/rp2/machine_rtc.c:65-98: the setter takes exactly 8 fields and keeps seconds since the epoch (weekday and
+    # subseconds ignored); the getter converts them back, the date normalised, the weekday recomputed (Monday 0),
+    # subseconds 0. Not modelled: the clock advancing, and time.time() following a set.
+    TEST_API = ("raise_exc",)
+    raise_exc: "ClassVar[BaseException | None]" = None  # test-only fault injection, a class knob like Timer.raise_on_arm
+    _seconds: "ClassVar[int]" = _RTC_BOOT_SECONDS  # class state: one peripheral, as rp2's singleton RTC (:48)
 
-    def __init__(self, id: int = 0) -> None:
-        self.id = id
+    def __init__(self) -> None:
+        pass  # RTC() takes no argument (machine_rtc.c:52)
 
     def datetime(self, dt: "tuple[int, ...] | None" = None) -> "tuple[int, ...] | None":
         if RTC.raise_exc is not None:
             raise RTC.raise_exc
         if dt is None:
-            return RTC._shared_datetime
-        RTC._shared_datetime = tuple(dt)
+            tm = time.gmtime(RTC._seconds)  # the Unix port's gmtime() adds a ninth field, so index it
+            return (tm[0], tm[1], tm[2], tm[6], tm[3], tm[4], tm[5], 0)
+        fields = tuple(dt)
+        if len(fields) != 8:
+            raise ValueError("tuple/list has wrong length")  # mp_obj_get_array_fixed_n(), py/obj.c:473
+        RTC._seconds = _civil_seconds(fields[0], fields[1], fields[2], fields[4], fields[5], fields[6])
         return None
 
 
+_WDT_TIMEOUT_MAX_MS = 8388  # ports/rp2/machine_wdt.c:32-38: the RP2040's 24-bit counter, 0xffffff / 2 / 1000
+
+
 class WDT:
+    # Not modelled: the countdown itself (a missed feed resets nothing here), rp2's static WDT object.
+    TEST_API = ("id", "timeout", "feed_count", "feed_times")
+
     def __init__(self, id: int = 0, timeout: int = 5000) -> None:
+        # machine_wdt.c:47-57: only id 0 exists; the timeout goes through a uint32_t, so a negative one exceeds the cap.
+        if id != 0:
+            raise ValueError(f"WDT({id}) doesn't exist")
+        if not 0 <= timeout <= _WDT_TIMEOUT_MAX_MS:
+            raise ValueError(f"timeout exceeds {_WDT_TIMEOUT_MAX_MS}")
         self.id = id
         self.timeout = timeout
         self.feed_count = 0
@@ -1120,6 +1388,8 @@ class _Mem32:
     # machine.mem32: 32-bit peripheral register access (extmod/machine_mem.c). Models the two reset registers and the
     # UART blocks' UARTRSR/UARTECR, UARTIMSC and UARTDMACR of the latest UART per id; any other address raises
     # ValueError ("not modelled"). Every access is recorded in `log` as ("read"|"write", address, value).
+    TEST_API = ("log",)
+
     def __init__(self) -> None:
         self.log = _CallLog(_MEM32_LOG_MAXLEN)
 
@@ -1151,8 +1421,8 @@ class _Mem32:
 
 
 mem32 = _Mem32()
-_WATCHDOG_REASON = 0x40058008  # bit 0 TIMER, bit 1 FORCE (pico-sdk hardware/regs/watchdog.h)
-_CHIP_RESET = 0x40064008  # bit 8 HAD_POR, bit 16 HAD_RUN, bit 20 HAD_PSM_RESTART (vreg_and_chip_reset.h)
+_WATCHDOG_REASON = 0x40058008  # WATCHDOG_BASE + 0x08: bit 0 TIMER, bit 1 FORCE (RP2040 datasheet 4.7.6, Table 548)
+_CHIP_RESET = 0x40064008  # VREG_AND_CHIP_RESET_BASE + 0x8: bit 8 HAD_POR, 16 HAD_RUN, 20 HAD_PSM_RESTART (RP2040 datasheet 2.10.6)
 _REASON_FORCE = 0x2  # watchdog_reboot(..., 0) sets the trigger bit (pico-sdk watchdog.c:65-66)
 _HAD_POR = 0x100
 # Test-only: what the two registers read, the power-on pair until power_on()/reset()/bootloader() move them.
@@ -1160,7 +1430,7 @@ watchdog_reason_value = 0
 chip_reset_value = _HAD_POR
 
 
-# rp2's reset causes (ports/rp2/modmachine.c:57-58 at v1.29.0); reset_cause() answers the module value.
+# rp2's reset causes (ports/rp2/modmachine.c:57-58, 65-66 at v1.29.0); reset_cause() answers the module value.
 PWRON_RESET = 1
 WDT_RESET = 3
 reset_cause_value = PWRON_RESET
@@ -1168,6 +1438,41 @@ reset_cause_value = PWRON_RESET
 # view each, the same object on every call, kept across reset() as the watchdog scratch registers are.
 _REGIONS = (array("I", [0, 0, 0, 0]), array("I", [0, 0, 0]))
 _REGION_VIEWS = (memoryview(_REGIONS[0]), memoryview(_REGIONS[1]))
+
+
+class SimulatedRebootError(BaseException):
+    # Test-only, the twin's names: what reset()/bootloader() raise, since the real ones never return. A BaseException,
+    # so no `except Exception` in the product swallows it; microtest reports one escaping a test as that test's FAIL.
+    pass
+
+
+class SimulatedResetError(SimulatedRebootError):
+    pass
+
+
+class SimulatedBootloaderEntryError(SimulatedRebootError):
+    pass
+
+
+# Real reset()/bootloader() never return: the fake records the call, sets the cause rp2 then reports (watchdog_reboot(),
+# so WDT_RESET), and raises so no later line runs.
+reset_count = 0
+bootloader_count = 0
+
+
+# The module's test-only names, beside each class's own TEST_API.
+TEST_API = (
+    "reset_count", "bootloader_count", "reset_cause_value", "watchdog_reason_value", "chip_reset_value", "power_on",
+    "SimulatedRebootError", "SimulatedResetError", "SimulatedBootloaderEntryError", "reset_test_state",
+)  # fmt: skip
+
+
+def bootloader() -> None:
+    global bootloader_count, reset_cause_value, watchdog_reason_value
+    bootloader_count += 1
+    reset_cause_value = WDT_RESET
+    watchdog_reason_value = _REASON_FORCE
+    raise SimulatedBootloaderEntryError("machine.bootloader() never returns")
 
 
 def mem_backup(region: int = 0) -> "Any":
@@ -1178,10 +1483,6 @@ def mem_backup(region: int = 0) -> "Any":
     if region < 0 or region >= len(_REGION_VIEWS):
         raise ValueError("invalid region")
     return _REGION_VIEWS[region]
-
-
-def reset_cause() -> int:
-    return reset_cause_value
 
 
 def power_on() -> None:
@@ -1195,21 +1496,43 @@ def power_on() -> None:
     chip_reset_value = _HAD_POR
 
 
-# Real machine.reset()/machine.bootloader() reset the MCU and never return at all - this fake records the call
-# and the cause rp2 then reports (watchdog_reboot(), so WDT_RESET), instead of ending the test process.
-reset_count = 0
-bootloader_count = 0
-
-
 def reset() -> None:
     global reset_count, reset_cause_value, watchdog_reason_value
     reset_count += 1
     reset_cause_value = WDT_RESET
     watchdog_reason_value = _REASON_FORCE  # CHIP_RESET is left as it was: a watchdog reset clears no HAD_* bit
+    raise SimulatedResetError("machine.reset() never returns")
 
 
-def bootloader() -> None:
-    global bootloader_count, reset_cause_value, watchdog_reason_value
-    bootloader_count += 1
-    reset_cause_value = WDT_RESET
-    watchdog_reason_value = _REASON_FORCE
+def reset_cause() -> int:
+    return reset_cause_value
+
+
+def reset_test_state() -> None:
+    # Every process-wide knob back to its default after each test (registered below), lists cleared in place so a
+    # reference product code holds stays valid; a real select.poll() over a UART fake fails the test it ran in.
+    global reset_count, bootloader_count
+    polled = UART.real_poll_queries
+    Timer.all_timers.clear()
+    Timer.raise_on_arm = False
+    Timer.raise_on_arm_exc = OSError
+    Timer.clock_ms = 0
+    RTC.raise_exc = None
+    RTC._seconds = _RTC_BOOT_SECONDS
+    UART.would_have_blocked_bytes = 0
+    UART.real_poll_queries = 0
+    UART._live.clear()
+    for channel in list(_DMA_CHANNELS.values()):
+        channel.close()  # each claimed rp2.DMA channel's finaliser, as a soft reset runs it (rp2_dma.c:637-673)
+    Pin.reset_registry()
+    I2C.reset_registry()
+    I2C.raise_on_construct = None
+    mem32.log.clear()
+    reset_count = 0
+    bootloader_count = 0
+    power_on()
+    if polled:
+        raise AssertionError(f"a real select.poll() queried a UART fake {polled} times")
+
+
+microtest.after_each(reset_test_state)

@@ -1,14 +1,18 @@
-"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared NotificationService/NeopixelDriver (matching sensortask-wozi.py's real single notify/pixel wiring).
+"""Cross-module integration: a real SCD30_Reader AND a real SGP40_Reader simultaneously feeding ONE shared NotificationService/NeopixelDriver (matching the generated build_system()'s single notification/pixel wiring).
 Fills the gap test_notification_scd30_integration.py/test_notification_sgp40_integration.py each leave (their own separate coordinator/pixel pair): proves both chains trigger correctly without cross-contaminating, and a hardware fault on one sensor stays isolated to its own error log."""
 
 import asyncio
+import errno
 import struct
 from collections import namedtuple
 
+from _async_harness import cancel_all, run
 from _error_codes import code
+from _fake_time import FakeTime, UTCValid
+from _fast_sleep import FastAsyncSleep
 from _tmp_scratch import TmpScratch
+from machine import I2C as FakeI2C
 
-import asy_base_classes
 from asy_base_classes import ValueRef
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
@@ -23,122 +27,14 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    from machine import I2C as FakeI2C  # the raw fake bus behind asy_i2c_driver.I2C, same alias every driver test uses
-    from typing_extensions import Self
-
     from asy_scd30_driver import SCDResults
     from asy_sgp40_driver import SGP40
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-class _FastAsyncSleep:
-    # Same technique as test_notification_sgp40_integration.py's own _FastAsyncSleep - SGP40's
-    # baseline-settle sequence below needs this regardless of which other sensor is also in play.
-    def __enter__(self) -> "Self":
-        self._real_sleep = asyncio.sleep
-
-        async def _fast(_seconds: float) -> None:
-            await self._real_sleep(0)
-
-        asyncio.sleep = _fast  # type: ignore[assignment]  # deliberate monkeypatch, not a real caller mismatch
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real_sleep
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage. `label`
 # (e.g. "scd30"/"sgp40") keeps this file's two-sensors-in-one-coordinator directories readable.
 _scratch = TmpScratch("notify_dual")
-
-
-def _tmp_cfg_dir(label: str) -> str:
-    return _scratch.dir(label)
-
-
-class _FakeTime:
-    def __init__(self, hour: int, minute: int) -> None:
-        self.hour = hour
-        self.minute = minute
-
-
-async def _local_time() -> _FakeTime:
-    return _FakeTime(12, 0)
-
-
-async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
-    for t in tasks:
-        t.cancel()
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
-
-
-# --- SCD30 side: register/data frame builders, verbatim from test_notification_scd30_integration.py ---
-
-
-def make_scd_reader() -> "tuple[SCD30_Reader, Any]":
-    # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot.
-    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
-    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir("scd"))
-    run(reader.setup())
-    return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c
-
-
-def crc8_byte(data: bytes) -> int:
-    added = run(CRC8().add(bytearray(data)))
-    assert added is not None
-    return added[-1]
-
-
-def register_frame(value: int) -> bytes:
-    payload = struct.pack(">H", value)
-    return payload + bytes([crc8_byte(payload)])
-
-
-def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
-    frame = bytearray()
-    for value in (co2, temperature, humidity):
-        raw = struct.pack(">f", value)
-        msw, lsw = raw[0:2], raw[2:4]
-        frame += msw + bytes([crc8_byte(msw)]) + lsw + bytes([crc8_byte(lsw)])
-    return bytes(frame)
-
-
-class _UTCValid:
-    # The NTP client's first clock set of the boot, as utc_now() sees it, undone on exit: a good
-    # direct read cycle then carries a real TS, as the read loop's own cycles do after the sync.
-    def __enter__(self) -> "_UTCValid":
-        asy_base_classes.set_utc_valid()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        asy_base_classes.set_utc_valid(valid=False)
-
-
-def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
-    # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
-    # instead of through the full irq/timer machinery, same convention as the sibling files.
-    with _UTCValid():
-        results, new_data = run(reader._read_scd())
-    run(reader._error_check(results))
-    run(reader._store_scd(results, new_data))
-    return results
-
-
-# --- SGP40 side: word/CRC builders, verbatim from test_notification_sgp40_integration.py ---
-
-_CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_driver.py's own
 
 
 def _crc8(data: bytes) -> int:
@@ -148,6 +44,85 @@ def _crc8(data: bytes) -> int:
         for _ in range(8):
             crc = ((crc << 1) ^ _CRC_POLY) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
     return crc
+
+
+def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SGP40":
+    fake_bus.read_queue.append(_word(raw))
+    with UTCValid():
+        data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
+    run(reader._error_check(data, condition=compensated and data[0] is None))  # the read loop's condition
+    run(reader._store_sgp(data))
+    return data
+
+
+# --- SCD30 side: register/data frame builders, verbatim from test_notification_scd30_integration.py ---
+
+
+async def _local_time() -> FakeTime:
+    return FakeTime(12, 0)
+
+
+def _make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
+    # ValueRef(source, field) references (SPECIFICATION.md Part C.14.2), the registration shape the generated
+    # build_system() emits.
+    pixel = NeopixelDriver(0)
+    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
+    pixel.neopixel_dt = 0.01
+
+    co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
+    voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
+    notify = NotificationService(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_tmp_cfg_dir("notify"))
+    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
+    run(notify.setup())
+    return pixel, notify
+
+
+def _make_scd_reader() -> "tuple[SCD30_Reader, FakeI2C]":
+    # The reader owns config_SCD30.cfg (its FRC settings): a scratch directory, set up as at boot, on a fresh bus 0.
+    FakeI2C.reset_id(0)
+    i2c = I2C(0, scl_pin=1, sda_pin=0, frequency=100000)
+    reader = SCD30_Reader(i2c, irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir("scd"))
+    run(reader.setup())
+    return reader, reader._scd._i2c_scd30.i2c_device.i2c._i2c  # type: ignore[return-value]  # the fake behind asy_i2c_driver.I2C
+
+
+def _make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
+    FakeI2C.reset_id(1)  # a fresh bus 1
+    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
+    comp = _FakeCompSource()
+    reader = SGP40_Reader(
+        i2c,
+        ValueRef(comp, "Temp"),
+        ValueRef(comp, "Hum"),
+        max_module_error=2,
+        cfg_path=_tmp_cfg_dir("sgp"),
+    )
+    run(reader.setup())
+    fake_bus = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c
+    assert fake_bus is not None  # type-narrowing only - I2C() always builds its raw bus
+    return reader, fake_bus
+
+
+def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
+    # See test_notification_sgp40_integration.py's own top-of-file comment for the calibration note
+    # this two-phase sequence relies on.
+    for _ in range(160):
+        data = _drive_sgp_cycle(reader, fake_bus, 30000)
+    assert data.VOC == 100
+    for _ in range(40):
+        data = _drive_sgp_cycle(reader, fake_bus, 5000)
+        if isinstance(data.VOC, int) and data.VOC > 350:
+            return data
+    raise AssertionError("VOC index never crossed the WarnVOC threshold - calibration assumption broken")
+
+
+# --- SGP40 side: word/CRC builders, verbatim from test_notification_sgp40_integration.py ---
+
+_CRC_POLY = 0x31  # SGP40 datasheet Table 7 - same polynomial as test_asy_sgp40_driver.py's own
+
+
+def _tmp_cfg_dir(label: str) -> str:
+    return _scratch.dir(label)
 
 
 def _word(value: int) -> bytes:
@@ -165,78 +140,55 @@ class _FakeCompSource:
     #
     # scd_reader's real reading is deliberately not used: _settle_and_spike() below needs 200 compensated
     # SGP40 cycles well before this test ever drives scd_reader for its own real measurement.
-    async def get_data(self) -> "Any":
+    async def get_data(self) -> "_CompReading":
         return _CompReading(25.0, 50.0)
 
 
-def make_sgp_reader() -> "tuple[SGP40_Reader, FakeI2C]":
-    i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
-    comp = _FakeCompSource()
-    reader = SGP40_Reader(
-        i2c,
-        ValueRef(comp, "Temp"),
-        ValueRef(comp, "Hum"),
-        max_module_error=2,
-        cfg_path=_tmp_cfg_dir("sgp"),
-    )
-    run(reader.setup())
-    fake_bus = reader._sgp._i2c_sgp40.i2c_device.i2c._i2c
-    assert fake_bus is not None  # type-narrowing only - I2C() always builds its raw bus
-    return reader, fake_bus
+def crc8_byte(data: bytes) -> int:
+    added = run(CRC8().add(bytearray(data)))
+    assert added is not None
+    return added[-1]
 
 
-def _drive_sgp_cycle(reader: SGP40_Reader, fake_bus: "FakeI2C", raw: int) -> "SGP40":
-    fake_bus.read_queue.append(_word(raw))
-    with _UTCValid():
-        data, compensated, _serialized = run(reader._read_sgp(None, serialize=False, deserialize=False))
-    run(reader._error_check(data, condition=compensated and data[0] is None))  # the read loop's condition
-    run(reader._store_sgp(data))
-    return data
+def data_frame(co2: float, temperature: float, humidity: float) -> bytes:
+    frame = bytearray()
+    for value in (co2, temperature, humidity):
+        raw = struct.pack(">f", value)
+        msw, lsw = raw[0:2], raw[2:4]
+        frame += msw + bytes([crc8_byte(msw)]) + lsw + bytes([crc8_byte(lsw)])
+    return bytes(frame)
 
 
-def _settle_and_spike(reader: SGP40_Reader, fake_bus: "FakeI2C") -> "SGP40":
-    # See test_notification_sgp40_integration.py's own top-of-file comment for the calibration note
-    # this two-phase sequence relies on.
-    for _ in range(160):
-        data = _drive_sgp_cycle(reader, fake_bus, 30000)
-    assert data.VOC == 100
-    for _ in range(40):
-        data = _drive_sgp_cycle(reader, fake_bus, 5000)
-        if isinstance(data.VOC, int) and data.VOC > 350:
-            return data
-    raise AssertionError("VOC index never crossed the WarnVOC threshold - calibration assumption broken")
+def drive_scd_cycle(reader: SCD30_Reader) -> "SCDResults":
+    # Exactly what _read_loop() itself does per cycle (see asy_scd30_driver.py) - driven directly
+    # instead of through the full irq/timer machinery, same convention as the sibling files.
+    with UTCValid():
+        results, new_data = run(reader._read_scd())
+    run(reader._error_check(results))
+    run(reader._store_scd(results, new_data))
+    return results
 
 
 # --- shared downstream stack: one NeopixelDriver, one NotificationService, both signals ---
 
 
-def make_dual_stack(scd_reader: SCD30_Reader, sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, NotificationService]":
-    # ValueRef(source, field) references (SPECIFICATION.md Part C.14.2), mirrors
-    # src/sensortask_wozi.py's own real registration shape.
-    pixel = NeopixelDriver(0)
-    pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = 0.01
-
-    co2_signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    voc_signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
-    notify = NotificationService(pixel.request_signal, _local_time, (co2_signal, voc_signal), cfg_path=_tmp_cfg_dir("notify"))
-    run(pixel.setup())  # the boot batch's setup() for both, before any task starts
-    run(notify.setup())
-    return pixel, notify
+def register_frame(value: int) -> bytes:
+    payload = struct.pack(">H", value)
+    return payload + bytes([crc8_byte(payload)])
 
 
 def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_without_cross_contamination() -> None:
-    scd_reader, scd_i2c = make_scd_reader()
+    scd_reader, scd_i2c = _make_scd_reader()
     scd_i2c.read_queue.append(register_frame(1))
     scd_i2c.read_queue.append(data_frame(2000.0, 22.0, 45.0))  # CO2 above the 1600 default threshold
 
-    with _FastAsyncSleep():
-        sgp_reader, sgp_i2c = make_sgp_reader()
+    with FastAsyncSleep():
+        sgp_reader, sgp_i2c = _make_sgp_reader()
         elevated = _settle_and_spike(sgp_reader, sgp_i2c)
     assert elevated.VOC is not None and elevated.VOC > 350
 
     drive_scd_cycle(scd_reader)
-    pixel, notify = make_dual_stack(scd_reader, sgp_reader)
+    pixel, notify = _make_dual_stack(scd_reader, sgp_reader)
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -245,7 +197,7 @@ def test_both_sensors_crossing_threshold_together_trigger_their_own_signal_witho
         # simultaneously, depending on NeopixelDriver's own arbitration (unit-tested elsewhere,
         # not re-derived here) - generous margin covers either ordering.
         await asyncio.sleep(2.6)
-        await _cancel_all(tasks)
+        await cancel_all(tasks)
 
     run(scenario())
     writes = [w[0] for w in pixel._pixel.writes]
@@ -268,23 +220,23 @@ def test_one_sensor_i2c_fault_stays_isolated_and_the_healthy_sibling_still_trigg
     #
     # That matches Part C.7's "each driver owns its own error log" separation, now proven across two real
     # sensors sharing one downstream coordinator rather than one sensor in isolation.
-    scd_reader, scd_i2c = make_scd_reader()
-    scd_i2c.inject_fault("writeto", OSError(5, "simulated bus fault"))
+    scd_reader, scd_i2c = _make_scd_reader()
+    scd_i2c.inject_fault("writeto", OSError, errno.EIO, "simulated bus fault")
 
-    with _FastAsyncSleep():
-        sgp_reader, sgp_i2c = make_sgp_reader()
+    with FastAsyncSleep():
+        sgp_reader, sgp_i2c = _make_sgp_reader()
         elevated = _settle_and_spike(sgp_reader, sgp_i2c)
     assert elevated.VOC is not None and elevated.VOC > 350
 
     faulted = drive_scd_cycle(scd_reader)  # the bus fault happens inside here
     assert faulted[0] is None  # (co2, temp, hum, ts) - a no-op store, get_co2 will return None
-    pixel, notify = make_dual_stack(scd_reader, sgp_reader)
+    pixel, notify = _make_dual_stack(scd_reader, sgp_reader)
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = [s() for s in pixel.get_task_starters()] + [s() for s in notify.get_task_starters()]
         await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
-        await _cancel_all(tasks)
+        await cancel_all(tasks)
 
     run(scenario())
     writes = [w[0] for w in pixel._pixel.writes]

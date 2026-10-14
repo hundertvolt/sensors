@@ -7,36 +7,28 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 
 from _isl29125_chip import Isl29125Chip
 from _twin_common import Walk
+from _twin_random import FixedRandom
 
-_ADDR_ID = 0x00
-_ADDR_CONFIG1 = 0x01
-_ADDR_CONFIG2 = 0x02
-_ADDR_CONFIG3 = 0x03
-_ADDR_THRESH = 0x04
-_ADDR_STATUS = 0x08
-_ADDR_DATA = 0x09
+# The chip's own register map and bit values, each cited to the ISL29125 datasheet (FN8424 Rev.3.00): what the
+# twin must answer, an independent fact rather than a copy of the driver's constants.
+_ADDR_ID = 0x00  # p.9 Table 1
+_ADDR_CONFIG1 = 0x01  # p.9 Table 1
+_ADDR_CONFIG2 = 0x02  # p.9 Table 1
+_ADDR_CONFIG3 = 0x03  # p.9 Table 1
+_ADDR_THRESH = 0x04  # p.9 Table 1
+_ADDR_STATUS = 0x08  # p.9 Table 1
+_ADDR_DATA = 0x09  # p.9 Table 1
 
-_MODE_RGB = 0x05
-_RNG_HIGH = 0x08
-_BITS_12 = 0x10
-_INTSEL_GREEN = 0x01
+_MODE_RGB = 0x05  # GREEN/RED/BLUE, p.10 Table 4
+_RNG_HIGH = 0x08  # B3, 10,000 lux, p.10 Table 5
+_BITS_12 = 0x10  # B4, 12 bits, p.10 Table 6
+_INTSEL_GREEN = 0x01  # p.11 Table 11
 
-_STATUS_RGBTHF = 0x01
-_STATUS_CONVENF = 0x02
-_STATUS_BOUTF = 0x04
-_STATUS_RGBCF_MASK = 0x30
-_DEVICE_ID = 0x7D
-
-
-class _FixedRandom:
-    # Every value walk in this file is driven explicitly through set_illumination(), so the only
-    # uniform() call that ever happens is the one in __init__ - scripted to one fixed value so
-    # nothing in these tests depends on the host's own RNG.
-    def __init__(self, value: float = 100.0) -> None:
-        self._value = value
-
-    def uniform(self, a: float, b: float) -> float:
-        return self._value
+_STATUS_RGBTHF = 0x01  # B0, p.12 Table 15
+_STATUS_CONVENF = 0x02  # B1, p.12 Table 15
+_STATUS_BOUTF = 0x04  # B2, p.12 Table 15
+_STATUS_RGBCF_MASK = 0x30  # B5:B4, p.12 Table 15
+_DEVICE_ID = 0x7D  # p.9 Table 2
 
 
 class _RecordingPin:
@@ -53,8 +45,8 @@ class _RecordingPin:
         self.edges.append(level)
 
 
-def make_chip(**kwargs: object) -> Isl29125Chip:
-    kwargs.setdefault("random_source", _FixedRandom())
+def _make_chip(**kwargs: object) -> Isl29125Chip:
+    kwargs.setdefault("random_source", FixedRandom(value=100.0))  # every draw answers 100.0: nothing here reads the host RNG
     kwargs.setdefault("auto_refresh", False)
     return Isl29125Chip(**kwargs)  # type: ignore[arg-type]
 
@@ -78,12 +70,12 @@ def read_counts(chip: Isl29125Chip) -> "tuple[int, int, int]":
 
 
 def test_device_id_reads_the_datasheet_value() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     assert chip.handle_readfrom_mem(_ADDR_ID, 1) == bytes([0x7D])
 
 
 def test_power_on_config_is_all_zero() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x00, 0x00, 0x00])
 
 
@@ -91,18 +83,18 @@ def test_brownout_flag_is_high_at_power_on() -> None:
     # Table 18 p12: BOUTF defaults HIGH, so a freshly constructed chip really is in the
     # post-brownout state - a twin test expecting readings before the driver configures it is
     # asserting the wrong thing.
-    chip = make_chip()
+    chip = _make_chip()
     assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
 def test_thresholds_default_to_the_documented_values() -> None:
     # Table 14 p12: low threshold 0x0000, high threshold 0xFFFF.
-    chip = make_chip()
+    chip = _make_chip()
     assert chip.handle_readfrom_mem(_ADDR_THRESH, 4) == bytes([0x00, 0x00, 0xFF, 0xFF])
 
 
 def test_no_conversion_happens_in_the_power_down_mode() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     chip.set_illumination(200.0)
     assert read_counts(chip) == (0, 0, 0)
 
@@ -113,7 +105,7 @@ def test_no_conversion_happens_in_the_power_down_mode() -> None:
 
 
 def test_reset_command_restores_every_default() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB | _RNG_HIGH, 0x28, 0x09)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
     chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))  # clear BOUTF
@@ -130,13 +122,13 @@ def test_the_status_read_clears_the_brownout_flag_too() -> None:
     # Measured 2026-09-13 on a just-powered board: 0x08 read 0x04, a second read 0x00, with only
     # that read in between. This CONTRADICTS p12 ("should be reset to LOW by an I2C write
     # command") - the write works too, it is simply not the only thing that clears it.
-    chip = make_chip()
+    chip = _make_chip()
     assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF  # power-on default
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
 def test_a_supply_brownout_raises_the_flag_the_reset_command_does_not() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))  # clear the power-on BOUTF
     chip.handle_writeto_mem(_ADDR_ID, bytes([0x46]))
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
@@ -145,7 +137,7 @@ def test_a_supply_brownout_raises_the_flag_the_reset_command_does_not() -> None:
 
 
 def test_a_non_reset_write_to_the_id_register_is_ignored() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     chip.handle_writeto_mem(_ADDR_ID, bytes([0x12]))
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 1) == bytes([_MODE_RGB])
@@ -157,7 +149,7 @@ def test_a_non_reset_write_to_the_id_register_is_ignored() -> None:
 
 
 def test_a_three_byte_burst_from_0x01_writes_all_three_config_registers() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, 0x15, 0x28, 0x09)
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x15, 0x28, 0x09])
 
@@ -165,20 +157,20 @@ def test_a_three_byte_burst_from_0x01_writes_all_three_config_registers() -> Non
 def test_a_two_byte_burst_from_0x02_leaves_config1_untouched() -> None:
     # The driver writes from 0x02 for an IR-compensation-only change precisely so the conversion
     # is not restarted - this asserts the fake honours the auto-incrementing address pointer.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, 0x15, 0x28, 0x09)
     chip.handle_writeto_mem(_ADDR_CONFIG2, bytes([0x3F, 0x05]))
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x15, 0x3F, 0x05])
 
 
 def test_threshold_burst_is_little_endian_low_pair_then_high_pair() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
     assert chip.handle_readfrom_mem(_ADDR_THRESH, 4) == bytes([0x34, 0x12, 0xCD, 0xAB])
 
 
 def test_writing_the_status_register_clears_the_brownout_flag() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
@@ -189,7 +181,7 @@ def test_writing_the_status_register_clears_the_brownout_flag() -> None:
 
 
 def test_counts_scale_linearly_with_illumination_on_the_low_range() -> None:
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)  # RNG = 0 -> 375 lux full scale
     chip.set_illumination(187.5)
     green, red, blue = read_counts(chip)
@@ -198,8 +190,8 @@ def test_counts_scale_linearly_with_illumination_on_the_low_range() -> None:
 
 
 def test_the_lux_walk_passed_at_construction_bounds_every_walked_reading() -> None:
-    # _FixedRandom answers 100.0 to every draw: the step overshoots, so the walk's own hi clamps it.
-    chip = make_chip(lux=Walk(50.0, 80.0, 10.0), dark_counts=0)
+    # FixedRandom answers 100.0 to every draw: the step overshoots, so the walk's own hi clamps it.
+    chip = _make_chip(lux=Walk(50.0, 80.0, 10.0), dark_counts=0)
     configure(chip, _MODE_RGB)
     chip._produce_new_reading()
     assert chip._lux == 80.0
@@ -208,7 +200,7 @@ def test_the_lux_walk_passed_at_construction_bounds_every_walked_reading() -> No
 def test_the_high_range_uses_the_per_instance_ratio_not_the_nominal_one() -> None:
     # This is the whole point of the non-nominal ratio: the same light read on the high range
     # does NOT come back at lux/10000 of full scale, so the driver has a real error to learn.
-    chip = make_chip(dark_counts=0, gain_ratio=25.9)
+    chip = _make_chip(dark_counts=0, gain_ratio=25.9)
     configure(chip, _MODE_RGB | _RNG_HIGH)
     chip.set_illumination(1000.0)
     green, _red, _blue = read_counts(chip)
@@ -221,7 +213,7 @@ def test_the_high_range_uses_the_per_instance_ratio_not_the_nominal_one() -> Non
 def test_the_low_range_carries_the_dark_count_and_the_high_range_does_not() -> None:
     # DDark is specified at range 0 (p3), and that is the only place an additive offset is
     # material - 1 count is 0.006 lux there and 0.15 lux on the high range.
-    chip = make_chip(dark_counts=1)
+    chip = _make_chip(dark_counts=1)
     configure(chip, _MODE_RGB)
     chip.set_illumination(0.0)
     assert read_counts(chip) == (1, 1, 1)
@@ -231,7 +223,7 @@ def test_the_low_range_carries_the_dark_count_and_the_high_range_does_not() -> N
 
 
 def test_twelve_bit_mode_truncates_to_the_twelve_bit_full_scale() -> None:
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB | _BITS_12)
     chip.set_illumination(187.5)
     green, _red, _blue = read_counts(chip)
@@ -241,7 +233,7 @@ def test_twelve_bit_mode_truncates_to_the_twelve_bit_full_scale() -> None:
 def test_clipping_reads_the_resolutions_own_maximum_not_65535() -> None:
     # Load-bearing: the driver tests saturation against (1 << bits) - 1 on the RAW counts, so a
     # fake that saturated at 65535 regardless of BITS would make the 12-bit half of that vacuous.
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(10000.0)  # far past the 375 lux range
     assert read_counts(chip) == (65535, 65535, 65535)
@@ -252,7 +244,7 @@ def test_clipping_reads_the_resolutions_own_maximum_not_65535() -> None:
 
 def test_a_tint_can_clip_one_channel_while_green_stays_mid_scale() -> None:
     # The scene the auto-range peak rule exists for, and the one a scalar-lux fake cannot make.
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(200.0, tint=(3.0, 0.4, 0.3))
     green, red, blue = read_counts(chip)
@@ -262,7 +254,7 @@ def test_a_tint_can_clip_one_channel_while_green_stays_mid_scale() -> None:
 
 
 def test_data_registers_are_green_red_blue_in_that_order() -> None:
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(100.0, tint=(0.5, 1.0, 0.25))
     green, red, blue = read_counts(chip)
@@ -273,7 +265,7 @@ def test_a_config1_write_leaves_the_previous_cycles_data_in_place() -> None:
     # Table 7 p10: with SYNC = 0 the ADC restarts on an I2C write to 0x01, and the registers are
     # double buffered - so what is readable until the next cycle completes is the PREVIOUS sample,
     # on the old gain. The settle wait discards that window, so the fake must present it.
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(187.5)
     before = read_counts(chip)
@@ -288,7 +280,7 @@ def test_a_config1_write_leaves_the_previous_cycles_data_in_place() -> None:
 
 def test_reading_the_status_register_clears_the_interrupt_flag_and_releases_the_pin() -> None:
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))  # high threshold 4096
     chip.set_illumination(187.5)  # ~32768 counts, well above it
@@ -301,7 +293,7 @@ def test_reading_the_status_register_clears_the_interrupt_flag_and_releases_the_
 
 def test_no_interrupt_is_raised_when_intsel_is_disarmed() -> None:
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, 0x00)  # INTSEL = 00, "No Interrupt"
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
     chip.set_illumination(187.5)
@@ -313,7 +305,7 @@ def test_persistence_delays_the_interrupt_by_the_configured_cycle_count() -> Non
     # PRST = 10 -> 4 integration cycles (Table 12 p11), one per RGB cycle since INTSEL selects a
     # single channel that converts once per cycle.
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # PRST[1:0] = 10
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
     for _ in range(3):
@@ -325,7 +317,7 @@ def test_persistence_delays_the_interrupt_by_the_configured_cycle_count() -> Non
 
 def test_persistence_restarts_when_the_reading_comes_back_inside_the_window() -> None:
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # 4 cycles
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
     for _ in range(3):
@@ -341,7 +333,7 @@ def test_a_status_read_that_finds_the_flag_clear_leaves_the_persistence_counter_
     # CLEARED, not on every status read. The driver reads 0x08 once per sample, so a read that reset
     # the count would knock it back before it ever reached PRST - a permanently dead fast path.
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # PRST[1:0] = 10 -> 4 cycles
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
     for _ in range(3):
@@ -357,7 +349,7 @@ def test_the_clearing_status_read_is_what_restarts_the_persistence_counter() -> 
     # needs another full PRST cycles before it asserts again - it does not re-raise on the very
     # next conversion just because the light is still outside the window.
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
     for _ in range(4):
@@ -376,7 +368,7 @@ def test_the_int_stuck_high_fault_suppresses_the_edge_while_data_keeps_moving() 
     # Requirement 17's failure mode, and the only thing in this package that can produce it: the
     # bus keeps working, the flag still sets, and the line simply never moves.
     pin = _RecordingPin()
-    chip = make_chip(int_pin=pin, dark_counts=0)
+    chip = _make_chip(int_pin=pin, dark_counts=0)
     chip.configure_fault("isl29125:int_stuck_high")
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x10]))
@@ -387,7 +379,7 @@ def test_the_int_stuck_high_fault_suppresses_the_edge_while_data_keeps_moving() 
 
 
 def test_configure_fault_rejects_an_unknown_mode() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     try:
         chip.configure_fault("isl29125:nonsense")
     except ValueError:
@@ -396,7 +388,7 @@ def test_configure_fault_rejects_an_unknown_mode() -> None:
 
 
 def test_the_conversion_flag_field_rotates_across_the_three_channels() -> None:
-    chip = make_chip(dark_counts=0)
+    chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     seen = set()
     for _ in range(6):
@@ -411,7 +403,7 @@ def test_the_conversion_flag_field_rotates_across_the_three_channels() -> None:
 
 
 def test_injected_bus_faults_surface_on_the_matching_operation_only() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     chip.fault.inject_fault("readfrom_mem", OSError(5, "injected"))
     try:
         chip.handle_readfrom_mem(_ADDR_ID, 1)
@@ -424,7 +416,7 @@ def test_injected_bus_faults_surface_on_the_matching_operation_only() -> None:
 
 
 def test_cycle_time_follows_the_configured_resolution() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     assert chip.cycle_ms() == 303  # 3 x tINT, tINT = 101ms at 16 bits (p3)
     configure(chip, _MODE_RGB | _BITS_12)
@@ -439,7 +431,7 @@ def test_cycle_time_follows_the_configured_resolution() -> None:
 def test_the_address_pointer_walks_the_whole_map_in_one_burst() -> None:
     # Real silicon: a 16-byte read from 0x00 returns id, CONFIG1-3, both thresholds, the status
     # byte and all six data bytes - one flat pointer, not one block per register group.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB, 0x28, 0x00)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
     chip.set_illumination(200.0)
@@ -452,14 +444,14 @@ def test_the_address_pointer_walks_the_whole_map_in_one_burst() -> None:
 
 
 def test_a_burst_starting_mid_map_keeps_walking_across_the_block_boundary() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB, 0x28, 0x00)
     chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x34, 0x12, 0xCD, 0xAB]))
     assert chip.handle_readfrom_mem(_ADDR_CONFIG2, 6) == bytes([0x28, 0x00, 0x34, 0x12, 0xCD, 0xAB])
 
 
 def test_a_read_past_the_last_register_pads_with_zeros_rather_than_rolling_over() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     chip.set_illumination(200.0)
     tail = chip.handle_readfrom_mem(0x0D, 8)
@@ -468,13 +460,13 @@ def test_a_read_past_the_last_register_pads_with_zeros_rather_than_rolling_over(
 
 def test_reserved_config_bits_read_back_zero_rather_than_what_was_written() -> None:
     # Measured: 0xFF into each config register reads back 3f / bf / 1f.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, 0xFF, 0xFF, 0xFF)
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == bytes([0x3F, 0xBF, 0x1F])
 
 
 def test_convenf_is_set_by_a_completed_conversion_and_cleared_by_the_status_read() -> None:
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     chip.set_illumination(200.0)  # drives one conversion to completion
     assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_CONVENF
@@ -485,7 +477,7 @@ def test_convenf_is_set_by_a_completed_conversion_and_cleared_by_the_status_read
 
 def test_the_status_read_leaves_the_rgbcf_field_alone() -> None:
     # RGBTHF and CONVENF are read-to-clear; the channel-under-conversion field is not.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     chip.set_illumination(200.0)
     first = chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0]
@@ -494,7 +486,7 @@ def test_the_status_read_leaves_the_rgbcf_field_alone() -> None:
 
 def test_powering_down_stops_the_conversion_fields_but_keeps_the_data() -> None:
     # Real silicon reads a flat 0x00 here: no conversion in progress, none completed.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB)
     chip.set_illumination(200.0)
     held = read_counts(chip)
@@ -506,7 +498,7 @@ def test_powering_down_stops_the_conversion_fields_but_keeps_the_data() -> None:
 def test_a_zero_length_write_is_ignored_rather_than_indexing_into_nothing() -> None:
     # I2CDevice.setup()'s ACK probe writes zero bytes, and a register write can legitimately carry
     # no payload. Reaching for data[0] here would turn the probe into an IndexError on every boot.
-    chip = make_chip()
+    chip = _make_chip()
     configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN)
     before = chip.handle_readfrom_mem(_ADDR_CONFIG1, 3)
     chip.handle_writeto_mem(_ADDR_CONFIG1, b"")

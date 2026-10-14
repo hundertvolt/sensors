@@ -2,12 +2,8 @@
 parse_cmd_request()/handle_set_cmd() driven against mocked Microdot request data (fine/partial/garbage), then against a real ext/microdot.py (v2.7.0) Microdot app wired the same way src/asy_webserver_service.py's real registration-based routes are.
 """
 # Covers a real WifiService for the setter path, a real NTPClient for both getter and setter, a real
-# BMP3XX_Reader/SGP40_Reader for the schema-driven sensor setters, and a real SCD30_Reader whose config
-# store is the chip itself.
-#
-# Only test-local Microdot apps are constructed here, independent of src/asy_webserver_service.py: any of
-# its wiring that must be exercised is reimplemented locally, never imported, to keep this file's scope
-# self-contained.
+# BMP3XX_Reader/SGP40_Reader for the schema-driven sensor setters on test-local routes, and a real SCD30_Reader
+# through a real WebserverService's own PUT /sensors route.
 
 import asyncio
 import errno as errno_mod
@@ -23,9 +19,14 @@ from collections import namedtuple
 sys.path.insert(0, "ext")
 
 # microdot is typed via the vendored upstream stub (ext/typings/microdot/).
+from _async_harness import run
 from _error_codes import code
+from _fast_sleep import FastAsyncSleep
+from _src_const import src_const
+from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
-from microdot import Microdot, Request
+from machine import I2C as _MachineI2C
+from microdot import Microdot, Request, Response
 
 import asy_api_response as ar
 import asy_wifi_service
@@ -36,6 +37,7 @@ from asy_i2c_driver import I2C
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
+from asy_webserver_service import RouteSources, ServingLimits, WebserverService
 from asy_wifi_service import WifiConfig, WifiService
 
 try:
@@ -44,19 +46,13 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
 
     import asy_config_manager as cm
-    from asy_base_classes import AsyncCallback, JsonValue, SensorReaderConfig
+    from asy_base_classes import AsyncCallback, JsonDict, JsonValue, SensorReaderConfig
 
-    T = TypeVar("T")
     # (module, its fields, post_fct, post_asy_fct): one settings group, the shape buildgen/codegen.py emits.
     Group = tuple[SensorReaderConfig, tuple[str, ...], Callable[[], None] | None, AsyncCallback | None]
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
@@ -68,13 +64,13 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
-def make_wifi_client() -> WifiService:
+def _make_wifi_client() -> WifiService:
     client = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=_tmp_cfg_dir())
     run(client.setup())
     return client
 
 
-def make_ntp_client() -> NTPClient:
+def _make_ntp_client() -> NTPClient:
     def network_available_locked() -> bool:
         return True
 
@@ -163,7 +159,7 @@ async def _simulated_set_wifi_led_endpoint(client: WifiService, request: "ar._Re
 
 
 def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "supersecret", "Country": "US"})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"
@@ -176,7 +172,7 @@ def test_mocked_request_fine_data_applies_and_reports_ok() -> None:
 
 
 def test_mocked_request_partially_fine_data_reports_mixed_per_field_results() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest(
         {"cmd": "setNetwork", "Hostname": "NewHost", "SSID": "MyNet", "PW": "short", "Country": "United States"},
     )
@@ -189,7 +185,7 @@ def test_mocked_request_partially_fine_data_reports_mixed_per_field_results() ->
 
 
 def test_mocked_request_garbage_body_is_rejected_before_dispatch() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest([1, 2, 3])  # valid JSON, wrong shape entirely
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
@@ -197,7 +193,7 @@ def test_mocked_request_garbage_body_is_rejected_before_dispatch() -> None:
 
 
 def test_mocked_request_unparseable_body_is_rejected_before_dispatch() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest(None, raise_instead=True)
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["code"] == 1
@@ -205,14 +201,14 @@ def test_mocked_request_unparseable_body_is_rejected_before_dispatch() -> None:
 
 
 def test_mocked_request_missing_cmd_field_is_rejected_before_dispatch() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"Hostname": "NewHost"})  # no "cmd" key at all
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp == {"res": "ERR", "code": 2, "descr": "Command specifier missing", "result": {}}
 
 
 def test_mocked_request_unrecognized_cmd_is_rejected_before_dispatch() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "bogusCommand", "Hostname": "NewHost"})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp == {"res": "ERR", "code": 3, "descr": "Invalid command", "result": {}}
@@ -221,7 +217,7 @@ def test_mocked_request_unrecognized_cmd_is_rejected_before_dispatch() -> None:
 def test_mocked_request_unknown_field_key_reported_individually_not_whole_request() -> None:
     # (owner, 2026-09-26): an unrecognized field key (as opposed to an unrecognized *command*)
     # is just another per-field "Invalid" outcome, not a whole-request rejection.
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "Hostname": "NewHost", "Bogus": 1})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"
@@ -230,7 +226,7 @@ def test_mocked_request_unknown_field_key_reported_individually_not_whole_reques
 
 
 def test_mocked_request_hotspot_password_applies_in_the_identity_group_and_reconnects() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "HotspotPW": "newpass123"})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"
@@ -241,7 +237,7 @@ def test_mocked_request_hotspot_password_applies_in_the_identity_group_and_recon
 
 
 def test_mocked_request_hotspot_password_outside_8_to_63_characters_is_refused() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "HotspotPW": "short"})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["result"] == {"HotspotPW": "Invalid"}
@@ -250,7 +246,7 @@ def test_mocked_request_hotspot_password_outside_8_to_63_characters_is_refused()
 
 
 def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork"})  # no fields at all beyond "cmd"
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp == {"res": "OK", "code": 0, "descr": "Network settings updated", "result": {}}
@@ -268,7 +264,7 @@ def test_mocked_request_empty_body_dict_is_valid_but_changes_nothing() -> None:
 
 
 def test_mocked_set_network_rejects_led_wifi_on_and_does_not_reconnect() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "LEDWifiOn": False})  # not setNetwork's field
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["res"] == "OK"
@@ -277,7 +273,7 @@ def test_mocked_set_network_rejects_led_wifi_on_and_does_not_reconnect() -> None
 
 
 def test_mocked_set_network_hostname_change_still_reconnects_alongside_rejected_led_field() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setNetwork", "Hostname": "NewHost", "LEDWifiOn": False})
     resp = run(_simulated_set_network_endpoint(client, req))
     assert resp["result"] == {"Hostname": "Valid", "LEDWifiOn": "Invalid"}
@@ -285,7 +281,7 @@ def test_mocked_set_network_hostname_change_still_reconnects_alongside_rejected_
 
 
 def test_mocked_set_wifi_led_rejects_ssid_and_leaves_it_untouched() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setWiFiLED", "SSID": "Hacked"})  # not setWiFiLED's field
     resp = run(_simulated_set_wifi_led_endpoint(client, req))
     assert resp["res"] == "OK"
@@ -294,7 +290,7 @@ def test_mocked_set_wifi_led_rejects_ssid_and_leaves_it_untouched() -> None:
 
 
 def test_mocked_set_wifi_led_applies_its_own_field_without_reconnecting() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     req = _FakeRequest({"cmd": "setWiFiLED", "LEDWifiOn": False})
     resp = run(_simulated_set_wifi_led_endpoint(client, req))
     assert resp["result"] == {"LEDWifiOn": "Valid"}
@@ -330,7 +326,7 @@ def test_an_identity_change_lands_the_unit_in_the_fresh_boot_state() -> None:
 
     seeking = _wifi_const("_PHASE_STA_SEEKING")
     for phase in (_wifi_const("_PHASE_HOTSPOT"), _wifi_const("_PHASE_STA_ESTABLISHED")):
-        client = make_wifi_client()
+        client = _make_wifi_client()
         client._select_wifi_mode = select  # type: ignore[method-assign]  # the mode switch is not under test
         client._conn_phase, client._hotspot_started_once = phase, True
         resp = run(_simulated_set_network_endpoint(client, _FakeRequest({"cmd": "setNetwork", "SSID": "NewNet", "PW": "newpassword"})))
@@ -343,7 +339,7 @@ def test_an_identity_change_lands_the_unit_in_the_fresh_boot_state() -> None:
             asy_wifi_service.asyncio = asyncio
         assert (client._connection_failures, client._hotspot_started_once, client._conn_phase) == (0, False, seeking), phase
         assert (client._reconn_wifi, client._reconnect_fresh) == (False, False), phase
-    led_only = make_wifi_client()
+    led_only = _make_wifi_client()
     run(_simulated_set_wifi_led_endpoint(led_only, _FakeRequest({"cmd": "setWiFiLED", "LEDWifiOn": False})))
     assert (led_only._reconn_wifi, led_only._reconnect_fresh) == (False, False)
 
@@ -351,12 +347,12 @@ def test_an_identity_change_lands_the_unit_in_the_fresh_boot_state() -> None:
 def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:
     # Reuses the module's own _wifi_app() helper (defined further below, alongside the other real-
     # Microdot setter tests) - already wires /net/cmd to _simulated_set_network_endpoint.
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "PUT", "/net/cmd", {"cmd": "setNetwork", "LEDWifiOn": True})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["result"] == {"LEDWifiOn": "Invalid"}
     assert client._reconn_wifi is False
 
@@ -371,10 +367,17 @@ def test_real_microdot_set_network_rejects_led_field_end_to_end() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_request(app: Microdot, method: str, path: str, json_body: "dict[str, Any] | None") -> Request:
+def _make_request(app: Microdot, method: str, path: str, json_body: "JsonDict | None") -> Request:
     body = b"" if json_body is None else json.dumps(json_body).encode()
     headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
     return Request(app, ("127.0.0.1", 12345), method, path, "1.1", headers, body=body)
+
+
+def _json(res: Response) -> "JsonDict":
+    # The response body, strict-parsed (tests/_strict_json.py): a duplicate key or a non-object body fails here.
+    body = strict_loads(res.body)
+    assert isinstance(body, dict), body
+    return body
 
 
 def _wifi_app(client: WifiService) -> Microdot:
@@ -388,14 +391,14 @@ def _wifi_app(client: WifiService) -> Microdot:
 
 
 def test_real_microdot_setter_end_to_end_valid_request() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(
         app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "SSID": "RealNet", "PW": "supersecret", "Country": "US"},
     )
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"Hostname": "Valid", "SSID": "Valid", "PW": "Valid", "Country": "Valid"}
     assert client._reconn_wifi is True
@@ -403,31 +406,31 @@ def test_real_microdot_setter_end_to_end_valid_request() -> None:
 
 
 def test_real_microdot_setter_end_to_end_partial_failure_still_200() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "PUT", "/net/cmd", {"cmd": "setNetwork", "Hostname": "RealHost", "PW": "short"})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # overall HTTP success even with a per-field failure
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"Hostname": "Valid", "PW": "Invalid"}
 
 
 def test_real_microdot_setter_end_to_end_garbage_body() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "PUT", "/net/cmd", {"cmd": "setNetwork"})
     req._body = b"{not valid json"  # type: ignore[attr-defined]  # force a real malformed body past Request's own parsing; the upstream stub omits _body - removal trigger: SPECIFICATION.md B.15
     req.content_length = len(req._body)  # type: ignore[attr-defined]  # the upstream stub omits Request's private _body - removal trigger: SPECIFICATION.md B.15
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # our own precise 200+ERR-envelope reply, not Microdot's bare 500
-    body = json.loads(res.body)
+    body = _json(res)
     assert body == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
 
 
 def test_real_microdot_returns_404_for_an_unregistered_route() -> None:
     # Confirms real Microdot routing (find_route()), not just our own handler logic.
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "GET", "/no/such/route", None)
     res = run(app.dispatch_request(req))
@@ -435,7 +438,7 @@ def test_real_microdot_returns_404_for_an_unregistered_route() -> None:
 
 
 def test_real_microdot_wrong_method_returns_405() -> None:
-    client = make_wifi_client()
+    client = _make_wifi_client()
     app = _wifi_app(client)
     req = _make_request(app, "GET", "/net/cmd", None)  # only PUT is registered
     res = run(app.dispatch_request(req))
@@ -473,10 +476,8 @@ def _nak_i2c_address(i2c: I2C, address: int) -> None:
     # Same real-fake-I2C access as test_asy_bmp3xx_driver.py's fake() helper - i2c._i2c is typed I2C-or-None
     # (only None before setup()), so this narrows it the way fake()'s own return annotation does, rather
     # than an inline type: ignore, which mypy would flag as "union-attr" and is easy to get subtly wrong.
-    from machine import I2C as _FakeI2C
-
     real_i2c = i2c._i2c
-    assert isinstance(real_i2c, _FakeI2C)
+    assert isinstance(real_i2c, _MachineI2C)
     real_i2c.nak_addresses.add(address)
 
 
@@ -484,10 +485,8 @@ def _fault_i2c_write(i2c: I2C, exc: Exception) -> None:
     # Narrower than _nak_i2c_address above: fails only the write half of a read-modify-write register
     # access (the next writeto with a stop - a read's address write has none), leaving reads and so a
     # registered _get_callbacks getter functional. Same i2c._i2c narrowing as _nak_i2c_address.
-    from machine import I2C as _FakeI2C
-
     real_i2c = i2c._i2c
-    assert isinstance(real_i2c, _FakeI2C)
+    assert isinstance(real_i2c, _MachineI2C)
     real_writeto = real_i2c.writeto
 
     def fail_the_next_register_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
@@ -530,7 +529,7 @@ def test_real_microdot_setter_end_to_end_i2c_bus_fault_surfaces_as_failed_not_50
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setBMP", "PresOvers": 8})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200  # our own precise envelope, not a raised exception or bare 500
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
     assert body["result"] == {"PresOvers": "Failed"}
     # asy_base_classes.py's failed-push recovery chain corrects the persisted value back rather than leaving it
@@ -558,7 +557,7 @@ def test_real_microdot_setter_end_to_end_write_only_fault_recovers_via_live_gett
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setBMP", "PresOvers": 8})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"PresOvers": "Failed"}
     # Recovered via the live getter (2, the sensor's real state) - neither the requested-but-failed
@@ -576,19 +575,19 @@ def _ntp_getter_app(client: NTPClient) -> Microdot:
     app = Microdot()
 
     @app.get("/time/config")
-    async def timing_config(_request: Request) -> "dict[str, dict[str, Any]]":  # Microdot passes it positionally
+    async def timing_config(_request: Request) -> "dict[str, dict[str, cm.CfgValue]]":  # Microdot passes it positionally
         return await client.get_dict_cfg()
 
     return app
 
 
 def test_real_microdot_getter_end_to_end_returns_schema_defaults() -> None:
-    client = make_ntp_client()
+    client = _make_ntp_client()
     app = _ntp_getter_app(client)
     req = _make_request(app, "GET", "/time/config", None)
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body == {
         "NTP": {
             "NTPHost": "pool.ntp.org",
@@ -602,13 +601,13 @@ def test_real_microdot_getter_end_to_end_returns_schema_defaults() -> None:
 
 
 def test_real_microdot_getter_end_to_end_reflects_a_prior_write() -> None:
-    client = make_ntp_client()
+    client = _make_ntp_client()
     app = _ntp_getter_app(client)
     run(client._set_dict_cfg({"NTPHost": "time.example.org"}, client.get_cfg_schema()))
     req = _make_request(app, "GET", "/time/config", None)
     res = run(app.dispatch_request(req))
-    body = json.loads(res.body)
-    assert body["NTP"]["NTPHost"] == "time.example.org"
+    ntp = _json(res)["NTP"]
+    assert isinstance(ntp, dict) and ntp["NTPHost"] == "time.example.org", ntp
 
 
 # ---------------------------------------------------------------------------
@@ -639,13 +638,13 @@ def _ntp_setter_app(client: NTPClient) -> Microdot:
 
 
 def test_real_microdot_ntp_setter_end_to_end_persists_and_forces_a_resync() -> None:
-    client = make_ntp_client()
+    client = _make_ntp_client()
     client._ntp_retries = 3  # a failing-sync streak in progress; ntp_force_sync() clears it to 0
     app = _ntp_setter_app(client)
     req = _make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "NTPHost": "time.example.org", "GMTOffset": 7200})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"NTPHost": "Valid", "GMTOffset": "Valid"}
     # Actually persisted, not just reported valid - the half of the docstring's "full setter
@@ -656,34 +655,34 @@ def test_real_microdot_ntp_setter_end_to_end_persists_and_forces_a_resync() -> N
 
 
 def test_real_microdot_dns_fallback_put_persists_without_forcing_a_resync() -> None:
-    client = make_ntp_client()
+    client = _make_ntp_client()
     client._ntp_retries = 3  # ntp_force_sync() would clear it to 0
     app = _ntp_setter_app(client)
     req = _make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": "9.9.9.9,1.1.1.1"})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert _json(res)["result"] == {"DNSFallback": "Valid"}
     assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": "9.9.9.9,1.1.1.1"}
     assert client._ntp_retries == 3  # its own group has no hook: the next attempt reads the list
 
 
 def test_real_microdot_dns_fallback_put_can_empty_the_list() -> None:
-    client = make_ntp_client()
+    client = _make_ntp_client()
     run(client._set_dict_cfg({"DNSFallback": "9.9.9.9"}, client.get_cfg_schema()))
     app = _ntp_setter_app(client)
     res = run(app.dispatch_request(_make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": ""})))
-    assert json.loads(res.body)["result"] == {"DNSFallback": "Valid"}
+    assert _json(res)["result"] == {"DNSFallback": "Valid"}
     assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}  # emptied over the API
 
 
 def test_real_microdot_malformed_dns_fallback_is_refused_and_logged() -> None:
     for value in ("8.8.8.8,", "a.b.c.d", "1.2.3.4,5.6.7.8,9.9.9.9,1.1.1.1", "8.8.8.8 ,1.1.1.1", "256.1.1.1"):
-        client = make_ntp_client()
+        client = _make_ntp_client()
         run(client.pr.setup())
         app = _ntp_setter_app(client)
         res = run(app.dispatch_request(_make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "DNSFallback": value})))
         assert res.status_code == 200
-        assert json.loads(res.body)["result"] == {"DNSFallback": "Invalid"}, value
+        assert _json(res)["result"] == {"DNSFallback": "Invalid"}, value
         assert run(client.cfgmgr.get_dict(["DNSFallback"])) == {"DNSFallback": ""}, value  # nothing stored
         nums = run(client.get_error_counter())["NTP"]["ErrNum"]
         assert isinstance(nums, list) and nums[-1] == code("E", "BAD_ARG"), value
@@ -692,13 +691,13 @@ def test_real_microdot_malformed_dns_fallback_is_refused_and_logged() -> None:
 def test_real_microdot_ntp_setter_end_to_end_out_of_range_field_is_rejected_per_field() -> None:
     # Per-field detail, whole-request still OK/200 - and, since nothing was actually applied, the
     # post_asy_fct resync hook must not fire either (handle_set_cmd only runs it on a real change).
-    client = make_ntp_client()
+    client = _make_ntp_client()
     client._ntp_retries = 3
     app = _ntp_setter_app(client)
     req = _make_request(app, "PUT", "/time/cmd", {"cmd": "setTiming", "GMTOffset": 99999})  # max is 43200
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"GMTOffset": "Invalid"}
     assert run(client.cfgmgr.get_dict(["GMTOffset"])) == {"GMTOffset": 3600}  # untouched default
@@ -719,13 +718,13 @@ class _FakeCompSource:
     # Structural stand-in for temperature_source/humidity_source (SPECIFICATION.md Part C.14,
     # SPECIFICATION.md Part L.6.3) - only get_data() is exercised, matching
     # test_asy_sgp40_driver.py's own identical fixture.
-    async def get_data(self) -> "Any":
+    async def get_data(self) -> object:
         return _SgpComp(25.0, 50.0)
 
 
-def make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
-    # Same construction as test_asy_sgp40_driver.py's own make_reader()/test_notification_sgp40_
-    # integration.py's make_sgp_reader(): a real SGP40_Reader over the real asy_i2c_driver.py I2C
+def _make_sgp_reader() -> "tuple[SGP40_Reader, I2C]":
+    # Same construction as test_asy_sgp40_driver.py's own reader builder and test_notification_sgp40_
+    # integration.py's: a real SGP40_Reader over the real asy_i2c_driver.py I2C
     # wrapper, mocked only at tests/machine.py's raw-bus boundary.
     i2c = I2C(1, scl_pin=19, sda_pin=18, frequency=50000)
     comp = _FakeCompSource()
@@ -764,12 +763,12 @@ def _sgp_app(reader: SGP40_Reader) -> Microdot:
 
 
 def test_real_microdot_sgp40_setter_end_to_end_reset_voc_round_trips() -> None:
-    reader, _i2c = make_sgp_reader()
+    reader, _i2c = _make_sgp_reader()
     app = _sgp_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSGP", "ResetVOC": True, "BackupPeriod": 5})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body == {"res": "OK", "code": 0, "descr": "Command executed", "result": {"ResetVOC": "Valid", "BackupPeriod": "Valid"}}
     assert reader._reset_pending is True  # the command-only field's push callback really fired
     # The ordinary field alongside it persisted; the trigger field never enters cfgmgr's storage at
@@ -786,13 +785,13 @@ def test_real_microdot_sgp40_setter_end_to_end_i2c_bus_fault_still_succeeds_and_
     # No I2C transaction happens anywhere in the request path, so a genuinely dead bus - the same fault that
     # makes BMP3xx report "Failed" - must still produce a plain 200/"Valid", and certainly never a raise or
     # a bare Microdot 500.
-    reader, i2c = make_sgp_reader()
+    reader, i2c = _make_sgp_reader()
     _nak_i2c_address(i2c, 0x59)  # SGP40's own address stops acking, like a dead/disconnected sensor
     app = _sgp_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSGP", "ResetVOC": True})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"
     assert body["result"] == {"ResetVOC": "Valid"}
     assert reader._reset_pending is True  # armed for _read_loop(), which is where the bus fault will surface
@@ -809,13 +808,13 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
     #
     # The fault only surfaces later, as a logged errno - never back through this response, and never as a
     # raise or a bare Microdot 500.
-    reader, _i2c = make_sgp_reader()
+    reader, _i2c = _make_sgp_reader()
     _break_cfg_file(reader.cfgmgr._config_file)
     app = _sgp_app(reader)
     req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSGP", "BackupPeriod": 5, "ResetVOC": True})
     res = run(app.dispatch_request(req))
     assert res.status_code == 200
-    body = json.loads(res.body)
+    body = _json(res)
     assert body["res"] == "OK"  # the request itself was validly processed and dispatched
     assert body["result"] == {"BackupPeriod": "Valid", "ResetVOC": "Valid"}
     assert reader._reset_pending is True  # pushed live regardless of the still-pending, doomed flash write
@@ -827,37 +826,47 @@ def test_real_microdot_sgp40_setter_end_to_end_write_fault_surfaces_as_failed_no
 
 
 # ---------------------------------------------------------------------------
-# Real Microdot end to end for SCD30, whose config store is composite: the route hands the body to the real
-# SCD30_Reader._set_dict_cfg(), which compares its six chip keys against a chip snapshot and writes only what
-# changed, in a fixed order, and keeps its three FRC keys in its config file (six register replies queued per snapshot).
+# SCD30 through the product's own PUT /sensors route: a real SCD30_Reader registered in a real WebserverService on
+# the vendored Microdot. Its config store is composite: _set_dict_cfg() compares its six chip keys against a chip
+# snapshot and writes only what changed, in a fixed order, and keeps its three FRC keys in its config file.
 # ---------------------------------------------------------------------------
 
-
-async def _simulated_set_scd_endpoint(reader: SCD30_Reader, request: "ar._RequestLike") -> "ar.ResponseEnvelope":
-    data, err = ar.parse_cmd_request(request, ["setSCD"])
-    if err is not None:
-        return err
-    assert data is not None
-    fields = {k: v for k, v in data.items() if k != "cmd"}
-    return ar.make_response(0, result=await reader._set_dict_cfg(fields, reader.get_cfg_schema()))
-
-
-def _scd_app(reader: SCD30_Reader) -> Microdot:
-    app = Microdot()
-
-    @app.put("/sensors/cmd")
-    async def sensor_cmd(request: "ar._RequestLike") -> "ar.ResponseEnvelope":
-        return await _simulated_set_scd_endpoint(reader, request)
-
-    return app
+# The product schema, read from source (tests/_src_const.py); src_const() answers object, so each is annotated.
+_VAL_TEMP_OFFSET: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_TEMP_OFFSET")  # type: ignore[assignment]
+_VAL_MEAS_INTERVAL: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_MEAS_INTERVAL")  # type: ignore[assignment]
+_VAL_AMB_PRES: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_AMB_PRES")  # type: ignore[assignment]
+_VAL_ALTITUDE: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_ALTITUDE")  # type: ignore[assignment]
+_VAL_FORCE_CAL_REF: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_FORCE_CAL_REF")  # type: ignore[assignment]
+_VAL_SELF_CAL: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_SELF_CAL")  # type: ignore[assignment]
+_VAL_FRC_NOISE: "cm.ConfigSchema" = src_const("src/asy_scd30_driver.py", "_VAL_FRC_NOISE")  # type: ignore[assignment]
 
 
-def make_scd_reader() -> SCD30_Reader:
-    # Same construction as test_asy_scd30_driver.py's own make_reader(): a real SCD30_Reader over the real
-    # asy_i2c_driver.py I2C wrapper and tests/machine.py's fake bus/Pin, its config file in a scratch directory.
+async def _uptime_s() -> int:  # the webserver's drop window clock; no connection is served here
+    return 0
+
+
+def _make_scd_reader() -> SCD30_Reader:
+    # Same construction as test_asy_scd30_driver.py's reader builder: a real SCD30_Reader over the real asy_i2c_driver.py
+    # I2C wrapper and tests/machine.py's fake bus/Pin, on a power-cycled bus 0, its config file in a scratch directory.
+    _MachineI2C.reset_id(0)
     reader = SCD30_Reader(I2C(0, scl_pin=1, sda_pin=0, frequency=100000), irq_pin=5, trigger_s=3, max_module_error=5, cfg_path=_tmp_cfg_dir())
     run(reader.setup())
     return reader
+
+
+def _put_scd(reader: SCD30_Reader, fields: "JsonDict") -> "tuple[int, JsonValue]":
+    # One PUT /sensors {"SCD30": fields} through a real WebserverService holding the reader, as the generated
+    # build_system() registers a sensor; answers the HTTP status and the reader's per-field result.
+    app = Microdot()
+    routes = RouteSources([reader], None, None, None, None, None, None, (), [reader])
+    WebserverService(app, routes, ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80), uptime_s=_uptime_s)
+    with FastAsyncSleep():  # each snapshot register read's 50 ms response wait: real time the fake bus does not need
+        res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors", {reader.name: fields})))
+    body = _json(res)
+    assert body["res"] == "OK", body  # the request itself was validly processed and dispatched
+    result = body["result"]
+    assert isinstance(result, dict), body
+    return res.status_code, result[reader.name]
 
 
 def _queue_scd_snapshot(reader: SCD30_Reader) -> None:
@@ -875,41 +884,36 @@ def _queue_scd_snapshot(reader: SCD30_Reader) -> None:
 def _scd_writes(reader: SCD30_Reader) -> "list[bytes]":
     # The command frames that changed a setting (5-byte argument frames and the bare stop), in bus order;
     # the snapshot's own 2-byte register-address writes are left out.
-    from machine import I2C as _FakeI2C
-
     real_i2c = reader._scd._i2c_scd30.i2c_device.i2c._i2c
-    assert isinstance(real_i2c, _FakeI2C)
+    assert isinstance(real_i2c, _MachineI2C)
     return [entry[2] for entry in real_i2c.log if entry[0] == "writeto" and (len(entry[2]) == 5 or entry[2] == b"\x01\x04")]
 
 
-def _fault_next_i2c_write(reader: SCD30_Reader, exc: Exception) -> None:
+def _fault_next_i2c_write(reader: SCD30_Reader) -> None:
     # One-shot: fails only the *next* writeto() on this bus (tests/machine.py's inject_fault is a FIFO
     # of one exception per matching call, unlike _nak_i2c_address's permanent per-address NAK).
-    from machine import I2C as _FakeI2C
-
     real_i2c = reader._scd._i2c_scd30.i2c_device.i2c._i2c
-    assert isinstance(real_i2c, _FakeI2C)
-    real_i2c.inject_fault("writeto", exc)
+    assert isinstance(real_i2c, _MachineI2C)
+    real_i2c.inject_fault("writeto", OSError, errno_mod.EIO, "no ACK on write")
 
 
 def test_real_microdot_scd30_put_writes_each_field_through_the_real_driver() -> None:
-    # One request per field: "Valid" and that field's own command word on the bus (Interface Description 1.4).
+    # One request per product-schema field: "Valid" and that field's own command word on the bus (Interface
+    # Description 1.4); ContMeas has no stored value and no schema entry of its own (asy_scd30_driver.py).
     cases: tuple[tuple[str, cm.CfgValue, bytes], ...] = (
-        ("TempOffset", 4.5, b"\x54\x03"),
-        ("MeasInterval", 10, b"\x46\x00"),
-        ("AmbPres", 1013, b"\x00\x10"),
-        ("Altitude", 200, b"\x51\x02"),
-        ("ForceCalRef", 500, b"\x52\x04"),
-        ("SelfCal", True, b"\x53\x06"),
+        (_VAL_TEMP_OFFSET[0][0], 4.5, b"\x54\x03"),
+        (_VAL_MEAS_INTERVAL[0][0], 10, b"\x46\x00"),
+        (_VAL_AMB_PRES[0][0], 1013, b"\x00\x10"),
+        (_VAL_ALTITUDE[0][0], 200, b"\x51\x02"),
+        (_VAL_FORCE_CAL_REF[0][0], 500, b"\x52\x04"),
+        (_VAL_SELF_CAL[0][0], True, b"\x53\x06"),
         ("ContMeas", False, b"\x01\x04"),
     )
     for key, value, word in cases:
-        reader = make_scd_reader()
+        reader = _make_scd_reader()
         _queue_scd_snapshot(reader)
-        app = _scd_app(reader)
-        res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", key: value})))
-        assert res.status_code == 200
-        assert json.loads(res.body)["result"] == {key: "Valid"}, key
+        status, result = _put_scd(reader, {key: value})
+        assert (status, result) == (200, {key: "Valid"}), key
         writes = _scd_writes(reader)
         assert len(writes) == 1, key
         assert writes[0][:2] == word, key
@@ -917,25 +921,19 @@ def test_real_microdot_scd30_put_writes_each_field_through_the_real_driver() -> 
 
 def test_real_microdot_scd30_put_keeps_an_frc_setting_in_the_config_file() -> None:
     # The readiness settings are file-stored config: "Valid", no command on the bus, the value read back.
-    reader = make_scd_reader()
-    app = _scd_app(reader)
-    res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "FRCNoise": 30.0})))
-    assert res.status_code == 200
-    assert json.loads(res.body)["result"] == {"FRCNoise": "Valid"}
+    reader = _make_scd_reader()
+    key = _VAL_FRC_NOISE[0][0]
+    assert _put_scd(reader, {key: 30.0}) == (200, {key: "Valid"})
     assert _scd_writes(reader) == []
-    assert run(reader.cfgmgr.get_dict(["FRCNoise"])) == {"FRCNoise": 30.0}
+    assert run(reader.cfgmgr.get_dict([key])) == {key: 30.0}
 
 
 def test_real_microdot_scd30_put_applies_several_fields_in_the_fixed_order() -> None:
-    reader = make_scd_reader()
+    reader = _make_scd_reader()
     _queue_scd_snapshot(reader)
-    app = _scd_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "ForceCalRef": 500, "AmbPres": 1013, "MeasInterval": 10})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["res"] == "OK"
-    assert body["result"] == {"MeasInterval": "Valid", "AmbPres": "Valid", "ForceCalRef": "Valid"}
+    status, result = _put_scd(reader, {"ForceCalRef": 500, "AmbPres": 1013, "MeasInterval": 10})
+    assert status == 200
+    assert result == {"MeasInterval": "Valid", "AmbPres": "Valid", "ForceCalRef": "Valid"}
     # The real command frames reached the bus in the driver's fixed order, each carrying its own value;
     # the CRC byte is covered byte for byte against the Interface Description in test_asy_scd30_driver.py.
     writes = _scd_writes(reader)
@@ -948,24 +946,17 @@ def test_real_microdot_scd30_put_applies_several_fields_in_the_fixed_order() -> 
 def test_real_microdot_scd30_put_of_the_ambpres_bypass_value_is_sent() -> None:
     # AmbPres 0 is the documented "compensation off" special value: valid, and sent even though it
     # equals the stored 0 (the command also starts continuous measurement).
-    reader = make_scd_reader()
+    reader = _make_scd_reader()
     _queue_scd_snapshot(reader)
-    app = _scd_app(reader)
-    res = run(app.dispatch_request(_make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "AmbPres": 0})))
-    assert res.status_code == 200
-    assert json.loads(res.body)["result"] == {"AmbPres": "Valid"}
+    assert _put_scd(reader, {"AmbPres": 0}) == (200, {"AmbPres": "Valid"})
     assert _scd_writes(reader) == [b"\x00\x10\x00\x00\x81"]
 
 
 def test_real_microdot_scd30_put_out_of_range_field_never_reaches_the_bus() -> None:
-    reader = make_scd_reader()
+    reader = _make_scd_reader()
     _queue_scd_snapshot(reader)
-    app = _scd_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "MeasInterval": 1, "ForceCalRef": 500})  # MeasInterval min is 2
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["result"] == {"MeasInterval": "Invalid", "ForceCalRef": "Valid"}
+    status, result = _put_scd(reader, {"MeasInterval": 1, "ForceCalRef": 500})  # MeasInterval min is 2
+    assert (status, result) == (200, {"MeasInterval": "Invalid", "ForceCalRef": "Valid"})
     writes = _scd_writes(reader)
     assert len(writes) == 1  # only the valid field was ever sent
     assert writes[0][:4] == b"\x52\x04\x01\xf4"
@@ -975,20 +966,14 @@ def test_real_microdot_scd30_put_bus_fault_surfaces_as_failed_not_500() -> None:
     # A faulted chip write must surface as that field's own "Failed" inside a normal 200 envelope while
     # the other field still applies. The snapshot is stubbed so the one-shot fault lands on the first
     # write, MeasInterval (first in the fixed order), and leaves AmbPres' write untouched.
-    reader = make_scd_reader()
+    reader = _make_scd_reader()
 
     async def stored() -> "tuple[float, int, int, int, int, bool]":
         return 0.0, 2, 0, 0, 400, False
 
     reader._scd.get_config_snapshot = stored  # type: ignore[method-assign]
-    _fault_next_i2c_write(reader, OSError(errno_mod.EIO, "no ACK on write"))
-    app = _scd_app(reader)
-    req = _make_request(app, "PUT", "/sensors/cmd", {"cmd": "setSCD", "MeasInterval": 10, "AmbPres": 1013})
-    res = run(app.dispatch_request(req))
-    assert res.status_code == 200
-    body = json.loads(res.body)
-    assert body["res"] == "OK"  # the request itself was validly processed and dispatched
-    assert body["result"] == {"MeasInterval": "Failed", "AmbPres": "Valid"}
+    _fault_next_i2c_write(reader)
+    assert _put_scd(reader, {"MeasInterval": 10, "AmbPres": 1013}) == (200, {"MeasInterval": "Failed", "AmbPres": "Valid"})
     writes = _scd_writes(reader)
     assert len(writes) == 1  # the faulted write never made it into the bus log at all
     assert writes[0][:4] == b"\x00\x10\x03\xf5"

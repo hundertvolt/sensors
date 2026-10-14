@@ -6,7 +6,9 @@ Only tests/neopixel.py's fake write surface is mocked; overlay/arbitration, the 
 import asyncio
 import time
 
+from _async_harness import cancel_all, run
 from _error_codes import code
+from _fake_time import FakeTime, Rp2Gmtime
 from _tmp_scratch import TmpScratch
 
 import asy_base_classes
@@ -24,10 +26,8 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine
-    from typing import Protocol, TypeVar
-
-    T = TypeVar("T")
+    from collections.abc import Awaitable, Callable
+    from typing import Protocol
 
     class _HourMinute(Protocol):
         # The local-time callback's answer as the service reads it (its own _LocalTime): read-only hour and minute.
@@ -37,18 +37,8 @@ if TYPE_CHECKING:
         def minute(self) -> int: ...
 
 
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-class _FakeTime:
-    def __init__(self, hour: int, minute: int) -> None:
-        self.hour = hour
-        self.minute = minute
-
-
-async def _local_time() -> _FakeTime:
-    return _FakeTime(12, 0)
+async def _local_time() -> FakeTime:
+    return FakeTime(12, 0)
 
 
 class _FakeSource:
@@ -67,19 +57,23 @@ class _FakeSource:
 _scratch = TmpScratch("notify_neopixel")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
+def _co2_signal(value: int = 2000) -> NotificationSignal:
+    return NotificationSignal("WarnCO2", ValueRef(_FakeSource("WarnCO2", value), "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
 
 
 _FREQ_HZ = 100
 _FRAME_S = 1.0 / _FREQ_HZ  # the pixel's frame period, also the pace of every condition poll below
 
 
-def make_pair(
+def _lit_frames(pixel: NeopixelDriver) -> "list[tuple[int, ...]]":
+    return [w[0] for w in pixel._pixel.writes if w[0] != (0, 0, 0)]
+
+
+def _make_pair(
     signals: "tuple[NotificationSignal, ...]", local_time: "Callable[[], Awaitable[_HourMinute | None]]" = _local_time,
 ) -> "tuple[NeopixelDriver, NotificationService]":
     # freq=100 keeps ramps fast in real wall-clock time (same reasoning as
-    # tests/test_asy_neopixel_driver.py's own make_driver()).
+    # tests/test_asy_neopixel_driver.py's own _make_driver()).
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = _FREQ_HZ  # the driver's own fixed state, set from outside
     pixel.neopixel_dt = _FRAME_S
@@ -89,27 +83,9 @@ def make_pair(
     return pixel, notify
 
 
-def _co2_signal(value: int = 2000) -> NotificationSignal:
-    return NotificationSignal("WarnCO2", ValueRef(_FakeSource("WarnCO2", value), "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-
-
 # A hang guard only: every condition below holds once a ramp of at most a second has played.
 # @tunable l1.notification_neopixel_wait_until_timeout_ms = 10000
 _WAIT_UNTIL_TIMEOUT_MS = 10000
-
-
-async def _wait_until(predicate: "Callable[[], bool]") -> bool:
-    # Polls once per frame period; False once the guard runs out.
-    t0 = time.ticks_ms()
-    while not predicate():
-        if time.ticks_diff(time.ticks_ms(), t0) > _WAIT_UNTIL_TIMEOUT_MS:
-            return False
-        await asyncio.sleep(_FRAME_S)
-    return True
-
-
-def _lit_frames(pixel: NeopixelDriver) -> "list[tuple[int, ...]]":
-    return [w[0] for w in pixel._pixel.writes if w[0] != (0, 0, 0)]
 
 
 def _ramp_over(pixel: NeopixelDriver) -> bool:
@@ -124,25 +100,30 @@ async def _start_all(pixel: NeopixelDriver, notify: NotificationService) -> "lis
     return tasks
 
 
-async def _cancel_all(tasks: "list[asyncio.Task[None]]") -> None:
-    for t in tasks:
-        t.cancel()
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
+async def _wait_until(predicate: "Callable[[], bool]") -> bool:
+    # Polls once per frame period; False once the guard runs out.
+    t0 = time.ticks_ms()
+    while not predicate():
+        if time.ticks_diff(time.ticks_ms(), t0) > _WAIT_UNTIL_TIMEOUT_MS:
+            return False
+        await asyncio.sleep(_FRAME_S)
+    return True
 
 
 def test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color() -> None:
     source = _FakeSource("WarnCO2", 2000)  # above the 1600 default threshold
     signal = NotificationSignal("WarnCO2", ValueRef(source, "WarnCO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
-    pixel, notify = make_pair((signal,))
+    pixel, notify = _make_pair((signal,))
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = await _start_all(pixel, notify)
         await asyncio.sleep(1.3)  # one triggered cycle's real settle time (2*0.5=1.0s) + margin
-        await _cancel_all(tasks)
+        await cancel_all(tasks)
 
     run(scenario())
     writes = [w[0] for w in pixel._pixel.writes]
@@ -157,13 +138,13 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
     voc = NotificationSignal(
         "WarnVOC", ValueRef(_FakeSource("WarnVOC", 400), "WarnVOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0),
     )
-    pixel, notify = make_pair((co2, voc))
+    pixel, notify = _make_pair((co2, voc))
 
     async def scenario() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         tasks = await _start_all(pixel, notify)
         await asyncio.sleep(2.5)  # both triggered cycles' settle time (2*1.0s) + margin
-        await _cancel_all(tasks)
+        await cancel_all(tasks)
 
     run(scenario())
     writes = [w[0] for w in pixel._pixel.writes]
@@ -176,7 +157,7 @@ def test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ra
 
 
 def test_led_signal_during_a_notification_ramp_is_refused_at_once() -> None:
-    pixel, notify = make_pair((_co2_signal(),))
+    pixel, notify = _make_pair((_co2_signal(),))
 
     async def scenario() -> "tuple[bool, bool, bool]":
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
@@ -184,7 +165,7 @@ def test_led_signal_during_a_notification_ramp_is_refused_at_once() -> None:
         mid_ramp = await _wait_until(lambda: bool(_lit_frames(pixel)))
         result = pixel.led_signal(11, 22, 33, 0.1)  # the REST command, sync: refused or not with no await
         ended = await _wait_until(lambda: _ramp_over(pixel))
-        await _cancel_all(tasks)
+        await cancel_all(tasks)
         return mid_ramp, result, ended
 
     mid_ramp, result, ended = run(scenario())
@@ -201,20 +182,20 @@ class _LateTicks:
     def __init__(self) -> None:
         self._reads = 0
 
-    def ticks_ms(self) -> int:
-        self._reads += 1
-        return 0 if self._reads == 1 else 1 << 28
-
     def ticks_add(self, ticks: int, delta: int) -> int:
         return ticks + delta
 
     def ticks_diff(self, end: int, start: int) -> int:
         return end - start
 
+    def ticks_ms(self) -> int:
+        self._reads += 1
+        return 0 if self._reads == 1 else 1 << 28
+
 
 def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
     # The LED stays busy: a REST command is queued and no signal task ever plays it.
-    pixel, notify = make_pair((_co2_signal(),))
+    pixel, notify = _make_pair((_co2_signal(),))
     assert pixel.led_signal(0, 0, 50, 1.0) is True
     original = asy_neopixel_driver.time
     asy_neopixel_driver.time = _LateTicks()  # type: ignore[assignment]  # a stand-in for the module's time, not a caller mismatch
@@ -223,7 +204,7 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
         logged = await _wait_until(lambda: notify.pr._err_count >= 1)
-        await _cancel_all([task])
+        await cancel_all([task])
         return logged
 
     try:
@@ -237,19 +218,6 @@ def test_a_notification_dropped_by_a_busy_led_persists_one_warning() -> None:
     assert pixel._pixel.writes == []  # nothing played: the queued command waits for a signal task
 
 
-class _Rp2Gmtime:
-    # Stands in for the NTP client's `time`: rp2's gmtime() has 8 fields, this Unix port's 9 (see
-    # tests/test_asy_ntp_client.py's cettime() section), and cettime() checks for rp2's shape.
-    def gmtime(self, *secs: int) -> "tuple[int, ...]":
-        return tuple(time.gmtime(*secs))[:8]
-
-    def mktime(self, t: "tuple[int, ...]") -> int:
-        return time.mktime(t)
-
-    def time(self) -> int:
-        return time.time()
-
-
 def test_the_window_check_reads_a_real_ntp_clock() -> None:
     # The production local-time callback: a real NTP client's cettime(), marked synced by the test.
     ntp = NTPClient(asyncio.Lock(), lambda: True, lambda: None, NtpTiming(500, 1, 5000, 10, 600), cfg_path=_tmp_cfg_dir())
@@ -257,21 +225,21 @@ def test_the_window_check_reads_a_real_ntp_clock() -> None:
     run(ntp._set_synced(value=True))
 
     def window_cycle(on_min: int, off_min: int) -> "list[tuple[int, ...]]":
-        pixel, notify = make_pair((_co2_signal(),), local_time=ntp.cettime)
+        pixel, notify = _make_pair((_co2_signal(),), local_time=ntp.cettime)
         cfg: dict[str, int | float | str | bool | None] = {"OnH": on_min // 60, "OnM": on_min % 60, "OffH": off_min // 60, "OffM": off_min % 60, "FlashInterval": 3600.0, "FlashDur": 0.5}
 
         async def scenario() -> bool:
             await notify._set_dict_cfg(cfg, notify.get_cfg_schema())
             tasks = await _start_all(pixel, notify)
             done = await _wait_until(lambda: notify._datastruct[-1] is not None)  # TS, NOTIFY's last field: the cycle stored
-            await _cancel_all(tasks)
+            await cancel_all(tasks)
             return done
 
         assert run(scenario()) is True
         return _lit_frames(pixel)
 
     original = asy_ntp_client.time
-    asy_ntp_client.time = _Rp2Gmtime()  # type: ignore[assignment]  # a stand-in for the module's time, not a caller mismatch
+    asy_ntp_client.time = Rp2Gmtime()  # type: ignore[assignment]  # rp2's 8-field gmtime(), which cettime() checks for
     asy_base_classes.set_utc_valid()  # the clock the sync set: a stored cycle carries its TS
     try:
         now = run(ntp.cettime())
@@ -293,7 +261,7 @@ def test_a_service_on_the_default_sink_completes_a_cycle_silently() -> None:
         await notify._set_dict_cfg({"FlashInterval": 3600.0, "FlashDur": 0.5}, notify.get_cfg_schema())
         task = notify.start_asy_monitor()
         done = await _wait_until(lambda: notify._datastruct[-1] is not None)  # TS, NOTIFY's last field
-        await _cancel_all([task])
+        await cancel_all([task])
         return done
 
     asy_base_classes.set_utc_valid()  # the clock the first sync sets: a stored cycle carries its TS

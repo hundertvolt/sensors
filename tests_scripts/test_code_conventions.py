@@ -1,6 +1,6 @@
-"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15) over src/ and every device's
-generated modules: the asy_ module marker, _NAME equal to the measurement type, starter and task names, the errno=/wrnno=
-keyword, no print() or assert, config file names from one helper, D.15 member order and quoting only TYPE_CHECKING names."""
+"""The machine-checkable code conventions (SPECIFICATION.md C.2, C.9, C.14.1, D.6, D.15, E.2) over src/, every device's
+generated modules and the pytest suites: the asy_ marker, _NAME equal to the measurement type, starter and task names, the
+errno=/wrnno= keyword, no print() or assert, one config-name helper, D.15 order, quoted TYPE_CHECKING names, no Test class."""
 
 import ast
 import re
@@ -417,6 +417,23 @@ def test_d15_orders_dunders_private_public_then_role_then_name() -> None:
         "__init__", "__repr__", "_get_x", "_read_loop",
         "get_task_starters", "start_asy_read", "start_timer", "stop_timer", "get_level", "is_ready", "set_level", "reset", "setup",
     ]
+
+
+def suite_class_findings(path: str, tree: ast.Module) -> list[str]:
+    # pytest collects a class named Test*; the suites hold module-level tests with fixtures and parametrize instead.
+    return [f"{path}:{node.lineno}: class {node.name} - write its tests as module-level functions" for node in ast.walk(tree) if isinstance(node, ast.ClassDef) and node.name.startswith("Test")]
+
+
+def test_no_pytest_suite_groups_its_tests_in_a_class() -> None:
+    paths = sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "tests_scripts").rglob("*.py") if "__pycache__" not in p.parts)
+    assert "tests_scripts/test_code_conventions.py" in paths, "the scan no longer reads the pytest suites"
+    found = [line for path in paths for line in suite_class_findings(path, ast.parse((REPO_ROOT / path).read_text(encoding="utf-8")))]
+    assert not found, "\n".join(found)
+
+
+def test_a_planted_test_class_fails_and_a_helper_class_passes() -> None:
+    source = "class TestThing:\n    def test_a(self):\n        pass\n\n\nclass _Fake:\n    pass\n"
+    assert suite_class_findings("tests_scripts/test_x.py", ast.parse(source)) == ["tests_scripts/test_x.py:1: class TestThing - write its tests as module-level functions"]
 
 
 def test_an_import_time_definition_is_left_out_of_the_order() -> None:

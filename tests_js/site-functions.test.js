@@ -119,7 +119,6 @@ describe.each(DEVICE_IDS)("%s's site", (device) => {
         stop?.();
         uninstall?.();
         mainEl?.remove();
-        vi.restoreAllMocks();
     });
 
     it("shows one Measurements group and one writable Sensors group per sensor its TOML declares", () => {

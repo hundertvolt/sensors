@@ -1,6 +1,6 @@
 """Guard for SPECIFICATION.md Part I.6: the largest body any device's own schema can legitimately
 produce must still fit under `max_content_length`. Nothing else checks this, and every new driver
-grows it - dev's `/sensors` is 337 B larger than wozi's purely for carrying one more sensor."""
+grows it: one more sensor makes its device's `/sensors` body larger by that sensor's own settings."""
 
 # Derived, never hardcoded, on both sides: the cap is read out of src/ and the schema out of the
 # real buildgen model, so a cap change and a schema change are each caught by the same assertion.
@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
 
 from buildgen.definitions import definitions_for_toml
 
@@ -30,16 +31,18 @@ _MAX_JSON_NUMBER = len("-1.2345678901234567e+308")
 # calls the rest "flat settings endpoints", which take {field: value} directly.
 _NESTED_ROUTES = frozenset({"/sensors"})
 
-# The measured maximum per device, pinned so that growth is deliberate and visible rather than
-# silent. A new driver or a widened string bound SHOULD fail this - update it and read the margin.
+# The measured maximum per declared driver set (each device's [[instance]] drivers, sorted), pinned so
+# growth shows as a failure to read rather than passing silently. A new driver or a widened string bound SHOULD fail this.
 _EXPECTED_LARGEST = {
-    "arzi": 678,
-    "dev": 1080,
-    "grkizi": 678,
-    "klkizi": 678,
-    "schlafzi": 678,
-    "wozi": 743,
+    ("fram", "neopixel", "notification", "scd30", "sgp40"): 678,
+    ("bmp3xx", "fram", "neopixel", "notification", "scd30", "sgp40"): 743,
+    ("bmp3xx", "fram", "isl29125", "neopixel", "notification", "scd30", "sgp40", "uart_link", "uart_link"): 1080,
 }
+
+
+def _drivers(device: str) -> "tuple[str, ...]":
+    instances = tomllib.loads(device_toml(device).read_text(encoding="utf-8")).get("instance", [])
+    return tuple(sorted(str(i["driver"]) for i in instances))
 
 
 def _cap_from_src(repo_root: Path) -> int:
@@ -100,7 +103,7 @@ def _largest_put_body(section: "Mapping[str, JsonValue]") -> int:
 
 
 def _put_sections(repo_root: Path, device: str) -> "list[tuple[str, int]]":
-    definitions = json.loads(json.dumps(definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")))
+    definitions = json.loads(json.dumps(definitions_for_toml(device_toml(device), repo_root / "src")))
     sections = definitions["sections"]
     assert isinstance(sections, list)
     return [(s["rest"]["put"], _largest_put_body(s)) for s in sections if "put" in s.get("rest", {}) and _largest_put_body(s)]
@@ -126,17 +129,19 @@ def test_the_largest_legitimate_body_is_the_pinned_one(repo_root: Path, device: 
     # step is deliberate, the same way the persistence-write guard pins its own allowlists.
     largest = max(size for _route, size in _put_sections(repo_root, device))
     cap = _cap_from_src(repo_root)
-    assert largest == _EXPECTED_LARGEST[device], (
-        f"{device}'s largest schema-permitted PUT body moved from {_EXPECTED_LARGEST[device]} to {largest} B "
+    pinned = _EXPECTED_LARGEST.get(_drivers(device))
+    assert largest == pinned, (
+        f"{device}'s largest schema-permitted PUT body moved from {pinned} to {largest} B "
         f"against a {cap} B cap ({cap / largest:.2f}x headroom). Update _EXPECTED_LARGEST deliberately, "
         f"and check SPECIFICATION.md Part I.6's quoted figure with it."
     )
 
 
-def test_every_device_is_pinned(repo_root: Path) -> None:
-    # A seventh device would otherwise be generated, built and shipped while this guard silently
-    # never looked at it - the same failure _devices.py itself exists to prevent.
-    assert sorted(_EXPECTED_LARGEST) == sorted(DEVICE_NAMES), f"_EXPECTED_LARGEST does not cover exactly the real device set: {sorted(_EXPECTED_LARGEST)} vs {sorted(DEVICE_NAMES)}"
+def test_every_device_is_pinned() -> None:
+    # A seventh device's driver set would otherwise be generated, built and shipped while this guard
+    # silently never looked at it - the same failure _devices.py itself exists to prevent.
+    declared = {_drivers(d) for d in DEVICE_NAMES}
+    assert set(_EXPECTED_LARGEST) == declared, f"_EXPECTED_LARGEST does not cover exactly the real devices' driver sets: {sorted(_EXPECTED_LARGEST)} vs {sorted(declared)}"
 
 
 def test_an_oversized_field_is_actually_caught(repo_root: Path) -> None:

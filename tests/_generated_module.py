@@ -6,6 +6,9 @@ import json
 import os
 
 import machine
+from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
+from _generated_tree import require_fresh
+from _src_const import src_const
 
 from asy_config_manager import config_filename
 
@@ -19,20 +22,47 @@ if TYPE_CHECKING:
 
     from machine import WDT
 
+require_fresh()  # every caller loads a generated module, and this file reads its boot entry
+
 # RFC 5737 TEST-NET-1: a literal address routed nowhere, so no sync attempt resolves a name or leaves the host;
 # no fallback server either. The product's own flat config-file format, two keys of the NTP store.
 _OFFLINE_NTP_CONFIG = {"NTPHost": "192.0.2.1", "DNSFallback": ""}
 _WATCHDOG_LINE = "watchdog = WDT(timeout="
 
+_BLANK = bytes(4096)
 
-def _src_str_const(path: str, name: str) -> str:
-    # A shipped string const()'s value, read from its source: a const() is not a module attribute on MicroPython.
-    with open(path) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                value: str = json.loads(line.split("const(", 1)[1].split(")", 1)[0])
-                return value
-    raise AssertionError(name + " not found in " + path)
+
+class _FakeMB85RS2MTA(FakeMB85RS2MTA):
+    # The 256 KB part as a device wires it: a subclass, since build_system() offers no post-construction hook.
+    # One array for every build of the process, blank at each construction: a fresh 256 KB array needs one free
+    # run that long, which a long scenario's survivors left nowhere on the settrace binary (12 MemoryErrors).
+    _array: "bytearray | None" = None
+    _holder: "_FakeMB85RS2MTA | None" = None
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.SIZE = 0  # shadows the class value while the base constructor runs, so it allocates no array
+        super().__init__(*args, **kwargs)
+        del self.SIZE
+        cls = _FakeMB85RS2MTA
+        if cls._array is None:
+            cls._array = bytearray(self.SIZE)
+        for start in range(0, self.SIZE, len(_BLANK)):
+            cls._array[start : start + len(_BLANK)] = _BLANK
+        if cls._holder is not None:
+            cls._holder.memory = None  # type: ignore[assignment]  # an earlier build's chip fails loudly, never writes this one
+        cls._holder = self
+        self.size = self.SIZE
+        self.memory = cls._array
+        self._addr_width = 3  # the 3-byte address of a part above 64 KB (DS501-00032 p.9)
+
+
+# Same "keyed by the real chip's own max_size" table digital_twin/machine.py's _FRAM_RDID_BY_MAX_SIZE
+# uses, for the identical reason - derived from each device's own real FRAM. A third real size needs
+# one new entry here, the same narrow addition twin_wiring.py's own table would need.
+_FRAM_FAKE_BY_MAX_SIZE: "dict[int, type[FakeMB85RS64V]]" = {
+    0x2000: FakeMB85RS64V,
+    0x40000: _FakeMB85RS2MTA,
+}
 
 
 def _watchdog_timeout_ms(module: "ModuleType", device: str) -> int:
@@ -67,9 +97,19 @@ async def boot_generated(module: "ModuleType", device: str, *, offline_ntp: bool
     return module, watchdog
 
 
+def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
+    # The device's FRAM fake, by its plan's one SPI attachment (unpacking fails loudly on any other count): here, beside
+    # the boot, so the heap probe (tests/_boot_contiguity_probe.py) boots without the scenario library's import-time state.
+    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
+        (spi_attachment,) = json.load(f)["spi"].values()
+    return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
+
+
 def write_offline_ntp_config(cfg_dir: str) -> None:
     # Only when absent: a file a test planted, or an earlier boot of the same directory wrote, stays as it is.
-    path = config_filename(cfg_dir, _src_str_const("src/asy_ntp_client.py", "_NAME"))
+    name = src_const("src/asy_ntp_client.py", "_NAME")
+    assert isinstance(name, str), name
+    path = config_filename(cfg_dir, name)
     try:
         os.stat(path)
     except OSError:

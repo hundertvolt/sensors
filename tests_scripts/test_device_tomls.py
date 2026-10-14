@@ -8,6 +8,7 @@ import re
 import tokenize
 from pathlib import Path
 
+import _devices
 import pytest
 import tomllib
 from _devices import DEVICE_NAMES
@@ -139,6 +140,17 @@ def test_the_fram_part_is_named_above_its_size(devices_dir: Path, repo_root: Pat
         assert lines[n - 1].startswith(f"# {parts[size]},"), f"{device}:{n + 1}: the line above max_size = {size:#x} does not name {parts[size]}"
     instances = tomllib.loads("\n".join(lines)).get("instance", [])
     assert len(sizes) == sum(1 for inst in instances if isinstance(inst, dict) and inst.get("driver") == "fram"), device
+
+
+def test_devices_with_selects_by_each_tomls_own_instances(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The property query host tests select a device through: each device with at least one instance of the
+    # driver, in DEVICE_NAMES' order; a driver no TOML declares selects none.
+    (tmp_path / "a.toml").write_text('[[instance]]\ndriver = "scd30"\n', encoding="utf-8")
+    (tmp_path / "b.toml").write_text('[device]\nname = "b"\n', encoding="utf-8")
+    (tmp_path / "c.toml").write_text('[[instance]]\ndriver = "fram"\n\n[[instance]]\ndriver = "scd30"\n\n[[instance]]\ndriver = "scd30"\n', encoding="utf-8")
+    monkeypatch.setattr(_devices, "DEVICES_DIR", tmp_path)
+    monkeypatch.setattr(_devices, "DEVICE_NAMES", ["a", "b", "c"])
+    assert (_devices.devices_with("scd30"), _devices.devices_with("fram"), _devices.devices_with("bmp3xx")) == (["a", "c"], ["c"], [])
 
 
 def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_root: Path) -> None:

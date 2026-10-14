@@ -2,6 +2,7 @@
 test_timer_fires_for_real_on_a_short_period is the one genuine (bounded, generous-timeout) wall-clock exception."""
 
 import asyncio
+import errno
 import sys
 
 try:
@@ -11,10 +12,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections import deque
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
+    from typing import TypeVar
 
-    T = TypeVar("T")
+    A = TypeVar("A")
 
 # digital_twin/ must precede tests/ here specifically so `machine` resolves to the twin's own fake rather
 # than tests/machine.py's, both files being named `machine`. See test_digital_twin_sgp40.py for why this is
@@ -22,6 +23,12 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")
 
 import machine
+from _async_harness import run
+from _crc8 import crc8, word
+from _fault_injection import FaultInjector
+from _machine_contract import ALL_CHECKS, FAULT_CHECKS
+from _tmp_scratch import TmpScratch
+from _twin_random import FixedRandom
 from machine import (
     I2C,
     RTC,
@@ -72,8 +79,61 @@ _FIRE_POLL_MS = 20
 _FIRE_POLL_TRIES = 100
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
+_scratch = TmpScratch("dtmachine")
+# The shared contract's checks this twin still fails, each with the twin change that closes it; the list only shrinks.
+_TWIN_PENDING = (
+    ("check_inject_fault_fifo", "the injector raises one exception object for every queued time, not a fresh one"),
+    ("check_pin_defaults", "Pin keeps -1 sentinels where rp2 defaults to None, so a None mode overwrites the mode"),
+    ("check_pin_pull_semantics", "Pin leaves the pull unset by an omitted or None pull, where rp2 clears it"),
+    ("check_reset_never_returns", "the reset errors are Exceptions, so an `except Exception` swallows them"),
+)
+
+
+def _contract_failure(check: "Callable[[A], None]", backend: "A") -> "str | None":
+    # One check inside one harness run: a WDT or chip timer it starts is cancelled with the run.
+    async def body() -> "str | None":
+        try:
+            check(backend)
+        except Exception as exc:  # the check's failure is the answer here, every kind of it
+            return f"{type(exc).__name__}: {exc}"
+        return None
+
+    return run(body())
+
+
+def _inside_one_run(test: "Callable[[], None]") -> "Callable[[], None]":
+    # The twin's WDT and its chips' timers start asyncio tasks when built: the body runs inside one harness call,
+    # which cancels every task it created, so no test leaves one parked on the scheduler.
+    async def body() -> None:
+        test()
+
+    def wrapper() -> None:
+        run(body())
+
+    return wrapper
+
+
+def _twin_injector() -> "tuple[Callable[[int], None], Callable[[], object], Callable[[], int]]":
+    # The shared fault check's backend: a chip's FaultInjector, which every twin chip fake builds its faults on.
+    injector = FaultInjector()
+
+    def inject(times: int) -> None:
+        injector.inject_fault("readinto", OSError(errno.EIO, "planted"), times)
+
+    return inject, lambda: injector.maybe_raise("readinto"), lambda: injector.pending("readinto")
+
+
+def test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks() -> None:
+    pending = {name for name, _why in _TWIN_PENDING}
+    Pin.reset_registry()
+    try:
+        failures = {check.__name__: _contract_failure(check, machine) for check in ALL_CHECKS}
+        failures.update({check.__name__: _contract_failure(check, _twin_injector) for check in FAULT_CHECKS})
+    finally:
+        Pin.reset_registry()
+    assert pending <= set(failures), f"a pending entry names no registered check: {sorted(pending - set(failures))}"
+    failing = {name for name, why in failures.items() if why is not None}
+    assert failing == pending, f"failing {sorted(failing)}, pending {sorted(pending)}: {failures}"
 
 
 def test_pin_shares_identity_by_id_matching_real_hardware() -> None:
@@ -132,6 +192,7 @@ def test_pin_irq_fires_on_simulate_edge_rising() -> None:
     assert fired == [1]
 
 
+@_inside_one_run
 def test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else() -> None:
     Pin.reset_registry()  # isolate from other tests that also touch pin 8 (SCD30's own RDY pin)
     i2c = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
@@ -143,25 +204,14 @@ def test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else() -> None:
         pass
 
 
+@_inside_one_run
 def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
     # Mirrors configure_fram_state_path()'s own module-level-hook shape: must not affect a chip
     # already wired before the call, only chips wired by a *later* I2C() construction.
     Pin.reset_registry()
     try:
 
-        # a/b/k keep their names (and stay unused): configure_random_source() takes machine.py's
-        # own _RandomSource Protocol, which mypy matches structurally by parameter name.
-        class _FixedRandom:
-            def uniform(self, a: float, b: float) -> float:
-                return a
-
-            def randint(self, a: int, b: int) -> int:
-                return a
-
-            def getrandbits(self, k: int) -> int:
-                return 0
-
-        machine.configure_random_source(_FixedRandom())
+        machine.configure_random_source(FixedRandom())  # unscripted: uniform(a, b) answers a
         machine.configure_i2c_wiring("wozi")  # a new board: I2C(0) wires its chips after the hook is set
         i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
         scd30 = i2c0.devices[0x61]
@@ -194,6 +244,7 @@ def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() 
     assert reply[0] in (0x50, 0x60)
 
 
+@_inside_one_run
 def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
     # dev is the only variant that carries this sensor (requirement 18) - wozi's own branch, the
     # default asserted above, must stay two devices.
@@ -210,6 +261,7 @@ def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
         Pin.reset_registry()
 
 
+@_inside_one_run
 def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs() -> None:
     # machine.py's Pin is a per-id registry singleton, and that identity is what lets the chip
     # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). A later "fix"
@@ -226,6 +278,7 @@ def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs
         Pin.reset_registry()
 
 
+@_inside_one_run
 def test_wozi_wiring_carries_no_isl29125() -> None:
     machine.configure_i2c_wiring("wozi")
     Pin.reset_registry()
@@ -233,24 +286,12 @@ def test_wozi_wiring_carries_no_isl29125() -> None:
     assert 0x44 not in I2C(0, scl=Pin(9), sda=Pin(8), freq=50000).devices
 
 
+@_inside_one_run
 def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> None:
     # Same module-level-hook shape as configure_fram_state_path()/flush_fram(), which has no dedicated
     # wiring test either - so this closes the gap for the SCD30 feature at least. Persistence content is
     # tests/test_digital_twin_scd30.py's job; this only checks the hooks reach the chip that is constructed.
-    import os
-
-    sys.path.insert(0, "digital_twin")
-    from _crc8 import crc8, word
-
-    path = "tests/_tmp/scd30_machine_wiring.json"
-    try:
-        os.mkdir("tests/_tmp")
-    except OSError:
-        pass
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    path = _scratch.path("scd30_machine_wiring.json")
     Pin.reset_registry()
     try:
         machine.configure_scd30_state_path(path)
@@ -268,10 +309,6 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
         assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
     finally:
         machine.configure_scd30_state_path(None)  # don't leak into later tests in this file
-        try:
-            os.remove(path)
-        except OSError:
-            pass
 
 
 def test_spi_id0_wires_the_fram_chip() -> None:
@@ -292,6 +329,24 @@ def test_spi_init_updates_settings_and_rejects_lsb_first() -> None:
         raise AssertionError("expected NotImplementedError")
     except NotImplementedError:
         pass
+
+
+def test_spi_bit_order_numbers_are_rp2s() -> None:
+    # pico-sdk hardware/spi.h:184-187 (SPI_LSB_FIRST 0, SPI_MSB_FIRST 1); a construction defaults to MSB first.
+    assert (SPI.MSB, SPI.LSB) == (1, 0)
+    assert SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7)).firstbit == SPI.MSB
+
+
+def test_the_fault_injector_counts_its_pending_entries() -> None:
+    injector = FaultInjector()
+    injector.inject_fault("readinto", OSError(errno.EIO, "planted"), times=2)
+    assert (injector.pending("readinto"), injector.pending("write")) == (2, 0)
+    try:
+        injector.maybe_raise("readinto")
+        raise AssertionError("expected the queued fault")
+    except OSError:
+        pass
+    assert injector.pending("readinto") == 1
 
 
 def test_spi_write_readinto_dispatches_to_the_wired_device() -> None:
@@ -495,6 +550,7 @@ def test_bounded_log_clear_starts_over_at_slot_zero() -> None:
     assert (list(log), log[0], log[-1]) == ([10, 11, 12], 10, 12)
 
 
+@_inside_one_run
 def test_wdt_feed_increments_count() -> None:
     wdt = WDT(timeout=8000)
     wdt.feed()
@@ -522,11 +578,13 @@ def test_wdt_rejects_a_timeout_above_the_rp2040_hard_cap() -> None:
         pass
 
 
+@_inside_one_run
 def test_wdt_accepts_a_timeout_at_exactly_the_hard_cap() -> None:
     wdt = WDT(timeout=8388)
     assert wdt.timeout == 8388
 
 
+@_inside_one_run
 def test_wdt_would_have_triggered_count_and_log_start_at_zero() -> None:
     wdt = WDT(timeout=8000)
     assert wdt.would_have_triggered_count == 0
@@ -534,7 +592,7 @@ def test_wdt_would_have_triggered_count_and_log_start_at_zero() -> None:
 
 
 def test_wdt_notifies_once_after_a_feed_free_window() -> None:
-    # Short timeout plus a generous asyncio.wait_for bound - the same "does the mechanism work at all"
+    # Short timeout plus a generous run() bound - the same "does the mechanism work at all"
     # spirit as the short-period timer test below, not a precise-cadence assertion.
     #
     # Polling far finer than the WDT's own period (5ms vs. 150ms) matters here, not just as style: the
@@ -548,7 +606,7 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
+    run(scenario(), _RUN_BOUND_S)
 
 
 def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
@@ -559,7 +617,7 @@ def test_wdt_feed_resets_the_countdown_and_prevents_a_notification() -> None:
             wdt.feed()
         return wdt.would_have_triggered_count
 
-    count = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
+    count = run(scenario(), _RUN_BOUND_S)
     assert count == 0  # kept fed the whole time - never should have noticed a gap
 
 
@@ -573,7 +631,7 @@ def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> Non
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never reached a second would-have-triggered notification")
 
-    run(asyncio.wait_for(scenario(), _DOUBLE_TRIGGER_BOUND_S))
+    run(scenario(), _DOUBLE_TRIGGER_BOUND_S)
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
@@ -587,7 +645,7 @@ def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notificatio
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("WDT never noticed a feed-free window")
 
-    log = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
+    log = run(scenario(), _RUN_BOUND_S)
     assert log[0] == 2  # the first notification must reflect feed_count as of the unfed stretch
 
 
@@ -601,7 +659,7 @@ def test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance() -> None:
             await asyncio.sleep_ms(_WDT_POLL_MS)
         raise AssertionError("on_would_trigger callback never fired")
 
-    seen = run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
+    seen = run(scenario(), _RUN_BOUND_S)
     assert seen[0].would_have_triggered_count >= 1
 
 
@@ -778,7 +836,7 @@ def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
             await asyncio.sleep_ms(_CHAIN_POLL_MS)
         raise AssertionError("chained timer never completed all steps")
 
-    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))  # must not raise "can't cancel self"
+    run(scenario(), _RUN_BOUND_S)  # must not raise "can't cancel self"
     assert steps == [0, 1, 2]
 
 
@@ -792,6 +850,11 @@ def test_timer_deinit_outside_a_running_event_loop_does_not_raise() -> None:
     timer = Timer()
     timer.init(period=1000, mode=Timer.ONE_SHOT, callback=lambda _t: None)
     timer.deinit()  # must not raise, called with no event loop running
+
+    async def one_round() -> None:
+        await asyncio.sleep(0)
+
+    run(one_round())  # one loop round retires the task deinit() cancelled, which no loop had yet run
 
 
 def test_timer_fires_for_real_on_a_short_period() -> None:
@@ -809,7 +872,7 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
             await asyncio.sleep_ms(_FIRE_POLL_MS)
         raise AssertionError("Timer callback never fired")
 
-    run(asyncio.wait_for(scenario(), _RUN_BOUND_S))
+    run(scenario(), _RUN_BOUND_S)
     assert fired == [1]
 
 

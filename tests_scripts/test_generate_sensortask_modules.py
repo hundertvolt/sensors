@@ -1,9 +1,10 @@
 """Tests scripts/_generate_sensortask_modules.py (SPECIFICATION.md Part E.3's build/generated_src/
 pre-generation step): every real device's written outputs equal its in-memory generation, every file
-reaches its name by rename, and a BuildError or a failed write is one reported line, nothing half-written."""
+reaches its name by rename, both freshness stamps land last, and a failure is one line, nothing half-written."""
 
 import builtins
 import errno
+import hashlib
 import io
 import json
 import os
@@ -21,9 +22,13 @@ from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
 
 
-@pytest.fixture
-def generate_sensortask_modules(repo_root: Path) -> ModuleType:
-    return load_script_module(repo_root / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")
+def _one_device_tree(repo_root: Path, tmp_path: Path) -> Path:
+    # A stand-in repo root holding one real device, its src/ and ext/; returns the output directory.
+    (tmp_path / "devices").mkdir()
+    (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
+    (tmp_path / "src").symlink_to(repo_root / "src")
+    (tmp_path / "ext").symlink_to(repo_root / "ext")
+    return tmp_path / "build" / "generated_src"
 
 
 def test_main_generates_every_real_device_matching_generate_device_directly(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,13 +104,9 @@ def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(ge
     assert not [p for p in out_dir.rglob("*") if p.is_file()]
 
 
-def _one_device_tree(repo_root: Path, tmp_path: Path) -> Path:
-    # A stand-in repo root holding one real device, its src/ and ext/; returns the output directory.
-    (tmp_path / "devices").mkdir()
-    (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").symlink_to(repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml")
-    (tmp_path / "src").symlink_to(repo_root / "src")
-    (tmp_path / "ext").symlink_to(repo_root / "ext")
-    return tmp_path / "build" / "generated_src"
+@pytest.fixture
+def generate_sensortask_modules(repo_root: Path) -> ModuleType:
+    return load_script_module(repo_root / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")
 
 
 def test_no_output_is_ever_opened_for_writing_under_its_final_name(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,3 +159,59 @@ def test_a_failed_write_is_one_reported_line_and_leaves_no_temporary_file(genera
     assert f"error: cannot write {writes[2]}: No space left on device" in err
     assert "Traceback" not in err
     assert not [p for p in out_dir.rglob("*") if p.is_file()], "a failed write left files behind"
+
+
+def test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touched(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Two devices generated, one TOML removed, generated again: no file of the removed device stays behind for a
+    # consumer to read as a device, the remaining one's outputs all do, and only build/generated_src/ is swept.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    kept, removed = DEVICE_NAMES[0], DEVICE_NAMES[1]
+    (tmp_path / "devices" / f"{removed}.toml").symlink_to(repo_root / "devices" / f"{removed}.toml")
+    assert generate_sensortask_modules.main() == 0
+    assert [p for p in out_dir.rglob(f"*{removed}*") if p.is_file()], "the removed device was never generated - the sweep below would hold vacuously"
+    beside = tmp_path / "build" / "generated_html" / removed / "index.html"
+    beside.parent.mkdir(parents=True)
+    beside.write_text("another builder's output\n")
+    in_flight = out_dir / f"sensortask_{removed}.py.tmp"
+    in_flight.write_text("a concurrent run's file before its rename\n")
+    (tmp_path / "devices" / f"{removed}.toml").unlink()
+    assert generate_sensortask_modules.main() == 0
+
+    left = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file() and not p.name.endswith(".tmp"))
+    assert not [name for name in left if removed in name], left
+    assert {f"sensortask_{kept}.py", f"definitions/{kept}.json", f"api/{kept}.json"} <= set(left), left
+    assert beside.is_file() and in_flight.is_file(), "the sweep reached past the generator's own finished outputs"
+    assert json.loads((out_dir / ".inputs_stamp.json").read_text())["outputs"] == left, "the stamp must list exactly the tree's files"
+
+
+def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_output(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Every file a generation reads, hashed for tests/_generated_tree.py with every file it leaves, and each TOML's hash for
+    # the JS loader; renamed in last.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    for shared in ("buildgen", "toolchain"):
+        (tmp_path / shared).symlink_to(repo_root / shared)
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "_generate_sensortask_modules.py").write_bytes((repo_root / "scripts" / "_generate_sensortask_modules.py").read_bytes())
+    (tmp_path / "devices" / "zz_test_fixture.toml").write_text("# a concurrent test's fixture, never an input\n")
+    renamed: list[Path] = []
+    real_replace = os.replace
+
+    def recording_replace(src: "str | Path", dst: "str | Path") -> None:
+        renamed.append(Path(dst))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+    assert generate_sensortask_modules.main() == 0
+
+    stamps = [out_dir / ".inputs_stamp.json", out_dir / "definitions" / "inputs_stamp.json"]
+    assert sorted(renamed[-2:]) == sorted(stamps), renamed[-4:]
+    tomls = sorted(p for p in (tmp_path / "devices").glob("*.toml") if not p.stem.startswith("zz_test_"))
+    named = ["buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py"]
+    inputs = [*tomls, *(tmp_path / name for name in named)] + [p for pattern in ("buildgen/*.py", "src/*.py", "ext/*.py") for p in tmp_path.glob(pattern)]
+    expected = {str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
+    assert "ext/microdot.py" in expected  # the frozen-module closure reads it (buildgen/frozen_modules.py)
+    outputs = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file())
+    assert json.loads(stamps[0].read_text()) == {"inputs": expected, "outputs": outputs}
+    assert json.loads(stamps[1].read_text()) == {"tomls": {DEVICE_NAMES[0]: expected[f"devices/{DEVICE_NAMES[0]}.toml"]}}

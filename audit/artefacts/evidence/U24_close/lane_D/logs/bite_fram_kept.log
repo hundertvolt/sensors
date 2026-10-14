@@ -1,0 +1,7 @@
+>       assert [i["driver"] for i in doc["instance"] if i["driver"] == "fram"] == []
+E       AssertionError: assert ['fram'] == []
+>       assert facts == {"fram": False, "storage": False, "stored": [], "erasefram": {"SystemCmd": "Failed"}, "armed": False, "resets": 0}, facts
+E       assert {'storage': T...m': True, ...} == {'fram': Fals...Failed'}, ...}
+FAILED tests_scripts/test_fram_less_boot.py::test_the_fixture_declares_no_fram_at_all
+FAILED tests_scripts/test_fram_less_boot.py::test_a_device_without_fram_boots_with_every_log_in_ram_and_refuses_erase_fram
+2 failed in 0.68s

@@ -150,7 +150,8 @@ scripts/test.sh            # runs every test in tests/, under a real MicroPython
                             # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
                             # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
-scripts/test.sh --coverage # same, plus a src/-only line coverage report (HTML/XML/markdown) - see below
+scripts/test.sh --coverage # same, plus line coverage reports for src/, digital_twin/, the generated
+                            # modules and the host build chain (buildgen/, scripts/, toolchain/) - see below
 uv run pytest tests_scripts # the pytest tier alone - needs the toolchain built first
                             # (scripts/test.sh or toolchain/setup_toolchain.py setup)
 ```
@@ -222,7 +223,9 @@ pytest/CPython, etc.).
 scripts/test.sh --coverage
 ```
 
-Reports `src/`-only line coverage; non-gating, never fails the build. Full pipeline, output paths,
+Reports line coverage of `src/`, `digital_twin/`, the generated device modules
+(`build/generated_src/`) and the host build chain (`buildgen/`, `scripts/`, `toolchain/`, traced
+through the pytest tier); non-gating, never fails the build. Full pipeline, output paths,
 and CI behavior (Job Summary, build artifact, Codecov status): **moved to
 [`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
@@ -262,6 +265,12 @@ npm run lint:css          # Stylelint (html/*.css)
 npm test                  # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
 npm run preview           # serves the repo root locally (python3 -m http.server 8000)
 ```
+
+`npm test` includes the live tier (`tests_js/live-backend.test.js`,
+`tests_js/live-backend-put-matrix.test.js`), which boots a real digital twin of each device and so
+needs the MicroPython Unix port built first (`uv run toolchain/setup_toolchain.py setup`): without
+it every live command throws `MicroPython Unix port not built at <path>`, and the tier fails, never
+skips.
 
 `web-cross-browser-smoke`'s check (real WebKit/Firefox/Edge, not just Vitest's own Playwright/Chromium)
 needs the MicroPython Unix port and every device's real website built first, then its own one-time
@@ -469,17 +478,18 @@ deselected gate is named, not hidden.
 `digital_twin/` is a fake `machine`/`network`/`neopixel` implementation that mirrors a real device's
 bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values, and a scripted
 `WLAN` connect sequence — so driver code can run under the real MicroPython Unix-port interpreter
-with no physical hardware attached. `wozi` is the default device (`scripts/run_unix_port_integration.sh`,
-`scripts/run_digital_twin_ci.sh`); every real device is fully supported end-to-end via `--device`
-(`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`. The default run serves
-the real, production `wozi` website (`scripts/build_website.sh wozi`) — see `SPECIFICATION.md` Part
-H.7 for the full account.
+with no physical hardware attached. Every real device is fully supported end-to-end
+(`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`.
+`scripts/run_unix_port_integration.sh` takes the device as its required `--device <name>` (without
+one it exits 2 naming the valid devices); `scripts/run_digital_twin_ci.sh` takes it as an optional
+argument, `wozi` by default. A run serves that device's real, production website
+(`scripts/build_website.sh <device>`) — see `SPECIFICATION.md` Part H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
 website automatically if either is missing, then serves both forever):
 
 ```sh
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --device <name> --host 127.0.0.1 --port 8080
 ```
 
 Then open `http://127.0.0.1:8080/` in a browser — that's the real `html/`+`js/` site, driven by the
@@ -489,14 +499,13 @@ fault-injection flag over `curl`. Every flag forwards straight through to
 `digital_twin/run_generic_integration.py`'s own arg parser:
 
 ```sh
-scripts/run_unix_port_integration.sh                                 # wozi: just launch + serve forever, no flags
-scripts/run_unix_port_integration.sh --device dev                     # any other real device, same shape
-scripts/run_unix_port_integration.sh --fault sgp40:writeto             # manual fault-injection exploration
-scripts/run_unix_port_integration.sh --host 0.0.0.0 --port 8080        # reachable from outside this machine
+scripts/run_unix_port_integration.sh --device <name>                              # launch + serve forever
+scripts/run_unix_port_integration.sh --device <name> --fault sgp40:writeto        # manual fault injection
+scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080   # reachable from outside
 ```
 
-- `--device NAME` — which real device to boot (`wozi`/`dev`/`arzi`/`klkizi`/`grkizi`/`schlafzi`,
-  default `wozi`); this script's own flag, not forwarded to the twin process.
+- `--device NAME` — which real device to boot, a `devices/*.toml` name; required, this script's
+  own flag, not forwarded to the twin process.
 - `--host HOST` / `--port PORT` — bind address (default `localhost:8080`).
 - `--duration SECONDS` — exit after a fixed run instead of serving forever.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
@@ -583,12 +592,12 @@ automated HTTP+memory-trend soak check instead, see `scripts/_digital_twin_ci_su
 
 ```sh
 rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
-real website (`scripts/run_unix_port_integration.sh` builds and serves the real `wozi` site by
-default, see "Digital twin" above):
+real website (`scripts/run_unix_port_integration.sh` builds and serves that device's real site, see
+"Digital twin" above):
 
 ```sh
 curl -s http://127.0.0.1:8080/measurements | python3 -m json.tool
@@ -626,7 +635,7 @@ as it would skip any unsaved state on real hardware). Then boot again the same w
 `DebugLevel` survives):
 
 ```sh
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080
 ```
 
 This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/
@@ -667,7 +676,7 @@ its own once the fault count is exhausted:
 
 ```sh
 rm -rf digital_twin/config digital_twin/fram_state.json
-scripts/run_unix_port_integration.sh --host 127.0.0.1 --port 8080 \
+scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080 \
     --fault scd30:writeto:2 --fault sgp40:readfrom_into:2 --fault bmp3xx:readfrom_mem:2 --fault fram:write:2
 ```
 

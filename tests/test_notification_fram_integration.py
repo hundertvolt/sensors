@@ -4,22 +4,16 @@ PrintLogHistoryStore chunk and asy_notification_service.py's single combined one
 # The generated wiring gives both modules a FRAM-backed log; the service's one chunk covers its own fields and every
 # signal's check failures. Mocked at the SPI bus, not at FRAMManager's boundary.
 
-import asyncio
-
+from _async_harness import run
 from _error_codes import code
-from _fram_chip_fake import FakeMB85RS64V
+from _fram_builders import make_fram_manager
 from _tmp_scratch import TmpScratch
 
-import asy_spi_driver
 from asy_base_classes import ValueRef
 from asy_fram_manager import FRAMChunk, FRAMManager
 from asy_neopixel_driver import NeopixelDriver
 from asy_notification_service import NotificationService, NotificationSignal
 from asy_print_log import LogConfig, PrintLogHistoryStore
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -27,12 +21,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     from asy_notification_service import _LocalTime  # the callback contract this file's stub fills
-
-    T = TypeVar("T")
     from asy_print_log import ErrorLog
 
 _FIELD_WARN_CO2 = (("WarnCO2", "int", 1600, 0, 3000, None),)
@@ -43,20 +32,8 @@ _PLANTED = code("E", "CALLBACK")  # any catalog code; the tests pin separation a
 _scratch = TmpScratch("notify_fram")
 
 
-def _tmp_cfg_dir() -> str:
-    return _scratch.dir()
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-def make_manager(max_size: int = 0x2000) -> "tuple[FRAMManager, FakeMB85RS64V]":
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(bus, 1, max_size=max_size)
-    chip = manager.fram._spidev.spi._spi
-    assert isinstance(chip, FakeMB85RS64V)
-    return manager, chip
+async def _local_time_stub() -> "_LocalTime | None":
+    return None
 
 
 class _FakeSource:
@@ -67,19 +44,7 @@ class _FakeSource:
         return self
 
 
-async def _local_time_stub() -> "_LocalTime | None":
-    return None
-
-
-async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
-    return True
-
-
-def make_pixel(manager: FRAMManager) -> NeopixelDriver:
-    return NeopixelDriver(0, log=LogConfig(manager, 10, None))
-
-
-def make_notify(manager: FRAMManager, cfg_path: str) -> NotificationService:
+def _make_notify(manager: FRAMManager, cfg_path: str) -> NotificationService:
     # The same signals in the same order every time: the FRAM layout must decode identically across
     # the simulated reboot.
     return NotificationService(
@@ -91,11 +56,23 @@ def make_notify(manager: FRAMManager, cfg_path: str) -> NotificationService:
     )
 
 
+def _make_pixel(manager: FRAMManager) -> NeopixelDriver:
+    return NeopixelDriver(0, log=LogConfig(manager, 10, None))
+
+
+async def _request_signal_stub(_r: int, _g: int, _b: int, _t: float) -> bool:
+    return True
+
+
+def _tmp_cfg_dir() -> str:
+    return _scratch.dir()
+
+
 def test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chunks() -> None:
-    manager, _chip = make_manager()
+    manager, _chip = make_fram_manager()
     run(manager.setup())
-    pixel = make_pixel(manager)
-    notify = make_notify(manager, _tmp_cfg_dir())
+    pixel = _make_pixel(manager)
+    notify = _make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> None:
         await pixel.setup()
@@ -110,10 +87,10 @@ def test_driver_and_notify_service_get_two_independent_non_overlapping_fram_chun
 
 
 def test_driver_and_notify_service_errors_stay_in_separate_histories() -> None:
-    manager, _chip = make_manager()
+    manager, _chip = make_fram_manager()
     run(manager.setup())
-    pixel = make_pixel(manager)
-    notify = make_notify(manager, _tmp_cfg_dir())
+    pixel = _make_pixel(manager)
+    notify = _make_notify(manager, _tmp_cfg_dir())
 
     async def scenario() -> "tuple[ErrorLog, ErrorLog]":
         await pixel.setup()
@@ -136,10 +113,10 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
     cfg_path = _tmp_cfg_dir()  # same path across the simulated reboot, matching a real device's
     # config file persisting across a reboot too - the FRAM-side assertions below don't depend on
     # this, but it's the correct shape to model.
-    manager1, chip = make_manager()
+    manager1, chip = make_fram_manager()
     run(manager1.setup())
-    pixel1 = make_pixel(manager1)
-    notify1 = make_notify(manager1, cfg_path)
+    pixel1 = _make_pixel(manager1)
+    notify1 = _make_notify(manager1, cfg_path)
 
     async def before_reboot() -> None:
         await pixel1.setup()
@@ -149,11 +126,10 @@ def test_both_histories_survive_a_simulated_reboot() -> None:
 
     run(before_reboot())
 
-    manager2, _chip2 = make_manager()
-    manager2.fram._spidev.spi._spi = chip  # same underlying chip, fresh manager/driver/coordinator objects
+    manager2, _chip2 = make_fram_manager(chip=chip)  # same underlying chip, fresh manager/driver/coordinator objects
     run(manager2.setup())
-    pixel2 = make_pixel(manager2)
-    notify2 = make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
+    pixel2 = _make_pixel(manager2)
+    notify2 = _make_notify(manager2, cfg_path)  # same registration order/shape as before the reboot
 
     async def after_reboot() -> "tuple[ErrorLog, ErrorLog]":
         await pixel2.setup()

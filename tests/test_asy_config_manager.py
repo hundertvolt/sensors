@@ -3,6 +3,7 @@ import json
 import os
 from collections import namedtuple
 
+from _async_harness import run
 from _error_codes import code
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -13,18 +14,11 @@ from asy_print_log import LogConfig
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -564,9 +558,9 @@ def test_type_or_range_error_int_discrete_set_malformed_element_type_rejects_any
 
 
 def test_type_or_range_error_int_discrete_set_bool_element_rejected_like_scalar_case() -> None:
-    # `type(check_val) is not int` already distinguishes bool from int for the checked value; the
-    # same distinction must hold for a discrete-set element (bool subclasses int in Python/
-    # MicroPython, but `type(v) is int` still correctly excludes it).
+    # `type(check_val) is not int` already distinguishes bool from int for the checked value; the same must hold for a
+    # discrete-set element. On MicroPython bool is not an int subclass (py/objbool.c), while CPython's is - `type(x) is
+    # int` states the rule the same way on both.
     field: cm.FieldSchema = ("X", "int", None, None, None, (1, True, 8))  # bool subclasses int for mypy - no ignore needed here, only at runtime (type() is int excludes it)
     assert cm.type_or_range_error(1, field)[0] is True  # malformed set (a bool element) rejects everything
 
@@ -710,9 +704,8 @@ def test_type_or_range_error_bool_ignores_nonsensical_min_max() -> None:
 
 
 def test_type_or_range_error_bool_value_against_int_field_rejected() -> None:
-    # `type(check_val) is not int` correctly distinguishes bool from int (unlike isinstance, which
-    # would treat True/False as ints too, since bool subclasses int) - the reverse direction of the
-    # existing "int value against a bool field" tests above.
+    # On MicroPython bool is not an int subclass (py/objbool.c), while CPython's is - `type(x) is int` states the rule
+    # the same way on both; the reverse direction of the "int value against a bool field" tests above.
     field: cm.FieldSchema = ("X", "int", None, 0, 10, None)
     assert cm.type_or_range_error(check_val=True, field=field)[0] is True
     assert cm.type_or_range_error(check_val=False, field=field)[0] is True
@@ -1586,7 +1579,7 @@ def test_get_typed_values_happy_path() -> None:
         _remove(path)
 
 
-def _refused_with_one_contract_entry(mgr: "cm.ConfigManager", read: "Coroutine[Any, Any, object]") -> bool:
+def _refused_with_one_contract_entry(mgr: "cm.ConfigManager", read: "Coroutine[object, object, object]") -> bool:
     # True when `read` returns None and leaves exactly one CONTRACT entry (setup()'s own entries cleared first).
     run(mgr.reset_error_counter())
     result = run(read)
@@ -2836,7 +2829,7 @@ class _NoTaskAsyncio:
     current_task = asyncio.current_task
 
     @staticmethod
-    def create_task(coro: "Coroutine[Any, Any, None]") -> None:
+    def create_task(coro: "Coroutine[object, object, None]") -> None:
         coro.close()
         raise MemoryError("injected for the flush task")
 

@@ -1,8 +1,10 @@
-"""The real device set, discovered from devices/*.toml rather than listed. Six test modules carried
-their own copy of the same six names; a seventh device would have been generated, built and shipped
-while every one of those suites silently kept testing the old six."""
+"""The real device set, discovered from devices/*.toml rather than listed, and the queries the tests share over
+it: DEVICE_NAMES, device_toml() and devices_with(driver), so a seventh device joins every suite with no edit
+there, and a test needing a device with some property selects it from the TOMLs, never by name."""
 
 from pathlib import Path
+
+import tomllib
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 DEVICES_DIR = _REPO_ROOT / "devices"
@@ -22,3 +24,13 @@ assert DEVICE_NAMES, f"no device TOMLs found in {DEVICES_DIR} - every device-par
 
 def device_toml(device: str) -> Path:
     return DEVICES_DIR / f"{device}.toml"
+
+
+def devices_with(driver: str) -> "list[str]":
+    # The devices whose TOML declares at least one [[instance]] of `driver`, in DEVICE_NAMES' order.
+    found = []
+    for device in DEVICE_NAMES:
+        instances = tomllib.loads(device_toml(device).read_text(encoding="utf-8")).get("instance", [])
+        if any(isinstance(i, dict) and i.get("driver") == driver for i in instances):
+            found.append(device)
+    return found

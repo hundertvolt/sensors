@@ -284,3 +284,20 @@ def test_the_dispatch_check_bites(key: str, member: str, planted: JsonValue, nam
     for field in _fields(definitions, key):
         field[member] = planted
     assert [problem for problem in _dispatch_problems(definitions, _REPO_ROOT) if problem.startswith(named)]
+
+
+def test_the_dispatch_check_bites_on_each_dropped_command_word() -> None:
+    # A definitions copy missing just one of _SYSTEM_CMDS' words, every other option kept, fails the SystemCmd pin.
+    device = next(device for device in DEVICE_NAMES if _fields(_definitions(device), "SystemCmd"))
+    words = _record(_py_values(_REPO_ROOT / _WEBSERVER, "_SYSTEM_CMDS")["_SYSTEM_CMDS"])
+    assert {"resetconfig", "erasefram"} <= set(words), "the two newest command words left _SYSTEM_CMDS"
+    for word in words:
+        definitions = json.loads(json.dumps(_definitions(device)))
+        assert isinstance(definitions, dict)
+        for field in _fields(definitions, "SystemCmd"):
+            options = field["options"]
+            assert isinstance(options, list)
+            kept = [option for option in options if not (isinstance(option, dict) and option.get("value") == word)]
+            assert len(kept) == len(options) - 1, f"{device}'s SystemCmd offers no {word!r} to drop"
+            field["options"] = kept
+        assert [problem for problem in _dispatch_problems(definitions, _REPO_ROOT) if problem.startswith("SystemCmd options")], f"dropping {word!r} left the pin silent"

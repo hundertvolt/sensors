@@ -3,7 +3,10 @@ import gc
 import select
 import time
 
+from _async_harness import run
 from _error_codes import code
+from _src_const import src_const
+from _twin_random import FixedRandom
 from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get
 from machine import UART as FakeUART
 from machine import Timer, mem32
@@ -20,16 +23,13 @@ from asy_uart_driver import UART
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import Any
 
     from asy_base_classes import PieceBuffer
-
-    T = TypeVar("T")
 
 # @tunable l1.asy_uart_driver_run_bound_s = 5
 _RUN_BOUND_S = 5
@@ -52,7 +52,7 @@ _READY_TIMEOUT_MS = 100
 # @tunable l1.asy_i2c_driver_deadlock_wait_s = 0.2
 _DEADLOCK_WAIT_S = 0.2
 # @tunable l1.asy_uart_driver_poll_wait_ms = 1
-_POLL_WAIT_MS = 1
+_FAST_POLL_WAIT_MS = 1
 # @tunable l1.asy_uart_driver_idle_poll_ms = 40
 _IDLE_POLL_MS = 40
 # @tunable l1.asy_uart_driver_silent_line_timeout_ms = 30
@@ -62,38 +62,31 @@ _FEED_DELAY_MS = 3
 # @tunable l1.asy_uart_driver_hammer_bound_s = 60
 _HAMMER_BOUND_S = 60
 
-# Mirrors of asy_uart_driver.py's private const()s, which are no module attributes on MicroPython - keep in sync.
-_UART0_RSR = 0x40034004
-_UART0_IMSC = 0x40034038
-_UART0_DMACR = 0x40034048
-_IMSC_RX = 0x50
-_DMACR_RXDMAE = 0x01
+# asy_uart_driver.py's private const()s, read from its source (tests/_src_const.py); src_const() answers object.
+_UART0_RSR: int = src_const("src/asy_uart_driver.py", "_UART0_RSR")  # type: ignore[assignment]
+_UART0_IMSC: int = src_const("src/asy_uart_driver.py", "_UART0_IMSC")  # type: ignore[assignment]
+_UART0_DMACR: int = src_const("src/asy_uart_driver.py", "_UART0_DMACR")  # type: ignore[assignment]
+_IMSC_RX: int = src_const("src/asy_uart_driver.py", "_IMSC_RX")  # type: ignore[assignment]
+_DMACR_RXDMAE: int = src_const("src/asy_uart_driver.py", "_DMACR_RXDMAE")  # type: ignore[assignment]
+_UART_MIN_RXBUF: int = src_const("src/asy_uart_driver.py", "_UART_MIN_RXBUF")  # type: ignore[assignment]
+_RX_RELOAD: int = src_const("src/asy_uart_driver.py", "_RX_RELOAD")  # type: ignore[assignment]
+# UARTRSR's error flags (RP2040 datasheet 4.2.8, Table 427).
 _RSR_FE = 0x01
 _RSR_PE = 0x02
 _RSR_BE = 0x04
 _RSR_OE = 0x08
-_UART_MIN_RXBUF = 32
-_RX_RELOAD = 0x20000000
 
 
-def run(coro: "Coroutine[Any, Any, T]", limit: float = _RUN_BOUND_S) -> "T":
-    # Bounded via wait_for(), not a bare asyncio.run(): a timeout_ms=-1 read through a real
-    # select.poll() against a pure-Python fake hangs forever on CI runners (CLAUDE.md's known hang).
-    # 5s is generous next to this file's tightest inner bound, and a TimeoutError FAILs fast.
-    return asyncio.run(asyncio.wait_for(coro, limit))
-
-
-def make_uart(**kwargs: "Any") -> UART:
+def _make_uart(**kwargs: "Any") -> UART:
     # One fast rate unless a test names its own, so every interleaving keeps the equal-rate timing it was
     # written against; the ring is armed as the link's setup() arms it.
     kwargs.setdefault("poll_wait_ms", 1)
     kwargs.setdefault("poll_idle_ms", 1)
-    DMA.reset_registry()  # no per-test reset exists, and each armed ring holds two of the twelve channels
+    DMA.reset_registry()  # each armed ring holds two of the twelve channels: a later one in one test frees them
     uart = UART(0, tx_pin=0, rx_pin=1, **kwargs)
     unpaced(uart)
-    # Replaces the real select.poll() init() installs: the Unix port never re-checks a Python object's
-    # ioctl() after registration, so a wait hangs on CI (CLAUDE.md). Only the transmit side polls - the
-    # receive side reads the ring's fill level - so this is always-ready for POLLOUT.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known hang cause").
+    # Only the transmit side polls - the receive side reads the ring's fill level - so this is always-ready for POLLOUT.
     uart.poller = _StepPoller([select.POLLOUT])  # type: ignore[assignment]
     assert uart.setup_rx_ring() is True
     return uart
@@ -145,9 +138,8 @@ def skip_ahead(uart: UART, n: int) -> None:
 
 
 class _StepPoller:
-    # Stands in for uart.poller: the Unix port's select.poll() never re-checks a Python object's
-    # ioctl(), so it cannot exercise a not-ready -> ready transition (CLAUDE.md's known hang). Each
-    # ipoll() consumes the next `steps` entry - a mask, or a callable returning one - then repeats it.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known hang cause").
+    # Each ipoll() consumes the next `steps` entry - a mask, or a callable returning one - then repeats it.
     def __init__(self, steps: "list[int | Any]") -> None:
         self._steps = list(steps)
 
@@ -168,27 +160,27 @@ class _StepPoller:
 
 
 def test_valid_default_construction_succeeds() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     assert fake(uart).id == 0
     assert fake(uart).baudrate == 9600
 
 
 def test_valid_construction_on_both_real_uart_ports() -> None:
-    for port_id in (0, 1):  # RP2040 has exactly two UART peripherals
-        uart = UART(port_id, tx_pin=0, rx_pin=1)
+    for port_id, tx_pin, rx_pin in ((0, 0, 1), (1, 8, 9)):  # RP2040 has exactly two UART peripherals, each on its own pins
+        uart = UART(port_id, tx_pin=tx_pin, rx_pin=rx_pin)
         assert fake(uart).id == port_id
 
 
 
 def test_valid_buffer_size_boundaries() -> None:
-    uart = make_uart(rxbuf=32, txbuf=32766)  # MIN_BUFFER_SIZE / MAX_BUFFER_SIZE, both inclusive
+    uart = _make_uart(rxbuf=32, txbuf=32766)  # MIN_BUFFER_SIZE / MAX_BUFFER_SIZE, both inclusive
     assert uart.rxbuf == 32
     assert fake(uart).txbuf == 32766
 
 
 def test_valid_invert_mask_every_combination() -> None:
     for invert in (0, 1, 2, 3):  # every real UART_INVERT_TX | UART_INVERT_RX combination
-        uart = make_uart(invert=invert)
+        uart = _make_uart(invert=invert)
         assert fake(uart).invert == invert
 
 
@@ -196,7 +188,7 @@ def test_valid_bits_parity_stop_pass_through_unvalidated() -> None:
     # Real mp_machine_uart_init_helper() has no raising validation at all for bits/parity/stop -
     # confirmed directly against the source (see tests/machine.py's docstring); documents that
     # asy_uart_driver.py doesn't add its own validation on top either.
-    uart = make_uart(bits=9, parity=1, stop=2)
+    uart = _make_uart(bits=9, parity=1, stop=2)
     assert fake(uart).bits == 9
     assert fake(uart).parity == 1
     assert fake(uart).stop == 2
@@ -206,18 +198,18 @@ def test_non_positive_baudrate_does_not_raise() -> None:
     # Real hardware silently ignores a non-positive baudrate, keeping the previous or default value, rather
     # than raising - confirmed directly, not guessed (tests/machine.py's docstring). The raise/no-raise
     # contract is what this checks; it makes no claim the fake models the silent-ignore behavior itself.
-    uart = make_uart(baudrate=0)
+    uart = _make_uart(baudrate=0)
     assert fake(uart).id == 0  # construction completed, nothing raised
 
 
 def test_valid_crc_configurations() -> None:
-    default = make_uart()
+    default = _make_uart()
     assert isinstance(default.crc, CRCPass)
     explicit_pass = CRCPass()
-    with_pass = make_uart(crc=explicit_pass)
+    with_pass = _make_uart(crc=explicit_pass)
     assert with_pass.crc is explicit_pass
     explicit_crc16 = CRC16()
-    with_crc16 = make_uart(crc=explicit_crc16)
+    with_crc16 = _make_uart(crc=explicit_crc16)
     assert with_crc16.crc is explicit_crc16
 
 
@@ -237,12 +229,24 @@ def test_invalid_port_id_raises_value_error() -> None:
 
 
 def test_invalid_tx_pin_raises_value_error() -> None:
+    # GPIO29 exists but carries UART0's RX, never its TX: rp2 takes TX on pins 4k (machine_uart.c:71-80, 314-317).
     try:
-        UART(0, tx_pin=29, rx_pin=1)  # outside the real GPIO0-28 range
-        raised = False
-    except ValueError:
-        raised = True
-    assert raised
+        UART(0, tx_pin=29, rx_pin=1)
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert message == "bad TX pin"
+
+
+def test_a_pin_of_the_other_uart_raises_value_error() -> None:
+    # Pins come in UART0 and UART1 banks of eight (machine_uart.c:71-80, 320-323): GPIO1 is UART0's RX, not UART1's.
+    for port_id, tx_pin, rx_pin, expected in ((1, 8, 1, "bad RX pin"), (1, 0, 9, "bad TX pin"), (0, 4, 5, "bad TX pin")):
+        try:
+            UART(port_id, tx_pin=tx_pin, rx_pin=rx_pin)
+            message = ""
+        except ValueError as e:
+            message = str(e)
+        assert message == expected, (port_id, tx_pin, rx_pin, message)
 
 
 def test_invalid_rx_pin_raises_value_error() -> None:
@@ -254,13 +258,14 @@ def test_invalid_rx_pin_raises_value_error() -> None:
     assert raised
 
 
-def test_non_int_pin_raises_type_error() -> None:
+def test_a_pin_name_naming_no_pin_raises_value_error() -> None:
+    # rp2's Pin() looks a string up as a board or CPU pin name and refuses one naming none (machine_pin.c:170-183).
     try:
         UART(0, tx_pin="0", rx_pin=1)  # type: ignore[arg-type]
-        raised = False
-    except TypeError:
-        raised = True
-    assert raised
+        message = ""
+    except ValueError as e:
+        message = str(e)
+    assert message == 'unknown named pin "0"'
 
 
 
@@ -268,14 +273,14 @@ def test_the_peripheral_receive_buffer_stays_at_its_minimum() -> None:
     # The ring replaces machine.UART's own receive buffer, so the configured rxbuf is the protocol's
     # sizing figure alone and never reaches the peripheral - not even one the peripheral would refuse.
     for rxbuf in (32, 1024, 40000):
-        uart = make_uart(rxbuf=rxbuf)
+        uart = _make_uart(rxbuf=rxbuf)
         assert uart.rxbuf == rxbuf
         assert fake(uart).rxbuf == _UART_MIN_RXBUF
 
 
 def test_txbuf_too_large_raises_value_error() -> None:
     try:
-        make_uart(txbuf=40000)
+        _make_uart(txbuf=40000)
         raised = False
     except ValueError:
         raised = True
@@ -285,7 +290,7 @@ def test_txbuf_too_large_raises_value_error() -> None:
 def test_bad_invert_mask_raises_value_error() -> None:
     for invert in (4, -1, 255):  # outside UART_INVERT_MASK's real 0-3 range
         try:
-            make_uart(invert=invert)
+            _make_uart(invert=invert)
             raised = False
         except ValueError:
             raised = True
@@ -303,11 +308,11 @@ def test_bad_tx_pin_wins_over_bad_port_id() -> None:
     # always raises before _UART()'s own body, and therefore its port_id check, ever runs - a consequence of
     # how this driver is structured, not an assumption about the C constructor's internal check order.
     try:
-        UART(99, tx_pin=29, rx_pin=1)
+        UART(99, tx_pin=30, rx_pin=1)  # Pin(30) refuses: no number reaches past GPIO29 (machine_pin.c:184-191)
         message = ""
     except ValueError as e:
         message = str(e)
-    assert "pin" in message.lower()
+    assert message == "invalid pin"
 
 
 
@@ -326,7 +331,7 @@ def test_bad_port_id_wins_over_bad_invert_and_txbuf() -> None:
 def test_bad_invert_wins_over_bad_txbuf() -> None:
     # invert is checked before txbuf in mp_machine_uart_init_helper()'s own body.
     try:
-        make_uart(invert=255, txbuf=99999)
+        _make_uart(invert=255, txbuf=99999)
         message = ""
     except ValueError as e:
         message = str(e)
@@ -346,7 +351,7 @@ def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
     # init() always deinit()s the previous bus first, so a failing re-init cannot roll back to the previous
     # working bus - the instance is left deinitialized until a caller re-inits with valid parameters. The
     # same shape as asy_i2c_driver.py's and asy_spi_driver.py's init(), not unique to UART.
-    uart = make_uart()
+    uart = _make_uart()
     try:
         uart.init(99, tx_pin=0, rx_pin=1)  # bad port_id
         raised = False
@@ -363,7 +368,7 @@ def test_failed_reinit_leaves_the_bus_deinitialized_not_reverted() -> None:
 
 
 def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fk = fake(uart)
     ok = uart.deinit()
     assert fk.deinit_called is True
@@ -378,7 +383,7 @@ class _RaisingUnregisterPoller:
 
 
 def test_deinit_swallows_poller_unregister_failure() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     uart.poller = _RaisingUnregisterPoller()  # type: ignore[assignment]
     ok = uart.deinit()  # must not raise despite the poller's own unregister() failing
     assert uart._uart is None
@@ -390,7 +395,7 @@ def test_deinit_swallows_poller_unregister_failure() -> None:
 
 
 def test_double_deinit_is_idempotent() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fk = fake(uart)
     uart.deinit()
     uart.deinit()  # must not touch the (already gone) bus a second time
@@ -398,7 +403,7 @@ def test_double_deinit_is_idempotent() -> None:
 
 
 def test_reinit_deinits_the_previous_bus_first() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     first = fake(uart)
     uart.init(0, tx_pin=0, rx_pin=1)
     assert first.deinit_called is True
@@ -406,7 +411,7 @@ def test_reinit_deinits_the_previous_bus_first() -> None:
 
 
 def test_operations_outside_async_with_return_none_or_false() -> None:
-    uart = make_uart()  # initialized, but never entered via `async with`
+    uart = _make_uart()  # initialized, but never entered via `async with`
 
     async def scenario() -> None:
         assert await uart.read() is None
@@ -414,11 +419,11 @@ def test_operations_outside_async_with_return_none_or_false() -> None:
         assert await uart.readline() is None
         assert await uart.write(bytearray(b"x")) is False
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 def test_operations_after_deinit_return_none_or_false() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     uart.deinit()
 
     async def scenario() -> None:
@@ -432,7 +437,7 @@ def test_operations_after_deinit_return_none_or_false() -> None:
         assert await uart.writefrom(bytearray(b"x"), 1) is False
         assert await uart.ready(select.POLLIN) is False
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +446,7 @@ def test_operations_after_deinit_return_none_or_false() -> None:
 
 
 def test_async_with_acquires_and_releases_lock() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     assert uart.session_lock.locked() is False
 
     async def scenario() -> None:
@@ -449,7 +454,7 @@ def test_async_with_acquires_and_releases_lock() -> None:
             assert uart.session_lock.locked() is True
         assert uart.session_lock.locked() is False
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -459,15 +464,15 @@ def test_async_with_acquires_and_releases_lock() -> None:
 
 
 def test_ready_returns_true_once_data_is_available() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"x")
-    assert run(uart.ready(select.POLLIN, timeout_ms=_DATA_TIMEOUT_MS)) is True
+    assert run(uart.ready(select.POLLIN, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is True
 
 
 
 def test_ready_times_out_when_nothing_arrives() -> None:
-    uart = make_uart()  # an empty ring
-    assert run(uart.ready(select.POLLIN, timeout_ms=_NO_DATA_TIMEOUT_MS)) is False
+    uart = _make_uart()  # an empty ring
+    assert run(uart.ready(select.POLLIN, timeout_ms=_NO_DATA_TIMEOUT_MS), _RUN_BOUND_S) is False
 
 
 
@@ -475,7 +480,7 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
     # Regression test: ready() used to check self._uart/self.poller for None only at entry, then loop
     # indefinitely - a concurrent deinit() mid-loop nulled self.poller and crashed the next iteration.
     # Fixed to re-check every iteration, matching asy_udp_socket.py's ready().
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> bool:
         async with uart:
@@ -484,25 +489,25 @@ def test_ready_survives_a_concurrent_deinit_mid_loop() -> None:
             uart.deinit()
             return await waiter
 
-    assert run(scenario()) is False  # must not raise
+    assert run(scenario(), _RUN_BOUND_S) is False  # must not raise
 
 
 def test_ready_returns_false_on_a_malformed_mask() -> None:
     # A non-int mask makes `event & mask` inside ready()'s own loop raise TypeError - not caught by
     # any caller's own except clause (those only wrap the real UART call, not this await) - so
     # ready() must catch it itself and degrade to False rather than propagating.
-    uart = make_uart()
-    assert run(uart.ready("not-a-mask")) is False  # type: ignore[arg-type]
+    uart = _make_uart()
+    assert run(uart.ready("not-a-mask"), _RUN_BOUND_S) is False  # type: ignore[arg-type]
 
 
 def test_cancel_read_timeout_returns_false_if_not_locked() -> None:
-    uart = make_uart()
-    assert run(uart.cancel_read_timeout()) is False
+    uart = _make_uart()
+    assert run(uart.cancel_read_timeout(), _RUN_BOUND_S) is False
 
 
 
 def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
-    uart = make_uart()  # nothing arrives on its own
+    uart = _make_uart()  # nothing arrives on its own
 
     async def waiter() -> bytes | None:
         async with uart:
@@ -515,7 +520,7 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
         result = await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, cancelled
 
-    result, cancelled = run(scenario())
+    result, cancelled = run(scenario(), _RUN_BOUND_S)
     assert result is None
     assert cancelled is True
 
@@ -523,7 +528,7 @@ def test_cancel_read_timeout_unblocks_a_pending_wait() -> None:
 def test_rxbuf_and_baudrate_are_readable_back() -> None:
     # A protocol layer above has to size frames against the real receive buffer and baud rate,
     # and machine.UART exposes neither - so this driver remembers what it was constructed with.
-    uart = make_uart(rxbuf=512, baudrate=115200)
+    uart = _make_uart(rxbuf=512, baudrate=115200)
     assert uart.rxbuf == 512
     assert uart.baudrate == 115200
     uart.init(0, 0, 1, rxbuf=1024, baudrate=9600)
@@ -537,7 +542,7 @@ def test_no_uart_built_here_polls_through_a_real_select_poll() -> None:
     # uart.poller is the known CI-only hang, since _write_all()'s ready(POLLOUT) wait then blocks
     # forever on a runner. The receive side never polls at all: it reads the ring, never the FIFO API.
     real_poll_type = type(select.poll()).__name__
-    plain = make_uart()
+    plain = _make_uart()
     assert type(plain.poller).__name__ != real_poll_type
     assert fake(plain).rx_api_calls == 0
     delimited = cobs_uart()
@@ -553,18 +558,18 @@ def test_no_uart_built_here_polls_through_a_real_select_poll() -> None:
 def test_a_complete_write_reslices_nothing() -> None:
     # The re-slice happens only after a short write has actually occurred, so the normal
     # path costs no memoryview allocation. Asserted on what the fake actually received.
-    uart = make_uart()
+    uart = _make_uart()
     payload = bytearray(b"0123456789")
-    assert run(locked_write(uart, payload)) is True
+    assert run(locked_write(uart, payload), _RUN_BOUND_S) is True
     writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
     assert writes == [b"0123456789"]  # exactly one round, so no slice was ever needed
 
 
 def test_a_short_write_still_completes_across_rounds() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).write_limit = 4
     payload = bytearray(b"0123456789")
-    assert run(locked_write(uart, payload)) is True
+    assert run(locked_write(uart, payload), _RUN_BOUND_S) is True
     writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
     assert b"".join(writes) == b"0123456789"
     assert len(writes) == 3  # 4 + 4 + 2, the re-slicing path this time
@@ -572,33 +577,33 @@ def test_a_short_write_still_completes_across_rounds() -> None:
 
 def test_writefrom_rejects_a_size_longer_than_the_buffer() -> None:
     # Silent truncation, or an out-of-range write, would both be worse than the sentinel.
-    uart = make_uart()
-    assert run(locked_writefrom(uart, bytearray(4), 8)) is False
-    assert run(locked_writefrom(uart, bytearray(4), -1)) is False
+    uart = _make_uart()
+    assert run(locked_writefrom(uart, bytearray(4), 8), _RUN_BOUND_S) is False
+    assert run(locked_writefrom(uart, bytearray(4), -1), _RUN_BOUND_S) is False
 
 
 def test_writefrom_rejects_a_buffer_with_no_room_for_the_crc() -> None:
-    uart = make_uart(crc=CRC16())
-    assert run(locked_writefrom(uart, bytearray(4), 4)) is False  # 4 payload + 2 CRC > 4
-    assert run(locked_writefrom(uart, bytearray(6), 4)) is True
+    uart = _make_uart(crc=CRC16())
+    assert run(locked_writefrom(uart, bytearray(4), 4), _RUN_BOUND_S) is False  # 4 payload + 2 CRC > 4
+    assert run(locked_writefrom(uart, bytearray(6), 4), _RUN_BOUND_S) is True
 
 
 def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None:
     # The zero-allocation path exists for the whole related set, not half of it.
-    allocating = make_uart()
-    into = make_uart()
+    allocating = _make_uart()
+    into = _make_uart()
     payload = bytearray(b"\x01\x02\x03\x04")
-    assert run(locked_write(allocating, bytearray(payload))) is True
-    assert run(locked_writefrom(into, bytearray(payload), len(payload))) is True
+    assert run(locked_write(allocating, bytearray(payload)), _RUN_BOUND_S) is True
+    assert run(locked_writefrom(into, bytearray(payload), len(payload)), _RUN_BOUND_S) is True
     assert written(allocating) == written(into)
 
-    reader_alloc = make_uart()
+    reader_alloc = _make_uart()
     fake(reader_alloc).feed_rx(bytes(payload))
-    got = run(locked_read_until_complete(reader_alloc, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
-    reader_into = make_uart()  # read in turn: each build frees every channel (make_uart())
+    got = run(locked_read_until_complete(reader_alloc, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
+    reader_into = _make_uart()  # read in turn: each build frees every channel (_make_uart())
     fake(reader_into).feed_rx(bytes(payload))
     buf = bytearray(4)
-    size = run(locked_readinto_until_complete(reader_into, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    size = run(locked_readinto_until_complete(reader_into, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert got is not None
     assert size == 4
     assert bytes(got) == bytes(buf)
@@ -610,7 +615,7 @@ def test_into_methods_move_the_same_bytes_as_their_allocating_siblings() -> None
 
 
 def cobs_uart(max_frame: int = 64, **kwargs: "Any") -> UART:
-    return make_uart(framing=FramingCOBS(max_frame), **kwargs)
+    return _make_uart(framing=FramingCOBS(max_frame), **kwargs)
 
 
 async def locked_write(uart: UART, msg: bytearray) -> bool:
@@ -655,17 +660,17 @@ def written(uart: UART) -> bytes:
 def test_pass_through_codec_emits_exactly_what_it_always_did() -> None:
     # The regression that proves the default changed nothing: identical bytes, with and without
     # the codec named explicitly.
-    default_uart = make_uart()
-    explicit = make_uart(framing=FramingPass())
-    assert run(locked_write(default_uart, bytearray(b"\x01\x00\x02"))) is True
-    assert run(locked_write(explicit, bytearray(b"\x01\x00\x02"))) is True
+    default_uart = _make_uart()
+    explicit = _make_uart(framing=FramingPass())
+    assert run(locked_write(default_uart, bytearray(b"\x01\x00\x02")), _RUN_BOUND_S) is True
+    assert run(locked_write(explicit, bytearray(b"\x01\x00\x02")), _RUN_BOUND_S) is True
     assert written(default_uart) == b"\x01\x00\x02"
     assert written(explicit) == written(default_uart)
 
 
 def test_cobs_write_emits_a_delimited_frame_with_no_inner_zero() -> None:
     uart = cobs_uart()
-    assert run(locked_write(uart, bytearray(b"\x01\x00\x02"))) is True
+    assert run(locked_write(uart, bytearray(b"\x01\x00\x02")), _RUN_BOUND_S) is True
     out = written(uart)
     assert out[-1] == COBS_DELIMITER
     assert COBS_DELIMITER not in out[:-1]
@@ -676,20 +681,20 @@ def test_writefrom_is_framed_exactly_like_write() -> None:
     via_write = cobs_uart()
     via_writefrom = cobs_uart()
     payload = bytearray(b"\x01\x00\x02\x03")
-    assert run(locked_write(via_write, bytearray(payload))) is True
+    assert run(locked_write(via_write, bytearray(payload)), _RUN_BOUND_S) is True
     buf = bytearray(payload) + bytearray(8)
-    assert run(locked_writefrom(via_writefrom, buf, len(payload))) is True
+    assert run(locked_writefrom(via_writefrom, buf, len(payload)), _RUN_BOUND_S) is True
     assert written(via_write) == written(via_writefrom)
 
 
 def test_cobs_round_trips_through_the_driver() -> None:
     sender = cobs_uart()
     payload = bytearray(b"\x05\x00\x00\x07")
-    assert run(locked_write(sender, bytearray(payload))) is True
+    assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
     receiver = cobs_uart()
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert size == len(payload)
     assert bytes(buf[:size]) == bytes(payload)
 
@@ -699,23 +704,23 @@ def test_cobs_round_trips_through_the_allocating_read() -> None:
     # together or not at all.
     sender = cobs_uart()
     payload = bytearray(b"\x09\x00\x0a")
-    assert run(locked_write(sender, bytearray(payload))) is True
+    assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
     receiver = cobs_uart()
     fake(receiver).feed_rx(written(sender))
-    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    got = run(locked_read_until_complete(receiver, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert got is not None
     assert bytes(got) == bytes(payload)
 
 
 def test_cobs_round_trips_with_a_crc_underneath_it() -> None:
     # The ordering claim itself: build -> CRC -> encode on write, the exact reverse on read.
-    sender = make_uart(crc=CRC16(), framing=FramingCOBS(64))
+    sender = _make_uart(crc=CRC16(), framing=FramingCOBS(64))
     payload = bytearray(b"\x01\x02\x00\x03")
-    assert run(locked_write(sender, bytearray(payload))) is True
-    receiver = make_uart(crc=CRC16(), framing=FramingCOBS(64))
+    assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
+    receiver = _make_uart(crc=CRC16(), framing=FramingCOBS(64))
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert size == len(payload)
     assert bytes(buf[:size]) == bytes(payload)
 
@@ -727,13 +732,13 @@ def test_a_peer_that_never_sends_a_delimiter_fails_the_read_rather_than_blocking
     uart = cobs_uart(max_frame=16)
     fake(uart).feed_rx(b"\x01" * 200)  # plenty of bytes, not one delimiter
     buf = bytearray(64)
-    assert run(locked_readinto_until_complete(uart, buf, 8, start_timeout_ms=_NO_DELIMITER_TIMEOUT_MS, timeout_ms=_NO_DELIMITER_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, buf, 8, start_timeout_ms=_NO_DELIMITER_TIMEOUT_MS, timeout_ms=_NO_DELIMITER_TIMEOUT_MS), _RUN_BOUND_S) is None
 
 
 def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     # A delimiter means "end of something"; only the *next* one bounds a whole frame.
     sender = cobs_uart()
-    assert run(locked_write(sender, bytearray(b"\x41\x42\x43"))) is True
+    assert run(locked_write(sender, bytearray(b"\x41\x42\x43")), _RUN_BOUND_S) is True
     whole_frame = written(sender)
     # A resync lands somewhere inside a frame, so the stream starts with that frame's tail,
     # then its delimiter, then the next whole frame.
@@ -743,7 +748,7 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     fake(receiver).feed_rx(tail + whole_frame)
     receiver.resync_framing()
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    size = run(locked_readinto_until_complete(receiver, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert size == 3
     assert bytes(buf[:size]) == b"\x41\x42\x43"
 
@@ -751,17 +756,17 @@ def test_the_fragment_after_a_resync_is_discarded_never_decoded() -> None:
     # garbage resync_framing() exists to keep out, so the flag has to be what makes the difference.
     naive = cobs_uart()
     fake(naive).feed_rx(tail + whole_frame)
-    assert run(locked_readinto_until_complete(naive, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(naive, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None
 
 
 def test_empty_frames_are_skipped_at_the_codec_layer() -> None:
     # Two consecutive delimiters must never surface as a zero-length frame to index into.
     sender = cobs_uart()
-    assert run(locked_write(sender, bytearray(b"\x31\x32"))) is True
+    assert run(locked_write(sender, bytearray(b"\x31\x32")), _RUN_BOUND_S) is True
     receiver = cobs_uart()
     fake(receiver).feed_rx(bytes([COBS_DELIMITER, COBS_DELIMITER]) + written(sender))
     buf = bytearray(64)
-    size = run(locked_readinto_until_complete(receiver, buf, 2, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+    size = run(locked_readinto_until_complete(receiver, buf, 2, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
     assert size == 2
     assert bytes(buf[:size]) == b"\x31\x32"
 
@@ -771,32 +776,32 @@ def test_a_corrupt_code_byte_is_a_decode_failure_not_an_overrun() -> None:
     uart = cobs_uart()
     fake(uart).feed_rx(b"\x40\x01\x02" + bytes([COBS_DELIMITER]))  # code 0x40 runs past the frame
     buf = bytearray(64)
-    assert run(locked_readinto_until_complete(uart, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, buf, 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None
 
 
 def test_a_caller_buffer_too_small_for_the_encoded_frame_is_refused() -> None:
     # Silent truncation or a per-frame allocation are both worse than the sentinel.
     uart = cobs_uart()
-    assert run(locked_readinto_until_complete(uart, bytearray(4), 8, start_timeout_ms=50, timeout_ms=50)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(4), 8, start_timeout_ms=50, timeout_ms=50), _RUN_BOUND_S) is None
 
 
 def test_a_delimited_frame_that_decodes_to_nothing_is_a_failed_read() -> None:
     # An encoded empty frame is no payload the caller asked for: the read fails, never reports 0 bytes.
     uart = cobs_uart()
     fake(uart).feed_rx(b"\x01" + bytes([COBS_DELIMITER]))
-    assert run(locked_readinto_until_complete(uart, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 3, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None
 
 
 def test_a_codec_whose_allocation_failed_degrades_every_framed_call() -> None:
     # A driver that looks constructed but cannot frame must say so on every framed path.
-    uart = make_uart(framing=FramingCOBS(-1))
+    uart = _make_uart(framing=FramingCOBS(-1))
     assert uart.framing.ready() is False
-    assert run(locked_write(uart, bytearray(b"abc"))) is False
-    assert run(locked_writefrom(uart, bytearray(b"abcd"), 4)) is False
+    assert run(locked_write(uart, bytearray(b"abc")), _RUN_BOUND_S) is False
+    assert run(locked_writefrom(uart, bytearray(b"abcd"), 4), _RUN_BOUND_S) is False
 
 
 def test_resync_framing_is_inert_for_the_pass_through_codec() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     uart.resync_framing()
     assert uart._skip_to_delimiter is False
 
@@ -810,7 +815,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
     # The cancel arrives while the lock is held but no ready() is in flight (here, in the post-read
     # CRC yield), and the read completes normally: nothing acknowledged it once, a wedge in the
     # anti-wedge. Ordered by events, never sleeps, so host load cannot reorder the two tasks.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"abcd")
     inside = asyncio.Event()
     release = asyncio.Event()
@@ -831,7 +836,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
         cancelled = await asyncio.wait_for(canceller, _STEP_BOUND_S)
         return await asyncio.wait_for(task, _STEP_BOUND_S), cancelled
 
-    result, cancelled = run(scenario())
+    result, cancelled = run(scenario(), _RUN_BOUND_S)
     assert result == b"abcd"  # the read was already done, so it is not disturbed
     assert cancelled is True  # and the canceller still returns instead of hanging
 
@@ -840,7 +845,7 @@ def test_cancel_during_a_completing_read_still_terminates() -> None:
 def test_cancel_between_two_reads_is_not_lost() -> None:
     # ready() used to begin with `self._cancel = False`, erasing a request that arrived
     # between two reads - the canceller then blocked on an acknowledgement that never came.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"xy")
 
     async def reader() -> "list[object]":
@@ -856,7 +861,7 @@ def test_cancel_between_two_reads_is_not_lost() -> None:
         cancelled = await asyncio.wait_for(uart.cancel_read_timeout(), _STEP_BOUND_S)
         return await asyncio.wait_for(task, _STEP_BOUND_S), cancelled
 
-    results, cancelled = run(scenario())
+    results, cancelled = run(scenario(), _RUN_BOUND_S)
     assert cancelled is True
     assert results[0] == b"xy"
     assert results[1] is None  # the latched cancel aborts the *next* read rather than vanishing
@@ -865,7 +870,7 @@ def test_cancel_between_two_reads_is_not_lost() -> None:
 
 def test_two_concurrent_cancellers_both_return() -> None:
     # The acknowledgement is broadcast - one canceller consuming it must not strand another.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def waiter() -> bytes | None:
         async with uart:
@@ -880,7 +885,7 @@ def test_two_concurrent_cancellers_both_return() -> None:
         await asyncio.wait_for(task, _STEP_BOUND_S)
         return results
 
-    first_result, second_result = run(scenario())
+    first_result, second_result = run(scenario(), _RUN_BOUND_S)
     assert first_result is True
     assert second_result is True
 
@@ -889,7 +894,7 @@ def test_two_concurrent_cancellers_both_return() -> None:
 def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
     # Acknowledgement means "the read path has left the loop", not "it is about to": bytes arriving
     # after it stay in the ring, unread.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def waiter() -> bytes | None:
         async with uart:
@@ -902,7 +907,7 @@ def test_no_read_happens_after_the_cancel_is_acknowledged() -> None:
         fake(uart).feed_rx(b"late")
         return await asyncio.wait_for(task, _STEP_BOUND_S)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
     assert uart._rx_level() == 4  # nothing was consumed after the acknowledgement
 
 
@@ -910,7 +915,7 @@ def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
     # J.5's "provably terminating" half: a lock holder that never calls ready() again and never
     # exits cannot make cancel_read_timeout() block forever. It returns True (a cancel is
     # outstanding, so clear() must not then take the lock) and records the un-acknowledged case.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def wedged() -> None:
         async with uart:
@@ -924,7 +929,7 @@ def test_cancel_with_a_wedged_holder_is_bounded_and_counted() -> None:
         await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, unacked
 
-    result, unacked = run(scenario())
+    result, unacked = run(scenario(), _RUN_BOUND_S)
     assert result is True
     assert unacked == 1
 
@@ -933,7 +938,7 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
     # The other half of J.5's handshake: the request is acknowledged on every exit from the locked
     # region, not only inside ready()'s loop. Ordered by events, the bound past the run bound: only a
     # missing acknowledgement, never host load, counts as un-acknowledged.
-    uart = make_uart()
+    uart = _make_uart()
     inside = asyncio.Event()
     release = asyncio.Event()
 
@@ -952,7 +957,7 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
         await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, uart.cancel_unacknowledged
 
-    result, unacked = run(scenario())
+    result, unacked = run(scenario(), _RUN_BOUND_S)
     assert result is True
     assert unacked == 0  # acknowledged by the __aexit__
 
@@ -960,10 +965,10 @@ def test_leaving_the_locked_region_acknowledges_a_latched_cancel() -> None:
 
 def test_a_new_ready_call_does_not_clear_an_unrelated_cancel() -> None:
     # At the unit level: entering ready() must not consume a request it did not serve.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"x")  # readiness is there, so only the cancel can make ready() report False
     uart._cancel = True
-    assert run(one_shot_ready(uart)) is False  # the latched cancel wins over readiness
+    assert run(one_shot_ready(uart), _RUN_BOUND_S) is False  # the latched cancel wins over readiness
     assert uart._cancel is False  # and is consumed exactly once
 
 
@@ -979,40 +984,40 @@ async def one_shot_ready(uart: UART) -> bool:
 
 
 def test_read_returns_bytes_once_ready() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"hello")
 
     async def scenario() -> bytes | None:
         async with uart:
             return await uart.read()
 
-    assert run(scenario()) == b"hello"
+    assert run(scenario(), _RUN_BOUND_S) == b"hello"
 
 
 
 def test_read_returns_none_on_timeout() -> None:
-    uart = make_uart()  # nothing arrives
+    uart = _make_uart()  # nothing arrives
 
     async def scenario() -> bytes | None:
         async with uart:
             return await uart.read(timeout_ms=_NO_DATA_TIMEOUT_MS)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 def test_read_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"hello world")
 
     async def scenario() -> bytes | None:
         async with uart:
             return await uart.read(5)
 
-    assert run(scenario()) == b"hello"
+    assert run(scenario(), _RUN_BOUND_S) == b"hello"
 
 
 def test_readinto_fills_buffer_and_returns_count() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"hi")
     buf = bytearray(4)
 
@@ -1020,12 +1025,12 @@ def test_readinto_fills_buffer_and_returns_count() -> None:
         async with uart:
             return await uart.readinto(buf)
 
-    assert run(scenario()) == 2
+    assert run(scenario(), _RUN_BOUND_S) == 2
     assert bytes(buf[:2]) == b"hi"
 
 
 def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"hello world")
     buf = bytearray(11)
 
@@ -1033,19 +1038,19 @@ def test_readinto_with_explicit_nbytes_reads_exactly_that_many_bytes() -> None:
         async with uart:
             return await uart.readinto(buf, 5)
 
-    assert run(scenario()) == 5
+    assert run(scenario(), _RUN_BOUND_S) == 5
     assert bytes(buf[:5]) == b"hello"
 
 
 def test_readline_returns_bytes_once_ready() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"line\n")
 
     async def scenario() -> bytes | None:
         async with uart:
             return await uart.readline()
 
-    assert run(scenario()) == b"line\n"
+    assert run(scenario(), _RUN_BOUND_S) == b"line\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1054,18 +1059,18 @@ def test_readline_returns_bytes_once_ready() -> None:
 
 
 def test_read_until_complete_zero_nbytes_returns_empty_immediately() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> bytearray | None:
         async with uart:
             return await uart.read_until_complete(0)
 
-    assert run(scenario()) == bytearray()
+    assert run(scenario(), _RUN_BOUND_S) == bytearray()
 
 
 
 def test_read_until_complete_assembles_across_multiple_rounds() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"ab")  # round 1 sees only this; the rest arrives while the read waits
 
     async def scenario() -> bytearray | None:
@@ -1075,11 +1080,11 @@ def test_read_until_complete_assembles_across_multiple_rounds() -> None:
             await feeder
             return got
 
-    assert run(scenario()) == bytearray(b"abcde")
+    assert run(scenario(), _RUN_BOUND_S) == bytearray(b"abcde")
 
 
 def test_read_until_complete_default_crc_is_pass_through() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     assert isinstance(uart.crc, CRCPass)
     fake(uart).feed_rx(b"raw")
 
@@ -1087,12 +1092,12 @@ def test_read_until_complete_default_crc_is_pass_through() -> None:
         async with uart:
             return await uart.read_until_complete(3)
 
-    assert run(scenario()) == bytearray(b"raw")
+    assert run(scenario(), _RUN_BOUND_S) == bytearray(b"raw")
 
 
 def test_read_until_complete_strips_and_verifies_real_crc() -> None:
-    uart = make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")))
+    uart = _make_uart(crc=CRC16())
+    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
 
@@ -1100,12 +1105,12 @@ def test_read_until_complete_strips_and_verifies_real_crc() -> None:
         async with uart:
             return await uart.read_until_complete(5)
 
-    assert run(scenario()) == bytearray(b"hello")
+    assert run(scenario(), _RUN_BOUND_S) == bytearray(b"hello")
 
 
 def test_read_until_complete_bad_crc_returns_none() -> None:
-    uart = make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")))
+    uart = _make_uart(crc=CRC16())
+    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
     assert framed is not None
     framed[-1] ^= 0xFF  # corrupt the trailing CRC byte
     fake(uart).feed_rx(bytes(framed))
@@ -1114,23 +1119,23 @@ def test_read_until_complete_bad_crc_returns_none() -> None:
         async with uart:
             return await uart.read_until_complete(5)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 def test_readinto_until_complete_nbytes_too_large_for_buffer_returns_none() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     buf = bytearray(2)
 
     async def scenario() -> int | None:
         async with uart:
             return await uart.readinto_until_complete(buf, 5)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
-    uart = make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"world")))
+    uart = _make_uart(crc=CRC16())
+    framed = run(CRC16().add(bytearray(b"world")), _RUN_BOUND_S)
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     buf = bytearray(16)
@@ -1139,7 +1144,7 @@ def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
         async with uart:
             return await uart.readinto_until_complete(buf, 5)
 
-    size = run(scenario())
+    size = run(scenario(), _RUN_BOUND_S)
     assert size == 5
     assert bytes(buf[:5]) == b"world"
 
@@ -1151,7 +1156,7 @@ def test_readinto_until_complete_fills_buffer_and_strips_crc() -> None:
 
 
 def test_readline_until_complete_assembles_multi_part_line() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"partial-")  # round 1 sees only this - no \n yet
 
     async def scenario() -> "PieceBuffer | None":
@@ -1161,13 +1166,13 @@ def test_readline_until_complete_assembles_multi_part_line() -> None:
             await feeder
             return got
 
-    assert line_bytes(run(scenario())) == b"partial-line\n"
+    assert line_bytes(run(scenario(), _RUN_BOUND_S)) == b"partial-line\n"
 
 
 def test_a_line_split_across_the_ring_end_reads_whole() -> None:
     # Read from the ring by index, never through the FIFO API: a line wrapping past the last ring byte
     # comes back whole and in order.
-    uart = make_uart(rx_ring=16)
+    uart = _make_uart(rx_ring=16)
     skip_ahead(uart, 12)
     fake(uart).feed_rx(b"wrapped\n")
 
@@ -1175,13 +1180,13 @@ def test_a_line_split_across_the_ring_end_reads_whole() -> None:
         async with uart:
             return await read_line(uart)
 
-    assert line_bytes(run(scenario())) == b"wrapped\n"
+    assert line_bytes(run(scenario(), _RUN_BOUND_S)) == b"wrapped\n"
     assert fake(uart).rx_api_calls == 0
 
 
 def test_a_line_over_the_cap_is_discarded_and_logged_once() -> None:
     # Read to its end round by round, its pieces dropped, counted and logged once; the next line is intact.
-    uart = make_uart()
+    uart = _make_uart()
     log = PrintLogHistory(name="T")
     fake(uart).feed_rx(b"x" * 40 + b"\nnext\n")
 
@@ -1191,17 +1196,17 @@ def test_a_line_over_the_cap_is_discarded_and_logged_once() -> None:
             second = await read_line(uart, max_bytes=16, chunk_bytes=8, log=log)
             return first, second
 
-    first, second = run(scenario())
+    first, second = run(scenario(), _RUN_BOUND_S)
     assert first is None
     assert line_bytes(second) == b"next\n"
     assert uart.discarded_bytes == 41, uart.discarded_bytes
-    entry = run(log.get_log())["T"]
+    entry = run(log.get_log(), _RUN_BOUND_S)["T"]
     assert entry["ErrCount"] == 1, entry
     assert entry["ErrNum"][-1] == code("E", "UART_TRANSFER_CAP") and entry["ErrType"][-1] == "E", entry
 
 
 def test_a_line_at_the_cap_is_returned() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     sent = bytes(range(0x20, 0x2F)) + b"\n"  # 16 bytes, LF included
     fake(uart).feed_rx(sent)
 
@@ -1209,7 +1214,7 @@ def test_a_line_at_the_cap_is_returned() -> None:
         async with uart:
             return await read_line(uart, max_bytes=16, chunk_bytes=8)
 
-    assert line_bytes(run(scenario())) == sent
+    assert line_bytes(run(scenario(), _RUN_BOUND_S)) == sent
     assert uart.discarded_bytes == 0
 
 
@@ -1236,7 +1241,7 @@ class _AllocRecorder:
 
 def test_no_readline_allocation_exceeds_chunk_bytes() -> None:
     # A cap-sized line read in fifty rounds: no growth by concatenation, no block above one piece.
-    uart = make_uart(rxbuf=4)  # each round reads at most rxbuf bytes: fifty rounds, nothing timed
+    uart = _make_uart(rxbuf=4)  # each round reads at most rxbuf bytes: fifty rounds, nothing timed
     sent = bytes(0x41 + i % 26 for i in range(199)) + b"\n"
     fake(uart).feed_rx(sent)
 
@@ -1245,7 +1250,7 @@ def test_no_readline_allocation_exceeds_chunk_bytes() -> None:
             return await read_line(uart, max_bytes=len(sent), chunk_bytes=32)
 
     with _AllocRecorder() as recorder:
-        got = run(scenario())
+        got = run(scenario(), _RUN_BOUND_S)
     assert got is not None
     assert recorder.sizes and max(recorder.sizes) <= 32, recorder.sizes
     assert max(len(piece) for piece in got.pieces()) <= 32
@@ -1261,47 +1266,47 @@ def test_write_empty_message_succeeds_without_touching_the_bus() -> None:
     # write() returns before the CRC and codec when there is nothing to send - mirrors
     # test_read_until_complete_zero_nbytes_returns_empty_immediately on the read side, so it must
     # not block waiting on ready(POLLOUT) for a write that never happens.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray())
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     assert fake(uart).log == []
 
 
 def test_write_default_crc_is_pass_through() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"raw"))
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     assert fake(uart).log[-1] == ("write", b"raw")
 
 
 def test_write_frames_with_configured_crc() -> None:
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"hello"))
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     op, framed = fake(uart).log[-1]
     assert op == "write"
     assert framed[:5] == b"hello"
     assert len(framed) == 5 + CRC16().length()
-    assert run(CRC16().check(bytearray(framed))) == bytearray(b"hello")
+    assert run(CRC16().check(bytearray(framed)), _RUN_BOUND_S) == bytearray(b"hello")
 
 
 def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
     # _write_all()'s own `if not await self.ready(select.POLLOUT, ...): return False` - a write with no
     # timeout_ms waits forever, so cancellation is the only way it ever returns False, same mechanism
     # as test_cancel_read_timeout_unblocks_a_pending_wait's read-side version.
-    uart = make_uart()
+    uart = _make_uart()
     uart.poller = _StepPoller([0])  # type: ignore[assignment]  # POLLOUT never arrives on its own
 
     async def writer() -> bool:
@@ -1315,13 +1320,13 @@ def test_write_can_be_cancelled_while_waiting_for_tx_ready() -> None:
         result = await asyncio.wait_for(task, _STEP_BOUND_S)
         return result, cancelled
 
-    result, cancelled = run(scenario())
+    result, cancelled = run(scenario(), _RUN_BOUND_S)
     assert result is False
     assert cancelled is True
 
 
 def test_write_waits_until_tx_becomes_writable() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     calls = {"n": 0}
 
     def not_ready_once_then_ready() -> int:
@@ -1334,19 +1339,19 @@ def test_write_waits_until_tx_becomes_writable() -> None:
         async with uart:
             return await uart.write(bytearray(b"x"))
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     assert calls["n"] >= 2  # genuinely waited through at least one not-ready round, not a lucky first check
 
 
 def test_writefrom_frames_with_crc_in_place() -> None:
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
     buf = bytearray(b"hello" + b"\x00" * 10)  # extra room for the trailing CRC
 
     async def scenario() -> bool:
         async with uart:
             return await uart.writefrom(buf, 5)
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     op, written = fake(uart).log[-1]
     assert op == "write"
     assert written[:5] == b"hello"
@@ -1354,14 +1359,14 @@ def test_writefrom_frames_with_crc_in_place() -> None:
 
 
 def test_writefrom_buffer_too_small_for_crc_returns_false() -> None:
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
     buf = bytearray(b"hello")  # no room for the trailing CRC
 
     async def scenario() -> bool:
         async with uart:
             return await uart.writefrom(buf, 5)
 
-    assert run(scenario()) is False
+    assert run(scenario(), _RUN_BOUND_S) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
 
 
@@ -1369,14 +1374,14 @@ def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
     # Regression test: write()'s return value used to be discarded, silently dropping the tail of a
     # message larger than the TX ring's free room - real, since rp2's own write() can return a short
     # count. write_limit=3 makes a 7-byte message need three rounds (3+3+1).
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).write_limit = 3
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"1234567"))
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     writes = [data for op, data in fake(uart).log if op == "write"]
     assert len(writes) > 1  # genuinely needed more than one round, not a lucky single call
     assert b"".join(writes) == b"1234567"  # nothing dropped, nothing duplicated
@@ -1385,19 +1390,19 @@ def test_write_retries_after_a_short_write_until_everything_is_sent() -> None:
 def test_write_returns_false_when_uart_write_returns_none() -> None:
     # write_limit=0 models a total send failure - uart.write() hit its own internal timeout before
     # accepting anything at all, matching real MP_EAGAIN -> None (see module docstring).
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).write_limit = 0
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"x"))
 
-    assert run(scenario()) is False
+    assert run(scenario(), _RUN_BOUND_S) is False
     assert fake(uart).log == []  # nothing was ever actually recorded as sent
 
 
 def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> None:
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
     fake(uart).write_limit = 4
     buf = bytearray(b"hello" + b"\x00" * 10)
 
@@ -1405,7 +1410,7 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
         async with uart:
             return await uart.writefrom(buf, 5)
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     writes = [data for op, data in fake(uart).log if op == "write"]
     assert len(writes) > 1
     framed = b"".join(writes)
@@ -1420,7 +1425,7 @@ def test_writefrom_retries_after_a_short_write_until_everything_is_sent() -> Non
 
 
 def test_exception_inside_session_still_releases_the_lock() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     def boom() -> None:  # raised from a helper, so the raise isn't lexically inside the try below
         raise RuntimeError("boom")
@@ -1435,18 +1440,18 @@ def test_exception_inside_session_still_releases_the_lock() -> None:
         async with uart:  # must still be acquirable - not left stuck locked
             pass
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 def test_context_manager_does_not_suppress_exceptions() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> None:
         async with uart:
             raise ValueError("boom")
 
     try:
-        run(scenario())
+        run(scenario(), _RUN_BOUND_S)
         raised = False
     except ValueError:
         raised = True
@@ -1454,14 +1459,14 @@ def test_context_manager_does_not_suppress_exceptions() -> None:
 
 
 def test_aexit_tolerates_a_lock_already_released_inside_the_block() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> None:
         async with uart:
             uart.session_lock.release()  # released early by hand
         # __aexit__'s own release() must swallow the resulting RuntimeError, not propagate it
 
-    run(scenario())  # must not raise
+    run(scenario(), _RUN_BOUND_S)  # must not raise
     assert not uart.session_lock.locked()
 
 
@@ -1469,7 +1474,7 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
     # Interrupts a session via real asyncio cancellation, not just an exception raised by our own code -
     # MicroPython's asyncio still runs __aexit__ via CancelledError propagating through `async with`, as
     # CPython does. Confirmed for I2CDevice; UART(Lockable) shares that exact implementation.
-    uart = make_uart()
+    uart = _make_uart()
     started = False
 
     async def holder() -> None:
@@ -1490,11 +1495,11 @@ def test_task_cancellation_while_holding_the_lock_still_releases_it() -> None:
             pass
         assert not uart.session_lock.locked()
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 def test_two_tasks_sharing_one_uart_never_run_concurrently() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     concurrent = 0
     max_concurrent = 0
 
@@ -1509,24 +1514,24 @@ def test_two_tasks_sharing_one_uart_never_run_concurrently() -> None:
     async def scenario() -> None:
         await asyncio.gather(worker(), worker())
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
     assert max_concurrent == 1
 
 
 def test_aenter_returns_the_uart_itself() -> None:
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> None:
         async with uart as entered:
             assert entered is uart
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
 
 
 def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
     # Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's shared bus
     # lock) - bounded by wait_for so the test itself can't hang.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def reentrant() -> None:
         async with uart, uart:
@@ -1540,7 +1545,7 @@ def test_reentrant_acquisition_deadlocks_and_cleans_up() -> None:
         else:
             return False
 
-    assert run(scenario())
+    assert run(scenario(), _RUN_BOUND_S)
     assert not uart.session_lock.locked()
 
 
@@ -1569,14 +1574,14 @@ class _MemoryErrorCRC:
 
 
 def test_write_returns_false_on_crc_add_memoryerror() -> None:
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
     uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"x"))
 
-    assert run(scenario()) is False
+    assert run(scenario(), _RUN_BOUND_S) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
 
 
@@ -1592,20 +1597,20 @@ class _NoneCRC:
 
 
 def test_write_returns_false_when_crc_add_returns_none() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     uart.crc = _NoneCRC()  # type: ignore[assignment]
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"x"))
 
-    assert run(scenario()) is False
+    assert run(scenario(), _RUN_BOUND_S) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
 
 
 def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
-    uart = make_uart(crc=CRC16())
-    framed = run(CRC16().add(bytearray(b"hello")))
+    uart = _make_uart(crc=CRC16())
+    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
     uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
@@ -1614,7 +1619,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
         async with uart:
             return await uart.read_until_complete(5)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 # The frame buffer's own MemoryError guard is not fault-injected: unlike self.crc, the
@@ -1631,7 +1636,7 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
 
 
 def test_a_multi_round_read_copies_only_what_has_arrived() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"ab")  # only two of the five bytes have "arrived" when the read starts
     buf = bytearray(5)
 
@@ -1642,66 +1647,66 @@ def test_a_multi_round_read_copies_only_what_has_arrived() -> None:
             await feeder
             return got
 
-    assert run(scenario()) == 5
+    assert run(scenario(), _RUN_BOUND_S) == 5
     assert bytes(buf) == b"abcde"
     assert fake(uart).rx_api_calls == 0
 
 
 
 def test_single_shot_reads_clamp_to_what_is_buffered_and_report_nothing_as_none() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"xyz")
 
     async def read_scenario() -> bytes | None:
         async with uart:
             return await uart.read(64)  # asks far past what has arrived
 
-    assert run(read_scenario()) == b"xyz"
-    uart2 = make_uart()
+    assert run(read_scenario(), _RUN_BOUND_S) == b"xyz"
+    uart2 = _make_uart()
 
     async def empty_scenario() -> int | None:
         async with uart2:
             return await uart2.readinto(bytearray(8), 8, timeout_ms=_NO_DATA_TIMEOUT_MS)
 
-    assert run(empty_scenario()) is None  # nothing buffered: the documented None
+    assert run(empty_scenario(), _RUN_BOUND_S) is None  # nothing buffered: the documented None
 
 
 def test_a_negative_count_reads_nothing_and_consumes_nothing() -> None:
     # A negative count used to reach machine.UART.read(-1) - a read-all that waits out the UART's timeout
     # (py/stream.c) - and readinto(); clamped at zero, the read reports nothing and the bytes stay put.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"abc")
 
     async def scenario() -> "tuple[Any, Any]":
         async with uart:
             return await uart.read(-1), await uart.readinto(bytearray(8), -5)
 
-    assert run(scenario()) == (None, None)
+    assert run(scenario(), _RUN_BOUND_S) == (None, None)
     assert uart._rx_level() == 3
 
 
 def test_read_until_complete_refuses_a_negative_size() -> None:
     # The read side's twin of writefrom()'s negative-size refusal; zero stays "nothing to transfer".
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"abc")
-    assert run(locked_read_until_complete(uart, -1)) is None
-    assert run(locked_read_until_complete(uart, 0)) == bytearray()
+    assert run(locked_read_until_complete(uart, -1), _RUN_BOUND_S) is None
+    assert run(locked_read_until_complete(uart, 0), _RUN_BOUND_S) == bytearray()
     assert uart._rx_level() == 3
 
 
 def test_readinto_until_complete_refuses_a_negative_size() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"abc")
-    assert run(locked_readinto_until_complete(uart, bytearray(8), -1)) is None
-    assert run(locked_readinto_until_complete(uart, bytearray(8), 0)) == 0
+    assert run(locked_readinto_until_complete(uart, bytearray(8), -1), _RUN_BOUND_S) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(8), 0), _RUN_BOUND_S) == 0
     assert uart._rx_level() == 3
 
 
 def test_a_delimited_read_refuses_a_negative_size() -> None:
     uart = cobs_uart()
     fake(uart).feed_rx(b"\x02\x41\x00")  # one whole encoded frame, waiting unread
-    assert run(locked_read_until_complete(uart, -1)) is None
-    assert run(locked_readinto_until_complete(uart, bytearray(64), -1)) is None
+    assert run(locked_read_until_complete(uart, -1), _RUN_BOUND_S) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(64), -1), _RUN_BOUND_S) is None
     assert uart._rx_level() == 3
 
 
@@ -1715,7 +1720,7 @@ def test_a_delimited_read_refuses_a_negative_size() -> None:
 
 
 def test_ready_yields_even_when_the_mask_is_already_satisfied() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"x")  # the fill level reports the mask on the very first round
     ran: list[int] = []
 
@@ -1730,7 +1735,7 @@ def test_ready_yields_even_when_the_mask_is_already_satisfied() -> None:
             await other
             return got
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
 
 
 
@@ -1748,38 +1753,38 @@ def test_a_deadlineless_wait_polls_at_the_idle_rate_and_a_bounded_one_does_not()
             return clock.ticks_diff(clock.ticks_ms(), t0)
 
     with PollRoundClock():
-        idle = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
-        assert run(wait_on(idle, -1)) >= _IDLE_POLL_MS
-        bounded = make_uart(poll_wait_ms=_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
-        assert run(wait_on(bounded, 1000)) < _IDLE_POLL_MS
+        idle = _make_uart(poll_wait_ms=_FAST_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
+        assert run(wait_on(idle, -1), _RUN_BOUND_S) >= _IDLE_POLL_MS
+        bounded = _make_uart(poll_wait_ms=_FAST_POLL_WAIT_MS, poll_idle_ms=_IDLE_POLL_MS)
+        assert run(wait_on(bounded, 1000), _RUN_BOUND_S) < _IDLE_POLL_MS
 
 
 
 def test_uncounted_reads_are_clamped_to_what_is_buffered_too() -> None:
     # read()/readinto() with no count copy what the ring holds, never the whole buffer's worth.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"hi")
 
     async def read_scenario() -> bytes | None:
         async with uart:
             return await uart.read()
 
-    assert run(read_scenario()) == b"hi"
-    uart2 = make_uart()
+    assert run(read_scenario(), _RUN_BOUND_S) == b"hi"
+    uart2 = _make_uart()
     fake(uart2).feed_rx(b"hi")
 
     async def readinto_scenario() -> int | None:
         async with uart2:
             return await uart2.readinto(bytearray(64))
 
-    assert run(readinto_scenario()) == 2
+    assert run(readinto_scenario(), _RUN_BOUND_S) == 2
 
 
 
 def test_readline_reads_the_ring_never_the_fifo_api() -> None:
     # Read from the ring by index, never through the FIFO API: an empty ring is no line, and a line is
     # cut at its LF with the rest left for the next read.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> "tuple[Any, Any, Any]":
         async with uart:
@@ -1787,7 +1792,7 @@ def test_readline_reads_the_ring_never_the_fifo_api() -> None:
             fake(uart).feed_rx(b"one\ntwo")
             return empty, await uart.readline(), await uart.readline()
 
-    assert run(scenario()) == (None, b"one\n", b"two")
+    assert run(scenario(), _RUN_BOUND_S) == (None, b"one\n", b"two")
     assert fake(uart).rx_api_calls == 0
 
 
@@ -1797,7 +1802,7 @@ def test_a_delimited_frame_read_across_rounds_reads_the_ring_only() -> None:
     # each copied from the ring; a frame arriving in two parts is assembled across rounds.
     sender = cobs_uart()
     payload = bytearray(b"\x09\x00\x0a")
-    assert run(locked_write(sender, bytearray(payload))) is True
+    assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
     frame = written(sender)
     receiver = cobs_uart()
     fake(receiver).feed_rx(frame[:2])
@@ -1809,7 +1814,7 @@ def test_a_delimited_frame_read_across_rounds_reads_the_ring_only() -> None:
             await feeder
             return got
 
-    got = run(scenario())
+    got = run(scenario(), _RUN_BOUND_S)
     assert got is not None and bytes(got) == bytes(payload), got
     assert fake(receiver).rx_api_calls == 0
 
@@ -1833,7 +1838,7 @@ def test_a_closed_receive_channel_reads_as_a_silent_line() -> None:
     # rp2.DMA raises ValueError("channel closed") for a closed channel's count (rp2_dma.c), which only its
     # finaliser does here. The read neither raises nor fails at once: it waits out its timeout as on a silent
     # line, so a listener on a dead ring idles at its poll rate instead of failing and logging every round.
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"abcd")
     channel = uart._rx_dma
     assert channel is not None
@@ -1846,7 +1851,7 @@ def test_a_closed_receive_channel_reads_as_a_silent_line() -> None:
             waited = time.ticks_diff(time.ticks_ms(), t0)
             return got, await uart.readinto(bytearray(4), timeout_ms=_NO_DATA_TIMEOUT_MS), await uart.readline(timeout_ms=_NO_DATA_TIMEOUT_MS), waited
 
-    read, readinto, readline, waited = run(scenario())
+    read, readinto, readline, waited = run(scenario(), _RUN_BOUND_S)
     assert (read, readinto, readline) == (None, None, None)
     assert waited >= _NO_DATA_TIMEOUT_MS, waited
 
@@ -1867,7 +1872,7 @@ class _LappingChannel:
 def test_bytes_lapped_during_the_copy_fail_the_read() -> None:
     # A copy is checked again after it: bytes the DMA overwrote while they were being copied are no data,
     # so the copy fails, the overrun is counted and nothing is consumed as if read.
-    uart = make_uart(rx_ring=16)
+    uart = _make_uart(rx_ring=16)
     fake(uart).feed_rx(b"abcd")
     assert uart._rx_level() == 4
     real = uart._rx_dma
@@ -1880,7 +1885,7 @@ def test_bytes_lapped_during_the_copy_fail_the_read() -> None:
 def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> None:
     # Nothing buffered yet: the loop must hand the scheduler a turn instead of calling ready() again
     # at once, which on real hardware burns the whole latency budget inside one task.
-    uart = make_uart(poll_wait_ms=_POLL_WAIT_MS)
+    uart = _make_uart(poll_wait_ms=_FAST_POLL_WAIT_MS)
 
     async def scenario() -> "bytearray | None":
         async with uart:
@@ -1889,7 +1894,7 @@ def test_the_allocating_read_yields_rather_than_spinning_on_an_empty_ring() -> N
             await feeder
             return got
 
-    got = run(scenario())
+    got = run(scenario(), _RUN_BOUND_S)
     assert got is not None and bytes(got) == b"abcd", got
 
 
@@ -1898,17 +1903,17 @@ def test_a_delimited_read_with_nothing_on_the_line_times_out_on_both_paths() -> 
     # delimiter check at all, so ending the wait is ready()'s job - and the allocating read then
     # has to turn _read_delimited()'s sentinel into its own rather than returning a partial frame.
     uart = cobs_uart()
-    assert run(locked_readinto_until_complete(uart, bytearray(64), 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS)) is None
-    assert run(locked_read_until_complete(uart, 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS), _RUN_BOUND_S) is None
+    assert run(locked_read_until_complete(uart, 8, start_timeout_ms=_SILENT_LINE_TIMEOUT_MS, timeout_ms=_SILENT_LINE_TIMEOUT_MS), _RUN_BOUND_S) is None
 
 
 def test_a_delimited_codec_that_names_no_delimiter_fails_the_read() -> None:
     # A codec cannot be framed on nothing, so the read path checks rather than trusting that
     # is_delimited() and delimiter() agree - the same shape as every other sentinel here.
-    uart = make_uart(framing=_NamelessDelimiter(64, run_length=254, trailer=1))
+    uart = _make_uart(framing=_NamelessDelimiter(64, run_length=254, trailer=1))
     fake(uart).feed_rx(b"\x01\x02\x03")
-    assert run(locked_readinto_until_complete(uart, bytearray(64), 2, start_timeout_ms=30, timeout_ms=30)) is None
-    assert run(locked_read_until_complete(uart, 2, start_timeout_ms=30, timeout_ms=30)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(64), 2, start_timeout_ms=30, timeout_ms=30), _RUN_BOUND_S) is None
+    assert run(locked_read_until_complete(uart, 2, start_timeout_ms=30, timeout_ms=30), _RUN_BOUND_S) is None
     # Refused before the first byte, not after reading a whole worst-case frame looking for a
     # delimiter that does not exist - which is the difference the guard actually makes.
     assert uart._rx_level() == 3, uart._rx_level()
@@ -1919,7 +1924,7 @@ def test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly() -
     # the heap cannot serve has to come back as the sentinel - not as a MemoryError out of a driver
     # contracted never to raise, and not as a read against a buffer that was never allocated.
     uart = cobs_uart(max_frame=1 << 30)
-    assert run(locked_read_until_complete(uart, 1 << 30, start_timeout_ms=10, timeout_ms=10)) is None
+    assert run(locked_read_until_complete(uart, 1 << 30, start_timeout_ms=10, timeout_ms=10), _RUN_BOUND_S) is None
 
 
 def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None:
@@ -1927,7 +1932,7 @@ def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None
     # yield, so a frame longer than the yield interval would hold the loop for its whole wire time.
     # Measured against a competing task rather than asserted: the count is what proves the yield.
     sender = cobs_uart()
-    assert run(locked_write(sender, bytearray(b"\x41" * 40))) is True  # well past the 16-byte interval
+    assert run(locked_write(sender, bytearray(b"\x41" * 40)), _RUN_BOUND_S) is True  # well past the 16-byte interval
     receiver = cobs_uart()
     fake(receiver).feed_rx(written(sender))
     turns = [0]
@@ -1948,24 +1953,24 @@ def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None
             except asyncio.CancelledError:  # expected; anything else is a real failure
                 pass
 
-    got = run(scenario())
+    got = run(scenario(), _RUN_BOUND_S)
     assert got is not None and bytes(got) == b"\x41" * 40, got
     assert turns[0] >= 2, turns[0]  # 40 bytes / 16 per yield, so the loop gave up the CPU twice
 
 
 def test_a_crc_framed_write_of_nothing_succeeds_and_sends_nothing() -> None:
     # A zero-length payload is nothing to transfer: writefrom() reports success and sends nothing, never a bare CRC.
-    uart = make_uart(crc=CRC16())
-    assert run(locked_writefrom(uart, bytearray(8), 0)) is True
+    uart = _make_uart(crc=CRC16())
+    assert run(locked_writefrom(uart, bytearray(8), 0), _RUN_BOUND_S) is True
     assert written(uart) == b""
 
 
 def test_a_crc_framed_read_of_nothing_returns_empty() -> None:
     # Bytes already waiting stay unread: a read of nothing never consumes a frame as a bare CRC.
-    uart = make_uart(crc=CRC16())
+    uart = _make_uart(crc=CRC16())
     fake(uart).feed_rx(b"abc")
-    assert run(locked_read_until_complete(uart, 0)) == bytearray()
-    assert run(locked_readinto_until_complete(uart, bytearray(8), 0)) == 0
+    assert run(locked_read_until_complete(uart, 0), _RUN_BOUND_S) == bytearray()
+    assert run(locked_readinto_until_complete(uart, bytearray(8), 0), _RUN_BOUND_S) == 0
     assert fake(uart).log == []
     assert uart._rx_level() == 3
 
@@ -1974,25 +1979,25 @@ def test_a_zero_length_payload_is_nothing_to_transfer_in_every_crc_and_codec_mod
     # Every CRC and codec pairing: writes report success and send nothing, reads return an empty
     # result without touching the bus.
     for crc, framing in ((CRCPass(), FramingPass()), (CRC16(), FramingPass()), (CRCPass(), FramingCOBS(64)), (CRC16(), FramingCOBS(64))):
-        uart = make_uart(crc=crc, framing=framing)
+        uart = _make_uart(crc=crc, framing=framing)
         fake(uart).feed_rx(b"\x01\x00")  # one encoded empty COBS frame, waiting unread
-        assert run(locked_write(uart, bytearray())) is True
-        assert run(locked_writefrom(uart, bytearray(8), 0)) is True
-        assert run(locked_read_until_complete(uart, 0)) == bytearray()
-        assert run(locked_readinto_until_complete(uart, bytearray(8), 0)) == 0
+        assert run(locked_write(uart, bytearray()), _RUN_BOUND_S) is True
+        assert run(locked_writefrom(uart, bytearray(8), 0), _RUN_BOUND_S) is True
+        assert run(locked_read_until_complete(uart, 0), _RUN_BOUND_S) == bytearray()
+        assert run(locked_readinto_until_complete(uart, bytearray(8), 0), _RUN_BOUND_S) == 0
         assert fake(uart).log == []
         assert uart._rx_level() == 2
 
 def test_a_readline_that_never_becomes_ready_returns_the_sentinel() -> None:
     # readline() has no count to clamp, so its only bound is ready()'s deadline - a line that never
     # starts must end the call rather than leave a caller parked on a silent peer.
-    uart = make_uart()
+    uart = _make_uart()
 
     async def scenario() -> "bytes | None":
         async with uart:
             return await uart.readline(timeout_ms=_SILENT_LINE_TIMEOUT_MS)
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 # ---------------------------------------------------------------------------
@@ -2001,7 +2006,7 @@ def test_a_readline_that_never_becomes_ready_returns_the_sentinel() -> None:
 
 
 def test_the_default_rates_are_two_and_fifty_ms() -> None:
-    uart = UART(0, tx_pin=0, rx_pin=1)  # built directly: make_uart() pins this file's own 1/1 rates
+    uart = UART(0, tx_pin=0, rx_pin=1)  # built directly: _make_uart() pins this file's own 1/1 rates
     assert uart.poll_wait_ms == 2
     assert uart.poll_idle_ms == 50
 
@@ -2009,9 +2014,9 @@ def test_the_default_rates_are_two_and_fifty_ms() -> None:
 def test_a_long_message_goes_out_in_txbuf_sized_writes() -> None:
     # POLLOUT means one free TX ring byte, and a longer write waits per byte inside machine.UART.write()
     # (F.5.8): no single write asks for more than an empty ring holds.
-    uart = make_uart(txbuf=32)
+    uart = _make_uart(txbuf=32)
     payload = bytearray(range(96))
-    assert run(locked_write(uart, payload)) is True
+    assert run(locked_write(uart, payload), _RUN_BOUND_S) is True
     writes = [entry[1] for entry in fake(uart).log if entry[0] == "write"]
     assert [len(w) for w in writes] == [32, 32, 32], [len(w) for w in writes]
     assert b"".join(writes) == bytes(payload)
@@ -2020,7 +2025,7 @@ def test_a_long_message_goes_out_in_txbuf_sized_writes() -> None:
 def test_no_write_happens_while_the_ring_is_draining() -> None:
     # txdone() false means the previous write is still on its way out: no write that round, and the
     # loop yields while it waits.
-    uart = make_uart(txbuf=32)
+    uart = _make_uart(txbuf=32)
     fk = fake(uart)
     fk.tx_pending_rounds = 3
     writes_seen: list[int] = []
@@ -2049,7 +2054,7 @@ def test_no_write_happens_while_the_ring_is_draining() -> None:
             except asyncio.CancelledError:  # expected; anything else is a real failure
                 pass
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     assert writes_seen[:4] == [0, 0, 0, 0], writes_seen  # three draining rounds, then the one that writes
     assert [entry[0] for entry in fk.log].count("write") == 1
     assert turns[0] >= 3, turns[0]
@@ -2059,7 +2064,7 @@ def test_a_write_whose_line_never_drains_gives_up_at_its_deadline() -> None:
     # A TX that never goes idle fails the write once timeout_ms has passed, with nothing written;
     # judged by the result alone, so a host stall can only bring the give-up sooner.
     for method in ("write", "writefrom"):
-        uart = make_uart()
+        uart = _make_uart()
         fk = fake(uart)
         fk.tx_pending_rounds = 1 << 20  # the line never goes idle on its own
 
@@ -2069,27 +2074,27 @@ def test_a_write_whose_line_never_drains_gives_up_at_its_deadline() -> None:
                     return await u.write(bytearray(b"x"), timeout_ms=_NO_DATA_TIMEOUT_MS)
                 return await u.writefrom(bytearray(b"x"), 1, timeout_ms=_NO_DATA_TIMEOUT_MS)
 
-        assert run(writer()) is False, method
+        assert run(writer(), _RUN_BOUND_S) is False, method
         assert not [entry for entry in fk.log if entry[0] == "write"], method
 
 
 def test_a_write_with_a_deadline_still_completes_once_the_line_drains() -> None:
     # Guard: the deadline bounds the wait, it does not cut a write that drains in time. The deadline sits
     # past the run bound, so no host stall can bring it first.
-    uart = make_uart(txbuf=32)
+    uart = _make_uart(txbuf=32)
     fake(uart).tx_pending_rounds = 3
 
     async def writer() -> bool:
         async with uart:
             return await uart.write(bytearray(range(96)), timeout_ms=2000 * _RUN_BOUND_S)
 
-    assert run(writer()) is True
+    assert run(writer(), _RUN_BOUND_S) is True
     assert written(uart) == bytes(range(96))
 
 
 def test_cancel_or_deinit_during_the_drain_wait_returns_false() -> None:
     for action in ("cancel", "deinit"):
-        uart = make_uart()
+        uart = _make_uart()
         fk = fake(uart)
         fk.tx_pending_rounds = 1 << 20  # the line never goes idle on its own
 
@@ -2106,7 +2111,7 @@ def test_cancel_or_deinit_during_the_drain_wait_returns_false() -> None:
                 u.deinit()
             return await asyncio.wait_for(task, _STEP_BOUND_S)
 
-        assert run(scenario()) is False, action
+        assert run(scenario(), _RUN_BOUND_S) is False, action
         assert not [entry for entry in fk.log if entry[0] == "write"], action
 
 
@@ -2118,7 +2123,7 @@ def test_cancel_or_deinit_during_the_drain_wait_returns_false() -> None:
 def test_a_run_of_delimiters_lets_another_task_run() -> None:
     # The skip branches consume a buffered byte per round too, so they count toward the yield.
     sender = cobs_uart()
-    assert run(locked_write(sender, bytearray(b"\x41\x42"))) is True
+    assert run(locked_write(sender, bytearray(b"\x41\x42")), _RUN_BOUND_S) is True
     receiver = cobs_uart()
     fake(receiver).feed_rx(bytes([COBS_DELIMITER]) * 64 + written(sender))
     turns = [0]
@@ -2139,7 +2144,7 @@ def test_a_run_of_delimiters_lets_another_task_run() -> None:
             except asyncio.CancelledError:
                 pass
 
-    got = run(scenario())
+    got = run(scenario(), _RUN_BOUND_S)
     assert got is not None and bytes(got) == b"\x41\x42", got
     assert turns[0] >= 4, turns[0]  # 64 delimiters, a yield every 16
 
@@ -2148,7 +2153,7 @@ def test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart() -> None:
     # Another task may deinit() the bus during ready()'s closing yield: the caller gets the sentinel,
     # never a read or write on the dead UART.
     for op in ("read", "readinto_until_complete", "write"):
-        uart = make_uart()
+        uart = _make_uart()
         fk = fake(uart)
         fk.feed_rx(b"abcd")
 
@@ -2168,14 +2173,14 @@ def test_a_deinit_during_readys_closing_yield_hands_back_no_dead_uart() -> None:
             await killing
             return result
 
-        assert run(scenario()) in (None, False), op
+        assert run(scenario(), _RUN_BOUND_S) in (None, False), op
         assert not [entry for entry in fk.log if entry[0] == "write"], op
         assert uart._rx_pos == 0, op  # nothing was consumed from the ring
 
 
 def test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read() -> None:
     sender = cobs_uart()
-    assert run(locked_write(sender, bytearray(b"\x41" * 40))) is True
+    assert run(locked_write(sender, bytearray(b"\x41" * 40)), _RUN_BOUND_S) is True
     receiver = cobs_uart()
     fake(receiver).feed_rx(written(sender))
 
@@ -2189,7 +2194,7 @@ def test_a_deinit_during_the_delimited_reads_periodic_yield_ends_the_read() -> N
         await killing
         return got
 
-    assert run(scenario()) is None
+    assert run(scenario(), _RUN_BOUND_S) is None
 
 
 def test_an_idle_wait_beyond_the_ticks_range_returns_false() -> None:
@@ -2201,13 +2206,13 @@ def test_an_idle_wait_beyond_the_ticks_range_returns_false() -> None:
     except OverflowError:
         raised = True
     assert raised, "this interpreter's ticks period is not 2**62: the wait below would not reach the degrade path"
-    uart = make_uart(poll_idle_ms=2**61)  # an empty ring, so the first round sleeps the idle rate
+    uart = _make_uart(poll_idle_ms=2**61)  # an empty ring, so the first round sleeps the idle rate
 
     async def scenario() -> bool:
         async with uart:
             return await uart.ready(select.POLLIN, timeout_ms=-1)
 
-    assert run(scenario()) is False
+    assert run(scenario(), _RUN_BOUND_S) is False
 
 
 # ---------------------------------------------------------------------------
@@ -2251,7 +2256,7 @@ class _ChannelProbe:
 def test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma() -> None:
     # machine.UART enables its RX and RX-timeout interrupts at every construction, and their handler
     # drains the FIFO the ring reads: after setup and after each re-init the mask is clear, RX DMA on.
-    uart = make_uart()
+    uart = _make_uart()
     for _ in range(3):
         assert mem32[_UART0_IMSC] & _IMSC_RX == 0, hex(mem32[_UART0_IMSC])
         assert mem32[_UART0_DMACR] & _DMACR_RXDMAE, hex(mem32[_UART0_DMACR])
@@ -2262,7 +2267,7 @@ def test_every_init_clears_the_rx_interrupt_mask_and_enables_rx_dma() -> None:
 def test_a_re_init_masks_first_and_fails_the_next_read() -> None:
     # The mask is cleared before the ring is re-armed, and the restarted stream's first read fails as an
     # overrun: a byte the interrupt handler took before the mask is never stitched into a frame.
-    uart = make_uart()
+    uart = _make_uart()
     probe = _ChannelProbe(uart._rx_dma)
     uart._rx_dma = probe  # type: ignore[assignment]
     uart.init(0, 0, 1)
@@ -2270,15 +2275,15 @@ def test_a_re_init_masks_first_and_fails_the_next_read() -> None:
     assert probe.imsc_at_config, "the re-init did not re-arm the ring"
     assert all(imsc & _IMSC_RX == 0 for imsc in probe.imsc_at_config), probe.imsc_at_config
     fake(uart).feed_rx(b"abcd")
-    assert run(locked_readinto_until_complete(uart, bytearray(4), 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(4), 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None
     fake(uart).feed_rx(b"wxyz")
     buf = bytearray(4)
-    assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) == 4
+    assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) == 4
     assert bytes(buf) == b"wxyz"
 
 
 def test_the_receive_path_never_touches_the_fifo_api() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     fake(uart).feed_rx(b"line\nabcdefgh")
 
     async def scenario() -> "tuple[Any, Any, Any, Any]":
@@ -2289,18 +2294,18 @@ def test_the_receive_path_never_touches_the_fifo_api() -> None:
             idle = await uart.ready(select.POLLIN, timeout_ms=_NO_DATA_TIMEOUT_MS)
             return line, four, rest, idle
 
-    assert run(scenario()) == (b"line\n", b"abcd", 4, False)
+    assert run(scenario(), _RUN_BOUND_S) == (b"line\n", b"abcd", 4, False)
     assert fake(uart).rx_api_calls == 0
     assert fake(uart).rxbuf == _UART_MIN_RXBUF
 
 
 def test_progress_is_read_from_the_transfer_count_only() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     probe = _ChannelProbe(uart._rx_dma)
     uart._rx_dma = probe  # type: ignore[assignment]
     fake(uart).feed_rx(b"abcd")
     buf = bytearray(4)
-    assert run(locked_readinto_until_complete(uart, buf, 4)) == 4
+    assert run(locked_readinto_until_complete(uart, buf, 4), _RUN_BOUND_S) == 4
     assert bytes(buf) == b"abcd"
     assert probe.write_reads == 0
 
@@ -2308,11 +2313,11 @@ def test_progress_is_read_from_the_transfer_count_only() -> None:
 def test_the_count_reload_keeps_reception_going() -> None:
     # The data channel's count runs out every 2**29 bytes; the chained channel reloads it, no byte lost,
     # and the reload value keeps DMA.count a small int.
-    uart = make_uart(rx_ring=16)
+    uart = _make_uart(rx_ring=16)
     skip_ahead(uart, _RX_RELOAD - 3)  # three transfers left before the reload
     fake(uart).feed_rx(b"0123456789")
     buf = bytearray(10)
-    assert run(locked_readinto_until_complete(uart, buf, 10, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) == 10
+    assert run(locked_readinto_until_complete(uart, buf, 10, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) == 10
     assert bytes(buf) == b"0123456789"
     channel = uart._rx_dma
     assert channel is not None
@@ -2321,13 +2326,13 @@ def test_the_count_reload_keeps_reception_going() -> None:
 
 
 def test_the_fill_level_is_the_modular_difference_of_totals() -> None:
-    uart = make_uart(rx_ring=16)
+    uart = _make_uart(rx_ring=16)
     skip_ahead(uart, _RX_RELOAD - 2)  # the totals cross the count's wrap below
     assert uart._rx_level() == 0
     fake(uart).feed_rx(b"abcde")
     assert uart._rx_level() == 5
     buf = bytearray(2)
-    assert run(locked_readinto_until_complete(uart, buf, 2)) == 2
+    assert run(locked_readinto_until_complete(uart, buf, 2), _RUN_BOUND_S) == 2
     assert uart._rx_level() == 3
     assert bytes(buf) == b"ab"
 
@@ -2336,13 +2341,13 @@ def test_a_frame_split_across_the_ring_end_reads_whole() -> None:
     payload = bytearray(b"\x10\x00\x20\x30\x40")
     for crc in (None, CRC16):
         for delimited in (False, True):
-            sender = make_uart(crc=crc() if crc else None, framing=FramingCOBS(64) if delimited else FramingPass())
-            assert run(locked_write(sender, bytearray(payload))) is True
-            receiver = make_uart(rx_ring=64, crc=crc() if crc else None, framing=FramingCOBS(64) if delimited else FramingPass())
+            sender = _make_uart(crc=crc() if crc else None, framing=FramingCOBS(64) if delimited else FramingPass())
+            assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
+            receiver = _make_uart(rx_ring=64, crc=crc() if crc else None, framing=FramingCOBS(64) if delimited else FramingPass())
             skip_ahead(receiver, 61)  # the frame starts three bytes before the ring's end
             fake(receiver).feed_rx(written(sender))
             buf = bytearray(64)
-            size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+            size = run(locked_readinto_until_complete(receiver, buf, len(payload), start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S)
             assert size == len(payload), (crc, delimited)
             assert bytes(buf[:size]) == bytes(payload), (crc, delimited)
 
@@ -2350,14 +2355,14 @@ def test_a_frame_split_across_the_ring_end_reads_whole() -> None:
 def test_a_lap_is_an_overrun_never_data() -> None:
     # More unread bytes than the ring holds: the read fails, the overrun is counted, every unread byte
     # is dropped, and the next bytes read whole.
-    uart = make_uart(rx_ring=16)
+    uart = _make_uart(rx_ring=16)
     fake(uart).feed_rx(bytes(range(20)))
-    assert run(locked_readinto_until_complete(uart, bytearray(4), 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None
+    assert run(locked_readinto_until_complete(uart, bytearray(4), 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None
     assert uart.rx_overruns == 1
     assert uart._rx_level() == 0
     fake(uart).feed_rx(b"wxyz")
     buf = bytearray(4)
-    assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) == 4
+    assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) == 4
     assert bytes(buf) == b"wxyz"
 
 
@@ -2445,7 +2450,7 @@ def test_the_ring_size_is_public_and_set_by_init() -> None:
 
 
 def test_the_ring_is_allocated_once_in_setup() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     ring = uart._ring
     assert uart.setup_rx_ring() is True  # a second setup reallocates nothing
     uart.init(0, 0, 1)  # nor does a re-init
@@ -2462,7 +2467,7 @@ def test_the_ring_is_allocated_once_in_setup() -> None:
 def test_a_read_retains_nothing() -> None:
     # 2,000 frame reads copied by index into one buffer grow the heap no more than 1,000 do: each run's
     # asyncio.run() leaves the same fixed residue, which the difference cancels, so any per-read retention shows.
-    uart = make_uart()
+    uart = _make_uart()
     buf = bytearray(8)
 
     async def reads(n: int) -> int:
@@ -2476,17 +2481,17 @@ def test_a_read_retains_nothing() -> None:
     def grown(n: int) -> int:
         gc.collect()
         before = gc.mem_alloc()
-        assert run(reads(n)) == n
+        assert run(reads(n), _RUN_BOUND_S) == n
         gc.collect()
         return gc.mem_alloc() - before
 
-    assert run(reads(10)) == 10  # warm-up: every path taken before the heap is sampled
+    assert run(reads(10), _RUN_BOUND_S) == 10  # warm-up: every path taken before the heap is sampled
     # The fake's capped logs (mem32's above all) grow until they wrap once, by a count per read that varies with
     # poll rounds: reading on until each has wrapped, or a batch leaves it untouched, keeps that out of the samples.
     logs = (fake(uart).log, mem32.log)
     for _ in range(128):  # 8,192 reads: a 4,096-entry log wraps within them at one entry per read
         before = [(len(log), log.dropped) for log in logs]
-        assert run(reads(64)) == 64
+        assert run(reads(64), _RUN_BOUND_S) == 64
         if all(log.dropped >= log.maxlen or (len(log), log.dropped) == b for log, b in zip(logs, before)):  # noqa: B905 - MicroPython zip() rejects strict=
             break
     else:
@@ -2504,10 +2509,9 @@ def _frame(i: int) -> bytes:
 def test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing() -> None:
     # 5,000 frames arriving at 115200 baud's 11.52 B/ms on the fake clock, the consumer reading one frame
     # per frame of wire time, so the 512-byte ring sits at its fill boundary: nothing lost, no overrun.
-    uart = make_uart(baudrate=115200)
+    uart = _make_uart(baudrate=115200)
     fake(uart).rx_rate = 0.0  # the line rate
     buf = bytearray(53)
-    start = Timer.clock_ms
 
     async def scenario() -> int:
         intact = 0
@@ -2523,10 +2527,7 @@ def test_thousands_of_back_to_back_frames_at_line_rate_lose_nothing() -> None:
                 intact += 1
         return intact
 
-    try:
-        assert run(scenario(), _HAMMER_BOUND_S) == 5000
-    finally:
-        Timer.clock_ms = start
+    assert run(scenario(), _HAMMER_BOUND_S) == 5000
     assert uart.rx_overruns == 0
 
 
@@ -2535,19 +2536,20 @@ def test_random_consumer_stalls_within_and_beyond_the_bound() -> None:
     # Seeded consumer stalls of 0-90 ms against a sender at the line rate; the 512-byte ring holds 44 ms of
     # it. A stall within that loses nothing, one past it is exactly one detected overrun, and the next frame
     # reads whole either way.
-    uart = make_uart(baudrate=115200)
+    uart = _make_uart(baudrate=115200)
     fake(uart).rx_rate = 0.0  # the line rate
     buf = bytearray(53)
-    seed = 12345
-    start = Timer.clock_ms
+    stalls, seed = [], 12345
+    for _ in range(200):
+        seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF  # an LCG with a fixed seed scripts the stalls
+        stalls.append(seed % 91)
+    rng = FixedRandom(randint_values=stalls)
 
     async def scenario() -> "tuple[int, int]":
-        nonlocal seed
         within = beyond = 0
         async with uart:
             for i in range(200):
-                seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF  # a file-local LCG, fixed seed
-                stall_ms = seed % 91
+                stall_ms = rng.randint(0, 90)
                 frames = stall_ms * 1152 // (53 * 100)  # whole frames whose wire time fits the stall
                 for k in range(frames):
                     fake(uart).feed_rx(_frame(i * 16 + k))
@@ -2566,10 +2568,7 @@ def test_random_consumer_stalls_within_and_beyond_the_bound() -> None:
                 assert await uart.readinto_until_complete(buf, 53) == 53 and bytes(buf) == _frame(i), i
         return within, beyond
 
-    try:
-        within, beyond = run(scenario(), _HAMMER_BOUND_S)
-    finally:
-        Timer.clock_ms = start
+    within, beyond = run(scenario(), _HAMMER_BOUND_S)
     assert within > 0 and beyond > 0, (within, beyond)
     assert uart._rx_level() == 0
 
@@ -2578,30 +2577,30 @@ def test_a_uart_receive_error_fails_the_frame_and_the_next_reads_whole() -> None
     payload = bytearray(b"\x01\x02\x03\x04")
     for bits in (_RSR_OE, _RSR_FE, _RSR_BE):
         for crc in (None, CRC16):
-            sender = make_uart(crc=crc() if crc else None)
-            assert run(locked_write(sender, bytearray(payload))) is True
+            sender = _make_uart(crc=crc() if crc else None)
+            assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
             frame = written(sender)
-            uart = make_uart(crc=crc() if crc else None)
+            uart = _make_uart(crc=crc() if crc else None)
             fake(uart).feed_rx(frame[:2])
             plant_rx_errors(uart, bits)
             fake(uart).feed_rx(frame[2:])
             buf = bytearray(16)
-            assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) is None, (bits, crc)
+            assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) is None, (bits, crc)
             assert uart.rx_overruns == 1, (bits, crc)
             assert uart._rx_level() == 0, (bits, crc)
             assert mem32[_UART0_RSR] & (_RSR_OE | _RSR_FE | _RSR_BE) == 0, (bits, crc)  # cleared through UARTECR
             fake(uart).feed_rx(frame)
-            assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) == 4, (bits, crc)
+            assert run(locked_readinto_until_complete(uart, buf, 4, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) == 4, (bits, crc)
             assert bytes(buf[:4]) == bytes(payload), (bits, crc)
 
 
 def test_a_parity_error_alone_is_outside_the_mask() -> None:
-    uart = make_uart()  # no link configures parity, so PE carries nothing
+    uart = _make_uart()  # no link configures parity, so PE carries nothing
     fake(uart).feed_rx(b"ab")
     plant_rx_errors(uart, _RSR_PE)
     fake(uart).feed_rx(b"cd")
     buf = bytearray(4)
-    assert run(locked_readinto_until_complete(uart, buf, 4)) == 4
+    assert run(locked_readinto_until_complete(uart, buf, 4), _RUN_BOUND_S) == 4
     assert bytes(buf) == b"abcd"
     assert uart.rx_overruns == 0
 
@@ -2616,7 +2615,7 @@ def test_an_error_flag_left_before_the_ring_existed_is_not_reported() -> None:
     assert mem32[_UART0_RSR] & _RSR_OE == 0
     fake(uart).feed_rx(b"abcd")
     buf = bytearray(4)
-    assert run(locked_readinto_until_complete(uart, buf, 4)) == 4
+    assert run(locked_readinto_until_complete(uart, buf, 4), _RUN_BOUND_S) == 4
     assert uart.rx_overruns == 0
 
 
@@ -2626,15 +2625,15 @@ def test_a_receive_overrun_fails_the_initiators_transaction_and_the_next_succeed
     for fault in ("oe", "fe", "be", "lap"):
         for crc in (None, CRC16):
             pair = Pair(get_callback=echo_get(b"v"), set_callback=accept_set(), crc_a=crc() if crc else None, crc_b=crc() if crc else None)
-            assert run(pair.setup()) is True
+            assert run(pair.setup(), _RUN_BOUND_S) is True
             if fault == "lap":
                 pair.fake_b.feed_rx(bytes(600))  # more than the responder's 512-byte ring holds
             else:
                 bits = {"oe": _RSR_OE, "fe": _RSR_FE, "be": _RSR_BE}[fault]
                 plant_rx_errors(pair.driver_b, bits)
             with PollRoundClock():  # the reply timeouts move with the modules' own sleeps, never host load
-                first = run(pair.with_listener(pair.initiator.uart_set(1, b"abc"), listener_may_stall=True))
-                second = run(pair.with_listener(pair.initiator.uart_set(1, b"abc")))
+                first = run(pair.with_listener(pair.initiator.uart_set(1, b"abc"), listener_may_stall=True), _RUN_BOUND_S)
+                second = run(pair.with_listener(pair.initiator.uart_set(1, b"abc")), _RUN_BOUND_S)
             assert first is False, (fault, crc)
             assert second is True, (fault, crc)
             assert pair.driver_b.rx_overruns == 1, (fault, crc)
@@ -2650,7 +2649,7 @@ def _discarded_by(uart: UART, fed: bytes, read: "Any") -> int:
     before = uart.discarded_bytes
     if fed:
         fake(uart).feed_rx(fed)
-    assert run(read(uart)) is None
+    assert run(read(uart), _RUN_BOUND_S) is None
     return (uart.discarded_bytes - before) & COUNTER_CAP
 
 
@@ -2667,27 +2666,27 @@ def _counted_reads(nbytes: int) -> "list[Any]":
 
 def test_a_mid_frame_timeout_counts_the_partial_frame() -> None:
     for read in _counted_reads(8):
-        assert _discarded_by(make_uart(), b"abcde", read) == 5
+        assert _discarded_by(_make_uart(), b"abcde", read) == 5
 
 
 def test_a_start_timeout_counts_nothing() -> None:
     for read in _counted_reads(8):
-        assert _discarded_by(make_uart(), b"", read) == 0
+        assert _discarded_by(_make_uart(), b"", read) == 0
     assert _discarded_by(cobs_uart(), b"", _counted_reads(8)[1]) == 0
 
 
 def test_a_crc_failure_counts_the_whole_frame() -> None:
-    framed = run(CRC16().add(bytearray(b"hello")))
+    framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
     assert framed is not None
     framed[-1] ^= 0xFF
     for read in _counted_reads(5):
-        assert _discarded_by(make_uart(crc=CRC16()), bytes(framed), read) == 7
-    sender = make_uart(crc=CRC16(), framing=FramingCOBS(64))
-    assert run(locked_write(sender, bytearray(b"hello"))) is True
+        assert _discarded_by(_make_uart(crc=CRC16()), bytes(framed), read) == 7
+    sender = _make_uart(crc=CRC16(), framing=FramingCOBS(64))
+    assert run(locked_write(sender, bytearray(b"hello")), _RUN_BOUND_S) is True
     bad = bytearray(written(sender))
     bad[-2] ^= 0x01 if bad[-2] != 0x01 else 0x03  # a CRC byte changed, never into the delimiter
     for read in _counted_reads(5):
-        assert _discarded_by(make_uart(crc=CRC16(), framing=FramingCOBS(64)), bytes(bad), read) == len(bad)
+        assert _discarded_by(_make_uart(crc=CRC16(), framing=FramingCOBS(64)), bytes(bad), read) == len(bad)
 
 
 def test_a_cobs_decode_failure_counts_the_consumed_bytes() -> None:
@@ -2700,20 +2699,20 @@ def test_a_cobs_decode_failure_counts_the_consumed_bytes() -> None:
 
 def test_a_good_frame_counts_nothing() -> None:
     for read in (locked_read_until_complete, locked_readinto_until_complete):
-        uart = make_uart(crc=CRC16())
-        framed = run(CRC16().add(bytearray(b"hello")))
+        uart = _make_uart(crc=CRC16())
+        framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
         assert framed is not None
         fake(uart).feed_rx(bytes(framed))
         if read is locked_read_until_complete:
-            assert run(locked_read_until_complete(uart, 5)) == bytearray(b"hello")
+            assert run(locked_read_until_complete(uart, 5), _RUN_BOUND_S) == bytearray(b"hello")
         else:
-            assert run(locked_readinto_until_complete(uart, bytearray(8), 5)) == 5
+            assert run(locked_readinto_until_complete(uart, bytearray(8), 5), _RUN_BOUND_S) == 5
         assert uart.discarded_bytes == 0
 
 
 def test_the_discard_count_wraps_without_passing_the_cap() -> None:
     for read in _counted_reads(8):
-        uart = make_uart()
+        uart = _make_uart()
         uart.discarded_bytes = COUNTER_CAP - 2
         _discarded_by(uart, b"abcde", read)
         assert uart.discarded_bytes == 2, uart.discarded_bytes
@@ -2722,12 +2721,12 @@ def test_the_discard_count_wraps_without_passing_the_cap() -> None:
 def test_an_exact_size_codec_delivers_a_full_frame() -> None:
     # A delimited codec sized to the raw frame (payload plus CRC) carries a full-length, zero-free frame.
     payload = bytearray((i % 255) + 1 for i in range(48))
-    sender = make_uart(crc=CRC16(), framing=FramingCOBS(50))
-    assert run(locked_write(sender, bytearray(payload))) is True
-    receiver = make_uart(crc=CRC16(), framing=FramingCOBS(50))
+    sender = _make_uart(crc=CRC16(), framing=FramingCOBS(50))
+    assert run(locked_write(sender, bytearray(payload)), _RUN_BOUND_S) is True
+    receiver = _make_uart(crc=CRC16(), framing=FramingCOBS(50))
     fake(receiver).feed_rx(written(sender))
     buf = bytearray(receiver.framing.max_encoded(50))
-    assert run(locked_readinto_until_complete(receiver, buf, 48, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS)) == 48
+    assert run(locked_readinto_until_complete(receiver, buf, 48, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS), _RUN_BOUND_S) == 48
     assert bytes(buf[:48]) == bytes(payload)
 
 
@@ -2749,7 +2748,7 @@ def _holder(uart: UART, release: "asyncio.Event", *, reads: bool) -> "Any":
 
 
 def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     uart._cancel_req = COUNTER_CAP
     uart._cancel_ack = COUNTER_CAP
     release = asyncio.Event()
@@ -2762,13 +2761,13 @@ def test_a_cancel_at_the_counter_cap_wraps_and_is_acknowledged() -> None:
         await asyncio.wait_for(task, _STEP_BOUND_S)
         return result
 
-    assert run(scenario()) is True
+    assert run(scenario(), _RUN_BOUND_S) is True
     assert (uart._cancel_req, uart._cancel_ack) == (0, 0), (uart._cancel_req, uart._cancel_ack)
     assert uart.cancel_unacknowledged == 0
 
 
 def test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise() -> None:
-    uart = make_uart()
+    uart = _make_uart()
     comm = UARTComm(uart, "initiator")
     uart.cancel_unacknowledged = COUNTER_CAP
     comm._cancel_unacked_seen = COUNTER_CAP
@@ -2781,9 +2780,9 @@ def test_the_unacknowledged_count_wraps_and_clear_still_reports_a_rise() -> None
         release.set()
         await asyncio.wait_for(task, _STEP_BOUND_S)
 
-    run(scenario())
+    run(scenario(), _RUN_BOUND_S)
     assert uart.cancel_unacknowledged == 0, uart.cancel_unacknowledged
-    entry = run(comm.get_error_counter())[comm.name]
+    entry = run(comm.get_error_counter(), _RUN_BOUND_S)[comm.name]
     assert entry["ErrNum"][-1] == code("W", "UART_CANCEL_UNACKED") and entry["ErrType"][-1] == "W", entry
 
 

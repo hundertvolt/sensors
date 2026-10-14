@@ -72,6 +72,10 @@ def _bindings(nodes: "list[ast.AST]") -> "list[tuple[ast.expr, ast.expr | None, 
     return out
 
 
+def _on_self(call: ast.Call) -> bool:
+    return isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name) and call.func.value.id == "self"
+
+
 def _call_name(node: ast.AST) -> "str | None":
     if not isinstance(node, ast.Call):
         return None
@@ -114,7 +118,9 @@ def _file_findings(path: str, tree: ast.Module, held: "set[str]") -> "tuple[list
                         bound.add(key)
             for call in (n for n in nodes[id(scope)] if isinstance(n, ast.Call) and _call_name(n) in functions):
                 for fn, is_method in functions[str(_call_name(call))]:
-                    positional = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)][1 if is_method and isinstance(call.func, ast.Attribute) else 0 :]
+                    if is_method != _on_self(call) or not (is_method or isinstance(call.func, ast.Name)):
+                        continue  # a method is reached by name only through self., a module function only by a bare call
+                    positional = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)][1 if is_method else 0 :]
                     passed[id(fn)] |= {p for p, a in zip(positional, call.args, strict=False) if _is_tick(a, own, held)}
                     passed[id(fn)] |= {k.arg for k in call.keywords if k.arg is not None and _is_tick(k.value, own, held)}
             if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(isinstance(n, ast.Return) and n.value is not None and _is_tick(n.value, own, held) for n in nodes[id(scope)]):
@@ -359,6 +365,17 @@ def test_a_tick_handed_to_a_function_of_the_same_file_is_followed(tree_copy: Pat
         "src/zz_plant.py:10 Gate._late(): `t1 - t2` is arithmetic on a tick value",
         _UNLISTED,
     ], findings
+
+
+def test_a_method_call_on_another_receiver_is_not_dispatched_by_name(tree_copy: Path, generated: "dict[str, str]") -> None:
+    # self._history.append() is the deque's, not _BoundedLog.append(): only a self. call reaches a method of
+    # this file by its name, so a tick handed to the deque judges nothing in the class's own method.
+    plant = (
+        "import time\nfrom collections import deque\n\n\nclass _BoundedLog:\n    def append(self, entry):\n        return entry + 1\n\n\n"
+        "class Gate:\n    def __init__(self):\n        self._history = deque((), 4)\n\n    def mark(self):\n        self._history.append(time.ticks_ms())\n"
+    )
+    findings = _findings(_plant(tree_copy, "src/zz_plant.py", plant) | generated, _known_users())
+    assert findings == [_UNLISTED], findings
 
 
 def test_a_closure_reads_its_enclosing_ticks(tree_copy: Path, generated: "dict[str, str]") -> None:

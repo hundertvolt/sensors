@@ -207,7 +207,6 @@ describe("pollManager", () => {
         await assertion;
 
         expect((await next).body).toEqual({ second: true });
-        vi.useRealTimers();
     });
 
     it("succeeds when the body completes just before the timeout (guard)", async () => {
@@ -226,7 +225,6 @@ describe("pollManager", () => {
         await vi.advanceTimersByTimeAsync(999);
 
         await expect(late).resolves.toEqual({ ok: true, status: 200, body: { late: true } });
-        vi.useRealTimers();
     });
 
     it("aborts the underlying fetch's signal when a request times out", async () => {
@@ -244,7 +242,6 @@ describe("pollManager", () => {
         await assertion;
 
         expect(capturedSignal?.aborted).toBe(true);
-        vi.useRealTimers();
     });
 
     it("rejects a queued request whose signal aborts before its turn with AbortError, never fetching it", async () => {
@@ -344,8 +341,6 @@ describe("startPolling", () => {
         resolveCurrent();
         await vi.advanceTimersByTimeAsync(1000);
         expect(callCount).toBe(2); // stopped - no further polls
-
-        vi.useRealTimers();
     });
 
     it("reports each failure through onError and keeps polling at the doubled interval", async () => {
@@ -374,8 +369,6 @@ describe("startPolling", () => {
         expect(consoleError).not.toHaveBeenCalled(); // the caller's onError is the one failure path
 
         stop();
-        consoleError.mockRestore();
-        vi.useRealTimers();
     });
 
     it("backs off 3000, 6000, 12000 ... capped at POLL_BACKOFF_MAX_MS while failing, and returns to 3000 after one success", async () => {
@@ -401,7 +394,6 @@ describe("startPolling", () => {
         const gaps = calledAt.slice(1).map((at, index) => at - /** @type {number} */ (calledAt[index]));
         expect(gaps).toEqual([...failingGaps, cap, 3000]);
         stop();
-        vi.useRealTimers();
     });
 
     it("ends the loop after the first success when stopAfterSuccess is set, releasing the visibility listener", async () => {
@@ -422,7 +414,6 @@ describe("startPolling", () => {
         await vi.advanceTimersByTimeAsync(1000);
         expect(callCount).toBe(3);
         expect(visibility.listenerCount).toBe(0);
-        vi.useRealTimers();
     });
 
     it("schedules nothing after a stop() that lands while a poll is in flight (guard)", async () => {
@@ -443,7 +434,6 @@ describe("startPolling", () => {
         await vi.advanceTimersByTimeAsync(20);
 
         expect(callCount).toBe(1);
-        vi.useRealTimers();
     });
 
     it("pauses while the page is hidden, ticks once on becoming visible, and releases its listener on stop", async () => {
@@ -474,7 +464,6 @@ describe("startPolling", () => {
         expect(visibility.listenerCount).toBe(1);
         stop();
         expect(visibility.listenerCount).toBe(0);
-        vi.useRealTimers();
     });
 
     it("runs nothing while the page starts hidden, and ticks once it becomes visible", async () => {
@@ -496,7 +485,6 @@ describe("startPolling", () => {
         await vi.advanceTimersByTimeAsync(0);
         expect(callCount).toBe(1);
         stop();
-        vi.useRealTimers();
     });
 
     it("runs no tick for a visibility change that arrives after stop() (guard)", async () => {
@@ -520,6 +508,5 @@ describe("startPolling", () => {
         await vi.advanceTimersByTimeAsync(100);
 
         expect(callCount).toBe(1);
-        vi.useRealTimers();
     });
 });

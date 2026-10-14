@@ -5,20 +5,15 @@ Deliberate changes since: a blank block is read without a busy marker (agent, 20
 # one SPI.init() at the fixed bus config and one CS low/high pair, so the goldens below need hold
 # only the transfers inside each cycle - the envelope is checked, not dropped (see _cycles()).
 
-import asyncio
-
 import machine
+from _async_harness import run
+from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 
-import asy_spi_driver
 from asy_crc_checks import CRC8, CRC32
 from asy_fram_driver import FRAM_SPI
 from asy_fram_manager import FRAMChunk, FRAMManager, FRAMTimestampedChunk, _owner_seed
 from asy_print_log import PrintLogHistoryStore
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -26,20 +21,12 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     from asy_crc_checks import CRCBase
 
-    T = TypeVar("T")
-
-# The one bus config SPIDevice.__aenter__ applies, as one recorded event. Every CS cycle carries it.
-_INIT_EVENT = "init 1000000/0/0/8/0"
+# The one bus config SPIDevice.__aenter__ applies (firstbit MSB = 1 on rp2), as one recorded event. Every CS cycle
+# carries it.
+_INIT_EVENT = "init 1000000/0/0/8/1"
 _WRDI = b"\x04"  # asy_fram_driver.py's _CMD_WRDI is module-private
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 # --------------------------------------------------------------------------- bus recorder
@@ -57,8 +44,10 @@ _ORIG_INIT = FakeMB85RS64V.init
 _ORIG_PIN_VALUE = machine.Pin.value
 
 
-def _hex(buf: object) -> str:
-    return "".join(f"{b:02x}" for b in bytes(buf))  # type: ignore[call-overload]
+def _arm(manager: FRAMManager) -> None:
+    global _TRACE, _CS_PIN
+    _CS_PIN = manager.fram._spidev._cs_pin
+    _TRACE = []
 
 
 def _rec_write(self: FakeMB85RS64V, buf: object) -> None:
@@ -106,6 +95,81 @@ FakeMB85RS64V.init = _rec_init  # type: ignore[method-assign]
 machine.Pin.value = _rec_pin_value  # type: ignore[method-assign]
 
 
+def _assert_trace(name: str, got: "tuple[str, ...]", want: "tuple[str, ...]") -> None:
+    for i in range(min(len(got), len(want))):
+        assert got[i] == want[i], f"{name}: CS cycle {i} changed - recorded {got[i]!r}, golden {want[i]!r}"
+    assert len(got) == len(want), f"{name}: {len(got)} CS cycles recorded, golden has {len(want)}"
+
+
+async def _collect() -> "dict[str, tuple[tuple[str, ...], int]]":
+    # One rig, five recordings, in the order that makes each one's chip state what it must be:
+    # the blank setup leaves a valid pair behind, which is exactly what the valid setup then reads.
+    manager, logger, chunk = await _rig()
+    out: dict[str, tuple[tuple[str, ...], int]] = {}
+
+    _arm(manager)
+    await logger.setup()  # blank chip: _read() finds no valid copy, _write() lays both down
+    out["blank"] = _disarm()
+
+    logger.initialized = False
+    _arm(manager)
+    await logger.setup()  # the chip now carries a valid pair, so _read() succeeds and _write() never runs
+    out["valid"] = _disarm()
+
+    buf = chunk.get_buffer()
+    dbuf = buf.get_data_buf()
+    assert dbuf is not None
+    dbuf[:] = b"\x11\x22\x33\x44\x55\x66\x77\x88"
+
+    _arm(manager)
+    written = await chunk.write_into(buf)
+    out["ts_write"] = _disarm()
+    assert written[0]  # (wrote_ok, ntp_synced, utc) - the clock is unsynced on purpose
+
+    _arm(manager)
+    read = await chunk.read_into(buf)
+    out["ts_read"] = _disarm()
+    assert read[0]
+
+    _arm(manager)
+    cleared = await chunk.clear()
+    out["clear"] = _disarm()
+    assert cleared
+
+    return out
+
+
+def _commands_at(cycles: "tuple[str, ...]", first: int, end: int) -> "tuple[int, int, list[int]]":
+    # Each READ (03) or WRITE (02) cycle as (opcode, start, length), 2-byte address form: the counts of
+    # those starting inside [first, end), and the start addresses of every one.
+    reads = writes = 0
+    starts: list[int] = []
+    for cycle in cycles:
+        parts = cycle.split()
+        if len(parts[0]) != 8 or parts[0][2:4] not in ("02", "03"):
+            continue
+        start = int(parts[0][4:], 16)
+        if first <= start < end:
+            if parts[0][2:4] == "02":
+                writes += 1
+            else:
+                reads += 1
+        starts.extend(range(start, start + len(parts[1][2:]) // 2))
+    return reads, writes, starts
+
+
+# --------------------------------------------------------------------------- rig
+_STORE_OWNER = "WT"  # the store's name, which it passes as its chunk's owner
+_VALUE_OWNER = "WT_VALUE"
+
+
+async def _crc_hex(crc: "CRCBase", owner: str, payload: bytes) -> str:
+    # The CRC bytes a chunk of `owner` stores after `payload`, from the shared CRC class under that owner's seed.
+    buf = bytearray(payload) + bytearray(crc.length())
+    assert await crc.add_into(buf, len(payload), init=_owner_seed(owner, crc)) is not None
+    return _hex(buf[len(payload) :])
+
+
 def _cycles(trace: "list[str]") -> "tuple[str, ...]":
     # Envelope invariant, asserted rather than assumed: the stream is exactly repeated
     # (init, CS low, transfers..., CS high) groups, with the same bus config every time and no
@@ -125,43 +189,6 @@ def _cycles(trace: "list[str]") -> "tuple[str, ...]":
         i += 1
         out.append(" ".join(group))
     return tuple(out)
-
-
-def _arm(manager: FRAMManager) -> None:
-    global _TRACE, _CS_PIN
-    _CS_PIN = manager.fram._spidev._cs_pin
-    _TRACE = []
-
-
-def _disarm() -> "tuple[tuple[str, ...], int]":
-    # Returns the per-CS-cycle golden form and the raw recorded event count, so a test can confirm
-    # the compact form accounts for every single event rather than quietly summarising them.
-    global _TRACE
-    trace = _TRACE
-    _TRACE = None
-    assert trace is not None
-    return _cycles(trace), len(trace)
-
-
-# --------------------------------------------------------------------------- rig
-_STORE_OWNER = "WT"  # the store's name, which it passes as its chunk's owner
-_VALUE_OWNER = "WT_VALUE"
-
-
-async def _never_synced() -> bool:
-    return False  # a fixed, unsynced clock keeps every timestamped trace deterministic
-
-
-async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChunk]":
-    # The production shape section 3B priced: one manager, a PrintLogHistoryStore allocated first
-    # (SensorReader's own order) and a separate timestamped value chunk second.
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(bus, 1, max_size=0x2000)
-    assert await manager.setup()
-    logger = PrintLogHistoryStore(manager, 10, None, name=_STORE_OWNER)
-    chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32(), owner=_VALUE_OWNER)
-    assert chunk is not None
-    return manager, logger, chunk
 
 
 # --------------------------------------------------------------------------- goldens
@@ -412,49 +439,14 @@ w:05 r:00
 """
 
 
-async def _collect() -> "dict[str, tuple[tuple[str, ...], int]]":
-    # One rig, five recordings, in the order that makes each one's chip state what it must be:
-    # the blank setup leaves a valid pair behind, which is exactly what the valid setup then reads.
-    manager, logger, chunk = await _rig()
-    out: dict[str, tuple[tuple[str, ...], int]] = {}
-
-    _arm(manager)
-    await logger.setup()  # blank chip: _read() finds no valid copy, _write() lays both down
-    out["blank"] = _disarm()
-
-    logger.initialized = False
-    _arm(manager)
-    await logger.setup()  # the chip now carries a valid pair, so _read() succeeds and _write() never runs
-    out["valid"] = _disarm()
-
-    buf = chunk.get_buffer()
-    dbuf = buf.get_data_buf()
-    assert dbuf is not None
-    dbuf[:] = b"\x11\x22\x33\x44\x55\x66\x77\x88"
-
-    _arm(manager)
-    written = await chunk.write_into(buf)
-    out["ts_write"] = _disarm()
-    assert written[0]  # (wrote_ok, ntp_synced, utc) - the clock is unsynced on purpose
-
-    _arm(manager)
-    read = await chunk.read_into(buf)
-    out["ts_read"] = _disarm()
-    assert read[0]
-
-    _arm(manager)
-    cleared = await chunk.clear()
-    out["clear"] = _disarm()
-    assert cleared
-
-    return out
-
-
-async def _crc_hex(crc: "CRCBase", owner: str, payload: bytes) -> str:
-    # The CRC bytes a chunk of `owner` stores after `payload`, from the shared CRC class under that owner's seed.
-    buf = bytearray(payload) + bytearray(crc.length())
-    assert await crc.add_into(buf, len(payload), init=_owner_seed(owner, crc)) is not None
-    return _hex(buf[len(payload) :])
+def _disarm() -> "tuple[tuple[str, ...], int]":
+    # Returns the per-CS-cycle golden form and the raw recorded event count, so a test can confirm
+    # the compact form accounts for every single event rather than quietly summarising them.
+    global _TRACE
+    trace = _TRACE
+    _TRACE = None
+    assert trace is not None
+    return _cycles(trace), len(trace)
 
 
 def _golden(text: str) -> "tuple[str, ...]":
@@ -463,10 +455,12 @@ def _golden(text: str) -> "tuple[str, ...]":
     return tuple(text.format(store_crc=store_crc, value_crc=value_crc).strip().split("\n"))
 
 
-def _assert_trace(name: str, got: "tuple[str, ...]", want: "tuple[str, ...]") -> None:
-    for i in range(min(len(got), len(want))):
-        assert got[i] == want[i], f"{name}: CS cycle {i} changed - recorded {got[i]!r}, golden {want[i]!r}"
-    assert len(got) == len(want), f"{name}: {len(got)} CS cycles recorded, golden has {len(want)}"
+def _hex(buf: object) -> str:
+    return "".join(f"{b:02x}" for b in bytes(buf))  # type: ignore[call-overload]
+
+
+async def _never_synced() -> bool:
+    return False  # a fixed, unsynced clock keeps every timestamped trace deterministic
 
 
 # --------------------------------------------------------------------------- the traces themselves
@@ -509,23 +503,15 @@ _READ_COMMAND_US = 783
 _ENDURANCE_OPS = 10**12  # MB85RS64V read/write endurance per byte (p.17); the MB85RS2MTA's 10**13 only widens it
 
 
-def _commands_at(cycles: "tuple[str, ...]", first: int, end: int) -> "tuple[int, int, list[int]]":
-    # Each READ (03) or WRITE (02) cycle as (opcode, start, length), 2-byte address form: the counts of
-    # those starting inside [first, end), and the start addresses of every one.
-    reads = writes = 0
-    starts: list[int] = []
-    for cycle in cycles:
-        parts = cycle.split()
-        if len(parts[0]) != 8 or parts[0][2:4] not in ("02", "03"):
-            continue
-        start = int(parts[0][4:], 16)
-        if first <= start < end:
-            if parts[0][2:4] == "02":
-                writes += 1
-            else:
-                reads += 1
-        starts.extend(range(start, start + len(parts[1][2:]) // 2))
-    return reads, writes, starts
+async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore, FRAMTimestampedChunk]":
+    # The production shape section 3B priced: one manager, a PrintLogHistoryStore allocated first
+    # (SensorReader's own order) and a separate timestamped value chunk second.
+    manager, _chip = make_fram_manager()
+    assert await manager.setup()
+    logger = PrintLogHistoryStore(manager, 10, None, name=_STORE_OWNER)
+    chunk = manager.get_timestamped_chunk(8, _never_synced, crc=CRC32(), owner=_VALUE_OWNER)
+    assert chunk is not None
+    return manager, logger, chunk
 
 
 def test_status_bytes_outlast_the_parts_endurance_at_the_bus_ceiling() -> None:

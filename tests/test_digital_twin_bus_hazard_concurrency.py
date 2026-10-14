@@ -25,6 +25,7 @@ prewarm_poll_set()
 import run_generic_integration  # noqa: E402 - placed with the two device imports below
 import sensortask_dev  # noqa: E402 - must follow the prewarm above, which is the point of it
 import sensortask_wozi  # noqa: E402
+from _async_harness import cancel, run_timed  # noqa: E402 - with the imports above
 
 import asy_i2c_driver  # noqa: E402 - same reason as the two device imports above
 from asy_crc_checks import CRC8  # noqa: E402 - same reason as the two device imports above
@@ -68,10 +69,6 @@ _FLAP_RUN_BOUND_S = 95.0
 _STATE_RUN_BOUND_S = 30.0
 
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
-
-
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
 # module's own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("dtbh")
@@ -98,19 +95,11 @@ async def _boot(module: "ModuleType", cfg_path: str, port: int) -> "WDT":
     return watchdog
 
 
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 async def _cancel_started_tasks(module: "ModuleType") -> None:
     # Every task start_tasks() started, cancelled and awaited: nothing supervises them here.
     for task in module.sysfunct._tasks:
         if task is not None:
-            await _cancel(task)
+            await cancel(task)
 
 
 async def _feed_watchdog_periodically(watchdog: "WDT") -> None:
@@ -228,7 +217,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", watchdog
                 data = await getattr(module, driver).get_data()
                 assert getattr(data, field) is not None, f"{driver!r} never produced real data (missing {field!r}) under concurrent bus load, per the TOML-driven {bus_name} membership check"
     finally:
-        await _cancel(feeder)
+        await cancel(feeder)
         await _cancel_started_tasks(module)
 
 
@@ -460,8 +449,8 @@ def test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnec
             assert await module.fram.fram.verify_present()
             assert module.conn._wlan.isconnected() is True, "WiFi never recovered from the real established-connection disconnect within the real 60s retry window"
         finally:
-            await _cancel(flap_task)
-            await _cancel(feeder)
+            await cancel(flap_task)
+            await cancel(feeder)
             await _cancel_started_tasks(module)
 
     run_timed(scenario(), timeout_s=_FLAP_RUN_BOUND_S)
@@ -727,7 +716,6 @@ def test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads() -> None:
         machine.Pin.reset_registry()
 
 
-
 # ---------------------------------------------------------------------------
 # The participant rungs mid-traffic on the twin chips (SPECIFICATION.md C.7, C.8): dev's i2c1 carries SCD30,
 # SGP40 and ISL29125; each chip's own recovery runs at every offset into its siblings' read loops.
@@ -778,21 +766,24 @@ async def _sibling_reads(sibling: str, bus: "asy_i2c_driver.I2C", failures: "lis
 
 def _rung_across_offsets(siblings: "tuple[str, ...]", rung: "Callable[[asy_i2c_driver.I2C], Coroutine[Any, Any, object]]", check: "Callable[[asy_i2c_driver.I2C], None]") -> None:
     for offset in range(_RUNG_OFFSETS):
-        bus = _dev_i2c1()
         failures: list[str] = []
+        built: list[asy_i2c_driver.I2C] = []
 
-        async def fire(bus: "asy_i2c_driver.I2C" = bus, offset: int = offset) -> None:
-            for _ in range(offset):
-                await asyncio.sleep(0)
-            await rung(bus)
+        async def scenario(failures: "list[str]" = failures, built: "list[asy_i2c_driver.I2C]" = built, offset: int = offset) -> None:
+            bus = _dev_i2c1()  # inside the run: the twin SCD30's refresh timer is a task, ended with it
+            built.append(bus)
 
-        async def scenario(bus: "asy_i2c_driver.I2C" = bus, failures: "list[str]" = failures, fire: "Callable[[], Coroutine[Any, Any, None]]" = fire) -> None:
+            async def fire() -> None:
+                for _ in range(offset):
+                    await asyncio.sleep(0)
+                await rung(bus)
+
             await asyncio.gather(*(_sibling_reads(s, bus, failures) for s in siblings), fire())
 
         with _FastSleep():
             run_timed(scenario(), timeout_s=_RUN_BOUND_S)
         assert not failures, f"offset {offset}: a sibling read failed beside the rung: {failures}"
-        check(bus)
+        check(built[0])
 
 
 def test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid() -> None:
@@ -896,7 +887,7 @@ async def _ladder_run(faults: "dict[int, str]", until_recoveries: int) -> "tuple
         kept = fake.devices == chips and all(fake.devices[a] is chips[a] for a in chips)
         return bus.recoveries - before, calls["clear"], calls["recover"], await _w15(module.sgp40, module.bmp3xx), kept
     finally:
-        await _cancel(feeder)
+        await cancel(feeder)
         await _cancel_started_tasks(module)
 
 

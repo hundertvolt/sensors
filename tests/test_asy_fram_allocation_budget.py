@@ -1,22 +1,15 @@
 """Allocation budget for the FRAM path's boot-time cost: one blank and one valid PrintLogHistoryStore.setup() priced in a collection-free window, against a ceiling set from a measured run.
 This is the efficiency half of SPECIFICATION.md I.4(e) - it fails if a coroutine-per-CS-cycle, or any comparable per-call allocation, regresses back into the path."""
-# The absolute byte figures are binary-dependent and NOT board figures: a MICROPY_PY_SYS_SETTRACE=1
-# build (which scripts/test.sh's interpreter is) inflates every number here 4-5x and non-uniformly
-# - HEAP_FRAGMENTATION_MEASUREMENTS.md M3.7 and archive 3A. Both budgets are measured, one per build.
+# Absolute figures are binary-dependent, not board figures: plain runs use build-standard; --coverage runs
+# build-settrace, which inflates every figure 4-5x - one budget per binary (SPECIFICATION.md E.5.2).
 
-import asyncio
 import gc
 import sys
 
-from _fram_chip_fake import FakeMB85RS64V
+from _async_harness import run
+from _fram_builders import make_fram_manager
 
-import asy_spi_driver
-from asy_fram_manager import FRAMManager
 from asy_print_log import PrintLogHistoryStore
-from asy_spi_driver import SPI
-
-# Same one-process-per-test-file swap as the other asy_fram_* test files - see their own comments.
-asy_spi_driver._SPI = FakeMB85RS64V  # type: ignore[misc]
 
 try:
     from typing import TYPE_CHECKING
@@ -24,21 +17,13 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from asy_fram_manager import FRAMManager
 
-    T = TypeVar("T")
-
-# Measured 2026-10-07, mock tier, median of five, ~15% margin (settrace valid 13%: never raised). Settrace
-# build: 262,656 B blank / 238,144 B valid (was 820,096 / 564,960). Settrace-free: 25,952 / 20,096 (was
-# 137,088 / 89,408) - that pair is the one whose ratios carry to the board.
+# Measured 2026-10-13, mock tier, median of five, 13-15% margin: build-settrace 263,232 B blank / 238,208 B valid;
+# build-standard 26,496 / 20,128 - the pair whose ratios carry to the board.
 _SETTRACE_BUILD = hasattr(sys, "settrace")
 _BUDGET_BLANK = 302_000 if _SETTRACE_BUILD else 30_000
 _BUDGET_VALID = 270_000 if _SETTRACE_BUILD else 23_000
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
@@ -55,8 +40,7 @@ async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
 
 
 async def _rig() -> "tuple[FRAMManager, PrintLogHistoryStore]":
-    bus = SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    manager = FRAMManager(bus, 1, max_size=0x2000)
+    manager, _chip = make_fram_manager()
     assert await manager.setup()
     return manager, PrintLogHistoryStore(manager, 10, None, name="BUDGET")
 
@@ -84,13 +68,6 @@ def test_valid_setup_stays_within_its_allocation_budget() -> None:
     allocated, consumed = run(scenario())
     assert allocated == consumed, f"a collection ran inside the window: {allocated} allocated, {consumed} consumed"
     assert allocated <= _BUDGET_VALID, f"valid setup allocated {allocated} B, budget {_BUDGET_VALID} B"
-
-
-def test_the_budgets_are_not_trivially_satisfied() -> None:
-    # A budget nothing could ever exceed would pass forever. These are set ~15% above a measured
-    # run, so the pre-restructure cost (2.8x the blank budget, 2.4x the valid one) would fail them.
-    assert (820_096 if _SETTRACE_BUILD else 137_088) > _BUDGET_BLANK
-    assert (564_960 if _SETTRACE_BUILD else 89_408) > _BUDGET_VALID
 
 
 if __name__ == "__main__":

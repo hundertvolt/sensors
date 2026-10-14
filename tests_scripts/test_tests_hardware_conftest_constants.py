@@ -1,6 +1,6 @@
 """Holds tests_hardware/conftest.py's three hardcoded DUT-identity constants to the two files that
-actually decide them - devices/dev.toml and src/asy_wifi_service.py's schema defaults. Drift here is
-silent and only shows up as a bench recovery that scans for an SSID no board is broadcasting."""
+actually decide them - the bench device's own TOML and src/asy_wifi_service.py's schema defaults. Drift
+here is silent and only shows up as a bench recovery that scans for an SSID no board is broadcasting."""
 
 import ast
 import re
@@ -8,20 +8,29 @@ from pathlib import Path
 
 import pytest
 import tomllib
-from _devices import device_toml
-
-_BENCH_DEVICE = "dev"  # the only unit ever bench-flashed (CLAUDE.md's hard rule)
+from _devices import DEVICE_NAMES, device_toml
 
 
-def _conftest_constant(repo_root: Path, name: str) -> object:
+def _module_constant(repo_root: Path, module: str, name: str) -> object:
     # The literal value assigned to a module-level constant, read without importing the module
     # (tests_hardware/conftest.py imports pytest plugins and hardware helpers this suite has no
     # business pulling in just to read two strings).
-    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / module).read_text())
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
             return ast.literal_eval(node.value)
-    raise AssertionError(f"tests_hardware/conftest.py no longer defines {name}")
+    raise AssertionError(f"tests_hardware/{module} no longer defines {name}")
+
+
+def _conftest_constant(repo_root: Path, name: str) -> object:
+    return _module_constant(repo_root, "conftest.py", name)
+
+
+def _bench_device(repo_root: Path) -> str:
+    # The one device the bench tier flashes (CLAUDE.md's hard rule), as its own harness names it.
+    device = _module_constant(repo_root, "harness.py", "_BENCH_DEVICE")
+    assert isinstance(device, str) and device in DEVICE_NAMES, f"the bench device {device!r} is not a real device"
+    return device
 
 
 def _hostname_candidates(repo_root: Path) -> "tuple[str, ...]":
@@ -51,8 +60,8 @@ def test_the_first_hostname_candidate_is_the_bench_devices_own_toml_hostname(rep
     # Ordered newest-first, so a freshly flashed board is found on the first scan - which only holds
     # if the first entry really is what a build now injects as that board's hostname default.
     candidates = _hostname_candidates(repo_root)
-    doc = tomllib.loads(device_toml(_BENCH_DEVICE).read_text())
-    assert candidates[0] == doc["device"]["hostname"], "the bench would scan for an SSID the dev board no longer broadcasts"
+    doc = tomllib.loads(device_toml(_bench_device(repo_root)).read_text())
+    assert candidates[0] == doc["device"]["hostname"], "the bench would scan for an SSID the bench board no longer broadcasts"
 
 
 def test_the_last_hostname_candidate_is_still_the_shared_schema_default(repo_root: Path) -> None:
@@ -74,7 +83,7 @@ def test_the_bench_hotspot_password_matches_both_sides(repo_root: Path, source: 
     # The bench joins the DUT's own hotspot with this password; the board derives it from its schema
     # default, which a build now overrides with the TOML's. Both must agree or the join just fails.
     expected = (
-        tomllib.loads(device_toml(_BENCH_DEVICE).read_text())["device"]["hotspot_password"]
+        tomllib.loads(device_toml(_bench_device(repo_root)).read_text())["device"]["hotspot_password"]
         if source == "toml"
         else _schema_default(repo_root, "_VAL_HOTSPOT_PW")
     )

@@ -142,7 +142,6 @@ describe.each(DEVICE_IDS)("%s's page", (device) => {
         page?.remove();
         page = undefined;
         window.history.replaceState(null, "", originalUrl);
-        vi.restoreAllMocks();
     });
 
     /**

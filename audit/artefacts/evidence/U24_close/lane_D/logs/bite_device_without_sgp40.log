@@ -1,0 +1,2 @@
+SKIP test_webserver_sensors_put_round_trips_a_real_field_through_the_real_driver: bitedev declares no sgp40
+0/1 passed, 0 failed, 1 skipped

@@ -9,8 +9,11 @@ import sys
 
 sys.path.insert(0, "ext")  # scripts/test.sh's MICROPYPATH excludes ext/, where the real vendored microdot lives
 
+from _async_harness import cancel, run
+from _generated_tree import require_fresh
 from _sensortask_scenarios import build
-from _shared_rest_roundtrip import drain_json_response_body
+from _shared_rest_roundtrip import drain_json
+from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 from microdot import Microdot, Request, Response
 
@@ -24,18 +27,11 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import TypeVar
+    from collections.abc import Callable
 
     from typing_extensions import Self
 
     from asy_base_classes import JsonDict
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[object, object, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
@@ -45,14 +41,6 @@ _scratch = TmpScratch("neopixel_wifi")
 
 def _tmp_cfg_dir() -> str:
     return _scratch.dir()
-
-
-async def _cancel(task: "asyncio.Task[None]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
 
 
 async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
@@ -84,7 +72,7 @@ def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> No
         off_seen = await _run_until(last_is((0, 0, 0)), 10)
         conn._led_toggle()
         toggle_seen = await _run_until(last_is((50, 50, 50)), 10)  # toggled from off -> on
-        await _cancel(overlay_task)
+        await cancel(overlay_task)
         return on_seen, off_seen, toggle_seen
 
     assert run(scenario()) == (True, True, True)
@@ -152,7 +140,7 @@ async def _stop_flash(conn: WifiService) -> None:
     flash = conn._ledflash
     conn.reconnect_wifi()
     if flash is not None:
-        await _cancel(flash)
+        await cancel(flash)
 
 
 def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_task() -> None:
@@ -167,7 +155,7 @@ def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_tas
             await _yields(_PATTERN_YIELDS)
             frames = _frames(pixel, 0)
             await _stop_flash(conn)
-            await _cancel(overlay_task)
+            await cancel(overlay_task)
             return frames
 
         frames = run(scenario())
@@ -196,7 +184,7 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
             await conn._hotspot_client_absent()  # ... and left again
             await _yields(_PATTERN_YIELDS)
             await _stop_flash(conn)
-            await _cancel(overlay_task)
+            await cancel(overlay_task)
             durations = sleeps.durations
             return durations[:joined_at], durations[joined_at:left_at], durations[left_at:], client_frames
 
@@ -223,7 +211,7 @@ def test_with_the_wifi_led_off_both_hotspot_patterns_leave_the_real_pixel_dark()
             conn._hotspot_client_connected()
             await _yields(_PATTERN_YIELDS)
             await _stop_flash(conn)
-            await _cancel(overlay_task)
+            await cancel(overlay_task)
             return _frames(pixel, 0)
 
         frames = run(scenario())
@@ -260,7 +248,7 @@ def test_the_silent_mode_leaves_a_real_neopixel_driver_dark_until_a_link() -> No
             await _yields(_PATTERN_YIELDS)
             linked = _frames(pixel, linked_from)
             await _stop_flash(conn)
-            await _cancel(overlay_task)
+            await cancel(overlay_task)
             return blinking, ended, silent, linked
 
         blinking, ended, silent, linked = run(scenario())
@@ -298,9 +286,9 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
             back_from = len(pixel._pixel.writes)
             await _yields(_PATTERN_YIELDS)
             back = _frames(pixel, back_from)
-            await _cancel(loop)
+            await cancel(loop)
             await _stop_flash(conn)
-            await _cancel(overlay_task)
+            await cancel(overlay_task)
             return shown, dark, back
 
         shown, dark, back = run(scenario())
@@ -331,7 +319,9 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
 
     def neopixel_entry() -> "tuple[int, list[dict[str, object]]]":
         # The /status errcount entry of the pixel: its counter and its history slots.
-        entry = json.loads(drain_json_response_body(dispatch("GET", None).body))["errcount"]["NEOPIXEL"]
+        status = drain_json(dispatch("GET", None).body)
+        assert isinstance(status, dict), status
+        entry = status["errcount"]["NEOPIXEL"]
         counter: int = entry["counter"]
         history: list[dict[str, object]] = entry["history"]
         return counter, history
@@ -342,7 +332,8 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     assert history[-1] == {"num": 1, "type": "E"}  # the newest slot holds the logged entry
     reset = dispatch("PUT", {"ResetErrors": True})
     assert reset.status_code == 200
-    assert json.loads(reset.body)["res"] == "OK"
+    reset_body = strict_loads(reset.body)
+    assert isinstance(reset_body, dict) and reset_body["res"] == "OK", reset_body
     counter, history = neopixel_entry()
     assert counter == 0
     assert {"num": 1, "type": "E"} not in history
@@ -350,6 +341,7 @@ def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
 
 def _a_device_with_a_neopixel() -> str:
     # The device comes from the generated wiring plans, chosen by its neopixel instance, never by name.
+    require_fresh()
     for name in sorted(os.listdir("build/generated_src")):
         if name.endswith("_wiring_plan.json"):
             with open("build/generated_src/" + name) as f:

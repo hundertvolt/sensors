@@ -9,6 +9,8 @@ import time
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
+from _async_harness import run
+from _src_const import src_const
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
@@ -28,7 +30,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Coroutine, Iterator
     from types import ModuleType
-    from typing import Any, NoReturn, TypeVar
+    from typing import NoReturn, TypeVar
 
     T = TypeVar("T")
 
@@ -90,10 +92,6 @@ _CONNECT_BOUND_S = 3
 _ENTER_SLEEP_S = 0.1
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
 _HOST = "127.0.0.1"
 # Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
 # never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
@@ -116,13 +114,10 @@ def _raw(addr: tuple[str, int]) -> tuple[str, int]:
     return socket.getaddrinfo(addr[0], addr[1])[0][-1]  # type: ignore[return-value]
 
 
-def _src_const(name: str) -> float:
-    # The shipped value, read from the source: a const() is not a module attribute on MicroPython.
-    with open("src/asy_udp_socket.py") as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return float(line.split("const(", 1)[1].split(")", 1)[0])
-    raise AssertionError(name + " not found in src/asy_udp_socket.py")
+# The shipped values, read from source (tests/_src_const.py); src_const() answers object, so each is annotated.
+_RETRY_BACKOFF_S: float = src_const("src/asy_udp_socket.py", "_RETRY_BACKOFF_S")  # type: ignore[assignment]
+_POLL_WAIT_MS: int = src_const("src/asy_udp_socket.py", "_POLL_WAIT_MS")  # type: ignore[assignment]
+_POLL_IDLE_MS: int = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +353,7 @@ def test_a_socket_that_never_connects_does_not_wait_for_a_reply() -> None:
         elapsed = time.ticks_diff(time.ticks_ms(), t0)
     finally:
         asy_udp_socket.socket = original
-    backoff_ms = int(_src_const("_RETRY_BACKOFF_S") * 1000)
+    backoff_ms = int(_RETRY_BACKOFF_S * 1000)
     assert result == (None, None)
     assert backoff_ms <= elapsed < 2 * backoff_ms, elapsed
 
@@ -379,6 +374,26 @@ class _AdversarialPeer:
         self.sock.bind(_raw(addr))
         self.sock.setblocking(False)
 
+    def close(self) -> None:
+        self.sock.close()
+
+    async def recv(self, bufsize: int, timeout_ms: int = _PEER_RECV_TIMEOUT_MS) -> tuple[bytes, tuple[str, int]]:
+        poller = select.poll()
+        poller.register(self.sock, select.POLLIN)
+        t0 = time.ticks_ms()
+        try:
+            while True:
+                # Each event's mask is read: ipoll() returns the poll object itself, always truthy (extmod/modselect.c:583-594,
+                # v1.29.0).
+                for _, event in poller.ipoll(0):
+                    if event & select.POLLIN:
+                        return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
+                if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
+                    raise OSError("_AdversarialPeer.recv() timed out")
+                await asyncio.sleep_ms(_PEER_POLL_MS)
+        finally:
+            poller.unregister(self.sock)
+
     def send(self, data: bytes, target: tuple[str, int]) -> None:  # to a UDPSocket under test, by its plain tuple
         self.sock.sendto(data, _raw(target))
 
@@ -387,21 +402,18 @@ class _AdversarialPeer:
             await asyncio.sleep_ms(delay_ms)
         self.sock.sendto(data, target)
 
-    async def recv(self, bufsize: int, timeout_ms: int = _PEER_RECV_TIMEOUT_MS) -> tuple[bytes, tuple[str, int]]:
-        poller = select.poll()
-        poller.register(self.sock, select.POLLIN)
-        t0 = time.ticks_ms()
-        while True:
-            # Each event's mask is read: ipoll() returns an iterator, always truthy (extmod/modselect.c, v1.29.0).
-            for _, event in poller.ipoll(0):
-                if event & select.POLLIN:
-                    return self.sock.recvfrom(bufsize)  # type: ignore[return-value]  # AF_INET only, see asy_udp_socket.py
-            if time.ticks_diff(time.ticks_ms(), t0) > timeout_ms:
-                raise OSError("_AdversarialPeer.recv() timed out")
-            await asyncio.sleep_ms(_PEER_POLL_MS)
 
-    def close(self) -> None:
-        self.sock.close()
+def test_the_adversarial_peer_times_out_with_nothing_pending() -> None:
+    # recv() waits on the event mask: with no datagram queued it ends at its own timeout, never with EAGAIN.
+    peer = _AdversarialPeer(_make_addr())
+    try:
+        run(peer.recv(64, timeout_ms=_RECV_EMPTY_TIMEOUT_MS))
+        message = "returned"
+    except OSError as exc:
+        message = str(exc)
+    finally:
+        peer.close()
+    assert message == "_AdversarialPeer.recv() timed out", message
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +622,9 @@ class _RecordingAsyncio:
         self.sleep_ms_calls: list[int] = []
         self._stop_after = stop_after
 
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
     def sleep_ms(self, ms: int) -> "Awaitable[None]":
         self.sleep_ms_calls.append(ms)
         if self._stop_after and len(self.sleep_ms_calls) >= self._stop_after:
@@ -618,9 +633,6 @@ class _RecordingAsyncio:
         # wrapper's own callers (ready()'s poll loop) do await what it hands back.
         sleeper: Awaitable[None] = self._real.sleep_ms(ms)
         return sleeper
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._real, name)
 
 
 def _record_ready_sleeps(timeout_ms: int, stop_after: int = 0) -> "list[int]":
@@ -646,7 +658,7 @@ def test_ready_with_a_deadline_polls_at_the_transaction_rate() -> None:
     # a busy-spin of ipoll(0)+sleep_ms(0) on RP2040's single core.
     sleeps = _record_ready_sleeps(_READY_EMPTY_TIMEOUT_MS)
     assert len(sleeps) > 0
-    assert all(ms == _src_const("_POLL_WAIT_MS") for ms in sleeps), sleeps
+    assert all(ms == _POLL_WAIT_MS for ms in sleeps), sleeps
 
 
 def test_ready_without_a_deadline_polls_at_the_idle_rate() -> None:
@@ -654,7 +666,7 @@ def test_ready_without_a_deadline_polls_at_the_idle_rate() -> None:
     # sleeps the slower _POLL_IDLE_MS (SPECIFICATION.md F.5.9's shape).
     sleeps = _record_ready_sleeps(-1, stop_after=2)
     assert len(sleeps) == 2, sleeps
-    assert all(ms == _src_const("_POLL_IDLE_MS") for ms in sleeps), sleeps
+    assert all(ms == _POLL_IDLE_MS for ms in sleeps), sleeps
 
 
 # lwIP's per-socket UDP receive queue on rp2: extmod/modlwip.c:299 LWIP_INCOMING_PACKET_QUEUE_LEN, v1.29.0.
@@ -690,7 +702,7 @@ def test_queued_datagrams_are_read_without_an_idle_sleep() -> None:
     got, elapsed = run(scenario())
     assert got == [f"q-{i}".encode() for i in range(_LWIP_UDP_QUEUE_LEN)]
     assert recorder.sleep_ms_calls == [], recorder.sleep_ms_calls
-    assert elapsed < _src_const("_POLL_IDLE_MS"), elapsed
+    assert elapsed < _POLL_IDLE_MS, elapsed
 
 
 class _NeverReadyPoller:
@@ -775,17 +787,17 @@ class _MemoryErrorSocketWrapper:
     def __init__(self, real: "socket.socket") -> None:
         self._real = real
 
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
+    def recvfrom(self, *_a: object, **_k: object) -> "NoReturn":
+        raise MemoryError("simulated allocation failure")
+
     def sendto(self, *_a: object, **_k: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
 
     def write(self, *_a: object, **_k: object) -> "NoReturn":
         raise MemoryError("simulated allocation failure")
-
-    def recvfrom(self, *_a: object, **_k: object) -> "NoReturn":
-        raise MemoryError("simulated allocation failure")
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._real, name)
 
 
 def test_write_returns_none_sentinel_on_memoryerror() -> None:
@@ -883,26 +895,25 @@ class _FailingSocket:
         self._method = method
         self._exc = exc
 
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
     def _call(self, name: str, *args: object) -> object:
         if name == self._method:
             raise self._exc
-        real: Callable[..., object] = getattr(self._real, name)
-        return real(*args)
+        return getattr(self._real, name)(*args)
+
+    def close(self) -> object:
+        return self._call("close")
+
+    def recvfrom(self, *args: object) -> object:
+        return self._call("recvfrom", *args)
 
     def sendto(self, *args: object) -> object:
         return self._call("sendto", *args)
 
     def write(self, *args: object) -> object:
         return self._call("write", *args)
-
-    def recvfrom(self, *args: object) -> object:
-        return self._call("recvfrom", *args)
-
-    def close(self) -> object:
-        return self._call("close")
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._real, name)
 
 
 class _FailingPoller:
@@ -912,6 +923,11 @@ class _FailingPoller:
         self._method = method
         self._exc = exc
 
+    def ipoll(self, *args: object) -> "Iterator[tuple[object, int]]":
+        if self._method == "ipoll":
+            raise self._exc
+        return self._real.ipoll(*args)
+
     def register(self, *args: object) -> None:
         self._real.register(*args)
 
@@ -919,11 +935,6 @@ class _FailingPoller:
         if self._method == "unregister":
             raise self._exc
         self._real.unregister(*args)
-
-    def ipoll(self, *args: object) -> "Iterator[tuple[object, int]]":
-        if self._method == "ipoll":
-            raise self._exc
-        return self._real.ipoll(*args)
 
 
 async def _connect_arm(exc: BaseException) -> object:
@@ -934,7 +945,7 @@ async def _connect_arm(exc: BaseException) -> object:
     try:
         t0 = time.ticks_ms()
         await sock._connect()
-        backoff_waited = time.ticks_diff(time.ticks_ms(), t0) >= int(_src_const("_RETRY_BACKOFF_S") * 1000)
+        backoff_waited = time.ticks_diff(time.ticks_ms(), t0) >= int(_RETRY_BACKOFF_S * 1000)
     finally:
         asy_udp_socket.socket = original
     return sock.connected, sock._sock is None, backoff_waited
@@ -1058,14 +1069,14 @@ class _RaisingUnregisterPoller:
     def __init__(self, real: "select.poll") -> None:
         self._real = real
 
-    def unregister(self, _sock: "socket.socket") -> "NoReturn":  # asy_udp_socket.py calls unregister() positionally
-        raise OSError("simulated unregister failure")
+    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[object, ...]]":
+        return self._real.ipoll(*a, **k)
 
     def register(self, *a: object, **k: object) -> None:
         self._real.register(*a, **k)
 
-    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[Any, ...]]":
-        return self._real.ipoll(*a, **k)
+    def unregister(self, _sock: "socket.socket") -> "NoReturn":  # asy_udp_socket.py calls unregister() positionally
+        raise OSError("simulated unregister failure")
 
 
 def test_disconnect_clears_state_even_when_unregister_raises() -> None:
@@ -1095,11 +1106,11 @@ class _RaisingCloseSocket:
     def __init__(self, real: "socket.socket") -> None:
         self._real = real
 
-    def close(self) -> "NoReturn":
-        raise OSError("simulated close failure")
-
     def __getattr__(self, name: str) -> object:
         return getattr(self._real, name)
+
+    def close(self) -> "NoReturn":
+        raise OSError("simulated close failure")
 
 
 def test_disconnect_clears_state_even_when_sock_close_raises() -> None:
@@ -1134,14 +1145,14 @@ class _DisconnectingPoller:
         self._real = real
         self.fired = False
 
-    def register(self, *a: object, **k: object) -> None:
-        self._real.register(*a, **k)
-
-    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[Any, ...]]":
+    def ipoll(self, *a: object, **k: object) -> "Iterator[tuple[object, ...]]":
         if not self.fired:
             self.fired = True
             self.owner.poller = None
         return self._real.ipoll(*a, **k)
+
+    def register(self, *a: object, **k: object) -> None:
+        self._real.register(*a, **k)
 
 
 def test_ready_survives_a_concurrent_disconnect_mid_poll_loop() -> None:
@@ -1297,8 +1308,8 @@ def test_ready_sleeps_milliseconds_not_seconds() -> None:
     with_deadline = _record_ready_sleeps(_MS_CHECK_TIMEOUT_MS)
     elapsed = time.ticks_diff(time.ticks_ms(), t0)
     without_deadline = _record_ready_sleeps(-1, stop_after=1)
-    assert with_deadline and all(isinstance(ms, int) and ms == _src_const("_POLL_WAIT_MS") for ms in with_deadline), with_deadline
-    assert without_deadline == [_src_const("_POLL_IDLE_MS")] and isinstance(without_deadline[0], int), without_deadline
+    assert with_deadline and all(isinstance(ms, int) and ms == _POLL_WAIT_MS for ms in with_deadline), with_deadline
+    assert without_deadline == [_POLL_IDLE_MS] and isinstance(without_deadline[0], int), without_deadline
     assert elapsed < _MS_CHECK_ELAPSED_MAX_MS  # generously below the 10000ms+ the old seconds-interpretation bug would take
 
 
@@ -1666,7 +1677,7 @@ def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> 
     connected, elapsed = run(scenario())
     assert connected is False  # bad_addr never becomes bindable
     # disconnect() waited out the one backoff the failed attempt holds the lock for
-    assert elapsed >= int(_src_const("_RETRY_BACKOFF_S") * 1000) - int(_FIRST_ATTEMPT_S * 1000), elapsed
+    assert elapsed >= int(_RETRY_BACKOFF_S * 1000) - int(_FIRST_ATTEMPT_S * 1000), elapsed
     assert elapsed < _RETRY_CYCLE_MAX_MS  # ...but didn't hang forever either
 
 
@@ -1938,10 +1949,10 @@ def test_write_and_recvfrom_returns_none_sentinel_for_a_malformed_tries() -> Non
     # confirmed directly, and write_and_recvfrom() had no try/except of its own to catch it.
     addr = _make_addr()
 
-    async def scenario(bad_tries: "Any") -> tuple[bytes | None, tuple[str, int] | None]:
+    async def scenario(bad_tries: object) -> tuple[bytes | None, tuple[str, int] | None]:
         sock = UDPSocket(addr, mode="client")
         try:
-            return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=bad_tries)
+            return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=bad_tries)  # type: ignore[arg-type]  # the malformed value under test
         finally:
             await sock.disconnect()
 

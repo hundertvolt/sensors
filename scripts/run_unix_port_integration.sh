@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dedicated entry point for the digital twin's full Unix-port integration run:
 # digital_twin/run_generic_integration.py against the real twin buses under the real MicroPython
-# Unix-port interpreter, for any real device (--device, default wozi; SPECIFICATION.md Part L.4).
+# Unix-port interpreter, for any real device (--device; SPECIFICATION.md Part L.4).
 #
 # Deliberately separate from scripts/test.sh (owner, 2026-08-13): the twin needs its own MICROPYPATH
 # with no "tests" segment (digital_twin/README.md's "never together" rule), and this run can serve
@@ -14,23 +14,25 @@
 # "build/generated_src" is there because no static src/sensortask_*.py exists any more (Part L.2):
 # both the module and its wiring plan are generated fresh below.
 #
-# Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
-#   e.g. --device dev, --fault sgp40:writeto, --host 0.0.0.0 --port 8080 (reachable from outside).
+# Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]
+#   e.g. --fault sgp40:writeto, --host 0.0.0.0 --port 8080 (reachable from outside).
 #
-# --device is this script's own flag (one of the six real devices, not forwarded) and picks which
-# generated module/wiring plan to boot; every other flag goes straight through to
-# run_generic_integration.py's parse_args(), whose docstring has the full list.
+# --device is this script's own required flag (a devices/*.toml stem but the zz_test_ fixtures, not
+# forwarded) and picks which generated module/wiring plan to boot; every other flag goes straight
+# through to run_generic_integration.py's parse_args(), whose docstring has the full list.
 #
-# No flags just launches wozi on localhost:8080 and serves forever (owner, 2026-08-13:
-# browser-reachable, escalation watchable). No --soak flag: the HTTP+memory-trend soak check is
-# host-side, scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md "Driver/DUT process separation").
+# Without --device it prints the usage and the valid device names; with no further flags the device
+# serves on localhost:8080 forever (owner, 2026-08-13: browser-reachable, escalation watchable).
+#
+# No --soak flag: the HTTP+memory-trend soak check is host-side, scripts/_digital_twin_ci_suite.py's
+# Run 11 (SPECIFICATION.md "Driver/DUT process separation").
 set -euo pipefail
 if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     cat <<'EOF'
-Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
-Launches digital_twin/run_generic_integration.py for one device (default: wozi) under the real Unix
-port; with no further flags it serves on localhost:8080 until stopped. Every flag but --device goes
-to run_generic_integration.py (its own --help lists them).
+Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]
+Launches digital_twin/run_generic_integration.py for one device, a devices/<name>.toml, under the
+real Unix port; with no further flags it serves on localhost:8080 until stopped. Every flag but
+--device goes to run_generic_integration.py (its own --help lists them).
 
 Environment:
   PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
@@ -42,13 +44,28 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.
 
-device="wozi"
+usage_line="Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]"
+devices=()
+for toml in devices/*.toml; do
+    name="$(basename "$toml" .toml)"
+    if [[ "$name" != zz_test_* ]] && [ -f "$toml" ]; then
+        devices+=("$name")
+    fi
+done
+_usage_error() {
+    printf '%s\n%s\nvalid devices: %s\n' "$1" "$usage_line" "${devices[*]-}" >&2
+    exit 2
+}
+
+device=""
+device_given=0
 forward_args=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --device)
-            device="$2"
-            shift 2
+            device_given=1
+            device="${2:-}"
+            shift $(($# > 1 ? 2 : 1))
             ;;
         *)
             forward_args+=("$1")
@@ -56,6 +73,20 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+if [ "$device_given" = "0" ]; then
+    _usage_error "error: --device is required"
+elif [ -z "$device" ]; then
+    _usage_error "error: --device needs a device name"
+elif [[ " ${devices[*]-} " != *" $device "* ]]; then
+    _usage_error "error: unknown device '$device'"
+fi
+
+# The twin's captive DNS server binds the product's port 53: one suite holds it at a time, and a second
+# exits 1 here, before anything is built (CLAUDE.md). The EXIT trap releases it.
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_port_lock.sh
+trap port_lock_release_all EXIT
+port_lock_take 53 scripts/run_unix_port_integration.sh
 
 toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
 micropython_bin="$toolchain_dir/micropython/ports/unix/build-standard/micropython"

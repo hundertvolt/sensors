@@ -10,15 +10,18 @@ class FaultInjector:
         self._queues: dict[str, list[BaseException]] = {}
         self._hangs: dict[str, list[float]] = {}
 
+    def clear(self, op: "str | None" = None) -> None:
+        if op is None:
+            self._queues.clear()
+            self._hangs.clear()
+        else:
+            self._queues.pop(op, None)
+            self._hangs.pop(op, None)
+
     def inject_fault(self, op: str, exc: BaseException, times: int = 1) -> None:
         # Queues `exc` to be raised on the next `times` calls to the named op - lets a test fail
         # one specific step of a multi-step transaction without affecting the others.
         self._queues.setdefault(op, []).extend([exc] * times)
-
-    def maybe_raise(self, op: str) -> None:
-        queue = self._queues.get(op)
-        if queue:
-            raise queue.pop(0)
 
     def inject_hang(self, op: str, seconds: float, times: int = 1) -> None:
         # Queues a real blocking time.sleep() before the next `times` calls to this op - the
@@ -31,10 +34,11 @@ class FaultInjector:
         if queue:
             time.sleep(queue.pop(0))
 
-    def clear(self, op: "str | None" = None) -> None:
-        if op is None:
-            self._queues.clear()
-            self._hangs.clear()
-        else:
-            self._queues.pop(op, None)
-            self._hangs.pop(op, None)
+    def maybe_raise(self, op: str) -> None:
+        queue = self._queues.get(op)
+        if queue:
+            raise queue.pop(0)
+
+    def pending(self, op: str) -> int:
+        # The faults still queued for `op` (0 for none): lets a test prove a fault was consumed before it reads on.
+        return len(self._queues.get(op, ()))

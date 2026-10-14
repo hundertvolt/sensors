@@ -215,6 +215,13 @@ describe("composeMockData", () => {
         expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock samples: no sample for group "measurements/GHOST"');
     });
 
+    it("throws for an errcount module no sample matches, never composing a healthy zero for it", () => {
+        const defs = definitionsOf(DEVICE_IDS[0] ?? "");
+        const errcount = { key: "errcount", label: "Errors", kind: /** @type {const} */ ("errcount"), modules: [{ key: "GHOST", label: "Ghost" }] };
+        const ghost = { ...defs, sections: [{ key: "status", label: "Status", rest: { get: "/status" }, pollGroup: /** @type {const} */ ("live"), groups: [errcount] }] };
+        expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock samples: no sample for module "status/errcount/GHOST"');
+    });
+
     it("composes a maintenance field by its path: an instance's entry under its own name, from its driver's sample", () => {
         const defs = definitionsOf(DEVICE_IDS[0] ?? "");
         const field = { key: "SGP40_second_BackupTS", label: "Second Backup", kind: /** @type {const} */ ("readonly"), path: ["SGP40_second", "BackupTS"] };

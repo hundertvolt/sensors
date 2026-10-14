@@ -1,7 +1,7 @@
-import asyncio
 import os
 from collections import namedtuple
 
+from _async_harness import run
 from _error_codes import code
 from _tmp_scratch import TmpScratch
 
@@ -10,27 +10,17 @@ from asy_base_classes import SensorReaderConfig
 
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing isn't available on the real MicroPython test interpreter
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
     import asy_config_manager as cm
-
-    T = TypeVar("T")
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("asy_api_response")
 Meas = namedtuple("Meas", ["temp", "hum"])
-_VAL_SI: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
+_TEST_SCHEMA_SI: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
 
 
 def _remove(path: str) -> None:
@@ -261,7 +251,7 @@ def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[SensorReaderConfig, str]":
+def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _TEST_SCHEMA_SI) -> "tuple[SensorReaderConfig, str]":
     path = _scratch.path("config_" + name + ".cfg")
     path_prefix = path.rsplit("/", 1)[0] + "/"
     reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
@@ -272,7 +262,7 @@ def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _VAL_SI) -> "tuple[Sen
 def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
     reader, path = _make_reader("handleok")
     try:
-        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI)) == {"SampleInterval": "Valid"}
+        assert run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI)) == {"SampleInterval": "Valid"}
     finally:
         _remove(path)
 
@@ -280,7 +270,7 @@ def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
 def test_handle_set_cmd_partial_failure_returns_the_mixed_result() -> None:
     reader, path = _make_reader("handlepartial")
     try:
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _VAL_SI))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 9999, "Ghost": 1}, _TEST_SCHEMA_SI))
         assert result == {"SampleInterval": "Invalid", "Ghost": "Invalid"}
     finally:
         _remove(path)
@@ -290,7 +280,7 @@ def test_handle_set_cmd_sync_post_fct_fires_only_when_something_actually_changed
     reader, path = _make_reader("handlepostfct")
     try:
         calls = []
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: calls.append(1)))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=lambda: calls.append(1)))
         assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
@@ -301,7 +291,7 @@ def test_handle_set_cmd_sync_post_fct_does_not_fire_when_unchanged() -> None:
     reader, path = _make_reader("handlepostfctunchanged")
     try:
         calls = []
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _VAL_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 2}, _TEST_SCHEMA_SI, post_fct=lambda: calls.append(1)))  # 2 is the default already
         assert result == {"SampleInterval": "Unchanged"}
         assert calls == []
     finally:
@@ -316,7 +306,7 @@ def test_handle_set_cmd_async_post_fct_fires_only_when_something_actually_change
         async def post() -> None:
             calls.append(1)
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_asy_fct=post))
         assert result == {"SampleInterval": "Valid"}
         assert calls == [1]
     finally:
@@ -334,7 +324,7 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
 
         result = run(
             ar.handle_set_cmd(
-                reader, {"SampleInterval": 42}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+                reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
             ),
         )
         assert result == {"SampleInterval": "Valid"}
@@ -358,7 +348,7 @@ def test_handle_set_cmd_sync_post_fct_raising_fails_its_group() -> None:
         def bad_post() -> None:
             raise RuntimeError("reconnect failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=bad_post))
         assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
@@ -373,7 +363,7 @@ def test_handle_set_cmd_async_post_fct_raising_fails_its_group() -> None:
         async def bad_post() -> None:
             raise RuntimeError("ntp sync failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_asy_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_asy_fct=bad_post))
         assert result == {"SampleInterval": "Failed"}
         assert reader.pr._err_count == 1
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
@@ -395,7 +385,7 @@ def test_handle_set_cmd_sync_post_fct_raising_never_schedules_the_async_hook() -
         async def post() -> None:
             async_calls.append(1)
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _VAL_SI, post_fct=bad_post, post_asy_fct=post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42}, _TEST_SCHEMA_SI, post_fct=bad_post, post_asy_fct=post))
         assert result == {"SampleInterval": "Failed"}
         assert async_calls == []  # never invoked - post_fct raised before it could be awaited
         assert reader.pr._err_count == 1
@@ -411,7 +401,7 @@ def test_handle_set_cmd_hook_raising_after_a_mixed_result_fails_every_key() -> N
         def bad_post() -> None:
             raise RuntimeError("reconnect failed")
 
-        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42, "Ghost": 1}, _VAL_SI, post_fct=bad_post))
+        result = run(ar.handle_set_cmd(reader, {"SampleInterval": 42, "Ghost": 1}, _TEST_SCHEMA_SI, post_fct=bad_post))
         assert result == {"SampleInterval": "Failed", "Ghost": "Failed"}
         assert _entries(reader) == [(code("E", "CALLBACK"), "E")]
     finally:
@@ -429,7 +419,7 @@ def test_handle_set_cmd_never_calls_a_hook_when_nothing_is_valid() -> None:
 
         result = run(
             ar.handle_set_cmd(
-                reader, {"SampleInterval": 9999}, _VAL_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
+                reader, {"SampleInterval": 9999}, _TEST_SCHEMA_SI, post_fct=lambda: sync_calls.append(1), post_asy_fct=post,
             ),
         )
         assert result == {"SampleInterval": "Invalid"}
@@ -453,7 +443,7 @@ def test_handle_set_cmd_whole_persist_failure_marks_every_field_failed() -> None
 def test_handle_set_cmd_empty_data_returns_an_empty_result() -> None:
     reader, path = _make_reader("handleempty")
     try:
-        assert run(ar.handle_set_cmd(reader, {}, _VAL_SI)) == {}
+        assert run(ar.handle_set_cmd(reader, {}, _TEST_SCHEMA_SI)) == {}
     finally:
         _remove(path)
 

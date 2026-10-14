@@ -22,13 +22,13 @@ def src_dir(repo_root: Path) -> Path:
 def _parse(tmp_path: Path, source: str) -> "tuple[WebFieldTag, ...]":
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    return parse_web_tags(path, "dev", "x")
+    return parse_web_tags(path, "fixture", "x")
 
 
 def _parse_group(tmp_path: Path, source: str) -> "tuple[WebGroupTag, ...]":
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    return parse_web_group_tags(path, "dev", "x")
+    return parse_web_group_tags(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
@@ -284,7 +284,7 @@ def test_parse_web_tags_clearable_rejected_off_a_bool_or_a_string(tmp_path: Path
 
 def _parse_with_siblings(tmp_path: Path, source: str) -> "tuple[WebFieldTag, ...]":
     tags = _parse(tmp_path, source)
-    check_ignored_when_set(tags, tmp_path / "asy_x_driver.py", "dev", "x")
+    check_ignored_when_set(tags, tmp_path / "asy_x_driver.py", "fixture", "x")
     return tags
 
 
@@ -607,7 +607,7 @@ def test_parse_web_group_tags_edit_distance_just_outside_tolerance_stays_silent(
 
 
 def test_parse_web_tags_real_scd30_measurement_fields(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")
     measurement_fields = {t.field_name for t in tags if t.section == "measurements"}
     assert measurement_fields == {"CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWait", "TS"}
     config_fields = {t.field_name for t in tags if t.section == "sensors"}
@@ -615,27 +615,27 @@ def test_parse_web_tags_real_scd30_measurement_fields(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_scd30_frc_readiness_fields(src_dir: Path) -> None:
-    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")}
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")}
     assert (tags["FRCState"].kind, tags["FRCState"].codes) == ("readonly", "FRCState")
     assert (tags["FRCWait"].kind, tags["FRCWait"].unit, tags["FRCWait"].decimals) == ("readonly", "s", 0)
 
 
 def test_parse_web_tags_real_scd30_ambpres_special(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")
     amb_pres = next(t for t in tags if t.field_name == "AmbPres")
     assert dict(amb_pres.special) == {"0": "Compensation off / use Altitude"}
 
 
 def test_parse_web_tags_real_scd30_contmeas_is_freestanding(src_dir: Path) -> None:
     # No schema and no state the GET reports: an always-executed toggle the page shows unset until set.
-    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")
     cont_meas = next(t for t in tags if t.field_name == "ContMeas")
     assert (cont_meas.kind, cont_meas.always_executed, cont_meas.dispatch) == ("toggle", True, False)
 
 
 def test_parse_web_tags_real_scd30_page_keys(src_dir: Path) -> None:
     # The chip's 0.01 degC offset tick; Altitude ignored while a pressure is set (Interface Description 1.4.7, 1.4.8).
-    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")}
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")}
     assert {name: t.resolution for name, t in tags.items() if t.resolution is not None} == {"TempOffset": 0.01}
     assert {name: t.ignored_when_set for name, t in tags.items() if t.ignored_when_set is not None} == {"Altitude": "AmbPres"}
     assert not [name for name, t in tags.items() if t.clearable]
@@ -649,18 +649,18 @@ def test_parse_web_tags_real_measurement_decimals(src_dir: Path) -> None:
         "asy_sgp40_driver.py": {"VOC": None, "Raw": None, "VOCState": None, "TS": None},
     }
     for driver, decimals in expected.items():
-        tags = parse_web_tags(src_dir / driver, "dev", "x")
+        tags = parse_web_tags(src_dir / driver, "fixture", "x")
         assert {t.field_name: t.decimals for t in tags if t.section == "measurements"} == decimals, driver
 
 
 def test_parse_web_tags_real_bmp3xx_enum_specials(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
+    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "fixture", "bmp3xx")
     filt_coeff = next(t for t in tags if t.field_name == "FiltCoeff")
     assert dict(filt_coeff.special) == {"0": "Off", "1": "1", "3": "3", "7": "7", "15": "15", "31": "31", "63": "63", "127": "127"}
 
 
 def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "dev", "bmp3xx")
+    tags = parse_web_tags(src_dir / "asy_bmp3xx_driver.py", "fixture", "bmp3xx")
     assert {t.field_name for t in tags if t.section == "sensors"} == {
         "SampleInterval", "PresOvers", "TempOvers", "FiltCoeff", "PresOffset", "TempOffset", "SeaLevelOffset", "MeanAtmTemp",
     }
@@ -668,7 +668,7 @@ def test_parse_web_tags_real_bmp3xx_field_names(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "fixture", "isl29125")
     assert {t.field_name for t in tags if t.section == "sensors"} == {
         "SampleInterval", "Resolution", "RangeAuto", "Range", "AutoRangeThresh", "AutoRangeDwell",
         "IRCompOffset", "IRCompAdjust", "FiltCoeff", "GainRatio", "Calibrate",
@@ -679,7 +679,7 @@ def test_parse_web_tags_real_isl29125_field_names(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_isl29125_enum_specials(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "fixture", "isl29125")
     resolution = next(t for t in tags if t.field_name == "Resolution")
     assert dict(resolution.special) == {"12": "12 bit (fast)", "16": "16 bit (flicker-rejecting)"}
     range_field = next(t for t in tags if t.field_name == "Range")
@@ -692,7 +692,7 @@ def test_parse_web_tags_real_isl29125_nested_measurement_fields_carry_path_and_d
     # R/G/B/H/S/Bri are the first (and, at the time of writing, only) fields in src/ whose
     # measurement body is nested (get_dict_data()'s own hand-written {"RGB": {...}, "HSB": {...}}
     # override) - this is the real driver this new tag capability was built for.
-    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "dev", "isl29125")
+    tags = parse_web_tags(src_dir / "asy_isl29125_driver.py", "fixture", "isl29125")
     red = next(t for t in tags if t.field_name == "R")
     assert red.path == ("RGB", "R")
     assert red.decimals == 4
@@ -710,7 +710,7 @@ def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> No
     # SPECIFICATION.md H.5.1: a tag's own special: entries survive parsing independently of the schema.
     # These three fields also declare 0 in the schema's special slot (an in-range value with a meaning),
     # and each parsed tag must still carry its own wording for it.
-    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "fixture", "sgp40")
     assert {t.field_name for t in tags if t.section == "sensors"} == {"BackupPeriod", "BackupMaxAge", "WaitTimeNTP", "ResetVOC"}
     assert {t.field_name for t in tags if t.section == "measurements"} == {"VOC", "Raw", "VOCState", "TS"}
     by_name = {t.field_name: t for t in tags}
@@ -721,18 +721,18 @@ def test_parse_web_tags_real_sgp40_field_names_and_specials(src_dir: Path) -> No
 
 
 def test_parse_web_tags_real_scd30_always_executed_fields(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "dev", "scd30")
+    tags = parse_web_tags(src_dir / "asy_scd30_driver.py", "fixture", "scd30")
     assert {t.field_name for t in tags if t.always_executed} == {"AmbPres", "ForceCalRef", "ContMeas"}
 
 
 def test_parse_web_tags_real_timestamps_are_epochs(src_dir: Path) -> None:
     for driver in ("asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py"):
-        ts = next(t for t in parse_web_tags(src_dir / driver, "dev", "x") if t.field_name == "TS")
+        ts = next(t for t in parse_web_tags(src_dir / driver, "fixture", "x") if t.field_name == "TS")
         assert (ts.format, ts.unit) == ("epoch", None), driver
 
 
 def test_parse_web_tags_real_sgp40_backup_timestamps_on_the_status_page(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "dev", "sgp40")
+    tags = parse_web_tags(src_dir / "asy_sgp40_driver.py", "fixture", "sgp40")
     status = {t.field_name: t for t in tags if t.section == "status"}
     assert set(status) == {"BackupTS", "RestoreTS"}
     for tag in status.values():
@@ -741,13 +741,13 @@ def test_parse_web_tags_real_sgp40_backup_timestamps_on_the_status_page(src_dir:
 
 
 def test_parse_web_tags_real_wifi_byte_bounds_and_shapes(src_dir: Path) -> None:
-    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")}
+    tags = {t.field_name: t for t in parse_web_tags(src_dir / "asy_wifi_service.py", "fixture", "wifi")}
     assert {name for name, t in tags.items() if t.byte_length} == {"SSID", "PW", "Country", "Hostname", "HotspotPW"}
     assert {name: t.shape for name, t in tags.items() if t.shape is not None} == {"Hostname": "hostLabel", "Country": "countryCode"}
 
 
 def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_wifi_service.py", "dev", "wifi")
+    tags = parse_web_tags(src_dir / "asy_wifi_service.py", "fixture", "wifi")
     assert {t.field_name for t in tags if t.submit_group == "identity"} == {"SSID", "PW", "Country", "Hostname", "HotspotPW"}
     assert {t.field_name for t in tags if t.submit_group == "wifiLed"} == {"LEDWifiOn"}
     assert {t.field_name for t in tags if t.mask} == {"PW", "HotspotPW"}
@@ -755,7 +755,7 @@ def test_parse_web_tags_real_wifi_field_names(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_ntp_client.py", "dev", "ntp")
+    tags = parse_web_tags(src_dir / "asy_ntp_client.py", "fixture", "ntp")
     assert {t.field_name for t in tags if t.submit_group == "ntp"} == {"NTPHost", "NTPOffset", "NTPInterval"}
     assert {t.field_name for t in tags if t.submit_group == "dns"} == {"DNSFallback"}
     assert {t.field_name: t.shape for t in tags if t.shape is not None} == {"NTPHost": "hostName", "DNSFallback": "ipv4List"}
@@ -767,12 +767,12 @@ def test_parse_web_tags_real_ntp_field_names(src_dir: Path) -> None:
 
 
 def test_parse_web_tags_real_system_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_system_service.py", "dev", "system")
+    tags = parse_web_tags(src_dir / "asy_system_service.py", "fixture", "system")
     assert {t.field_name for t in tags} == {"DebugLevel"}
 
 
 def test_parse_web_tags_real_notification_field_names(src_dir: Path) -> None:
-    tags = parse_web_tags(src_dir / "asy_notification_service.py", "dev", "notification")
+    tags = parse_web_tags(src_dir / "asy_notification_service.py", "fixture", "notification")
     assert {t.field_name for t in tags} == {"AutoOn", "OnH", "OnM", "OffH", "OffM", "FlashBri", "FlashInterval", "FlashDur"}
 
 
@@ -798,7 +798,7 @@ def test_parse_web_group_tags_inventory_of_every_src_file(src_dir: Path) -> None
 
 def test_no_other_src_driver_declares_an_unnoticed_web_tag(src_dir: Path) -> None:
     # Page tags and hidden ones apart: a hidden tag puts nothing on a page, so only a page tag needs a file the build reads.
-    tags = {p.name: parse_web_tags(p, "dev", "x") for p in sorted(src_dir.glob("*.py"))}
+    tags = {p.name: parse_web_tags(p, "fixture", "x") for p in sorted(src_dir.glob("*.py"))}
     assert {name for name, found in tags.items() if any(t.hidden is None for t in found)} == {
         "asy_scd30_driver.py", "asy_sgp40_driver.py", "asy_bmp3xx_driver.py", "asy_isl29125_driver.py",
         "asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py", "asy_notification_service.py",

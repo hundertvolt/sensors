@@ -541,8 +541,8 @@ def _wire_spi_device(bus_id: int) -> "FramChip | None":
 
 
 class SPI:
-    MSB = 0
-    LSB = 1
+    MSB = 1  # pico-sdk SPI_MSB_FIRST/SPI_LSB_FIRST at the pinned submodule (hardware/spi.h:184-187)
+    LSB = 0
 
     def __init__(
         self,
@@ -555,7 +555,7 @@ class SPI:
         polarity: int = 0,
         phase: int = 0,
         bits: int = 8,
-        firstbit: int = 0,
+        firstbit: int = MSB,
     ) -> None:
         self.id = id
         self.sck = sck
@@ -703,8 +703,8 @@ class _LinkDirection:
 
 def attach_crossover_jumper(fake_a: "UART", fake_b: "UART") -> "tuple[UARTLink, LinkPoller, LinkPoller]":
     # Models the dev bench's permanent GP0<->GP9 / GP1<->GP8 jumper (tests_hardware/README.md 'The dev
-    # bench'): the twin's dev graph builds both ends but joins neither. The returned pollers are bounded,
-    # a real select.poll() never re-evaluating a Python object's ioctl() (CLAUDE.md's known CI hang).
+    # bench'): the twin's dev graph builds both ends but joins neither. The returned pollers are bounded
+    # (CLAUDE.md's known CI hang).
     return UARTLink(fake_a, fake_b), LinkPoller(fake_a), LinkPoller(fake_b)
 
 
@@ -829,9 +829,9 @@ class UARTLink:
 
 
 class UART(io.IOBase):
-    # Independent of tests/machine.py's own UART (see this module's docstring) but held to the same
-    # semantics by tests/_uart_link_contract.py. io.IOBase lets init() register it with a real
-    # select.poll(); tests still swap .poller for a bounded stand-in (CLAUDE.md's known hang cause).
+    # Held to tests/_uart_link_contract.py's semantics; ioctl() answers EINVAL to all but POLL as rp2 does
+    # (machine_uart.c:694-697), so a real select.poll() never takes the fd path (extmod/modselect.c:252-266) - tests
+    # still swap in a bounded poller. io.IOBase lets init() register it with a real select.poll().
     #
     # Receive model: with RXIM/RTIM set (every construction and init()) the RX interrupt moves each byte
     # into rx_queue, machine.UART's own buffer, as its wire time elapses. With both cleared, each byte goes
@@ -1014,16 +1014,8 @@ class UART(io.IOBase):
 
     def ioctl(self, req: int, arg: int) -> int:
         if req != self._MP_STREAM_POLL:
-            return 0
-        if arg & select.POLLIN:
-            self.rx_api_calls += 1
-        self._update()
-        ready = 0
-        if (arg & select.POLLIN) and self.rx_queue:
-            ready |= select.POLLIN
-        if (arg & select.POLLOUT) and self.writable:
-            ready |= select.POLLOUT
-        return ready
+            return -errno.EINVAL  # MP_STREAM_GET_FILENO included: rp2's answer (machine_uart.c:694-697)
+        return self.poll_mask(arg)
 
     def plant_rx_error(self, bits: int) -> None:
         # Twin-only test knob: sets UARTRSR bits (OE 0x08, BE 0x04, FE 0x01); a break also receives one
@@ -1032,6 +1024,18 @@ class UART(io.IOBase):
         self.rsr |= bits & 0x0F
         if bits & _RSR_BE:
             self._route(0, is_break=True)
+
+    def poll_mask(self, mask: int) -> int:
+        # Twin-only test knob: the POLL answer for the events in `mask`, what LinkPoller and the shared contract read.
+        if mask & select.POLLIN:
+            self.rx_api_calls += 1
+        self._update()
+        ready = 0
+        if (mask & select.POLLIN) and self.rx_queue:
+            ready |= select.POLLIN
+        if (mask & select.POLLOUT) and self.writable:
+            ready |= select.POLLOUT
+        return ready
 
     def read(self, nbytes: int | None = None) -> bytes | None:
         self.rx_api_calls += 1
@@ -1094,9 +1098,9 @@ class UART(io.IOBase):
 
 
 class LinkPoller:
-    # Bounded select.poll() stand-in, identical in behaviour to tests/machine.py's own - see
-    # digital_twin/unix_port_poll_prewarm.py for the modselect.c segfault a real poll object over
-    # a non-fd stream can hit here.
+    # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time
+    # (CLAUDE.md "Known hang cause"); a real poll object can also segfault on its pollfds growth on the Unix port
+    # (digital_twin/unix_port_poll_prewarm.py). As tests/machine.py's, it reads poll_mask() on every call.
     def __init__(self, uart: "UART", not_ready_calls: int = 0, mask: int = select.POLLIN | select.POLLOUT) -> None:
         self._uart = uart
         self._not_ready = not_ready_calls
@@ -1109,7 +1113,7 @@ class LinkPoller:
         if self._not_ready > 0:
             self._not_ready -= 1
             return []
-        event = self._uart.ioctl(UART._MP_STREAM_POLL, self._mask)
+        event = self._uart.poll_mask(self._mask)
         return [(None, event)] if event else []
 
     def register(self, obj: object, mask: int = 0) -> None:

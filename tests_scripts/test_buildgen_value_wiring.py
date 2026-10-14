@@ -18,7 +18,7 @@ def src_dir(repo_root: Path) -> Path:
 def _parse(tmp_path: Path, source: str) -> "tuple[ValueWiringField, ...]":
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    return parse_value_wiring(path, "dev", "x")
+    return parse_value_wiring(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
@@ -151,12 +151,12 @@ def test_parse_value_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -
 
 
 def test_parse_value_wiring_real_sgp40_driver(src_dir: Path) -> None:
-    assert parse_value_wiring(src_dir / "asy_sgp40_driver.py", "dev", "sgp40") == (
+    assert parse_value_wiring(src_dir / "asy_sgp40_driver.py", "fixture", "sgp40") == (
         ValueWiringField("temperature_source", "temperature", True),
         ValueWiringField("humidity_source", "humidity", True),
     )
 
 
 def test_sgp40_is_the_only_src_module_declaring_value_wiring(src_dir: Path) -> None:
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_value_wiring(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_value_wiring(p, "fixture", "x")}
     assert tagged == {"asy_sgp40_driver.py"}

@@ -25,7 +25,7 @@ def src_dir(repo_root: Path) -> Path:
 def _parse(tmp_path: Path, source: str) -> "tuple[WiringField, ...]":
     path = tmp_path / "asy_x_driver.py"
     path.write_text(source)
-    return parse_wiring(path, "dev", "x")
+    return parse_wiring(path, "fixture", "x")
 
 
 def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None:
@@ -254,12 +254,12 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
     ],
 )
 def test_parse_wiring_real_drivers(src_dir: Path, driver: str, expected: "tuple[WiringField, ...]") -> None:
-    assert parse_wiring(src_dir / driver, "dev", "x") == expected
+    assert parse_wiring(src_dir / driver, "fixture", "x") == expected
 
 
 def test_no_other_src_module_declares_an_unnoticed_wiring_tag(src_dir: Path) -> None:
     # A new tag appearing in a module nobody expected it in should fail this test, not go unnoticed.
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_wiring(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_wiring(p, "fixture", "x")}
     assert tagged == {
         "asy_bmp3xx_driver.py",
         "asy_isl29125_driver.py",

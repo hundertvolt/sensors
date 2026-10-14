@@ -126,6 +126,7 @@ def src_findings(src: Path) -> list[str]:
                 findings.append(f"{site.where()}: a feed inside a Timer/IRQ callback")
             elif (problem := _site_finding(tree, site)) is not None:
                 findings.append(f"{site.where()}: {problem}")
+    findings.extend(f for file, tree in trees.items() for f in own_feed_reference_findings(file, tree))
     sites = [s for file, tree in trees.items() for s in feed_sites(file, tree)]
     pinned = [("feed", name, 1) for name in _LATCHED_FEEDS] + [("feed_watchdog", name, want) for name, (_loops, want) in _FEED_CALLERS.items()]
     for kind, function, want in pinned:
@@ -174,9 +175,12 @@ def own_feed_findings(tree: ast.Module) -> list[str]:
     findings: list[str] = []
     reboot_calls = 0
     for fn in (f for f in getattr(service, "body", []) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))):
+        parents = {child: node for node in ast.walk(fn) for child in ast.iter_child_nodes(node)}
         for ref in (n for n in ast.walk(fn) if isinstance(n, ast.Attribute) and n.attr == _OWN_FEED and fn.name != _OWN_FEED):
             if not _own_feed_use(fn, ref):
                 findings.append(f"{_SERVICE[1]}.{fn.name}():{ref.lineno} uses {_OWN_FEED} outside the pinned set")
+            elif _inside_a_while(ref, parents):
+                findings.append(f"{_SERVICE[1]}.{fn.name}():{ref.lineno} uses {_OWN_FEED} inside a while loop, where each feed answers one bounded step")
             elif fn.name == "_reboot":
                 reboot_calls += 1
     if reboot_calls != 1:
@@ -184,6 +188,31 @@ def own_feed_findings(tree: ast.Module) -> list[str]:
     sequence = _service_method(tree, _SEQUENCE)
     if sequence is None or "self._storage.erase_chip(self._own_feed)" not in ast.unparse(sequence):
         findings.append(f"{_SERVICE[1]}.{_SEQUENCE}(): the erase no longer feeds through {_OWN_FEED} per unit")
+    return findings
+
+
+def _inside_a_while(node: ast.AST, parents: "dict[ast.AST, ast.AST]") -> bool:
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, ast.While):
+            return True
+    return False
+
+
+def own_feed_reference_findings(file: str, tree: ast.Module) -> list[str]:
+    # Every _own_feed reference outside SystemService's own methods: the pinned uses all sit inside them.
+    service = next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == _SERVICE[1]), None) if file == _SERVICE[0] else None
+    inside = {id(n) for n in ast.walk(service)} if service is not None else set()
+    findings: list[str] = []
+
+    def visit(node: ast.AST, function: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            name = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else function
+            if id(child) not in inside and ((isinstance(child, ast.Attribute) and child.attr == _OWN_FEED) or (isinstance(child, ast.Name) and child.id == _OWN_FEED)):
+                findings.append(f"{file}:{child.lineno} {name}(): references {_OWN_FEED} outside {_SERVICE[1]}'s pinned set")
+            visit(child, name)
+
+    visit(tree, "<module>")
     return findings
 
 
@@ -333,6 +362,23 @@ def test_a_fed_escalation_reset_fails(src_copy: Path) -> None:
     _edit(src_copy / "asy_system_service.py", 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)', 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset, fed=True)')
     findings = src_findings(src_copy)
     assert findings == ["SystemService._supervise(): 1 `_reboot(` calls where the pinned set has one, without fed="], findings
+
+
+def test_an_own_feed_inside_a_while_loop_fails(src_copy: Path) -> None:
+    # One feed per bounded step: a while loop in the sequence could feed for ever, the hung step the watchdog exists for.
+    anchor = '        self.pr.evt("Shutdown: supervised tasks stopped")\n'
+    _edit(src_copy / "asy_system_service.py", anchor, "        while self._storage is None:\n            self._own_feed()\n" + anchor)
+    findings = src_findings(src_copy)
+    assert len(findings) == 1 and findings[0].startswith("SystemService._shutdown_sequence():") and "uses _own_feed inside a while loop" in findings[0], findings
+
+
+@pytest.mark.parametrize("plant", ["asy_fram_manager.py", "asy_system_service.py"])
+def test_an_own_feed_reference_outside_the_service_fails(src_copy: Path, plant: str) -> None:
+    # Only SystemService's pinned sites reference _own_feed: any other file or function reaching it feeds past the latch.
+    path = src_copy / plant
+    path.write_text(path.read_text(encoding="utf-8") + "\n\ndef _zz_feed(service):\n    service._own_feed()\n", encoding="utf-8")
+    line = path.read_text(encoding="utf-8").count("\n")
+    assert src_findings(src_copy) == [f"{plant}:{line} _zz_feed(): references _own_feed outside SystemService's pinned set"]
 
 
 def test_a_feed_in_another_loop_fails(src_copy: Path) -> None:

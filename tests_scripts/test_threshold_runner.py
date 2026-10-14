@@ -32,7 +32,7 @@ def _run(repo_root: Path, micropython_bin: Path, args: "list[str]") -> "subproce
 
 
 def test_the_runner_applies_the_threshold_it_was_given(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
-    probe = _probe(tmp_path, "import gc\nprint('THRESHOLD', gc.threshold())\n")
+    probe = _probe(tmp_path, "import gc\nimport sys\nprint('THRESHOLD', gc.threshold())\nsys.exit(0)\n")
     completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
     assert completed.returncode == 0, completed.stderr
     assert f"THRESHOLD {_SHIPPED_THRESHOLD}" in completed.stdout, f"the test file did not observe the threshold the runner was asked for: {completed.stdout!r}"
@@ -52,7 +52,7 @@ def test_the_threshold_is_set_before_the_test_file_body_runs(repo_root: Path, mi
     # Ordering, not just the final value: a test file allocates while importing its own module under
     # test, and a threshold applied after that would leave the heaviest part of the file unmeasured.
     # @tunable gc.threshold_bytes = 32768
-    probe = _probe(tmp_path, "import gc\nassert gc.threshold() == 32768, gc.threshold()\nprint('ORDER ok')\n")
+    probe = _probe(tmp_path, "import gc\nimport sys\nassert gc.threshold() == 32768, gc.threshold()\nprint('ORDER ok')\nsys.exit(0)\n")
     completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
     assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
     assert "ORDER ok" in completed.stdout
@@ -61,7 +61,7 @@ def test_the_threshold_is_set_before_the_test_file_body_runs(repo_root: Path, mi
 def test_the_test_files_own_name_is_main_so_its_entry_point_fires(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
     # Every tests/test_*.py file ends in a microtest.run() guarded on __name__ - without this the
     # runner would exec 85 files that define their tests and then run none of them, and still exit 0.
-    probe = _probe(tmp_path, "print('NAME', __name__)\n")
+    probe = _probe(tmp_path, "import sys\nprint('NAME', __name__)\nsys.exit(0)\n")
     completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), "-1"])
     assert completed.returncode == 0, completed.stderr
     assert "NAME __main__" in completed.stdout
@@ -95,3 +95,24 @@ def test_an_uncaught_exception_in_the_test_file_is_not_reported_as_a_pass(repo_r
     # directly). scripts/test.sh merges the two with 2>&1 before the gate reads them, so either
     # stream reaches the log there - but a test asserting on stderr alone sees nothing at all.
     assert "RuntimeError" in completed.stdout + completed.stderr, f"the real cause must reach the log, not be swallowed: {completed.stdout!r} {completed.stderr!r}"
+
+
+def test_a_file_that_never_reaches_microtests_exit_fails(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+    # Test functions without the trailer define everything and run nothing: the runner must not read that as a pass.
+    probe = _probe(tmp_path, "def test_a():\n    assert False\n")
+    completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
+    assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+    assert f"runner: {probe} ended without microtest's exit - no trailer, or it never ran" in completed.stdout
+
+
+def test_an_exit_with_a_message_is_a_failure_not_a_crash_of_the_runner(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+    completed = _run(repo_root, micropython_bin, [_RUNNER, str(_probe(tmp_path, "import sys\nsys.exit('gave up')\n")), str(_SHIPPED_THRESHOLD)])
+    assert completed.returncode == 1, f"{completed.stdout}\n{completed.stderr}"
+    assert "ValueError" not in completed.stdout + completed.stderr, "int() of the message must not be what fails"
+
+
+def test_the_test_file_sees_only_its_own_name_in_argv(repo_root: Path, micropython_bin: Path, tmp_path: Path) -> None:
+    probe = _probe(tmp_path, "import sys\nprint('ARGV', sys.argv)\nsys.exit(0)\n")
+    completed = _run(repo_root, micropython_bin, [_RUNNER, str(probe), str(_SHIPPED_THRESHOLD)])
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    assert f"ARGV ['{probe}']" in completed.stdout, completed.stdout

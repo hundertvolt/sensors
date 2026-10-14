@@ -1,0 +1,62 @@
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 468, in _status_loop
+  File "tests/test_digital_twin_sensortask_integration.py", line 702, in read
+RuntimeError: injected status fault
+PASS test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0
+1/1 passed, 0 failed, 0 skipped

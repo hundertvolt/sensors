@@ -1,0 +1,39 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/live-backend-put-matrix.test.js (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/live-backend-put-matrix.test.js [ tests_js/live-backend-put-matrix.test.js ]
+Error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/tests_js/live-backend-put-matrix.test.js
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5822:5
+ ❯ collectTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5798:3
+ ❯ startTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:6480:17
+
+Caused by: Error: MicroPython Unix port not built at /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneJ/no-toolchain/micropython/ports/unix/build-standard/micropython - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)
+ ❯ tests_js/live-backend-put-matrix.test.js:141:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  17:14:19
+   Duration  2.85s (worker 95%, setup 5%)
+
+== Summary: npm test ==
+Commit: 032eb4c (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 1
+Failed:
+  - tests_js/live-backend-put-matrix.test.js: module error: Failed to import test file /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j/tests_js/live-backend-put-matrix.test.js
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing:
+  - npm test: no test case ran
+Result: FAIL
+Exit code: 1

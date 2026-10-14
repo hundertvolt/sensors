@@ -99,7 +99,7 @@ def test_a_restore_equal_to_the_ring_written_is_whole(ci_suite: ModuleType) -> N
 
 
 def test_a_whole_ring_followed_by_this_boots_own_warning_is_whole(ci_suite: ModuleType) -> None:
-    # CI's arzi and grkizi case: the restored ring, then the new boot's no-backup warning after it.
+    # A case CI meets on real devices: the restored ring, then the new boot's no-backup warning after it.
     written = _entry((10, "E"), counter=3)
     assert ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=4))
     assert not ci_suite._restore_is_all_or_nothing(written, _entry((10, "E"), (65, "W"), counter=2))

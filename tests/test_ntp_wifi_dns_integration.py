@@ -1,19 +1,23 @@
-"""Integration tests across the real three-file chain: WifiService -> NTPClient -> asy_dns_client.py's resolve_ipv4(). Every other test file replaces peers with a lambda/recorder; this file wires real instances (matching sensortask-wozi.py) to prove the *linked* behavior - calling order, error handling, value propagation - a lambda-based unit test can't observe.
-Found and fixed a real bug this way: NTPClient used to call get_dns_server_ip() after acquiring the shared wifi_mode_lock, so its own locked() gate always saw True and always returned None. Fixed via _safe_get_dns_server(), called before acquiring the lock."""
+"""Integration across the real chain WifiService -> NTPClient -> asy_dns_client.resolve_ipv4(), wired as the generated
+build_system() wires them (buildgen/codegen.py): calling order, error handling and value propagation a recorder-based
+unit test cannot observe."""
 # No real port-53 or port-123 exchange (both need root): a literal-IP NTPHost skips DNS, and an
 # empty DNSFallback with a 0.0.0.0 DHCP server leaves no candidate to ask.
 
 import asyncio
-import select
-import socket
-import struct
 import sys
 import time
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP shim's directory (digital_twin/README.md)
 
 import network
+from _async_harness import cancel, run
 from _error_codes import code
+from _fake_time import DrivenTime, tick
+from _fast_sleep import FastAsyncSleep
+from _ntp_frames import FakeNtpServer, make_ntp_reply
+from _recording_print import record_prints
+from _src_const import src_const
 from _tmp_scratch import TmpScratch
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -30,24 +34,31 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, Literal, TypeVar
+    from collections.abc import Callable
+    from typing import Literal, Protocol
 
-    from typing_extensions import Self
+    from _protocols import WLANLike
 
     from asy_print_log import ErrorLog, PrintLogHistory
 
-    T = TypeVar("T")
+    class _FakeWLAN(WLANLike, Protocol):
+        # The fake's test-only names this file reads: mypy resolves `network` to the board stub, which has none of
+        # them (tests/network.py is outside the main pass, B.15).
+        _connected: bool
+        _status: int
+        _ifconfig: tuple[str, str, str, str]
+        raise_on: dict[str, Exception]
+        connect_calls: list[tuple[str | None, str | None]]
+        disconnect_called: bool
 
 # Once, before any UDPSocket connects: this Unix build's socket takes no plain (host, port) tuple (SPECIFICATION.md F.7).
 patch_asy_udp_socket_for_unix_port()
 
-# The two well-known ports the product dials; asy_ntp_client.py's and asy_dns_client.py's const()s are not
-# importable once folded, so these mirror them (keep in sync).
-_NTP_PORT = 123
-_DNS_PORT = 53
-# Mirrors asy_wifi_service.py's _PHASE_STA_ESTABLISHED, likewise (keep in sync).
-_PHASE_STA_ESTABLISHED = 1
+# Read from source: const() folds them out of the module (tests/_src_const.py).
+_NTP_UDP_PORT = src_const("src/asy_ntp_client.py", "_NTP_UDP_PORT")
+_DNS_PORT = src_const("src/asy_dns_client.py", "_DNS_PORT")
+_PHASE_STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
+_LOG_ALL: int = src_const("src/asy_print_log.py", "_LOG_ALL")  # type: ignore[assignment]  # src_const() answers object
 
 # @tunable l1.ntp_wifi_dns_integration_lock_blocked_wait_s = 0.05
 _LOCK_BLOCKED_WAIT_S = 0.05
@@ -64,17 +75,14 @@ _PAST_FETCH_TIMEOUT_MS = 150
 # @tunable l1.ntp_wifi_dns_integration_failure_cycles = 8
 _FAILURE_CYCLES = 8
 _SETTLE_YIELDS = 200  # a bound in scheduling steps for one hand-over between the NTP and WiFi tasks
+# @tunable l1.asy_ntp_client_fake_server_poll_ms = 10
+_FAKE_SERVER_POLL_MS = 10
+# @tunable l1.asy_ntp_client_fake_server_poll_tries = 1000
+_FAKE_SERVER_POLL_TRIES = 1000
 
 
-def run(coro: "Coroutine[Any, Any, T]") -> "T":  # drives a coroutine to completion for these sync test_* functions
-    return asyncio.run(coro)
-
-
-def _wlan(conn: WifiService) -> "Any":  # Any is the point here, not an omission - see below
-    # _wlan(conn) is typed against the real network.WLAN stub (pyproject.toml's tests/network.py exclude),
-    # but at runtime MICROPYPATH constructs tests/network.py's fake, exposing test-only attributes the real
-    # stub has no reason to declare. Narrows to Any once here, matching test_asy_wifi_service.py's helper.
-    return conn._wlan
+def _wlan(conn: WifiService) -> "_FakeWLAN":
+    return conn._wlan  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that
@@ -86,7 +94,7 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
-def make_conn(cfg_path: "str | None" = None) -> WifiService:
+def _make_conn(cfg_path: "str | None" = None) -> WifiService:
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), cfg_path=cfg_path)
@@ -94,14 +102,13 @@ def make_conn(cfg_path: "str | None" = None) -> WifiService:
     return conn
 
 
-def make_ntp(
+def _make_ntp(
     conn: WifiService,
     ntp_host: str,
     cfg_path: "str | None" = None,
     ntp_fetch_timeout_ms: int = 5000,  # the generated wiring's fetch timeout
 ) -> NTPClient:
-    # Exactly sensortask-wozi.py's own wiring: conn.get_wifi_mode_lock()/network_available_locked/
-    # get_dns_server_ip passed straight through as ntp's own constructor arguments - the real
+    # The generated build_system() wiring (buildgen/codegen.py): the three providers passed positionally, the real
     # bound methods, not a lambda standing in for them.
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
@@ -135,24 +142,8 @@ def connect_wlan(conn: WifiService, dns_server: str = "192.0.2.53") -> None:
     run(_snapshot_step(conn))
 
 
-async def _tick(flag: "asyncio.ThreadSafeFlag", times: int = 1) -> None:
-    for _ in range(times):
-        flag.set()
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
-
-async def _cancel(task: "asyncio.Task[Any]") -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str | None":
-    # Same helper as tests/test_asy_ntp_client.py's own _last_err() - duplicated, not imported,
-    # matching this file's existing convention of small per-file test helpers.
+    # The newest entry of a log field.
     value = counter["NTP"][field]  # ErrNum/ErrType are list-shaped once _error_check() has run once
     assert isinstance(value, list)
     return value[-1] if value else None
@@ -175,9 +166,9 @@ class _RecordingResolver:
 
 
 def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv4() -> None:
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn, dns_server="203.0.113.9")
-    ntp = make_ntp(conn, "pool.ntp.org")
+    ntp = _make_ntp(conn, "pool.ntp.org")
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = recorder  # a module-attribute swap, as test_asy_ntp_client.py makes it; restored below
@@ -185,8 +176,8 @@ def test_dns_server_ip_flows_from_a_connected_real_wifi_service_into_resolve_ipv
 
         async def scenario() -> None:
             task = asyncio.create_task(ntp._sync_loop())
-            await _tick(ntp._ntp_sync_trigger_event, 1)
-            await _cancel(task)
+            await tick(ntp._ntp_sync_trigger_event, 1)
+            await cancel(task)
 
         run(scenario())
     finally:
@@ -200,9 +191,9 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
     # A fresh device that has never gotten a DHCP lease: WLAN.ifconfig()'s documented default is all
     # "0.0.0.0" fields, and this proves that value, not filtered by get_dns_server_ip() itself, reaches
     # resolve_ipv4() as-is. resolve_ipv4()'s own "0.0.0.0" skip is covered at its own unit level.
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
-    ntp = make_ntp(conn, "pool.ntp.org")
+    ntp = _make_ntp(conn, "pool.ntp.org")
     recorder = _RecordingResolver("9.9.9.9")
     original = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = recorder
@@ -210,8 +201,8 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
 
         async def scenario() -> None:
             task = asyncio.create_task(ntp._sync_loop())
-            await _tick(ntp._ntp_sync_trigger_event, 1)
-            await _cancel(task)
+            await tick(ntp._ntp_sync_trigger_event, 1)
+            await cancel(task)
 
         run(scenario())
     finally:
@@ -222,15 +213,15 @@ def test_dns_server_ip_unset_sentinel_flows_through_a_real_never_configured_wifi
 def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated() -> None:
     # A snapshot step whose ifconfig() read raises publishes no DHCP server (print-only, never persisted or
     # raised); _safe_get_dns_server() then answers a clean None and resolution goes on without a hint.
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn)
     _wlan(conn).raise_on["ifconfig"] = OSError("simulated WLAN hardware fault")
     run(_snapshot_step(conn))
-    ntp = make_ntp(conn, "127.0.0.1")  # literal IP - resolve_ipv4() never touches the network
+    ntp = _make_ntp(conn, "127.0.0.1")  # literal IP - resolve_ipv4() never touches the network
     dns_server = run(ntp._safe_get_dns_server())
     assert dns_server is None
     result = run(ntp._resolve_ntp_server("127.0.0.1", dns_server, ""))
-    assert result == ("127.0.0.1", _NTP_PORT)  # resolution still proceeds despite the WLAN fault
+    assert result == ("127.0.0.1", _NTP_UDP_PORT)  # resolution still proceeds despite the WLAN fault
 
 
 # ---------------------------------------------------------------------------
@@ -241,19 +232,19 @@ def test_get_dns_server_ip_real_wlan_exception_is_treated_as_none_not_propagated
 
 
 def test_wifi_mode_lock_is_the_same_instance_on_both_real_objects() -> None:
-    conn = make_conn()
-    ntp = make_ntp(conn, "pool.ntp.org")
+    conn = _make_conn()
+    ntp = _make_ntp(conn, "pool.ntp.org")
     assert ntp.wifi_mode_lock is conn.get_wifi_mode_lock()
 
 
 def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -> None:
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn)
-    server = FakeNtpServer()  # bound, never answering: _fetch_ntp_reply() waits out its 5 s fetch timeout in the lock
-    ntp = make_ntp(conn, "127.0.0.1")
+    server = _make_ntp_server()  # bound, never answering: _fetch_ntp_reply() waits out its 5 s fetch timeout in the lock
+    ntp = _make_ntp(conn, "127.0.0.1")
 
     async def scenario() -> bool:
-        with redirect_udp_port(ntpmod, _NTP_PORT, server.port):
+        with redirect_udp_port(ntpmod, _NTP_UDP_PORT, server.port):
             task = asyncio.create_task(ntp._sync_loop())
             ntp._ntp_sync_trigger_event.set()
             await asyncio.sleep(0)
@@ -265,7 +256,7 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
                 await asyncio.wait_for(conn._select_wifi_mode(network.AP_IF), _LOCK_BLOCKED_WAIT_S)
             except asyncio.TimeoutError:
                 blocked = True  # conn's own mode switch is genuinely stuck waiting on the shared lock
-            await _cancel(task)
+            await cancel(task)
         return blocked
 
     try:
@@ -278,56 +269,6 @@ def test_ntp_sync_holding_the_lock_blocks_a_concurrent_real_wifi_mode_switch() -
 # The NTP attempt's hold of wifi_mode_lock, seen from every waiter (SPECIFICATION.md C.8's hold table):
 # the getters serve the snapshot, the uptime keeps counting, and the WiFi loop resumes once it ends.
 # ---------------------------------------------------------------------------
-
-_TICKS_PERIOD = 1 << 30  # rp2's ticks_ms() wrap: py/mpconfig.h's MICROPY_PY_TIME_TICKS_PERIOD on a 32-bit small int
-
-
-class _DrivenTime:
-    # Stands in for asy_base_classes' `time` so TickSeconds (the WiFi uptime) reads driven ticks; every
-    # other name reaches the real module. Installed before the service is built, restored on exit.
-    def __init__(self) -> None:
-        self.now = 0
-        self._saved: object = None
-
-    def __enter__(self) -> "Self":
-        self._saved = asy_base_classes.time
-        asy_base_classes.time = self  # type: ignore[assignment]
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asy_base_classes.time = self._saved  # type: ignore[assignment]
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(time, name)
-
-    def advance_s(self, seconds: int) -> None:
-        self.now = self.ticks_add(self.now, seconds * 1000)
-
-    def ticks_add(self, a: int, b: int) -> int:
-        return (a + b) & (_TICKS_PERIOD - 1)
-
-    def ticks_diff(self, a: int, b: int) -> int:
-        return ((a - b + _TICKS_PERIOD // 2) & (_TICKS_PERIOD - 1)) - _TICKS_PERIOD // 2
-
-    def ticks_ms(self) -> int:
-        return self.now
-
-
-class _FastAsyncSleep:
-    # The WiFi loop's refresh, settle and poll sleeps (seconds each) become one yield for the block, so its
-    # iterations run as scheduling steps. asyncio.sleep is process-wide, so it is restored however the block exits.
-    def __enter__(self) -> "Self":
-        self._real_sleep = asyncio.sleep
-
-        async def _fast(_seconds: float) -> None:
-            await self._real_sleep(0)
-
-        asyncio.sleep = _fast  # type: ignore[assignment]  # a module-attribute swap for the block, not a caller mismatch
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real_sleep
-
 
 class _GatedResolver:
     # Stands in for resolve_ipv4(): parks the NTP attempt, and so its hold of wifi_mode_lock, until release().
@@ -371,31 +312,31 @@ async def _ntp_holding_the_lock(ntp: NTPClient, resolver: _GatedResolver) -> "as
 
 
 def test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting() -> None:
-    with _DrivenTime() as clock:
-        conn = make_conn()
+    with DrivenTime(asy_base_classes) as clock:
+        conn = _make_conn()
         connect_wlan(conn)
-        ntp = make_ntp(conn, "pool.ntp.org")  # a host name: the attempt waits in the resolver, inside the lock
+        ntp = _make_ntp(conn, "pool.ntp.org")  # a host name: the attempt waits in the resolver, inside the lock
         resolver = _GatedResolver()
 
         async def scenario() -> "tuple[WIFI, WIFI, int, int, str | None, tuple[str, ...] | None]":
             uptime_task = asyncio.create_task(conn._uptime_loop())
             await asyncio.sleep(0)  # the loop starts its uptime at the driven clock's zero
-            clock.advance_s(1)
-            await _tick(conn._time_counter_trigger_event)  # one 1 Hz step before the hold
+            clock.advance(1000)
+            await tick(conn._time_counter_trigger_event)  # one 1 Hz step before the hold
             before = await conn.get_data()
             uptime_before = await conn.get_wifi_uptime()
             sync_task = await _ntp_holding_the_lock(ntp, resolver)
             for _ in range(3):  # three seconds pass while the NTP attempt holds the lock
-                clock.advance_s(1)
-                await _tick(conn._time_counter_trigger_event)
+                clock.advance(1000)
+                await tick(conn._time_counter_trigger_event)
             assert conn.wifi_mode_lock.locked() is True  # still held: the uptime loop's own step waits on it
             held = await asyncio.wait_for(conn.get_data(), _LOCK_BLOCKED_WAIT_S)  # served at once, never waiting
             uptime_held = await conn.get_wifi_uptime()
             dns_held = conn.get_dns_server_ip()
             resolver.release()
             assert await _until(lambda: not conn.wifi_mode_lock.locked())
-            await _cancel(sync_task)
-            await _cancel(uptime_task)
+            await cancel(sync_task)
+            await cancel(uptime_task)
             return before, held, uptime_before, uptime_held, dns_held, resolver.servers
 
         saved = ntpmod.resolve_ipv4
@@ -414,7 +355,7 @@ def test_a_held_lock_serves_the_snapshot_and_uptime_keeps_counting() -> None:
 
 def _sta_conn() -> WifiService:
     # An SSID stored and a fake radio that joins on connect(): the real _connect_loop() reaches a steady link.
-    conn = make_conn()
+    conn = _make_conn()
     assert run(conn._set_dict_cfg({"SSID": "HomeNet", "PW": "supersecret"}, conn.get_cfg_schema())) == {"SSID": "Valid", "PW": "Valid"}
     wlan = _wlan(conn)
 
@@ -422,7 +363,7 @@ def _sta_conn() -> WifiService:
         wlan.connect_calls.append((ssid, password))
         _link_up(conn)
 
-    wlan.connect = joins
+    wlan.connect = joins  # type: ignore[method-assign]  # the fake radio joins on connect()
     return conn
 
 
@@ -442,7 +383,7 @@ def _counted_sta_steps(conn: WifiService) -> "list[int]":
 def test_the_wifi_loop_resumes_after_the_lock_without_a_fault() -> None:
     conn = _sta_conn()
     steps = _counted_sta_steps(conn)
-    ntp = make_ntp(conn, "pool.ntp.org")
+    ntp = _make_ntp(conn, "pool.ntp.org")
     resolver = _GatedResolver()
 
     async def scenario() -> "tuple[int, int, bool, bool]":
@@ -455,15 +396,15 @@ def test_the_wifi_loop_resumes_after_the_lock_without_a_fault() -> None:
         resolver.release()
         resumed = await _until(lambda: steps[0] > held_steps)
         hw_op_failed = conn._hw_op_failed
-        await _cancel(sync_task)
+        await cancel(sync_task)
         alive = not wifi_task.done()
-        await _cancel(wifi_task)
+        await cancel(wifi_task)
         return blocked_steps, steps[0] - held_steps, resumed and alive, hw_op_failed
 
     saved = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = resolver  # a module-attribute swap, restored below
     try:
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             blocked_steps, resumed_steps, resumed, hw_op_failed = run(scenario())
     finally:
         ntpmod.resolve_ipv4 = saved
@@ -476,7 +417,7 @@ def test_the_wifi_loop_resumes_after_the_lock_without_a_fault() -> None:
 def test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration() -> None:
     conn = _sta_conn()
     steps = _counted_sta_steps(conn)
-    ntp = make_ntp(conn, "pool.ntp.org")
+    ntp = _make_ntp(conn, "pool.ntp.org")
     resolver = _GatedResolver()
 
     async def scenario() -> "tuple[bool, bool, bool, bool, bool]":
@@ -490,15 +431,15 @@ def test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration() -> 
         resolver.release()
         acted = await _until(lambda: _wlan(conn).disconnect_called and not conn._reconn_wifi)
         relinked = await _until(lambda: conn._conn_phase == _PHASE_STA_ESTABLISHED)
-        await _cancel(sync_task)
+        await cancel(sync_task)
         alive = not wifi_task.done()
-        await _cancel(wifi_task)
+        await cancel(wifi_task)
         return flagged, early, acted, relinked, alive
 
     saved = ntpmod.resolve_ipv4
     ntpmod.resolve_ipv4 = resolver  # a module-attribute swap, restored below
     try:
-        with _FastAsyncSleep():
+        with FastAsyncSleep():
             flagged, early, acted, relinked, alive = run(scenario())
     finally:
         ntpmod.resolve_ipv4 = saved
@@ -511,9 +452,9 @@ def test_a_reconnect_asked_during_the_hold_runs_in_the_next_wifi_iteration() -> 
 def test_no_socket_is_built_without_a_dns_candidate() -> None:
     # The "no test reaches a public resolver" property at L1: an empty DNSFallback, a 0.0.0.0 DHCP server and
     # a host name leave nothing to ask. A loopback DHCP server then builds exactly one, proving the count is live.
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
-    ntp = make_ntp(conn, "pool.ntp.org")
+    ntp = _make_ntp(conn, "pool.ntp.org")
 
     async def attempt(errors_before: int) -> int:
         task = asyncio.create_task(ntp._sync_loop())
@@ -522,10 +463,10 @@ def test_no_socket_is_built_without_a_dns_candidate() -> None:
             if (await ntp.get_error_counter())["NTP"]["ErrCount"] > errors_before:
                 break
             await asyncio.sleep_ms(_STATE_POLL_MS)
-        await _cancel(task)
+        await cancel(task)
         return (await ntp.get_error_counter())["NTP"]["ErrCount"]
 
-    with redirect_udp_port(asy_dns_client, _DNS_PORT, make_port()) as dns_sockets:  # an unbound loopback port
+    with redirect_udp_port(asy_dns_client, _DNS_PORT, _make_port()) as dns_sockets:  # an unbound loopback port
         errors = run(attempt(0))
         none_built = dns_sockets.constructed
         connect_wlan(conn, dns_server="127.0.0.1")
@@ -547,61 +488,26 @@ def test_no_socket_is_built_without_a_dns_candidate() -> None:
 _next_port = 25000
 
 
-def make_port() -> int:
+def _make_port() -> int:
     global _next_port
     _next_port += 1
     return _next_port
 
 
-class FakeNtpServer:
-    def __init__(self) -> None:
-        self.port = make_port()
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(socket.getaddrinfo("127.0.0.1", self.port)[0][-1])  # a raw socket: this build's bind() takes the sockaddr
-        self.sock.setblocking(False)
-        self.poller = select.poll()
-        self.poller.register(self.sock, select.POLLIN)
-
-    def close(self) -> None:
-        self.sock.close()
-
-    async def serve_once(self, reply: bytes) -> None:
-        for _ in range(1000):
-            ready = any(event & select.POLLIN for _fd, event in self.poller.ipoll(0))
-            if ready:
-                try:
-                    _data, from_addr = self.sock.recvfrom(1024)
-                except OSError:
-                    await asyncio.sleep_ms(10)
-                    continue
-                self.sock.sendto(reply, from_addr)
-                return
-            await asyncio.sleep_ms(10)
-
-
-_NTP_EPOCH_DELTA = 2208988800
-
-
-def make_ntp_reply(unix_seconds: int) -> bytes:
-    ntp_seconds = (unix_seconds + _NTP_EPOCH_DELTA) & 0xFFFFFFFF
-    header = b"\x1c\x01" + bytes(38)  # LI=0/VN=3/Mode=4(server), Stratum=1(genuinely synchronized)
-    transmit = struct.pack("!I", ntp_seconds) + bytes(4)
-    packet = header + transmit
-    assert len(packet) == 48
-    return packet
+def _make_ntp_server() -> FakeNtpServer:
+    return FakeNtpServer(_make_port(), poll_ms=_FAKE_SERVER_POLL_MS, poll_tries=_FAKE_SERVER_POLL_TRIES)
 
 
 def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_ip_ntp_host() -> None:
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn)
-    server = FakeNtpServer()
-    ntp = make_ntp(conn, "127.0.0.1")
+    server = _make_ntp_server()
+    ntp = _make_ntp(conn, "127.0.0.1")
     reply = make_ntp_reply(int(time.time()))
 
     async def scenario() -> "tuple[bool, int | None]":
         try:
-            with redirect_udp_port(ntpmod, _NTP_PORT, server.port):
+            with redirect_udp_port(ntpmod, _NTP_UDP_PORT, server.port):
                 task = asyncio.create_task(ntp._sync_loop())
                 server_task = asyncio.create_task(server.serve_once(reply))
                 ntp._ntp_sync_trigger_event.set()
@@ -612,7 +518,7 @@ def test_full_chain_reaches_synced_state_via_a_real_wifi_service_and_a_literal_i
                     await asyncio.sleep_ms(_STATE_POLL_MS)
                 synced = await ntp.ntp_issynced()
                 last_sync = await ntp.get_last_ntp_sync()
-                await _cancel(task)
+                await cancel(task)
                 return synced, last_sync
         finally:
             server.close()
@@ -634,14 +540,14 @@ def test_full_chain_degrades_cleanly_when_wifi_reports_connected_but_the_ntp_ser
     # The FakeNtpServer is bound and reachable, a real socket on a real port, but its serve_once() is never
     # called, so a real send genuinely goes unanswered - the same observable shape a dead-but-reported-alive
     # link produces. The code only ever sees "sent, then nothing back within the timeout" either way.
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn)
-    server = FakeNtpServer()
-    ntp = make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=_FETCH_TIMEOUT_NO_REPLY_MS)
+    server = _make_ntp_server()
+    ntp = _make_ntp(conn, "127.0.0.1", ntp_fetch_timeout_ms=_FETCH_TIMEOUT_NO_REPLY_MS)
 
     async def scenario() -> "tuple[bool, bool, int, int, ErrorLog]":
         try:
-            with redirect_udp_port(ntpmod, _NTP_PORT, server.port):
+            with redirect_udp_port(ntpmod, _NTP_UDP_PORT, server.port):
                 task = asyncio.create_task(ntp._sync_loop())
                 # Far past the old five-failure give-up, each cycle bounded by the 100ms fetch timeout.
                 for _ in range(_FAILURE_CYCLES):
@@ -671,30 +577,33 @@ def test_full_chain_stays_unsynced_when_the_real_wifi_service_reports_network_un
     # conn never connected (default fake WLAN state: disconnected, STAT_IDLE) - conn.network_available_locked()
     # genuinely returns False, driven through the real object rather than a lambda stand-in like
     # tests/test_asy_ntp_client.py's own test_run_sync_attempt_network_unavailable_skips_everything_downstream.
-    conn = make_conn()
-    ntp = make_ntp(conn, "127.0.0.1")
+    conn = _make_conn()
+    ntp = _make_ntp(conn, "127.0.0.1")
+    ntp.pr.set_level(_LOG_ALL)  # the skip is a console line at DebugLevel 5 only: recorded, it proves the loop woke
 
     async def scenario() -> bool:
         task = asyncio.create_task(ntp._sync_loop())
-        await _tick(ntp._ntp_sync_trigger_event, 1)
+        await tick(ntp._ntp_sync_trigger_event, 1)
         synced = await ntp.ntp_issynced()
-        await _cancel(task)
+        await cancel(task)
         return synced
 
-    assert run(scenario()) is False
+    with record_prints(ntp.pr) as printed:
+        assert run(scenario()) is False
+    assert ("NTP", "Network not available, skipping sync attempt.") in printed.lines, printed.lines
 
 
 def test_dns_resolution_with_no_candidate_persists_the_dns_error() -> None:
     # Every candidate is unset - "0.0.0.0" from the snapshot and the stored empty DNSFallback - so
     # resolve_ipv4()'s ipv4_to_int() guard asks no server, through the real chain, not a synthetic resolver.
-    conn = make_conn()
+    conn = _make_conn()
     connect_wlan(conn, dns_server="0.0.0.0")
-    ntp = make_ntp(conn, "bogus.invalid")
+    ntp = _make_ntp(conn, "bogus.invalid")
 
     async def scenario() -> None:
         task = asyncio.create_task(ntp._sync_loop())
-        await _tick(ntp._ntp_sync_trigger_event, 1)
-        await _cancel(task)
+        await tick(ntp._ntp_sync_trigger_event, 1)
+        await cancel(task)
 
     run(scenario())
     assert run(ntp.ntp_issynced()) is False

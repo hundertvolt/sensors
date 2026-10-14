@@ -4,12 +4,14 @@
 from pathlib import Path
 
 import pytest
-from _toml_fixtures import base_doc, write_doc
+from _devices import DEVICE_NAMES, device_toml, devices_with
+from _toml_fixtures import base_doc, table_at, write_doc
 
 from buildgen.errors import BuildError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
 from buildgen.validate import build_model
+from buildgen.wiring import WiringField
 
 
 @pytest.fixture
@@ -22,8 +24,18 @@ def ext_dir(repo_root: Path) -> Path:
     return repo_root / "ext"
 
 
-def test_wozi_construction_order_matches_reference_ordering_constraints(repo_root: Path, src_dir: Path, ext_dir: Path) -> None:
-    result = generate_device(repo_root / "devices" / "wozi.toml", src_dir, ext_dir)
+# The drivers the reference constraints below order; every device declaring all of them is checked.
+_ORDERED_DRIVERS = ("scd30", "sgp40", "fram", "neopixel", "notification")
+_ORDERED_DEVICES = [d for d in DEVICE_NAMES if all(d in devices_with(driver) for driver in _ORDERED_DRIVERS)]
+
+
+def test_the_ordering_constraints_reach_a_real_device() -> None:
+    assert _ORDERED_DEVICES, f"no device declares every one of {_ORDERED_DRIVERS}, so the constraints test nothing"
+
+
+@pytest.mark.parametrize("device", _ORDERED_DEVICES)
+def test_construction_order_matches_reference_ordering_constraints(src_dir: Path, ext_dir: Path, device: str) -> None:
+    result = generate_device(device_toml(device), src_dir, ext_dir)
     order = [n if isinstance(n, str) else f"{n[0]}_{n[1]}" if n[1] else n[0] for n in result.model.construction_order]
     # The hand-verified construction order (Part A.7): fram before conn/ntp/sysfunct, which all
     # inherit the device-level fram_target implicitly; conn before ntp before sysfunct; scd30
@@ -62,10 +74,8 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
     # No real driver's _WIRING requires SGP40_Reader as a producer, so a genuine cycle is not
     # expressible with the actual driver set - this drives build_construction_order() against a
     # synthetic model whose two instances depend on each other instead.
-    from buildgen.wiring import WiringField
-
     doc = base_doc()
-    model = build_model(write_doc(tmp_path, "dev", doc), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", doc), src_dir)
     a = model.instances[("scd30", "")]  # sgp40 already depends on scd30 (temperature_source/humidity_source, base_doc's own wiring)
     a.wiring_schema = (WiringField("fake_dep", "SGP40_Reader", "fake_dep", True, "kwarg"),)
     a.wiring["fake_dep"] = "sgp40"
@@ -84,7 +94,7 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
 )
 def test_a_source_edge_comes_only_from_value_wiring_and_notification_signals(tmp_path: Path, src_dir: Path, driver: str, toml_field: str) -> None:
     # sgp40 already depends on scd30; an edge from any other {source} sub-table would close a cycle.
-    model = build_model(write_doc(tmp_path, "dev", base_doc()), src_dir)
+    model = build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir)
     model.instances[(driver, "")].wiring[toml_field] = {"source": "sgp40", "field": "VOC"}
     order = build_construction_order(model)
     assert order.index((driver, "")) < order.index(("sgp40", ""))
@@ -93,20 +103,20 @@ def test_a_source_edge_comes_only_from_value_wiring_and_notification_signals(tmp
 def test_led_target_builds_the_neopixel_before_conn(tmp_path: Path, src_dir: Path) -> None:
     # The device's status LED is passed to conn at construction, so its NeoPixel comes first; the
     # NeoPixel depends only on the FRAM chip, so the order is fram -> neopixel -> conn.
-    order = build_construction_order(build_model(write_doc(tmp_path, "dev", base_doc()), src_dir))
+    order = build_construction_order(build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir))
     assert order.index(("fram", "")) < order.index(("neopixel", "")) < order.index("conn")
 
 
 def test_without_led_target_conn_does_not_wait_for_the_neopixel(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
-    del doc["device"]["wiring"]["led_target"]
-    order = build_construction_order(build_model(write_doc(tmp_path, "dev", doc), src_dir))
+    del table_at(doc, "device", "wiring")["led_target"]
+    order = build_construction_order(build_model(write_doc(tmp_path, "fixture", doc), src_dir))
     assert order.index("conn") < order.index(("neopixel", ""))
 
 
 def test_ntp_precedes_every_sgp40_and_notification(tmp_path: Path, src_dir: Path) -> None:
     # Both are built with a reference into ntp (the backup's sync check, the local-time callback);
     # with led_target pulling scd30 ahead of conn, only an explicit edge keeps ntp ahead of them.
-    order = build_construction_order(build_model(write_doc(tmp_path, "dev", base_doc()), src_dir))
+    order = build_construction_order(build_model(write_doc(tmp_path, "fixture", base_doc()), src_dir))
     assert order.index("ntp") < order.index(("sgp40", ""))
     assert order.index("ntp") < order.index(("notification", ""))

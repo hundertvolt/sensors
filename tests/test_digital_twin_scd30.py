@@ -1,7 +1,6 @@
 """Deterministic unit tests for digital_twin/_scd30_chip.py's own transaction-response logic - matches the raw word-register commands src/asy_scd30_driver.py's SCD30_I2C sends.
 Real-time RDY-pin scheduling is exercised only via the synchronous _produce_new_reading() hook here; the real-time-firing check itself lives in test_digital_twin_machine.py."""
 
-import asyncio
 import json
 import os
 import struct
@@ -13,20 +12,20 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
-    from typing import Any, TypeVar
+    from collections.abc import Callable
 
     from asy_config_manager import CfgValue
-
-    T = TypeVar("T")
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import machine
+from _async_harness import run
 from _crc8 import crc8, word
+from _fast_sleep import FastAsyncSleep
 from _scd30_chip import Scd30Chip
 from _tmp_scratch import TmpScratch
 from _twin_common import Walk
+from _twin_random import FixedRandom
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
@@ -38,21 +37,6 @@ _scratch = TmpScratch("digital_twin_scd30")
 
 def _tmp_path(name: str) -> str:
     return _scratch.path(name)
-
-
-def run(coro: "Coroutine[Any, Any, T]") -> "T":
-    return asyncio.run(coro)
-
-
-class _FixedRandom:
-    def __init__(self, uniform_values: "list[float] | None" = None) -> None:
-        self._uniform_values = list(uniform_values or [])
-
-    def uniform(self, a: float, b: float) -> float:
-        assert self._uniform_values, "uniform() called more times than scripted"
-        value = self._uniform_values.pop(0)
-        assert a <= value <= b, f"scripted value {value} outside requested range [{a},{b}]"
-        return value
 
 
 def _get(chip: Scd30Chip, reg_hi: int, reg_lo: int, nbytes: int = 3) -> bytes:
@@ -127,7 +111,7 @@ def _reported_temperature(chip: Scd30Chip) -> float:
 
 def test_a_reading_reports_the_sensors_temperature_less_the_offset() -> None:
     for offset_raw in (0, 150, 65535):
-        chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+        chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
         _set(chip, 0x54, 0x03, offset_raw)
         chip._produce_new_reading()
         assert abs(_reported_temperature(chip) - (22.0 - offset_raw / 100)) < 1e-3, offset_raw
@@ -148,7 +132,7 @@ def test_data_ready_starts_false() -> None:
 
 
 def test_produce_new_reading_sets_data_ready_true() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     assert _get(chip, 0x02, 0x02) == word(1)
 
@@ -157,7 +141,7 @@ def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_valu
     # First 3 values: the uniform draw at construction. Last 3: the step delta _produce_new_reading() draws,
     # zeroed here so the final value stays exactly at the constructed initial value, keeping this test's
     # assertions about the values independent of the walk mechanism, which has its own tests below.
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[512.5, 21.5, 47.25, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[512.5, 21.5, 47.25, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.handle_writeto(b"\x03\x00")  # READ_MEASUREMENT - bare command, no args
     buf = chip.handle_readfrom_into(18)
@@ -173,7 +157,7 @@ def test_read_measurement_returns_crc_valid_buffer_decoding_to_the_produced_valu
 
 
 def test_read_measurement_clears_data_ready() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.handle_writeto(b"\x03\x00")
     chip.handle_readfrom_into(18)
@@ -184,14 +168,14 @@ def test_construction_draws_an_initial_value_within_range_without_needing_a_read
     # Initial value: a uniform draw within [min,max] at construction, before _produce_new_reading()
     # is ever called - not datasheet-derived (the step bound isn't), but the initial-value mechanism
     # (a uniform draw) is unchanged from before this walk existed.
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1234.0, 25.5, 55.5]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[1234.0, 25.5, 55.5]))
     assert chip._co2 == 1234.0
     assert chip._temp == 25.5
     assert chip._hum == 55.5
 
 
 def test_produce_new_reading_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 25.0, -0.5, 2.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 25.0, -0.5, 2.0]))
     assert chip._co2 == 1000.0 and chip._temp == 20.0 and chip._hum == 50.0  # construction draw
     chip._produce_new_reading()
     assert chip._co2 == 1025.0  # 1000.0 + 25.0
@@ -203,7 +187,7 @@ def test_produce_new_reading_step_delta_is_clamped_to_the_default_step_bound() -
     # _FixedRandom itself asserts a <= value <= b for every uniform() call - if _produce_new_reading()
     # ever passed the wrong (a, b) bound for a step draw (e.g. the full [min,max] range instead of
     # [-step,step]), this test's deliberately-tight scripted delta would fail that assertion.
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 50.0, 1.0, 3.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 50.0, 1.0, 3.0]))
     chip._produce_new_reading()  # walk steps co2 50.0, temp 1.0, hum 3.0 (this chip's defaults)
 
 
@@ -211,7 +195,7 @@ def test_produce_new_reading_step_is_clamped_to_the_configured_max() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
         co2=Walk(400.0, 2000.0, 50.0),
-        random_source=_FixedRandom(uniform_values=[1980.0, 20.0, 50.0, 50.0, 0.0, 0.0]),
+        random_source=FixedRandom(uniform_values=[1980.0, 20.0, 50.0, 50.0, 0.0, 0.0]),
     )
     chip._produce_new_reading()
     assert chip._co2 == 2000.0  # 1980.0 + 50.0 would be 2030.0 - clamped back to the co2 walk's hi
@@ -221,27 +205,23 @@ def test_produce_new_reading_step_is_clamped_to_the_configured_min() -> None:
     chip = Scd30Chip(
         auto_refresh=False,
         temp=Walk(15.0, 30.0, 1.0),
-        random_source=_FixedRandom(uniform_values=[1000.0, 15.5, 50.0, 0.0, -1.0, 0.0]),
+        random_source=FixedRandom(uniform_values=[1000.0, 15.5, 50.0, 0.0, -1.0, 0.0]),
     )
     chip._produce_new_reading()
     assert chip._temp == 15.0  # 15.5 + -1.0 would be 14.5 - clamped back to the temp walk's lo
 
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
-    chip = Scd30Chip(
-        auto_refresh=False,
-        co2=Walk(400.0, 2000.0, 5.0),
-        temp=Walk(15.0, 30.0, 0.1),
-        hum=Walk(20.0, 70.0, 0.5),
-        random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 5.0, 0.1, 0.5]),
-    )
-    chip._produce_new_reading()  # would violate the default 50.0/1.0/3.0 bounds - proves the override took
+    random = FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 5.0, 0.1, 0.5])
+    chip = Scd30Chip(auto_refresh=False, co2=Walk(400.0, 2000.0, 5.0), temp=Walk(15.0, 30.0, 0.1), hum=Walk(20.0, 70.0, 0.5), random_source=random)
+    chip._produce_new_reading()
+    assert random.calls[3:6] == [(-5.0, 5.0), (-0.1, 0.1), (-0.5, 0.5)], random.calls  # the step draws take the walks' own steps
 
 
 def test_corrupt_next_measurement_stays_orthogonal_to_the_walk() -> None:
     # The fault-injection flag corrupts whatever the walk just produced - it doesn't interact with
     # the walk mechanism itself.
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[1000.0, 20.0, 50.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.corrupt_next_measurement = True
     chip.handle_writeto(b"\x03\x00")
@@ -291,7 +271,7 @@ def test_rdy_pin_goes_high_on_new_reading_and_fires_a_registered_rising_edge_han
 
     pin = _FakePin()
     pin.irq(handler=lambda p: fired.append(p.value()), trigger=pin.IRQ_RISING)
-    chip = Scd30Chip(auto_refresh=False, rdy_pin=pin, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, rdy_pin=pin, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     assert pin.value() == 1
     assert fired == [1]
@@ -307,14 +287,18 @@ def test_auto_refresh_false_does_not_start_a_background_timer() -> None:
 
 
 def test_auto_refresh_true_starts_a_real_timer_and_setting_interval_re_arms_it() -> None:
-    chip = Scd30Chip()  # auto_refresh defaults to True
-    assert chip._timer is not None
-    first_timer = chip._timer
-    _set(chip, 0x46, 0x00, 10)  # SET_MEASUREMENT_INTERVAL - must re-arm at the new cadence
-    assert chip._timer is not None
-    assert chip._timer.period == 10 * 1000
-    assert chip._timer is not first_timer  # re-armed, not just mutated in place
-    chip._timer.deinit()  # don't leave a live background task running past this test
+    # One coroutine: the twin Timer runs as a task, which the harness ends with the run.
+    async def scenario() -> None:
+        chip = Scd30Chip()  # auto_refresh defaults to True
+        assert chip._timer is not None
+        first_timer = chip._timer
+        _set(chip, 0x46, 0x00, 10)  # SET_MEASUREMENT_INTERVAL - must re-arm at the new cadence
+        assert chip._timer is not None
+        assert chip._timer.period == 10 * 1000
+        assert chip._timer is not first_timer  # re-armed, not just mutated in place
+        chip._timer.deinit()
+
+    run(scenario())
 
 
 def test_nvm_writes_counts_each_accepted_nvm_command_and_nothing_else() -> None:
@@ -388,10 +372,6 @@ def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_
     chip._timer.deinit()
     chip._timer = None  # the test produces each measurement itself
     chip._co2_step = chip._temp_step = 0.0  # a twin-only knob: a constant CO2, a steady temperature
-    real_sleep = asyncio.sleep
-
-    async def fast_sleep(_seconds: float) -> None:
-        await real_sleep(0)
 
     async def scenario() -> "tuple[list[int | None], dict[str, CfgValue]]":
         assert await reader.setup() is True
@@ -407,11 +387,8 @@ def test_a_booted_reader_on_a_constant_co2_twin_reaches_frc_ready_and_keeps_its_
         assert await reader._set_dict_cfg(body, reader.get_cfg_schema()) == dict.fromkeys(body, "Valid")
         return states, (await reader.get_dict_cfg())["SCD30"]
 
-    asyncio.sleep = fast_sleep  # type: ignore[assignment]
-    try:
+    with FastAsyncSleep():
         states, cfg = run(scenario())
-    finally:
-        asyncio.sleep = real_sleep
     assert states[:-1] == [1] * 179
     assert states[-1] == 4
     assert (cfg["FRCNoise"], cfg["FRCRate"], cfg["FRCWindow"]) == (25.0, 5.0, 90)
@@ -461,7 +438,7 @@ def test_fault_injector_clear_with_no_op_clears_every_queue() -> None:
 
 
 def test_fault_injection_can_corrupt_the_next_measurement_crc() -> None:
-    chip = Scd30Chip(auto_refresh=False, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
+    chip = Scd30Chip(auto_refresh=False, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0, 0.0, 0.0, 0.0]))
     chip._produce_new_reading()
     chip.corrupt_next_measurement = True
     chip.handle_writeto(b"\x03\x00")
@@ -527,7 +504,7 @@ def test_live_readings_and_in_flight_protocol_state_are_not_persisted() -> None:
     # always restart from a fresh reading. Confirmed by checking the persisted file itself never
     # contains a co2/temp/hum key at all, not just that a fresh chip happens to draw a different value.
     path = _tmp_path("scd30_no_readings_persisted.json")
-    chip = Scd30Chip(auto_refresh=False, state_path=path, random_source=_FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
+    chip = Scd30Chip(auto_refresh=False, state_path=path, random_source=FixedRandom(uniform_values=[500.0, 22.0, 45.0]))
     chip.save_state()
     with open(path) as f:
         data = json.load(f)

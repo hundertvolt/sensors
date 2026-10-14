@@ -7,6 +7,8 @@ import os
 import select
 import time
 
+from _async_harness import run
+from _src_const import src_const
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -62,6 +64,7 @@ _BMP_ADDR = 0x77
 _BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
 _BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
+_SIGNAL_WAIT_MS: int = src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")  # type: ignore[assignment]  # src_const() answers object
 
 _scratch = TmpScratch("ticks_rollover")
 
@@ -141,7 +144,7 @@ def _bmp3xx_status_wait(start: int, ready_at: "int | None") -> "tuple[bool, int]
         return True
 
     try:
-        return asyncio.run(wait()), clock.reads
+        return run(wait()), clock.reads
     finally:
         _restore(asy_bmp3xx_driver)
 
@@ -151,7 +154,7 @@ def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
     # of bytes arriving at each of the first `fed_reads` reads. Returns (bytes drained, bound hit, clock reads).
     driver = _uart_driver()
     comm = UARTComm(driver, ROLE_INITIATOR, limits=TransferLimits(8, 100, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes))
-    assert asyncio.run(comm.setup()) is True
+    assert run(comm.setup()) is True
     size = len(comm._rx.get_buf() or b"")
     fake: FakeUART = driver._uart  # type: ignore[assignment]
 
@@ -166,7 +169,7 @@ def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
             return await comm._drain(device)
 
     try:
-        return asyncio.run(drain()), comm._drain_bound_hit, clock.reads
+        return run(drain()), comm._drain_bound_hit, clock.reads
     finally:
         _restore(asy_uart_comm)
 
@@ -202,7 +205,7 @@ def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int |
     driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
     driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
     driver.neopixel_dt = 0.01
-    asyncio.run(driver.setup())
+    run(driver.setup())
     fake = _install(asy_neopixel_driver, start)
 
     async def scenario() -> "tuple[bool, bool, bool]":
@@ -231,7 +234,7 @@ def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int |
         return pending, finished, result is True
 
     try:
-        return asyncio.run(scenario())
+        return run(scenario())
     finally:
         _restore(asy_neopixel_driver)
 
@@ -256,12 +259,12 @@ async def _no_signal(_r: int, _g: int, _b: int, _t: float) -> bool:
     return True
 
 
-def _restore(module: object) -> None:
-    module.time = time  # type: ignore[attr-defined]
-
-
 async def _not_synced() -> bool:
     return False
+
+
+def _restore(module: object) -> None:
+    module.time = time  # type: ignore[attr-defined]
 
 
 def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | None") -> "tuple[bool, int]":
@@ -279,7 +282,7 @@ def _scl_wait(start: int, timeout_us: int, *, sync: bool, held_reads: "int | Non
     Pin.set_external_level(_SCL_PIN, scl_level)
     scl = Pin(_SCL_PIN, Pin.IN, pull=Pin.PULL_UP)
     try:
-        released = asy_i2c_driver._scl_released_sync(scl, timeout_us) if sync else asyncio.run(asy_i2c_driver._scl_released(scl, timeout_us))
+        released = asy_i2c_driver._scl_released_sync(scl, timeout_us) if sync else run(asy_i2c_driver._scl_released(scl, timeout_us))
         return released, reads[0]
     finally:
         _restore(asy_i2c_driver)
@@ -317,18 +320,9 @@ def _sequencer_outcome(start: int, delays: "tuple[int, ...]") -> "tuple[list[int
         return periods
 
     try:
-        return asyncio.run(scenario()), started
+        return run(scenario()), started
     finally:
         _restore(asy_system_service)
-
-
-def _src_const(path: str, name: str) -> int:
-    # The shipped value, read from the source: a const() named with a leading underscore is not a module attribute.
-    with open(path) as f:
-        for line in f:
-            if line.startswith(name + " = const("):
-                return int(line.split("const(", 1)[1].split(")", 1)[0])
-    raise AssertionError(name + " not found in " + path)
 
 
 def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
@@ -361,7 +355,7 @@ def _storage_pause_outcome(start: int) -> "tuple[bool, bool, bool, bool]":
         return before[0], before[1], storage.paused, svc._unpause_at is not None
 
     try:
-        return asyncio.run(scenario())
+        return run(scenario())
     finally:
         _restore(asy_system_service)
         _restore(asy_base_classes)
@@ -402,14 +396,14 @@ def _uart_cancel_wait(start: int, ack_at: "int | None") -> "tuple[bool, int, int
             return await driver.cancel_read_timeout(50)
 
     try:
-        return asyncio.run(cancel()), driver.cancel_unacknowledged, clock.reads
+        return run(cancel()), driver.cancel_unacknowledged, clock.reads
     finally:
         _restore(asy_uart_driver)
 
 
 def _uart_driver() -> UART:
     # A UART whose fed bytes land at once, its receive ring armed; transmit polls through the bounded LinkPoller.
-    DMA.reset_registry()  # each armed ring holds two of the twelve channels, and no per-test reset exists
+    DMA.reset_registry()  # each armed ring holds two of the twelve channels; the per-test reset runs only between tests
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=1, poll_idle_ms=1)
     fake: FakeUART = driver._uart  # type: ignore[assignment]
     fake.rx_rate = float("inf")
@@ -430,7 +424,7 @@ def _uart_ready_wait(start: int, arrive_at: "int | None") -> "tuple[bool, int]":
 
     clock = _install_stepping(asy_uart_driver, start, 1, on_read)
     try:
-        return asyncio.run(driver.ready(select.POLLIN, 50)), clock.reads
+        return run(driver.ready(select.POLLIN, 50)), clock.reads
     finally:
         _restore(asy_uart_driver)
 
@@ -600,7 +594,7 @@ def test_next_sleep_s_crosses_the_ticks_wrap() -> None:
 
 def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:
     # Armed half a wait before the wrap, the deadline lands past it: held one ms before, dropped at it.
-    wait_ms = _src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
+    wait_ms = _SIGNAL_WAIT_MS
     start = TICKS_PERIOD - wait_ms // 2
     assert start + wait_ms > TICKS_PERIOD
     wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=None)
@@ -610,7 +604,7 @@ def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:
 
 def test_neopixel_signal_released_past_the_wrap_is_taken() -> None:
     # The queued signal ends after the wrap, before the deadline: the waiting request is queued, not dropped.
-    wait_ms = _src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
+    wait_ms = _SIGNAL_WAIT_MS
     start = TICKS_PERIOD - wait_ms // 2
     release = wait_ms // 2 + 1000
     wrapped = _neopixel_wait_outcome(start, wait_ms, release_after_ms=release)

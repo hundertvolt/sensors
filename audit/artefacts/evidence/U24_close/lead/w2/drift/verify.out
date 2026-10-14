@@ -1,0 +1,5 @@
+test_async_harness.py -1 rc=1 wall=0 15/16 passed, 1 failed, 0 skipped mem=0
+test_async_harness.py 32768 rc=1 wall=0 15/16 passed, 1 failed, 0 skipped mem=0
+test_digital_twin_sensortask_integration.py -1 rc=0 wall=60 15/15 passed, 0 failed, 0 skipped mem=0
+test_digital_twin_sensortask_integration.py 32768 rc=0 wall=63 15/15 passed, 0 failed, 0 skipped mem=0
+ALL_DONE
