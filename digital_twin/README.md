@@ -1016,6 +1016,14 @@ this project has (`asy_captive_dns.py`'s `"0.0.0.0"`, `asy_ntp_client.py`'s alre
 server IP via `asy_dns_client.py`) already hands over an already-numeric address, so the
 `getaddrinfo()` calls here are always fast and local, never a real DNS lookup.
 
+A server's wildcard bind (`asy_captive_dns.py`'s `("0.0.0.0", 53)`) is bound on `127.0.0.1`, the
+host loopback where every twin interface lives (the device's "all interfaces"). The host's wildcard
+would also claim the host's other interfaces. Linux also refuses it beside a socket that holds one
+specific address on the port without `SO_REUSEADDR`: some CI runners carry a `dns-resolver` on
+`127.0.0.100:53`, on which the twin's captive DNS never bound (`DNSSRV` E10). The twin's
+`127.0.0.1:53` shares no address with it. `tests/test_asy_udp_socket.py` holds such a socket and
+binds beside it.
+
 ## Adding a new chip fake
 
 **Required whenever a new sensor driver lands in `src/`** (see `SPECIFICATION.md` C.11's own

@@ -1,6 +1,6 @@
 """Twin-side fix for the Unix port's sockaddr quirks (micropython#6924: bind/connect/sendto take a packed sockaddr,
 recvfrom returns one), so src/ only ever sees (host, port) tuples; it also refuses any UDP destination outside loopback
-and TEST-NET-1. Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
+and TEST-NET-1, and binds a server's wildcard on the loopback. Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
 
 import socket
 import struct
@@ -29,6 +29,10 @@ _patched = False
 
 _ALLOWED_PREFIXES = ("127.", "192.0.2.")  # loopback and RFC 5737 TEST-NET-1
 _ALLOWED_HOSTS = ("0.0.0.0",)  # the wildcard a server binds
+# Every twin interface lives on the host loopback, so a server's wildcard is bound there: the host's wildcard would also
+# claim its other interfaces, and fails beside any resolver holding one loopback address without SO_REUSEADDR.
+_WILDCARD = "0.0.0.0"
+_TWIN_HOST = "127.0.0.1"
 # A 4-byte AF_INET sockaddr: the host kernel's connect()/bind()/sendto() reject it with EINVAL inside src/'s own try,
 # so a refusal takes the product's handled failure path (backoff included) and nothing leaves the host
 _REFUSED_SOCKADDR = struct.pack("<H", socket.AF_INET) + bytes(2)
@@ -76,6 +80,8 @@ async def _patched_connect(self: "asy_udp_socket.UDPSocket") -> None:
         _count(self._addr)
         self._addr = cast("tuple[str, int]", _REFUSED_SOCKADDR)
     else:
+        if self._mode == "server" and self._addr[0] == _WILDCARD:
+            self._addr = (_TWIN_HOST, self._addr[1])
         self._addr = _resolve_plain_addr(self._addr)
     await _real_connect(self)
 

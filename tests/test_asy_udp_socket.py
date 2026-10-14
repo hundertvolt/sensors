@@ -1517,6 +1517,33 @@ def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
     assert reply == response
 
 
+def test_a_wildcard_server_bind_stays_on_the_loopback_beside_a_specific_address_holder() -> None:
+    # A host resolver holding one loopback address without SO_REUSEADDR (a CI runner's dns-resolver on 127.0.0.100:53)
+    # refuses a wildcard bind on its port: the twin's server binds the loopback its interfaces live on, and still serves.
+    port = _make_port()
+    holder = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    holder.bind(socket.getaddrinfo("127.0.0.100", port)[0][-1])
+    client_addr = _make_addr()
+    query = b"\x00\x02fake-dns-query"
+
+    async def scenario() -> tuple[bool, bool, bytes | None]:
+        server = UDPSocket(("0.0.0.0", port), mode="server")
+        client = _AdversarialPeer(client_addr)
+        try:
+            await server._connect()
+            on_loopback = server._addr == socket.getaddrinfo("127.0.0.1", port)[0][-1]
+            client.send(query, ("127.0.0.1", port))
+            data, _ = await server.recvfrom(DNS_UDP_MAX, timeout_ms=_LONG_REPLY_TIMEOUT_MS)
+            return server.connected, on_loopback, data
+        finally:
+            client.close()
+            await server.disconnect()
+
+    try:
+        assert run(scenario()) == (True, True, query)
+    finally:
+        holder.close()
+
 def test_dns_server_pattern_recvfrom_never_returns_a_mismatched_pair() -> None:
     # asy_captive_dns.py's guard is `if data is not None and addr is not None:`, implicitly assuming
     # the two are always both set or both None. This confirms that holds: recvfrom() never returns
