@@ -1,0 +1,17 @@
+PASS test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool_frees
+FAIL test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead: reset reached without a catch
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_timer_pool.py", line 245, in test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 446, in _shutdown_sequence
+  File "src/asy_system_service.py", line 334, in _reboot
+  File "digital_twin/machine.py", line 1653, in reset
+SimulatedResetError: machine.reset() called - the twin does not actually restart the process
+PASS test_mempause_with_the_pool_empty_answers_and_pauses
+PASS test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees
+3/4 passed, 1 failed, 0 skipped

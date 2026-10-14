@@ -22,7 +22,7 @@ _RACERS = 6
 # Each runner's arguments and the product-fixed ports it holds for its whole run, in the order it takes them.
 _RUNNERS: dict[str, tuple[tuple[str, ...], tuple[int, ...]]] = {
     "scripts/test.sh": ((), (53,)),
-    "scripts/run_digital_twin_ci.sh": ((), (53, 18080)),
+    "scripts/run_digital_twin_ci.sh": (("fixture_device",), (53, 18080)),
     "scripts/run_unix_port_integration.sh": (("--device", "fixture_device"), (53,)),
 }
 _RUNNER_PORTS = [(runner, port) for runner, (_, ports) in _RUNNERS.items() for port in ports]

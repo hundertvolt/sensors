@@ -592,7 +592,7 @@ information):
   `neopixel.py`/`rp2.py` (a straight `Duplicate module named "machine"` collision with
   `tests/machine.py` otherwise, and the same for `rp2` against `tests/rp2.py` — confirmed directly,
   not the softer resolution-priority hijack `tests/network.py`'s own exclude guards against) and
-  `digital_twin/launch.py`/`run_generic_integration.py`/ `segfault_stress_repro.py`/every
+  `digital_twin/launch.py`/`run_generic_integration.py`/every
   `tests/test_digital_twin_*.py` (attr- defined noise on every twin-only API the real board stub
   doesn't declare, e.g. `WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()` —
   confirmed directly, including one real `mypy src tests`-only finding this design caught that a
@@ -756,17 +756,15 @@ information):
   `GC_COLLECT_FLAG` makes every later allocation fail with `MemoryError: memory allocation failed,
   heap is locked`, on a heap that is mostly free. Measured at ~5% of interrupts on Unix ports built
   from both `v1.28.0` and `v1.29.0`, so **not** a version-bump regression; it surfaced as one failed
-  `Run 4: clean shutdown (exit code 1)` in `scripts/run_digital_twin_ci.sh`. Fixed by
-  `digital_twin/unix_port_gc_unwedge.py`, called first in both twin runners'
-  `except KeyboardInterrupt:` handlers. **The recovery is `gc.collect()`, not
-  `micropython.heap_unlock()`** — the two lock states need opposite recoveries and the obvious one
-  is wrong here. Full mechanism and evidence: SPECIFICATION.md Part F.6. Don't re-diagnose a
-  "heap is locked" `MemoryError` at twin shutdown as a project memory bug. **Superseded at the
-  root, not just worked around**: Part F.6's own amendment records that the very next bullet's
-  fix (`toolchain/micropython_overrides.py`'s `unix_kbd_intr` override, SPECIFICATION.md Part
-  B.14.1) closed the actual root cause — this specific race can no longer occur at all through
-  this project's own Unix-port build, and `unix_port_gc_unwedge.py`'s calls now stay wired in
-  purely as defense in depth.
+  `Run 4: clean shutdown (exit code 1)` in `scripts/run_digital_twin_ci.sh`. **The recovery is
+  `gc.collect()`, not `micropython.heap_unlock()`** — the two lock states need opposite recoveries
+  and the obvious one is wrong here. Full mechanism and evidence: SPECIFICATION.md Part F.6. Don't
+  re-diagnose a "heap is locked" `MemoryError` at twin shutdown as a project memory bug. **Closed
+  at the root, not just worked around**: the very next bullet's fix
+  (`toolchain/micropython_overrides.py`'s `unix_kbd_intr` override, SPECIFICATION.md Part B.14.1)
+  closes it in every binary this tooling builds, so the twin's heap-unwedge helper was retired
+  (owner, 2026-09-26); if it recurs, check the override is applied first — Part F.6 keeps the
+  mechanism and how to restore the helper.
 - **Known intermittent `digital-twin-e2e` shutdown flake, fixed**: a SIGINT-triggered shutdown
   check (`Run 3`/`Run 5`/etc. "clean shutdown (exit code N)") intermittently exited with code 1,
   only at `gc.threshold=32768`, never at `-1` in the same job — the same root mechanism as the

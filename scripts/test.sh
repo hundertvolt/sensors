@@ -481,15 +481,23 @@ _flag_memory_errors() {
     fi
 }
 
-# run_test_file <test_file> <status_file> [<binary>] (default $micropython_bin): one file's timeout+retry
-# loop, writing PASS, RETRIED-PASS <k>/<n> or FAIL to status_file. Never returns nonzero itself, so
-# backgrounding it and reaping with `wait`/`wait -n` can never trip this script's own `set -e`.
+# _job_tag <job>: a job's tag, its file's basename then "[<device>]" for one device's job of a PER_DEVICE file;
+# each job's status, log and markers in $results_dir are named by it.
+_job_tag() {
+    local test_file="${1%%\[*}"
+    printf '%s%s' "$(basename "$test_file" .py)" "${1:${#test_file}}"
+}
+
+# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin): one job's timeout+retry
+# loop, writing PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; a device runs the file with TEST_DEVICE set to it.
+# Never returns nonzero itself, so backgrounding it and reaping with `wait`/`wait -n` can never trip `set -e`.
 run_test_file() {
     local test_file="$1"
     local status_file="$2"
-    local binary="${3:-$micropython_bin}"
+    local device="${3:-}"
+    local binary="${4:-$micropython_bin}"
     local tag cmd file_timeout_s attempt attempt_start ec log_file attempt_pidfile
-    tag="$(basename "$test_file" .py)"
+    tag="$(_job_tag "$test_file${device:+[$device]}")"
     log_file="$results_dir/$tag.log"
     # The EXIT trap's stop: it signals the running attempt's timeout through this pid file; the job then ends rather
     # than start another attempt (the trap runs once the attempt's pipeline is done, sed and tee included).
@@ -528,7 +536,7 @@ run_test_file() {
         # port exit(1) at once (unix_mphal.c): its child is a shell catching it, so the interpreter gets one. The pid is timeout's.
         # @tunable runner.kill_after_s = 10
         # @tunable l1.unix_heapsize = 16M
-        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec env -u TEST_DEVICE ${device:+"TEST_DEVICE=$device"} stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
@@ -560,35 +568,41 @@ run_test_file() {
     done
 }
 
-# Dispatch order: the fifteen heaviest files first, not alphabetical glob order. Glob order
+# Dispatch order: the heaviest files first, not alphabetical glob order. Glob order
 # clusters same-prefix heavy files together, so they compete for the same few slots instead of
 # overlapping with the ~60 sub-second files that could fill in around them (Part E.3.1's figures).
 #
-# Order within these fifteen barely matters - they are comparable magnitude; what matters is each
+# Order within them barely matters - they are comparable magnitude; what matters is each
 # grabbing a slot immediately. Hand-curated from one measurement run, so re-measure and update it
 # if a new heavy file lands or one of these is split further.
 _heavy_files_priority=(
     tests/test_digital_twin_bus_hazard_concurrency.py
-    tests/test_sensortask_dev.py
-    tests/test_asy_wifi_service.py
-    tests/test_digital_twin_sensortask_integration.py
-    tests/test_sensortask_wozi.py
+    tests/test_sensortask.py
     tests/test_uart_comm_hazard.py
-    tests/test_asy_sgp40_driver.py
-    tests/test_sensortask_schlafzi.py
-    tests/test_sensortask_klkizi.py
-    tests/test_sensortask_grkizi.py
-    tests/test_sensortask_arzi.py
-    tests/test_bus_hazard_generated.py
-    tests/test_digital_twin_webserver_concurrency_dev.py
+    tests/test_digital_twin_wifi_modes.py
     tests/test_digital_twin_uart_link.py
-    tests/test_digital_twin_webserver_concurrency_wozi.py
+    tests/test_bus_hazard_generated.py
+    tests/test_asy_uart_comm.py
+    tests/test_digital_twin_sensortask_integration.py
+    tests/test_digital_twin_isl29125_autorange.py
+    tests/test_digital_twin_construction.py
 )
+# A name that no longer exists stops the run: a silently skipped entry would leave the order stale unnoticed.
+_check_heavy_list() {
+    local test_file
+    for test_file in "${_heavy_files_priority[@]}"; do
+        if [[ "$test_file" != tests/test_*.py ]] || [ ! -f "$test_file" ]; then
+            echo "scripts/test.sh: heavy-file list names $test_file, which does not exist - update _heavy_files_priority" >&2
+            exit 2
+        fi
+    done
+}
+_check_heavy_list
 all_test_files=(tests/test_*.py)
 declare -A _dispatched=()
 test_files=()
 for test_file in "${_heavy_files_priority[@]}"; do
-    if [ -f "$test_file" ] && [ -z "${_dispatched[$test_file]:-}" ]; then
+    if [ -z "${_dispatched[$test_file]:-}" ]; then
         test_files+=("$test_file")
         _dispatched[$test_file]=1
     fi
@@ -610,20 +624,51 @@ done
 if [ "$coverage" = "0" ]; then
     test_files+=(${lwip_host_files[@]+"${lwip_host_files[@]}"})
 fi
-
+# The derived devices: the stems of the wiring plans the generation step wrote from devices/*.toml, which nothing
+# here re-globs (the zz_test_ race above). A file whose own line reads `PER_DEVICE = True` runs once per device.
+derived_devices=()
+for plan in build/generated_src/sensortask_*_wiring_plan.json; do
+    if [ -f "$plan" ]; then
+        plan="${plan#build/generated_src/sensortask_}"
+        derived_devices+=("${plan%_wiring_plan.json}")
+    fi
+done
+if [ "${#derived_devices[@]}" -eq 0 ]; then
+    echo "error: no build/generated_src/sensortask_<device>_wiring_plan.json - the generation step wrote no device to run" >&2
+    exit 1
+fi
+job_list=()
 for test_file in "${test_files[@]}"; do
+    marker=0
+    grep -qx 'PER_DEVICE = True' "$test_file" || marker=$?
+    if [ "$marker" -ge 2 ]; then  # fails closed, as the memory gate does: an unread file is no verdict on its marker
+        echo "error: cannot read $test_file for its PER_DEVICE marker" >&2
+        exit 1
+    elif [ "$marker" -eq 0 ]; then
+        for device in "${derived_devices[@]}"; do
+            job_list+=("${test_file}[$device]")
+        done
+    else
+        job_list+=("$test_file")
+    fi
+done
+
+for job in "${job_list[@]}"; do
     # Bound concurrency at max_parallel: reap one finished job before starting another. `|| true`
     # because a job body always returns 0 (run_test_file's own comment), so a nonzero `wait -n` can
     # only mean "no jobs left" - a harmless race, never a test failure to propagate.
     while [ "$(jobs -rp | wc -l)" -ge "$max_parallel" ]; do
         wait -n || true
     done
-    status_file="$results_dir/$(basename "$test_file" .py).status"
+    test_file="${job%%\[*}"
+    device="${job:${#test_file}}"
+    device="${device#\[}"
+    status_file="$results_dir/$(_job_tag "$job").status"
     binary="$micropython_bin"
     if [[ "$test_file" == tests/lwip_host/* ]]; then
         binary="$lwip_bin"
     fi
-    run_test_file "$test_file" "$status_file" "$binary" &
+    run_test_file "$test_file" "$status_file" "${device%]}" "$binary" &
 done
 wait || true
 tests_scripts_pid=""  # reaped by the `wait` above - cleared so the EXIT trap can't signal a recycled PID
@@ -684,8 +729,9 @@ tests_passed=0
 tests_failed=0
 tests_skipped=0
 declare -A level_failed=([L1]=0 [L2]=0) level_retried=([L1]=0 [L2]=0)
-for test_file in "${test_files[@]}"; do
-    tag="$(basename "$test_file" .py)"
+for job in "${job_list[@]}"; do
+    test_file="$job"
+    tag="$(_job_tag "$job")"
     level="L1"
     if [[ "$tag" == test_digital_twin_* ]]; then
         level="L2"
@@ -695,7 +741,7 @@ for test_file in "${test_files[@]}"; do
     # The deciding attempt's lines: everything after the log's last attempt line, the whole log without one.
     deciding="$(awk -v m="[$tag] == attempt " 'index($0, m) == 1 { buf = ""; next } { buf = buf $0 "\n" } END { printf "%s", buf }' "$log_file" 2>/dev/null || true)"
     # Its microtest closing line; a log without one crashed or was killed.
-    count_line="$(printf '%s\n' "$deciding" | grep -E "^\[$tag\] [0-9]+/[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped" | tail -n 1 || true)"
+    count_line="$(awk -v p="[$tag] " 'index($0, p) == 1 && substr($0, length(p) + 1) ~ /^[0-9]+\/[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped/ { last = $0 } END { printf "%s", last }' <<<"$deciding")"
     reasons=()
     if [[ "$count_line" =~ ([0-9]+)/([0-9]+)\ passed,\ ([0-9]+)\ failed,\ ([0-9]+)\ skipped ]]; then
         tests_passed=$((tests_passed + BASH_REMATCH[1]))
@@ -747,7 +793,7 @@ for test_file in "${test_files[@]}"; do
     fi
     # Each microtest SKIP line of the deciding attempt is named with its reason, not only counted.
     while IFS= read -r skip_line; do
-        if [[ "$skip_line" =~ ^\[$tag\]\ SKIP\ ([^:]+):\ ?(.*)$ ]]; then
+        if [[ "$skip_line" =~ ^"[$tag] SKIP "([^:]+):\ ?(.*)$ ]]; then
             summary_add skipped "$test_file::${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
         fi
     done < <(printf '%s\n' "$deciding" | grep -F "[$tag] SKIP " || true)

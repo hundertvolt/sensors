@@ -1,5 +1,8 @@
-"""Digital-twin chip fake for the Renesas/Intersil ISL29125 RGB colour sensor (I2C 0x44) — answers `asy_isl29125_driver.py`'s register-addressed protocol with G/R/B counts derived from a modelled illumination, through the real range gain, ADC resolution and clipping.
-Models the destructive 0x08 status read, the active-low INT line, `BOUTF` high at power-up and a deliberately non-nominal per-instance range ratio; see `digital_twin/README.md`'s "What's here"."""
+"""Twin fake of the Renesas ISL29125 RGB sensor (I2C 0x44): answers asy_isl29125_driver.py's
+register protocol with G/R/B counts from a modelled illumination through range gain, resolution and clipping, plus the
+destructive 0x08 read, the active-low INT and BOUTF at power-up (digital_twin/README.md fidelity table)."""
+
+import random as _random_module
 
 from _fault_injection import FaultInjector
 from _twin_common import Walk
@@ -10,9 +13,10 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Protocol
 
-    from machine import Timer  # type-only: the runtime import of Timer stays inside _start_timer()
+    from machine import Timer  # type-only: machine passes the simulation Timer in through timer_factory
 
     class _RandomSource(Protocol):
         # Structural stand-in for the `random` module (the default) or a seeded random.Random -
@@ -67,7 +71,8 @@ _FAULT_INT_STUCK_HIGH = "isl29125:int_stuck_high"
 _LUX_WALK_DEFAULT = Walk(5.0, 9000.0, 400.0)
 
 
-class Isl29125Chip:
+class ISL29125Chip:
+    TEST_API = ("configure_fault", "fault", "power_cycle", "set_illumination")
     REGISTER_ADDRSIZE = 8  # register-addressed: machine.I2C routes an address-prefixed writeto() here
 
     def __init__(
@@ -78,16 +83,11 @@ class Isl29125Chip:
         gain_ratio: float = 25.9,
         dark_counts: int = 1,
         *,
-        auto_refresh: bool = True,
+        timer_factory: "Callable[[], Timer] | None" = None,
     ) -> None:
-        if random_source is None:
-            import random as _random_module
-
-            random_source = _random_module
-        self._random = random_source
-        # lo/hi are datasheet-derived (p1: range 0 reaches 375 lux, range 1 reaches 10000). The
-        # step is NOT - a physical-plausibility judgment bounding how far one reading can move
-        # from the last, the same framing _scd30_chip.py's own walk steps carry.
+        self._random = random_source if random_source is not None else _random_module
+        # lo/hi inside the datasheet's 375 / 10000 lux ranges (FN8424 p1); the step is not datasheet-derived (a
+        # plausibility bound).
         self._min_lux, self._max_lux, self._lux_step = lux.lo, lux.hi, lux.step
         # Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-calibration
         # only has something real to learn if this unit's own high-range full scale differs from
@@ -109,47 +109,15 @@ class Isl29125Chip:
         self._prst_count = 0
         self._int_asserted = False
         self._int_stuck_high = False
+        self._timer_factory = timer_factory  # None: no conversion Timer, the fake converts only on set_illumination()
         self._timer: Timer | None = None
         # Initial value: one uniform draw within the walk's [lo,hi] at construction - every value after
         # this one steps from the last instead (see _produce_new_reading() below).
         self._lux = self._random.uniform(self._min_lux, self._max_lux)
         self._tint = (1.0, 1.0, 1.0)  # (red, green, blue) weights; neutral until set_illumination says otherwise
-        if auto_refresh:
-            self._start_timer()
+        self._start_timer()
 
-    # -- modelling ---------------------------------------------------------
 
-    def _start_timer(self) -> None:
-        from machine import Timer as _Timer
-
-        if self._timer is None:  # reused, never replaced - init() cancels the previous schedule
-            self._timer = _Timer()
-        self._timer.init(period=self.cycle_ms(), mode=_Timer.PERIODIC, callback=lambda _t: self._produce_new_reading())
-
-    def cycle_ms(self) -> int:
-        return _CYCLE_MS_12BIT if self._config[0] & _CONFIG1_BITS else _CYCLE_MS_16BIT
-
-    def resolution_bits(self) -> int:
-        return 12 if self._config[0] & _CONFIG1_BITS else 16
-
-    def effective_full_scale(self) -> float:
-        # The low range is the reference; the high range's real full scale is the low one times
-        # this unit's own ratio, which is what makes the nominal 10000 an approximation to learn.
-        if self._config[0] & _CONFIG1_RNG:
-            return _FS_LOW_LUX * self._gain_ratio
-        return _FS_LOW_LUX
-
-    def set_illumination(self, lux: float, *, tint: "tuple[float, float, float] | None" = None) -> None:
-        # The test seam the twin-tier sweep drives. `tint` is a (red, green, blue) weight triple:
-        # without it a scalar-lux fake produces only neutral scenes, leaving the one case the
-        # auto-range peak rule exists for - a clipped channel with green mid-scale - unreachable.
-        self._lux = lux
-        if tint is not None:
-            self._tint = tint
-        self._produce_new_reading(walk=False)
-
-    def _clamp(self, value: float, lo: float, hi: float) -> float:
-        return max(lo, min(hi, value))
 
     def _channel_counts(self) -> "tuple[int, int, int]":
         bits = self.resolution_bits()
@@ -164,6 +132,13 @@ class Isl29125Chip:
             raw = self._lux * weight / full_scale * maximum + dark
             out.append(int(max(0, min(maximum, int(raw + 0.5)))))
         return out[0], out[1], out[2]
+
+
+
+    def _clamp(self, value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
+
+
 
     def _produce_new_reading(self, *, walk: bool = True) -> None:
         if (self._config[0] & _CONFIG1_MODE_MASK) not in _MODES_WITH_CONVERSION:
@@ -182,27 +157,27 @@ class Isl29125Chip:
         self._status |= _STATUS_CONVENF  # "conversion completed" (p12, Table 17)
         self._update_int(green, red, blue)
 
-    def _update_int(self, green: int, red: int, blue: int) -> None:
-        intsel = self._config[2] & _CONFIG3_INTSEL_MASK
-        if intsel == 0:  # "No Interrupt" (p11, Table 11) - the fixed-range mode's own disarm
-            self._prst_count = 0
-            return
-        selected = (green, red, blue)[intsel - 1]
-        # "below OR EQUAL TO the lower threshold" / above the higher one (p12).
-        outside = selected <= self._threshold_low or selected > self._threshold_high
-        if not outside:
-            self._prst_count = 0
-            return
-        self._prst_count += 1
-        if self._prst_count < _PRST_CYCLES[(self._config[2] & _CONFIG3_PRST_MASK) >> 2]:
-            return
-        self._status |= _STATUS_RGBTHF
-        if self._int_asserted or self._int_pin is None:
-            return
-        self._int_asserted = True
-        if self._int_stuck_high:
-            return  # the flag still sets and the data keeps moving - only the line never moves
-        self._int_pin.simulate_edge(0)  # active-low, open-drain (p6)
+
+
+    def _register_image(self) -> bytes:
+        # The whole 0x00-0x0E map as one flat block, not per-register-block: the address pointer
+        # really does walk across the boundaries - measured on real silicon, a 16-byte read from
+        # 0x00 returns id, CONFIG1-3, both thresholds, status and all six data bytes.
+        return (
+            bytes((_DEVICE_ID, self._config[0], self._config[1], self._config[2]))
+            + bytes((self._threshold_low & 0xFF, self._threshold_low >> 8, self._threshold_high & 0xFF, self._threshold_high >> 8))
+            + bytes((self._status,))
+            + bytes(self._data)
+        )
+
+
+
+    def _release_int(self) -> None:
+        if self._int_asserted and self._int_pin is not None:
+            self._int_pin.simulate_edge(1)
+        self._int_asserted = False
+
+
 
     def _reset(self) -> None:
         self._config = bytearray(3)
@@ -216,36 +191,111 @@ class Isl29125Chip:
         # that __init__ still models, not a value the reset restores (Part M.1.2).
         self._status = 0x00
 
-    def simulate_brownout(self) -> None:
-        # A SUPPLY event, which is NOT the 0x46 reset command: every register drops to its
-        # power-on default AND BOUTF comes back up (p12). That flag is the whole signal the
-        # driver's recovery path keys on, and _reset() deliberately no longer raises it.
-        self._reset()
-        self._status = _STATUS_POR
 
-    def _release_int(self) -> None:
-        if self._int_asserted and self._int_pin is not None:
-            self._int_pin.simulate_edge(1)
-        self._int_asserted = False
+
+    def _start_timer(self) -> None:
+        if self._timer_factory is None:
+            return
+        if self._timer is None:  # reused, never replaced - init() cancels the previous schedule
+            self._timer = self._timer_factory()
+        self._timer.init(period=self.cycle_ms(), mode=self._timer.PERIODIC, callback=lambda _t: self._produce_new_reading())
+
+
+
+    def _update_int(self, green: int, red: int, blue: int) -> None:
+        intsel = self._config[2] & _CONFIG3_INTSEL_MASK
+        if intsel == 0:  # "No Interrupt" (p11, Table 11) - the fixed-range mode's own disarm
+            self._prst_count = 0
+            return
+        selected = (green, red, blue)[intsel - 1]
+        # "below OR EQUAL TO the lower threshold" / above the higher one (p12).
+        outside = selected <= self._threshold_low or selected > self._threshold_high
+        if not outside:
+            self._prst_count = 0
+            return
+        target = _PRST_CYCLES[(self._config[2] & _CONFIG3_PRST_MASK) >> 2]
+        if self._prst_count < target:  # the count stops at its target: a flag left set keeps it there
+            self._prst_count += 1
+        if self._prst_count < target:
+            return
+        self._status |= _STATUS_RGBTHF
+        if self._int_asserted or self._int_pin is None:
+            return
+        self._int_asserted = True
+        if self._int_stuck_high:
+            return  # the flag still sets and the data keeps moving - only the line never moves
+        self._int_pin.simulate_edge(0)  # active-low, open-drain (p6)
+
+
+
+    def set_illumination(self, lux: float, *, tint: "tuple[float, float, float] | None" = None) -> None:
+        # The test seam the twin-tier sweep drives. `tint` is a (red, green, blue) weight triple:
+        # without it a scalar-lux fake produces only neutral scenes, leaving the one case the
+        # auto-range peak rule exists for - a clipped channel with green mid-scale - unreachable.
+        self._lux = lux
+        if tint is not None:
+            self._tint = tint
+        self._produce_new_reading(walk=False)
+
+
 
     def configure_fault(self, op: str, *, active: bool = True) -> None:
-        # A persistent behavioural MODE, deliberately not a FaultInjector entry: that primitive
-        # queues exceptions and hangs, and this is neither - the bus works, conversions happen, only
-        # the INT line never moves. That silent failure is what the periodic path exists to survive.
+        # Twin-only test knob: a persistent MODE, not a FaultInjector entry (that queues exceptions and hangs) - the bus
+        # works, conversions happen, only INT never moves: the silent failure the periodic path exists to survive.
         if op != _FAULT_INT_STUCK_HIGH:
             raise ValueError(f"unknown ISL29125 fault mode {op!r} - expected {_FAULT_INT_STUCK_HIGH!r}")
         self._int_stuck_high = active
 
-    # -- bus transaction handlers -----------------------------------------
+
+
+    def cycle_ms(self) -> int:
+        return _CYCLE_MS_12BIT if self._config[0] & _CONFIG1_BITS else _CYCLE_MS_16BIT
+
+
+
+    def effective_full_scale(self) -> float:
+        # The low range is the reference; the high range's real full scale is the low one times
+        # this unit's own ratio, which is what makes the nominal 10000 an approximation to learn.
+        if self._config[0] & _CONFIG1_RNG:
+            return _FS_LOW_LUX * self._gain_ratio
+        return _FS_LOW_LUX
+
+
+
+    def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
+        self.fault.maybe_hang("readfrom_mem")
+        self.fault.maybe_raise("readfrom_mem", key=reg_addr)
+        image = self._register_image()
+        reply = image[reg_addr : reg_addr + nbytes] if reg_addr <= _LAST_REGISTER else b""
+        # Past 0x0E the pointer stops and the part keeps clocking out zeros - it does NOT roll
+        # over to 0x00, despite p6's burst-WRITE text saying the write counter does (measured:
+        # an 8-byte read from 0x0D gives the two data bytes then six zeros).
+        reply = (reply + bytes(nbytes))[:nbytes]
+        if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
+            # Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF and
+            # releases INT, so nothing may read 0x08 "just to check". BOUTF being read-to-clear
+            # contradicts p12 and is measured, not assumed - Part M.1.2 has the evidence.
+            if self._status & _STATUS_RGBTHF:
+                # The counter restarts when the flag is CLEARED, not on every status read (measured;
+                # Part M.1.2). Resetting it unconditionally is what a read cadence faster than
+                # PRST x one cycle turns into a permanently dead interrupt.
+                self._prst_count = 0
+            self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
+            self._release_int()
+        return reply
+
+
 
     def handle_writeto(self, _data: bytes) -> None:
-        # I2CDevice.setup()'s zero-byte ACK probe - see _bmp3xx_chip.py's own handle_writeto()
-        # comment for the AttributeError every boot hits without this.
+        # Only the driver's zero-byte presence probe calls plain writeto(); every register access goes through writeto_mem().
+        self.fault.maybe_hang("writeto")
         self.fault.maybe_raise("writeto")
+
+
 
     def handle_writeto_mem(self, reg_addr: int, data: bytes) -> None:
         self.fault.maybe_hang("writeto_mem")
-        self.fault.maybe_raise("writeto_mem")
+        self.fault.maybe_raise("writeto_mem", key=reg_addr)
         if not data:
             return
         if reg_addr == _REG_DEVICE_ID:
@@ -264,9 +314,9 @@ class Isl29125Chip:
                     # Power-down/standby stops the conversion engine: real silicon reads 0x00 here,
                     # so both conversion-progress fields go with it (BOUTF, if set, stays).
                     self._status &= ~(_STATUS_CONVENF | _STATUS_RGBCF_MASK)
-                # "ADC start at I2C write 0x01" with SYNC = 0 (p10, Table 7): the conversion
-                # restarts, so the data registers keep the PREVIOUS cycle's values until a new one
-                # completes. That stale window is what the settle wait discards - model it.
+                # Assumption, not measured: a write to 0x01 restarts the conversion ("ADC start at I2C write 0x01",
+                # FN8424 Table 7, is all the datasheet says); the data registers keep the previous cycle until the
+                # next one completes. Fidelity row; never tuned to.
                 self._prst_count = 0
                 if self._timer is not None:
                     self._start_timer()  # re-arm at the (possibly new) resolution's cycle time
@@ -289,35 +339,15 @@ class Isl29125Chip:
             return
         # any other register: real hardware silently accepts and ignores it too.
 
-    def _register_image(self) -> bytes:
-        # The whole 0x00-0x0E map as one flat block, not per-register-block: the address pointer
-        # really does walk across the boundaries - measured on real silicon, a 16-byte read from
-        # 0x00 returns id, CONFIG1-3, both thresholds, status and all six data bytes.
-        return (
-            bytes((_DEVICE_ID, self._config[0], self._config[1], self._config[2]))
-            + bytes((self._threshold_low & 0xFF, self._threshold_low >> 8, self._threshold_high & 0xFF, self._threshold_high >> 8))
-            + bytes((self._status,))
-            + bytes(self._data)
-        )
 
-    def handle_readfrom_mem(self, reg_addr: int, nbytes: int) -> bytes:
-        self.fault.maybe_hang("readfrom_mem")
-        self.fault.maybe_raise("readfrom_mem")
-        image = self._register_image()
-        reply = image[reg_addr : reg_addr + nbytes] if reg_addr <= _LAST_REGISTER else b""
-        # Past 0x0E the pointer stops and the part keeps clocking out zeros - it does NOT roll
-        # over to 0x00, despite p6's burst-WRITE text saying the write counter does (measured:
-        # an 8-byte read from 0x0D gives the two data bytes then six zeros).
-        reply = (reply + bytes(nbytes))[:nbytes]
-        if reg_addr <= _REG_STATUS < reg_addr + nbytes and reg_addr <= _LAST_REGISTER:
-            # Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF and
-            # releases INT, so nothing may read 0x08 "just to check". BOUTF being read-to-clear
-            # contradicts p12 and is measured, not assumed - Part M.1.2 has the evidence.
-            if self._status & _STATUS_RGBTHF:
-                # The counter restarts when the flag is CLEARED, not on every status read (measured;
-                # Part M.1.2). Resetting it unconditionally is what a read cadence faster than
-                # PRST x one cycle turns into a permanently dead interrupt.
-                self._prst_count = 0
-            self._status &= ~(_STATUS_RGBTHF | _STATUS_CONVENF | _STATUS_BOUTF)
-            self._release_int()
-        return reply
+
+    def power_cycle(self) -> None:
+        # Twin-only test knob: a supply event, not the 0x46 reset - every register to its power-on default and BOUTF
+        # up again (p12), the flag the driver's recovery keys on.
+        self._reset()
+        self._status = _STATUS_POR
+
+
+
+    def resolution_bits(self) -> int:
+        return 12 if self._config[0] & _CONFIG1_BITS else 16

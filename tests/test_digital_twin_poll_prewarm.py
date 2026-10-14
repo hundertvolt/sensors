@@ -25,9 +25,10 @@ _TEST_BASE = 17500
 _TEST_WINDOW = 8
 
 
-def _port_of(addr: "bytearray") -> int:
+def _port_of(addr: object) -> int:
     # getaddrinfo() returns a packed sockaddr on this port, not the (host, port) tuple CPython
     # gives: bytes 2-3 are the port in network order, after the AF_INET family word (SPECIFICATION.md F.7 row 3).
+    assert isinstance(addr, (bytes, bytearray)), addr
     return (addr[2] << 8) | addr[3]
 
 

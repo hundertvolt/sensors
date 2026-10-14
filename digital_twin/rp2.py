@@ -4,6 +4,7 @@ turn; independent of tests/rp2.py (held to the same checks, tests/_uart_link_con
 
 import machine
 import uctypes
+from _twin_common import COUNTER_CAP
 
 try:
     from typing import TYPE_CHECKING
@@ -96,12 +97,14 @@ class DMA:
             raise ValueError("DMA write ring not naturally aligned to its size")
 
     def _complete_one(self) -> None:
-        self._count -= 1
-        if self._count == 0:
-            self._busy = False
-            chain_to = _field(self._ctrl, "chain_to")
-            if chain_to != self.channel and chain_to in DMA._registry:
-                DMA._registry[chain_to]._trigger()
+        # A channel already complete transfers nothing more; the last transfer ends it and triggers its chain.
+        if self._count > 0:
+            self._count -= 1
+            if self._count == 0:
+                self._busy = False
+                chain_to = _field(self._ctrl, "chain_to")
+                if chain_to != self.channel and chain_to in DMA._registry:
+                    DMA._registry[chain_to]._trigger()
 
     def _push(self, byte: int) -> None:
         # One paced byte-wide transfer into the write buffer, wrapping on a write ring.
@@ -115,7 +118,7 @@ class DMA:
             index &= (1 << ring_size) - 1
         self._write[index] = byte
         if _field(self._ctrl, "inc_write"):
-            self._offset += 1
+            self._offset = (self._offset + 1) & COUNTER_CAP  # masked: a write ring reads only its low bits
         self._complete_one()
 
     def _run_unpaced(self) -> None:

@@ -1,0 +1,18 @@
+U25 lane G: twin system tier per device, UART hazards and sweep, clock jumps, link arms
+
+tests/test_digital_twin_sensortask_integration.py runs per device (PER_DEVICE)
+with no HTTP: driver-specific scenes on the device tests/_twin_devices.py picks,
+the hotspot reached by real failure cycles, SGP40 init waited through the new
+tests/_twin_readiness.py wait_for_value(), the WLAN status fault on the
+newest-entry rule, the captive DNS idle-rate measurement, and the twin wire logs
+cleared before each heap reading.
+
+New tests/test_digital_twin_uart_comm_hazard.py and
+tests/test_digital_twin_uart_field_sweep.py on the harness's Pair at J.6's line
+rate, both CRC modes. New tests/test_digital_twin_clock_jump.py on the installed
+wall clock. The generated UART link file takes its device from data, measures
+retention as a per-transfer rate and gains a pair-level CRC16 arm. The WiFi
+modes scenario pins both failed-arm sites with an empty alarm pool.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

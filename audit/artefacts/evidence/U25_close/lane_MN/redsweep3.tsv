@@ -1,0 +1,7 @@
+tests/test_digital_twin_construction_arzi.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+tests/test_digital_twin_construction_dev.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+tests/test_digital_twin_construction_grkizi.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+tests/test_digital_twin_construction_klkizi.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+tests/test_digital_twin_construction_schlafzi.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+tests/test_digital_twin_construction_wozi.py	1	1/3 passed, 2 failed, 0 skipped	FAIL test_build_system_boots_against_the_real_twin_buses_without_exception:
+SWEEP_DONE

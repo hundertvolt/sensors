@@ -1,6 +1,6 @@
-"""Tests for buildgen.twin_wiring, the digital twin's wiring-plan generator: digital_twin/machine.py's
-configure_wiring() applies each device's freshly generated plan read back from its JSON file, the plan's
-shape, addresses read from the drivers, and the two synthetic fixtures beyond the real devices."""
+"""Tests for buildgen.twin_wiring (SPECIFICATION.md Part L.4): the plan's shape and JSON round trip per device,
+addresses read from the drivers, the bus pins and UART pair, the twin loading an explicit plan, and the two
+synthetic fixtures beyond the real devices."""
 
 import ast
 import contextlib
@@ -108,13 +108,18 @@ def src_dir(repo_root: Path) -> Path:
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_configure_wiring_applies_each_devices_real_generated_plan(tmp_path: Path, src_dir: Path, digital_twin_machine: "ModuleType", device: str) -> None:
     # The plan file every twin consumer reads, written and read back as JSON, then applied: the twin
-    # holds exactly the generated plan, with no hand-kept literal. configure_i2c_wiring() is sugar over
-    # this call for two named profiles only, so the per-device proof goes through configure_wiring().
+    # holds exactly the generated plan, with no hand-kept literal.
     expected = compute_twin_wiring(build_model(device_toml(device), src_dir))
     plan_file = tmp_path / f"sensortask_{device}_wiring_plan.json"
     plan_file.write_text(json.dumps(expected), encoding="utf-8")
     digital_twin_machine.configure_wiring(json.loads(plan_file.read_text(encoding="utf-8")))
     assert digital_twin_machine._current_wiring_plan() == expected
+
+
+def test_a_twin_with_no_plan_configured_has_no_default_wiring(digital_twin_machine: "ModuleType") -> None:
+    # Every plan is explicit: a bus asked for before configure_wiring() fails loudly, never one device's layout.
+    with pytest.raises(RuntimeError, match=r"^no wiring plan configured - call machine\.configure_wiring\(plan\) before constructing a bus$"):
+        digital_twin_machine._current_wiring_plan()
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +146,16 @@ def test_every_real_device_wires_fram_on_its_own_declared_spi_bus(repo_root: Pat
 def test_the_uart_pair_names_the_two_generated_bus_globals(repo_root: Path, src_dir: Path, device: str) -> None:
     toml_path = repo_root / "devices" / f"{device}.toml"
     assert compute_twin_wiring(build_model(toml_path, src_dir))["uart"] == _toml_uart_pair(toml_path)
+
+
+@pytest.mark.parametrize("toml_path", [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_fixtures/multi_instance.toml", "tests_scripts/buildgen_fixtures/novel_combo.toml"])
+def test_the_plan_carries_every_declared_bus_s_pins_by_role(repo_root: Path, src_dir: Path, toml_path: str) -> None:
+    # Read straight from the TOML: each [bus.<id>] table's `<role>_pin` fields, keyed by role, in TOML order.
+    with (repo_root / toml_path).open("rb") as f:
+        buses = tomllib.load(f).get("bus", {})
+    expected = {bus: {key[: -len("_pin")]: value for key, value in table.items() if key.endswith("_pin")} for bus, table in buses.items()}
+    plan = compute_twin_wiring(build_model(repo_root / toml_path, src_dir))
+    assert (list(plan["pins"]), plan["pins"]) == (list(expected), expected)
 
 
 def test_at_least_one_shipped_device_wires_a_uart_pair(repo_root: Path) -> None:

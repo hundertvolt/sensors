@@ -1,0 +1,70 @@
+.F...................................................................... [ 10%]
+........................................................................ [ 20%]
+........................................................................ [ 30%]
+........................................................................ [ 40%]
+........................................................................ [ 51%]
+........................................................................ [ 61%]
+........................................................................ [ 71%]
+........F................F.............................................. [ 81%]
+........................................................................ [ 92%]
+........................................................                 [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           digital_twin/_isl29125_chip.py	A persistent behavioural MODE, deliberately not a FaultInjector entry: that prim
+E           digital_twin/_isl29125_chip.py	Models the destructive 0x08 status read, the active-low INT line, `BOUTF` high a
+E           tests/test_digital_twin_sgp40.py	digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separat
+E       assert not [('digital_twin/_isl29125_chip.py', 'A persistent behavioural MODE, deliberately not a FaultInjector entry: that prim'...tests/test_digital_twin_sgp40.py', "digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separat")]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25c')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/unixport/_ntp_responder.py:22: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_bmp3xx.py:15: l2.bmp3xx_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_fram.py:59: l2.fram_booted_until_yields is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:30: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:32: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_isl29125.py:34: l2.isl29125_probe_hang_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:88: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:90: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:92: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N r..._digital_twin_http_client.py:32: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+_______ test_no_function_level_or_dynamic_import_outside_the_named_lists _______
+
+    def test_no_function_level_or_dynamic_import_outside_the_named_lists() -> None:
+        unexpected = collect_sites() - Counter(_PENDING)
+        new = sorted(site for site in unexpected.elements() if not is_named(site))
+>       assert not new, "imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:\n" + "\n".join(f"  {s}" for s in new)
+E       AssertionError: imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:
+E           ('tests/test_digital_twin_fram.py', '_PrintRecorder.__enter__', '_fram_chip')
+E           ('tests/test_digital_twin_fram.py', '_PrintRecorder.__exit__', '_fram_chip')
+E           ('tests/test_digital_twin_fram.py', 'test_a_save_leaves_no_temporary_file_and_a_cut_save_keeps_the_previous_image', '_fram_chip')
+E           ('tests/test_digital_twin_fram.py', 'test_fram_rdid_table_matches_the_driver', 'asy_fram_driver')
+E           ('tests/test_digital_twin_fram.py', 'test_payload_writes_are_counted_by_address', '_fram_chip')
+E           ('tests/test_digital_twin_fram.py', 'test_the_long_read_threshold_is_the_twin_buses_dma_threshold', '_fram_chip')
+E           ('tests/test_digital_twin_scd30.py', '_PrintRecorder.__enter__', '_scd30_chip')
+E           ('tests/test_digital_twin_scd30.py', '_PrintRecorder.__exit__', '_scd30_chip')
+E       assert not [('tests/test_digital_twin_fram.py', '_PrintRecorder.__enter__', '_fram_chip'), ('tests/test_digital_twin_fram.py', '_...('tests/test_digital_twin_fram.py', 'test_the_long_read_threshold_is_the_twin_buses_dma_threshold', '_fram_chip'), ...]
+
+tests_scripts/test_import_placement.py:211: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+3 failed, 701 passed in 93.90s (0:01:33)

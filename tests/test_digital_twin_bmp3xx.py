@@ -1,25 +1,22 @@
 """Deterministic unit tests for digital_twin/_bmp3xx_chip.py's own transaction-response logic - matches the register-addressed shape src/asy_bmp3xx_driver.py's BMP3XX_I2C sends (no CRC framing, unlike SGP40/SCD30).
 The fixed calibration block round-trips exactly through the real driver's own compensation formula for every target in the twin's default sensible range."""
 
+import errno
 import struct
 import sys
+import time
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _bmp3xx_chip import Bmp3xxChip
+from _bmp3xx_chip import BMP3XXChip
 from _twin_common import Walk
 from _twin_random import FixedRandom
 
-
-def _read(chip: Bmp3xxChip, reg: int, nbytes: int) -> bytes:
-    return chip.handle_readfrom_mem(reg, nbytes)
-
-
-def _write(chip: Bmp3xxChip, reg: int, data: "list[int]") -> None:
-    chip.handle_writeto_mem(reg, bytes(data))
+# @tunable l2.bmp3xx_probe_hang_s = 0.05
+_PROBE_HANG_S = 0.05
 
 
-def _decode_temp_pressure(_chip: "Bmp3xxChip | None", cal_raw: bytes) -> "tuple[float, float, float, tuple[float, ...]]":
+def _decode_temp_pressure(_chip: "BMP3XXChip | None", cal_raw: bytes) -> "tuple[float, float, float, tuple[float, ...]]":
     coeff = struct.unpack("<HHbhhbbHHbbhbb", cal_raw)
     t1 = coeff[0] / 2**-8.0
     t2 = coeff[1] / 2**30.0
@@ -60,20 +57,28 @@ def _forward(cal_raw: bytes, adc_p: int, adc_t: int) -> "tuple[float, float]":
     return pressure / 100, temperature
 
 
+def _read(chip: BMP3XXChip, reg: int, nbytes: int) -> bytes:
+    return chip.handle_readfrom_mem(reg, nbytes)
+
+
+def _write(chip: BMP3XXChip, reg: int, data: "list[int]") -> None:
+    chip.handle_writeto_mem(reg, bytes(data))
+
+
 def test_chip_id_register_reports_a_recognized_id() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     reply = _read(chip, 0x00, 1)
     assert reply[0] in (0x50, 0x60)  # BMP384/BMP388 vs BMP390 (asy_bmp3xx_driver.py's own check)
 
 
 def test_status_starts_command_ready() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     reply = _read(chip, 0x03, 1)
     assert reply[0] & 0x10  # STATUS_CMD_RDY
 
 
 def test_calibration_block_is_not_degenerate() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     raw = _read(chip, 0x31, 21)
     assert len(raw) == 21
     assert not (raw == bytes([raw[0]]) * len(raw) and raw[0] in (0x00, 0xFF))
@@ -82,7 +87,7 @@ def test_calibration_block_is_not_degenerate() -> None:
 def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
     # First 2 values: the uniform draw at construction. Last 2: the step delta the forced-mode
     # trigger below draws - zeroed so the final decoded value stays exactly at the constructed one.
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[22.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])  # CONTROL = forced mode, press+temp enabled
     status = _read(chip, 0x03, 1)[0]
     assert status & 0x60 == 0x60  # STATUS_DATA_READY (both drdy_press|drdy_temp)
@@ -91,7 +96,7 @@ def test_forced_mode_trigger_sets_data_ready_and_a_readable_burst() -> None:
 
 
 def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formula() -> None:
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[21.0, 987.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     burst = _read(chip, 0x04, 6)
     cal_raw = _read(chip, 0x31, 21)
@@ -106,13 +111,13 @@ def test_forced_mode_reading_decodes_to_the_requested_target_via_the_real_formul
 
 
 def test_construction_draws_an_initial_value_within_range_without_a_forced_mode_trigger() -> None:
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[23.5, 1013.25]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[23.5, 1013.25]))
     assert chip._temp_c == 23.5
     assert chip._pressure_hpa == 1013.25
 
 
 def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_draw() -> None:
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.5, -2.0]))
     assert chip._temp_c == 20.0 and chip._pressure_hpa == 1000.0  # construction draw
     _write(chip, 0x1B, [0x13])
     assert chip._temp_c == 20.5  # 20.0 + 0.5
@@ -120,7 +125,7 @@ def test_forced_mode_trigger_steps_from_the_previous_value_rather_than_a_fresh_d
 
 
 def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
-    chip = Bmp3xxChip(
+    chip = BMP3XXChip(
         pressure=Walk(950.0, 1050.0, 5.0),
         random_source=FixedRandom(uniform_values=[20.0, 1048.0, 0.0, 5.0]),
     )
@@ -129,7 +134,7 @@ def test_forced_mode_trigger_step_is_clamped_to_the_configured_max() -> None:
 
 
 def test_forced_mode_trigger_step_is_clamped_to_the_configured_min() -> None:
-    chip = Bmp3xxChip(
+    chip = BMP3XXChip(
         temp=Walk(15.0, 30.0, 1.0),
         random_source=FixedRandom(uniform_values=[15.4, 1000.0, -1.0, 0.0]),
     )
@@ -139,7 +144,7 @@ def test_forced_mode_trigger_step_is_clamped_to_the_configured_min() -> None:
 
 def test_step_bounds_are_configurable_via_the_constructor() -> None:
     random = FixedRandom(uniform_values=[20.0, 1000.0, 0.1, 0.5])
-    chip = Bmp3xxChip(temp=Walk(15.0, 30.0, 0.1), pressure=Walk(950.0, 1050.0, 0.5), random_source=random)
+    chip = BMP3XXChip(temp=Walk(15.0, 30.0, 0.1), pressure=Walk(950.0, 1050.0, 0.5), random_source=random)
     _write(chip, 0x1B, [0x13])
     assert random.calls[2:] == [(-0.1, 0.1), (-0.5, 0.5)], random.calls  # the step draws take the walks' own steps
 
@@ -147,7 +152,7 @@ def test_step_bounds_are_configurable_via_the_constructor() -> None:
 def test_default_range_stays_inside_the_drivers_own_operating_range_check() -> None:
     # asy_bmp3xx_driver.py's own _read() rejects anything outside 300-1250 hPa / -40-85 degC
     # (datasheet sec 1, Table 2) - the twin's defaults must be a sensible sub-range of that.
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     assert chip._min_pressure_hpa >= 300.0 and chip._max_pressure_hpa <= 1250.0
     assert chip._min_temp_c >= -40.0 and chip._max_temp_c <= 85.0
 
@@ -156,7 +161,7 @@ def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
     # Construction draw: 20.0/1000.0. The first trigger's step delta is zeroed, so it stays there; the
     # second's sits at this chip's default temp/pressure walk step boundary - proving each trigger
     # draws its own fresh step, not the same value twice, while staying within the walk's bound.
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0, 1.0, 5.0]))
     cal_raw = _read(chip, 0x31, 21)
     _write(chip, 0x1B, [0x13])
     burst1 = _read(chip, 0x04, 6)
@@ -176,7 +181,9 @@ def test_a_fresh_reading_is_drawn_on_every_forced_mode_trigger() -> None:
 def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
     # Bit-field read-modify-write logic lives in asy_i2c_driver.py's own get_bits()/set_bits() -
     # already tested there. This twin only needs to persist/return the raw byte faithfully.
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
+    assert _read(chip, 0x1C, 1) == b"\x02"  # OSR's default (DS001 register map)
+    assert _read(chip, 0x1F, 1) == b"\x00"  # CONFIG's default (DS001 register map)
     _write(chip, 0x1C, [0b00010101])
     assert _read(chip, 0x1C, 1) == b"\x15"
     _write(chip, 0x1F, [0b00000110])
@@ -184,21 +191,25 @@ def test_osr_and_config_registers_store_whatever_byte_they_are_given() -> None:
 
 
 def test_soft_reset_command_restores_command_ready_status() -> None:
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     assert _read(chip, 0x03, 1)[0] & 0x60  # data ready, not command-ready-only
+    _write(chip, 0x1C, [0x0D])
+    _write(chip, 0x1F, [0x06])
     _write(chip, 0x7E, [0xB6])  # CMD register, soft reset opcode
-    assert _read(chip, 0x03, 1)[0] & 0x10  # back to command-ready
+    assert _read(chip, 0x03, 1) == b"\x10"  # back to command-ready only
+    assert _read(chip, 0x1C, 1) == b"\x02"  # "overwritten with their default state" (DS001 4.3.22)
+    assert _read(chip, 0x1F, 1) == b"\x00"
 
 
 def test_err_register_reports_no_error() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     assert _read(chip, 0x02, 1) == b"\x00"
 
 
 def test_event_reports_por_detected_after_power_up_and_a_soft_reset_and_clears_on_read() -> None:
     # DS001 4.3.7: por_detected is 1 after a power-up or a soft reset, cleared by reading EVENT (0x10).
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     assert _read(chip, 0x10, 1) == b"\x01"  # constructed = just powered up
     assert _read(chip, 0x10, 1) == b"\x00"
     _write(chip, 0x7E, [0xB6])
@@ -207,7 +218,7 @@ def test_event_reports_por_detected_after_power_up_and_a_soft_reset_and_clears_o
 
 
 def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> None:
-    chip = Bmp3xxChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
     _write(chip, 0x1B, [0x13])
     block = _read(chip, 0x02, 8)
     assert block[0] == 0x00
@@ -217,7 +228,7 @@ def test_an_8_byte_read_at_err_reg_returns_err_status_and_the_data_bytes() -> No
 
 
 def test_the_fatal_err_knob_sets_err_reg_bit_0() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     chip.fatal_err = True
     assert _read(chip, 0x02, 1) == b"\x01"
     assert _read(chip, 0x02, 8)[0] == 0x01
@@ -226,7 +237,7 @@ def test_the_fatal_err_knob_sets_err_reg_bit_0() -> None:
 
 
 def test_unknown_register_returns_zero_bytes_without_raising() -> None:
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
     assert _read(chip, 0x50, 2) == bytes(2)  # not a register this chip fake models
     _write(chip, 0x50, [0xFF])  # real hardware would just silently accept/ignore it too
 
@@ -238,13 +249,30 @@ def test_handle_writeto_accepts_the_zero_byte_bus_probe_without_raising() -> Non
     # This chip fake used to have no handle_writeto() at all, only handle_writeto_mem() matching its real
     # register-addressed protocol, so the twin's I2C.writeto() dispatch raised AttributeError on every real
     # boot, repeatedly failing the BMP3XX reader task.
-    chip = Bmp3xxChip()
+    chip = BMP3XXChip()
+    image = (_read(chip, 0x1C, 1), _read(chip, 0x1F, 1), _read(chip, 0x03, 1))
     chip.handle_writeto(b"")  # must not raise
+    assert (_read(chip, 0x1C, 1), _read(chip, 0x1F, 1), _read(chip, 0x03, 1)) == image
+    chip.fault.inject_fault("writeto", OSError, errno.EIO, "probe NAK")
+    try:
+        chip.handle_writeto(b"")
+        raise AssertionError("expected the queued probe fault")
+    except OSError:
+        pass
+    assert chip.fault.pending("writeto") == 0
+
+
+def test_a_queued_writeto_hang_delays_the_probe() -> None:
+    chip = BMP3XXChip()
+    chip.fault.inject_hang("writeto", _PROBE_HANG_S)
+    start = time.ticks_ms()
+    chip.handle_writeto(b"")
+    assert time.ticks_diff(time.ticks_ms(), start) >= int(_PROBE_HANG_S * 1000)
 
 
 def test_fault_injection_on_writeto() -> None:
-    chip = Bmp3xxChip()
-    chip.fault.inject_fault("writeto", OSError(5, "no ACK"))
+    chip = BMP3XXChip()
+    chip.fault.inject_fault("writeto", OSError, errno.EIO, "no ACK")
     try:
         chip.handle_writeto(b"")
         raise AssertionError("expected OSError")
@@ -254,20 +282,63 @@ def test_fault_injection_on_writeto() -> None:
 
 
 def test_fault_injection_on_readfrom_mem_and_writeto_mem() -> None:
-    chip = Bmp3xxChip()
-    chip.fault.inject_fault("readfrom_mem", OSError(5, "no ACK"))
+    chip = BMP3XXChip()
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "no ACK")
     try:
         _read(chip, 0x00, 1)
         raise AssertionError("expected OSError")
     except OSError:
         pass
     assert _read(chip, 0x00, 1)[0] in (0x50, 0x60)
-    chip.fault.inject_fault("writeto_mem", OSError(5, "timeout"))
+    chip.fault.inject_fault("writeto_mem", OSError, errno.ETIMEDOUT, "timeout")
     try:
         _write(chip, 0x1B, [0x13])
         raise AssertionError("expected OSError")
     except OSError:
         pass
+
+
+def test_a_read_fault_keyed_to_the_data_register_spares_the_calibration_read() -> None:
+    chip = BMP3XXChip()
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "data read", match=0x04)
+    assert len(_read(chip, 0x31, 21)) == 21
+    assert chip.fault.pending("readfrom_mem") == 1
+    try:
+        _read(chip, 0x04, 6)
+        raise AssertionError("expected the keyed fault on the data read")
+    except OSError as e:
+        assert e.errno == errno.EIO
+    assert chip.fault.pending("readfrom_mem") == 0
+
+
+def test_two_raises_of_one_queued_fault_are_distinct_fresh_exceptions() -> None:
+    chip = BMP3XXChip()
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "planted", times=2)
+    raised = []
+    for _ in range(2):
+        try:
+            _read(chip, 0x00, 1)
+        except OSError as e:
+            raised.append(e)
+    assert len(raised) == 2
+    assert raised[0] is not raised[1]
+
+
+def test_power_cycle_restores_the_power_up_registers_and_keeps_the_walk() -> None:
+    chip = BMP3XXChip(random_source=FixedRandom(uniform_values=[20.0, 1000.0, 0.0, 0.0]))
+    _write(chip, 0x1B, [0x13])
+    _write(chip, 0x1C, [0x15])
+    _write(chip, 0x1F, [0x06])
+    assert _read(chip, 0x10, 1) == b"\x01"  # the construction's power-up, now read and cleared
+    walked = (chip._temp_c, chip._pressure_hpa)
+    chip.power_cycle()
+    fresh = BMP3XXChip()
+    assert _read(chip, 0x03, 1) == b"\x10"  # command-ready, no data ready
+    assert _read(chip, 0x04, 6) == bytes(6)
+    assert _read(chip, 0x10, 1) == b"\x01"
+    assert _read(chip, 0x1C, 1) == _read(fresh, 0x1C, 1)
+    assert _read(chip, 0x1F, 1) == _read(fresh, 0x1F, 1)
+    assert (chip._temp_c, chip._pressure_hpa) == walked
 
 
 if __name__ == "__main__":

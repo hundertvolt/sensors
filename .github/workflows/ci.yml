@@ -605,8 +605,8 @@ jobs:
     # across real process restarts, soak (digital_twin/README.md); heavier than the unit tier, not a
     # duplicate.
     #
-    # Six-device matrix, fail-fast: false - each suite waits on real state transitions that
-    # parallelize across jobs (B.10.1).
+    # Six devices by both GC stages by the two parts (suite, harness), one job each, fail-fast: false
+    # - each waits on real state transitions that parallelize across jobs (B.10.1).
     #
     # needs: unit-tests, success-gated on purpose: fail-fast is the intent, and the cache is then
     # warm.
@@ -620,6 +620,8 @@ jobs:
       fail-fast: false
       matrix:
         device: [wozi, dev, arzi, klkizi, grkizi, schlafzi]
+        gc_threshold: [-1, 32768]
+        part: [suite, harness]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -627,12 +629,12 @@ jobs:
       - name: Set up MicroPython toolchain (install uv, restore cache)
         uses: ./.github/actions/setup-micropython-toolchain
       - name: Run digital-twin clean/build/test cycle
-        run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}"
+        run: scripts/run_digital_twin_ci.sh "${{ matrix.device }}" --gc-threshold "${{ matrix.gc_threshold }}" --part "${{ matrix.part }}"
       - name: Upload digital-twin subprocess logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: digital-twin-ci-logs-${{ matrix.device }}
+          name: digital-twin-ci-logs-${{ matrix.device }}-gc${{ matrix.gc_threshold }}-${{ matrix.part }}
           path: digital_twin_ci_logs/
           if-no-files-found: ignore
         continue-on-error: true

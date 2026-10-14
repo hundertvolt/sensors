@@ -179,9 +179,10 @@ ships, and the suite has to pass both ways; a value that is not an integer, or f
 rp2040's own 32-bit machine word, is rejected up front before the run touches anything, rather than
 failing inside the runner once per test file; see "Memory-safety discipline" in CLAUDE.md for why
 both runs are required and which one proves what). Every `tests/test_*.py` file runs as its own
-interpreter process and prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the
-file's name in brackets (e.g. `[test_sensortask_dev]`), since several files' output interleaves when
-they run concurrently; a file collecting no test fails. The run ends with the summary block every
+interpreter process (a file marked `PER_DEVICE = True` once per device, with `TEST_DEVICE` set) and
+prints its `PASS`/`FAIL`/`SKIP` lines and its count, each prefixed with the file's name in brackets,
+a per-device job's with its device too (e.g. `[test_sensortask[dev]]`), since several files' output
+interleaves when they run concurrently; a file collecting no test fails. The run ends with the summary block every
 runner prints (SPECIFICATION.md E.10): units, levels, the GC stage, counts, the failures named, and
 any file whose output contained a `MemoryError` or `memory allocation failed` — which fails the run
 even when its tests passed (`src/` logs the message, not the class):
@@ -480,9 +481,9 @@ bus wiring — real-time-firing `Timer`s, randomized-but-plausible sensor values
 `WLAN` connect sequence — so driver code can run under the real MicroPython Unix-port interpreter
 with no physical hardware attached. Every real device is fully supported end-to-end
 (`digital_twin/run_generic_integration.py`) — see `digital_twin/README.md`.
-`scripts/run_unix_port_integration.sh` takes the device as its required `--device <name>` (without
-one it exits 2 naming the valid devices); `scripts/run_digital_twin_ci.sh` takes it as an optional
-argument, `wozi` by default. A run serves that device's real, production website
+`scripts/run_unix_port_integration.sh` takes the device as its required `--device <name>` and
+`scripts/run_digital_twin_ci.sh` as its required first argument (without one each exits 2 naming the
+valid devices). A run serves that device's real, production website
 (`scripts/build_website.sh <device>`) — see `SPECIFICATION.md` Part H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
@@ -514,9 +515,14 @@ scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080 
 - `--hang DEVICE:OP:SECONDS[:TIMES]` (repeatable) — script a bus operation to hang instead of
   raising, for timeout-path testing.
 - `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome, same values as below.
-- `--fram-state-path PATH` / `--scd30-state-path PATH` — persist that chip's state to a JSON file
-  across runs; default in-memory only (`""` also means in-memory only), unlike
-  `scripts/_digital_twin_ci_suite.py`'s own explicit on-disk defaults for its persistence checks.
+- `--fram-state-path PATH` / `--scd30-state-path PATH` / `--mem-backup-state-path PATH` — the JSON
+  file that chip's state (or the watchdog scratch registers', which carry the reset reason) persists
+  to across runs; by default `digital_twin/fram_state.json`, `digital_twin/scd30_state.json` and
+  `digital_twin/mem_backup_state.json`, and `""` keeps it in memory only.
+- `--config-dir PATH` — the product's config directory (default `digital_twin/config/`); the
+  automated callers pass their own.
+- `--online-ntp` — write no NTP config and start no local NTP responder (by default the twin syncs
+  against its own responder on the loopback).
 - `--gc-threshold N` — override the boot-time `gc.threshold()` (default `32768`, matching every
   real firmware boot); `-1` is MicroPython's own real reactive-only default.
 - `--mem-sample-interval-ms N` — arm a background task that logs a `gc.mem_free()` reading every
@@ -533,42 +539,50 @@ Start the twin's standalone CLI demo (no website, twin only) directly with the s
 `scripts/test.sh` builds:
 
 ```sh
+uv run scripts/_generate_sensortask_modules.py   # writes every device's wiring plan
 $HOME/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/launch.py \
+    --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json \
     --seed 42 --duration 3 --no-wdt-feed --wifi-outcome success --fault scd30:writeto:1
 ```
 
 (use `$PICO_TOOLCHAIN_DIR` instead of `$HOME/pico-toolchain` if you've overridden it — see
 `scripts/test.sh`'s own `toolchain_dir` resolution for the exact path; run
-`uv run toolchain/setup_toolchain.py` first if the binary doesn't exist yet). All flags are optional
-and repeatable where noted:
+`uv run toolchain/setup_toolchain.py` first if the binary doesn't exist yet). `--wiring-plan` is
+required, so the board it wires is always a named device's; every other flag is optional and
+repeatable where noted:
 
+- `--wiring-plan PATH` — the device's generated wiring-plan JSON.
 - `--seed N` — seed every chip's random value walk for a reproducible run.
 - `--duration SECONDS` — exit after a fixed run instead of looping forever (Ctrl-C also works).
 - `--no-wdt-feed` — stop feeding the watchdog, to watch it actually trip.
-- `--fault DEVICE:OP[:TIMES]` (repeatable) — script a one-shot/N-shot bus fault, e.g.
+- `--fault DEVICE:OP[:TIMES[:MATCH]]` (repeatable) — script a one-shot/N-shot bus fault, e.g.
   `--fault scd30:writeto:2`. See `digital_twin/launch.py`'s own `_FAULT_DEVICE_OPS` for every valid
-  `DEVICE:OP` pair.
+  `DEVICE:OP` pair; an op rp2 cannot fail on is refused.
 - `--wifi-outcome OUTCOME` (repeatable) — queue a `WLAN.connect()` outcome:
   `success`/`no_ap`/`wrong_password`/`connect_fail`.
-- `--fram-state-path PATH` — persist the FRAM twin's contents to a JSON file across runs, instead of
-  in-memory only.
+- `--fram-state-path PATH` / `--scd30-state-path PATH` / `--mem-backup-state-path PATH` — where
+  that state persists across runs (by default the three state files above; `""` keeps it in memory
+  only).
 
-This standalone launcher is twin-only (no `src/` import). To instead run the real, buildgen-generated
-`sensortask_wozi.py` prototype against the twin, see `digital_twin/README.md`'s own "Swapping the
+This standalone launcher is twin-only (no `src/` import). To instead run a device's real,
+buildgen-generated module against the twin, see `digital_twin/README.md`'s own "Swapping the
 twin in for a Unix-port run" section — that's a separate `MICROPYPATH`-based invocation, not this
 launcher.
 
 **Automated CI suite** — the manual walkthrough below turned into an unattended, CI-gating check:
-drives `digital_twin/run_generic_integration.py` through fourteen sequential runs and asserts every
-step: fresh boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection,
-settings/error persistence across a real reboot, soak at both `gc.threshold()` configurations and the
-full-ceiling burst (`digital_twin/README.md`'s "Automated CI suite" lists each run). Runs against
-`wozi` by default, or any of the other 5 real device variants via an optional device argument.
-Builds the Unix port and the real website for that device first if either is missing (same `$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
+drives `digital_twin/run_generic_integration.py` through its runs and asserts every step: fresh
+boot, every GET/PUT endpoint, `DebugLevel=5` verbose logging, bus fault injection, settings/error
+persistence across a real reboot, the reset reasons and system commands, soak at both
+`gc.threshold()` configurations and the full-ceiling burst (`digital_twin/README.md`'s "Automated CI
+suite" lists each run), then the host-side scenario harness (`scripts/_digital_twin_scenarios.py`).
+It runs against the device named by its required argument, at both GC stages and both parts unless
+`--gc-threshold` or `--part` names one — CI runs one job per device, stage and part. Builds the Unix
+port and the real website for that device first if either is missing (same
+`$PICO_TOOLCHAIN_DIR`/`SKIP_APT` convention as `scripts/test.sh`):
 
 ```sh
-scripts/run_digital_twin_ci.sh          # wozi (default)
-scripts/run_digital_twin_ci.sh dev      # or any other real device variant
+scripts/run_digital_twin_ci.sh <device>   # a device of devices/*.toml (required)
+scripts/run_digital_twin_ci.sh <device> --gc-threshold 32768 --part harness   # one stage, one part
 ```
 
 It ends with the summary block (SPECIFICATION.md E.10). Logs from every subprocess run land in
@@ -581,8 +595,8 @@ adding a new chip fake when a new sensor driver lands: **`digital_twin/README.md
 
 ### Manual baseline verification walkthrough
 
-A copy-paste sequence for manually checking the real assembled system (the buildgen-generated
-`sensortask_wozi.py`) against the digital twin, end to end, over real HTTP — the same walkthrough used to
+A copy-paste sequence for manually checking the real assembled system (a device's buildgen-generated
+module) against the digital twin, end to end, over real HTTP — the same walkthrough used to
 establish this project's own known-working baseline (build → boot → set log level → reboot with
 that level persisted → boot again with bus faults injected). Run each block from the repo root;
 `curl` and a browser both work against `http://127.0.0.1:8080` while a run is up.
@@ -591,8 +605,8 @@ that level persisted → boot again with bus faults injected). Run each block fr
 automated HTTP+memory-trend soak check instead, see `scripts/_digital_twin_ci_suite.py`'s Run 11):
 
 ```sh
-rm -rf digital_twin/config digital_twin/fram_state.json   # start from a clean, unconfigured device
-scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080
+rm -rf digital_twin/config digital_twin/fram_state.json digital_twin/scd30_state.json digital_twin/mem_backup_state.json   # a clean, unconfigured device
+scripts/run_unix_port_integration.sh --device <device> --host 127.0.0.1 --port 8080
 ```
 
 Leave this running in its own terminal. In a second terminal, walk every GET endpoint plus the
@@ -635,7 +649,7 @@ as it would skip any unsaved state on real hardware). Then boot again the same w
 `DebugLevel` survives):
 
 ```sh
-scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080
+scripts/run_unix_port_integration.sh --device <device> --host 127.0.0.1 --port 8080
 ```
 
 This boot's own console output is now the full verbose trace — every `PrintLog.evt()`/`.one()`/
@@ -675,19 +689,18 @@ on a specific bus operation - the affected sensor's reader task should fail, log
 its own once the fault count is exhausted:
 
 ```sh
-rm -rf digital_twin/config digital_twin/fram_state.json
-scripts/run_unix_port_integration.sh --device wozi --host 127.0.0.1 --port 8080 \
-    --fault scd30:writeto:2 --fault sgp40:readfrom_into:2 --fault bmp3xx:readfrom_mem:2 --fault fram:write:2
+rm -rf digital_twin/config digital_twin/fram_state.json digital_twin/scd30_state.json digital_twin/mem_backup_state.json
+scripts/run_unix_port_integration.sh --device <device> --host 127.0.0.1 --port 8080 \
+    --fault scd30:writeto:2 --fault sgp40:readfrom_into:2 --fault bmp3xx:readfrom_mem:2 --fault fram:readinto:2
 ```
 
 Watch `/status`'s `errcount` section for each affected module's counter to tick up, then confirm
 `/measurements` still returns plausible readings from every sensor once the run has been up for a
 few seconds — that's the fault having fired, been logged, and recovered from. A device-wide
 task-failure streak beyond `asy_system_service.py`'s own threshold triggers a real reboot request too
-(logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this actually
-restarts the unit; the twin can't do that (`machine.reset()` raises `SimulatedResetError` instead, which
-is expected and harmless - see `SimulatedRebootError`'s own comment in `digital_twin/machine.py`), so the same process keeps serving
-afterward instead of restarting, which is fine for continuing this walkthrough.
+(logged as `SYSTEM ... reboot triggered!` at `DebugLevel >= 4`) - on real hardware this restarts
+the unit; the twin run ends instead, with exit code 3 (a reset) or 4 (the bootloader) after writing
+its state, and the next launch boots from that state (`digital_twin/README.md`).
 
 ## Further reading
 

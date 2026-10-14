@@ -985,18 +985,35 @@ with st._stop_commands_on_termination():
     st.run(["sh", "-c", 'sleep 30 & echo $! > "$1"; wait', "sh", sys.argv[2]], timeout_s=60)
 """
 
+# Holds run()'s output reader at its start (a command running, run() not yet able to stop it) until the signal is sent.
+_HOLD_THE_START = """import sys, threading, time
+from pathlib import Path
+start, held, sent = threading.Thread.start, Path(sys.argv[2] + ".held"), Path(sys.argv[2] + ".sent")
+def held_start(thread):
+    held.write_text("")
+    while not sent.exists():
+        time.sleep(0.01)
+    start(thread)
+threading.Thread.start = held_start
+"""
 
+
+@pytest.mark.parametrize("when", ["running", "starting"])
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGINT])
-def test_a_signalled_installer_takes_its_running_command_down_with_it(repo_root: Path, tmp_path: Path, sig: signal.Signals) -> None:
+def test_a_signalled_installer_takes_its_running_command_down_with_it(repo_root: Path, tmp_path: Path, sig: signal.Signals, when: str) -> None:
     # A command in its own session misses the signal sent to the installer's group (Ctrl-C, timeout(1), a
-    # cancelled job), so the installer stops it on its way out instead of leaving it running unlocked.
+    # cancelled job), so the installer stops it on its way out instead of leaving it running unlocked - also when
+    # the signal lands while run() is still starting it.
     pid_file = tmp_path / "grandchild.pid"
-    script = [sys.executable, "-c", _RUN_THEN_WAIT_FOR_A_SIGNAL, str(repo_root / "toolchain"), str(pid_file)]
+    held, sent, starting = Path(f"{pid_file}.held"), Path(f"{pid_file}.sent"), when == "starting"
+    script = [sys.executable, "-c", (_HOLD_THE_START if starting else "") + _RUN_THEN_WAIT_FOR_A_SIGNAL, str(repo_root / "toolchain"), str(pid_file)]
     proc = subprocess.Popen(script, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     deadline = time.monotonic() + 30
-    while not (pid_file.exists() and pid_file.read_text().strip()) and time.monotonic() < deadline:
+    while not (pid_file.exists() and pid_file.read_text().strip() and (held.exists() or not starting)) and time.monotonic() < deadline:
         time.sleep(0.05)
+    assert held.exists() == starting, "run() never started its output reader"
     proc.send_signal(sig)
+    sent.write_text("")
     _, err = proc.communicate(timeout=30)
     assert proc.returncode != 0, err
     assert _gone_within(int(pid_file.read_text()), 10), f"the command survived its installer's {sig.name}"

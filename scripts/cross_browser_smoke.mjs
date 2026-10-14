@@ -3,11 +3,12 @@
 // Run: `node scripts/cross_browser_smoke.mjs`. See SPECIFICATION.md Part H.7 ("Cross-browser coverage").
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
+import { makeConfigDir, removeConfigDir } from "../tests_js/_twin_process.js";
 import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
 import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
 
@@ -153,8 +154,8 @@ function trackProcess(proc, label) {
     return proc;
 }
 
-/** @param {string} device */
-function spawnTwin(device) {
+/** @param {string} device @param {string} configDir the device's own config directory (makeConfigDir()) */
+function spawnTwin(device, configDir) {
     return trackProcess(
         spawn(
             MICROPYTHON_BIN,
@@ -174,6 +175,10 @@ function spawnTwin(device) {
                 "",
                 "--scd30-state-path",
                 "",
+                "--mem-backup-state-path",
+                "",
+                "--config-dir",
+                configDir,
             ],
             // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
             { cwd: REPO_ROOT, env: { ...process.env, MICROPYPATH: micropythonPath(device), TZ: "UTC" }, stdio: ["ignore", "pipe", "pipe"] },
@@ -546,8 +551,8 @@ for (const sig of /** @type {const} */ (["SIGINT", "SIGTERM"])) {
  * @param {{label: string, ok: boolean, detail?: string}[]} results
  */
 async function smokeDevice(device, probe, engines, counter, results) {
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-    const twin = spawnTwin(device);
+    const configDir = makeConfigDir(); // its own config directory, never the manual run's
+    const twin = spawnTwin(device, configDir);
     const output = drainChildOutput(twin);
     let failed = false;
     /** @type {CountingProxy | undefined} */
@@ -579,6 +584,7 @@ async function smokeDevice(device, probe, engines, counter, results) {
     } finally {
         await proxy?.close();
         await stopProcess(twin);
+        removeConfigDir(configDir);
     }
     // The memory gate (SPECIFICATION.md Part I.4(e)): a marker fails the device even when every check passed.
     const drained = await output.closed(SHUTDOWN_TIMEOUT_MS);

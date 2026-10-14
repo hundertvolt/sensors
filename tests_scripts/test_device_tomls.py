@@ -154,29 +154,48 @@ def test_devices_with_selects_by_each_tomls_own_instances(tmp_path: Path, monkey
 
 
 def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_root: Path) -> None:
-    # The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked
-    # against them instead: tests/ runs one process per test FILE, and no import-time glob conjures
-    # a file. Replaces an older devices/-holds-exactly-DEVICE_NAMES check, tautological since.
-    #
-    # Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its ORDER assigns
-    # the twin's TCP port bases. What must not stay silent is a device added to devices/ while
-    # these are not - it would ship uncovered, with every one of those suites still passing.
+    # The MicroPython tier cannot discover devices the way DEVICE_NAMES does, so it is checked against them instead:
+    # each family is either one PER_DEVICE file, which scripts/test.sh runs once per generated device (its plans are
+    # written from devices/*.toml), or one wrapper per device. Its library derives the set, or lists exactly these.
     expected = set(DEVICE_NAMES)
     problems = []
-    for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_webserver_concurrency"):
+    assert "grep -qx 'PER_DEVICE = True'" in (repo_root / "scripts" / "test.sh").read_text(), "scripts/test.sh no longer expands a PER_DEVICE file per device"
+    for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_sensortask_integration", "test_digital_twin_timer_pool"):
+        entry = repo_root / "tests" / f"{family}.py"
         present = {p.stem[len(family) + 1 :] for p in (repo_root / "tests").glob(f"{family}_*.py")}
-        if present != expected:
+        if entry.exists() and "PER_DEVICE = True" in entry.read_text().splitlines():
+            if present:
+                problems.append(f"tests/{family}.py runs per device, yet wrappers for {sorted(present)} remain")
+        elif present != expected:
             problems.append(f"tests/{family}_<device>.py covers {sorted(present)}, but devices/ holds {sorted(expected)}")
-    for scenarios in ("_sensortask_scenarios.py", "_digital_twin_construction_scenarios.py", "_webserver_concurrency_scenarios.py"):
+    for scenarios in ("_sensortask_scenarios.py", "_digital_twin_construction_scenarios.py"):
         text = (repo_root / "tests" / scenarios).read_text()
         match = re.search(r"^_DEVICES = \(([^)]*)\)", text, re.MULTILINE)
         if match is None:
-            problems.append(f"tests/{scenarios} no longer declares a _DEVICES tuple - update this check with it")
+            if "generated_devices()" not in text:
+                problems.append(f"tests/{scenarios} neither derives its devices (generated_devices()) nor lists them")
             continue
         listed = {name.strip().strip('"') for name in match.group(1).split(",") if name.strip()}
         if listed != expected:
             problems.append(f"tests/{scenarios}'s _DEVICES is {sorted(listed)}, but devices/ holds {sorted(expected)}")
     assert not problems, "the MicroPython tier does not cover every real device:\n  " + "\n  ".join(problems)
+
+
+def test_every_per_device_files_scratch_is_keyed_by_its_device(repo_root: Path) -> None:
+    # scripts/test.sh may run two devices' jobs of one PER_DEVICE file at once, and TmpScratch wipes its key's directory
+    # at start and teardown: a key shared by the devices lets one process delete the other's live state.
+    tests = repo_root / "tests"
+    files = [p for p in sorted(tests.glob("test_*.py")) if "PER_DEVICE = True" in p.read_text().splitlines()]
+    assert files, "no PER_DEVICE file found - the check would pass vacuously"
+    imported = {n.module for p in files for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.ImportFrom) and n.module}
+    files += [tests / f"{name}.py" for name in sorted(imported) if name.startswith("_") and (tests / f"{name}.py").is_file()]
+    shared = [
+        f"{path.name}:{node.lineno}: TmpScratch({node.args[0].value!r})"
+        for path in files
+        for node in ast.walk(ast.parse(path.read_text()))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "TmpScratch" and node.args and isinstance(node.args[0], ast.Constant)
+    ]
+    assert not shared, f"scratch keys every device's job shares - key them by the device: {shared}"
 
 
 def test_every_device_is_in_the_ci_workflow_matrices(repo_root: Path) -> None:

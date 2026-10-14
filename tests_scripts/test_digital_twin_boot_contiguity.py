@@ -354,11 +354,11 @@ _MIRRORED_BOUNDS = ("_STARTER_LOOP_TIMEOUT_MS", "_TIMERS_TIMEOUT_S")
 
 
 def _int_constants(source: str, names: tuple[str, ...]) -> dict[str, int]:
+    # Each named module-level constant's value, an integer constant expression (`192 * 1024`) evaluated from its AST.
     found: dict[str, int] = {}
-    for name in names:
-        match = re.search(rf"^{name} = (-?\d+)$", source, re.MULTILINE)
-        if match:
-            found[name] = int(match.group(1))
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in names:
+            found[node.targets[0].id] = _arithmetic(node.value)
     return found
 
 
@@ -427,3 +427,36 @@ def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_roo
     assert set(twin) == set(_MIRRORED_BOUNDS), f"{_PROBE} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(twin))} - update this guard with it"
     assert set(board) == set(_MIRRORED_BOUNDS), f"{_BOARD_SCRIPT} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(board))} - update this guard with it"
     assert twin == board, f"the twin probe and the board script disagree on {[name for name in _MIRRORED_BOUNDS if twin[name] != board[name]]}: {twin} against {board}"
+
+
+_PROBE_CONSTANTS = ("_PROBE_MIN", "_PROBE_MAX", "_PROBE_RETRIES")
+_BOARD_PROBES = ("heap_layout_after_full_boot_sequence.py", "heap_headroom_after_full_system_build.py")
+
+
+def _arithmetic(node: ast.expr) -> int:
+    # An integer constant expression evaluated from its AST; any other expression fails the read.
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -_arithmetic(node.operand)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Mult, ast.Add, ast.Sub, ast.LShift)):
+        left, right = _arithmetic(node.left), _arithmetic(node.right)
+        return {ast.Mult: left * right, ast.Add: left + right, ast.Sub: left - right, ast.LShift: left << right}[type(node.op)]
+    raise AssertionError(f"not an integer constant expression: {ast.unparse(node)}")
+
+
+def _probe_constant_mismatches(scripts: Path) -> "list[str]":
+    # Both board heap probes search with one set of constants, and keep no copy of this file's bounds but an equal one.
+    values = {name: _int_constants((scripts / name).read_text(encoding="utf-8"), _PROBE_CONSTANTS) for name in _BOARD_PROBES}
+    found = [f"{name} states {sorted(v)}, not all of {_PROBE_CONSTANTS}" for name, v in values.items() if set(v) != set(_PROBE_CONSTANTS)]
+    if len({tuple(sorted(v.items())) for v in values.values()}) > 1:
+        found.append(f"the probes disagree: {values}")
+    bounds = {"_HIGH_BAND": _HIGH_BAND, "_HIGH_BAND_BLOCKS_MAX": _HIGH_BAND_BLOCKS_MAX}
+    for name in _BOARD_PROBES:
+        kept = _int_constants((scripts / name).read_text(encoding="utf-8"), tuple(bounds))
+        found += [f"{name} keeps {k} = {v}, this file {bounds[k]}" for k, v in kept.items() if v != bounds[k]]
+    return found
+
+
+def test_both_board_heap_probes_search_with_the_same_constants(repo_root: Path) -> None:
+    assert _probe_constant_mismatches(repo_root / "tests_hardware" / "device_scripts") == []

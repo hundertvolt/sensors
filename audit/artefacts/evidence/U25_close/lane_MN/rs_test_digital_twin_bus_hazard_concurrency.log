@@ -1,0 +1,138 @@
+FAIL test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 662, in test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 897, in test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 831, in test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 784, in _rung_across_offsets
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 773, in scenario
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 744, in _dev_i2c1
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 797, in test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 784, in _rung_across_offsets
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 773, in scenario
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 744, in _dev_i2c1
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 269, in test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 241, in test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_sgp40_heater_off_mid_read_leaves_every_twin_sibling_read_valid:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 810, in test_sgp40_heater_off_mid_read_leaves_every_twin_sibling_read_valid
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 784, in _rung_across_offsets
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 773, in scenario
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 744, in _dev_i2c1
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 625, in test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_two_failing_readers_on_one_bus_run_each_bus_rung_once:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 913, in test_two_failing_readers_on_one_bus_run_each_bus_rung_once
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 582, in test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 372, in test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_fram_recovers_after_an_injected_spi_read_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 326, in test_wozi_fram_recovers_after_an_injected_spi_read_fault
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_fram_recovers_after_an_injected_spi_write_fault:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 284, in test_wozi_fram_recovers_after_an_injected_spi_write_fault
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 255, in test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 227, in test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_storage_pause_does_not_survive_a_simulated_reboot:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 551, in test_wozi_storage_pause_does_not_survive_a_simulated_reboot
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_storage_pause_gates_the_real_twin_chip:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 463, in test_wozi_storage_pause_gates_the_real_twin_chip
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 519, in test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 419, in test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+FAIL test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1tree/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_bus_hazard_concurrency.py", line 493, in test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it
+AttributeError: module 'machine' has no attribute 'configure_i2c_wiring'
+0/20 passed, 20 failed, 0 skipped
+RC=1 WALL=.248346133 FILE=tests/test_digital_twin_bus_hazard_concurrency.py STAGE=-1

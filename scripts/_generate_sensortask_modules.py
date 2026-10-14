@@ -7,10 +7,11 @@
 facts and wiring-plan JSON (independent oracles for their consumers), its website definitions, its
 REST API reference and the freshness stamps via `buildgen` into gitignored `build/generated_src/` (SPECIFICATION.md E.3)."""
 
-# Usage: uv run scripts/_generate_sensortask_modules.py
+# Usage: uv run scripts/_generate_sensortask_modules.py [--device-toml PATH --out-dir DIR] (one TOML's outputs into DIR only)
 # Writes sensortask_<d>.py, sensortask_<d>_main.py, sensortask_<d>_main_noautostart.py, sensortask_<d>_expected.json, sensortask_<d>_wiring_plan.json,
 # definitions/<d>.json and api/<d>.json per device, then definitions/index.json, removes every other finished file (a removed device's), then writes .inputs_stamp.json (inputs and outputs) and definitions/inputs_stamp.json; test.sh, typecheck.sh, the twin runners and npm's build:definitions call it.
 
+import argparse
 import contextlib
 import hashlib
 import json
@@ -33,6 +34,43 @@ from buildgen.version import current_build_date  # noqa: E402
 _NAMED_INPUTS = ("buildgen/error_catalog.json", "toolchain/versions.toml", "toolchain/micropython_overrides.py", "scripts/_generate_sensortask_modules.py")
 _INPUT_GLOBS = ("buildgen/*.py", "src/*.py", "ext/*.py")
 _STAMP_NAMES = (".inputs_stamp.json", "definitions/inputs_stamp.json")
+
+
+def _device_outputs(device_toml: Path, out_dir: Path, build_date: str) -> "dict[Path, str] | None":
+    # Every output of a device, built before the first is written: a failing stage leaves none of its files (None, reported).
+    device = device_toml.stem
+    try:
+        generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date)
+        # generate_device() has already put the model in construction order, which the cards follow.
+        definitions = generate_definitions(generated.model, REPO_ROOT / "src")
+        reference = generate_api_reference(generated.model, REPO_ROOT / "src")
+        wiring_plan = compute_twin_wiring(generated.model)
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return None
+    return {
+        out_dir / f"sensortask_{device}.py": generated.module_source,
+        out_dir / f"sensortask_{device}_main.py": generated.boot_entry_source,
+        out_dir / f"sensortask_{device}_main_noautostart.py": generated.boot_entry_noautostart_source,
+        out_dir / f"sensortask_{device}_expected.json": json.dumps(generated.expected_facts),
+        out_dir / f"sensortask_{device}_wiring_plan.json": json.dumps(wiring_plan),
+        out_dir / "definitions" / f"{device}.json": json.dumps(definitions, indent=2),
+        out_dir / "api" / f"{device}.json": api_reference_json(reference),
+    }
+
+
+def _generate_one(device_toml: Path, out_dir: Path) -> int:
+    # The single-device mode: one TOML's outputs and an index naming it, into out_dir alone.
+    outputs = _device_outputs(device_toml, out_dir, current_build_date())
+    if outputs is None:
+        return 1
+    outputs[out_dir / "definitions" / "index.json"] = json.dumps({"devices": [device_toml.stem]})
+    for directory in {path.parent for path in outputs}:
+        directory.mkdir(parents=True, exist_ok=True)
+    if not _write_through_rename(outputs):
+        return 1
+    print(f"Generated {device_toml.stem}'s module + boot entries + expected facts + wiring plan + definitions + API reference into {out_dir}")
+    return 0
 
 
 def _input_hashes(device_tomls: "list[Path]") -> "dict[str, str]":
@@ -80,7 +118,15 @@ def _write_through_rename(files: "dict[Path, str]") -> bool:
     return True
 
 
-def main() -> int:
+def main(argv: "tuple[str, ...] | list[str]" = ()) -> int:
+    parser = argparse.ArgumentParser(description="Generate every device's build/generated_src/ outputs, or one TOML's into a directory.")
+    parser.add_argument("--device-toml", type=Path, help="generate this TOML only (with --out-dir)")
+    parser.add_argument("--out-dir", type=Path, help="the directory the one TOML's outputs go into (with --device-toml)")
+    args = parser.parse_args(list(argv))
+    if (args.device_toml is None) != (args.out_dir is None):
+        parser.error("--device-toml and --out-dir go together")
+    if args.device_toml is not None:
+        return _generate_one(args.device_toml, args.out_dir)
     out_dir = REPO_ROOT / "build" / "generated_src"
     definitions_dir = out_dir / "definitions"
     definitions_dir.mkdir(parents=True, exist_ok=True)
@@ -97,26 +143,9 @@ def main() -> int:
     # device's own generate_device() call happened to land on.
     build_date = current_build_date()
     for device_toml in device_tomls:
-        device = device_toml.stem
-        # Every output of a device is built before the first is written: a failing stage leaves none of its files.
-        try:
-            generated = generate_device(device_toml, REPO_ROOT / "src", REPO_ROOT / "ext", build_date=build_date)
-            # generate_device() has already put the model in construction order, which the cards follow.
-            definitions = generate_definitions(generated.model, REPO_ROOT / "src")
-            reference = generate_api_reference(generated.model, REPO_ROOT / "src")
-            wiring_plan = compute_twin_wiring(generated.model)
-        except BuildError as e:
-            print(f"error: {e}", file=sys.stderr)
+        outputs = _device_outputs(device_toml, out_dir, build_date)
+        if outputs is None:
             return 1
-        outputs = {
-            out_dir / f"sensortask_{device}.py": generated.module_source,
-            out_dir / f"sensortask_{device}_main.py": generated.boot_entry_source,
-            out_dir / f"sensortask_{device}_main_noautostart.py": generated.boot_entry_noautostart_source,
-            out_dir / f"sensortask_{device}_expected.json": json.dumps(generated.expected_facts),
-            out_dir / f"sensortask_{device}_wiring_plan.json": json.dumps(wiring_plan),
-            definitions_dir / f"{device}.json": json.dumps(definitions, indent=2),
-            api_dir / f"{device}.json": api_reference_json(reference),
-        }
         if not _write_through_rename(outputs):
             return 1
         written |= set(outputs)
@@ -135,4 +164,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

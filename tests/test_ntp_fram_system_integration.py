@@ -14,6 +14,7 @@ from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fram_builders import make_fram_manager
 from _ntp_frames import FakeNtpServer, make_ntp_reply
+from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
@@ -141,15 +142,12 @@ def connect_wlan(conn: WifiService) -> None:
 # tests/_udp_port_redirect.py.
 # ---------------------------------------------------------------------------
 
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 26000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_ntp_fram_system_integration")
 
 
 def _make_port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
+    return _PORTS.next()
 
 
 def _make_ntp_server() -> FakeNtpServer:

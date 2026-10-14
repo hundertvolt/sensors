@@ -103,7 +103,7 @@ async function turnBackupsOff(defs) {
 
 // The four action fields' probes, run in this order: mempause holds storage for five minutes, and a ResetErrors after
 // it answers Failed (the FRAM logs cannot be cleared then). Reboot, bootloader, resetconfig and erasefram end the
-// twin process: covered by the unit tier's shutdown scenarios (reboot on silicon too), not driven here.
+// twin process: covered at L1, by the twin CI suite's Run 13 and (reboot) on silicon, not driven here.
 /** @type {Record<string, (testCase: PutFieldCase) => Promise<void>>} */
 const ACTION_PROBES = {
     async ResetErrors(testCase) {

@@ -1,6 +1,6 @@
 """Records a generated device's boot from outside, in run order: each module's construction and setup unit,
-SystemService's phase marks and feeds, and every step main() awaits. Entering supervise_tasks() stops the run;
-restore() undoes every wrap. It imports no fake, so every test tier can use it."""
+SystemService's phase marks and feeds, and every step main() awaits; expected_entries() is the same view of buildgen's
+expected sequence. Entering supervise_tasks() stops the run; it imports no fake, so every test tier can use it."""
 
 try:
     from typing import TYPE_CHECKING
@@ -120,3 +120,22 @@ class BootRecorder:
 
     def stopped_by(self, exc: BaseException) -> bool:
         return isinstance(exc, _StopError)
+
+
+def expected_entries(sequence: "dict[str, list[str]]") -> "list[tuple[str, str]]":
+    # The recorder's view of a build's boot sequence (its expected-facts "boot_sequence"): a step's inner entries
+    # between its call and its return, the webserver built last; the last step, the supervisor, never returns.
+    entries: list[tuple[str, str]] = []
+    for step in sequence["phases"]:
+        if step.startswith("BOOT_"):
+            entries.append(("phase", step))
+            continue
+        entries.append(("call", step))
+        if step == "build_system":
+            entries += [("construct", name) for name in sequence["construction"] + ["webserver"]]
+        elif step == "run_setups":
+            for name in sequence["setups"]:
+                entries += [("setup", name), ("feed", "")]
+        if step != sequence["phases"][-1]:
+            entries.append(("return", step))
+    return entries

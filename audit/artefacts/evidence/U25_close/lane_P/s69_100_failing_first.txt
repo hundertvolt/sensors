@@ -1,0 +1,15 @@
+E       AssertionError: []
+E       assert {'test_digita...ensortask.py'} <= set()
+E         
+E         Extra items in the left set:
+E         'test_sensortask.py'
+E         'test_digital_twin_construction.py'
+E       AssertionError: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython: can't open file 'tests/test_sensortask.py': [Errno 2] No such file or directory
+E         
+E       AssertionError: 
+E       assert False
+E        +  where False = <built-in method endswith of str object at 0xa314a0>('RuntimeError: run through scripts/test.sh, or set TEST_DEVICE to one of devices/*.toml')
+E        +    where <built-in method endswith of str object at 0xa314a0> = ''.endswith
+E       AssertionError: Traceback (most recent call last):
+E           File "tests/test_digital_twin_construction.py", line 23, in <module>
+E           File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25p/tests/_digital_twin_construction_scenarios.py", line 193, in register_for_device

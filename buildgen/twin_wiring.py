@@ -1,4 +1,4 @@
-"""Derives the digital twin's per-device wiring plan (which chip fake sits at which bus address, the FRAM on its SPI bus, the UART crossover pair, every declared driver) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time (SPECIFICATION.md Part L.4).
+"""Derives the digital twin's per-device wiring plan (which chip fake sits at which bus address, the FRAM on its SPI bus, each bus's pins, the UART crossover pair, every declared driver) from a validated `DeviceModel` - the same shape `digital_twin/machine.py`'s `configure_wiring()` consumes at twin-boot time (SPECIFICATION.md Part L.4).
 See `digital_twin/README.md`'s "Booting a generated device" section for the twin-side half of this mechanism."""
 
 from typing import NotRequired, TypedDict, cast
@@ -6,8 +6,8 @@ from typing import NotRequired, TypedDict, cast
 from buildgen.buildspec import ADDRESS_CAPABLE_DRIVERS, BUS_ATTACHED_DRIVERS, FIXED_ADDRESS_DRIVERS
 from buildgen.driver_registry import DriverInfo
 from buildgen.errors import BuildError
-from buildgen.model import DeviceModel, InstanceSpec
-from buildgen.validate import module_int_const
+from buildgen.model import DeviceModel, InstanceSpec, TomlDoc
+from buildgen.validate import _BUS_WIRE_FIELDS, _VALID_BUS_IDS, module_int_const
 
 _NO_ADDRESS_FIX = "declare the driver's I2C address as a module-level const in its src/ file, or add it to buildspec.ADDRESS_CAPABLE_DRIVERS"
 
@@ -25,6 +25,22 @@ class SpiAttachment(TypedDict):
     max_size: int
 
 
+class I2CPins(TypedDict):
+    scl: int
+    sda: int
+
+
+class SpiPins(TypedDict):
+    sck: int
+    mosi: int
+    miso: int
+
+
+class UartPins(TypedDict):
+    tx: int
+    rx: int
+
+
 class UartPair(TypedDict):
     # The two UART buses carrying the crossover pair, named by the generated global each bus is
     # bound to (its [bus.<id>] table), so a caller can getattr() the built driver off the booted module.
@@ -36,8 +52,18 @@ class TwinWiringPlan(TypedDict):
     device: str
     buses: dict[str, list[I2CAttachment]]
     spi: dict[str, SpiAttachment]
+    pins: dict[str, I2CPins | SpiPins | UartPins]  # every [bus.<id>] table's wire pins by role, in TOML order
     uart: UartPair | None  # None on a device without a uart_link pair.
     instances: list[str]  # every driver the TOML declares, bus-attached or not, sorted
+
+
+def _compute_pins(model: DeviceModel) -> "dict[str, I2CPins | SpiPins | UartPins]":
+    # Each bus's wire fields by role ("scl_pin" -> "scl"); build_model() refused a table missing one or of an unknown id.
+    pins: dict[str, I2CPins | SpiPins | UartPins] = {}
+    for bus_id, table in cast("dict[str, TomlDoc]", model.doc.get("bus", {})).items():
+        fields = _BUS_WIRE_FIELDS[_VALID_BUS_IDS[bus_id]]
+        pins[bus_id] = cast("I2CPins | SpiPins | UartPins", {field.removesuffix("_pin"): table[field] for field in fields})
+    return pins
 
 
 def _compute_uart_wiring(model: DeviceModel) -> "UartPair | None":
@@ -93,7 +119,7 @@ def compute_twin_wiring(model: DeviceModel) -> TwinWiringPlan:
             attachment["irq_pin"] = _validated_int(spec, "irq_pin")
         buses.setdefault(bus_name, []).append(attachment)
     instances = sorted({spec.driver for spec in model.instances.values()})
-    return {"device": model.device, "buses": buses, "spi": spi, "uart": _compute_uart_wiring(model), "instances": instances}
+    return {"device": model.device, "buses": buses, "spi": spi, "pins": _compute_pins(model), "uart": _compute_uart_wiring(model), "instances": instances}
 
 
 def fixed_address(info: DriverInfo, *, device: str = "<src>", instance: str | None = None) -> int:

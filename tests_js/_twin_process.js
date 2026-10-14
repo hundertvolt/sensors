@@ -3,8 +3,8 @@
 // the verdict read from a stopped twin's output.
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { acquirePortLock } from "./_port_lock.js";
@@ -22,6 +22,7 @@ const MISSING_INTERPRETER = `MicroPython Unix port not built at ${MICROPYTHON_BI
 // Every twin's captive DNS binds this product-fixed port, so a twin runs only while its runner holds the port's lock.
 const DNS_PORT = 53;
 const LOCK_RUNNER = "the vitest live tier";
+const CONFIG_DIR_PREFIX = path.join(tmpdir(), "sensors-live-");
 /** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
 const spawnErrors = new WeakMap();
 /** @type {WeakMap<import("node:child_process").ChildProcess, () => void>} */
@@ -96,6 +97,26 @@ export function requireInterpreter() {
     }
 }
 
+/**
+ * A fresh config directory for one command's twins: its own, under the OS temp directory, never the manual run's
+ * digital_twin/config/, which no command touches.
+ * @returns {string}
+ */
+export function makeConfigDir() {
+    return mkdtempSync(CONFIG_DIR_PREFIX);
+}
+
+/**
+ * Removes a directory makeConfigDir() made, and refuses any other.
+ * @param {string} dir
+ */
+export function removeConfigDir(dir) {
+    if (!path.resolve(dir).startsWith(CONFIG_DIR_PREFIX)) {
+        throw new Error(`refusing to remove ${dir}: not a config directory makeConfigDir() made`);
+    }
+    rmSync(dir, { recursive: true, force: true });
+}
+
 /** @param {number} ms */
 export function sleep(ms) {
     return new Promise((resolve) => {
@@ -106,11 +127,12 @@ export function sleep(ms) {
 /**
  * Boots `device`'s twin on `port` once its runner holds the captive-DNS lock; build/generated_src first, since
  * sensortask_<device>.py exists only there (SPECIFICATION.md Part L.2), and its own site, build/generated_html/<device>,
- * written with it by package.json's "pretest" hooks, so a twin never serves another device's site.
- * @param {{device: string, port: number}} twin
+ * written with it by package.json's "pretest" hooks, so a twin never serves another device's site. Its config directory is
+ * the caller's (makeConfigDir()); every other state path is in memory, so nothing persists past the command.
+ * @param {{device: string, port: number, configDir: string}} twin
  * @returns {import("node:child_process").ChildProcess}
  */
-export function spawnTwin({ device, port }) {
+export function spawnTwin({ device, port, configDir }) {
     const release = acquirePortLock(DNS_PORT, LOCK_RUNNER);
     const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
     const proc = spawnOrRelease(release, () => spawn(
@@ -131,6 +153,10 @@ export function spawnTwin({ device, port }) {
             "", // in-memory only - see digital_twin/README.md's "FRAM persistence" section for this convention
             "--scd30-state-path",
             "", // same convention, "SCD30 persistence" section
+            "--mem-backup-state-path",
+            "", // the watchdog scratch registers, likewise
+            "--config-dir",
+            configDir,
         ],
         {
             cwd: REPO_ROOT,

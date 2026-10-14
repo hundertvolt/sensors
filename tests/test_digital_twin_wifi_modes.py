@@ -22,11 +22,15 @@ prewarm_poll_set()
 patch_asy_udp_socket_for_unix_port()
 
 import machine  # noqa: E402
+import microtest  # noqa: E402
+import network  # noqa: E402
 import run_generic_integration  # noqa: E402
 from _async_harness import cancel, run_timed  # noqa: E402
 from _error_codes import code  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from network import STAT_GOT_IP, set_access_point_up  # noqa: E402
+
+import asy_wifi_service  # noqa: E402
 
 try:
     from typing import TYPE_CHECKING
@@ -44,15 +48,52 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-# @tunable l2.wifi_modes_wait_poll_s = 0.25
-_WAIT_POLL_S = 0.25
+# @tunable l2.wifi_modes_wait_poll_s = 0.1
+_WAIT_POLL_S = 0.1
 # @tunable l2.wifi_modes_wait_timeout_s = 25.0
 _WAIT_TIMEOUT_S = 25.0
 # @tunable l2.wifi_modes_run_bound_s = 200.0
 _RUN_BOUND_S = 200.0
+_POOL = 16  # rp2's alarm pool: digital_twin/machine.py's _ALARM_POOL_SIZE
+# The WiFi service's own sleeps run this many times faster: its periods and settles are not under test, its transitions.
+# @tunable l2.wifi_modes_sleep_scale = 5
+_SLEEP_SCALE = 5
 _WEB_PORT = 19200  # a range of its own beside the other twin files'; never bound, as the scenario starts no webserver
 
 _scratch = TmpScratch("wifi_modes")
+microtest.after_each(machine.reset_test_state)
+microtest.after_each(network.reset_test_state)
+
+
+class _ScaledAsyncio:
+    # asy_wifi_service's view of asyncio, each sleep _SLEEP_SCALE times shorter; everything else the real module.
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    async def sleep(self, seconds: float) -> None:
+        await asyncio.sleep(seconds / _SLEEP_SCALE)
+
+
+async def _await_failed_arm(conn: "WifiService", site: str, trigger: "Callable[[], None]") -> None:
+    # `trigger` leads to the site's window arm, refused: one more E TIMER persisted, the streak fed, the timer not
+    # running, and the "hotspot timer started" line never printed; conn.pr.evt is wrapped from before the trigger.
+    lines: list[tuple[object, ...]] = []
+    errors = (await _wifi_log(conn))[1].count(("E", code("E", "TIMER")))
+    conn.pr.evt = lambda *args, **_kwargs: lines.append(args)  # type: ignore[method-assign]  # records, deleted below
+    try:
+        trigger()
+
+        async def failed() -> bool:
+            return (await _wifi_log(conn))[1].count(("E", code("E", "TIMER"))) > errors
+
+        persisted = await _wait_until_async(failed)
+        assert persisted, site + ": the refused arm persisted no E TIMER"
+        fed = await _wait_until(lambda: conn._err_cnt_internal >= 1)
+    finally:
+        del conn.pr.evt
+    assert fed, site + ": the refused arm never fed the hardware streak"
+    assert not conn._hotspot_timer_running, site + ": the timer reads running after a refused arm"
+    assert not any("hotspot timer started" in " ".join(str(a) for a in line) for line in lines), (site, lines)
 
 
 async def _await_hotspot_window(conn: "WifiService", streak: str) -> None:
@@ -85,6 +126,11 @@ async def _end_hotspot_window(conn: "WifiService") -> None:
     assert reached, "(b) the streak after the hotspot window ended in phase " + str(conn._conn_phase) + ", not the silent mode"
 
 
+def _fast_forward(conn: "WifiService") -> None:
+    # The streak under way fast-forwarded to its last attempt, as _await_hotspot_window() does.
+    conn._connection_failures = conn._conn_fail_to_hotspot - 1
+
+
 def _fire(timer: "machine.Timer") -> None:
     # One period's end as the timer delivers it: the twin's Timer keeps the callback it was armed with.
     assert timer.callback is not None, "the window's timer is not armed"
@@ -94,6 +140,15 @@ def _fire(timer: "machine.Timer") -> None:
 async def _first_attempt(conn: "WifiService") -> None:
     started = await _wait_until(lambda: len(conn._wlan.connect_calls) > 0)
     assert started, "(c) the boot streak never made its first attempt"
+
+
+def _run_scaled(scenario: "Coroutine[object, object, None]") -> None:
+    # The scenario with the WiFi service's sleeps scaled down; the real asyncio restored after it.
+    asy_wifi_service.asyncio = _ScaledAsyncio()  # type: ignore[attr-defined, assignment]
+    try:
+        run_timed(scenario, timeout_s=_RUN_BOUND_S)
+    finally:
+        asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
 
 
 def _scenario_plan() -> "dict[str, object]":
@@ -178,9 +233,9 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             # persisted once however often it recurs.
             assert conn._ap_selected, "(c) the boot hotspot runs on another interface than the AP"
             ap = conn._wlan
-            # The twin's AP never reports a link (its AP-mode gap, digital_twin/README.md "What's here"), where an active
-            # AP on silicon reports STAT_GOT_IP (owner, 2026-09-29): poked here, so the stations check runs at all.
-            ap._status = STAT_GOT_IP
+            # An active AP reports STAT_GOT_IP, as on silicon (owner, 2026-09-29); one listed client is poked in, so the
+            # stations check runs at all.
+            assert ap.status() == STAT_GOT_IP, "(c) the active twin AP reports no link"
             ap._stations = [(b"\x02\x00\x00\x00\x00\x01",)]
             stopped = await _wait_until(lambda: not conn._hotspot_timer_running)
             assert stopped, "(c) a listed client never stopped the hotspot window"
@@ -202,6 +257,11 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             assert results == {"SSID": "Valid", "PW": "Valid"}, ("(a)", results)
             left = await _wait_until(lambda: not conn._reconnect_fresh and conn._conn_phase == seeking)
             assert left and not conn._hotspot_started_once, "(a) the settings change did not land in the fresh-boot state"
+            # The window's arm failing (the alarm pool empty) is the iteration's hardware failure: one E TIMER, the
+            # streak fed, no "timer started" line (owner, 2026-10-13: "Take option b for 2"); the pool back, it arms.
+            machine.set_alarm_pool_free(0)
+            await _await_failed_arm(conn, "(a) the reopened hotspot's window", lambda: _fast_forward(conn))
+            machine.set_alarm_pool_free(_POOL)
             await _await_hotspot_window(conn, "(a) the settings change's failed streak")
             _count, log = await _wifi_log(conn)
             assert (log.count(to_hotspot), log.count(silent_entry)) == (2, 0), ("(a)", log)
@@ -212,11 +272,14 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
             # (b) The window ends and the second streak goes silent: no hotspot, the STA interface, the LED dark.
             await _end_hotspot_window(conn)
             assert (conn.is_hotspot_active(), conn._dns_server_task, conn._ap_selected) == (False, None, False), "(b) a hotspot is left in the silent mode"
-            while len(pixel._pixel.writes):  # every frame from here on is the silent mode's
-                pixel._pixel.writes.popleft()
-            # A task restart keeps the mode and re-arms its period.
+            pixel._pixel.writes.clear()  # every frame from here on is the silent mode's
+            # A task restart keeps the mode and re-arms its period; with the pool empty that arm fails as the window's
+            # does, the streak fed and the mode kept, and the pool back it arms (owner, 2026-10-13, as above).
             await cancel(tasks.pop())
-            tasks.append(conn.start_asy_connect())
+            machine.set_alarm_pool_free(0)
+            await _await_failed_arm(conn, "(b) the silent mode's period", lambda: tasks.append(conn.start_asy_connect()))
+            assert conn._conn_phase == silent, "(b) a failed period arm left the silent mode"
+            machine.set_alarm_pool_free(_POOL)
             rearmed = await _wait_until(lambda: conn._hotspot_timer_running)
             assert rearmed and conn._conn_phase == silent, "(b) a task restart in the silent mode lost the mode or its period"
             # One period with the network still down: one attempt, no link, still silent and dark.
@@ -240,7 +303,7 @@ def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:
                 ap.stations_chip_down = False
             await _stop_scenario(conn, tasks)
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    _run_scaled(scenario())
 
 
 if __name__ == "__main__":

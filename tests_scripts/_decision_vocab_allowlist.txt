@@ -48,12 +48,10 @@ SPECIFICATION.md	**Single source of truth: `buildgen/version.py`** (`FIRMWARE_VE
 SPECIFICATION.md	**The persistence counter** was settled with both thresholds parked at `0x0000`,
 SPECIFICATION.md	**This backstop is safe in practice, with one narrow, accepted residual window (
 SPECIFICATION.md	**Vitest in real-browser mode** (`@vitest/browser-playwright`, real Chromium, de
-SPECIFICATION.md	**`unwedge_heap_after_interrupt()`'s three call sites are kept, deliberately, as
 SPECIFICATION.md	- **Frame codecs for a byte-stream link** — `asy_framing_codecs.py`'s `FramingBa
 SPECIFICATION.md	- **Part M** — Chip Reference (per-chip measured behaviour and settled requireme
 SPECIFICATION.md	- **SPECIFICATION.md Part M** — a new `M.<n>` section for any real, datasheet-de
 SPECIFICATION.md	- **Tested to the same bar as `src/` code**: correct-path functioning, full erro
-SPECIFICATION.md	- **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — is un
 SPECIFICATION.md	- The value space (`0 … 0xFE`, 255 values) is **exactly** as large as the longes
 SPECIFICATION.md	- [ ] `buildgen/driver_registry.py` — confirmed auto-resolves, or a deliberate `
 SPECIFICATION.md	- `Request.max_content_length` — the largest body that is *accepted*;
@@ -115,39 +113,19 @@ buildgen/requires_tag.py	"#+" so a "## @requires ..." section-style comment is a
 buildgen/tag_comments.py	"label=" or "special:0=" - deliberately not anchored to a specific key name, sin
 buildgen/tag_comments.py	Deliberately not the
 buildgen/web_tag.py	"#+" so a "## @web ..." section-style comment is accepted, matching every other
-digital_twin/README.md	- **The `wire_log` clearer.** `UARTLink.wire_log` is unbounded by design, so a u
 digital_twin/README.md	- **`--mem-sample-interval-ms`** — `gc.mem_free()` exists only inside this proce
-digital_twin/README.md	- **`segfault_stress_repro.py`** is a manual, deliberately-aggressive concurrenc
-digital_twin/README.md	- `network.py` / `neopixel.py` — independent, deliberately duplicated (not reuse
-digital_twin/README.md	5c also confirms the pause itself does *not* survive the reboot (RAM-only by des
-digital_twin/README.md	A commanded reboot, taken with storage paused — the case that must never lose an
-digital_twin/README.md	Deliberately kept hardcoded to `sensortask_wozi`, not generalized to `run_generi
-digital_twin/README.md	FRAM itself is deliberately excluded from the sweep for a different reason: its
 digital_twin/README.md	Once the interpreter unfreezes, `asy_system_service.py`'s periodic `feed()` (its
-digital_twin/README.md	That loss is **accepted behavior** (project owner's call, 2026-09-11 — no recove
 digital_twin/README.md	The value sits just **above** the server's own `outer_cap_s`, deliberately: belo
-digital_twin/README.md	This run also deliberately does **not** claim SGP40's FRAM-backed history surviv
 digital_twin/README.md	Two things could not, and both are deliberate:
 digital_twin/README.md	`Timer` fires for real on a wall-clock schedule via an internal `asyncio` task,
 digital_twin/README.md	`_isl29125_chip.py` is **dev-only** (`wozi` does not carry this sensor) and is t
-digital_twin/README.md	`digital_twin/launch.py --hang DEVICE:OP:SECONDS[:TIMES]` (also accepted by `dig
 digital_twin/README.md	`digital_twin` sits between `src` and `frozen_modules`/`.frozen` — never togethe
 digital_twin/README.md	`fram` is deliberately absent from that set even though its own log genuinely is
-digital_twin/README.md	`network.py`'s one real behavioral difference: `WLAN.connect()` transitions to a
 digital_twin/_crc8.py	Independent CRC-8 reimplementation (Sensirion polynomial 0x31, init 0xFF) shared
-digital_twin/_isl29125_chip.py	A persistent behavioural MODE, deliberately not a FaultInjector entry: that prim
 digital_twin/_isl29125_chip.py	Deliberately NOT the nominal 10000/375 = 26.67: the driver's gain-ratio self-cal
 digital_twin/_isl29125_chip.py	Destructive by design (p11/p12): the transfer clears RGBTHF, CONVENF and BOUTF a
-digital_twin/_isl29125_chip.py	Models the destructive 0x08 status read, the active-low INT line, `BOUTF` high a
-digital_twin/_isl29125_chip.py	That flag is the whole signal the driver's recovery path keys on, and _reset() d
 digital_twin/_isl29125_chip.py	p12, Table 18 - HIGH at power-up by design
-digital_twin/launch.py	Bus devices only - "wlan" has no real blocking call for time.sleep() to stand in
-digital_twin/machine.py	Digital-twin fake `machine` module - real-time-firing `Timer`, I2C/SPI wired to
 digital_twin/machine.py	Spelled out rather than **kwargs-forwarded so the accepted settings are statical
-digital_twin/machine.py	Twin-only: real hardware can never be asked "would you have reset by now".
-digital_twin/run_generic_integration.py	deliberately reused, not reimplemented - see digital_twin/README.md
-digital_twin/segfault_stress_repro.py	Manual, deliberately-aggressive concurrency stress tool for the (now root-caused
-digital_twin/segfault_stress_repro.py	read_body=False: only ever checks that the request didn't raise - see _http_clie
 digital_twin/unix_port_poll_prewarm.py	A fresh socket per attempt, because a bind that failed leaves nothing worth reus
 digital_twin/unix_port_poll_prewarm.py	Only the accepted server-side socket has to stay registered to force pollfds gro
 host_typecheck.ini	it holds two trivial fixtures - an accepted gap (B.15).
@@ -160,16 +138,12 @@ pyproject.toml	S110 wants a log call at sites that are deliberately silent;
 pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they r
 pyproject.toml	`assignment` is deliberately not disabled.
 pyproject.toml	asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: P
-scripts/_digital_twin_ci_suite.py	---- Run 5c: the case that must NEVER lose anything, a commanded reboot.
-scripts/_digital_twin_ci_suite.py	It deliberately does NOT assert that SGP40's history survived Run 3, which it ca
-scripts/_digital_twin_ci_suite.py	Not device- or driver-specific, and deliberately small: each one ends the driver
 scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
-scripts/run_digital_twin_ci.sh	Clean wipes leftover digital_twin/*.json state and digital_twin/config/ so every
 scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
@@ -205,12 +179,6 @@ tests/_sensortask_scenarios.py	LEDWifiOn alone must never reconnect
 tests/_sensortask_scenarios.py	The whole point of the generated-module split: importing this test file and call
 tests/_sensortask_scenarios.py	Upstream/downstream error handling: real content must keep flowing through clean
 tests/_uart_link_contract.py	the wire accepted them;
-tests/_webserver_concurrency_scenarios.py	Both the scratch key and the port range are keyed per device, not shared across
-tests/_webserver_concurrency_scenarios.py	One thing this file deliberately does NOT attempt is a "different source host" v
-tests/_webserver_concurrency_scenarios.py	Opens a real connection, sends a deliberately incomplete request (no terminating
-tests/_webserver_concurrency_scenarios.py	Settled, pinned at each device's own ceiling (SPECIFICATION.md H.7): a slot is f
-tests/_webserver_concurrency_scenarios.py	This deliberately revisits that exact scale, repeated, as an in-process regressi
-tests/_webserver_concurrency_scenarios.py	the stall: no await, so nothing is accepted until it ends
 tests/machine.py	One period elapsing with its soft callback lost to a full scheduler queue (Part
 tests/machine.py	test-only: caps bytes accepted per write() call - see write()
 tests/test_asy_api_response.py	Both hooks supplied at once, with the synchronous one raising: post_fct() fires
@@ -218,7 +186,6 @@ tests/test_asy_base_classes.py	Deliberately sync, unlike _get_mgr_cfg/_get_dict_
 tests/test_asy_base_classes.py	Deliberately the inverse of what this test asserted under the old shared-instanc
 tests/test_asy_base_classes.py	type: ignore[return-value] # deliberately malformed, simulating a misbehaving ov
 tests/test_asy_bmp3xx_driver.py	type: ignore[method-assign] # deliberate monkeypatch, not a real caller mismatch
-tests/test_asy_captive_dns.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_captive_dns.py	Many consecutive failures must never grow the pause past the configured ceiling
 tests/test_asy_config_manager.py	-0.0 == 0.0 in IEEE-754 float comparison, and int(-0.0) is the plain int 0 (no n
 tests/test_asy_config_manager.py	An authoring shape that used to be rejected outright (def declared "int" but wri
@@ -235,7 +202,6 @@ tests/test_asy_config_manager.py	upper boundary accepted
 tests/test_asy_config_manager.py	write_config()'s one deferred flush per accepted change
 tests/test_asy_crc_checks.py	Fewer total bytes fed than the CRC width itself must never report a valid (let a
 tests/test_asy_crc_checks.py	a later call passing a (deliberately invalid) init must not retroactively invali
-tests/test_asy_dns_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_dns_client.py	Both are unused by design - it raises before reading them.
 tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0xFF leading byte must be accep
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
@@ -277,7 +243,6 @@ tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, no
 tests/test_asy_notification_service.py	int accepted for a float field, coerced (SPECIFICATION.md Part A.8)
 tests/test_asy_notification_service.py	integral float accepted for an int field, coerced
 tests/test_asy_notification_service.py	must never raise, for any of the above
-tests/test_asy_ntp_client.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_ntp_client.py	Deliberately one single f-string, not a plain literal adjacent to an f-string: c
 tests/test_asy_ntp_client.py	This used to produce a bogus-but-accepted "successful sync".
 tests/test_asy_ntp_client.py	one must never suppress the other's slot.
@@ -306,7 +271,6 @@ tests/test_asy_uart_driver.py	J.5's "provably terminating" half: a lock holder t
 tests/test_asy_uart_driver.py	Not reentrant by design (a plain asyncio.Lock, same as I2CDevice/SPIDevice's sha
 tests/test_asy_uart_driver.py	Two consecutive delimiters must never surface as a zero-length frame to index in
 tests/test_asy_uart_driver.py	never touches the bus again
-tests/test_asy_udp_socket.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_asy_udp_socket.py	type: ignore[assignment] # deliberate monkeypatch, not a real caller mismatch
 tests/test_asy_udp_socket.py	write() semantically requires a connected socket, so calling it on a bound-but-u
 tests/test_asy_webserver_service.py	A /networking PUT of exactly payload_bytes, carrying a REAL field ("Interval") n
@@ -355,9 +319,7 @@ tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypa
 tests/test_bus_hazard_multi_device.py	And BMP3xx's own address must never appear mixed into a general-call entry - the
 tests/test_bus_hazard_multi_device.py	Parallel sessions: multiple concurrent CALLERS hitting the SAME device instance,
 tests/test_digital_twin_bus_hazard_concurrency.py	A persistent one degrades to None instead of propagating, and leaves the chunk m
-tests/test_digital_twin_bus_hazard_concurrency.py	Deliberately does NOT reuse _run_real_task_graph_and_assert_healthy(): its share
 tests/test_digital_twin_bus_hazard_concurrency.py	Twin-tier parity for the mock tier's pair of write-protect tests, and the accept
-tests/test_digital_twin_bus_hazard_concurrency.py	wozi's own SGP40+BMP3xx-on-i2c1 pairing can never be confirmed on real hardware
 tests/test_digital_twin_http_client.py	_soak() and _wait_until_serving() never look at a fetched body, so they must nev
 tests/test_digital_twin_http_client.py	deliberately not a multiple of the scratch buffer
 tests/test_digital_twin_isl29125_autorange.py	BOUTF is HIGH at power-up by design (p12, Table 18), so setup() has to clear it
@@ -365,29 +327,15 @@ tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must 
 tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never resolve at all
 tests/test_digital_twin_poll_prewarm.py	Twin-tier coverage for digital_twin/unix_port_poll_prewarm.py's own port handlin
 tests/test_digital_twin_poll_prewarm.py	type: ignore[attr-defined, assignment] # deliberate monkeypatch
-tests/test_digital_twin_real_website_integration.py	"wozi" is hardcoded deliberately, not a stale device-specific leftover (Part L.4
-tests/test_digital_twin_run_generic_integration.py	Deliberately exactly one such test, not a boot-only one plus a separate fault-in
 tests/test_digital_twin_scd30.py	_FixedRandom itself asserts a <= value <= b for every uniform() call - if _produ
-tests/test_digital_twin_sensortask_integration.py	A second real backup mutates the twin's in-memory FRAM image but is deliberately
-tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT drive this through main()/supervise_tasks().
-tests/test_digital_twin_sensortask_integration.py	Deliberately does NOT pre-seed scd30's measurement data the way every other SGP4
-tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
-tests/test_digital_twin_sensortask_integration.py	Deliberately wozi-only - SPECIFICATION.md Part E.2.1 says why.
-tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
-tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
-tests/test_digital_twin_sensortask_integration.py	The generated sensortask_wozi.py's module-level `conn` is typed "Any | None" rat
 tests/test_digital_twin_sgp40.py	CRC trailer deliberately wrong
-tests/test_digital_twin_sgp40.py	digital_twin/ is not on scripts/test.sh's MICROPYPATH, deliberately kept separat
 tests/test_digital_twin_uart_link.py	Drives the responder's own UARTComm.uart_listen() directly rather than UARTLinkD
 tests/test_digital_twin_uart_link.py	The UID wraps at 0xFE, so this deliberately runs past one whole wrap.
-tests/test_digital_twin_unix_port_gc_unwedge.py	The wedged state itself - GC_COLLECT_FLAG stuck in gc_lock_depth after a SIGINT
 tests/test_fram_integration.py	A shared physical chip does not mean shared bookkeeping - each SensorReader gets
 tests/test_fram_integration.py	And the chunk must still be usable afterwards - a wedged chunk that never takes
 tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
 tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
 tests/test_notification_sgp40_integration.py	confirms the baseline genuinely settled before phase 2 starts
-tests/test_ntp_fram_system_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
-tests/test_ntp_wifi_dns_integration.py	Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral s
 tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
 tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
 tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
@@ -521,7 +469,6 @@ tests_scripts/test_buildgen_web_tag.py	GMTOffset/DSTOffset are real asy_ntp_clie
 tests_scripts/test_buildgen_wiring.py	Deleting a piece must never leave a line that silently parses as "no tag declare
 tests_scripts/test_buildgen_wiring.py	The one deletion that does NOT abort, deliberately and consistently with @requir
 tests_scripts/test_coverage_runner.py	NOT the rig binary: this runner installs sys.settrace, and build-standard is del
-tests_scripts/test_device_tomls.py	Each scenario library's `_DEVICES` tuple stays hand-written deliberately: its OR
 tests_scripts/test_device_tomls.py	The on-target sweep keeps its own copy deliberately, being MicroPython on the bo
 tests_scripts/test_digital_twin_boot_contiguity.py	Same import route tests_scripts/test_heap_map_parser.py uses for the same file:
 tests_scripts/test_digital_twin_boot_contiguity.py	The heap size is deliberately NOT calibrated to a fill fraction: every bound bel

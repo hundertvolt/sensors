@@ -13,7 +13,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from typing import TypeVar
 
-    from _isl29125_chip import Isl29125Chip
+    from _isl29125_chip import ISL29125Chip
 
     from asy_isl29125_driver import ISL29125
     from asy_print_log import ErrorLog
@@ -25,10 +25,12 @@ if TYPE_CHECKING:
 sys.path.insert(0, "digital_twin")
 
 import machine
+import microtest
 from _async_harness import cancel_all, run
 from _error_codes import code
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
+from _twin_devices import device_with, wiring_plan
 from machine import Pin
 
 import asy_i2c_driver
@@ -51,26 +53,28 @@ _RED_SCENE_INTERVAL_S = 5
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("digital_twin_isl29125")
-
-
-def _tmp_cfg_path(name: str) -> str:
-    return _scratch.dir(name)
+microtest.after_each(machine.reset_test_state)
 
 
 # Each test is one harness run (its whole() coroutine): the chip's conversion timer is a task, load-bearing
 # below, alive exactly as long as the test and ended with its run.
-async def _make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) -> "tuple[Isl29125Chip, ISL29125_Reader]":
-    # The dev profile is the only one that wires this sensor at all (requirement 18).
-    machine.configure_i2c_wiring("dev")
+async def _make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 0.0) -> "tuple[ISL29125Chip, ISL29125_Reader]":
+    # A device carries this sensor only where its TOML declares an isl29125 instance (SPECIFICATION.md M.1.1 / # req 18).
+    device = device_with("isl29125")
+    plan = wiring_plan(device)
+    ((bus_name, attachment),) = [(bus, a) for bus, attachments in sorted(plan["buses"].items()) for a in attachments if a["driver"] == "isl29125"][:1]
+    pins = plan["pins"][bus_name]
+    machine.reset_peripherals()
+    machine.configure_wiring(plan)
     Pin.reset_registry()
-    i2c = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
+    i2c = asy_i2c_driver.I2C(int(bus_name[3:]), pins["scl"], pins["sda"], frequency=50000)  # type: ignore[typeddict-item]  # an I2C bus's pins
     assert i2c._i2c is not None
-    chip = i2c._i2c.devices[0x44]
+    chip = i2c._i2c.devices[attachment["address"]]
     # The fake keeps CONVERTING on its own timer, and that is load-bearing: a CONFIG1 write restarts
     # the conversion and leaves the previous values readable, so only a real conversion during the
     # settle produces a sample on the new gain. lux_step = 0 switches off the random WALK instead.
     chip._lux_step = 0.0
-    reader = ISL29125_Reader(i2c, 6, cfg_path=_tmp_cfg_path(name))
+    reader = ISL29125_Reader(i2c, attachment["irq_pin"], cfg_path=_tmp_cfg_path(name))
     # AutoRangeDwell defaults to 10 s, which is right on a real bench and would make every test
     # below a ten-second wait. The dwell itself is covered at tier 1
     # (test_switch_down_is_suppressed_inside_the_dwell_window).
@@ -87,7 +91,11 @@ async def _make_dev_reader(name: str, *, resolution: int = 16, dwell_s: float = 
     return chip, reader
 
 
-async def cycle(chip: "Isl29125Chip", reader: ISL29125_Reader, lux: float, tint: "tuple[float, float, float] | None" = None) -> "ISL29125":
+def _tmp_cfg_path(name: str) -> str:
+    return _scratch.dir(name)
+
+
+async def cycle(chip: "ISL29125Chip", reader: ISL29125_Reader, lux: float, tint: "tuple[float, float, float] | None" = None) -> "ISL29125":
     # One complete real cycle: the chip converts at its current gain, the driver reads, decides
     # the range, and stores - exactly the sequence _read_loop() runs, minus the trigger wait.
     chip.set_illumination(lux, tint=tint)
@@ -484,6 +492,38 @@ def test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model()
     run(whole())
 
 
+def test_cal_light_is_not_applicable_on_a_fixed_range() -> None:
+    # A fixed range judges no calibration band: dark, mid and bright each read 0, set through the reader's PUT path.
+    async def whole() -> None:
+        chip, reader = await _make_dev_reader("cal_light_fixed")
+        results = await reader._set_dict_cfg({"RangeAuto": False}, reader.get_cfg_schema())
+        assert results == {"RangeAuto": "Valid"}, results
+
+        async def scenario() -> "list[int | None]":
+            seen = []
+            for lux in (2.0, 300.0, 9500.0):
+                seen.append((await cycle(chip, reader, lux)).CalLight)  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+            return seen
+
+        assert await scenario() == [0, 0, 0]
+
+    run(whole())
+
+
+def test_cal_light_is_not_applicable_while_the_range_switches_then_suitable() -> None:
+    # The cycle that switches the range up reads 0; the next one, on the high range, judges the band again: suitable.
+    async def whole() -> None:
+        chip, reader = await _make_dev_reader("cal_light_settle")
+        await cycle(chip, reader, 100.0)  # from the configured range down to the low one
+        low = await cycle(chip, reader, 100.0)
+        assert low.RangeAct == _RANGE_LOW_LUX, low
+        switching = await cycle(chip, reader, 340.0)  # above the low range's switch-up point
+        settled = await cycle(chip, reader, 340.0)
+        assert (switching.CalLight, settled.CalLight, settled.RangeAct) == (0, 1, _RANGE_HIGH_LUX), (switching, settled)
+
+    run(whole())
+
+
 def test_the_applied_ratio_changes_only_by_a_config_push() -> None:
     async def whole() -> None:
         _chip, reader = await _make_dev_reader("gain_apply", resolution=12)
@@ -556,7 +596,7 @@ def test_a_real_brownout_is_detected_reconfigured_and_recovered_from() -> None:
 
         async def scenario() -> "tuple[ISL29125, ISL29125, ErrorLog]":
             good = await cycle(chip, reader, 200.0)
-            chip.simulate_brownout()  # a supply dip: power-on defaults AND BOUTF high, unlike 0x46
+            chip.power_cycle()  # a supply dip: power-on defaults AND BOUTF high, unlike 0x46
             recovering = await cycle(chip, reader, 200.0)
             recovered = await cycle(chip, reader, 200.0)
             assert recovering.Lux == good.Lux  # the brownout cycle stored nothing new
@@ -581,7 +621,7 @@ def test_each_brownout_is_one_warning_and_nothing_else() -> None:
             seen = [await reader.get_error_counter()]
             await cycle(chip, reader, 200.0)
             for _ in range(2):
-                chip.simulate_brownout()
+                chip.power_cycle()
                 await cycle(chip, reader, 200.0)
                 await cycle(chip, reader, 200.0)
                 seen.append(await reader.get_error_counter())

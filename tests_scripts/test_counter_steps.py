@@ -1,4 +1,4 @@
-"""Counters stay allocation-free (SPECIFICATION.md G.2): over src/ and every device's generated modules, no
+"""Counters stay allocation-free (SPECIFICATION.md G.2): over src/, every device's generated modules and the twin, no
 min(x + n, cap) step, no cap or max_val above COUNTER_CAP (2**30 - 1, the largest small int), and every
 integer += / -= on an attribute checks a bound before it steps, resets at a threshold, or is listed below."""
 
@@ -110,7 +110,7 @@ def min_steps(path: str, tree: ast.Module) -> list[str]:
 @pytest.fixture(scope="module")
 def modules(tmp_path_factory: pytest.TempPathFactory) -> list[tuple[str, ast.Module]]:
     out = tmp_path_factory.mktemp("generated_src")
-    found = [(f"src/{p.name}", ast.parse(p.read_text(encoding="utf-8"))) for p in sorted((REPO_ROOT / "src").glob("*.py"))]
+    found = [(f"{d}/{p.name}", ast.parse(p.read_text(encoding="utf-8"))) for d in ("src", "digital_twin") for p in sorted((REPO_ROOT / d).glob("*.py"))]
     for device in DEVICE_NAMES:
         generated = generate_device(REPO_ROOT / "devices" / f"{device}.toml", REPO_ROOT / "src", REPO_ROOT / "ext")
         for name, source in ((f"sensortask_{device}", generated.module_source), (f"sensortask_{device}_main", generated.boot_entry_source), (f"sensortask_{device}_main_noautostart", generated.boot_entry_noautostart_source)):
@@ -181,6 +181,13 @@ def test_the_logger_s_capped_counter_is_not_flagged(modules: list[tuple[str, ast
     source = (REPO_ROOT / "src" / "asy_print_log.py").read_text(encoding="utf-8")
     assert re.search(r"if self\._err_count < \w+:\n\s+self\._err_count \+= 1", source), "the logger's capped step moved - re-point this test"
     assert ("src/asy_print_log.py", "PrintLogHistory._err_count") not in _all_steps(modules)
+
+
+def test_the_twin_scans_and_keeps_its_own_copy_of_the_counter_cap(modules: list[tuple[str, ast.Module]]) -> None:
+    # The twin imports nothing from src/ (digital_twin/_twin_common.py), so its cap is a copy pinned equal here.
+    trees = dict(modules)
+    assert any(path.startswith("digital_twin/") for path in trees), "the twin dropped out of the scan"
+    assert _int_constants(trees["digital_twin/_twin_common.py"])["COUNTER_CAP"] == _int_constants(trees["src/asy_base_classes.py"])["COUNTER_CAP"] == _SMALL_INT_MAX
 
 
 def test_the_voc_uptime_counters_stay_small_ints(modules: list[tuple[str, ast.Module]]) -> None:

@@ -11,6 +11,7 @@ from _devices import DEVICE_NAMES
 
 _TWIN_PREFIX = "test_digital_twin_"
 _CI_SUITE = "scripts/_digital_twin_ci_suite.py"
+_HARNESS = "scripts/_digital_twin_scenarios.py"
 _FLASH_HAZARDS = "tests_hardware/flash/test_bus_concurrency.py"
 _BENCH_HAZARDS = "tests_hardware/bench/test_bus_concurrency_under_api_load.py"
 _BENCH_RUNNER = "scripts/run_bench_hardware_suite.sh"
@@ -39,8 +40,20 @@ def _ci_suite_ids(repo_root: Path) -> "set[str]":
     return ids
 
 
+def _harness_families(repo_root: Path) -> "set[str]":
+    # The host-side harness's scenarios by the family each declares (its @scenario's family= literal), one id per family
+    # as an in-DUT file was one; a family ported from a retired file keeps that file's name.
+    decorators = [deco for node in ast.walk(ast.parse((repo_root / _HARNESS).read_text())) if isinstance(node, ast.FunctionDef) for deco in node.decorator_list]
+    calls = [deco for deco in decorators if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Name) and deco.func.id == "scenario"]
+    names = [(ast.unparse(call.args[0]) if call.args else "?", next((kw.value for kw in call.keywords if kw.arg == "family"), None)) for call in calls]
+    assert len(names) >= 40, f"{_HARNESS} holds only {len(names)} scenarios - the scan has stopped seeing them"
+    bare = [name for name, family in names if not (isinstance(family, ast.Constant) and isinstance(family.value, str))]
+    assert not bare, f"harness scenarios naming no family literal: {bare}"
+    return {family.value for _, family in names if isinstance(family, ast.Constant) and isinstance(family.value, str)}
+
+
 def _twin_ids(repo_root: Path) -> "set[str]":
-    return set(_families(repo_root)) | _ci_suite_ids(repo_root)
+    return set(_families(repo_root)) | _ci_suite_ids(repo_root) | _harness_families(repo_root)
 
 
 def _level_modules(repo_root: Path) -> "list[Path]":
@@ -128,8 +141,10 @@ def test_no_exception_row_names_a_covered_scenario(repo_root: Path) -> None:
 
 
 def test_every_per_device_family_spans_the_device_set(repo_root: Path) -> None:
+    # A family is per device as one wrapper per device, or as one PER_DEVICE file scripts/test.sh runs for every device.
     families = {name: devices for name, devices in _families(repo_root).items() if devices}
-    assert families, "no per-device twin family found - the collapse has stopped seeing them"
+    per_device_files = [p for p in (repo_root / "tests").glob(f"{_TWIN_PREFIX}*.py") if "PER_DEVICE = True" in p.read_text().splitlines()]
+    assert families or per_device_files, "no per-device twin family found - the collapse has stopped seeing them"
     short = {name: sorted(set(DEVICE_NAMES) - devices) for name, devices in families.items() if devices != set(DEVICE_NAMES)}
     assert not short, f"per-device twin families missing devices of devices/*.toml: {short}"
 

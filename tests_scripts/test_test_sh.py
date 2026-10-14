@@ -4,6 +4,7 @@ Both are ordering/naming contracts, so they are asserted against the script's ow
 
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -1063,7 +1064,7 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     results = tmp_path / "results"
     results.mkdir()
     for test_file, (status, log, memerr) in jobs.items():
-        tag = Path(test_file).stem
+        tag = _tag(test_file)
         for suffix, content in (("status", status), ("log", log), ("memerr", memerr)):
             if content is not None:
                 (results / f"{tag}.{suffix}").write_text(content)
@@ -1084,11 +1085,11 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     )
     (stub_bin / "uv").chmod(0o755)
     lwip_host_files = [name for name in jobs if name.startswith("tests/lwip_host/")]
-    files = " ".join(name for name in jobs if not (coverage and name in lwip_host_files))
+    files = " ".join(shlex.quote(name) for name in jobs if not (coverage and name in lwip_host_files))
     script = tmp_path / "tail.sh"
     script.write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'test_files=({files})\nlwip_host_files=({" ".join(lwip_host_files)})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
+        "#!/usr/bin/env bash\nset -euo pipefail\n" + _job_tag_body(repo_root) + "\n"
+        f'job_list=({files})\nlwip_host_files=({" ".join(lwip_host_files)})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
         f'tests_scripts_status_file="{status_file}"\nevidence_archived=0\n'
         f"{_verdict_tail(repo_root)}\n",
     )
@@ -1097,6 +1098,18 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
         env.pop(name, None)
     done = subprocess.run(["/bin/bash", str(script)], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=120)
     return done.returncode, done.stdout, root
+
+
+def _tag(job: str) -> str:
+    # A job's tag as scripts/test.sh forms it: the file's stem, then "[<device>]" for one device's job.
+    test_file, bracket, device = job.partition("[")
+    return Path(test_file).stem + bracket + device
+
+
+def _job_tag_body(repo_root: Path) -> str:
+    body = re.search(r"^_job_tag\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body, "scripts/test.sh no longer defines _job_tag()"
+    return body.group(0)
 
 
 def _block(out: str) -> str:
@@ -1288,13 +1301,13 @@ class _JobLimits(NamedTuple):
 _JOB_LIMITS = _JobLimits()
 
 
-def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False, limits: _JobLimits = _JOB_LIMITS, env: "dict[str, str] | None" = None) -> Path:
+def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_attempts: str, *, own_binary: bool = False, limits: _JobLimits = _JOB_LIMITS, env: "dict[str, str] | None" = None, device: str = "") -> Path:
     # Runs scripts/test.sh's own run_test_file() for one fixture test file over a stub interpreter whose first call
     # runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir, its stderr in tmp_path/stderr.
-    # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails.
+    # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
     text = _test_sh_text(repo_root).replace("--kill-after=10 ", f"--kill-after={limits.kill_after_s} ")
-    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_flag_memory_errors", "run_test_file")]
-    assert all(bodies), "scripts/test.sh no longer defines _flag_memory_errors() and run_test_file()"
+    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_job_tag", "_flag_memory_errors", "run_test_file")]
+    assert all(bodies), "scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()"
     calls = tmp_path / "calls"
     stub = tmp_path / "micropython"
     stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n')
@@ -1312,7 +1325,7 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
         f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s={limits.timeout_s}\nmax_attempts={limits.attempts}\n'
         "declare -A per_file_timeout_overrides_s=()\n"
         + "\n".join(b.group(0) for b in bodies if b)
-        + f'\nrun_test_file tests/test_x.py "{results}/test_x.status"' + (f' "{stub}"' if own_binary else "") + "\n",
+        + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{device}]" if device else "tests/test_x.py")}.status" "{device}"' + (f' "{stub}"' if own_binary else "") + "\n",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=120)
     (tmp_path / "stderr").write_text(done.stderr)
@@ -1382,11 +1395,13 @@ def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and
     assert "  - tests/test_x.py: 1 of 3 tests failed (ABORT test_b_hangs: KeyboardInterrupt:)\n" in _block(out), _block(out)
 
 
+# The count is replaced whole, so --kill-after's SIGKILL never leaves a truncated, empty count file behind.
 _SIGNAL_COUNTER = (
     "import os, signal, time\nr, w = os.pipe()\nos.set_blocking(w, False)\nos.set_blocking(r, False)\n"
     "signal.set_wakeup_fd(w)\nsignal.signal(signal.SIGINT, lambda *_: None)\nseen = 0\nwhile True:\n"
     "    try:\n        seen += len(os.read(r, 64))\n    except BlockingIOError:\n        pass\n"
-    "    with open(os.environ['COUNT_FILE'], 'w') as f:\n        f.write(str(seen))\n    time.sleep(0.01)\n"
+    "    with open(os.environ['COUNT_FILE'] + '.part', 'w') as f:\n        f.write(str(seen))\n"
+    "    os.replace(os.environ['COUNT_FILE'] + '.part', os.environ['COUNT_FILE'])\n    time.sleep(0.01)\n"
 )
 
 
@@ -1449,6 +1464,8 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
         directory.mkdir(parents=True)
     for name in ("test_a", "test_b"):
         (tree / "tests" / f"{name}.py").write_text("")
+    (tree / "build" / "generated_src").mkdir(parents=True)
+    (tree / "build" / "generated_src" / "sensortask_fixture-device_wiring_plan.json").write_text("{}")
     stub = tmp_path / "micropython"
     stub.write_text(
         '#!/usr/bin/env bash\nname="$(basename "${@: -1}" .py)"\n'
@@ -1458,7 +1475,7 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
     stub.chmod(0o755)
     text = _test_sh_text(repo_root)
     functions = re.findall(r"^[A-Za-z_]\w*\(\) \{.*?^\}", text, re.DOTALL | re.MULTILINE)
-    dispatch = text[text.index("_heavy_files_priority=(") : text.index("\nwait || true\n")]
+    dispatch = _dispatch_section(text, ())
     script = tmp_path / "planted.sh"
     script.write_text(
         f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\nport_lock_take 53 scripts/test.sh\n"
@@ -1600,24 +1617,64 @@ def test_a_job_runs_on_the_binary_it_is_given(repo_root: Path, tmp_path: Path) -
     assert log is not None and "the default binary ran" not in log
 
 
-def _dispatch(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
-    # Runs scripts/test.sh's own job list and dispatch loop in a fixture tree, run_test_file stubbed to
-    # record "<file> <binary>"; one job at a time, so the record is in dispatch order.
-    text = _test_sh_text(repo_root)
+_PER_DEVICE_DEVICES = ("fixture-device-b", "fixture-device-a")
+
+
+def _dispatch_section(text: str, heavy: "tuple[str, ...]") -> str:
+    # scripts/test.sh's job list and dispatch loop, up to its final wait, its heavy-file list replaced by `heavy`.
     start = text.index("_heavy_files_priority=(")
-    end = text.index("\nwait || true\n", start)
-    for name in ("tests/test_a.py", "tests/test_b.py", "tests/lwip_host/test_l.py", "tests/lwip_host/helper.py"):
+    listed = text.index("\n)\n", start) + len("\n)\n")
+    return f"_heavy_files_priority=({' '.join(heavy)})\n" + text[listed : text.index("\nwait || true\n", start)]
+
+
+def _heavy_list(text: str) -> "list[str]":
+    start = text.index("_heavy_files_priority=(") + len("_heavy_files_priority=(")
+    return text[start : text.index("\n)\n", start)].split()
+
+
+def test_the_real_heavy_list_names_existing_test_files_once(repo_root: Path) -> None:
+    listed = _heavy_list(_test_sh_text(repo_root))
+    assert listed, "scripts/test.sh lists no heavy file"
+    assert [name for name in listed if not (repo_root / name).is_file() or not Path(name).name.startswith("test_")] == []
+    assert len(set(listed)) == len(listed), listed
+
+
+def test_a_heavy_list_naming_a_missing_file_stops_the_run(repo_root: Path, tmp_path: Path) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        _dispatch(repo_root, tmp_path, coverage=False, heavy=("tests/test_b.py", "tests/test_gone.py"))
+    assert caught.value.returncode == 2
+    assert "scripts/test.sh: heavy-file list names tests/test_gone.py, which does not exist - update _heavy_files_priority" in caught.value.stderr, caught.value.stderr
+    assert not (tmp_path / "dispatched").exists()
+
+
+def test_the_heavy_files_and_every_job_of_theirs_go_first(repo_root: Path, tmp_path: Path) -> None:
+    files = {"tests/test_p.py": "PER_DEVICE = True\n"}
+    assert _dispatch(repo_root, tmp_path, coverage=False, files=files, heavy=("tests/test_p.py", "tests/test_b.py"))[:4] == [
+        "tests/test_p.py[fixture-device-a] /std test_p[fixture-device-a].status",
+        "tests/test_p.py[fixture-device-b] /std test_p[fixture-device-b].status",
+        "tests/test_b.py /std test_b.status",
+        "tests/test_a.py /std test_a.status",
+    ]
+
+
+def _dispatch(repo_root: Path, tmp_path: Path, *, coverage: bool, files: "dict[str, str] | None" = None, devices: "tuple[str, ...]" = _PER_DEVICE_DEVICES, heavy: "tuple[str, ...]" = ()) -> list[str]:
+    # Runs scripts/test.sh's own job list and dispatch loop in a fixture tree (its generated plans for `devices`),
+    # run_test_file stubbed to record "<file>[<device>] <binary> <status file>"; one job at a time, so in dispatch order.
+    text = _test_sh_text(repo_root)
+    planted = {"tests/test_a.py": "", "tests/test_b.py": "", "tests/lwip_host/test_l.py": "", "tests/lwip_host/helper.py": "", **(files or {})}
+    planted.update({f"build/generated_src/sensortask_{d}_wiring_plan.json": "{}" for d in devices})
+    for name, content in planted.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / name).write_text("")
+        (tmp_path / name).write_text(content)
     record = tmp_path / "dispatched"
     script = tmp_path / "dispatch.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'coverage={int(coverage)}\nmax_parallel=1\nresults_dir="{tmp_path}"\nmicropython_bin=/std\nlwip_bin=/lwip\n'
-        f'run_test_file() {{ echo "$1 ${{3:-unset}}" >>"{record}"; }}\n' + text[start:end] + "\nwait || true\n",
+        f'run_test_file() {{ echo "$1${{3:+[$3]}} ${{4:-unset}} ${{2#"$results_dir/"}}" >>"{record}"; }}\n' + _job_tag_body(repo_root) + "\n" + _dispatch_section(text, heavy) + "\nwait || true\n",
     )
     subprocess.run(["/bin/bash", str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    return record.read_text().splitlines()
+    return [" ".join(line.split(" ")[:2]) for line in record.read_text().splitlines()] if files is None else record.read_text().splitlines()
 
 
 def test_the_lwip_host_files_are_dispatched_last_on_the_lwip_binary(repo_root: Path, tmp_path: Path) -> None:
@@ -1627,6 +1684,88 @@ def test_the_lwip_host_files_are_dispatched_last_on_the_lwip_binary(repo_root: P
 def test_a_coverage_run_dispatches_no_lwip_host_file(repo_root: Path, tmp_path: Path) -> None:
     # They exercise C code line coverage cannot see; the plain pass runs them.
     assert _dispatch(repo_root, tmp_path, coverage=True) == ["tests/test_a.py /std", "tests/test_b.py /std"]
+
+
+def test_a_per_device_file_runs_once_per_generated_device_and_any_other_file_once(repo_root: Path, tmp_path: Path) -> None:
+    # The marker is a whole line of its own; mentioning it anywhere else leaves a file a single job.
+    files = {"tests/test_p.py": '"""per device"""\n\nPER_DEVICE = True\n', "tests/test_q.py": "# PER_DEVICE = True\nX = 'PER_DEVICE = True'\n"}
+    assert _dispatch(repo_root, tmp_path, coverage=False, files=files) == [
+        "tests/test_a.py /std test_a.status",
+        "tests/test_b.py /std test_b.status",
+        "tests/test_p.py[fixture-device-a] /std test_p[fixture-device-a].status",
+        "tests/test_p.py[fixture-device-b] /std test_p[fixture-device-b].status",
+        "tests/test_q.py /std test_q.status",
+        "tests/lwip_host/test_l.py /lwip test_l.status",
+    ]
+
+
+def test_a_tree_with_no_generated_device_stops_before_dispatching(repo_root: Path, tmp_path: Path) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        _dispatch(repo_root, tmp_path, coverage=False, files={"tests/test_p.py": "PER_DEVICE = True\n"}, devices=())
+    assert "no build/generated_src/sensortask_<device>_wiring_plan.json" in caught.value.stderr, caught.value.stderr
+    assert not (tmp_path / "dispatched").exists()
+
+
+def test_a_file_whose_marker_cannot_be_read_stops_the_dispatch(repo_root: Path, tmp_path: Path) -> None:
+    # Fails closed, as the memory gate does: an unreadable file is no verdict on its marker, never "runs once".
+    (tmp_path / "tests" / "test_d.py").mkdir(parents=True)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        _dispatch(repo_root, tmp_path, coverage=False, files={"tests/test_p.py": "PER_DEVICE = True\n"})
+    assert "cannot read tests/test_d.py for its PER_DEVICE marker" in caught.value.stderr, caught.value.stderr
+    assert not (tmp_path / "dispatched").exists()
+
+
+_PER_DEVICE_REFUSAL = "RuntimeError: run through scripts/test.sh, or set TEST_DEVICE to one of devices/*.toml"
+
+
+def _per_device_files(repo_root: Path) -> "list[Path]":
+    return sorted(p for p in (repo_root / "tests").glob("test_*.py") if "PER_DEVICE = True" in p.read_text(encoding="utf-8").splitlines())
+
+
+def test_the_per_device_files_are_the_scenario_entries(repo_root: Path) -> None:
+    # The two libraries' entries are dispatched per device, and no other file of theirs remains.
+    names = [p.name for p in _per_device_files(repo_root)]
+    assert {"test_sensortask.py", "test_digital_twin_construction.py"} <= set(names), names
+    assert sorted(p.name for p in (repo_root / "tests").glob("test_sensortask_*.py")) == [], "a per-device wrapper is back"
+    assert sorted(p.name for p in (repo_root / "tests").glob("test_digital_twin_construction_*.py")) == [], "a per-device wrapper is back"
+
+
+@pytest.mark.parametrize("name", ["test_sensortask.py", "test_digital_twin_construction.py"])
+def test_a_per_device_file_refuses_to_run_without_a_device(repo_root: Path, micropython_bin: Path, name: str) -> None:
+    # Run outside the dispatch it names no device, so it fails at import, before any test or side effect.
+    env = {k: v for k, v in os.environ.items() if k != "TEST_DEVICE"} | {"MICROPYPATH": "build/generated_src:src:tests:frozen_modules:.frozen", "TZ": "UTC"}
+    done = subprocess.run([str(micropython_bin), "-X", "heapsize=16M", f"tests/{name}"], cwd=repo_root, env=env, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    out = done.stdout + done.stderr  # this port prints an uncaught traceback on stdout
+    assert done.returncode != 0, out
+    assert out.rstrip().endswith(_PER_DEVICE_REFUSAL), out
+    assert "passed" not in out, out
+
+
+_ENV_PROBE = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
+
+
+def test_a_device_job_runs_with_its_device_and_its_own_tag(repo_root: Path, tmp_path: Path) -> None:
+    results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", device="fixture-device-a")
+    tag = "test_x[fixture-device-a]"
+    assert (results / f"{tag}.status").read_text() == "PASS\n"
+    assert f"[{tag}] TEST_DEVICE=fixture-device-a\n" in (results / f"{tag}.log").read_text()
+
+
+def test_a_plain_job_runs_without_a_device_even_when_the_caller_has_one(repo_root: Path, tmp_path: Path) -> None:
+    results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", env={**os.environ, "TEST_DEVICE": "fixture-device-a"})
+    assert "[test_x] TEST_DEVICE=<unset>\n" in (results / "test_x.log").read_text()
+
+
+def test_a_device_job_is_reported_under_its_file_and_device(repo_root: Path, tmp_path: Path) -> None:
+    # Its tag carries brackets, which the summary must read as text: count, failing test, skip and level.
+    tag = "test_p[fixture-device-a]"
+    log = f"[{tag}] FAIL test_one:\n[{tag}] AssertionError: boom\n[{tag}] SKIP test_two: no bmp3xx\n[{tag}] 1/3 passed, 1 failed, 1 skipped\n"
+    code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_p.py[fixture-device-a]": ("FAIL\n", log, None), "tests/test_ok.py": _passing("test_ok")})
+    block = _block(out)
+    assert code == 1, out
+    assert "  - tests/test_p.py[fixture-device-a]: 1 of 3 tests failed (FAIL test_one: AssertionError: boom)\n" in block, block
+    assert "  - tests/test_p.py[fixture-device-a]::test_two: no bmp3xx\n" in block, block
+    assert "Levels: L0 PASS · L1 FAIL · L2 PASS" in block, block
 
 
 def test_a_coverage_run_names_each_lwip_host_file_as_skipped(repo_root: Path, tmp_path: Path) -> None:

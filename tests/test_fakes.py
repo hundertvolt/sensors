@@ -5,6 +5,7 @@ silicon lets a test pass for code that fails on the board."""
 import errno
 
 import _machine_contract
+import _mem_backup_contract
 import machine
 import network
 import rp2
@@ -69,6 +70,10 @@ def _i2c_injector() -> "tuple[Callable[[int], None], Callable[[], object], Calla
     )
 
 
+def _interrupt() -> None:
+    raise KeyboardInterrupt  # what the per-file timeout's SIGINT delivers mid-check
+
+
 def _leave_every_machine_knob_set() -> None:
     Timer.raise_on_arm = True
     Timer.raise_on_arm_exc = RuntimeError
@@ -96,6 +101,8 @@ def _raised(call: "Callable[[], object]") -> "BaseException | None":
     # The exception a call raised, or None: lets a case assert both the class and rp2's own message.
     try:
         call()
+    except KeyboardInterrupt:
+        raise  # the per-file timeout's interrupt ends the run, never a case's answer
     except BaseException as exc:  # SimulatedRebootError is a BaseException on purpose
         return exc
     return None
@@ -119,10 +126,6 @@ def _spi_injector() -> "tuple[Callable[[int], None], Callable[[], object], Calla
     )
 
 
-def _wlan(if_id: int) -> "_FakeWLAN":
-    return network.WLAN(if_id)  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
-
-
 # ---- the shared machine contract ------------------------------------------------------------
 
 
@@ -139,6 +142,30 @@ def test_every_machine_contract_check_is_registered() -> None:
     registered = [check.__name__ for check in _machine_contract.ALL_CHECKS] + [check.__name__ for check in _machine_contract.FAULT_CHECKS]
     assert len(registered) == len(set(registered)), "a check is listed twice"
     assert sorted(name for name in dir(_machine_contract) if name.startswith("check_")) == sorted(registered)
+
+
+def test_the_unit_machine_fake_meets_the_shared_mem_backup_contract() -> None:
+    for check in _mem_backup_contract.ALL_CHECKS:
+        check(machine)
+
+
+def _wlan(if_id: int) -> "_FakeWLAN":
+    return network.WLAN(if_id)  # type: ignore[return-value]  # the fake, which mypy sees as the board stub's WLAN
+
+
+def test_both_raised_helpers_let_the_timeouts_interrupt_through() -> None:
+    for helper in (_raised, _machine_contract._raised):
+        try:
+            caught = helper(_interrupt)
+        except KeyboardInterrupt:
+            continue
+        raise AssertionError(f"{helper.__name__} swallowed the interrupt: {caught!r}")
+
+
+def test_every_mem_backup_contract_check_is_registered() -> None:
+    registered = [check.__name__ for check in _mem_backup_contract.ALL_CHECKS]
+    assert len(registered) == len(set(registered)), "a check is listed twice"
+    assert sorted(name for name in dir(_mem_backup_contract) if name.startswith("check_")) == sorted(registered)
 
 
 # ---- Timer ----------------------------------------------------------------------------------

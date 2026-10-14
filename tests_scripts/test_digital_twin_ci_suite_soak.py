@@ -131,14 +131,8 @@ def test_a_missing_wiring_plan_prints_the_block_and_fails(ci_suite: ModuleType, 
     assert block.endswith("Result: FAIL\nExit code: 1\n")
 
 
-def _fresh_summary(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> object:
-    summary = ci_suite.Summary("scripts/_digital_twin_ci_suite.py", unit="checks")
-    monkeypatch.setattr(ci_suite, "_SUMMARY", summary)
-    monkeypatch.setattr(ci_suite, "_FAILURES", [])
-    monkeypatch.setattr(ci_suite, "_CHECKS_PER_PASS", {})
-    # Registered so the label run_suite() sets is restored: the module is shared across files.
-    monkeypatch.setattr(ci_suite, "_CURRENT_PASS_LABEL", "")
-    return summary
+def _flat(i: int) -> int:
+    return 1_000_000 + 10 * (i % 2)
 
 
 def test_each_check_is_recorded_under_its_pass_label(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -150,15 +144,20 @@ def test_each_check_is_recorded_under_its_pass_label(ci_suite: ModuleType, monke
     assert summary.failed == [("[gc.threshold=-1] Run 2: persisted", "")]  # type: ignore[attr-defined]
 
 
-def _stub_runs(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, body: "Callable[[object], object]") -> None:
-    for name in [n for n in dir(ci_suite) if n.startswith("_run_") and n[5].isdigit()]:
-        monkeypatch.setattr(ci_suite, name, body)
+def _fresh_summary(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> object:
+    summary = ci_suite.Summary("scripts/_digital_twin_ci_suite.py", unit="checks")
+    monkeypatch.setattr(ci_suite, "_SUMMARY", summary)
+    monkeypatch.setattr(ci_suite, "_FAILURES", [])
+    monkeypatch.setattr(ci_suite, "_CHECKS_PER_PASS", {})
+    # Registered so the label run_suite() sets is restored: the module is shared across files.
+    monkeypatch.setattr(ci_suite, "_CURRENT_PASS_LABEL", "")
+    return summary
 
 
 def test_a_pass_that_recorded_no_check_checked_nothing(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     summary = _fresh_summary(ci_suite, monkeypatch)
     _stub_runs(ci_suite, monkeypatch, lambda *_args: {})
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", drivers=frozenset(), gc_threshold=-1)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1)
     ci_suite.run_suite(ctx)
     assert summary.vacuous == [("pass [gc.threshold=-1]", "")]  # type: ignore[attr-defined]
 
@@ -170,7 +169,7 @@ def test_an_aborted_pass_is_recorded_and_the_error_still_raised(ci_suite: Module
         raise RuntimeError("twin never started")
 
     _stub_runs(ci_suite, monkeypatch, boom)
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", drivers=frozenset(), gc_threshold=32768)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=32768)
     with pytest.raises(RuntimeError, match="twin never started"):
         ci_suite.run_suite(ctx)
     assert summary.failed == [("[gc.threshold=32768] suite aborted: RuntimeError: twin never started", "")]  # type: ignore[attr-defined]
@@ -180,6 +179,17 @@ def test_an_aborted_pass_is_recorded_and_the_error_still_raised(ci_suite: Module
 # _run_11_soak(): one boot, one verdict. A pass on a second boot never covers a first boot's
 # failing trend, since a retry is no race fix; the twin and its HTTP are stubbed, the trend is real.
 # ---------------------------------------------------------------------------
+
+
+# The runner's own shutdown line, every field it prints (digital_twin/run_generic_integration.py).
+_SHUTDOWN_LINE = (
+    "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
+    "mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0"
+)
+
+
+def _leaking(i: int) -> int:
+    return 1_000_000 - 1_000 * i
 
 
 def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]") -> "tuple[object, list[Path]]":
@@ -207,25 +217,22 @@ def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.M
 
     def shutdown(_proc: object, _label: str) -> int:
         with spawned[-1].open("a") as log:
-            log.write("run_generic_integration.py shutdown: would_have_triggered_count=0\n")
+            log.write(f"{_SHUTDOWN_LINE}\n")
         return 0
 
-    monkeypatch.setattr(ci_suite, "_clean_state", lambda: None)
+    monkeypatch.setattr(ci_suite, "_archive_state", lambda _ctx, _label: None)
     monkeypatch.setattr(ci_suite, "_spawn", spawn)
     monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
     monkeypatch.setattr(ci_suite, "_http", http)
     monkeypatch.setattr(ci_suite, "_shutdown", shutdown)
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", drivers=frozenset(), gc_threshold=-1)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1)
     ci_suite._run_11_soak(ctx)
     return summary, spawned
 
 
-def _leaking(i: int) -> int:
-    return 1_000_000 - 1_000 * i
-
-
-def _flat(i: int) -> int:
-    return 1_000_000 + 10 * (i % 2)
+def _stub_runs(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, body: "Callable[[object], object]") -> None:
+    for name in [n for n in dir(ci_suite) if n.startswith("_run_") and n[5].isdigit()]:
+        monkeypatch.setattr(ci_suite, name, body)
 
 
 def test_a_failing_trend_fails_the_suite_with_no_second_boot(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

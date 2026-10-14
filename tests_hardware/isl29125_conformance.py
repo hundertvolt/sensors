@@ -25,19 +25,27 @@ PHYSICAL_KEYS = frozenset({
     "H07_prst4_ms",
 })
 
-_TWIN_ENTRY = """import sys
+_TWIN_ENTRY = """import json
+import sys
 sys.path.insert(0, "digital_twin")
 sys.path.insert(0, "src")
 import machine
-machine.configure_i2c_wiring("dev")
+with open("build/generated_src/sensortask_dev_wiring_plan.json") as f:
+    machine.configure_wiring(json.load(f))
 exec(open(sys.argv[1]).read())
 """
 
 
-def unix_port_binary() -> Path:
-    # Same location scripts/test.sh uses, and the same PICO_TOOLCHAIN_DIR override.
-    toolchain_dir = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
-    return toolchain_dir / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
+def compare(real: dict[str, str], twin: dict[str, str]) -> list[str]:
+    # Returns one human-readable line per protocol-key divergence; empty means the mock is faithful.
+    divergences = []
+    for key in sorted(set(real) | set(twin)):
+        if key in PHYSICAL_KEYS:
+            continue
+        real_value, twin_value = real.get(key, "<absent>"), twin.get(key, "<absent>")
+        if real_value != twin_value:
+            divergences.append(f"{key}: real chip {real_value!r}, mock {twin_value!r}")
+    return divergences
 
 
 def parse(output: str) -> dict[str, str]:
@@ -77,13 +85,7 @@ def run_probe_against_twin(timeout_s: float = _TWIN_PROBE_TIMEOUT_S) -> dict[str
     return parsed
 
 
-def compare(real: dict[str, str], twin: dict[str, str]) -> list[str]:
-    # Returns one human-readable line per protocol-key divergence; empty means the mock is faithful.
-    divergences = []
-    for key in sorted(set(real) | set(twin)):
-        if key in PHYSICAL_KEYS:
-            continue
-        real_value, twin_value = real.get(key, "<absent>"), twin.get(key, "<absent>")
-        if real_value != twin_value:
-            divergences.append(f"{key}: real chip {real_value!r}, mock {twin_value!r}")
-    return divergences
+def unix_port_binary() -> Path:
+    # Same location scripts/test.sh uses, and the same PICO_TOOLCHAIN_DIR override.
+    toolchain_dir = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
+    return toolchain_dir / "micropython" / "ports" / "unix" / "build-standard" / "micropython"

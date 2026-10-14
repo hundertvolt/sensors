@@ -1,25 +1,50 @@
-"""The twin wiring plan's one stated shape (SPECIFICATION.md Part L.4): every device's and fixture's plan
-matches `buildgen.twin_wiring.TwinWiringPlan`, every key a consumer reads off a plan is a declared one, the
-UART pair names buses its device declares, and the twin runner calls the generated `main()` as it is."""
+"""The twin wiring plan's one stated shape (SPECIFICATION.md Part L.4): every plan matches `TwinWiringPlan`, each bus's
+pins name its kind's roles, every key a consumer reads off a plan is declared, the UART pair names declared buses, the
+tests' device-set helper reads the plans as declared, and the twin runner calls the generated `main()` as it is."""
 
 import ast
 import json
+import sys
 import types
 from pathlib import Path
-from typing import Union, get_args, get_origin, get_type_hints, is_typeddict
+from typing import TYPE_CHECKING, Union, get_args, get_origin, get_type_hints, is_typeddict
 
 import pytest
 import tomllib
 from _devices import DEVICE_NAMES
+from _script_loader import load_script_module
 
 from buildgen.generate import generate_device
-from buildgen.twin_wiring import I2CAttachment, SpiAttachment, TwinWiringPlan, UartPair, compute_twin_wiring
+from buildgen.twin_wiring import TwinWiringPlan, compute_twin_wiring
 from buildgen.validate import build_model
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 _REPO = Path(__file__).resolve().parent.parent
 _TOMLS = [*(f"devices/{d}.toml" for d in DEVICE_NAMES), "tests_scripts/buildgen_fixtures/multi_instance.toml", "tests_scripts/buildgen_fixtures/novel_combo.toml"]
 _CONSUMER_ROOTS = ("digital_twin", "tests", "tests_scripts", "scripts")
-_DECLARED = {name: set(get_type_hints(cls)) for name, cls in (("TwinWiringPlan", TwinWiringPlan), ("UartPair", UartPair), ("I2CAttachment", I2CAttachment), ("SpiAttachment", SpiAttachment))}
+# The roles each bus kind's pins carry, stated here apart from the producer so the two can disagree.
+_ROLES_BY_KIND = {"i2c": {"scl", "sda"}, "spi": {"sck", "mosi", "miso"}, "uart": {"tx", "rx"}}
+
+
+def _typeddicts(hint: object, found: "dict[str, type]") -> "dict[str, type]":
+    # Every TypedDict the plan's declaration reaches, by name: derived from TwinWiringPlan, never listed.
+    if is_typeddict(hint) and isinstance(hint, type) and hint.__name__ not in found:
+        found[hint.__name__] = hint
+        for field in get_type_hints(hint).values():
+            _typeddicts(field, found)
+    for arg in get_args(hint):
+        _typeddicts(arg, found)
+    return found
+
+
+_TYPEDDICTS = _typeddicts(TwinWiringPlan, {})
+
+
+def _declared(owner: str) -> "set[str]":
+    # The keys `owner` declares; a union of TypedDicts ("A|B") declares what any of its members does.
+    return {key for name in owner.split("|") for key in get_type_hints(_TYPEDDICTS[name])}
 
 
 def _consumers() -> "list[Path]":
@@ -154,6 +179,10 @@ class _PlanKeyReads:
         if is_typeddict(owner) and isinstance(key, str):
             self.reads.append((line, getattr(owner, "__name__", str(owner)), key))
             return get_type_hints(owner).get(key)
+        members = get_args(owner) if get_origin(owner) in (Union, types.UnionType) else ()
+        if members and all(is_typeddict(m) for m in members) and isinstance(key, str):
+            self.reads.append((line, "|".join(getattr(m, "__name__", str(m)) for m in members), key))
+            return next((get_type_hints(m)[key] for m in members if key in get_type_hints(m)), None)
         if get_origin(owner) in (dict, list):
             return get_args(owner)[-1]
         return None
@@ -203,10 +232,95 @@ class _PlanKeyReads:
 
 def test_every_key_a_consumer_reads_off_a_plan_is_declared() -> None:
     reads = {path.relative_to(_REPO).as_posix(): _plan_key_reads(ast.parse(path.read_text(encoding="utf-8"))) for path in _consumers()}
-    undeclared = [f"{path}:{line}: {owner}[{key!r}]" for path, found in reads.items() for line, owner, key in found if key not in _DECLARED[owner]]
+    undeclared = [f"{path}:{line}: {owner}[{key!r}]" for path, found in reads.items() for line, owner, key in found if key not in _declared(owner)]
     assert undeclared == []
     # Not vacuous: the twin's own two readers are found reading the plan.
     assert reads.get("digital_twin/machine.py") and reads.get("digital_twin/run_generic_integration.py"), sorted(reads)
+
+
+@pytest.mark.parametrize("toml_path", _TOMLS)
+def test_each_bus_s_pins_name_exactly_its_kind_s_roles(toml_path: str) -> None:
+    plan = compute_twin_wiring(build_model(_REPO / toml_path, _REPO / "src"))
+    with (_REPO / toml_path).open("rb") as f:
+        buses = list(tomllib.load(f).get("bus", {}))
+    assert list(plan["pins"]) == buses
+    assert {bus: set(pins) for bus, pins in plan["pins"].items()} == {bus: _ROLES_BY_KIND[bus.rstrip("0123456789")] for bus in buses}
+
+
+def test_a_read_of_an_undeclared_pin_role_is_found() -> None:
+    # The scan follows a plan's pins into the union of the three pin tables: "scl" is declared, "clk" is not.
+    tree = ast.parse('plan = load_wiring_plan()\nok = plan["pins"]["i2c0"]["scl"]\nbad = plan["pins"]["spi0"]["clk"]\n')
+    reads = _plan_key_reads(tree)
+    assert [(line, key) for line, owner, key in reads if key not in _declared(owner)] == [(3, "clk")], reads
+
+
+def _annotations(path: Path) -> "dict[str, list[tuple[str, str]]]":
+    # Each class of a file with its annotated fields, as (name, annotation source), in order.
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {n.name: [(s.target.id, ast.unparse(s.annotation)) for s in n.body if isinstance(s, ast.AnnAssign) and isinstance(s.target, ast.Name)] for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+
+
+def test_the_twin_device_helper_restates_the_plan_shape_as_buildgen_declares_it() -> None:
+    # tests/_twin_devices.py cannot import buildgen (MicroPython), so it restates the TypedDicts for mypy; they must agree.
+    declared = {name: fields for name, fields in _annotations(_REPO / "buildgen" / "twin_wiring.py").items() if name in _TYPEDDICTS}
+    assert sorted(declared) == sorted(_TYPEDDICTS)
+    assert _annotations(_REPO / "tests" / "_twin_devices.py") == declared
+
+
+@pytest.fixture
+def twin_devices(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> "Iterator[types.ModuleType]":
+    # tests/_twin_devices.py under CPython, reading a fixture tree in place of build/generated_src/.
+    module = load_script_module(_REPO / "tests" / "_twin_devices.py", "_twin_devices")
+    try:
+        monkeypatch.setattr(module, "_TREE", str(tmp_path))
+        yield module
+    finally:
+        sys.modules.pop("_twin_devices", None)
+
+
+def _plant_plan(tree: Path, device: str, instances: "list[str]", buses: "dict[str, list[str]]") -> None:
+    attachments = {bus: [{"driver": d, "name_ext": "", "address": 0x10 + i} for i, d in enumerate(drivers)] for bus, drivers in buses.items()}
+    plan = {"device": device, "buses": attachments, "spi": {}, "pins": {}, "uart": None, "instances": instances}
+    (tree / f"sensortask_{device}_wiring_plan.json").write_text(json.dumps(plan), encoding="utf-8")
+
+
+def test_the_generated_devices_are_the_plan_stems_sorted(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    for device in ("fixture-device-b", "fixture-device-a"):
+        _plant_plan(tmp_path, device, ["fram"], {})
+    (tmp_path / "sensortask_fixture-device-c.py").write_text("")
+    (tmp_path / "sensortask_fixture-device-d_wiring_plan.json.tmp").write_text("")
+    assert twin_devices.generated_devices() == ["fixture-device-a", "fixture-device-b"]
+    assert twin_devices.wiring_plan("fixture-device-b")["device"] == "fixture-device-b"
+
+
+def test_an_empty_generated_tree_fails_naming_the_generator(twin_devices: types.ModuleType) -> None:
+    with pytest.raises(AssertionError, match=r"_generate_sensortask_modules\.py"):
+        twin_devices.generated_devices()
+
+
+def test_device_with_picks_the_first_device_wiring_every_named_driver(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_plan(tmp_path, "fixture-device-a", ["fram", "scd30"], {})
+    _plant_plan(tmp_path, "fixture-device-b", ["fram", "scd30", "sgp40"], {})
+    _plant_plan(tmp_path, "fixture-device-c", ["fram", "scd30", "sgp40"], {})
+    assert (twin_devices.device_with("scd30"), twin_devices.device_with("sgp40", "fram")) == ("fixture-device-a", "fixture-device-b")
+    with pytest.raises(AssertionError, match=r"'isl29125'.*\['fixture-device-a', 'fixture-device-b', 'fixture-device-c'\]"):
+        twin_devices.device_with("sgp40", "isl29125")
+
+
+def test_the_shared_buses_are_every_device_s_buses_with_two_occupants(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_plan(tmp_path, "fixture-device-b", ["bmp3xx", "scd30", "sgp40"], {"i2c1": ["sgp40", "bmp3xx"], "i2c0": ["scd30"]})
+    _plant_plan(tmp_path, "fixture-device-a", ["isl29125", "scd30", "sgp40"], {"i2c1": ["isl29125", "sgp40"], "i2c0": ["scd30", "sgp40"]})
+    assert twin_devices.devices_with_shared_bus() == [
+        ("fixture-device-a", "i2c0", ["scd30", "sgp40"]),
+        ("fixture-device-a", "i2c1", ["isl29125", "sgp40"]),
+        ("fixture-device-b", "i2c1", ["sgp40", "bmp3xx"]),
+    ]
+
+
+def test_no_shared_bus_anywhere_fails_naming_the_devices(twin_devices: types.ModuleType, tmp_path: Path) -> None:
+    _plant_plan(tmp_path, "fixture-device-a", ["scd30", "sgp40"], {"i2c0": ["scd30"], "i2c1": ["sgp40"]})
+    with pytest.raises(AssertionError, match=r"\['fixture-device-a'\]"):
+        twin_devices.devices_with_shared_bus()
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

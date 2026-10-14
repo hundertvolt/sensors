@@ -47,7 +47,9 @@ _TWIN_DIR = "digital_twin"
 # Every committed module that reads ticks, as a repo path: this file and tests_scripts/test_ticks_wrap_scan.py (which
 # also reads the generated device modules) both check it, so a module that starts or stops using ticks shows up.
 _KNOWN_TICKS_USERS = (
+    "digital_twin/_flash_stall.py",
     "digital_twin/machine.py",
+    "digital_twin/run_generic_integration.py",
     "src/asy_base_classes.py",
     "src/asy_bmp3xx_driver.py",
     "src/asy_i2c_driver.py",
@@ -175,12 +177,13 @@ def _drain_outcome(start: int, fed_reads: int) -> "tuple[int, bool, int]":
 
 
 def _files_reading_ticks(directory: str) -> "list[str]":
-    # Repo paths of the directory's modules naming ticks_ms() or ticks_us(); L1 has no ast, the L0 scan judges each site.
+    # Repo paths of the directory's modules naming ticks_ms(), ticks_us() or a module's .ticks_diff() (the L0 scan's
+    # readers; the dot skips prose); L1 has no ast, the L0 scan judges each site.
     found = []
     for filename in sorted(f for f in os.listdir(directory) if f.endswith(".py")):
         with open(directory + "/" + filename) as handle:
             text = handle.read()
-        if "ticks_ms()" in text or "ticks_us()" in text:
+        if "ticks_ms()" in text or "ticks_us()" in text or ".ticks_diff(" in text:
             found.append(directory + "/" + filename)
     return found
 

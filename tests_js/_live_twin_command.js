@@ -3,13 +3,13 @@
 // API for navigating to an external origin - vitest-dev/vitest#7875). See SPECIFICATION.md Part H.7.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "./_memory_markers.js";
 import { readIntConst } from "./_source_constants.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, holdTwinPorts, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
+import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, holdTwinPorts, makeConfigDir, removeConfigDir, requireInterpreter, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Clear of every fixed port and band tests/, tests_scripts/, scripts/ and digital_twin/ bind (the
@@ -252,13 +252,9 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
     requireInterpreter();
 
-    // Fresh state every run, mirroring scripts/_digital_twin_ci_suite.py's own "clean" step -
-    // FRAM/SCD30 are already in-memory-only above; config/ is the one thing that still persists
-    // to a fixed path by default (run_generic_integration.py exposes no --cfg-path flag).
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-
     await assertPortFree(device, "before starting");
-    const proc = spawnTwin({ device, port: PORT });
+    const configDir = makeConfigDir(); // the run's own config, removed once its twin stopped
+    const proc = spawnTwin({ device, port: PORT, configDir });
     const output = drainChildOutput(proc);
 
     /** @type {import("playwright").BrowserContext[]} */
@@ -323,6 +319,7 @@ export async function runLiveBackendSmoke({ context }, device, testTimeoutMs) {
         }
         const [unclosed] = await Promise.all([closeContext(contexts, pages), stopTwin(proc)]);
         failure ??= unclosed;
+        removeConfigDir(configDir);
     }
     twinVerdict(`live-backend smoke check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
     if (checked === undefined) {
@@ -537,11 +534,10 @@ async function reloadAfterDrain(pages, index, tracker, clock, firstPassEnded) {
 export async function runLiveBackendConcurrentTabs({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
     requireInterpreter();
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-
     const tabs = configuredMaxConnections(device);
     await assertPortFree(device, "before starting");
-    const proc = spawnTwin({ device, port: PORT });
+    const configDir = makeConfigDir();
+    const proc = spawnTwin({ device, port: PORT, configDir });
     const output = drainChildOutput(proc);
 
     /** @type {import("playwright").BrowserContext[]} */
@@ -600,6 +596,7 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
         clock.end();
         const [unclosed] = await Promise.all([closeContext(contexts, pages), stopTwin(proc)]);
         failure ??= unclosed;
+        removeConfigDir(configDir);
     }
     twinVerdict(`live-backend concurrent-tab check for ${device}`, [output], failure, await output.closed(SHUTDOWN_TIMEOUT_MS));
     if (checked === undefined) {
@@ -620,7 +617,6 @@ export async function runLiveBackendConcurrentTabs({ context }, device, testTime
 export async function runLiveBackendRestartRecovery({ context }, device, testTimeoutMs) {
     const clock = checkClock(testTimeoutMs);
     requireInterpreter();
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
     const defs = definitionsOf(device);
     const landingGet = defs.sections.find((section) => section.key === defs.landingSection)?.rest.get ?? "";
     const answered = (/** @type {import("playwright").Response} */ response) => response.url() === `http://${HOST}:${PORT}${landingGet}` && response.status() === 200;
@@ -628,7 +624,8 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
 
     await assertPortFree(device, "before starting");
     const releasePorts = holdTwinPorts(); // held across both boots, so no other runner takes the port between them
-    const procs = [spawnTwin({ device, port: PORT })];
+    const configDir = makeConfigDir(); // one config across both boots: the restart finds what the first boot wrote
+    const procs = [spawnTwin({ device, port: PORT, configDir })];
     const outputs = [drainChildOutput(/** @type {import("node:child_process").ChildProcess} */ (procs[0]))];
     /** @type {import("playwright").BrowserContext[]} */
     const contexts = [];
@@ -662,7 +659,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
             throw new Error("the check ended before its twin's restart"); // a step that outlasted the check starts no twin
         }
         clock.step("restarting its twin");
-        const restarted = spawnTwin({ device, port: PORT });
+        const restarted = spawnTwin({ device, port: PORT, configDir });
         procs.push(restarted);
         outputs.push(drainChildOutput(restarted));
         await waitUntilServing(restarted, PORT, READY_TIMEOUT_MS);
@@ -688,6 +685,7 @@ export async function runLiveBackendRestartRecovery({ context }, device, testTim
             failure ??= unclosed;
         } finally {
             releasePorts();
+            removeConfigDir(configDir);
         }
     }
     const drained = await Promise.all(outputs.map((output) => output.closed(SHUTDOWN_TIMEOUT_MS)));

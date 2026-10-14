@@ -1,8 +1,10 @@
 """Tests scripts/_digital_twin_ci_suite.py's own pure error-log helpers - _error_type_count()'s
-type_char selection (Run 8's "W" case) and _bus_fault_drivers()'s filtering - without a live twin
+type_char selection (Run 8's "W" case) and the fault matrix's instance selection - without a live twin
 subprocess/HTTP server, the same way test_digital_twin_ci_suite_soak.py does for Run 11's."""
 
 import errno
+import functools
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
@@ -11,14 +13,16 @@ import pytest
 import tomllib
 from _devices import DEVICE_NAMES, device_toml
 
+import scripts._twin_process as twin_process
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, object]:
-    # One GET /status errcount entry, in asy_webserver_service.py's own published shape.
-    items = [{"num": num, "type": kind} for num, kind in history]
-    return {"counter": len(items) if counter is None else counter, "history": items}
+def _ctx(ci_suite: ModuleType, keys: "list[str]") -> object:
+    # One RunContext over the named instance keys; a key "<driver>_<ext>" is an instance with that name_ext.
+    instances = tuple(sorted(ci_suite.Instance(key, *(key.rsplit("_", 1) if key.startswith("uart_link_") else (key, ""))) for key in keys))
+    return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device="fixture-device", module="sensortask_fixture", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +86,8 @@ def test_failure_events_subtracts_each_warning_slot(ci_suite: ModuleType) -> Non
 
 def test_failure_events_is_zero_for_an_empty_or_unreadable_entry(ci_suite: ModuleType) -> None:
     assert ci_suite._failure_events(_entry()) == 0
-    assert ci_suite._failure_events({}) == 0
+    assert ci_suite._failure_events({}) == -1, "an entry without a counter is no count at all, never zero failures"
+    assert ci_suite._link_failures({}, {}) == -1
 
 
 def test_link_failures_count_only_what_one_link_added(ci_suite: ModuleType) -> None:
@@ -119,51 +124,47 @@ def test_a_partial_ring_or_a_lost_count_is_neither(ci_suite: ModuleType) -> None
 
 
 # ---------------------------------------------------------------------------
-# _bus_fault_drivers() - the per-device fault matrix, derived from that device's own wiring plan.
+# The per-device fault matrix: every instance the device's TOML wires, by its --fault key.
 # ---------------------------------------------------------------------------
 
 
-def _ctx(ci_suite: ModuleType, drivers: set[str]) -> object:
-    return ci_suite.RunContext(
-        micropython_bin="/nonexistent",
-        logs_dir=Path("/nonexistent"),
-        device="test",
-        module="sensortask_test",
-        wiring_plan_path=Path("/nonexistent"),
-        drivers=frozenset(drivers),
-        gc_threshold=-1,
-    )
+def _drive_timed_reset(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, elapsed_s: float, status: int = 200, word: object = "Valid") -> "tuple[int, list[str], list[str]]":
+    # Runs _put_reset_errors_timed() with a scripted elapsed time and answer word; returns (status, oks, failures).
+    clock = iter([1000.0, 1000.0 + elapsed_s])
+    monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, {"result": {"ResetErrors": word}}))
+    oks: list[str] = []
+    monkeypatch.setattr(ci_suite, "_check", lambda *, condition, msg: (oks if condition else failures).append(msg))
+    failures: list[str] = []
+    return ci_suite._put_reset_errors_timed("Run T"), oks, failures
 
 
-def test_bus_fault_drivers_is_sorted_and_deterministic(ci_suite: ModuleType) -> None:
-    assert ci_suite._bus_fault_drivers(_ctx(ci_suite, {"sgp40", "fram", "scd30"})) == ["fram", "scd30", "sgp40"]
+def test_the_fault_instances_are_sorted_by_key_and_filtered_by_the_table(ci_suite: ModuleType) -> None:
+    ctx = _ctx(ci_suite, ["sgp40", "fram", "scd30", "uart_link_init", "uart_link_resp"])
+    assert [i.key for i in ci_suite._fault_instances(ctx, ci_suite._SUSTAINED_FAULT)] == ["fram", "scd30", "sgp40", "uart_link_init", "uart_link_resp"]
+    assert [i.key for i in ci_suite._fault_instances(ctx, ci_suite._HANG_MATRIX)] == ["fram", "scd30", "sgp40"]
 
 
-def test_bus_fault_drivers_skips_a_driver_the_suite_cannot_fault(ci_suite: ModuleType) -> None:
-    # The filter's whole purpose: a future bus-attached driver with no _BUS_FAULT_OPS entry is
-    # skipped here rather than KeyError-ing partway through Run 3/4.
-    #
-    # The stand-in is a name no device will ever declare. This once used "isl29125", accurate
-    # when written, which silently became the record of a REAL gap once that driver shipped with
-    # its own fault-capable fake - and closing the gap then looked like a regression.
-    assert ci_suite._bus_fault_drivers(_ctx(ci_suite, {"scd30", "not_a_real_driver", "neopixel"})) == ["scd30"]
+def test_an_instance_names_its_own_error_source(ci_suite: ModuleType) -> None:
+    # instance_name(): an empty name_ext keeps the driver's _NAME, a non-empty one appends "_<name_ext>".
+    assert ci_suite.Instance("sgp40", "sgp40", "").errcount_name == "SGP40"
+    assert ci_suite.Instance("uart_link_init", "uart_link", "init").errcount_name == "UART_init"
 
 
 def test_every_faultable_driver_has_both_an_op_and_an_errcount_name(ci_suite: ModuleType) -> None:
-    # Run 3 looks a driver up in _BUS_FAULT_OPS and Run 4 in _DRIVER_ERRCOUNT_NAME; the two tables
-    # are hand-kept separately, and a driver present in one but not the other raises mid-run.
-    assert set(ci_suite._BUS_FAULT_OPS) == set(ci_suite._DRIVER_ERRCOUNT_NAME)
+    # Run 3 looks a driver up in _SUSTAINED_FAULT and every run names its source through _DRIVER_ERRCOUNT_NAME; the
+    # two tables are hand-kept separately, and a driver present in one but not the other raises mid-run.
+    assert set(ci_suite._SUSTAINED_FAULT) == set(ci_suite._DRIVER_ERRCOUNT_NAME)
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME) >= ci_suite._NO_PERSIST_WHEN_FRAM_FAULTED
     assert set(ci_suite._DRIVER_ERRCOUNT_NAME) >= ci_suite._MEASUREMENT_DRIVERS
 
 
-def test_run_5c_faults_every_bus_attached_driver_but_never_the_store_itself(ci_suite: ModuleType) -> None:
-    # Run 5c's premise is a HEALTHY chip, so its sweep set is _bus_fault_drivers() minus "fram" -
-    # faulting the store is the one thing that voids it, and is what makes Run 3/4's own sweep a
-    # weaker claim. Checked as an identity, not a literal list, so a new bus driver joins both.
-    ctx = _ctx(ci_suite, {"scd30", "sgp40", "bmp3xx", "isl29125", "fram"})
-    assert ci_suite._healthy_store_fault_drivers(ctx) == ["bmp3xx", "isl29125", "scd30", "sgp40"]
-    assert set(ci_suite._healthy_store_fault_drivers(ctx)) == set(ci_suite._bus_fault_drivers(ctx)) - {"fram"}
+def test_run_5c_faults_every_chip_instance_but_never_the_store_or_a_link(ci_suite: ModuleType) -> None:
+    # Run 5c's premise is a HEALTHY store, so its chain is every chip instance: faulting the store voids it, and a
+    # UART link has no bounded fault in the vocabulary. Checked as an identity, so a new chip driver joins both.
+    ctx = _ctx(ci_suite, ["scd30", "sgp40", "bmp3xx", "isl29125", "fram", "uart_link_init"])
+    assert [i.key for i in ci_suite._healthy_store_fault_instances(ctx)] == ["bmp3xx", "isl29125", "scd30", "sgp40"]
+    assert set(ci_suite._BOUNDED_FAULT) == set(ci_suite._SUSTAINED_FAULT) - {"fram", "uart_link"}
 
 
 def test_the_error_sources_exempt_from_run_5cs_loss_sweep_are_the_store_and_the_ram_only_config_log(ci_suite: ModuleType) -> None:
@@ -180,14 +181,13 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
     # absent from all of them and silently skipped from the day it shipped. This is the outward
     # check: the real device set decides who belongs.
 
-    # Scoped to i2c/spi, the buses the twin's chip fakes can fault. uart_link's peer is a second
-    # UARTComm rather than a faultable fake, so it is out by mechanism, not by an allowlist.
+    # Every bus a device declares an instance on - i2c, spi and the uart_link pair's - is faulted by Run 3.
     attached = set()
     for device in DEVICE_NAMES:
         doc = tomllib.loads(device_toml(device).read_text())
-        attached |= {inst["driver"] for inst in doc.get("instance", []) if str(inst.get("bus", "")).startswith(("i2c", "spi"))}
-    missing = sorted(attached - set(ci_suite._BUS_FAULT_OPS))
-    assert not missing, f"bus-attached driver(s) {missing} are declared by a real device but absent from _BUS_FAULT_OPS, so Run 3/4 skip them without saying so"
+        attached |= {inst["driver"] for inst in doc.get("instance", []) if str(inst.get("bus", "")).startswith(("i2c", "spi", "uart"))}
+    missing = sorted(attached - set(ci_suite._SUSTAINED_FAULT))
+    assert not missing, f"bus-attached driver(s) {missing} are declared by a real device but absent from _SUSTAINED_FAULT, so Run 3 skips them without saying so"
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +197,10 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def _http_stub(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> "Callable[[int, object], None]":
-    def install(status: int, body: object) -> None:
-        monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, body))
-    return install
+def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, object]:
+    # One GET /status errcount entry, in asy_webserver_service.py's own published shape.
+    items = [{"num": num, "type": kind} for num, kind in history]
+    return {"counter": len(items) if counter is None else counter, "history": items}
 
 
 _READABLE = {"errcount": {"SGP40": {"counter": 0, "history": [{"num": 0, "type": "N"}]}}}
@@ -323,15 +322,14 @@ def test_the_run_4_assertion_shape_fails_closed_on_an_empty_entry(ci_suite: Modu
 # ---------------------------------------------------------------------------
 
 
-def _drive_timed_reset(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, elapsed_s: float, status: int = 200) -> "tuple[int, list[str], list[str]]":
-    # Runs _put_reset_errors_timed() with a scripted elapsed time; returns (status, oks, failures).
-    clock = iter([1000.0, 1000.0 + elapsed_s])
-    monkeypatch.setattr(ci_suite.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, None))
-    oks: list[str] = []
-    monkeypatch.setattr(ci_suite, "_check", lambda *, condition, msg: (oks if condition else failures).append(msg))
-    failures: list[str] = []
-    return ci_suite._put_reset_errors_timed("Run T"), oks, failures
+def _failures_of(ci_suite: ModuleType, call: "Callable[[], object]") -> "list[str]":
+    saved = list(ci_suite._FAILURES)
+    ci_suite._FAILURES.clear()
+    try:
+        call()
+        return list(ci_suite._FAILURES)
+    finally:
+        ci_suite._FAILURES[:] = saved
 
 
 def test_a_sweep_inside_the_budget_passes_and_reports_its_share_of_the_cap(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -346,14 +344,22 @@ def test_a_sweep_past_the_budget_fails_even_though_the_request_itself_succeeded(
     # timeout can never catch this case.
     status, oks, failures = _drive_timed_reset(ci_suite, monkeypatch, elapsed_s=13.0)
     assert status == 200, "the budget check must not change what the caller sees"
-    assert not oks
+    assert not [m for m in oks if "budget" in m]
     assert len(failures) == 1 and "13.00s" in failures[0]
+
+
+@pytest.mark.parametrize("word", ["Failed", "Invalid", None])
+def test_a_reset_that_did_not_answer_valid_fails_inside_the_budget(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, word: object) -> None:
+    # "Failed" is a store whose cleared state was not written: HTTP 200 and fast, yet the history it should clear stays.
+    status, _oks, failures = _drive_timed_reset(ci_suite, monkeypatch, elapsed_s=1.0, word=word)
+    assert status == 200
+    assert len(failures) == 1 and f"({word!r})" in failures[0]
 
 
 def test_the_budget_boundary_is_exclusive(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     # Exactly at the budget is a failure, not a pass - pinned so a later `<=` refactor is caught.
     _status, oks, failures = _drive_timed_reset(ci_suite, monkeypatch, elapsed_s=ci_suite._RESET_ERRORS_BUDGET_S)
-    assert not oks
+    assert not [m for m in oks if "budget" in m]
     assert len(failures) == 1
 
 
@@ -398,17 +404,11 @@ def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suit
 # ---------------------------------------------------------------------------
 
 
-def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
-    # Runs the check over one captured run log and returns whatever failures it recorded.
-    log = tmp_path / "run.log"
-    log.write_text(log_text)
-    saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated
-    ci_suite._FAILURES.clear()
-    try:
-        ci_suite._check_no_memory_error_in_log(log, "Run 1")
-        return list(ci_suite._FAILURES)
-    finally:
-        ci_suite._FAILURES[:] = saved
+@pytest.fixture
+def _http_stub(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> "Callable[[int, object], None]":
+    def install(status: int, body: object) -> None:
+        monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, body))
+    return install
 
 
 def test_a_caught_and_degraded_allocation_failure_is_caught_though_it_never_says_memoryerror(ci_suite: ModuleType, tmp_path: Path) -> None:
@@ -490,3 +490,178 @@ class _NoRouteSocket:
 def test_the_route_probe_reports_a_host_with_no_route_out(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ci_suite.socket, "socket", _NoRouteSocket)
     assert ci_suite._route_leaves_host("192.0.2.1", 123) is False
+
+
+# ---------------------------------------------------------------------------
+# scripts/_twin_process.py's readers of the runner's own lines and exit codes, shared by the suite and the harness.
+# ---------------------------------------------------------------------------
+
+_PREFIX = "digital_twin/run_generic_integration.py [dev]"
+_R0 = "0x00000000,0x00000000,0x00000000,0x00000000"
+_SHUTDOWN = f"{_PREFIX} shutdown: would_have_triggered_count=0 feed_count=41 largest_feed_gap_ms=812 mem_backup: r0={_R0} public_destinations_refused=0 flash_stall_longest_ms=3"
+
+
+def test_the_shutdown_line_yields_every_field_and_one_uart_entry_per_instance() -> None:
+    line = f"{_SHUTDOWN} uart=uart_link_initiator:transfers=12,failures=0,overruns=1 uart=uart_link_responder:transfers=11,failures=2,overruns=0"
+    parsed = twin_process.parse_shutdown_line(f"boot\n{line}\nbye\n")
+    assert parsed is not None
+    assert (parsed.would_have_triggered_count, parsed.feed_count, parsed.largest_feed_gap_ms) == (0, 41, 812)
+    assert parsed.mem_backup_r0 == (0, 0, 0, 0)
+    assert (parsed.public_destinations_refused, parsed.flash_stall_longest_ms) == (0, 3)
+    assert parsed.uart == {"uart_link_initiator": twin_process.UartCounts(12, 0, 1), "uart_link_responder": twin_process.UartCounts(11, 2, 0)}
+    assert parsed.uart["uart_link_initiator"].rx_laps_and_errors == 1
+
+
+def test_a_shutdown_line_without_uart_links_has_an_empty_uart_table() -> None:
+    parsed = twin_process.parse_shutdown_line(_SHUTDOWN)
+    assert parsed is not None
+    assert parsed.uart == {}
+    words = twin_process.parse_shutdown_line(_SHUTDOWN.replace(f"r0={_R0}", "r0=0x00000001,0x2a5e0001,0x0,0x15a5a5a4"))
+    assert words is not None
+    assert words.mem_backup_r0 == (1, 0x2A5E0001, 0, 0x15A5A5A4)
+
+
+def test_a_log_without_a_shutdown_line_reads_none() -> None:
+    assert twin_process.parse_shutdown_line("boot\nTraceback (most recent call last):\n") is None
+
+
+@pytest.mark.parametrize("field", ["would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "public_destinations_refused", "flash_stall_longest_ms"])
+def test_a_shutdown_line_missing_a_field_fails_naming_it(field: str) -> None:
+    line = " ".join(token for token in _SHUTDOWN.split(" ") if not token.startswith(f"{field}="))
+    with pytest.raises(ValueError, match=field):
+        twin_process.parse_shutdown_line(line)
+
+
+def test_a_shutdown_line_with_a_bad_r0_or_count_fails_naming_it() -> None:
+    with pytest.raises(ValueError, match="mem_backup"):
+        twin_process.parse_shutdown_line(_SHUTDOWN.replace(f"r0={_R0}", "r0=0x0,0x0,0x0"))
+    with pytest.raises(ValueError, match="mem_backup"):
+        twin_process.parse_shutdown_line(_SHUTDOWN.replace(f"mem_backup: r0={_R0} ", ""))
+    with pytest.raises(ValueError, match="feed_count"):
+        twin_process.parse_shutdown_line(_SHUTDOWN.replace("feed_count=41", "feed_count=4x"))
+
+
+@pytest.mark.parametrize("token", ["uart=UART_init:transfers=1,failures=x,overruns=0", "uart=UART_init:transfers=1,failures=0", "uart=UART_init"])
+def test_a_malformed_uart_entry_fails_naming_the_instance(token: str) -> None:
+    with pytest.raises(ValueError, match="UART_init"):
+        twin_process.parse_shutdown_line(f"{_SHUTDOWN} {token}")
+
+
+def test_a_uart_instance_named_twice_fails() -> None:
+    twice = f"{_SHUTDOWN} uart=a:transfers=1,failures=0,overruns=0 uart=a:transfers=2,failures=0,overruns=0"
+    with pytest.raises(ValueError, match="twice"):
+        twin_process.parse_shutdown_line(twice)
+
+
+def test_the_machine_reset_line_names_its_kind_and_counts() -> None:
+    log = f"{_PREFIX} machine reset: kind=bootloader reset_count=0 bootloader_count=1\n{_SHUTDOWN}\n"
+    assert twin_process.parse_machine_reset_line(log) == twin_process.ResetLine("bootloader", 0, 1)
+    assert twin_process.parse_machine_reset_line(_SHUTDOWN) is None
+
+
+def test_the_shared_exit_codes_are_the_runners_own() -> None:
+    source = (Path(__file__).resolve().parent.parent / "digital_twin" / "run_generic_integration.py").read_text()
+    for name in ("RESET", "BOOTLOADER", "POWER_LOSS"):
+        found = re.search(rf"^_EXIT_SIMULATED_{name} = (\d+)$", source, re.MULTILINE)
+        assert found is not None, f"the runner no longer defines _EXIT_SIMULATED_{name}"
+        assert getattr(twin_process, f"EXIT_SIMULATED_{name}") == int(found.group(1))
+
+
+def test_a_signal_death_is_named_as_a_crash_and_never_as_a_failed_check() -> None:
+    assert twin_process.exit_reason(-11) == "the interpreter was killed by signal 11 (SIGSEGV) - a crash, not a failed check"
+    assert "signal 9 (SIGKILL)" in twin_process.exit_reason(-9)  # a SIGKILL nobody here sent is a crash too
+
+
+def test_the_callers_own_kill_and_timeout_are_named_as_theirs() -> None:
+    assert twin_process.exit_reason(-9, killed=True) == "killed by the caller after it ignored SIGINT"
+    assert twin_process.exit_reason(twin_process.EXIT_SUITE_TIMEOUT) == "no exit before the caller's deadline"
+    assert twin_process.exit_reason(twin_process.EXIT_SIMULATED_RESET) == "a simulated reset"
+    assert twin_process.exit_reason(1) == "exit code 1"
+
+
+def test_an_empty_log_gives_no_memory_verdict(ci_suite: ModuleType, tmp_path: Path) -> None:
+    failures = _memory_error_verdict(ci_suite, tmp_path, "")
+    assert len(failures) == 1 and "empty" in failures[0], failures
+
+
+# ---------------------------------------------------------------------------
+# The suite's own verdicts over the shared helpers: a signal death, a strict history read, a reading with no value.
+# ---------------------------------------------------------------------------
+
+
+def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
+    # Runs the check over one captured run log and returns whatever failures it recorded.
+    log = tmp_path / "run.log"
+    log.write_text(log_text)
+    saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated
+    ci_suite._FAILURES.clear()
+    try:
+        ci_suite._check_no_memory_error_in_log(log, "Run 1")
+        return list(ci_suite._FAILURES)
+    finally:
+        ci_suite._FAILURES[:] = saved
+
+
+def _run_stub(tmp_path: Path, *, killed: bool) -> object:
+    # A TwinRun whose log holds two lines; only the fields _check_exit() reads.
+    log = tmp_path / "twin.log"
+    log.write_text("booting\nSegmentation fault\n")
+    return twin_process.TwinRun(proc=None, log_path=log, log_file=log.open(), device="fixture-device", state_dir=tmp_path, killed=killed)  # type: ignore[arg-type]
+
+
+def test_a_signal_death_the_suite_did_not_cause_fails_as_a_crash_with_the_log_tail(ci_suite: ModuleType, tmp_path: Path) -> None:
+    failures = _failures_of(ci_suite, lambda: ci_suite._check_exit(_run_stub(tmp_path, killed=False), -11, "Run 5c-b"))
+    assert len(failures) == 1, failures
+    assert "killed by signal 11 (SIGSEGV) - a crash, not a failed check" in failures[0] and "Segmentation fault" in failures[0]
+
+
+@pytest.mark.parametrize("ec", [-9, -256])
+def test_the_suites_own_kill_or_timeout_is_left_to_the_callers_check(ci_suite: ModuleType, tmp_path: Path, ec: int) -> None:
+    assert _failures_of(ci_suite, lambda: ci_suite._check_exit(_run_stub(tmp_path, killed=True), ec, "Run 10")) == []
+
+
+def test_a_clean_or_reset_exit_is_no_crash(ci_suite: ModuleType, tmp_path: Path) -> None:
+    for ec in (0, 1, 3, 4):
+        assert _failures_of(ci_suite, functools.partial(ci_suite._check_exit, _run_stub(tmp_path, killed=False), ec, "Run 1")) == []
+
+
+def test_an_all_null_measurement_block_is_no_reading(ci_suite: ModuleType) -> None:
+    # The block a driver publishes before its first good read: truthy as a dict, empty as a reading.
+    assert not ci_suite._real_reading({"TS": None, "Temp": None, "Pres": None})
+    assert not ci_suite._real_reading({"TS": 1791954984})
+    assert not ci_suite._real_reading(None)
+    assert ci_suite._real_reading({"TS": None, "Temp": 21.5})
+
+
+def test_the_strict_history_reader_raises_on_an_entry_without_one(ci_suite: ModuleType) -> None:
+    assert ci_suite._error_codes(_entry((11, "E"), (14, "W"))) == [("E", 11), ("W", 14)]
+    with pytest.raises(KeyError):
+        ci_suite._error_codes({"counter": 3})
+
+
+def _stub_status(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, entries: "dict[str, dict[str, object]]") -> "list[str]":
+    # Every run helper stubbed over one /status answer; returns the failures the run recorded.
+    body = {"errcount": entries, "networking": {"NTPSynced": True}, "system": {"UTCTime": None, "LocalTime": None}}
+    monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (200, body))
+    monkeypatch.setattr(ci_suite, "_spawn", lambda *_a: object())
+    monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
+    monkeypatch.setattr(ci_suite, "_shutdown", lambda _proc, _label: 0)
+    monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
+    for wait in ("_NTP_UNREACHABLE_WATCH_S", "_ERROR_COUNT_WAIT_S", "_NTP_FIRST_SYNC_WAIT_S"):
+        monkeypatch.setattr(ci_suite, wait, 0.0)
+    monkeypatch.setattr(ci_suite, "_FAILURES", [])
+    return ci_suite._FAILURES  # type: ignore[no-any-return]
+
+
+def test_run_9_fails_closed_on_a_system_entry_without_a_counter(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Two missing counters once compared equal (0 == 0) and passed "no task was restarted".
+    failures = _stub_status(ci_suite, monkeypatch, {"SYSTEM": {"history": []}, "NTP": {"counter": 1, "history": [{"type": "E", "num": 72}]}})
+    ci_suite._run_9_ntp_unreachable(_ctx(ci_suite, []))
+    assert any("no task ended and was restarted" in f for f in failures), failures
+
+
+def test_run_8_fails_closed_on_a_wifi_entry_without_a_counter(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A missing counter once read as 0, inside the all-or-nothing set (0, 6).
+    failures = _stub_status(ci_suite, monkeypatch, {"WIFI": {"history": []}})
+    ci_suite._run_8_wifi_persistence_and_configure_ntp(_ctx(ci_suite, []))
+    assert any("the counter came back with it" in f for f in failures), failures

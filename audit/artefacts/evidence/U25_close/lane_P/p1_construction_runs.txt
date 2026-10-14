@@ -1,0 +1,12 @@
+tests/test_digital_twin_construction_arzi.py -1 rc=0 3.179309770 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_arzi.py 32768 rc=0 3.630111526 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_dev.py -1 rc=0 3.427612064 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_dev.py 32768 rc=0 4.141736534 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_grkizi.py -1 rc=0 3.169236609 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_grkizi.py 32768 rc=0 3.570565764 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_klkizi.py -1 rc=0 3.170030589 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_klkizi.py 32768 rc=0 3.599064552 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_schlafzi.py -1 rc=0 3.220106312 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_schlafzi.py 32768 rc=0 3.636417389 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_wozi.py -1 rc=0 3.217376514 4/4 passed, 0 failed, 0 skipped mem=0
+tests/test_digital_twin_construction_wozi.py 32768 rc=0 3.791685338 4/4 passed, 0 failed, 0 skipped mem=0

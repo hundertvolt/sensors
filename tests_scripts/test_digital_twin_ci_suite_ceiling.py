@@ -44,6 +44,18 @@ class _HangUpHandler(_JsonHandler):
         self.close_connection = True  # read the request, answer nothing - the reject-when-full shape
 
 
+def _ctx(ci_suite: ModuleType, tmp_path: Path) -> object:
+    return ci_suite.RunContext(
+        micropython_bin="/nonexistent",
+        logs_dir=tmp_path,
+        device="fixture_device",
+        module="sensortask_fixture_device",
+        wiring_plan_path=tmp_path / "plan.json",
+        instances=(),
+        gc_threshold=-1,
+    )
+
+
 def _serve(handler: type[BaseHTTPRequestHandler], ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     server.daemon_threads = True
@@ -59,30 +71,13 @@ def _serve(handler: type[BaseHTTPRequestHandler], ci_suite: ModuleType, monkeypa
 
 
 @pytest.fixture
-def json_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    yield from _serve(_JsonHandler, ci_suite, monkeypatch)
-
-
-@pytest.fixture
-def text_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    yield from _serve(_TextHandler, ci_suite, monkeypatch)
-
-
-@pytest.fixture
 def hang_up_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     yield from _serve(_HangUpHandler, ci_suite, monkeypatch)
 
 
-def _ctx(ci_suite: ModuleType, tmp_path: Path) -> object:
-    return ci_suite.RunContext(
-        micropython_bin="/nonexistent",
-        logs_dir=tmp_path,
-        device="fixture_device",
-        module="sensortask_fixture_device",
-        wiring_plan_path=tmp_path / "plan.json",
-        drivers=frozenset(),
-        gc_threshold=-1,
-    )
+@pytest.fixture
+def json_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    yield from _serve(_JsonHandler, ci_suite, monkeypatch)
 
 
 @pytest.fixture
@@ -91,12 +86,17 @@ def stubbed_run(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> list[s
     # _FAILURES, so a test sees only what its own run recorded.
     spawned: list[str] = []
     monkeypatch.setattr(ci_suite, "_FAILURES", [])
-    monkeypatch.setattr(ci_suite, "_clean_state", lambda: None)  # never touches the real digital_twin/ state
+    monkeypatch.setattr(ci_suite, "_archive_state", lambda _ctx, _label: None)  # never moves a real state directory
     monkeypatch.setattr(ci_suite, "_spawn", lambda _ctx, _args, log_path: spawned.append(str(log_path)))
     monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
     monkeypatch.setattr(ci_suite, "_shutdown", lambda _proc, _label: 0)
     monkeypatch.setattr(ci_suite.time, "sleep", lambda _s: None)
     return spawned
+
+
+@pytest.fixture
+def text_server(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    yield from _serve(_TextHandler, ci_suite, monkeypatch)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

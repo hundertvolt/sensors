@@ -104,6 +104,53 @@ def test_a_later_stage_build_error_is_reported_and_leaves_none_of_that_device(ge
     assert not [p for p in out_dir.rglob("*") if p.is_file()]
 
 
+def _single_device_run(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *argv: str) -> "tuple[int, Path, Path]":
+    # One TOML outside devices/ generated into its own directory, the stand-in repo's build/ left alone; (exit, out, root).
+    root = tmp_path / "repo"
+    root.mkdir()
+    _one_device_tree(repo_root, root)
+    toml = tmp_path / "fixture_device.toml"
+    toml.write_text((repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml").read_text())
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", root)
+    monkeypatch.setattr(generate_sensortask_modules, "current_build_date", lambda: "2026-09-12T10:00:00Z")
+    out = tmp_path / "out"
+    return generate_sensortask_modules.main(["--device-toml", str(toml), "--out-dir", str(out), *argv]), out, root
+
+
+def test_the_single_device_mode_writes_that_toml_s_outputs_into_its_directory_only(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    code, out, root = _single_device_run(generate_sensortask_modules, repo_root, tmp_path, monkeypatch)
+    assert code == 0
+    expected = generate_device(tmp_path / "fixture_device.toml", repo_root / "src", repo_root / "ext", build_date="2026-09-12T10:00:00Z")
+    files = {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*") if p.is_file()}
+    assert sorted(files) == sorted([
+        "sensortask_fixture_device.py", "sensortask_fixture_device_main.py", "sensortask_fixture_device_main_noautostart.py",
+        "sensortask_fixture_device_expected.json", "sensortask_fixture_device_wiring_plan.json",
+        "definitions/fixture_device.json", "definitions/index.json", "api/fixture_device.json",
+    ])
+    assert files["sensortask_fixture_device.py"] == expected.module_source
+    assert json.loads(files["sensortask_fixture_device_wiring_plan.json"]) == compute_twin_wiring(expected.model)
+    assert json.loads(files["definitions/index.json"]) == {"devices": ["fixture_device"]}
+    assert not (root / "build").exists(), "the single-device mode wrote into the repo's tree"
+
+
+def test_the_single_device_mode_writes_nothing_on_a_build_error(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    def failing(*_args: object, **_kwargs: object) -> None:
+        raise BuildError("fixture_device", "planted", rule="toml.syntax", fix="none")
+
+    monkeypatch.setattr(generate_sensortask_modules, "compute_twin_wiring", failing)
+    code, out, _root = _single_device_run(generate_sensortask_modules, repo_root, tmp_path, monkeypatch)
+    assert code == 1
+    assert "error: [fixture_device] planted" in capsys.readouterr().err
+    assert not out.exists() or not any(p.is_file() for p in out.rglob("*"))
+
+
+@pytest.mark.parametrize("argv", [["--device-toml", "x.toml"], ["--out-dir", "out"], ["--device"]])
+def test_an_incomplete_single_device_request_is_a_usage_error(generate_sensortask_modules: ModuleType, argv: "list[str]") -> None:
+    with pytest.raises(SystemExit) as caught:
+        generate_sensortask_modules.main(argv)
+    assert caught.value.code == 2
+
+
 @pytest.fixture
 def generate_sensortask_modules(repo_root: Path) -> ModuleType:
     return load_script_module(repo_root / "scripts" / "_generate_sensortask_modules.py", "_generate_sensortask_modules")

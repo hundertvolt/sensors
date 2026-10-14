@@ -10,12 +10,14 @@ import time
 
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
-from _async_harness import cancel, run
+from _async_harness import cancel, cancel_all, run
 from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
 from _fram_builders import make_fram_manager
 from _ntp_frames import FakeNtpServer, make_ntp_reply
+from _ntp_responder import NtpResponder
+from _port_bands import PortAllocator
 from _src_const import NTP_EPOCH_DELTA, src_const
 from _ticks30 import Ticks30Time
 from _tmp_scratch import TmpScratch
@@ -43,6 +45,8 @@ if TYPE_CHECKING:
     import asy_config_manager as cm
     from asy_ntp_client import GMTimeStruct
     from asy_print_log import ErrorLog
+
+    _Seen = tuple[bool, int | None, int, tuple[int, ...] | None]  # Synced, LastSyncAge, the backoff step, the RTC reading
 
 
 def _last_err(counter: "ErrorLog", field: 'Literal["ErrNum", "ErrType"]') -> "int | str":
@@ -181,20 +185,12 @@ def _make_invalid_cfg_client() -> NTPClient:
     return _make_client(cfg_path=cfg_path, dns_fallback=None)
 
 
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 23000
-
-
-def _make_port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
+_PORTS = PortAllocator("test_asy_ntp_client")  # this file's band (tests/_port_bands.py)
 
 
 def _make_addr() -> "tuple[str, int]":
     # A plain tuple for UDPSocket (the shim resolves it on this build).
-    return ("127.0.0.1", _make_port())
+    return ("127.0.0.1", _PORTS.next())
 
 
 def _raw_sockaddr(addr: "tuple[str, int]") -> "tuple[str, int] | tuple[str, int, int, int]":
@@ -1169,7 +1165,7 @@ def test_a_long_reply_is_read_as_its_48_byte_header() -> None:
     # A reply with extension fields or a MAC after its 48-byte header is cut to the header and parsed as before.
     client = _make_integration_client()
     header = make_ntp_reply(int(time.time()))
-    port = _make_port()
+    port = _PORTS.next()
 
     async def scenario() -> "tuple[bool, bool]":
         ready = asyncio.Event()
@@ -2546,7 +2542,7 @@ def test_asy_ntp_time_keeps_running_across_alternating_failure_and_success() -> 
 def _make_ntp_server() -> FakeNtpServer:
     # The shared loopback server (tests/_ntp_frames.py) on a fresh port; the product sends to port 123, which needs
     # root, so each test runs inside redirect_udp_port(ntpmod, 123, server.port).
-    return FakeNtpServer(_make_port(), poll_ms=_FAKE_SERVER_POLL_MS, poll_tries=_FAKE_SERVER_POLL_TRIES)
+    return FakeNtpServer(_PORTS.next(), poll_ms=_FAKE_SERVER_POLL_MS, poll_tries=_FAKE_SERVER_POLL_TRIES)
 
 
 class _RaisingRecvSocket:
@@ -2571,7 +2567,7 @@ class _RaisingRecvSocket:
 
 def _serve_through(exc: OSError, times: int) -> "tuple[bytes | None, BaseException | None]":
     # One query to a FakeNtpServer whose receive raises `exc` `times` times: what the querier got and what serve_once() raised.
-    server = FakeNtpServer(_make_port(), poll_ms=1, poll_tries=_RESPONDER_POLL_TRIES)
+    server = FakeNtpServer(_PORTS.next(), poll_ms=1, poll_tries=_RESPONDER_POLL_TRIES)
     server.sock = _RaisingRecvSocket(server.sock, exc, times)  # type: ignore[assignment]  # the stand-in socket
     querier = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     querier.setblocking(False)
@@ -3039,6 +3035,163 @@ def test_integration_a_successful_exchange_persists_nothing() -> None:
             server.close()
 
     assert run(scenario())["NTP"]["ErrCount"] == 0
+
+
+
+# ---- The client against the twin's local NTP responder (digital_twin/unixport/_ntp_responder.py): a real UDP round
+# trip on loopback per attempt ----
+
+_RTC_UNSET = (2001, 2, 3, 5, 4, 5, 6, 0)  # a Saturday in the getter's own form (Monday 0): a time no sync writes
+
+
+def _responder_client(interval_h: int = 12) -> NTPClient:
+    # The file's builder on the responder's address: an IPv4 literal (no lookup) and no fallback resolver.
+    return _make_client_with_json(json.dumps({"NTPHost": "127.0.0.1", "NTPInterval": interval_h, "DNSFallback": ""}))
+
+
+def _rtc_reading(unix_s: int) -> "tuple[int, ...]":
+    # What RTC().datetime() reads after a set to unix_s: the getter's recomputed weekday, subseconds 0.
+    tm = time.gmtime(unix_s)
+    return (tm[0], tm[1], tm[2], tm[6], tm[3], tm[4], tm[5], 0)
+
+
+def _counted(client: NTPClient) -> asyncio.Event:
+    # The real attempt, signalling its end; _sync_loop() applies its backoff before it next yields, so a waiter the
+    # signal wakes sees that too.
+    finished = asyncio.Event()
+    attempt = client._run_ntp_sync_attempt
+
+    async def counted(dns_server: "str | None") -> "tuple[tuple[int, ...] | None, bool]":
+        try:
+            return await attempt(dns_server)
+        finally:
+            finished.set()
+
+    client._run_ntp_sync_attempt = counted  # type: ignore[method-assign]
+    return finished
+
+
+async def _attempt_ended(finished: asyncio.Event) -> None:
+    # An attempt ends within its two fetch timeouts, the write's and the read's.
+    await asyncio.wait_for_ms(finished.wait(), 2 * _FETCH_TIMEOUT_MS)
+    finished.clear()
+
+
+def _against_responder(client: NTPClient, responder: NtpResponder, modes: "list[str]") -> "list[_Seen]":
+    # One forced attempt per mode through the real _sync_loop(), the responder serving beside it in that mode; a silent
+    # attempt waits the short fetch timeout, a served one returns on its reply.
+    finished = _counted(client)
+    RTC().datetime(_RTC_UNSET)
+
+    async def scenario() -> "list[_Seen]":
+        seen: list[_Seen] = []
+        with redirect_udp_port(ntpmod, 123, responder.port):
+            tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(client._sync_loop())]
+            try:
+                for mode in modes:
+                    responder.mode = mode
+                    client._ntp_fetch_timeout_ms = _NO_REPLY_FETCH_TIMEOUT_MS if mode == "silent" else _FETCH_TIMEOUT_MS
+                    client._ntp_sync_trigger_event.set()
+                    await _attempt_ended(finished)
+                    data = await client.get_data()
+                    seen.append((data.Synced, data.LastSyncAge, client._retry_wait_s, RTC().datetime()))
+            finally:
+                await cancel_all(tasks)
+        return seen
+
+    try:
+        return run(scenario())
+    finally:
+        responder.close()
+        asy_base_classes.set_utc_valid(valid=False)
+
+
+def _fails_twice(mode: str) -> "tuple[list[_Seen], tuple[int, list[int]]]":
+    # Two attempts against a failing responder: what each left, and the log's (ErrCount, used slots).
+    client = _responder_client()
+    return _against_responder(client, NtpResponder(_PORTS.next()), [mode, mode]), _slots(client)
+
+
+# What a failed unsynced attempt leaves: not synced, no age, the RTC unset, the backoff doubled per attempt (C.7.2).
+_FAILED_TWICE = [(False, None, min(2 * _RETRY_S, _RETRY_MAX_S), _RTC_UNSET), (False, None, min(4 * _RETRY_S, _RETRY_MAX_S), _RTC_UNSET)]
+
+
+def test_a_sync_against_the_responder_sets_the_rtc_and_synced() -> None:
+    before = int(time.time())
+    seen = _against_responder(_responder_client(), NtpResponder(_PORTS.next()), ["silent", "serve"])
+    after = int(time.time())
+    assert seen[0][:2] == (False, None) and seen[0][3] == _RTC_UNSET  # no reply, no sync
+    assert seen[1][:2] == (True, 0)
+    assert seen[1][3] in [_rtc_reading(t) for t in range(before, after + 1)], seen[1][3]
+
+
+def test_the_servers_offset_moves_the_set_time() -> None:
+    responder = NtpResponder(_PORTS.next())
+    responder.offset_s = 3600
+    before = int(time.time())
+    seen = _against_responder(_responder_client(), responder, ["serve"])
+    after = int(time.time())
+    assert seen[0][3] in [_rtc_reading(t + 3600) for t in range(before, after + 1)], seen[0][3]
+
+
+def test_a_silent_responder_fails_each_attempt_with_no_reply() -> None:
+    assert _fails_twice("silent") == (_FAILED_TWICE, (2, [code("E", "NTP_NO_REPLY")]))
+
+
+def test_an_unsynchronised_reply_fails_each_attempt_with_its_warning() -> None:
+    assert _fails_twice("unsync") == (_FAILED_TWICE, (2, [code("W", "NTP_UNSYNC_REPLY")]))
+
+
+def test_a_short_reply_fails_each_attempt_as_malformed() -> None:
+    assert _fails_twice("short") == (_FAILED_TWICE, (2, [code("E", "NTP_MALFORMED")]))
+
+
+def test_an_implausible_reply_fails_each_attempt_as_implausible() -> None:
+    assert _fails_twice("implausible") == (_FAILED_TWICE, (2, [code("E", "NTP_IMPLAUSIBLE")]))
+
+
+def test_a_failed_resync_never_resets_the_staleness_count() -> None:
+    # Synced from the responder, then a failed resync at 1 h and 2 h with it silent: stale three intervals after the
+    # success all the same (the owner-reviewed rule in _refresh_loop()); the due cadence's own case is further up.
+    responder = NtpResponder(_PORTS.next())
+    with _SteppedClock() as clock:
+        client = _responder_client(interval_h=1)
+        finished = _counted(client)
+
+        async def scenario() -> "list[tuple[int, bool]]":
+            seen: list[tuple[int, bool]] = []
+            with redirect_udp_port(ntpmod, 123, responder.port):
+                tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(client._sync_loop()), asyncio.create_task(client._refresh_loop())]
+                try:
+                    client._ntp_sync_trigger_event.set()
+                    await _attempt_ended(finished)
+                    responder.mode, client._ntp_fetch_timeout_ms = "silent", _NO_REPLY_FETCH_TIMEOUT_MS
+                    elapsed_s = 0
+                    for age_s in (3600, 7200, _STALE_AFTER_S - _CHECK_INTERVAL_S, _STALE_AFTER_S):
+                        clock.advance((age_s - elapsed_s) * 1000)
+                        elapsed_s = age_s
+                        if age_s % 3600 == 0 and age_s < _STALE_AFTER_S:
+                            client._ntp_sync_trigger_event.set()
+                            await _attempt_ended(finished)
+                        await tick(client._ntp_timer_trigger_event)
+                        seen.append((age_s, await client.ntp_issynced()))
+                finally:
+                    await cancel_all(tasks)
+            return seen
+
+        try:
+            seen = run(scenario())
+        finally:
+            responder.close()
+            asy_base_classes.set_utc_valid(valid=False)
+    assert seen == [(3600, True), (7200, True), (_STALE_AFTER_S - _CHECK_INTERVAL_S, True), (_STALE_AFTER_S, False)]
+    assert responder.requests >= 3  # the sync, then the two failed resyncs
+    assert _slots(client)[1] == [code("E", "NTP_NO_REPLY")]
+
+
+def test_a_responder_back_mid_backoff_syncs_at_the_next_attempt() -> None:
+    seen = _against_responder(_responder_client(), NtpResponder(_PORTS.next()), ["silent", "silent", "serve"])
+    assert [s[:3] for s in seen] == [s[:3] for s in _FAILED_TWICE] + [(True, 0, _RETRY_S)]
 
 
 if __name__ == "__main__":

@@ -1,0 +1,16 @@
+FAIL test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 575, in test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass
+  File "tests/_async_harness.py", line 254, in run_timed
+  File "tests/_async_harness.py", line 97, in _drive
+  File "tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "_only.py", line 567, in scenario
+AssertionError: the timed pause never ended by itself
+0/1 passed, 1 failed, 0 skipped

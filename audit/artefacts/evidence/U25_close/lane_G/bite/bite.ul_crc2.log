@@ -1,0 +1,6 @@
+FAIL test_a_crc16_exerciser_pair_catches_a_corrupted_byte:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 531, in test_a_crc16_exerciser_pair_catches_a_corrupted_byte
+AssertionError: 0 of two rounds failed for one corrupted byte
+0/1 passed, 1 failed, 0 skipped

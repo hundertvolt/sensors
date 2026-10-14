@@ -9,6 +9,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 
 from _async_harness import run
 from _error_codes import code
+from _port_bands import PortAllocator
 from _src_const import src_const
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -58,15 +59,12 @@ _HOST = "127.0.0.1"
 _SECOND_HOST = "127.0.0.2"  # a second loopback address, so two fake servers share one redirected port
 _DNS_PORT = src_const("src/asy_dns_client.py", "_DNS_PORT")
 _DNS_UDP_MAX = asy_dns_client.DNS_UDP_MAX
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 24000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_asy_dns_client")
 
 
 def _make_port() -> int:  # a fresh loopback port per call, so tests never contend for the same address
-    global _next_port
-    _next_port += 1
-    return _next_port
+    return _PORTS.next()
 
 
 def _resolved(host: str, port: int) -> "tuple[str, int]":

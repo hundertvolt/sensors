@@ -19,13 +19,14 @@ import microtest
 import network
 import rp2
 from _async_harness import cancel, run
-from _boot_recorder import BootRecorder
+from _boot_recorder import BootRecorder, expected_entries
 from _bus_hazard_catalog import adapter_for, scd_data_frame, scd_register_frame
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep
 from _fram_chip_fake import FakeMB85RS64V
 from _generated_module import boot_entry_watchdog, boot_generated, fram_fake_class, write_offline_ntp_config
 from _generated_tree import require_fresh
+from _port_bands import PortAllocator
 from _shared_rest_roundtrip import (
     assert_named_modules_constructed,
     assert_sensor_payload_not_self_wrapped,
@@ -34,6 +35,7 @@ from _shared_rest_roundtrip import (
 from _src_const import src_const
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
+from _twin_devices import generated_devices, wiring_plan
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from microdot import Request, Response
 
@@ -99,17 +101,6 @@ def status_body(res: "Response") -> bytes:
     return drain_json_response_body(res.body)
 
 
-# Every real device (devices/*.toml) - buildgen generates each one's own module + wiring plan into
-# build/generated_src/ before scripts/test.sh ever runs this file (scripts/_generate_sensortask_modules.py).
-_DEVICES = ("wozi", "dev", "arzi", "klkizi", "grkizi", "schlafzi")
-
-
-def _wiring_plan(device: str) -> "dict[str, Any]":
-    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
-        plan: dict[str, Any] = json.load(f)
-    return plan
-
-
 def _expected_facts(device: str) -> "dict[str, Any]":
     # What buildgen alone derives for the device (its boot sequence, its FRAM-wired modules), written beside the module.
     with open(f"build/generated_src/sensortask_{device}_expected.json") as f:
@@ -128,6 +119,8 @@ def _expected_facts(device: str) -> "dict[str, Any]":
 # ---------------------------------------------------------------------------
 
 _scratch: "TmpScratch | None" = None
+# Override values a scenario hands build_system()/main() and reads back; nothing binds them.
+_PORTS = PortAllocator("_sensortask_scenarios")
 
 
 def _tmp_cfg_dir() -> str:
@@ -151,7 +144,7 @@ def _reset_peripherals() -> None:
 def seed_occupants(device: str) -> None:
     # Every I2C occupant of the plan present before the boot: its bus the per-id fake the product's own construction
     # then reuses, power-cycled, and each occupant seeded by its catalog adapter (attached, its register model).
-    for bus_name, attachments in _wiring_plan(device)["buses"].items():
+    for bus_name, attachments in wiring_plan(device)["buses"].items():
         bus_id = int(bus_name[len("i2c") :])
         machine.I2C.reset_id(bus_id)
         # A valid SCL/SDA pair of the block (ports/rp2/machine_i2c.h:67-68); the product's construction sets its own.
@@ -226,7 +219,7 @@ def _present_optional_instances(module: "Any") -> "tuple[str, ...]":
     # The plan's drivers built as a module of the same name, fram aside (always present): the oracle is what buildgen
     # wrote from devices/<device>.toml, never the built module's attributes - reading the module back cannot tell
     # "device has no bmp3xx" from "buildgen silently dropped a declared driver".
-    plan_instances = set(_wiring_plan(_device_of(module))["instances"])
+    plan_instances = set(wiring_plan(_device_of(module))["instances"])
     return tuple(name for name in _constructed(module) if name in plan_instances and name != "fram")
 
 
@@ -247,7 +240,7 @@ def _has_uart_link(module: "Any") -> bool:
     # uart_link doesn't fit _has()'s one-driver-one-attribute shape: a device that has it always
     # has exactly two instances (uart_link_init/uart_link_resp - buildgen/twin_wiring.py's own
     # instance_label() naming), never a single "module.uart_link".
-    present = "uart_link" in set(_wiring_plan(_device_of(module))["instances"])
+    present = "uart_link" in set(wiring_plan(_device_of(module))["instances"])
     init = getattr(module, "uart_link_init", None)
     resp = getattr(module, "uart_link_resp", None)
     if present:
@@ -365,8 +358,7 @@ def _dispatch(module: "Any", method: str, path: str, json_body: "dict[str, Any] 
 
 # ---------------------------------------------------------------------------
 # Scenario bodies - one per distinct construction/wiring/webserver-registration concern, each
-# parametrized by `device` and registered per real device below, mirroring
-# tests/_webserver_concurrency_scenarios.py's dynamic-registration convention (Part E.1).
+# parametrized by `device` and registered per real device below (Part E.1's dynamic registration).
 # ---------------------------------------------------------------------------
 
 _SCENARIOS: "list[tuple[str, Callable[[str], None]]]" = []
@@ -457,10 +449,11 @@ def _scenario_web_host_port_overridable(device: str) -> None:
     # A non-root Unix-port integration run can't bind the production 0.0.0.0:80 default (EACCES) -
     # build_system() must let a caller override both, mirroring its existing cfg_path/debug
     # override pattern.
-    module = build(device, web_host="127.0.0.1", web_port=8080)
+    port = _PORTS.next()
+    module = build(device, web_host="127.0.0.1", web_port=port)
     assert module.webserver is not None
     assert module.webserver._host == "127.0.0.1"
-    assert module.webserver._port == 8080
+    assert module.webserver._port == port
 
 
 @_register("main_forwards_web_host_and_port_to_build_system")
@@ -495,7 +488,8 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     try:
         asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
-        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=8080))
+        port = _PORTS.next()
+        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port))
     finally:
         SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
         SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
@@ -503,7 +497,7 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
         SystemService.supervise_tasks = real_supervise  # type: ignore[method-assign]
     assert module.webserver is not None
     assert module.webserver._host == "127.0.0.1"
-    assert module.webserver._port == 8080
+    assert module.webserver._port == port
 
 
 # ---------------------------------------------------------------------------
@@ -763,25 +757,6 @@ def _scenario_boot_feeds_the_watchdog(device: str) -> None:
     assert wdt.feed_count == expected_feeds
 
 
-def _expected_boot_entries(sequence: "dict[str, list[str]]") -> "list[tuple[str, str]]":
-    # The recorder's view of the build's boot sequence: a step's inner entries between its call and its return,
-    # the webserver built last after the model's own nodes; the last step, the supervisor, never returns.
-    entries: list[tuple[str, str]] = []
-    for step in sequence["phases"]:
-        if step.startswith("BOOT_"):
-            entries.append(("phase", step))
-            continue
-        entries.append(("call", step))
-        if step == "build_system":
-            entries += [("construct", name) for name in sequence["construction"] + ["webserver"]]
-        elif step == "run_setups":
-            for name in sequence["setups"]:
-                entries += [("setup", name), ("feed", "")]
-        if step != sequence["phases"][-1]:
-            entries.append(("return", step))
-    return entries
-
-
 async def _main_until_supervised(module: "Any", device: str, recorder: "BootRecorder") -> None:
     # The real main(), as the boot entry runs it, until the recorder stops it entering supervise_tasks(); each
     # stagger wait is fired, the Timer fake never firing one itself. The tasks main() started are stopped after.
@@ -827,7 +802,7 @@ def _scenario_boot_sequence(device: str) -> None:
     finally:
         asy_system_service.asyncio = asyncio
         recorder.restore()
-    assert recorder.entries() == _expected_boot_entries(_expected_facts(device)["boot_sequence"]), recorder.entries()
+    assert recorder.entries() == expected_entries(_expected_facts(device)["boot_sequence"]), recorder.entries()
 
 
 @_register("every_logger_the_boot_constructs_reaches_status_errcount_exactly_once")
@@ -884,12 +859,12 @@ def _scenario_fresh_filesystem_writes_once(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
     first, second = _DirWrites(cfg_path), _DirWrites(cfg_path)
     with first:
-        module = build(device, cfg_path=cfg_path)
+        module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: truly empty, NTP's store included
     owners = [obj for obj in _module_objects(module).values() if getattr(obj, "cfgmgr", None) is not None]
     storing = [obj.cfgmgr for obj in owners if any(asy_config_manager.check_cfg_get_default(field)[0] for field in obj.get_cfg_schema())]
     assert sorted(first.paths) == sorted(cfg_path + "config_" + store.name[len("CFGMGR_") :] + ".cfg" for store in storing), first.paths
     with second:
-        build(device, cfg_path=cfg_path)
+        build(device, cfg_path=cfg_path, offline_ntp=False)
     assert second.paths == []
     # A config reset cut by a power loss after k removals: the rebuild writes each removed file once, with its
     # defaults, and no other.
@@ -898,7 +873,7 @@ def _scenario_fresh_filesystem_writes_once(device: str) -> None:
         os.remove(path)
     third = _DirWrites(cfg_path)
     with third:
-        build(device, cfg_path=cfg_path)
+        build(device, cfg_path=cfg_path, offline_ntp=False)
     assert sorted(third.paths) == removed
 
 
@@ -1152,7 +1127,7 @@ def _scenario_read_trigger_stagger(device: str) -> None:
     module = build(device)
     sysfunct = module.sysfunct
     triggers = module._collect_trigger_starters()
-    readers = [(attachment["driver"] + ("_" + attachment["name_ext"] if attachment["name_ext"] else ""), bus) for bus, attachments in _wiring_plan(device)["buses"].items() for attachment in attachments]
+    readers = [(attachment["driver"] + ("_" + attachment["name_ext"] if attachment["name_ext"] else ""), bus) for bus, attachments in wiring_plan(device)["buses"].items() for attachment in attachments]
     for var, _bus in readers:
         for starter in getattr(module, var).get_trigger_starters():
             assert starter in triggers, f"{var}'s read trigger is not collected"
@@ -1602,8 +1577,8 @@ def _scenario_main_call_order(device: str) -> None:
 # maintenance_sensor/error_source. These check the real registrations landed correctly.
 
 # Not the generic dispatch/aggregation logic (tests/test_asy_webserver_service.py's uniform-fake
-# suite covers that in full depth), and not concurrent-connection behavior
-# (tests/_webserver_concurrency_scenarios.py, also parametrized per device).
+# suite covers that in full depth), and not concurrent-connection behavior (the host-side harness
+# scripts/_digital_twin_scenarios.py, run per device).
 # ---------------------------------------------------------------------------
 
 
@@ -2581,7 +2556,7 @@ def _scenario_status_config_unpersisted(device: str) -> None:
     # ConfigUnpersisted (not ConfigFaults: no file was damaged); a module's next good write takes it off the list.
     cfg_path = _tmp_cfg_dir()
     with WriteCountingOpen(asy_config_manager, fail_writes=True):
-        module = build(device, cfg_path=cfg_path)
+        module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: a fresh boot, NTP's store included
     names = [store.module_name for store in _storing_stores(module)]
     system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
@@ -2859,15 +2834,15 @@ def _scenario_hotspot_put_unmatched_405(device: str) -> None:
 # fn is bound as a default-argument value rather than read from the loop variable, or every
 # generated test would share the same last-iteration fn.
 #
-# One device per call: each tests/test_sensortask_<device>.py calls this once, for its own device,
-# so the scenarios run as one independent Unix-port process per device instead of one process
-# building every device's object graph for every scenario (this module's docstring has the rationale).
+# One device per call: tests/test_sensortask.py calls this once per job, for its TEST_DEVICE, so the
+# scenarios run as one independent Unix-port process per device instead of one process building
+# every device's object graph for every scenario (this module's docstring has the rationale).
 # ---------------------------------------------------------------------------
 
 
 def register_for_device(device: str) -> "dict[str, Callable[[], None]]":
     global _scratch
-    assert device in _DEVICES, f"{device!r} is not one of this module's own real devices {_DEVICES!r}"
+    assert device in generated_devices(), f"{device!r} is not a generated device {generated_devices()!r}"
     defined = sorted(name for name in globals() if name.startswith("_scenario_"))
     assert len(defined) == len(_SCENARIOS), f"{len(defined)} _scenario_* functions, {len(_SCENARIOS)} registered: one lacks its @_register"
     _scratch = TmpScratch(f"sensortask_{device}")

@@ -1,0 +1,18 @@
+FAIL test_stations_rule_settings_change_and_silent_mode_in_one_boot:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_wifi_modes.py", line 306, in test_stations_rule_settings_change_and_silent_mode_in_one_boot
+  File "tests/test_digital_twin_wifi_modes.py", line 149, in _run_scaled
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25g/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_digital_twin_wifi_modes.py", line 280, in scenario
+  File "tests/test_digital_twin_wifi_modes.py", line 94, in _await_failed_arm
+AssertionError: (b) the silent mode's period: the refused arm never fed the hardware streak
+0/1 passed, 1 failed, 0 skipped

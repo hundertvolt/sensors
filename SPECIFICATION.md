@@ -884,7 +884,7 @@ module still constructs its own `ConfigManager`/`PrintLog` internally — no cro
 sharing, and every *instance*-level dependency stays constructor-injected, so the object graph is
 still a clean DAG at that level.
 
-Full coverage: `tests/_sensortask_scenarios.py` (imported by the six `tests/test_sensortask_<device>.py` files, one per real device).
+Full coverage: `tests/_sensortask_scenarios.py` (run by `tests/test_sensortask.py` once per device of `devices/*.toml`, E.2.1).
 
 ## A.8 REST API endpoint reference (`src/asy_webserver_service.py`)
 
@@ -1170,9 +1170,13 @@ still must not run concurrently, for their ports (CLAUDE.md), not for this file 
 
 `digital_twin/` fakes `machine`/`network`/`neopixel` at the same raw bus-transaction mocking
 boundary `tests/machine.py` uses, but with real-time-firing `Timer`s and plausible sensor values,
-so the generated `sensortask_wozi.py` runs under the Unix-port interpreter and behaves like real
-hardware. Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. See
-`digital_twin/README.md`.
+so a generated device module runs under the Unix-port interpreter and behaves like real
+hardware. Independent of `tests/`; the swap is pure `MICROPYPATH` ordering. How faithful each fake
+is, and where it is not: `digital_twin/README.md`'s fidelity table. The twin answers NTP from a
+local responder (`digital_twin/unixport/_ntp_responder.py`), so a twin boot syncs its clock like a
+unit on its network: a booted device's first sync lands with a clean NTP log, the NTP client's tests
+run against the same responder, and the clock-jump cases that need a sync run in the twin as well as
+under the driven clock (owner, 2026-10-02; the clock-jump file, agent, 2026-10-05).
 
 **Chain-completeness requirement, generalized beyond sensor drivers** (owner, 2026-08-20,
 `00eb44d`): any new module joins the digital twin, provided it can form a complete chain. A new
@@ -1181,18 +1185,19 @@ sensor driver needs the C.11 point 9 checklist. A new common/base module wired i
 with no hardware surface. A module that can't yet complete the chain stays out until the missing
 piece exists (flagged per CLAUDE.md).
 
-**Automated CI suite** (`scripts/run_digital_twin_ci.sh`, `digital-twin-e2e` job — a
-`strategy.matrix` over all 6 real device variants as of SPECIFICATION.md Part L.4): wipes
-leftover twin state; builds the Unix port and the real production website for that device
-(`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
-`run_generic_integration.py` through its 14-run suite, once per gc threshold
-(`digital_twin/README.md` has the runs and the per-device subprocess counts): fresh
-boot + every endpoint; settings
+**Automated CI suite** (`scripts/run_digital_twin_ci.sh <device>`, `digital-twin-e2e` job — a
+`strategy.matrix` over every device of `devices/*.toml`, each GC stage and each part, the suite or
+the host-side scenario harness (E.9)): builds the Unix port and the real production website for that
+device (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
+`run_generic_integration.py` through its runs, once per gc threshold, archiving each pass's state
+before every fresh start (`digital_twin/README.md` has the runs and the per-device subprocess
+counts): fresh boot + every endpoint; settings
 persistence across reboot; a sustained fault matrix, derived from that device's own real wiring
 plan, proving graceful degradation and that the watchdog never starves under bounded failure; a
 persistence-correctness sweep; recovery after a bounded fault clears; hotspot fallback with a real
 answered UDP DNS query; NTP permanently unreachable; a real blocking hang proving the watchdog
-backstop engages; a clean soak run at both `gc.threshold(-1)` and the project's chosen
+backstop engages; the reset reasons reachable at L2; the system commands end to end; a clean soak
+run at both `gc.threshold(-1)` and the project's chosen
 `gc.threshold(32768)`, in that order — Part I.4(e)'s standing rule). Building this surfaced three confirmed Unix-port-only `socket`
 quirks (real, required behavior on real rp2 hardware, not a `src/` bug — BACKLOG.md has the
 source-level account) worked around entirely from twin-side code
@@ -1328,7 +1333,8 @@ SIGKILL after 5 s — and fails naming the limit. Every command gets its own ses
 reaches everything it started, except one run through `sudo` (or one that runs sudo itself, the
 Playwright `install-deps`), which stays in the caller's session, where sudo can ask for a password
 on the terminal. SIGTERM and SIGHUP to the installer become an exit that stops the running command
-the same way, as Ctrl-C does; a SIGKILL cannot be caught, so the command it was running keeps
+the same way, as Ctrl-C does; one of the three landing while a command is still starting is held
+until it has started, then stops it too. A SIGKILL cannot be caught, so the command it was running keeps
 running in its own session, no longer holding the toolchain lock (B.5).
 
 **Network steps are retried** (`run_retried()`): `tool.uv_sync_attempts` attempts with pauses of
@@ -1619,9 +1625,9 @@ strip.
 `wozi`/`dev`), gated behind `RUN_SLOW_FIRMWARE_BUILD=1`, run in CI's `firmware-build-verify` job on
 every push/PR — this pipeline's CI firmware-build stage.
 
-**Production-readiness scope**: proves the build assembles and (via
-`tests/test_digital_twin_real_website_integration.py`, H.7) that the booted twin serves the real
-website — still build-only, not an on-device functional check.
+**Production-readiness scope**: proves the build assembles and (via the scenario harness's
+real-website scenarios, `scripts/_digital_twin_scenarios.py`, H.7) that the booted twin serves the
+real website — still build-only, not an on-device functional check.
 `tests_hardware/flash/test_toolchain_flash_boot.py` (`--allow-flash-cycle`-gated) exercises real
 output on real hardware, and on first run caught a real bug (an early manifest omitted
 `ports/rp2/modules/rp2.py`, since fixed by reusing the stock manifest). This script's success is
@@ -1830,8 +1836,8 @@ often, at essentially arbitrary points in real wall-clock time - which is exactl
 flake only ever showed up at that threshold: it dramatically raises the odds that a real SIGINT
 lands mid some non-reentrant operation. This is the *same root mechanism* as the already-fixed
 Part F.6 heap-lock bug (SIGINT landing mid `gc_collect()` specifically leaves `GC_COLLECT_FLAG`
-stuck) - `digital_twin/unix_port_gc_unwedge.py`'s `unwedge_heap_after_interrupt()` patches that one
-specific downstream symptom, but does nothing for an interrupt landing mid some *other*
+stuck) - a `gc.collect()` recovery (F.6) would patch that one specific downstream symptom, but
+nothing for an interrupt landing mid some *other*
 non-reentrant operation (frame/exception bookkeeping, in the reproduced case), which can corrupt VM
 state beyond anything a userspace `gc.collect()` call can repair. Closing the root cause - never
 delivering the interrupt at an unsafe point at all - closes every symptom in this whole class, not
@@ -2333,9 +2339,9 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
   is mypy-only, and the interpreter still finds it through `MICROPYPATH`. `digital_twin/machine.py`,
   `network.py`, `neopixel.py`, `rp2.py`: a hard "Duplicate module named" error against the
   same-named fake in `tests/` (`tests/machine.py`, `tests/rp2.py`).
-  `digital_twin/launch.py`, `run_generic_integration.py`, `segfault_stress_repro.py`, every
-  `tests/test_digital_twin_*.py` and the two shared scenario libraries
-  (`_webserver_concurrency_scenarios.py`, `_digital_twin_construction_scenarios.py`): they use the
+  `digital_twin/launch.py`, `run_generic_integration.py`, every
+  `tests/test_digital_twin_*.py` and the shared construction scenario library
+  (`_digital_twin_construction_scenarios.py`): they use the
   twin's own API (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`,
   `configure_fram_state_path()`, ...), which here could only resolve to the real stub - attr-defined
   noise, never a finding. Their apparent cleanliness in this pass was accidental: a real
@@ -2351,8 +2357,9 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
 
 **Twin pass — `digital_twin/typecheck.ini`.** `mypy_path =
 digital_twin:digital_twin/unixport:src:build/generated_src:typings:tests`, `digital_twin` first so
-`machine`/`network`/`neopixel` resolve to the twin, its `unixport/` subdirectory for the UDP shim;
-`build/generated_src` for the two files that also import a `sensortask_<device>` module. Excluding
+`machine`/`network`/`neopixel` resolve to the twin, its `unixport/` subdirectory for the UDP shim,
+the NTP responder and the offline-NTP writer; `build/generated_src` for the runner's device import
+(`typecheck.sh` generates it first). Excluding
 the twin from the main pass alone did not fix its attribute resolution (confirmed), which is why
 this pass exists.
 Full `--strict` including `no_implicit_reexport`, since this scope mocks nothing by reassignment;
@@ -4272,14 +4279,16 @@ violations a spot-check had missed — two files allocating from the same base, 
 loop was sequential, and the whole 51000-57000 tier sitting *inside* the OS ephemeral range
 (32768-60999), where any concurrent ephemeral bind could be handed one of those exact ports,
 `tests_scripts/`'s own `_free_port()` included now that it runs alongside. For UDP both modes are
-silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error. The tier
-moved below the ephemeral range, where the twin tier already sat: TCP bases sit in 17400-19999, each
-claimed by a module-level `PORT`/`_PORT*` constant in the file that binds it (the twin tier,
-`unix_port_poll_prewarm.py`'s scan band, the CI suite's 18080, the JS twins, the cross-browser smoke
-and `tests/test_asy_webserver_connections.py`'s `_PORT_BASE` 18600), and UDP 21000 / 22000 / 23000 /
-24000 / 25000 / 26000 / 27000 (`udp_socket` / `captive_dns` / `ntp_client` / `dns_client` /
-`ntp_wifi_dns` / `ntp_fram_system` / `wifi_service`). **A new test file that binds a socket claims
-an unused base below 32768** — never a neighbour's, never inside the ephemeral range.
+silent rather than `EADDRINUSE`, so the symptom is an inexplicable timeout, not an error, which is
+why the bands exist. The tier moved below the ephemeral range, where the twin tier already sat.
+**Ports**: every test socket binds inside its owner's band of `tests/_port_bands.py` — one table,
+disjoint per protocol and below the OS ephemeral range, the per-device owners (the sensortask
+integration file, the construction library and the scenario harness) splitting their band evenly
+over the generated devices; a fixed row (the prewarm scan, the CI suite's 18080, the JS twins, the
+cross-browser smoke) is listed so no other row can take it. An allocator past its band's end fails
+naming it, and `tests_scripts/test_port_bands.py` checks the table and that every test file binding
+a port draws it from its band. **A new test file that binds a socket claims a row of its own** —
+never a neighbour's, never inside the ephemeral range.
 
 **Fixed ports** the product itself binds — 53 for the captive DNS, 18080 for the CI suite's twin —
 are held by one runner at a time through a per-port lock, `scripts/_port_lock.sh` (and
@@ -4380,16 +4389,19 @@ them), `model` in `test_buildgen_validate.py`, `api_reference` in `test_api_refe
 
 ## E.2.1 Per-device scenario libraries: one process per device
 
-Three test tiers are parametrized across all 6 real devices, and each is split the same way: the
-scenario bodies live once in a shared `tests/_*_scenarios.py` library (leading underscore — not a
-test file), exported through a `register_for_device(<device>)` factory that six thin
-`tests/test_*_<device>.py` wrappers each call once.
+Every device of `devices/*.toml` runs the per-device tiers, each split the same way: a file whose
+own line reads `PER_DEVICE = True` is run by `scripts/test.sh` once per derived device (`TEST_DEVICE`),
+each its own Unix-port process, tagged `<file>[<device>]` — no per-device wrapper files. Two of them
+call a shared `tests/_*_scenarios.py` library (leading underscore — not a test file) through its
+`register_for_device(<device>)` factory; `tests/_twin_devices.py` derives the device set from the
+generated wiring plans and answers which device has the property a scenario needs.
 
-| shared library | per-device wrappers | tier |
+| shared library | per-device file | tier |
 | --- | --- | --- |
-| `tests/_sensortask_scenarios.py` | `test_sensortask_<device>.py` | `build_system()` construction/wiring + real webserver wiring |
-| `tests/_digital_twin_construction_scenarios.py` | `test_digital_twin_construction_<device>.py` | digital-twin construction/wiring/REST, no wall-clock waits |
-| `tests/_webserver_concurrency_scenarios.py` | `test_digital_twin_webserver_concurrency_<device>.py` | real concurrent TCP against `WebserverService` |
+| `tests/_sensortask_scenarios.py` | `tests/test_sensortask.py` | `build_system()` construction/wiring + real webserver wiring |
+| `tests/_digital_twin_construction_scenarios.py` | `tests/test_digital_twin_construction.py` | digital-twin construction/wiring/REST, no wall-clock waits |
+| — | `tests/test_digital_twin_sensortask_integration.py`, `tests/test_digital_twin_timer_pool.py` | the generated graph booted in process on the twin buses, no HTTP |
+| `scripts/_digital_twin_scenarios.py` | — (run by `scripts/run_digital_twin_ci.sh`) | real concurrent TCP against `WebserverService`: the host-side scenario harness, a fresh twin per scenario or per group of shared ones (E.9) |
 
 **Why the split exists is memory, not organization.** `scripts/test.sh` runs one Unix-port process
 per `tests/test_*.py` file, sharing one heap across every test function in it, so a single file
@@ -4403,17 +4415,18 @@ not a per-file heap override or a `gc.collect()` prop (Part I.4(f)).
 
 It is **not** a reversion to the old per-device test-body duplication that Part L's Session 6.2
 collapsed: that collapse removed six hardcoded *copies* of every scenario. Every body still lives
-exactly once and stays device-generic; the wrappers carry one call each and no logic.
+exactly once and stays device-generic; the per-device run adds no logic.
 
-`tests/test_digital_twin_sensortask_integration.py` keeps its heavier tests wozi-only rather than
-splitting them too: each drives seconds-to-tens-of-seconds of real wall clock through mandatory
-infrastructure plus SCD30/SGP40 only (never `bmp3xx`), so the mechanism each proves is already
-device-independent and a ×6 parametrization would buy nothing.
+`tests/test_digital_twin_sensortask_integration.py` runs its driver-specific scenarios only on the
+device `tests/_twin_devices.py` picks for them and skips them elsewhere: each drives seconds of real
+wall clock through a mechanism that is device-independent, so running it on every device would buy
+nothing.
 `tests/test_digital_twin_wifi_modes.py` boots one device for the same reason, the first generated
 plan wiring the neopixel and the FRAM the scenario reads, never a named one: one boot walks the Wi-Fi
 modes after a hotspot ran (the stations rule, a reconnecting settings change landing in the
-fresh-boot state, the silent mode) at the product's own waits, about 100 s, in a file of its own so
-neither file nears the per-file limit (agent, 2026-10-12).
+fresh-boot state, the silent mode) with the WiFi service's own sleeps `l2.wifi_modes_sleep_scale`
+times shorter — its transitions are under test, not its periods — about 26 s, in a file of its own
+so neither file nears the per-file limit (agent, 2026-10-12).
 
 ## E.3 Running
 
@@ -4444,9 +4457,8 @@ module-level name in the module under test. **The second L1 file set**, `tests/l
 same way on `~/pico-toolchain/micropython/ports/unix/build-lwip/micropython` instead (E.1); its rig
 differences are F.7's `build-lwip` rows.
 
-Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`,
-`tests/_webserver_concurrency_scenarios.py`, and every `tests/test_digital_twin_*.py` that does the
-same) needs one more
+Any test file that imports a `sensortask_<device>.py` module directly (`tests/_sensortask_scenarios.py`
+and every `tests/test_digital_twin_*.py` that does the same) needs one more
 prerequisite first, since no such module is ever committed to `src/` any more (SPECIFICATION.md Part L's
 Session 6): `uv run scripts/_generate_sensortask_modules.py` to populate the gitignored
 `build/generated_src/` directory — it writes every device's module, its two boot entries
@@ -4468,7 +4480,11 @@ done by hand first or the import fails with `ImportError: no module named 'senso
 that imports a generated module or reads a plan first calls `tests/_generated_tree.py`'s
 `require_fresh()`, which refuses a missing tree, a changed input, a missing output, an orphan or an
 empty list with `build/generated_src/ is missing or stale - run: uv run
-scripts/_generate_sensortask_modules.py`, so a direct run never tests a stale tree.
+scripts/_generate_sensortask_modules.py`, so a direct run never tests a stale tree. With
+`--device-toml PATH --out-dir DIR` the generator writes one TOML's outputs into `DIR` only (the twin
+CI suite's derived CRC16 pass uses it). A `PER_DEVICE = True` file run directly needs
+`TEST_DEVICE=<device>` set to one of the generated devices, as `scripts/test.sh` sets it per job
+(E.2.1); without it the file refuses to run.
 
 **Under GitHub Actions every red outcome is also an `::error` annotation** — the pytest tier first,
 then a failed file with the last 40 lines of its own log or a file that failed only the
@@ -4533,10 +4549,12 @@ Every attempt's output stays in the file's log, so the memory gate reads a timed
 is not a tty.
 
 The 240s default came from 180s when the real-socket webserver-concurrency scenarios grew ~35s past
-comfort. **Per-file overrides exist but the table is empty**: the per-device splits brought the two
-former monolithic files (447s/268s single-process) down to ~90s (`sensortask_*`) and ~45s
-(`webserver_concurrency_*`) standalone; measured again on 2026-10-13, the slowest file alone,
-`tests/test_sensortask_dev.py`, takes 56s at -1 and 82s at 32768, a webserver-concurrency file 43-44s at 32768. Running all six of one family at once costs 114.8s/59.5s
+comfort. **Per-file overrides exist but the table is empty**: the per-device jobs (one process per
+device) brought the two former monolithic files (447s/268s single-process) down to ~90s
+(`sensortask`) and ~45s (the webserver-concurrency scenarios, since moved host-side, E.9) standalone;
+measured again on 2026-10-13, the slowest job alone, `tests/test_sensortask.py`'s `dev` job (then a
+file of its own), takes 56s at -1 and 82s at 32768, a webserver-concurrency file 43-44s at 32768.
+Running all six of one family at once costs 114.8s/59.5s
 wall clock rather than 6x one file, because almost all of each build is real SPI CS-settle sleeping
 rather than CPU work (~35s of user CPU across a ~9-minute sequential six-file run) — so concurrent
 processes barely contend even past the core count. Re-measure and re-add an entry if a future device
@@ -4577,16 +4595,16 @@ body.
 
 **Both tiers' machine fakes are held to one contract**, `tests/_machine_contract.py`, which
 `tests/test_fakes.py` runs against `tests/machine.py` and `tests/test_digital_twin_machine.py`
-against `digital_twin/machine.py`: the tiers may differ in fidelity, never in those semantics, and a
-check the twin still fails sits in that file's `_TWIN_PENDING`, each entry naming the twin change
-that closes it (the check fails exactly the listed ones, so the list only shrinks). Each
+against `digital_twin/machine.py`: the tiers may differ in fidelity, never in those semantics. The
+twin passes every check: that file's `_TWIN_PENDING`, where a check the twin failed would be listed
+with the twin change that closes it, is empty (the check fails exactly the listed ones). Each
 `tests/machine.py` class cites the rp2 port fact it models, file and lines at the pin, and states
 its gaps on a `Not modelled:` line. A stand-in offers only its real
 class's surface: each `tests/machine.py` class lists its test-only names in `TEST_API`, and
 `tests_scripts/test_fake_surface_conformance.py` checks every other public name against the rp2
-type's locals-dict table in the pinned checkout (a missing checkout fails, never skips; the twin's
-classes stay pending until they declare theirs) and the webserver test's module doubles against the
-product classes they stand in for. Fault injection takes the twin's queue convention:
+type's locals-dict table in the pinned checkout (a missing checkout fails, never skips; every twin
+class declares its `TEST_API` and is checked the same way) and the webserver test's module doubles
+against the product classes they stand in for. Fault injection takes the twin's queue convention:
 `inject_fault(op, exc_type, *args, times=1, match=None, address=None)` queues `times` faults on an
 op the bus can raise on (rp2's I2C on every transfer, its SPI only on a reading one), each matching
 call raising a fresh exception, oldest first, and `pending(op)` counts what is left. The UART fake
@@ -4598,7 +4616,7 @@ judge file declares the keys it judges in `_JUDGED_SHAPES`, and
 The fakes count every filesystem write and every SCD30 NVM write, so a test asserts the writes it
 spends: `tests/_write_counters.py`'s `WriteCountingOpen` (a module's `open`) and
 `scd30_nvm_writes()` (the NVM-writing command frames sent to address 0x61 on a fake bus), and the
-twin chip's `Scd30Chip.nvm_writes`.
+twin chip's `SCD30Chip.nvm_writes`.
 
 **The allocator is the one other mocking surface (agent, 2026-09-13, `a1bf976`)**, on the same
 no-real-class-equivalent reasoning: the Unix-port test heap (`scripts/test.sh`'s own `-X heapsize`,
@@ -4876,7 +4894,8 @@ direct, once over real HTTP" pairs) is the cluster `_shared_rest_roundtrip.py` t
 Consolidation should target that specific shape, not force uniformity onto pairs already correctly
 complementary (agent, 2026-09-04). **This complementary relationship is about which *aspect* of a
 behavior each level proves (E.6.1's own table) — it does not exempt real-hardware-facing behavior
-from needing a real-hardware check at all; see E.6.6.**
+from needing a real-hardware check at all; see E.6.6.** How faithful each twin fake is:
+`digital_twin/README.md`'s fidelity table.
 
 ### E.6.6 Level-containment exceptions
 
@@ -4904,8 +4923,8 @@ added behind `persistence_write`; until it exists, row `scd30-writer-under-api-l
 | `twin-instrument` | `test_digital_twin_launch` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
 | `twin-instrument` | `test_digital_twin_machine` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
 | `twin-instrument` | `test_digital_twin_run_generic_integration` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
-| `twin-instrument` | `test_digital_twin_unix_port_gc_unwedge` | L3, L4 | it tests the twin's own instrument, which has no silicon counterpart | (agent, 2026-10-06) | — |
 | `twin-instrument` | `test_digital_twin_unix_port_unretrieved_report` | L3, L4 | it tests the PC tiers' own exception handler, which never runs on silicon; the firmware's report has its own L3 test (`flash/test_unretrieved_task_exception_handler.py`) | (agent, 2026-10-07) | — |
+| `twin-instrument` | `test_digital_twin_rp2_constants` | L3, L4 | it pins the twin's own model constants to the pinned rp2 source lines they cite; silicon has nothing to compare with but that source | (agent, 2026-10-14) | — |
 | `off-subnet-spoof` | `test_spoofed_off_subnet_source_address_is_ignored` (`bench/test_hotspot_role_reversal.py`), the one permanent L4 skip | L4 | a real rogue-NTP spoof needs an off-subnet host the bench lacks; the skip stays only if a real-bench attempt shows unreasonable effort or covers nothing an L1-L3 test cannot | (owner, 2026-09-28) | — |
 | `scd30-rdy-irq-vs-fallback` | the SCD30 RDY-pin IRQ path against its polling fallback | L3, L4 | software cannot tell the two apart on real hardware | (owner, 2026-09-25) | — |
 | `scd30-non-finite-words` | an SCD30 measurement word that decodes non-finite | L3, L4 | the real SCD30 cannot be made to emit one | (owner, 2026-09-25) | — |
@@ -4913,6 +4932,17 @@ added behind `persistence_write`; until it exists, row `scd30-writer-under-api-l
 | `bus-fault-injection` | `ci_suite._run_3_sustained_bus_fault_matrix` and `ci_suite._run_4_bus_fault_persistence_sweep`: synthetic bus faults | L3, L4 | they need a programmable fault-injection rig, and none will be bought; a genuinely wedged bus stays a manual check | (owner, 2026-09-22) | — |
 | `scd30-writer-under-api-load` | the SCD30 config write against its siblings' reads under API load | L4 | its bench counterpart spends real SCD30 NVM wear and is added behind `persistence_write`; until then this row lists the gap | (agent, 2026-10-06) | — |
 | `flash-only-bus-checks` | the ISL29125 interrupt edge against its fallback, the live-bus address sweep, FRAM same-device read/write, the FRAM CS-pin hijack and hard-reset race, `deinit()` and the bus singletons | L4 | driver- and pin-level behaviour that no REST route reaches, so a bench test can neither drive nor observe it through the API | (agent, 2026-10-06) | — |
+| `reset-reasons-manual` | `ci_suite._run_12_reset_reasons`: power-on read at a fresh boot, the bootloader entry and the reason its relaunch reads | L3, L4 | a power-on needs a power cut and the way back from BOOTSEL a reflash or a manual reset, both manual on the bench (row `human-only`); the watchdog and REST-reboot reasons are other runs' | (agent, 2026-10-14) | — |
+| `system-commands-wear` | `ci_suite._run_13_system_commands`: `resetconfig` (and over damaged files), `erasefram`, the near misses, reboot and bootloader through the controlled shutdown | L3, L4 | `resetconfig` rewrites every config file on the RP2040's flash (behind `persistence_write`) and `erasefram` clears the FRAM-backed error logs CLAUDE.md requires reading before any clearing; the REST reboot alone is L4's (`bench/test_end_to_end_timing.py`); a gated counterpart is a gap until written | (agent, 2026-10-14) | — |
+| `system-commands-instrumented` | `system_commands`: two commands at once, a hung shutdown step, `erasefram` on a silent chip, a storage pause across a reboot | L3, L4 | a hung step and a silent chip need the twin runner's test-only instrumentation, which silicon lacks; two commands at once and a pause across a reboot are reachable over the bench's HTTP, and their counterpart is a gap until written | (agent, 2026-10-14) | — |
+| `fram-power-cut-per-transaction` | `test_digital_twin_fram_crash_points` | L3 (every transaction), L4 | a power loss after each SPI transaction needs a cut timed to one transaction, which no bench instrument provides; silicon's sampled form is L3's reset raced against a chunk write (`flash/test_fram_storage.py`), and a genuine power loss is manual (row `human-only`) | (agent, 2026-10-14) | — |
+| `hot-replug-manual` | `test_digital_twin_hot_replug` | L3, L4 | an unplug and replug of a live chip needs a human or a switching rig; its manual L4 step is a gap until written (F.2) | (agent, 2026-10-14) | — |
+| `timer-pool-under-graph` | `test_digital_twin_timer_pool` | L3, L4 | the product's failed-arm paths need the alarm pool emptied beside the running graph; L3's `timer_alarm_pool_exhaustion.py` proves only the platform's `ENOMEM` (F.2), and a device script running the graph on an empty pool is a gap until written | (agent, 2026-10-14) | — |
+| `clock-step-on-silicon` | `test_digital_twin_clock_jump` | L3, L4 | stepping the RTC under the running graph is reachable from a device script, which is a gap until written; the bench unit's clock otherwise follows its network's real NTP server | (agent, 2026-10-14) | — |
+| `ntp-responder-modes` | `test_digital_twin_ntp` | L3, L4 | its failing replies, an outage from boot and a returning server need a scriptable NTP server on the unit's network, which the bench lacks; the responder's own checks test the twin's instrument | (agent, 2026-10-14) | — |
+| `uart-hazards-on-jumper` | `test_digital_twin_uart_comm_hazard`, `test_digital_twin_uart_field_sweep` | L3, L4 | the device script running the same hazards and the field sweep across the jumper, its flash-tier test and the same under the bench's API load are a gap until written (J.7) | (agent, 2026-10-14) | — |
+| `uart-load-flush` | `uart_load`: both links through a ceiling-filling hammer, FRAM log writes and config flushes | L3, L4 | its config flushes spend flash wear, so a real config write during traffic runs only behind `persistence_write` (owner, 2026-10-05; J.7), and L3's interrupts-off sweep standing in for the flash stall is a gap until written; the link under a GET hammer alone is L4's (`bench/test_uart_link_under_api_load.py`) | (agent, 2026-10-14) | — |
+| `webserver-requests-bench` | `webserver_requests`: a negative Content-Length, a counted refusal at the ceiling, an ISL29125 config PUT during GET loops | L3, L4 | the first two are reachable over the bench's HTTP and their counterpart is a gap until written; the ISL29125 PUT persists to flash (behind `persistence_write`) | (agent, 2026-10-14) | — |
 
 **Out of scope entirely**: a test with no hardware-facing behavior to verify in the first place
 (`math_helpers` formulas, config-schema validation, pure JSON/string handling, buildgen's own
@@ -4987,8 +5017,9 @@ is a rule rather than an anecdote. E.7 is the largest of them and keeps its own 
   calibrate a floor: the same commit measured 64 B on one GitHub runner and 288 B on another, so a
   bound set just above the first reading went red on the second. Set it from the signal you must
   still catch, not from the noise you happened to see.
-- **The twin's `UARTLink.wire_log` is unbounded** — one byte per delivered byte, ~15-95 kB over a
-  few hundred transactions. It reads as a leak in the code under test. Clear it inside any
+- **The twin's `UARTLink.wire_log` grows with the traffic** — one byte per delivered byte, ~15-95 kB
+  over a few hundred transactions when it was unbounded; it now keeps the newest 4,096 bytes per
+  direction and counts the rest. Growth reads as a leak in the code under test. Clear it inside any
   measurement loop with direct object access to the link (every `tests/`-tier test that touches it
   already does). **`digital_twin/run_generic_integration.py` itself has no such access** — it boots
   the twin as a real subprocess — so it did not, and this was exactly the mechanism behind a real
@@ -5089,13 +5120,25 @@ Two real findings this rule caught, both worth re-reading in full:
   `digital_twin/run_generic_integration.py` (the retired per-device runners' replacement) keeps only
   `_mem_sampler()` — the one `gc.mem_free()` emitter above — plus the `gc.collect()` that settles it
   before each sample (I.4(e)'s own narrow, separately-litigated exception).
-- **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — is unbounded by design,
+- **`digital_twin/machine.py`'s `UARTLink.wire_log`** — E.8's own bullet — grew with the traffic,
   fine for a unit test with direct object access to clear it, a real bug for any driver that boots
-  the twin as an opaque subprocess and has no such access. The fix wasn't to bound `wire_log` (that
-  would defeat its own purpose for the tests that need it) but to give the in-process side a
-  periodic clearer of its own (`_wire_log_clearer()`) — the DUT-side code stays exactly as
-  DUT-appropriate as before, the driver-shaped growth just stops happening where the driver can't
-  reach it.
+  the twin as an opaque subprocess and has no such access. The fix was to give the in-process side
+  a periodic clearer of its own (`_wire_log_clearer()`, which clears each log in place) — the
+  DUT-side code stays exactly as DUT-appropriate as before, the driver-shaped growth just stops
+  happening where the driver can't reach it; the log has since been bounded too (the newest 4,096
+  bytes per direction, the rest counted).
+
+**The host-side L2 scenario harness** (`scripts/_digital_twin_scenarios.py`) is this rule's general
+form, and the in-DUT request-driving libraries it replaced are gone: each scenario boots the
+device's generated graph in a twin and drives it over HTTP, reading only the runner's stdout and
+its named `--test-…` flags — each off by default, the runner's one instrumentation exception
+(owner, 2026-09-30), checked by `tests_scripts/test_twin_runner_test_flags.py`. A scenario declares
+its family, the drivers it needs (skipped on a device without them) and whether it may share a
+boot: the shared ones run first on one twin per group, with an idle check between two of them (the
+twin alive, every connection slot drained, the kernel's accept queue empty, the error counts after
+the drain, the memory gate), and a failure names its scenario and sends the next to a fresh boot.
+`scripts/run_digital_twin_ci.sh` runs it for its device at each GC stage, holding port 53, so the
+scenarios that need an exclusive port 53 run; without that lock they are deselected and listed.
 
 A fix under this rule must come out **strictly more capable of catching the real test case**, never
 merely lighter on the DUT — E.7/E.8 already show what a test that stops looking at the right thing
@@ -5250,9 +5293,8 @@ path that loader relies on; names `importlib` in a comment);
 statements by AST); `buildgen/validate.py` (loads `toolchain/micropython_overrides.py` by path: it
 is no package); `digital_twin/run_generic_integration.py` (the module its device config names, and the
 device module `tests/test_digital_twin_wifi_modes.py` picks from the generated plans);
-`tests/_boot_contiguity_probe.py`, `tests/_digital_twin_construction_scenarios.py`,
-`tests/_sensortask_scenarios.py` and `tests/_webserver_concurrency_scenarios.py` (a device module by
-its derived name); `tests/test_asy_isl29125_driver.py` (`__import__("time")` inside two test
+`tests/_boot_contiguity_probe.py`, `tests/_digital_twin_construction_scenarios.py` and
+`tests/_sensortask_scenarios.py` (a device module by its derived name); `tests/test_asy_isl29125_driver.py` (`__import__("time")` inside two test
 statements); `ext/freezefs/ffsextract.py` (vendored, build-time only; its extract mode is never
 used). Executing a file by path (`exec`) is not an import: ruff's S102 and its per-file ignores
 govern it, not this list. **MicroPython's own bundled modules are platform code, never edited**, and
@@ -5260,7 +5302,9 @@ carry two sites recorded here as platform facts: `extmod/asyncio/__init__.py:29`
 loader that imports a submodule on first use of a name such as `Lock`, `Event`, `ThreadSafeFlag`,
 `wait_for`, `gather` or `start_server`, and micropython-lib's `dht.py:14`, frozen by the board
 manifest and never imported by this project; both are re-read at every MicroPython version bump
-(Part F's opening checklist; owner, 2026-10-05). `importlib` isn't frozen into this project's own
+(Part F's opening checklist; owner, 2026-10-05). `digital_twin/_http_client.py`'s function-level
+`_strict_json` import (`tests/` is absent from a twin process's path) is the one function-level
+import left in `digital_twin/`. `importlib` isn't frozen into this project's own
 manifest; the rule holds regardless. Imports run once, at module load (owner-confirmed, 2026-08-13,
 `fef4b54`): `tests_scripts/test_import_placement.py` walks every `.py` in the eight lint scopes and
 fails on an import inside a function body or a dynamic load, except the sites its
@@ -5273,7 +5317,8 @@ is never imported in its place. An extensible built-in (`MP_REGISTER_EXTENSIBLE_
 `time`, `os`, `json`, `socket`, `select`, `struct`, `errno`, `collections`, …) is looked up on
 `sys.path` before the built-in (`py/builtinimport.c:404-416`, v1.29.0), so a filesystem file of that
 name shadows it on any path entry; the `.frozen`-first line protects the frozen product modules
-only, and the reflash runbook's filesystem erase covers the built-ins.
+only (proved on the Unix port by `tests_scripts/test_frozen_first_shadowing.py`), and the reflash
+runbook's filesystem erase covers the built-ins.
 
 **A soft `machine.Timer` callback (the default — no `hard=True` anywhere) can be silently dropped,
 not just delayed** — `mp_sched_schedule()` drops it when the scheduler queue (depth 8 on rp2, shared
@@ -5469,7 +5514,8 @@ the same strip.
 
 **`asyncio.run()`'s `KeyboardInterrupt` handling has a real gap while every task is parked in the
 scheduler's poll wait** — a real SIGINT propagates straight out without resuming/unwinding the
-suspended coroutine, so its own `try`/`finally` never runs. `digital_twin/`'s `__main__` blocks
+suspended coroutine, so its own `try`/`finally` never runs (`run()` catches only `CancelledError` and
+`Exception`, `extmod/asyncio/core.py:153, 194`). `digital_twin/`'s `__main__` blocks
 re-run cleanup from plain synchronous code in an outer `except KeyboardInterrupt:` to compensate.
 
 **A task that ends raising with nobody awaiting it goes to the loop's exception handler.** asyncio
@@ -5604,7 +5650,9 @@ once per failure episode — a bus rung once per bus, whichever reader on it rea
 leaves one persisted entry. The SGP40 general call stays the one reset that reaches other devices,
 at setup only (C.8). **Hot-unplug/replug is a kept feature: 'Live bus reconnect must be preserved'
 (owner, 2026-07-13)** — a chip unplugged and replugged is recovered by these rungs without a reboot
-when it is back before the restart budget runs out, as for every declared chip; a slave holding
+when it is back before the restart budget runs out, as for every declared chip (proven at L2 by
+`tests/test_digital_twin_hot_replug.py`; the FRAM likewise, by `tests/test_digital_twin_fram.py`'s
+booted silent-chip case); a slave holding
 SCL, or one that nine pulses do not free, needs a power cycle, an operator action. FRAM (C.3.1,
 A.4): a WREN retried once, identification retried at setup, a chip lost mid-operation stopped and
 set up again by its task's restart. WiFi (A.4): repeated radio errors re-initialise the radio before
@@ -6241,59 +6289,17 @@ failures. **`micropython.heap_unlock()` is not a substitute** — it subtracts
 `1 << GC_LOCK_DEPTH_SHIFT` from a `gc_lock_depth` holding only the 1-bit collect flag, leaving it
 negative and still "locked".
 
-`digital_twin/unix_port_gc_unwedge.py` packages this, alongside `unix_port_poll_prewarm.py`'s
-similar Unix-port-quirk workaround. **`src/` needs nothing** — it has no `KeyboardInterrupt`
-shutdown path, and rp2 has no SIGINT.
-
-**Two call sites, not one (found 2026-09-14 while chasing a `scripts/_digital_twin_ci_suite.py`
-`_shutdown()` timeout that needed an external SIGKILL, CI job `grkizi`).**
-`run_generic_integration.py`'s own `main()` coroutine has its own `try/finally` that calls
-`flush_fram()`/`flush_scd30()` directly (needed so a bounded `--duration` run, which never raises
-`KeyboardInterrupt` at all, still flushes on a clean exit) — before this fix, that `finally:` block
-called neither `unwedge_heap_after_interrupt()` nor anything else that clears a wedged heap before
-its own allocations, in violation of this Part's own stated rule ("call it first ... before
-`flush_fram()`/`flush_scd30()`"), which only ever described the *outer* `except KeyboardInterrupt:`
-handler around `asyncio.run()`. A `KeyboardInterrupt` reaches one site or the other depending on
-what the Unix-port SIGINT handler's `nlr_raise()` (an immediate, synchronous longjmp — see
-`ports/unix/unix_mphal.c`'s `sighandler()`, gated on `MICROPY_ASYNC_KBD_INTR`, which the `standard`
-build variant used here has enabled) happened to interrupt: `main()`'s own `finally:` runs only
-when the interrupt lands while `main()`'s own coroutine is the one currently executing (not
-suspended at its own `await asyncio.sleep(...)` line) — otherwise the exception propagates straight
-out of `asyncio.core.run_until_complete()`'s scheduler loop without ever entering `main()`'s frame,
-landing directly in the outer handler instead, which already called `unwedge_heap_after_interrupt()`
-correctly. Fixed by calling it unconditionally at the top of `main()`'s own `finally:` block too,
-matching this Part's "unconditional and cheap" reasoning for the outer site. **This was not
-reproduced locally** — the SIGINT-during-`gc_collect()` race is inherently timing-dependent
-(~5% per interrupt) and the `grkizi` failure's own captured job log has no
-`MemoryError: ... heap is locked` line to confirm this was the actual mechanism that run hit, only
-a bare `exit code -9` with zero other diagnostic content. This fix is offered as the one concrete,
-source-confirmed gap found against this Part's own documented invariant, not as a confirmed
-root cause. `scripts/_digital_twin_ci_suite.py`'s `_shutdown()` now captures `/proc/<pid>/status`
-(`State`/`VmRSS`), `/proc/<pid>/wchan` (which kernel function, if any, the process is blocked in —
-`select`/`poll` vs. a futex vs. genuinely runnable, distinguishing a wedged heap spinning in
-Python from a real stuck syscall) and the run's own last 20 log lines on a shutdown timeout, before
-the `SIGKILL` fallback — so a future recurrence is self-diagnosing from the CI job log alone.
-
-**Amendment (2026-09-15): the root cause above is now closed, not just worked around.** This
-whole race exists only because `MICROPY_ASYNC_KBD_INTR` (named explicitly two paragraphs up) makes
-the Unix port's SIGINT handler call `nlr_raise()` directly from the async signal handler — unsafe
-at *any* point in interpreter execution, not just inside `gc_collect()`; chasing a different,
-more severe symptom of the same root cause (real VM-state corruption, not just a locked heap)
-found and fixed this at the source: Part B.14.1's `unix_kbd_intr` build override forces
-`MICROPY_ASYNC_KBD_INTR` to `0` for every Unix-port binary this project ever builds (there is no
-other build path — every script that needs this binary goes through `toolchain/setup_toolchain.py
-setup`), so the interrupt is now always deferred to the VM's own safe bytecode-dispatch checkpoint
-(`py/vm.c`'s `pending_exception_check`) and can structurally never land mid `gc_collect()` again.
-**`unwedge_heap_after_interrupt()`'s three call sites are kept, deliberately, as defense in
-depth** — CLAUDE.md's own memory-safety-discipline ladder already treats a cheap, unconditional
-`gc.collect()` this way — but none of them should be expected to ever actually recover a genuinely
-wedged heap again via this mechanism; a real recurrence now points at something else entirely
-(a different Unix-port SIGINT path, or a binary built outside this project's own tooling). The
-digital-twin CI suite's own interrupt-driven shutdowns (cited above and in
-`tests/test_digital_twin_unix_port_gc_unwedge.py`'s own comment as this mechanism's real-world
-validation) no longer exercise the wedged-heap path at all now that they can't reach it — they
-still prove the *shutdown paths themselves* stay correct, just not this specific recovery branch
-within them.
+**Closed at the root, and the workaround retired.** B.14.1's `unix_kbd_intr` override forces
+`MICROPY_ASYNC_KBD_INTR=0` in every Unix-port binary this project builds — proven on each built
+binary by the toolchain's post-build check — so a SIGINT is delivered at the VM's bytecode-dispatch
+checkpoint and can no longer land inside `gc_collect()`. The twin's heap-unwedge helper was
+therefore retired (owner, 2026-09-26: 'retire if it's no longer needed but document how it was done
+in case we need it again'). To restore it, if a binary built outside this tooling ever shows the
+symptom: call `gc.collect()` first in every `except KeyboardInterrupt:` handler and in every
+`finally:` that flushes state before its own allocations — both are needed, because an interrupt
+reaches `main()`'s own `finally` only when it lands while `main()` is running, and the outer handler
+otherwise. **`src/` needs nothing** — it has no `KeyboardInterrupt` shutdown path, and rp2 has no
+SIGINT.
 
 ## F.7 The Unix-port rig: where it differs from rp2
 
@@ -6398,7 +6404,6 @@ workaround.
 | Workaround | Where | Retired when upstream … | Detail |
 |---|---|---|---|
 | Deferred SIGINT delivery for the Unix test binary (`unix_kbd_intr` override) | `toolchain/micropython_overrides.py`, every Unix-port build | the Unix standard variant delivers SIGINT through the scheduler by default | B.14.1 |
-| Heap unwedge after a SIGINT inside `gc_collect()` | `digital_twin/unix_port_gc_unwedge.py` and the twin runners' `except KeyboardInterrupt:` | retired by a build-time proof that the SIGINT override is applied, not by upstream | F.6 |
 | `-Wno-array-bounds` for mbedtls's `mbedtls_xor()` under GCC ≥ 14 | `ctr_drbg.c` alone, in the generated Unix variant makefiles and rp2 board cmake of `toolchain/micropython_overrides.py` | mbedtls ≥ 3.6.6 (already met at `v1.29.0`) and a GCC ≥ 14 build of both targets clean without the flag | B.7.1 |
 | A non-blocking modlwip send returns `EAGAIN` on `ERR_MEM` instead of retrying up to 10 s (`modlwip_eagain` override, micropython issue 19704) | `toolchain/micropython_overrides.py`, every rp2 build and the lwIP host build | the pin carries a real fix for issue 19704 (PRs 19705/19708); the override is then removed, not re-anchored (owner, 2026-09-30) | B.14.4 |
 | `-Wno-sign-compare` and `-DSOMAXCONN=2` for `extmod/modlwip.o` in the lwIP host build | `toolchain/micropython_overrides.py`, the host variant makefile | upstream `modlwip.c` compiles clean under the Unix port's `-Wextra` and the Unix backlog default stops needing `<sys/socket.h>` | B.7, F.7 |
@@ -7117,9 +7122,10 @@ build every device's real website (`npm run build:site`: the definitions, then
 `scripts/build_device_websites.sh`), so a plain `npm test` always exercises the real sites.
 **Build-chain integration proof, two layers**:
 `tests/test_website_build_integration.py` proves the staged site mounts/serves correctly on its
-own; `tests/test_digital_twin_real_website_integration.py` closes the gap by pre-registering
-`sys.modules["frozen_html"]` to the real build before `import sensortask_wozi`, booting the real
-object graph against the twin's buses, and driving real HTTP. **Live-backend browser tests**, for
+own; the scenario harness's real-website scenarios (`scripts/_digital_twin_scenarios.py`, family
+`real_website_integration`) close the gap by booting the device's generated graph in a twin that
+serves that device's real build (`build/generated_html/<device>/frozen_html.py`) and driving real
+HTTP from the host. **Live-backend browser tests**, for
 every device of `devices/*.toml`, one twin at a time: `tests_js/live-backend.test.js` drives the
 real website's JS in a real Chromium browser against a real, live-booted twin subprocess of that
 device, serving its own site from `build/generated_html/<device>/`;
@@ -7294,8 +7300,8 @@ page loads must be byte-identical to an uncontended one. A test that only counts
 truncated body. **Where**: `tests/test_asy_webserver_service.py` (the `backlog` default, clamp and
 hand-off to `start_server()`; reject-when-full writes nothing and leaves the count unchanged; a slot
 is held until the close completes, not until the response is written);
-`tests/_webserver_concurrency_scenarios.py` on all six devices, every burst derived from the
-device's own ceiling, never a literal, each full-ceiling round starting from an asserted zero on
+the scenario harness's webserver-concurrency scenarios (`scripts/_digital_twin_scenarios.py`) on
+every device, every burst derived from the device's own ceiling, never a literal, each full-ceiling round starting from an asserted zero on
 `_open_conns` rather than a blind sleep, and a ceiling of closing connections refusing the next
 arrival after every client already holds its whole response; `scripts/_digital_twin_ci_suite.py`'s
 Run 11b, the exact ceiling from a separate process at both thresholds (`digital_twin/README.md`);
@@ -7883,7 +7889,13 @@ since a divergence there would mean the collects had started compensating for a 
 moving placement, and fails a probe run whose output carries the PC tiers' unretrieved-task report,
 so a task that died mid-boot never passes as a measurement. The probe and its board mirror
 (`heap_layout_after_full_boot_sequence.py`) run `main()`'s order — setups, task starts, timer
-starts — awaiting `start_tasks()` under one bound and never entering the supervisor. Bounds are
+starts — awaiting `start_tasks()` under one bound and never entering the supervisor; that board
+script and `heap_headroom_after_full_system_build.py` search with the same probe constants, which
+the test pins equal. A `uart_link` instance's receive DMA ring is one of these survivors: allocated
+once in the link's `setup()`, a unit of the setup list, so the placement collect after it puts the
+ring with the long-lived objects; on every device declaring a link the test asserts that each ring
+ends within the high band above the batch's seam and is the same ring after the starter loop
+(owner, 2026-10-05). Bounds are
 derived from the measured worst case with margin and are **twin-only**. The board has since taken
 its own reading (2026-09-22, HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7M) and does **not**
 reproduce the twin's two headline ratios at its own fill, so these bounds stay a twin-scale
@@ -8459,6 +8471,22 @@ the slow-host limit below. Both files take their pair, budgets and two-mode regi
 `tests/_uart_comm_hazard_common.py`. Their tier-map rows land with the map. The link exerciser's
 checks in `tests/test_asy_uart_link_driver.py` register the same way, both CRC modes, plus one
 CRC16-only case: a corrupted frame counts one failure and the next transfer succeeds.
+
+**At L2** the pair runs across the twin's wire-timed crossover, on the twin's own `machine.UART`
+fakes with the bounded `LinkPoller`, built at synchronous scope. `tests/test_digital_twin_uart_comm_hazard.py`,
+both CRC modes: two initiations on one instance, `clear()` racing a transaction at three points,
+and both ends transmitting. `tests/test_digital_twin_uart_field_sweep.py`: every value of each
+first-chunk field written raw to a listening responder with no CRC, the boundary values with CRC16,
+each answered exactly when J.3-J.4 make it legal. `tests/test_digital_twin_uart_link.py` boots the
+generated device that wires a `uart_link` pair (no CRC) and adds a CRC16 pair whose rounds complete
+and which catches a corrupted byte; `tests_scripts/test_digital_twin_generated_boot.py` boots that
+device's TOML with CRC16 on both ends, and `scripts/run_digital_twin_ci.sh` runs Run 3's link cell
+again on it. A config flush stalls the twin's loop for the flash's erase and program time
+(`digital_twin/_flash_stall.py`, as rp2 programs flash with interrupts off): at its maxima it is the
+hold the ring floor is sized for, and the twin's DMA keeps filling the ring through it
+(`tests/test_digital_twin_machine_uart.py`). The scenario harness's `uart_ring_under_concurrent_load`
+drives both links of that device through a webserver hammer at the ceiling, FRAM log writes and config
+flushes, at both GC stages: no overrun, no failed transfer, every PUT answered.
 
 **The mock tier's `timeout` is a scheduling budget, not a wire budget, and has to be sized as one.**
 The loopback link delivers in-memory within one event-loop turn, so nothing of the configured
@@ -9406,17 +9434,18 @@ deterministic across hash seeds: with one fixed build date, two generations unde
   never frozen; `tests_scripts/test_api_reference.py` pins it.
 - **Digital-twin wiring**: `buildgen.twin_wiring.compute_twin_wiring(model)` walks the model and
   emits the twin's own per-attachment wiring facts, the plan's one producer, shaped as its
-  `TwinWiringPlan` (`device`, `buses`, `spi`, `uart`, `instances`) and held to that shape, field
+  `TwinWiringPlan` (`device`, `buses`, `spi`, `pins` — every `[bus.<id>]` table's wire pins by
+  role — `uart`, `instances`) and held to that shape, field
   for field, by `tests_scripts/test_twin_wiring_contract.py` over every device, both fixtures and
   every reader of a plan. Two facts a `DeviceModel` structurally cannot carry come from elsewhere:
   a fixed-address chip's I2C address is its driver's own module-level `_<DRIVER>_ADDR` constant,
   read from its file by `twin_wiring.fixed_address()` (a driver with no address rule is
   `twin.no-address-rule`), and FRAM's real RDID reply bytes are
   `digital_twin/machine.py`'s `_FRAM_RDID_BY_MAX_SIZE`, keyed by size as the best available proxy.
-  `digital_twin/machine.py`'s `configure_wiring(plan)` is the generic entry point;
-  `configure_i2c_wiring("wozi"|"dev")` is sugar over it, lazily loading
-  `build/generated_src/sensortask_<profile>_wiring_plan.json`, since that module runs under the
-  MicroPython Unix port, which has no `tomllib` and so cannot call `buildgen` directly at runtime.
+  `digital_twin/machine.py`'s `configure_wiring(plan)` is the one entry point, always given the
+  plan explicitly (no default device, no per-device shorthand) and refused once a bus exists; its
+  caller reads `build/generated_src/sensortask_<device>_wiring_plan.json`, since the twin runs under
+  the MicroPython Unix port, which has no `tomllib` and so cannot call `buildgen` directly at runtime.
   No hand-typed wiring literal exists anywhere.
 - **Booting a generated device**: `digital_twin/run_generic_integration.py` boots any
   `sensortask_<device>` module against a `--wiring-plan` JSON file, resolving it via
@@ -9428,7 +9457,7 @@ deterministic across hash seeds: with one fixed build date, two generations unde
   `GET` against five REST endpoints returns 200 — for all six real devices plus both synthetic
   fixtures. That is the point at which a generated module is proven to boot and serve, rather than
   merely to parse.
-- **Known twin limitation**: `machine.py`'s single-chip SCD30/FRAM globals only persist the
+- **Known twin limitation** (agent, 2026-09-13): `machine.py`'s single-chip SCD30/FRAM globals only persist the
   *last-wired* instance's NVM state across a simulated reboot on a multi-instance device — see
   `digital_twin/README.md`'s "SCD30 persistence" section.
 
@@ -10384,7 +10413,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `uart.chunk_bytes` | 256 B | `src/asy_uart_comm.py` — `256` | `DEFAULT_LIMITS.chunk_bytes`: the largest single receive allocation of a train with no caller destination (`PieceBuffer` pieces, J.8); `tests/test_asy_uart_comm.py`'s piece-size tests | the webserver's piece size `web.chunk_bytes` (owner, 2026-09-26), reused so the two receive paths share one allocation bound (agent, 2026-10-07) | a 256 B piece against the ~105,000 B free after boot (I.6), as `web.chunk_bytes` | `web.chunk_bytes` changes, or a heap-placement measurement favours another piece size |
 | `uart.max_transfer_bytes` | 12192 B | `src/asy_uart_comm.py` — `12192` | `DEFAULT_LIMITS.max_transfer_bytes`: a declared train above it is refused before its ACK and at the sender's argument checks (J.8); a construction refusal below `payload_size`; `l1.asy_uart_comm_hammer_rounds`' trains at and one byte over the cap | estimated (agent, 2026-10-07): `(_CHUNKS_MAX − 1) × _DEFAULT_PAYLOAD_SIZE` = 254 × 48, the largest train at the default `payload_size` and the twin's maximum-length train, so no train accepted at the defaults is refused — measurement owed: the largest free block after boot on `dev` against a train at the cap held in pieces, L3 | none at the default `payload_size`, exactly its largest train; a larger `payload_size` (up to 64,770 B at 255) is capped | the default `payload_size` changes, or a link needs a larger transfer |
 | `uart.exercise_period_ms` | 1000 ms | `src/asy_uart_link_driver.py` — `1000` | the bench exerciser's transfer rate | estimated (agent, `4f8caf5`) — measurement owed: the link's sustained transfer rate on the dev bench, L3 | unknown until measured | the exerciser's traffic changes |
-| `wdt.timeout_ms` | 8000 ms | `buildgen/validate.py` — `8000`; `digital_twin/launch.py` — `8000`; `digital_twin/run_generic_integration.py` — `8000`; `tests_hardware/device_scripts/allocation_need_per_source.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` — `8000`; `tests_hardware/device_scripts/fram_capacity_after_full_system_build.py` — `8000`; `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `8000`; `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `8000`; `tests_hardware/device_scripts/heap_under_connection_ceiling.py` — `8000`; `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_lighting_scenarios.py` — `8000`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` — `8000`; `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` — `8000`; `tests_hardware/device_scripts/isl29125_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `8000`; `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/scd30_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/serving_at_default_gc.py` — `8000`; `tests_hardware/device_scripts/sgp40_fram_backup_restore.py` — `8000`; `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `8000`; `tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py` — `8000`; `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `8000`; `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py` — `8000`; `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `8000`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `8000`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `8000`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `8000`; `tests_hardware/device_scripts/unretrieved_task_exception_handler.py` — `8000`; `tests_hardware/harness.py` — `8000` | `system.reset_delay_s` × 1000 < it; `system.task_check_s` × 1000 × 4 ≤ it (agent reading (agent, 2026-09-29): the source's 'keep << watchdog timeout', met at the source's own ratio; the real margin is the supervisor's scan budget); every inter-feed stretch — the two unfed boot stretches `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms` and the supervisor pass `system.scan_budget` (N.4) state their margins against it; the boot bus clear's budget `_BOOT_CLEAR_BUDGET_MS` in `buildgen/validate.py`, three quarters of it (agent, 2026-10-07), which every device's summed worst-case boot clear must fit (`i2c.timeout_max_us`); the boot entry's `WDT(timeout=...)` is rendered from `buildgen/validate.py`'s `_WDT_TIMEOUT_MS`, with no literal of its own (`tests_scripts/test_buildgen_generate.py` pins it); the twin runner's copy (`digital_twin/run_generic_integration.py`'s `_WDT_TIMEOUT_MS`) is a mirror, which the twin's in-process tests and `segfault_stress_repro.py` import; each device script that builds the system arms the watchdog the boot entry arms; `l2.twin_wdt_feed_interval_s`; `l2.wdt_overrun_wait_s` (just past it); `digital_twin/machine.py`'s `_WDT_TIMEOUT_MAX_MS = 8388` (fact); the device scripts' feed cadences stay under it (the iterations between two feeds × one iteration's real time, or one fed sleep's step): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s`, `l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every`, `l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every`, `l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every`, `l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every`, `l3.fram_same_device_rw_concurrency_wdt_feed_every`, `l3.isl29125_cross_device_concurrency_wdt_feed_every`, `l3.scd30_same_device_rw_concurrency_wdt_feed_every`, `l3.sgp40_general_call_reset_hazard_wdt_feed_every`, `l3.fram_pause_unpause_and_gating_feed_step_s` | owner decision (owner, 2026-09-26); cap 8388 ms `ports/rp2/machine_wdt.c:32-38` | 388 ms under the rp2 cap | the pin moves (the cap re-read) or an inter-feed stretch grows |
+| `wdt.timeout_ms` | 8000 ms | `buildgen/validate.py` — `8000`; `digital_twin/launch.py` — `8000`; `digital_twin/run_generic_integration.py` — `8000`; `tests_hardware/device_scripts/allocation_need_per_source.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py` — `8000`; `tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py` — `8000`; `tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py` — `8000`; `tests_hardware/device_scripts/fram_capacity_after_full_system_build.py` — `8000`; `tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_pause_unpause_and_gating.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py` — `8000`; `tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py` — `8000`; `tests_hardware/device_scripts/fram_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` — `8000`; `tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py` — `8000`; `tests_hardware/device_scripts/heap_under_connection_ceiling.py` — `8000`; `tests_hardware/device_scripts/isl29125_cross_device_concurrency.py` — `8000`; `tests_hardware/device_scripts/isl29125_lighting_scenarios.py` — `8000`; `tests_hardware/device_scripts/isl29125_mechanism_envelope.py` — `8000`; `tests_hardware/device_scripts/isl29125_mock_conformance_probe.py` — `8000`; `tests_hardware/device_scripts/isl29125_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/isl29125_real_irq_edge.py` — `8000`; `tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/scd30_plausibility_read.py` — `8000`; `tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py` — `8000`; `tests_hardware/device_scripts/serving_at_default_gc.py` — `8000`; `tests_hardware/device_scripts/sgp40_fram_backup_restore.py` — `8000`; `tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py` — `8000`; `tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py` — `8000`; `tests_hardware/device_scripts/sgp40_sample_cadence.py` — `8000`; `tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py` — `8000`; `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_exchange.py` — `8000`; `tests_hardware/device_scripts/uart_crossover_recovery.py` — `8000`; `tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py` — `8000`; `tests_hardware/device_scripts/uart_idle_poll_rate.py` — `8000`; `tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py` — `8000`; `tests_hardware/device_scripts/unretrieved_task_exception_handler.py` — `8000`; `tests_hardware/harness.py` — `8000` | `system.reset_delay_s` × 1000 < it; `system.task_check_s` × 1000 × 4 ≤ it (agent reading (agent, 2026-09-29): the source's 'keep << watchdog timeout', met at the source's own ratio; the real margin is the supervisor's scan budget); every inter-feed stretch — the two unfed boot stretches `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms` and the supervisor pass `system.scan_budget` (N.4) state their margins against it; the boot bus clear's budget `_BOOT_CLEAR_BUDGET_MS` in `buildgen/validate.py`, three quarters of it (agent, 2026-10-07), which every device's summed worst-case boot clear must fit (`i2c.timeout_max_us`); the boot entry's `WDT(timeout=...)` is rendered from `buildgen/validate.py`'s `_WDT_TIMEOUT_MS`, with no literal of its own (`tests_scripts/test_buildgen_generate.py` pins it); the twin runner's copy (`digital_twin/run_generic_integration.py`'s `_WDT_TIMEOUT_MS`) is a mirror, which the twin's in-process tests import; each device script that builds the system arms the watchdog the boot entry arms; `l2.twin_wdt_feed_interval_s`; `l2.wdt_overrun_wait_s` (just past it); `digital_twin/machine.py`'s `_WDT_TIMEOUT_MAX_MS = 8388` (fact); the device scripts' feed cadences stay under it (the iterations between two feeds × one iteration's real time, or one fed sleep's step): `l3.sgp40_fram_backup_restore_wdt_feed_interval_s`, `l3.bmp3xx_same_device_rw_concurrency_wdt_feed_every`, `l3.bus_concurrency_cross_device_scd30_sgp40_wdt_feed_every`, `l3.bus_concurrency_isl29125_write_vs_siblings_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_reader_wdt_feed_every`, `l3.bus_concurrency_same_device_scd30_snapshot_wdt_feed_every`, `l3.bus_concurrency_scd30_write_vs_siblings_wdt_feed_every`, `l3.fram_same_device_rw_concurrency_wdt_feed_every`, `l3.isl29125_cross_device_concurrency_wdt_feed_every`, `l3.scd30_same_device_rw_concurrency_wdt_feed_every`, `l3.sgp40_general_call_reset_hazard_wdt_feed_every`, `l3.fram_pause_unpause_and_gating_feed_step_s` | owner decision (owner, 2026-09-26); cap 8388 ms `ports/rp2/machine_wdt.c:32-38` | 388 ms under the rp2 cap | the pin moves (the cap re-read) or an inter-feed stretch grows |
 | `system.reset_delay_s` | 4 s | `src/asy_system_service.py` — `4` | × 1000 < `wdt.timeout_ms` (nothing feeds during the countdown); `system.scan_budget` (the countdown after an escalating pass) | estimated (agent, `c33e6db`) — measurement owed: the reset countdown's longest in-flight write, L3 | 4,000 ms against the 8,000 ms watchdog | a write that can be in flight during the countdown grows |
 | `system.task_check_s` | 2 s | `src/asy_system_service.py` — `2` | × 1000 × 4 ≤ `wdt.timeout_ms` (agent reading (agent, 2026-09-29)); `l2.sensortask_integration_restart_wait_timeout_s` and `l1.ntp_fram_system_integration_supervisor_scan_wait_s` cover one scan plus margin; `l3.system_service_restarts_a_real_dead_task_watch_step_s` watches the supervisor's restarts at its scan | estimated (agent, `c33e6db`) — measurement owed: the supervisor scan's duration on the board, L3 | a factor 4 under the watchdog | the supervisor's scan grows |
 | `system.ntp_wait_s` | 120 s | `src/asy_system_service.py` — `120` | — | legacy `legacy/firmware/python/CommonDrivers/system_service.py:10` | unknown until measured | the NTP client's first-sync path changes |
@@ -10528,6 +10557,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.generated_boot_poll_step_s` | 0.25 s | `tests_scripts/test_digital_twin_generated_boot.py` — `0.25` | — | estimated (agent, `fcc5339`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.generated_boot_poll_timeout_s` | 1.0 s | `tests_scripts/test_digital_twin_generated_boot.py` — `1.0` | — | estimated (agent, `fcc5339`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.generated_boot_exit_wait_s` | 5 s | `tests_scripts/test_digital_twin_generated_boot.py` — `5` | — | estimated (agent, `fcc5339`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
+| `l0.generated_boot_link_poll_gap_s` | 3.0 s | `tests_scripts/test_digital_twin_generated_boot.py` — `3.0` | the gap between the CRC16 link boot's two `GET /status` reads, across which the link's `Transfers` must rise | estimated (agent, 2026-10-14): a few exercise rounds at the link's own pace — measurement owed: the link's transfers per second on the twin, L0 | against that measurement, once taken | the link exerciser's pace changes |
+| `l0.generated_boot_reset_wait_s` | 120.0 s | `tests_scripts/test_digital_twin_generated_boot.py` — `120.0` | the sustained SGP40 fault's wait for the escalation reset, as `l2.escalation_wait_s` is the CI suite's | estimated (agent, 2026-10-14) — measurement owed: the fault-to-reset elapsed on the twin at both GC stages, L0 | against that measurement, once taken | the restart budget or `system.task_check_s` changes |
 | `l0.buildgen_reproducible_timeout_s` | 120 s | `tests_scripts/test_buildgen_reproducible.py` — `120` | each of the two generating children's subprocess bound | estimated (agent, 2026-10-08): 8.7-11.6 s measured for both children on a four-core sandbox host at load average 6-8 — measurement owed: elapsed of both children at the slowest host that runs it, L0 | about 10× the loaded figure | a device or fixture is added, or generation slows |
 | `l0.coverage_runner_timeout_s` | 60 s | `tests_scripts/test_coverage_runner.py` — `60` | — | estimated (agent, `3a2236d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.live_twin_ceiling_parser_timeout_s` | 120 s | `tests_scripts/test_live_twin_ceiling_parser.py` — `120` | — | estimated (agent, `a91c576`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
@@ -10554,6 +10585,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.live_twin_tab_wait_ms` | 20000 ms | `tests_js/_live_twin_command.js` — `20000` | the per-tab reload slot, its drain included: the drain gets at most the slot less one `l0.live_twin_section_wait_ms`, and a drain still open then fails naming the other tabs' requests in flight (H.7.1's drain rule is what the reload waits for) | estimated (agent, `9751814`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.live_concurrent_tabs_timeout_ms` | 200000 ms | `tests_js/live-backend.test.js` — `200000` | the full-ceiling tabs case per device: the twin's boot (`l0.live_twin_ready_timeout_ms`), the first pass within the page's request cap (`web.outer_cap_s`) plus 5 s, one reload slot of up to `l0.live_twin_tab_wait_ms` per tab of `max_connections`, its drain included, the stop | estimated (agent, 2026-10-13): the sum of those waits, 20 s, 20 s, six 20 s reloads and the stop — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 10.2-23.2 s per device, one run of all six (2026-10-13) | about 8.6× the slowest device here | `max_connections`, `web.outer_cap_s` or a wait it sums changes |
 | `l0.live_restart_recovery_timeout_ms` | 180000 ms | `tests_js/live-backend.test.js` — `180000` | the restart-recovery case per device: two boots (`l0.live_twin_ready_timeout_ms`), the banner wait (`l0.live_twin_section_wait_ms`), the back-off cap the page may be waiting out (`web.poll_backoff_max_ms`), two stops and their drains | estimated (agent, 2026-10-13): two 20 s boots, the 10 s banner wait, the 60 s back-off cap and two stops with their drains — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 6.3-9.3 s per device, one run of all six (2026-10-13) | about 19× the slowest device here | `web.poll_backoff_max_ms` or a wait it sums changes |
+| `l0.live_smoke_timeout_ms` | 45000 ms | `tests_js/live-backend.test.js` — `45000` | the smoke case per device: the twin's boot (`l0.live_twin_ready_timeout_ms`), two Applies and the stop | estimated (agent, 2026-10-14): the boot's 20 s bound, two Applies and the stop — measurement owed: elapsed per device on the slowest host that runs it, L0 (the JS tier); here 6.2-7.2 s on each of the six devices | about 6× the slowest observed device | a smoke step or the boot bound changes |
 | `l0.smoke_h1_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | — | estimated (agent, `7ff3c3c`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 (the smoke) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.smoke_speculative_connections_max` | 2 | `scripts/cross_browser_smoke.mjs` — `2` | read beside `web.connections_per_page_load`: each spare socket holds a device connection slot until the server reclaims it, and a page load's 2, its one data request and 2 spares hold 5 of `max_connections`' 6 | measured (agent, 2026-10-08), counted once the page's first data request reached the proxy: Chromium one spare in 2 of 312 local page loads (the trees of fb9b92d and 7efb5f2, 36 of them beside four busy loops), where 62 more sockets still empty when the navigation finished carried that first data request within 24 ms; Edge two in 1 of 36 CI page loads (wozi, desktop, run 37763477250), both opened before the document while the data request went out on a third. The 2026-10-07 figures counted when the navigation finished, which read the socket opened for the first data request as a spare | the observed maximum | an engine's connection predictor changes, or an engine is added |
 | `l0.smoke_first_data_request_wait_ms` | 10000 ms | `scripts/cross_browser_smoke.mjs` — `10000` | the same cap as `l0.smoke_h1_wait_ms`; `l0.smoke_speculative_connections_max` is counted when it ends | measured (agent, 2026-10-08): the first data request reached the proxy at most 1,766 ms after the navigation started and within 24 ms of its socket opening, 72 local Chromium page loads, 36 of them beside four busy loops | a cap, not a pace: the wait ends when the request arrives and only bounds a page that never sends one | the page's first data request moves, or the code under test or the host class changes |
@@ -10754,7 +10786,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `web.connections_per_page_load` | 2 | `tests/_webserver_concurrency_scenarios.py` — `2`; `scripts/cross_browser_smoke.mjs` — `2` | ≤ the largest shipped `max_connections` (checked by `tests_scripts/test_tunables_register.py`); the concurrency scenarios' tab count `max(2, ceiling // 2)`; `web.poll_interval_ms`'s load; `l0.smoke_speculative_connections_max` beside it | measured (agent, 2026-10-07): the document and its script, 2 on every device in Chromium, both viewports, three local smoke runs, L2; CI's first run (2026-10-07) counted 3 with the first data request inside its window, which the smoke now counts apart | none: the count is exact while the page bundles one script | a page's bundling or inlining changes, or an engine is added |
+| `web.connections_per_page_load` | 2 | `scripts/_digital_twin_scenarios.py` — `2`; `scripts/cross_browser_smoke.mjs` — `2` | ≤ the largest shipped `max_connections` (checked by `tests_scripts/test_tunables_register.py`); the scenario harness's tab counts (`ceiling // it`); `web.poll_interval_ms`'s load; `l0.smoke_speculative_connections_max` beside it | measured (agent, 2026-10-07): the document and its script, 2 on every device in Chromium, both viewports, three local smoke runs, L2; CI's first run (2026-10-07) counted 3 with the first data request inside its window, which the smoke now counts apart | none: the count is exact while the page bundles one script | a page's bundling or inlining changes, or an engine is added |
 | `l2.reset_errors_timeout_margin_s` | 2.0 s | `scripts/_digital_twin_ci_suite.py` — `2.0` | `_RESET_ERRORS_TIMEOUT_S` = `web.outer_cap_s` + it | estimated (agent, `5506f44`) — measurement owed: the ResetErrors request's elapsed past the cap on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.reset_errors_budget_ratio` | 0.8 | `scripts/_digital_twin_ci_suite.py` — `0.8` | `_RESET_ERRORS_BUDGET_S` = `web.outer_cap_s` × it | estimated (agent, `d370413`) — measurement owed: the ResetErrors sweep's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ceiling_rounds` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | back-to-back ceiling rounds expose a leaked slot | estimated (agent, `d02ccc9`) — measurement owed: the rounds a leaked slot needs to show on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -10770,25 +10802,48 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.error_count_wait_s` | 30.0 s | `scripts/_digital_twin_ci_suite.py` — `30.0` | the error-count waits of Runs 3, 5 and 5c | estimated (agent, `dfb8975`) — measurement owed: the error-count waits' elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.first_fault_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | the first-fault waits of Runs 3 and 5c (a faulted driver's first "E" entry after its boot) | estimated (agent, `399c027`) — measurement owed: a faulted driver's first error entry after boot on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.long_wait_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | Run 5c's bounded-fault settle; Run 7's hotspot fallback and its captive-DNS answer | estimated (agent, `6a91514`) — measurement owed: Run 7's fallback-to-answer elapsed on the CI runner, L2; widened 30 → 90 s after two CI failures, no elapsed recorded | against that measurement, once taken | the code under test or the host class changes |
-| `l2.mem_paused_wait_s` | 15.0 s | `scripts/_digital_twin_ci_suite.py` — `15.0` | Run 5c's wait for the reported storage pause | estimated (agent, `399c027`) — measurement owed: the pause flag's latency after its PUT on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.hang_run_exit_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | Run 10's `--duration 15` run, its 12 s hung bus call included | estimated (agent, `90a3810`) — measurement owed: Run 10's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.failed_run_exit_wait_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | Run 10's exit wait after a failed check | estimated (agent, `dfb8975`) — measurement owed: Run 10's exit time after a failed check on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.past_exhaustion_wait_s` | 3.0 s | `scripts/_digital_twin_ci_suite.py` — `3.0` | Run 5: a wait for an absence (errors must not climb past the bounded fault), which no probe observes | estimated (agent, `dfb8975`) — measurement owed: the read periods Run 5's check spans on the twin, L2 | ≥ 2 sensor read periods: 3 of SGP40's fixed 1 s periods | SGP40's read period or Run 5's subject changes |
-| `l2.in_flight_settle_s` | 2.0 s | `scripts/_digital_twin_ci_suite.py` — `2.0` | Run 5c: a wait for an absence (work in flight finishing once storage is paused), which no probe observes | estimated (agent, `399c027`) — measurement owed: the longest write in flight at the pause on the twin, L2 | ≥ 2 sensor read periods: 2 of SGP40's fixed 1 s periods; a slower reader's in-flight work is not bounded by it | a reader's period or Run 5c's subject changes |
 | `l2.errcount_poll_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | the poll step of every errcount wait (`_wait_for_failure_events()`, `_wait_for_errcount_above()`, `_wait_for_error_type_count()`) | estimated (agent, `dfb8975`) — measurement owed: the errcount waits' rounds per run, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.mem_paused_poll_s` | 0.5 s | `scripts/_digital_twin_ci_suite.py` — `0.5` | `_wait_for_mem_paused()`'s poll step | estimated (agent, `399c027`) — measurement owed: the storage-pause wait's rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.serving_poll_s` | 0.25 s | `scripts/_digital_twin_ci_suite.py` — `0.25` | `_wait_until_serving()`'s poll step | estimated (agent, `00eb44d`) — measurement owed: the readiness wait's rounds per boot, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.serving_probe_timeout_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | `_wait_until_serving()`'s per-probe `GET /` timeout | estimated (agent, `00eb44d`) — measurement owed: a booted twin's `GET /` latency, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.serving_poll_s` | 0.25 s | `scripts/_twin_process.py` — `0.25` | `wait_until_serving()`'s poll step, for the suite and the scenario harness | estimated (agent, `00eb44d`) — measurement owed: the readiness wait's rounds per boot, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.serving_probe_timeout_s` | 1.0 s | `scripts/_twin_process.py` — `1.0` | `wait_until_serving()`'s per-probe `GET /` timeout | estimated (agent, `00eb44d`) — measurement owed: a booted twin's `GET /` latency, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.dns_poll_s` | 0.5 s | `scripts/_digital_twin_ci_suite.py` — `0.5` | `_wait_for_dns_answer()`'s poll step | estimated (agent, `6a91514`) — measurement owed: the captive-DNS wait's rounds in Run 7, L2; tightened 1.0 → 0.5 s with the widened `l2.long_wait_s` | against that measurement, once taken | the code under test or the host class changes |
-| `l2.kill_reap_timeout_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | the reap wait after a SIGKILL in `_shutdown()` and `_wait_exit()` | estimated (agent, `00eb44d`) — measurement owed: a SIGKILLed twin's reap time, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.kill_reap_timeout_s` | 5.0 s | `scripts/_twin_process.py` — `5.0` | the reap wait after a SIGKILL in `shutdown()` and `wait_exit()` | estimated (agent, `00eb44d`) — measurement owed: a SIGKILLed twin's reap time, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.concurrent_get_join_margin_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | the concurrent-GET threads' join past their own timeout | estimated (agent, `d02ccc9`) — measurement owed: the threads' join time on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.escalation_wait_s` | 120.0 s | `scripts/_digital_twin_ci_suite.py` — `120.0` | Run 3: a sustained fault spending the supervisor's restart budget, then the reset | estimated (agent, 2026-10-14): measured under 60 s — measurement owed: the fault-to-reset elapsed per device at both GC stages, L2 | about 2× the observed | the restart budget, `system.task_check_s` or a device's driver set changes |
+| `l2.ntp_first_sync_wait_s` | 60.0 s | `scripts/_digital_twin_ci_suite.py` — `60.0` | Runs 5 and 8: a station link's first NTP sync against the twin's local responder | estimated (agent, 2026-10-14) — measurement owed: the first sync's latency after STA and GOT_IP on the twin, L2 | against that measurement, once taken | the NTP client's check interval or the WiFi connect path changes |
+| `l2.read_cycle_wait_s` | 30.0 s | `scripts/_digital_twin_ci_suite.py` — `30.0` | Run 5: two observed SGP40 read cycles after the fault is spent | estimated (agent, 2026-10-14) — measurement owed: one TS-based read cycle's elapsed after the sync, L2 | against that measurement, once taken | SGP40's read period changes |
+| `l2.commanded_reset_margin_s` | 10.0 s | `scripts/_digital_twin_ci_suite.py` — `10.0` | a commanded reset's exit wait, `_RESET_DELAY` + `_TASK_CHECK_TIME` (`src/asy_system_service.py`) + it; the scenario harness's `l2.scenario_commanded_reset_margin_s` is the same margin | estimated (agent, 2026-10-14): the controlled shutdown's first step may wait one supervisor period; the margin covers the twin's scheduling on a loaded host — measurement owed: a commanded reset's elapsed past those two on the twin, L2 | against that measurement, once taken | `system.reset_delay_s` or `system.task_check_s` changes |
+| `l2.verbose_poll_s` | 0.5 s | `scripts/_digital_twin_ci_suite.py` — `0.5` | the poll step of the `DebugLevel` log waits | estimated (agent, 2026-10-14) — measurement owed: the verbose-log waits' rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_request_timeout_s` | 10.0 s | `scripts/_digital_twin_scenarios.py` — `10.0` | each scenario request on its own connection | estimated (agent, 2026-10-14): every served request measured under 1 s on wozi and dev — measurement owed: the slowest served request at both GC stages on the slowest host that runs it, L2 | about 10× the observed | a route's work or the host class changes |
+| `l2.scenario_serving_timeout_s` | 30.0 s | `scripts/_digital_twin_scenarios.py` — `30.0` | a boot's wait for its first `200` | estimated (agent, 2026-10-14): 3-5 s per boot measured on wozi and dev — measurement owed: boot-to-first-200 per device at both GC stages, L2 | about 6× the observed | a device's boot batch grows |
+| `l2.scenario_line_poll_s` | 0.05 s | `scripts/_digital_twin_scenarios.py` — `0.05` | the poll step of every wait on the runner's log lines, well under the `CONN_SLOTS` period it reads | estimated (agent, 2026-10-14) — measurement owed: the log waits' rounds per scenario, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_conn_status_interval_ms` | 20 ms | `scripts/_digital_twin_scenarios.py` — `20` | the runner's `--test-conn-status-interval-ms`, the `CONN_SLOTS` line's period: a drain is seen within a few polls | estimated (agent, 2026-10-14) — measurement owed: a drain's latency against the line's period, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_fault_status_interval_ms` | 100 ms | `scripts/_digital_twin_scenarios.py` — `100` | the runner's `--test-fault-status-interval-ms`, the `FAULT_PENDING` line's period; SGP40 reads at 1 s | estimated (agent, 2026-10-14) — measurement owed: a fault queue's drain against the line's period, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_drain_wait_s` | 10.0 s | `scripts/_digital_twin_scenarios.py` — `10.0` | the wait for every connection slot to drain: a slot outlives its response until its close completes (H.7.1) | estimated (agent, 2026-10-14): drains measured under 0.2 s — measurement owed: the slowest drain at both GC stages, L2 | about 50× the observed | the code under test or the host class changes |
+| `l2.scenario_still_serving_s` | 5.0 s | `scripts/_digital_twin_scenarios.py` — `5.0` | the retry window for the ceiling's close lag before a scenario reads the server as wedged | estimated (agent, 2026-10-14) — measurement owed: the close lag at the ceiling, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_flaky_hold_s` | 0.05 s | `scripts/_digital_twin_scenarios.py` — `0.05` | how long a flaky client keeps its partial request open before it hangs up | estimated (agent, 2026-10-14): the value the retired in-DUT library used — measurement owed: the server's partial-request handling across hold lengths, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_slow_put_s` | 1.0 s | `scripts/_digital_twin_scenarios.py` — `1.0` | a slow but healthy PUT's pause between its two halves, holding its slot for the refusal count | estimated (agent, 2026-10-14): the value the retired in-DUT library used — measurement owed: the slot hold the refusal count needs, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_stall_ms` | 200 ms | `scripts/_digital_twin_scenarios.py` — `200` | the stalled loop's length (`--test-stall-loop-ms`), past one SYN retry's worth of arrivals queued | estimated (agent, 2026-10-14): the value the retired in-DUT library used — measurement owed: the arrivals queued per stall length, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_watchdog_window_s` | 8.5 s | `scripts/_digital_twin_scenarios.py` — `8.5` | the window a hung step is waited out past its deadline: the hang's window is the property under test | estimated (agent, 2026-10-14): `wdt.timeout_ms` plus 500 ms — measurement owed: the twin watchdog's reset latency past its timeout, L2 | 500 ms past the watchdog | `wdt.timeout_ms` changes |
+| `l2.scenario_refusal_feed_s` | 10.0 s | `scripts/_digital_twin_scenarios.py` — `10.0` | how long a refused command is watched not to stop the feed: past one watchdog period | estimated (agent, 2026-10-14): one watchdog period plus 2 s — measurement owed: none beyond the watchdog period it outlasts; re-read with `wdt.timeout_ms`, L2 | 2 s past one watchdog period | `wdt.timeout_ms` changes |
+| `l2.scenario_commanded_reset_margin_s` | 10.0 s | `scripts/_digital_twin_scenarios.py` — `10.0` | a commanded reset's exit wait, `_RESET_DELAY` + `_TASK_CHECK_TIME` (`src/asy_system_service.py`) + it, and the hung-step scenario's wait for its first step; the suite's `l2.commanded_reset_margin_s` is the same margin | estimated (agent, 2026-10-14) — measurement owed: a commanded reset's elapsed past those two on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_pause_countdown_s` | 15.0 s | `scripts/_digital_twin_scenarios.py` — `15.0` | `PauseTime` 3 counting down to 0 at 1 s steps | estimated (agent, 2026-10-14): five times the 3 s countdown — measurement owed: the countdown's elapsed on the twin, L2 | against that measurement, once taken | the pause's step or the scenario's start value changes |
+| `l2.scenario_hotspot_wait_s` | 90.0 s | `scripts/_digital_twin_scenarios.py` — `90.0` | five scripted STA failures (`l2.wifi_scripted_failures`), then the hotspot and its DNS server | estimated (agent, 2026-10-14): as `l2.long_wait_s`, the suite's same wait — measurement owed: the fallback-to-answer elapsed at both GC stages, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.scenario_uart_load_s` | 20.0 s | `scripts/_digital_twin_scenarios.py` — `20.0` | the concurrent-load window of the UART ring scenario | estimated (agent, 2026-10-14) — measurement owed: the transfers and config flushes the window holds, L2 | against that measurement, once taken | the link's pace or a flush's stall changes |
+| `l2.scenario_uart_load_faults` | 3 | `scripts/_digital_twin_scenarios.py` — `3` | SGP40 measure reads failed under the UART load: logged and persisted, below any restart (as `l2.bounded_fault_count`) | estimated (agent, 2026-10-14): the suite's bounded fault count — measurement owed: none: a count below `max_module_error`, re-read when it moves, L2 | below `max_module_error` | `max_module_error` or the SGP40 read path changes |
 | `l2.twin_wdt_feed_interval_s` | 1.0 s | `digital_twin/launch.py` — `1.0`; `tests/test_digital_twin_bus_hazard_concurrency.py` — `1.0` | well under `wdt.timeout_ms` | estimated (agent, `c1da0bf`) — measurement owed: none: a feed cadence far under the timeout | 8× under the 8 s watchdog | `wdt.timeout_ms` changes |
 | `l2.launch_sensor_poll_interval_s` | 2.0 s | `digital_twin/launch.py` — `2.0` | — | estimated (agent, `c1da0bf`) — measurement owed: the launcher's readings per run, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.launch_wifi_poll_interval_s` | 0.1 s | `digital_twin/launch.py` — `0.1` | — | estimated (agent, `c1da0bf`) — measurement owed: the launcher's connect latency, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_wifi_connect_delay_s` | 0.7 s | `digital_twin/network.py` — `0.7` | sits inside the 5 s connect-status poll (`wifi.sta_connect_poll_s` × `wifi.sta_connect_poll_iters`); `l2.launch_fault_duration_s` outlasts it | estimated (agent, `b8791e6`) — measurement owed: a real CYW43 connect time on the dev bench, L4 | inside the 5 s poll | the connect-status poll changes |
 | `l2.twin_wire_log_clear_interval_ms` | 5000 ms | `digital_twin/run_generic_integration.py` — `5000` | the twin's wire-log memory between clears | estimated (agent, `dde4b31`) — measurement owed: the wire log's peak size between clears, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.twin_ready_poll_ms` | 20 ms | `digital_twin/run_generic_integration.py` — `20`; `digital_twin/segfault_stress_repro.py` — `20` | — | estimated (agent, `fcc5339`) — measurement owed: the readiness wait's rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_ready_poll_ms` | 20 ms | `digital_twin/run_generic_integration.py` — `20` | — | estimated (agent, `fcc5339`) — measurement owed: the readiness wait's rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.twin_stop_file_poll_ms` | 100 ms | `digital_twin/run_generic_integration.py` — `100` | how soon a run ends once its caller writes the stop file | estimated (agent, 2026-10-08) — measurement owed: the stop-to-exit latency against the generated-boot test's elapsed, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_test_stdin_poll_ms` | 50 ms | `digital_twin/run_generic_integration.py` — `50` | how soon a `--test-*` trigger line on stdin is acted on | estimated (agent, 2026-10-14) — measurement owed: a trigger's latency against the scenario waits that read it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_feed_gap_fold_ms` | 5000 ms | `digital_twin/run_generic_integration.py` — `5000` | how often the WDT's newest 200 feed times are folded into the longest feed gap: a span dropped between two folds lasts under one fold period, well below a gap worth flagging | estimated (agent, 2026-10-14) — measurement owed: the feed rate against the 200-entry log, L2 | against that measurement, once taken | the WDT's feed log size or the feed cadence changes |
+| `twin.ntp_responder_poll_ms` | 10 ms | `digital_twin/unixport/_ntp_responder.py` — `10` | the local NTP responder's poll step; a reply on loopback arrives within one poll (`l2.ntp_reply_wait_ms` only ends a lost one) | estimated (agent, 2026-10-14) — measurement owed: the responder's reply latency, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `twin.ntp_responder_take_rounds` | 20 | `digital_twin/unixport/_ntp_responder.py` — `20` | a responder waiting for a held port 123 tries it again every 20 polls (200 ms) | estimated (agent, 2026-10-14) — measurement owed: how long a freed port takes to become bindable, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.twin_readiness_poll_ms` | 10 ms | `tests/_twin_readiness.py` — `10` | `wait_for_value()`'s poll step; its limit counts poll rounds, not the wall clock | estimated (agent, 2026-10-14) — measurement owed: the in-process waits' rounds, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wdt_overrun_wait_s` | 9.0 s | `tests/test_digital_twin_sensortask_integration.py` — `9.0` | just past `wdt.timeout_ms` | estimated (agent, `25fc2fe`) — measurement owed: none: one second past the watchdog timeout | 1 s past the 8 s watchdog | `wdt.timeout_ms` changes |
 | `l2.construction_scenarios_run_timeout_s` | 10.0 s | `tests/_digital_twin_construction_scenarios.py` — `10.0` | — | estimated (agent, `a974244`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bus_hazard_concurrency_run_bound_s` | 20.0 s | `tests/test_digital_twin_bus_hazard_concurrency.py` — `20.0` | — | estimated (agent, `f3a2aa7`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -10816,11 +10871,13 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.sensortask_integration_wait_timeout_s` | 5.0 s | `tests/test_digital_twin_sensortask_integration.py` — `5.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_restart_wait_timeout_s` | 6.0 s | `tests/test_digital_twin_sensortask_integration.py` — `6.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_supervisor_run_bound_s` | 20.0 s | `tests/test_digital_twin_sensortask_integration.py` — `20.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.sensortask_integration_hotspot_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_sensortask_integration.py` — `25.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.sensortask_integration_hotspot_wait_timeout_s` | 40.0 s | `tests/test_digital_twin_sensortask_integration.py` — `40.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; widened 25 → 40 s (agent, 2026-10-14) | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_bind_poll_s` | 0.01 s | `tests/test_digital_twin_sensortask_integration.py` — `0.01` | — | estimated (agent, `45af8eb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.sensortask_integration_hotspot_run_bound_s` | 35.0 s | `tests/test_digital_twin_sensortask_integration.py` — `35.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.sensortask_integration_hotspot_run_bound_s` | 60.0 s | `tests/test_digital_twin_sensortask_integration.py` — `60.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; widened 35 → 60 s with the wait (agent, 2026-10-14) | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_reboot_run_bound_s` | 30.0 s | `tests/test_digital_twin_sensortask_integration.py` — `30.0` | — | estimated (agent, `b6cb852`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.machine_wdt_short_timeout_ms` | 150 ms | `tests/test_digital_twin_machine.py` — `150` | — | estimated (agent, `c1da0bf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.sensortask_integration_idle_window_s` | 3.0 s | `tests/test_digital_twin_sensortask_integration.py` — `3.0` | the idle window a scenario waits with every real task live | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.sensortask_integration_heap_floor_reads` | 3 | `tests/test_digital_twin_sensortask_integration.py` — `3` | the reads the collected-heap floor is taken over | estimated (agent, 2026-10-14) — measurement owed: the floor's spread across reads at both GC stages, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_wdt_short_timeout_ms` | 100 ms | `tests/test_digital_twin_machine.py` — `100` | — | estimated (agent, `c1da0bf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; 150 → 100 ms (agent, 2026-10-14) | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_wdt_poll_ms` | 5 ms | `tests/test_digital_twin_machine.py` — `5` | — | estimated (agent, `c1da0bf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_run_bound_s` | 5 s | `tests/test_digital_twin_machine.py` — `5` | — | estimated (agent, `b8791e6`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_wdt_fed_timeout_ms` | 100 ms | `tests/test_digital_twin_machine.py` — `100` | — | estimated (agent, `c1da0bf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -10837,10 +10894,15 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.machine_wdt_second_notice_poll_tries` | 600 | `tests/test_digital_twin_machine.py` — `600` | × `l2.machine_wdt_poll_ms` = the wait's deadline | estimated (agent, `c1da0bf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_chain_poll_tries` | 100 | `tests/test_digital_twin_machine.py` — `100` | × `l2.machine_chain_poll_ms` = the wait's deadline | estimated (agent, `3bb015b`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_fire_poll_tries` | 100 | `tests/test_digital_twin_machine.py` — `100` | × `l2.machine_fire_poll_ms` = the wait's deadline | estimated (agent, `b8791e6`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_timer_short_period_ms` | 5 ms | `tests/test_digital_twin_machine.py` — `5` | the one-shot and re-armed periods of the Timer cases | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_timer_rearm_window_ms` | 18 ms | `tests/test_digital_twin_machine.py` — `18` | the window a re-armed Timer's fires are counted in | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_spi_wire_time_us_per_byte` | 200 µs | `tests/test_digital_twin_machine.py` — `200` | the SPI fake's wire time per byte in its blocking case: a write of n bytes takes at least n times it | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_uart_wire_time_floor_ms` | 100 ms | `tests/test_digital_twin_machine_uart.py` — `100` | — | estimated (agent, `442a559`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.machine_uart_pump_deadline_ms` | 500 ms | `tests/test_digital_twin_machine_uart.py` — `500` | — | estimated (agent, `442a559`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.real_website_integration_run_bound_s` | 10.0 s | `tests/test_digital_twin_real_website_integration.py` — `10.0` | — | estimated (agent, `7d88a63`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.real_website_integration_burst_run_bound_s` | 30.0 s | `tests/test_digital_twin_real_website_integration.py` — `30.0` | — | estimated (agent, `0260f60`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_uart_frame_wire_ms` | 5 ms | `tests/test_digital_twin_machine_uart.py` — `5` | the wire time one frame is elapsed by in the UART fake's cases | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_uart_frame_timeout_ms` | 50 ms | `tests/test_digital_twin_machine_uart.py` — `50` | a frame read's timeout in the UART fake's cases | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.machine_uart_stall_baud` | 38400 | `tests/test_digital_twin_machine_uart.py` — `38400` | the flash-stall cases' slow wire, 260 µs a byte: a 32-page stall (12.8 ms) still spans more than the FIFO's 32 bytes when the code before it takes up to 8 ms of the 64-byte burst's 16.7 ms | estimated (agent, 2026-10-14) — measurement owed: the code run before the stall on the slowest host that runs it, L2 | against that measurement, once taken | the stall's page count or the FIFO depth changes |
+| `l2.machine_uart_stall_pages` | 32 | `tests/test_digital_twin_machine_uart.py` — `32` | the flash-stall cases' stall length in pages (12.8 ms), with `l2.machine_uart_stall_baud` | estimated (agent, 2026-10-14) — measurement owed: as `l2.machine_uart_stall_baud`, L2 | against that measurement, once taken | the twin's flash timing model changes |
 | `l2.run_generic_integration_run_bound_s` | 5.0 s | `tests/test_digital_twin_run_generic_integration.py` — `5.0` | — | estimated (agent, `fcc5339`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.run_generic_integration_main_run_bound_s` | 15.0 s | `tests/test_digital_twin_run_generic_integration.py` — `15.0` | — | estimated (agent, `dde4b31`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_run_limit_s` | 30 s | `tests/test_digital_twin_uart_link.py` — `30` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -10855,8 +10917,10 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_churn_limit_s` | 180 s | `tests/test_digital_twin_uart_link.py` — `180` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_noise_step_ms` | 1 ms | `tests/test_digital_twin_uart_link.py` — `1` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_pause_rounds` | 6 | `tests/test_digital_twin_uart_link.py` — `6` | × (`uart.gc_pause_worst_ms` + `l2.uart_link_pause_step_ms`) = the pauses' span | estimated (agent, `eea882d`): the rounds of the worst-collection-length pauses mid-transfer — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.uart_link_leak_rounds` | 300 | `tests/test_digital_twin_uart_link.py` — `300` | the transfers `l2.uart_link_leak_budget_bytes` is measured across | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.uart_link_leak_budget_bytes` | 8192 B | `tests/test_digital_twin_uart_link.py` — `8192` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_link_leak_rounds` | 300 | `tests/test_digital_twin_uart_link.py` — `300` | the transfers `l2.uart_link_leak_rate_bytes_per_transfer` is measured across, after `l2.uart_link_leak_warmup_rounds` | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_link_leak_warmup_rounds` | 20 | `tests/test_digital_twin_uart_link.py` — `20` | the transfers run before the first heap read, so the rate excludes the link's own first-use allocations | estimated (agent, 2026-10-14) — measurement owed: the transfers until the retained heap levels off, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_link_leak_rate_bytes_per_transfer` | 16 B | `tests/test_digital_twin_uart_link.py` — `16` | the heap retained per transfer, read after a collection at two transfer counts: a rate, never an absolute delta | measured 2026-10-14, Unix-port `build-standard`, single observation (2026-10-14): at most 0.6 B per transfer clean, 78 B with a planted 16-byte-per-transfer leak | about 27× the clean rate, under a fifth of the planted leak's | the link's receive path or the transfer size changes |
+| `l2.uart_link_crc16_rounds` | 3 | `tests/test_digital_twin_uart_link.py` — `3` | the exercise rounds the CRC16 pair must complete | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_coexist_noise_tasks` | 4 | `tests/test_digital_twin_uart_link.py` — `4` | — | estimated (agent, `eea882d`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_hammer_noise_consumers` | 3 | `tests/test_digital_twin_uart_link.py` — `3` | — | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.uart_link_hammer_rounds` | 120 | `tests/test_digital_twin_uart_link.py` — `120` | the hammer's assertion and messages restate it | estimated (agent, `dc970fb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
@@ -10864,9 +10928,30 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.uart_link_churn_transfers` | 10 | `tests/test_digital_twin_uart_link.py` — `10` | — | estimated (agent, `dc05ce8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.sensortask_integration_window_wait_s` | 10.0 s | `tests/test_digital_twin_sensortask_integration.py` — `10.0` | each wait for a red frame, `Triggered` or the window's absence in the overnight-window twin test (FlashDur 0.5 s) | estimated (agent, 2026-10-06) — measurement owed: elapsed per wait at both GC stages on the slowest host, L2 | against that measurement, once taken | the monitor loop's interval or FlashDur in the test changes |
 | `l2.isl29125_autorange_red_scene_window_s` | 20 s | `tests/test_digital_twin_isl29125_autorange.py` — `20` | the red-dominant scene's twin time at a 5 s `SampleInterval`: its read cycles are bounded by the window's intervals plus two | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.wifi_modes_wait_poll_s` | 0.25 s | `tests/test_digital_twin_wifi_modes.py` — `0.25` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
+| `l2.wifi_modes_wait_poll_s` | 0.1 s | `tests/test_digital_twin_wifi_modes.py` — `0.1` | every condition wait of the scenario polls at it, so each answers at most one poll late; `l2.wifi_modes_wait_timeout_s` is counted in its iterations | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; the value of `l2.sensortask_integration_wait_poll_s` | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wifi_modes_wait_timeout_s` | 25.0 s | `tests/test_digital_twin_wifi_modes.py` — `25.0` | each wait for a Wi-Fi transition of the scenario, and its short waits (the first attempt, the lit frame) | estimated (agent, `0103283`) — measurement owed: the longest single transition's elapsed at both GC stages on the slowest host that runs it, L2; derived from the product's timeline: a window end or settings change reaches the next phase within `wifi.refresh_s` 5 + `wifi.reconnect_caller_grace_s` 5 + the mode switch 4 + `wifi.reconnect_settle_s` 3 + one attempt (`l2.twin_wifi_connect_delay_s` 0.7 and the poll), about 18 s | about 7 s over that path, against an estimate | a `wifi.*` delay on that path or the twin's connect delay changes |
 | `l2.wifi_modes_run_bound_s` | 200.0 s | `tests/test_digital_twin_wifi_modes.py` — `200.0` | the backstop of the file's one scenario (one boot through the stations rule, the settings change and the silent mode); stays under `runner.per_file_timeout_s` | estimated (agent, `0103283`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; about twice the 101.3, 101.6 and 101.9 s it took here at the two GC stages and under settrace (agent, 2026-10-12, one run each) | about twice the run measured here, 40 s under the 240 s per-file limit | the scenario's stages or a `wifi.*` delay on its path change |
+| `l2.wifi_modes_sleep_scale` | 5 | `tests/test_digital_twin_wifi_modes.py` — `5` | the WiFi service's own sleeps run this many times faster: its transitions are under test, not its periods | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2; here about 26 s against 101 s unscaled | against that measurement, once taken | a WiFi period the scenario depends on changes |
+| `l2.timer_pool_wait_s` | 20.0 s | `tests/test_digital_twin_timer_pool.py` — `20.0` | each condition wait of the alarm-pool cases | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.timer_pool_run_bound_s` | 60.0 s | `tests/test_digital_twin_timer_pool.py` — `60.0` | each alarm-pool case's run bound | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.hot_replug_wait_s` | 40.0 s | `tests/test_digital_twin_hot_replug.py` — `40.0` | each condition wait of the re-plug cases: the task's end, its restart and its recovered read | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.hot_replug_run_bound_s` | 90.0 s | `tests/test_digital_twin_hot_replug.py` — `90.0` | each re-plug case's run bound | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.bus_hazard_command_wait_s` | 20.0 s | `tests/test_digital_twin_bus_hazard_concurrency.py` — `20.0` | a command's wait for its armed reset | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.clock_jump_wait_timeout_s` | 20.0 s | `tests/test_digital_twin_clock_jump.py` — `20.0` | each condition wait of the clock-jump cases; three of it bound a case's run | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.ntp_reply_wait_ms` | 1000 ms | `tests/test_digital_twin_ntp.py` — `1000` | the wait for one responder reply; a reply on loopback arrives within one responder poll, the bound only ends a lost one | estimated (agent, 2026-10-14) — measurement owed: the responder's reply latency, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.ntp_run_bound_s` | 10.0 s | `tests/test_digital_twin_ntp.py` — `10.0` | each responder case's run bound | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.ntp_sync_wait_timeout_s` | 20.0 s | `tests/test_digital_twin_ntp.py` — `20.0` | a booted device's wait for its sync: the network up, one product fetch timeout (`ntp.fetch_timeout_ms`), a check tick (`ntp.check_interval_s`) if it came up late | estimated (agent, 2026-10-14) — measurement owed: the booted sync's elapsed at both GC stages, L2 | against that measurement, once taken | `ntp.fetch_timeout_ms` or `ntp.check_interval_s` changes |
+| `l2.http_client_fetch_timeout_s` | 0.001 s | `tests/test_digital_twin_http_client.py` — `0.001` | the timeout case's fetch bound, against a server that never answers | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.http_client_silent_server_s` | 2 s | `tests/test_digital_twin_http_client.py` — `2` | how long the silent canned server holds its connection | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.bmp3xx_probe_hang_s` | 0.05 s | `tests/test_digital_twin_bmp3xx.py` — `0.05` | the BMP3XX fake's probe hang in its hang-hook case: a bounded small hang | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.isl29125_probe_hang_s` | 0.05 s | `tests/test_digital_twin_isl29125.py` — `0.05` | the ISL29125 fake's probe hang in its hang-hook case: a bounded small hang | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.fram_booted_until_yields` | 2000 | `tests/test_digital_twin_fram.py` — `2000` | the scheduler yields the booted FRAM cases wait for a state before failing | estimated (agent, 2026-10-14) — measurement owed: the yields the booted cases take at both GC stages, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_comm_hazard_timeout_ms` | 100 ms | `tests/test_digital_twin_uart_comm_hazard.py` — `100` | the twin hazard pair's protocol timeout (J.7) | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_comm_hazard_run_limit_s` | 30 s | `tests/test_digital_twin_uart_comm_hazard.py` — `30` | each hazard check's run limit | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_comm_hazard_recovery_attempts` | 2 | `tests/test_digital_twin_uart_comm_hazard.py` — `2` | the transactions both ends get to recover in after both transmitted | estimated (agent, 2026-10-14) — measurement owed: the attempts recovery takes in both CRC modes, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_field_sweep_timeout_ms` | 30 ms | `tests/test_digital_twin_uart_field_sweep.py` — `30` | the sweep pair's protocol timeout | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.uart_field_sweep_quiet_window_ms` | 45 ms | `tests/test_digital_twin_uart_field_sweep.py` — `45` | a rejected frame is answered by silence, so each verdict waits one window past the responder's own timeout (`l2.uart_field_sweep_timeout_ms`) | estimated (agent, 2026-10-14) — measurement owed: the responder's longest silence before an answer, L2 | 15 ms past the responder's timeout | `l2.uart_field_sweep_timeout_ms` changes |
+| `l2.uart_field_sweep_run_limit_s` | 120 s | `tests/test_digital_twin_uart_field_sweep.py` — `120` | the sweep's run limit: about 1,280 rejections at one quiet window each | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L2 | against that measurement, once taken | the code under test or the host class changes |
 
 **L3/L4 (real hardware)**
 
@@ -11283,7 +11368,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
-| `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest file alone (`tests/test_sensortask_dev.py`: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
+| `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest job alone (`tests/test_sensortask.py`'s `dev` job: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop) | two transient timeouts absorbed | the backstop rule changes |
 | `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |

@@ -1,11 +1,13 @@
 """Deterministic unit tests for digital_twin/_isl29125_chip.py's own transaction-response logic - matches the register-addressed shape src/asy_isl29125_driver.py's ISL29125_I2C sends.
 Real-time INT-pin scheduling is exercised only through the synchronous set_illumination()/_produce_new_reading() hooks here; the real-time-firing check lives in test_digital_twin_machine.py."""
 
+import errno
 import sys
+import time
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
-from _isl29125_chip import Isl29125Chip
+from _isl29125_chip import ISL29125Chip
 from _twin_common import Walk
 from _twin_random import FixedRandom
 
@@ -24,11 +26,13 @@ _RNG_HIGH = 0x08  # B3, 10,000 lux, p.10 Table 5
 _BITS_12 = 0x10  # B4, 12 bits, p.10 Table 6
 _INTSEL_GREEN = 0x01  # p.11 Table 11
 
-_STATUS_RGBTHF = 0x01  # B0, p.12 Table 15
-_STATUS_CONVENF = 0x02  # B1, p.12 Table 15
-_STATUS_BOUTF = 0x04  # B2, p.12 Table 15
-_STATUS_RGBCF_MASK = 0x30  # B5:B4, p.12 Table 15
+_STATUS_RGBTHF = 0x01  # B0, p.12 Table 16
+_STATUS_CONVENF = 0x02  # B1, p.12 Table 17
+_STATUS_BOUTF = 0x04  # B2, p.12 Table 18
+_STATUS_RGBCF_MASK = 0x30  # B5:B4, p.12 Table 19
 _DEVICE_ID = 0x7D  # p.9 Table 2
+# @tunable l2.isl29125_probe_hang_s = 0.05
+_PROBE_HANG_S = 0.05
 
 
 class _RecordingPin:
@@ -45,18 +49,30 @@ class _RecordingPin:
         self.edges.append(level)
 
 
-def _make_chip(**kwargs: object) -> Isl29125Chip:
+class _RecordingTimer:
+    # Stand-in for the simulation Timer a timer_factory builds: records every init() the chip makes.
+    PERIODIC = 1
+
+    def __init__(self) -> None:
+        self.periods: list[int] = []
+
+    def init(self, *, period: int, mode: int, callback: object) -> None:
+        assert mode == self.PERIODIC
+        assert callable(callback)
+        self.periods.append(period)
+
+
+def _make_chip(**kwargs: object) -> ISL29125Chip:
     kwargs.setdefault("random_source", FixedRandom(value=100.0))  # every draw answers 100.0: nothing here reads the host RNG
-    kwargs.setdefault("auto_refresh", False)
-    return Isl29125Chip(**kwargs)  # type: ignore[arg-type]
+    return ISL29125Chip(**kwargs)  # type: ignore[arg-type]
 
 
-def configure(chip: Isl29125Chip, config1: int, config2: int = 0x00, config3: int = 0x00) -> None:
+def configure(chip: ISL29125Chip, config1: int, config2: int = 0x00, config3: int = 0x00) -> None:
     # One 3-byte burst from 0x01, exactly the shape the driver's own _write_shadow_locked() sends.
     chip.handle_writeto_mem(_ADDR_CONFIG1, bytes([config1, config2, config3]))
 
 
-def read_counts(chip: Isl29125Chip) -> "tuple[int, int, int]":
+def read_counts(chip: ISL29125Chip) -> "tuple[int, int, int]":
     raw = chip.handle_readfrom_mem(_ADDR_DATA, 6)
     green = raw[0] | (raw[1] << 8)
     red = raw[2] | (raw[3] << 8)
@@ -114,7 +130,7 @@ def test_reset_command_restores_every_default() -> None:
     assert chip.handle_readfrom_mem(_ADDR_THRESH, 4) == bytes([0x00, 0x00, 0xFF, 0xFF])
     # BOUTF stays CLEAR: measured on real silicon (2026-09-12), the status register reads 0x00
     # straight after the 0x46 command. Table 15's 0x04 is the POWER-ON default (p12 says "during
-    # the initial power-up"), which simulate_brownout() models instead - see the test below.
+    # the initial power-up"), which power_cycle() models instead - see the test below.
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
@@ -132,7 +148,7 @@ def test_a_supply_brownout_raises_the_flag_the_reset_command_does_not() -> None:
     chip.handle_writeto_mem(_ADDR_STATUS, bytes([0x00]))  # clear the power-on BOUTF
     chip.handle_writeto_mem(_ADDR_ID, bytes([0x46]))
     assert not chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
-    chip.simulate_brownout()
+    chip.power_cycle()
     assert chip.handle_readfrom_mem(_ADDR_STATUS, 1)[0] & _STATUS_BOUTF
 
 
@@ -262,9 +278,8 @@ def test_data_registers_are_green_red_blue_in_that_order() -> None:
 
 
 def test_a_config1_write_leaves_the_previous_cycles_data_in_place() -> None:
-    # Table 7 p10: with SYNC = 0 the ADC restarts on an I2C write to 0x01, and the registers are
-    # double buffered - so what is readable until the next cycle completes is the PREVIOUS sample,
-    # on the old gain. The settle wait discards that window, so the fake must present it.
+    # Assumption, not measured: a write to 0x01 restarts the conversion ("ADC start at I2C write 0x01", FN8424
+    # Table 7, is all the datasheet says); the data registers keep the previous cycle until the next one completes.
     chip = _make_chip(dark_counts=0)
     configure(chip, _MODE_RGB)
     chip.set_illumination(187.5)
@@ -404,7 +419,7 @@ def test_the_conversion_flag_field_rotates_across_the_three_channels() -> None:
 
 def test_injected_bus_faults_surface_on_the_matching_operation_only() -> None:
     chip = _make_chip()
-    chip.fault.inject_fault("readfrom_mem", OSError(5, "injected"))
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "injected")
     try:
         chip.handle_readfrom_mem(_ADDR_ID, 1)
     except OSError:
@@ -504,6 +519,70 @@ def test_a_zero_length_write_is_ignored_rather_than_indexing_into_nothing() -> N
     chip.handle_writeto_mem(_ADDR_CONFIG1, b"")
     chip.handle_writeto_mem(_ADDR_ID, b"")  # the register whose write triggers a full reset
     assert chip.handle_readfrom_mem(_ADDR_CONFIG1, 3) == before, "an empty write changed the configuration"
+
+
+
+def test_without_a_timer_factory_the_chip_starts_no_timer() -> None:
+    chip = _make_chip()
+    configure(chip, _MODE_RGB)
+    assert chip._timer is None
+
+
+def test_a_timer_factory_builds_one_timer_that_a_config1_write_re_arms() -> None:
+    built: list[_RecordingTimer] = []
+
+    def factory() -> _RecordingTimer:
+        built.append(_RecordingTimer())
+        return built[-1]
+
+    chip = _make_chip(timer_factory=factory)
+    configure(chip, _MODE_RGB | _BITS_12)
+    assert len(built) == 1  # built once: the CONFIG1 write re-arms the same Timer
+    assert built[0].periods == [303, 19]  # 3 x tINT at 16 bits from power-up, then at 12 bits (FN8424 p3, p6)
+
+
+def test_a_read_fault_keyed_to_the_data_register_spares_the_id_read() -> None:
+    chip = _make_chip()
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "data read", match=_ADDR_DATA)
+    assert chip.handle_readfrom_mem(_ADDR_ID, 1) == bytes([_DEVICE_ID])
+    try:
+        chip.handle_readfrom_mem(_ADDR_DATA, 6)
+        raise AssertionError("expected the keyed fault on the data read")
+    except OSError as e:
+        assert e.errno == errno.EIO
+    assert chip.fault.pending("readfrom_mem") == 0
+
+
+
+def test_prst_count_stops_at_the_target() -> None:
+    chip = _make_chip()
+    configure(chip, _MODE_RGB, 0x00, _INTSEL_GREEN | 0x08)  # PRST[1:0] = 10 -> 4 cycles (p11 Table 12)
+    chip.handle_writeto_mem(_ADDR_THRESH, bytes([0x00, 0x00, 0x00, 0x00]))  # high threshold 0: every reading is above it
+    chip.set_illumination(100.0)
+    for _ in range(50):  # constant out-of-window light, no status read
+        chip._produce_new_reading(walk=False)
+    assert chip._prst_count == 4
+
+
+def test_a_queued_writeto_hang_delays_the_probe() -> None:
+    chip = _make_chip()
+    chip.fault.inject_hang("writeto", _PROBE_HANG_S)
+    start = time.ticks_ms()
+    chip.handle_writeto(b"")
+    assert time.ticks_diff(time.ticks_ms(), start) >= int(_PROBE_HANG_S * 1000)
+
+
+def test_a_read_fault_keyed_to_the_status_register_spares_the_data_read() -> None:
+    chip = _make_chip()
+    chip.fault.inject_fault("readfrom_mem", OSError, errno.EIO, "status read", match=_ADDR_STATUS)
+    assert len(chip.handle_readfrom_mem(_ADDR_DATA, 6)) == 6
+    assert chip.fault.pending("readfrom_mem") == 1
+    try:
+        chip.handle_readfrom_mem(_ADDR_STATUS, 1)
+        raise AssertionError("expected the keyed fault on the status read")
+    except OSError as e:
+        assert e.errno == errno.EIO
+    assert chip.fault.pending("readfrom_mem") == 0
 
 
 if __name__ == "__main__":

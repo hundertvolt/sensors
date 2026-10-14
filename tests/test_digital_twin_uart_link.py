@@ -1,13 +1,12 @@
-"""Twin-tier coverage for the UART crossover link (SPECIFICATION.md Part J.7): the real generated
-sensortask_dev object graph on the twin's buses, its two UART peripherals joined across the bench
-jumper, driving real transfers while the rest of the task graph runs."""
+"""Twin-tier coverage of the generated UART crossover link (SPECIFICATION.md J.7) on the device tests/_twin_devices.py
+finds wiring a uart_link pair, its two peripherals joined as the bench jumper joins them, plus pair-level CRC16 and
+mismatch cases."""
 
 import asyncio
-import json
 import sys
 import time
 
-sys.path.insert(0, "ext")  # the real vendored ext/microdot.py sensortask_dev.py transitively imports
+sys.path.insert(0, "ext")  # the real vendored ext/microdot.py every generated device module transitively imports
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 sys.path.insert(0, "digital_twin/unixport")  # the UDP shim's directory (digital_twin/README.md "_unix_port_udp_addr_shim.py")
 
@@ -15,7 +14,7 @@ from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from unix_port_poll_prewarm import prewarm_poll_set
 
 # Required of any entry point booting a sensortask_* module under the twin, and this file builds
-# the real dev graph repeatedly: growing the Unix port's pollfds array corrupts non-fd poll
+# the device's real graph repeatedly: growing the Unix port's pollfds array corrupts non-fd poll
 # objects already in it, and this driver registers exactly such an object per UART.
 prewarm_poll_set()
 
@@ -23,31 +22,44 @@ prewarm_poll_set()
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto().
 patch_asy_udp_socket_for_unix_port()
 
+import machine  # noqa: E402
+import microtest  # noqa: E402
+import network  # noqa: E402
 import rp2  # noqa: E402
 import run_generic_integration  # noqa: E402
-import sensortask_dev  # noqa: E402
-from _async_harness import run  # noqa: E402
+from _async_harness import cancel_all, run  # noqa: E402
+from _digital_twin_construction_scenarios import load_device  # noqa: E402
 from _error_codes import code  # noqa: E402
+from _offline_ntp_config import write_offline_ntp_config  # noqa: E402
 from _src_const import src_const  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
+from _twin_devices import device_with, wiring_plan  # noqa: E402
 from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402
-from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  # noqa: E402
+from machine import WDT, LinkPoller, UARTLink  # noqa: E402
 
 import asy_uart_comm  # noqa: E402
-from asy_uart_comm import ROLE_RESPONDER, ResponderCallbacks, UARTComm  # noqa: E402
+import asy_uart_driver  # noqa: E402
+import asy_uart_link_driver  # noqa: E402
+from asy_crc_checks import CRC16  # noqa: E402
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm  # noqa: E402
+from asy_uart_link_driver import UARTLinkDriver  # noqa: E402
 
 try:
-    from typing import TYPE_CHECKING
+    from typing import TYPE_CHECKING, cast
 except ImportError:  # typing isn't available on the real MicroPython test interpreter
     TYPE_CHECKING = False
 
+    def cast(_typ: object, val: "T") -> "T":  # type: ignore[no-redef]  # no-op at runtime either way
+        return val
+
+
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from types import ModuleType
+    from collections.abc import Callable, Coroutine
     from typing import TypeVar
 
     T = TypeVar("T")
 
+    from launch import _Plan
     from machine import UART as TwinUART
     from machine import UARTLink as TwinLink
 
@@ -56,7 +68,15 @@ if TYPE_CHECKING:
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
 # own docstring and tests/test_tmp_scratch.py for the mechanism/regression coverage.
 _scratch = TmpScratch("twin_uart")
-_DEV_WIRING_PLAN = "build/generated_src/sensortask_dev_wiring_plan.json"  # written by buildgen before any test runs
+microtest.after_each(machine.reset_test_state)
+microtest.after_each(network.reset_test_state)
+_DEVICE = device_with("uart_link")
+module = load_device(_DEVICE)
+_BUSES = wiring_plan(_DEVICE)["uart"]  # the two bus globals the plan names: "initiator_bus" and "responder_bus"
+assert _BUSES is not None, f"{_DEVICE}'s plan wires no uart pair"
+_ends: "dict[str, UARTLinkDriver]" = {}
+# Each end's (port, tx, rx, bus, role, limits), read once off the latest build for the CRC16 pairs.
+_specs: "list[tuple[int, int, int, asy_uart_driver.UART, str, TransferLimits]]" = []
 _BANNER: bytes = src_const("src/asy_uart_link_driver.py", "_BANNER")  # type: ignore[assignment]  # src_const() answers object
 
 # @tunable l2.uart_link_run_limit_s = 30
@@ -83,8 +103,14 @@ _MAX_TRAIN_STALL_AFTER = 2000
 _HAMMER_LIMIT_S = 300
 # @tunable l2.uart_link_leak_rounds = 300
 _LEAK_ROUNDS = 300
-# @tunable l2.uart_link_leak_budget_bytes = 8192
-_LEAK_BUDGET_BYTES = 8192
+# @tunable l2.uart_link_leak_warmup_rounds = 20
+_LEAK_WARMUP_ROUNDS = 20
+# Heap retained per transfer, read after a collection at two transfer counts: a rate, never an absolute delta. Calibrated
+# on the Unix port (agent, 2026-10-14): at most 0.6 B clean, 78 B with a planted 16-byte-per-transfer leak.
+# @tunable l2.uart_link_leak_rate_bytes_per_transfer = 16
+_LEAK_RATE_BYTES_PER_TRANSFER = 16
+# @tunable l2.uart_link_crc16_rounds = 3
+_CRC16_ROUNDS = 3
 # @tunable l2.uart_link_hammer_rounds = 120
 _HAMMER_ROUNDS = 120
 # @tunable l2.uart_link_hammer_warmup_rounds = 20
@@ -105,19 +131,32 @@ _NOISE_STEP_MS = 1
 _COEXIST_NOISE_TASKS = 4
 
 
-async def _boot_dev(cfg_path: str) -> None:
+async def _boot_device(cfg_path: str) -> None:
     # The generated main()'s first two steps: build_system() with the watchdog a boot entry arms, then the setup list.
-    await sensortask_dev.build_system(watchdog=WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=cfg_path)
-    await sensortask_dev.sysfunct.run_setups(sensortask_dev._collect_setups())
+    write_offline_ntp_config(cfg_path)
+    await module.build_system(watchdog=WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=cfg_path)
+    await module.sysfunct.run_setups(module._collect_setups())
 
 
-def _build_dev() -> None:
-    configure_i2c_wiring("dev")  # dev's own chips: wozi's default plan puts an 8 KB FRAM under dev's 256 KB manager
+def _build_device() -> None:
+    machine.reset_peripherals()  # each build is a new board: fresh buses and chips on the device's own plan
+    network.reset_interfaces()
+    machine.configure_wiring(wiring_plan(_DEVICE))
     rp2.DMA.reset_registry()  # each build is a boot: the soft reset before it frees every DMA channel
-    _run(_boot_dev(_tmp_cfg_dir()))
-    dev = sensortask_dev
-    assert dev.uart0 is not None and dev.uart1 is not None
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
+    _run(_boot_device(_tmp_cfg_dir()))
+    _ends.clear()  # this build's two link ends, found once here rather than on every exchange
+    for role in (ROLE_INITIATOR, ROLE_RESPONDER):
+        found = [value for value in (getattr(module, name) for name in dir(module)) if isinstance(value, UARTLinkDriver) and value._role == role]
+        assert len(found) == 1, f"{_DEVICE} builds {len(found)} {role} link drivers, not one"
+        _ends[role] = found[0]
+
+
+def _bus(role_bus: str) -> "asy_uart_driver.UART":
+    # The bus global the plan's "uart" key names for "initiator_bus" or "responder_bus".
+    assert _BUSES is not None
+    bus = getattr(module, _BUSES[role_bus])  # type: ignore[literal-required]  # one of the pair's two keys
+    assert isinstance(bus, asy_uart_driver.UART), (role_bus, bus)
+    return bus
 
 
 def _claim_every_free_channel() -> "list[rp2.DMA]":
@@ -130,6 +169,44 @@ def _claim_every_free_channel() -> "list[rp2.DMA]":
             return claimed
 
 
+class _BackToBack:
+    # asy_uart_link_driver's asyncio with every sleep a bare yield: what the exerciser uses of it, nothing more.
+    get_event_loop = staticmethod(asyncio.get_event_loop)
+
+    @staticmethod
+    async def sleep_ms(_ms: int) -> None:
+        await asyncio.sleep_ms(0)
+
+
+def _crc16_pair() -> "tuple[UARTLinkDriver, UARTLinkDriver, TwinLink]":
+    # The device's two link ends rebuilt over CRC16 buses on a new board, every bus and link parameter read off its
+    # build, joined as the jumper joins them with bounded pollers; set up at synchronous scope (CLAUDE.md, asyncio.run()).
+    if not _specs:
+        if not _ends:  # no earlier test built the device: its parameters need one build
+            build_linked_system()
+        for key, role in (("initiator_bus", ROLE_INITIATOR), ("responder_bus", ROLE_RESPONDER)):
+            bus, comm = _bus(key), _link(role)._comm
+            fake = bus._uart
+            assert fake is not None
+            limits = TransferLimits(comm._payload_size, comm._timeout, comm._chunk_bytes, comm._max_transfer_bytes)
+            _specs.append((fake.id, fake.tx.id, fake.rx.id, bus, role, limits))
+    machine.reset_peripherals()
+    rp2.DMA.reset_registry()
+    buses, ends = [], []
+    for port, tx, rx, bus, role, limits in _specs:
+        crc_bus = asy_uart_driver.UART(port, tx, rx, baudrate=bus.baudrate, rxbuf=bus.rxbuf, txbuf=bus._txbuf, rx_ring=bus.rx_ring, poll_wait_ms=bus.poll_wait_ms, poll_idle_ms=bus.poll_idle_ms, crc=CRC16())
+        buses.append(crc_bus)
+        ends.append(UARTLinkDriver(crc_bus, role, limits=limits, name_ext=role))
+    fake_a, fake_b = buses[0]._uart, buses[1]._uart
+    assert fake_a is not None and fake_b is not None
+    link = UARTLink(fake_a, fake_b)
+    buses[0].poller = LinkPoller(fake_a)  # type: ignore[assignment]
+    buses[1].poller = LinkPoller(fake_b)  # type: ignore[assignment]
+    initiator, responder = ends
+    assert _run(initiator.setup()) is True and _run(responder.setup()) is True
+    return initiator, responder, link
+
+
 def _errnos(comm: UARTComm) -> "list[int]":
     # Errors only: ErrNum holds both kinds and ErrType tells them apart. Indexed, not zip()ed: MicroPython has no strict=.
     entry = _run(comm.get_error_counter())[comm.name]
@@ -137,16 +214,25 @@ def _errnos(comm: UARTComm) -> "list[int]":
     return [nums[i] for i in range(len(nums)) if kinds[i] == "E"]
 
 
+async def _exercised(initiator: UARTLinkDriver, responder: UARTLinkDriver, done: "Callable[[], bool]") -> None:
+    # The pair's own loops, started as a boot starts them (the responder's listen, the initiator's exercise), until `done`.
+    tasks = [start() for start in responder.get_task_starters() + initiator.get_task_starters()]
+    try:
+        while not done():
+            await asyncio.sleep_ms(_TICKER_STEP_MS)
+    finally:
+        await cancel_all(tasks)
+
+
 def _hammer_with_the_graph_running(threshold: int) -> None:
-    # The combined case: the link hammered flat out while the rest of the real dev graph runs, with the heap
+    # The combined case: the link hammered flat out while the rest of the device's real graph runs, with the heap
     # watched throughout. Run under MicroPython's own default (no proactive collection) as well as the
     # project's 32768 - a hammer that only survives with proactive collection hides the defect.
     import gc
 
     link = build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.sysfunct is not None
-    initiator = dev.uart_link_init._comm
+    assert module.sysfunct is not None
+    initiator = _link(ROLE_INITIATOR)._comm
     fake_a, fake_b = fakes()
     original = gc.threshold()
     gc.threshold(threshold)
@@ -159,7 +245,7 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         link.direction_from(fake_b).wire_log.clear()
 
     async def hammered(rounds: int) -> int:
-        noise = [asyncio.create_task(_uptime_noise(dev)) for _ in range(_HAMMER_NOISE_CONSUMERS)]
+        noise = [asyncio.create_task(_uptime_noise()) for _ in range(_HAMMER_NOISE_CONSUMERS)]
         try:
             ok = 0
             for i in range(rounds):
@@ -178,17 +264,29 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
         _run(hammered(_HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
         clear_wire_logs()
         gc.collect()
-        before = gc.mem_free()
+        free_n1 = gc.mem_free()
         ok = _run(hammered(_HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
         clear_wire_logs()
         gc.collect()
-        leaked = before - gc.mem_free()
+        rate = (free_n1 - gc.mem_free()) / _HAMMER_ROUNDS
     finally:
         gc.threshold(original)
     assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed at gc.threshold({threshold})"
     counts = _run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({threshold})"
-    assert leaked < _LEAK_BUDGET_BYTES, f"{leaked} bytes retained across {_HAMMER_ROUNDS} hammered transactions at gc.threshold({threshold})"
+    assert rate < _LEAK_RATE_BYTES_PER_TRANSFER, f"{rate:.1f} bytes retained per hammered transaction at gc.threshold({threshold})"
+
+
+def _link(role: str) -> UARTLinkDriver:
+    # The last build's one UART link driver of `role`.
+    return _ends[role]
+
+
+def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S, clock: "PollRoundClock | None" = None) -> "T":
+    # Every run on the poll-round clock (SPECIFICATION.md J.7): both ends share this interpreter, so on the wall
+    # clock a host stall would spend the peer's reply budget and fail a correct link.
+    with clock if clock is not None else PollRoundClock():
+        return run(coro, limit)
 
 
 async def _settle_listener(listener: "asyncio.Task[object]") -> None:
@@ -206,24 +304,29 @@ def _tmp_cfg_dir() -> str:
     return _scratch.dir()
 
 
-async def _uptime_noise(dev: "ModuleType") -> None:
+def _traces(comm: UARTComm) -> "set[tuple[str, int]]":
+    # Every error and warning kind the comm's history holds, as (ErrType, ErrNum).
+    entry = _run(comm.get_error_counter())[comm.name]
+    nums, kinds = entry["ErrNum"], entry["ErrType"]
+    return {(kinds[i], nums[i]) for i in range(len(nums)) if kinds[i] != "N"}
+
+
+async def _uptime_noise() -> None:
     # A co-running consumer of the same event loop, so the hammer is never the only thing scheduled.
     while True:
-        await dev.sysfunct.get_uptime()
+        await module.sysfunct.get_uptime()
         await asyncio.sleep_ms(_NOISE_STEP_MS)
 
 
 def build_linked_system() -> "TwinLink":
-    # The real dev object graph, its two UART peripherals joined the way the bench jumper joins them (GP0<->GP9,
-    # GP1<->GP8), its pollers swapped for the twin's own LinkPoller.
+    # The device's real object graph, its two UART peripherals joined the way the bench jumper joins them (each TX to
+    # the other's RX), its pollers swapped for the twin's own LinkPoller.
     # Bounded stand-in, never a real select.poll(): the fake's readiness must be scripted, not polled in real time (CLAUDE.md "Known hang cause").
-    _build_dev()
-    dev = sensortask_dev
-    assert dev.uart0 is not None and dev.uart1 is not None
+    _build_device()
     fake_a, fake_b = fakes()
     link = UARTLink(fake_a, fake_b)
-    dev.uart0.poller = LinkPoller(fake_a)  # type: ignore[assignment]
-    dev.uart1.poller = LinkPoller(fake_b)  # type: ignore[assignment]
+    _bus("initiator_bus").poller = LinkPoller(fake_a)  # type: ignore[assignment]
+    _bus("responder_bus").poller = LinkPoller(fake_b)  # type: ignore[assignment]
     return link
 
 
@@ -238,9 +341,7 @@ async def exchange(work: "Coroutine[object, object, T]") -> "T":
     #
     # UARTLinkDriver's own message dispatch is covered separately by tests/test_asy_uart_link_driver.py's
     # echo-round-trip test, which drives the real task instead.
-    dev = sensortask_dev
-    assert dev.uart_link_resp is not None
-    listener = asyncio.create_task(dev.uart_link_resp._comm.uart_listen())
+    listener = asyncio.create_task(_link(ROLE_RESPONDER)._comm.uart_listen())
     try:
         return await work
     finally:
@@ -250,22 +351,13 @@ async def exchange(work: "Coroutine[object, object, T]") -> "T":
 def fakes() -> "tuple[TwinUART, TwinUART]":
     # The twin machine.UART objects behind the two drivers. Narrowed in one place: every call site
     # would otherwise repeat the same pair of None checks the module-level globals require.
-    dev = sensortask_dev
-    assert dev.uart0 is not None and dev.uart1 is not None
-    fake_a, fake_b = dev.uart0._uart, dev.uart1._uart
+    fake_a, fake_b = _bus("initiator_bus")._uart, _bus("responder_bus")._uart
     assert fake_a is not None and fake_b is not None
     return fake_a, fake_b
 
 
-def _run(coro: "Coroutine[object, object, T]", limit: int = _RUN_LIMIT_S, clock: "PollRoundClock | None" = None) -> "T":
-    # Every run on the poll-round clock (SPECIFICATION.md J.7): both ends share this interpreter, so on the wall
-    # clock a host stall would spend the peer's reply budget and fail a correct link.
-    with clock if clock is not None else PollRoundClock():
-        return run(coro, limit)
-
-
 def test_every_build_starts_with_every_dma_channel_free() -> None:
-    # A process that rebuilds dev's graph would otherwise run out of channels on its third build,
+    # A process that rebuilds the device's graph would otherwise run out of channels on its third build,
     # each link claiming two in its setup; four builds, each after every channel was taken.
     for _ in range(4):
         stale = _claim_every_free_channel()
@@ -275,59 +367,51 @@ def test_every_build_starts_with_every_dma_channel_free() -> None:
 
 
 # ---------------------------------------------------------------------------
-# The dev wiring itself
+# The device's wiring itself
 # ---------------------------------------------------------------------------
 
 
 def test_the_generic_runner_joins_the_two_buses_its_wiring_plan_names() -> None:
-    # The twin runner wires dev's jumper from the generated plan's "uart" key alone: the two bus globals it names.
-    _build_dev()
-    with open(_DEV_WIRING_PLAN) as f:
-        plan = json.load(f)
-    link = run_generic_integration._wire_uart_crossover(sensortask_dev, plan)
-    assert link is not None, "the runner wired no link for dev's uart_link pair"
-    assert link.endpoints == fakes(), "the runner joined other UARTs than dev's two buses"
-    assert sensortask_dev.uart_link_init is not None
-    answer = _run(exchange(sensortask_dev.uart_link_init._comm.uart_get(0x01)))
+    # The twin runner wires the device's jumper from the generated plan's "uart" key alone: the two bus globals it names.
+    _build_device()
+    plan: _Plan = cast("_Plan", wiring_plan(_DEVICE))
+    link = run_generic_integration._wire_uart_crossover(module, plan)
+    assert link is not None, "the runner wired no link for the device's uart_link pair"
+    assert link.endpoints == fakes(), "the runner joined other UARTs than the device's two buses"
+    answer = _run(exchange(_link(ROLE_INITIATOR)._comm.uart_get(0x01)))
     assert copied_out(answer) == _BANNER, "the runner's jumper carried no banner"
 
 
 def test_both_instances_are_constructed_and_registered() -> None:
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    sources = dev._collect_error_sources()
+    sources = module._collect_error_sources()
     # get_error_sources() delegates entirely to the inner UARTComm (asy_uart_link_driver.py's own
     # comment) - the flattened error_sources list holds each _comm, not the UARTLinkDriver wrapper.
-    assert dev.uart_link_init._comm in sources
-    assert dev.uart_link_resp._comm in sources
-    setters = dev._collect_level_setters()
-    assert dev.uart_link_init.pr.set_level in setters or len(setters) > 0
-    assert dev.uart_link_resp.get_task_starters()  # the responder owns the listen task
+    assert _link(ROLE_INITIATOR)._comm in sources
+    assert _link(ROLE_RESPONDER)._comm in sources
+    setters = module._collect_level_setters()
+    assert _link(ROLE_INITIATOR).pr.set_level in setters or len(setters) > 0
+    assert _link(ROLE_RESPONDER).get_task_starters()  # the responder owns the listen task
     # The initiator's own task list is its exercise loop (asy_uart_link_driver.py), not empty the
     # way bare UARTComm.get_task_starters() would be for an initiator role - one entry, not zero.
-    assert len(dev.uart_link_init.get_task_starters()) == 1
+    assert len(_link(ROLE_INITIATOR).get_task_starters()) == 1
 
 
 def test_the_two_instances_have_distinct_names_and_loggers() -> None:
     # A shared logger would merge two links' histories into a single /status entry and
     # make a fault unattributable to an end.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    assert dev.uart_link_init.name != dev.uart_link_resp.name
-    assert dev.uart_link_init.pr is not dev.uart_link_resp.pr
-    assert dev.uart_link_init.name == dev.uart_link_init.pr.name
-    assert dev.uart_link_resp.name == dev.uart_link_resp.pr.name
+    assert _link(ROLE_INITIATOR).name != _link(ROLE_RESPONDER).name
+    assert _link(ROLE_INITIATOR).pr is not _link(ROLE_RESPONDER).pr
+    assert _link(ROLE_INITIATOR).name == _link(ROLE_INITIATOR).pr.name
+    assert _link(ROLE_RESPONDER).name == _link(ROLE_RESPONDER).pr.name
 
 
 def test_both_instances_share_one_set_of_protocol_parameters() -> None:
     # payload_size and timeout are out-of-band agreements that must match on both ends,
     # and nothing is negotiated - a mismatch desyncs the link outright and cannot self-heal.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
+    initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
     assert initiator._payload_size == responder._payload_size
     assert initiator._timeout == responder._timeout
     assert initiator._frame_size == responder._frame_size
@@ -337,27 +421,22 @@ def test_the_two_ends_sit_on_distinct_peripherals_with_sized_buffers() -> None:
     # Both on one id would re-init the first's peripheral and leave one link object silently
     # owning nothing. a default-sized rxbuf drops a frame's tail at this payload size.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart0 is not None and dev.uart1 is not None
     fake_a, fake_b = fakes()
     assert fake_a.id != fake_b.id
-    frame_size = dev.uart_link_init._comm._frame_size
-    for driver in (dev.uart0, dev.uart1):
+    frame_size = _link(ROLE_INITIATOR)._comm._frame_size
+    for driver in (_bus("initiator_bus"), _bus("responder_bus")):
         assert driver.rxbuf >= frame_size
         assert driver.poll_wait_ms < 10  # single-digit, or poll latency dominates throughput
 
 
 def test_both_ends_get_their_own_real_fram_chunk() -> None:
     # FRAMManager is a bump-pointer allocator, so instantiation order IS the on-chip layout of this
-    # build. dev.toml wires fram_target on both uart_link instances (WP3), each with its own chunk - a
+    # build. The device's TOML wires fram_target on both uart_link instances (WP3), each with its own chunk - a
     # shared one would merge two links' histories.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.fram is not None
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    assert hasattr(dev.uart_link_init.pr, "fram") and dev.uart_link_init.pr.fram is not None
-    assert hasattr(dev.uart_link_resp.pr, "fram") and dev.uart_link_resp.pr.fram is not None
-    assert dev.uart_link_init.pr.fram is not dev.uart_link_resp.pr.fram
+    assert module.fram is not None
+    initiator_fram, responder_fram = (getattr(_link(role).pr, "fram", None) for role in (ROLE_INITIATOR, ROLE_RESPONDER))
+    assert initiator_fram is not None and responder_fram is not None and initiator_fram is not responder_fram
 
 
 # ---------------------------------------------------------------------------
@@ -367,9 +446,7 @@ def test_both_ends_get_their_own_real_fram_chunk() -> None:
 
 def test_a_get_and_a_set_both_complete_with_no_errors_counted() -> None:
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
+    initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
 
     answer = _run(exchange(initiator.uart_get(0x01)))
     assert copied_out(answer) == _BANNER
@@ -383,22 +460,18 @@ def test_a_get_and_a_set_both_complete_with_no_errors_counted() -> None:
 
 def test_a_payload_larger_than_one_chunk_crosses_the_jumper_intact() -> None:
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
     payload = bytes((i * 5) & 0xFF for i in range(140))  # spans three data chunks at payload_size 48
-    assert _run(exchange(dev.uart_link_init._comm.uart_set(0x02, payload))) is True
+    assert _run(exchange(_link(ROLE_INITIATOR)._comm.uart_set(0x02, payload))) is True
     # The responder's _last_echo is only ever written by _message_callback, which exchange()'s harness-
     # controlled uart_listen() round does not invoke - so it stays unset here, the same "the callback stores
     # nothing itself" fact the original test recorded, now checked against the real storage location.
-    assert dev.uart_link_resp._last_echo is None
+    assert _link(ROLE_RESPONDER)._last_echo is None
 
 
 def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
     # The realistic one-sided fault, and the recovery the whole design exists for.
     link = build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    initiator, responder = dev.uart_link_init._comm, dev.uart_link_resp._comm
+    initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
     direction = link.direction_from(fakes()[1])
     direction.silent = True
     assert _run(exchange(initiator.uart_set(0x02, b"lost")), limit=_EXCHANGE_LIMIT_S) is False
@@ -410,15 +483,13 @@ def test_one_sided_silence_forces_a_resync_and_both_sides_recover() -> None:
 
 
 def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
-    # A responder whose payload_size is 8 over its peer's, on dev's own jumpered buses at real wire time: each frame dies
+    # A responder whose payload_size is 8 over its peer's, on the device's own jumpered buses at real wire time: each frame dies
     # inside its failing read, so only the bytes that read dropped can raise the mismatch diagnostic (J.6).
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart1 is not None and dev.uart_link_init is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
     limits = transfer_limits(payload_size=initiator._payload_size + 8, timeout=initiator._timeout)
     callbacks = ResponderCallbacks(echo_get(b"v"), accept_set(), None)
-    responder = UARTComm(dev.uart1, ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH")
+    responder = UARTComm(_bus("responder_bus"), ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH")
     assert _run(responder.setup()) is True
 
     async def scenario() -> None:
@@ -436,6 +507,35 @@ def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
     assert unintelligible not in initiator_codes, f"the initiator, which received nothing, reported the link unintelligible: {initiator_codes}"
 
 
+def test_a_crc16_exerciser_pair_completes_its_rounds() -> None:
+    # The device's own link parameters with CRC16 on both buses: the exerciser's rounds land, none fails, nothing logged.
+    # Its period sleep a bare yield, the rounds back to back: the period is not under test.
+    initiator, responder, _link_pair = _crc16_pair()
+    asy_uart_link_driver.asyncio = _BackToBack()  # type: ignore[attr-defined, assignment]
+    try:
+        _run(_exercised(initiator, responder, lambda: initiator._transfers + initiator._failures >= _CRC16_ROUNDS), limit=_EXCHANGE_LIMIT_S)
+    finally:
+        asy_uart_link_driver.asyncio = asyncio  # type: ignore[attr-defined]
+    assert initiator._failures == 0, f"{initiator._failures} CRC16 exercise rounds failed on a clean link"
+    for end in (initiator, responder):
+        assert _traces(end._comm) == set(), f"{end.name} logged {_traces(end._comm)} on a clean CRC16 link"
+
+
+def test_a_crc16_exerciser_pair_catches_a_corrupted_byte() -> None:
+    # One byte flipped mid-frame in the initiator's first request: the responder's CRC check drops the frame, the round
+    # counts as a failure, the next round is clean, and each history holds only what that explains.
+    initiator, responder, link = _crc16_pair()
+    request = link.direction_from(link.endpoints[0])
+    request.corrupt_indices[request.offered + initiator._comm._frame_size // 2] = 0xFF
+    _run(_exercised(initiator, responder, lambda: initiator._transfers + initiator._failures >= 2), limit=_EXCHANGE_LIMIT_S)
+    assert (initiator._failures, initiator._transfers) == (1, 1), f"{initiator._failures} of two rounds failed for one corrupted byte"
+    bus = responder._comm._uart
+    assert bus is not None and bus.discarded_bytes >= initiator._comm._frame_size, "the responder's CRC check dropped no frame"
+    # The dropped frame reads as the responder's failed listen read, its unanswered request as the initiator's missing ACK.
+    assert _traces(responder._comm) == {("E", code("E", "TIMEOUT"))}, f"the responder logged {_traces(responder._comm)}"
+    assert _traces(initiator._comm) == {("E", code("E", "UART_NO_ACK"))}, f"the initiator logged {_traces(initiator._comm)}"
+
+
 # ---------------------------------------------------------------------------
 # Concurrency inside the real task graph
 # ---------------------------------------------------------------------------
@@ -445,9 +545,7 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
     # Every wait in the protocol yields, so a maximum-length transfer must not stall the
     # Neopixel animation or a sensor trigger. A plain co-running ticker is the cheapest proof.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.uart_link_resp is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
     ticks = []
 
     async def ticker() -> None:
@@ -469,12 +567,11 @@ def test_a_transfer_does_not_starve_other_tasks() -> None:
 def test_the_link_keeps_working_while_the_rest_of_the_graph_runs() -> None:
     # The link and the rest of the system have to coexist, not merely each work alone.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None and dev.sysfunct is not None
-    initiator = dev.uart_link_init._comm
+    assert module.sysfunct is not None
+    initiator = _link(ROLE_INITIATOR)._comm
 
     async def scenario() -> "list[PieceBuffer | None]":
-        noise = [asyncio.create_task(dev.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]
+        noise = [asyncio.create_task(module.sysfunct.get_uptime()) for _ in range(_COEXIST_NOISE_TASKS)]
         results = [await exchange(initiator.uart_get(0x01))]
         for task in noise:
             await task
@@ -488,9 +585,7 @@ def test_a_collection_length_pause_mid_transfer_does_not_break_the_link() -> Non
     # A synchronous stop-the-world pause the length of the worst measured collection (Part I): the tested
     # property - a pause mid-frame is not an inter-part timeout - without depending on today's heap.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
 
     async def scenario() -> bool:
         async def pauser() -> None:
@@ -514,9 +609,7 @@ def test_a_maximum_length_train_completes_and_still_yields() -> None:
     # where one non-yielding step in the read or write path would be most visible. A host stall past the 1000 ms reply
     # timeout lands mid-train: the deadlines count poll rounds.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
     payload = bytes((i * 7) & 0xFF for i in range(48 * 254))
     ticks = []  # unannotated, like the sibling ticker above: ticks_ms() is an opaque _TicksMs
 
@@ -551,9 +644,7 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     import gc
 
     link = build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
     rounds = _LEAK_ROUNDS
     fake_a, fake_b = fakes()
 
@@ -564,29 +655,30 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
         link.direction_from(fake_a).wire_log.clear()
         link.direction_from(fake_b).wire_log.clear()
 
-    async def transfers() -> int:
+    async def transfers(count: int) -> int:
         ok = 0
-        for i in range(rounds):
+        for i in range(count):
             if await exchange(initiator.uart_get(0x01)) is not None:
                 ok += 1
             if not i % 20:
                 _clear_wire_logs()
         return ok
 
-    # The heap is read outside the run, so the record of the tasks a run made is gone by then.
+    # The heap is read outside a run, so the record of the tasks a run made is gone by then: after the warm-up and at the end.
+    ok = _run(transfers(_LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
     _clear_wire_logs()
     gc.collect()
-    before = gc.mem_free()
-    ok = _run(transfers(), limit=_HAMMER_LIMIT_S)
+    free_n1 = gc.mem_free()
+    ok += _run(transfers(rounds - _LEAK_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
     _clear_wire_logs()
     gc.collect()
-    leaked = before - gc.mem_free()
+    rate = (free_n1 - gc.mem_free()) / (rounds - _LEAK_WARMUP_ROUNDS)
     assert ok == rounds, f"only {ok}/{rounds} transfers succeeded across a full UID wrap"
     counts = _run(initiator.get_error_counter())
     assert counts[initiator.name]["ErrCount"] == 0, f"{rounds} clean transfers logged an error"
-    # Buffers are preallocated per instance, so a steady-state loop must not grow the heap. The
-    # bound is generous - this asserts "no per-transfer leak", not an allocation budget.
-    assert leaked < _LEAK_BUDGET_BYTES, f"{leaked} bytes not reclaimed across {rounds} transfers - a per-transfer leak"
+    # Buffers are preallocated per instance, so a steady-state loop retains nothing per transfer: this asserts "no
+    # per-transfer leak", not an allocation budget.
+    assert rate < _LEAK_RATE_BYTES_PER_TRANSFER, f"{rate:.1f} bytes retained per transfer after the warm-up - a per-transfer leak"
 
 
 def test_the_link_survives_sustained_allocation_pressure() -> None:
@@ -594,9 +686,7 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
     # which is what turns a latent one-big-allocation design into a failure (Part I). The link must
     # either complete or degrade cleanly - never raise out, and never corrupt a payload.
     build_linked_system()
-    dev = sensortask_dev
-    assert dev.uart_link_init is not None
-    initiator = dev.uart_link_init._comm
+    initiator = _link(ROLE_INITIATOR)._comm
     stop: list[bool] = []
 
     async def churn() -> None:

@@ -14,6 +14,7 @@ from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
+from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
@@ -3893,20 +3894,14 @@ def test_the_radio_rung_fires_again_after_a_restart_and_a_good_iteration() -> No
 # hotspot, since CaptiveDNS.run() only ever touches self._udps and never rebuilds it.
 # ===========================================================================
 
-# 27000+, not a base shared with another test file: scripts/test.sh runs files concurrently, so a
-# base must be disjoint from every other file's and must sit below the OS ephemeral range
-# (32768-60999). See scripts/test.sh's own TEST_PARALLELISM comment for the full allocation.
-
-# A duplicate unicast UDP bind does not fail with EADDRINUSE here (both sockets set SO_REUSEADDR,
-# confirmed directly) - it silently delivers each datagram to one socket only, so a collision
-# surfaces as an inexplicable timeout rather than an error.
-_next_port = 27000
+# This file's own band of tests/_port_bands.py, since files run concurrently. A duplicate unicast UDP bind does not
+# fail with EADDRINUSE here (both sockets set SO_REUSEADDR, confirmed directly): each datagram reaches one socket only,
+# so a collision surfaces as an inexplicable timeout rather than an error.
+_PORTS = PortAllocator("asy_wifi_service")
 
 
 def _make_addr() -> "tuple[str, int]":
-    global _next_port
-    _next_port += 1
-    return ("127.0.0.1", _next_port)
+    return ("127.0.0.1", _PORTS.next())
 
 
 def _dns_query_packet(domain: str) -> bytes:

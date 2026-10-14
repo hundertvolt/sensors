@@ -3,14 +3,15 @@ entry's own timeout, construction, then the one-time setup list. The caller load
 at its own named site (SPECIFICATION.md F.1); this file loads nothing by name."""
 
 import json
-import os
+import sys
+
+if "digital_twin/unixport" not in sys.path:
+    sys.path.append("digital_twin/unixport")  # the NTP config writer's fake-free directory, behind tests/ on the path
 
 import machine
 from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
 from _generated_tree import require_fresh
-from _src_const import src_const
-
-from asy_config_manager import config_filename
+from _offline_ntp_config import write_offline_ntp_config
 
 try:
     from typing import TYPE_CHECKING
@@ -24,9 +25,6 @@ if TYPE_CHECKING:
 
 require_fresh()  # every caller loads a generated module, and this file reads its boot entry
 
-# RFC 5737 TEST-NET-1: a literal address routed nowhere, so no sync attempt resolves a name or leaves the host;
-# no fallback server either. The product's own flat config-file format, two keys of the NTP store.
-_OFFLINE_NTP_CONFIG = {"NTPHost": "192.0.2.1", "DNSFallback": ""}
 _WATCHDOG_LINE = "watchdog = WDT(timeout="
 
 _BLANK = bytes(4096)
@@ -103,15 +101,3 @@ def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
     with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
         (spi_attachment,) = json.load(f)["spi"].values()
     return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
-
-
-def write_offline_ntp_config(cfg_dir: str) -> None:
-    # Only when absent: a file a test planted, or an earlier boot of the same directory wrote, stays as it is.
-    name = src_const("src/asy_ntp_client.py", "_NAME")
-    assert isinstance(name, str), name
-    path = config_filename(cfg_dir, name)
-    try:
-        os.stat(path)
-    except OSError:
-        with open(path, "w") as f:
-            f.write(json.dumps(_OFFLINE_NTP_CONFIG))

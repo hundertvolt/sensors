@@ -24,7 +24,7 @@ _PORT_MACROS = {"MICROPY_PY_MACHINE_UART_CLASS_CONSTANTS": "ports/rp2/machine_ua
 _UNIT_FAKE = "tests/machine.py"
 _TWIN_FAKE = "digital_twin/machine.py"
 # Twin classes that declare no TEST_API yet, so their surface cannot be compared; the list only shrinks.
-_TWIN_PENDING = ("Pin", "I2C", "SPI", "UART", "Timer", "RTC", "WDT")
+_TWIN_PENDING: "tuple[str, ...]" = ()
 _MODULE_DOUBLES_FILE = "tests/test_asy_webserver_service.py"
 # Each webserver module double and the product classes whose surface it stands in for.
 _MODULE_DOUBLES = {"_FakeModule": ("src/asy_base_classes.py", "SensorReaderConfig"), "_FakeLogger": ("src/asy_print_log.py", "PrintLogHistory")}

@@ -22,7 +22,8 @@
 # through to run_generic_integration.py's parse_args(), whose docstring has the full list.
 #
 # Without --device it prints the usage and the valid device names; with no further flags the device
-# serves on localhost:8080 forever (owner, 2026-08-13: browser-reachable, escalation watchable).
+# serves on localhost:8080 forever (owner, 2026-08-13: browser-reachable, escalation watchable), its chip
+# state and config kept in digital_twin/ across runs (owner, 2026-08-13: "a persistent file inside digital_twin/").
 #
 # No --soak flag: the HTTP+memory-trend soak check is host-side, scripts/_digital_twin_ci_suite.py's
 # Run 11 (SPECIFICATION.md "Driver/DUT process separation").
@@ -31,8 +32,9 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     cat <<'EOF'
 Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]
 Launches digital_twin/run_generic_integration.py for one device, a devices/<name>.toml, under the
-real Unix port; with no further flags it serves on localhost:8080 until stopped. Every flag but
---device goes to run_generic_integration.py (its own --help lists them).
+real Unix port; with no further flags it serves on localhost:8080 until stopped, its chip state and
+config kept in digital_twin/ across runs. Every flag but --device goes to run_generic_integration.py
+(its own --help lists them, the state paths among them).
 
 Environment:
   PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)

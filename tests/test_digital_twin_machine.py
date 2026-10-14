@@ -3,7 +3,10 @@ test_timer_fires_for_real_on_a_short_period is the one genuine (bounded, generou
 
 import asyncio
 import errno
+import json
+import os
 import sys
+import time
 
 try:
     from typing import TYPE_CHECKING
@@ -11,7 +14,6 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections import deque
     from collections.abc import Callable
     from typing import TypeVar
 
@@ -22,17 +24,23 @@ if TYPE_CHECKING:
 # a per-file sys.path insertion rather than a scripts/test.sh change.
 sys.path.insert(0, "digital_twin")
 
+import _flash_stall
+import _mem_backup_contract
+import _wall_clock
 import machine
+import microtest
 from _async_harness import run
 from _crc8 import crc8, word
 from _fault_injection import FaultInjector
 from _machine_contract import ALL_CHECKS, FAULT_CHECKS
 from _tmp_scratch import TmpScratch
+from _twin_common import COUNTER_CAP, LOG_MAXLEN, BoundedLog, StatePaths, fill_buffer, saturating_add
 from _twin_random import FixedRandom
 from machine import (
     I2C,
     RTC,
     SPI,
+    UART,
     WDT,
     Pin,
     SimulatedBootloaderEntryError,
@@ -43,8 +51,8 @@ from machine import (
     reset,
 )
 
-# @tunable l2.machine_wdt_short_timeout_ms = 150
-_WDT_SHORT_TIMEOUT_MS = 150
+# @tunable l2.machine_wdt_short_timeout_ms = 100
+_WDT_SHORT_TIMEOUT_MS = 100
 # @tunable l2.machine_wdt_poll_ms = 5
 _WDT_POLL_MS = 5
 # @tunable l2.machine_wdt_poll_tries = 200
@@ -79,18 +87,22 @@ _FIRE_POLL_MS = 20
 _FIRE_POLL_TRIES = 100
 
 
+# @tunable l2.machine_timer_short_period_ms = 5
+_SHORT_PERIOD_MS = 5
+# @tunable l2.machine_timer_rearm_window_ms = 18
+_REARM_WINDOW_MS = 18
+# @tunable l2.machine_spi_wire_time_us_per_byte = 200
+_WIRE_US_PER_BYTE = 200
+
 _scratch = TmpScratch("dtmachine")
 # The shared contract's checks this twin still fails, each with the twin change that closes it; the list only shrinks.
-_TWIN_PENDING = (
-    ("check_inject_fault_fifo", "the injector raises one exception object for every queued time, not a fresh one"),
-    ("check_pin_defaults", "Pin keeps -1 sentinels where rp2 defaults to None, so a None mode overwrites the mode"),
-    ("check_pin_pull_semantics", "Pin leaves the pull unset by an omitted or None pull, where rp2 clears it"),
-    ("check_reset_never_returns", "the reset errors are Exceptions, so an `except Exception` swallows them"),
-)
+_TWIN_PENDING: "tuple[tuple[str, str], ...]" = ()
+
+microtest.after_each(machine.reset_test_state)
 
 
 def _contract_failure(check: "Callable[[A], None]", backend: "A") -> "str | None":
-    # One check inside one harness run: a WDT or chip timer it starts is cancelled with the run.
+    # One check inside one harness run on a fresh wozi board: a WDT or chip timer it starts is cancelled with the run.
     async def body() -> "str | None":
         try:
             check(backend)
@@ -98,7 +110,20 @@ def _contract_failure(check: "Callable[[A], None]", backend: "A") -> "str | None
             return f"{type(exc).__name__}: {exc}"
         return None
 
-    return run(body())
+    machine.reset_test_state()
+    _wire()
+    try:
+        return run(body())
+    finally:
+        machine.reset_test_state()
+
+
+def _errno_of(call: "Callable[[], object]") -> "int | None":
+    try:
+        call()
+    except OSError as e:
+        return e.errno
+    return None
 
 
 def _inside_one_run(test: "Callable[[], None]") -> "Callable[[], None]":
@@ -113,24 +138,22 @@ def _inside_one_run(test: "Callable[[], None]") -> "Callable[[], None]":
     return wrapper
 
 
-def _twin_injector() -> "tuple[Callable[[int], None], Callable[[], object], Callable[[], int]]":
-    # The shared fault check's backend: a chip's FaultInjector, which every twin chip fake builds its faults on.
-    injector = FaultInjector()
-
-    def inject(times: int) -> None:
-        injector.inject_fault("readinto", OSError(errno.EIO, "planted"), times)
-
-    return inject, lambda: injector.maybe_raise("readinto"), lambda: injector.pending("readinto")
+def _reports_during(scenario: "Callable[[], object]") -> "list[tuple[str, bool]]":
+    # Runs `scenario` with machine's uncaught-callback report recorded rather than printed.
+    reported: list[tuple[str, bool]] = []
+    report = machine._report_uncaught
+    machine._report_uncaught = lambda exc, *, hard: reported.append((str(exc), hard))
+    try:
+        scenario()
+    finally:
+        machine._report_uncaught = report
+    return reported
 
 
 def test_the_twin_meets_the_shared_machine_contract_but_for_its_pending_checks() -> None:
     pending = {name for name, _why in _TWIN_PENDING}
-    Pin.reset_registry()
-    try:
-        failures = {check.__name__: _contract_failure(check, machine) for check in ALL_CHECKS}
-        failures.update({check.__name__: _contract_failure(check, _twin_injector) for check in FAULT_CHECKS})
-    finally:
-        Pin.reset_registry()
+    failures = {check.__name__: _contract_failure(check, machine) for check in ALL_CHECKS}
+    failures.update({check.__name__: _contract_failure(check, _twin_injector) for check in FAULT_CHECKS})
     assert pending <= set(failures), f"a pending entry names no registered check: {sorted(pending - set(failures))}"
     failing = {name for name, why in failures.items() if why is not None}
     assert failing == pending, f"failing {sorted(failing)}, pending {sorted(pending)}: {failures}"
@@ -153,6 +176,57 @@ def test_pin_rejects_invalid_id() -> None:
         raise AssertionError("expected ValueError")
     except ValueError:
         pass
+
+
+def _twin_injector() -> "tuple[Callable[[int], None], Callable[[], object], Callable[[], int]]":
+    # The shared fault check's backend: a chip's FaultInjector, which every twin chip fake builds its faults on.
+    injector = FaultInjector()
+
+    def inject(times: int) -> None:
+        injector.inject_fault("readinto", OSError, errno.EIO, "planted", times=times)
+
+    return inject, lambda: injector.maybe_raise("readinto"), lambda: injector.pending("readinto")
+
+
+def _value_error(call: "Callable[[], object]") -> str:
+    try:
+        call()
+    except ValueError as e:
+        return str(e)
+    raise AssertionError("expected ValueError")
+
+
+def test_pin_takes_rp2s_ids_and_names_as_one_object() -> None:
+    # machine_pin_find(), machine_pin.c:165-192: a board then a CPU name, or a number below 30 (pins.csv, make-pins.py).
+    assert Pin(29).id == 29 and Pin("GP15") is Pin(15) is Pin("GPIO15") and Pin("LED") is Pin("EXT_GPIO0")
+    assert Pin(Pin(7)) is Pin(7)
+    assert _value_error(lambda: Pin(30)) == _value_error(lambda: Pin(1.5)) == "invalid pin"  # type: ignore[arg-type]
+    assert _value_error(lambda: Pin("GP23")) == 'unknown named pin "GP23"'
+
+
+def test_pin_reconfigured_without_a_pull_loses_it() -> None:
+    pin = Pin(21, Pin.IN, Pin.PULL_UP)
+    Pin(21, Pin.IN)
+    assert not pin.pull
+    Pin(21)  # an id alone configures nothing
+    assert pin.mode == Pin.IN
+
+
+def test_pin_alt_takes_only_the_functions_the_pins_row_lists() -> None:
+    # ports/rp2/boards/rp2040_af.csv: AFn is GPIO_FUNC n; GPCK (8) exists on GPIO20-25 only, XIP (0) on none.
+    Pin(20, Pin.ALT, alt=8)
+    assert (Pin(20).mode, Pin(20).alt) == (Pin.ALT, 8)
+    assert _value_error(lambda: Pin(5, Pin.ALT, alt=8)) == "invalid pin af: 8"
+    assert _value_error(lambda: Pin(5, Pin.ALT, alt=0)) == "invalid pin af: 0"
+
+
+def test_an_external_pin_refuses_pulls_alternate_functions_and_other_modes() -> None:
+    # machine_pin.c:256-262 and machine_pin_cyw43.c: the CYW43's GPIOs are plain IN/OUT lines.
+    assert _value_error(lambda: Pin("LED", Pin.OUT, Pin.PULL_UP)) == "pulls are not supported for external pins"
+    assert _value_error(lambda: Pin("WL_GPIO1", Pin.IN, alt=Pin.ALT_I2C)) == "alternate functions are not supported for external pins"
+    assert _value_error(lambda: Pin("WL_GPIO2", Pin.OPEN_DRAIN)) == "only Pin.OUT and Pin.IN are supported for this pin"
+    led = Pin("LED", Pin.OUT, value=1)
+    assert led.value() == 1
 
 
 def test_pin_value_setter_form_sets_and_returns_none() -> None:
@@ -194,6 +268,7 @@ def test_pin_irq_fires_on_simulate_edge_rising() -> None:
 
 @_inside_one_run
 def test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else() -> None:
+    _wire()
     Pin.reset_registry()  # isolate from other tests that also touch pin 8 (SCD30's own RDY pin)
     i2c = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
     assert i2c.scan() == [0x61]
@@ -206,31 +281,29 @@ def test_i2c_id0_wires_scd30_at_0x61_and_naks_everything_else() -> None:
 
 @_inside_one_run
 def test_configure_random_source_threads_through_to_newly_wired_chips() -> None:
-    # Mirrors configure_fram_state_path()'s own module-level-hook shape: must not affect a chip
-    # already wired before the call, only chips wired by a *later* I2C() construction.
-    Pin.reset_registry()
-    try:
-
-        machine.configure_random_source(FixedRandom())  # unscripted: uniform(a, b) answers a
-        machine.configure_i2c_wiring("wozi")  # a new board: I2C(0) wires its chips after the hook is set
-        i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
-        scd30 = i2c0.devices[0x61]
-        assert scd30._co2 == scd30._min_co2  # drawn via the fixed source's uniform(a, b) -> a
-    finally:
-        machine.configure_random_source(None)  # don't leak into later tests in this file
+    # Mirrors configure_fram_state_path()'s own module-level-hook shape: set before the bus exists, it reaches
+    # every chip that bus wires.
+    machine.configure_random_source(FixedRandom())  # unscripted: uniform(a, b) answers a
+    _wire()
+    i2c0 = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+    scd30 = i2c0.devices[0x61]
+    assert scd30._co2 == 400.0  # the CO2 walk's lower bound (_scd30_chip.py's default), the fixed source's uniform(a, b) -> a
 
 
 def test_i2c_id1_wires_sgp40_and_bmp3xx() -> None:
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     assert sorted(i2c.scan()) == [0x59, 0x77]
 
 
 def test_i2c_general_call_address_is_always_tolerated() -> None:
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     i2c.writeto(0x00, b"\x06")  # must not raise, regardless of what's wired
 
 
 def test_i2c_writeto_and_readfrom_into_dispatch_to_the_wired_sgp40_device() -> None:
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     i2c.writeto(0x59, b"\x28\x0e")  # self-test
     reply = bytearray(3)
@@ -239,6 +312,7 @@ def test_i2c_writeto_and_readfrom_into_dispatch_to_the_wired_sgp40_device() -> N
 
 
 def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() -> None:
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     reply = i2c.readfrom_mem(0x77, 0x00, 1)
     assert reply[0] in (0x50, 0x60)
@@ -248,17 +322,12 @@ def test_i2c_readfrom_mem_and_writeto_mem_dispatch_to_the_wired_bmp3xx_device() 
 def test_dev_wiring_puts_the_isl29125_on_i2c1_beside_scd30_and_sgp40() -> None:
     # dev is the only variant that carries this sensor (requirement 18) - wozi's own branch, the
     # default asserted above, must stay two devices.
-    machine.configure_i2c_wiring("dev")
-    try:
-        Pin.reset_registry()
-        i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
-        assert sorted(i2c.scan()) == [0x44, 0x59, 0x61]
-        assert i2c.readfrom_mem(0x44, 0x00, 1) == bytes([0x7D])  # device ID, p9 Table 2
-        i2c.writeto_mem(0x44, 0x01, bytes([0x05, 0x00, 0x00]))  # the driver's own 3-byte burst
-        assert i2c.readfrom_mem(0x44, 0x01, 3) == bytes([0x05, 0x00, 0x00])
-    finally:
-        machine.configure_i2c_wiring("wozi")
-        Pin.reset_registry()
+    _wire("dev")
+    i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
+    assert sorted(i2c.scan()) == [0x44, 0x59, 0x61]
+    assert i2c.readfrom_mem(0x44, 0x00, 1) == bytes([0x7D])  # device ID, p9 Table 2
+    i2c.writeto_mem(0x44, 0x01, bytes([0x05, 0x00, 0x00]))  # the driver's own 3-byte burst
+    assert i2c.readfrom_mem(0x44, 0x01, 3) == bytes([0x05, 0x00, 0x00])
 
 
 @_inside_one_run
@@ -266,22 +335,16 @@ def test_dev_wiring_hands_the_isl29125_the_same_pin_object_the_driver_constructs
     # machine.py's Pin is a per-id registry singleton, and that identity is what lets the chip
     # fake's simulate_edge() reach a handler the driver registered on its own Pin(6). A later "fix"
     # returning fresh objects would break the whole interrupt path with nothing else failing.
-    machine.configure_i2c_wiring("dev")
-    try:
-        Pin.reset_registry()
-        i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
-        chip = i2c.devices[0x44]
-        driver_side = Pin(6, mode=Pin.IN, pull=Pin.PULL_UP)
-        assert chip._int_pin is driver_side
-    finally:
-        machine.configure_i2c_wiring("wozi")
-        Pin.reset_registry()
+    _wire("dev")
+    i2c = I2C(1, scl=Pin(15), sda=Pin(14), freq=50000)
+    chip = i2c.devices[0x44]
+    driver_side = Pin(6, mode=Pin.IN, pull=Pin.PULL_UP)
+    assert chip._int_pin is driver_side
 
 
 @_inside_one_run
 def test_wozi_wiring_carries_no_isl29125() -> None:
-    machine.configure_i2c_wiring("wozi")
-    Pin.reset_registry()
+    _wire()
     assert 0x44 not in I2C(1, scl=Pin(19), sda=Pin(18), freq=50000).devices
     assert 0x44 not in I2C(0, scl=Pin(9), sda=Pin(8), freq=50000).devices
 
@@ -292,26 +355,24 @@ def test_configure_scd30_state_path_and_flush_scd30_round_trip_settings() -> Non
     # wiring test either - so this closes the gap for the SCD30 feature at least. Persistence content is
     # tests/test_digital_twin_scd30.py's job; this only checks the hooks reach the chip that is constructed.
     path = _scratch.path("scd30_machine_wiring.json")
-    Pin.reset_registry()
-    try:
-        machine.configure_scd30_state_path(path)
-        machine.configure_i2c_wiring("wozi")
-        i2c0a = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
-        payload = bytes([0x46, 0x00, 0x00, 0x0A])  # SET_MEASUREMENT_INTERVAL, arg=10
-        i2c0a.devices[0x61].handle_writeto(payload + bytes([crc8(payload[2:4])]))
-        machine.flush_scd30()
+    machine.configure_scd30_state_path(path)
+    _wire()
+    i2c0a = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+    payload = bytes([0x46, 0x00, 0x00, 0x0A])  # SET_MEASUREMENT_INTERVAL, arg=10
+    i2c0a.devices[0x61].handle_writeto(payload + bytes([crc8(payload[2:4])]))
+    machine.flush_scd30()
 
-        Pin.reset_registry()
-        machine.configure_i2c_wiring("wozi")  # the reboot: a fresh I2C(0) whose SCD30 loads the saved state
-        i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
-        assert i2c0b is not i2c0a
-        i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
-        assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
-    finally:
-        machine.configure_scd30_state_path(None)  # don't leak into later tests in this file
+    machine.reset_test_state()  # the reboot: a fresh I2C(0) whose SCD30 loads the saved state
+    machine.configure_scd30_state_path(path)
+    _wire()
+    i2c0b = I2C(0, scl=Pin(13), sda=Pin(12), freq=50000)
+    assert i2c0b is not i2c0a
+    i2c0b.devices[0x61].handle_writeto(bytes([0x46, 0x00]))
+    assert i2c0b.devices[0x61].handle_readfrom_into(3) == word(10)
 
 
 def test_spi_id0_wires_the_fram_chip() -> None:
+    _wire()
     spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
     spi.write(bytes([0x9F]))  # RDID
     reply = bytearray(4)
@@ -320,6 +381,7 @@ def test_spi_id0_wires_the_fram_chip() -> None:
 
 
 def test_spi_init_updates_settings_and_rejects_lsb_first() -> None:
+    _wire()
     spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
     spi.init(baudrate=2000000, polarity=1, phase=1, bits=8, firstbit=SPI.MSB)
     assert spi.baudrate == 2000000
@@ -331,15 +393,40 @@ def test_spi_init_updates_settings_and_rejects_lsb_first() -> None:
         pass
 
 
+def test_spi_is_one_object_per_id_that_each_construction_reinitialises() -> None:
+    # machine_spi.c:161-214: the static object keeps its chip; a construction re-applies every setting, omitted ones
+    # at rp2's defaults.
+    _wire()
+    first = SPI(0, baudrate=2_000_000, polarity=1, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    chip = first.device
+    again = SPI(0, sck=2, mosi=3, miso=4)
+    assert again is first and again.device is chip
+    assert (again.baudrate, again.polarity, again.log[-1]) == (1_000_000, 0, ("init", 1_000_000, 0, 0, 8, SPI.MSB))
+
+
+def test_spi_construction_takes_rp2s_ids_pins_and_bit_order() -> None:
+    _wire()
+    assert _value_error(lambda: SPI(2, sck=Pin(10), mosi=Pin(11), miso=Pin(12))) == "SPI(2) doesn't exist"
+    assert _value_error(lambda: SPI(1, sck=Pin(2), mosi=Pin(11), miso=Pin(12))) == "bad SCK pin"  # SPI0's SCK
+    assert _value_error(lambda: SPI(1, sck=Pin(10), mosi=Pin(10), miso=Pin(12))) == "bad MOSI pin"
+    assert _value_error(lambda: SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(13))) == "bad MISO pin"
+    try:
+        SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12), firstbit=SPI.LSB)
+        raise AssertionError("an LSB-first SPI was constructed")
+    except NotImplementedError as e:
+        assert str(e) == "LSB"
+
+
 def test_spi_bit_order_numbers_are_rp2s() -> None:
     # pico-sdk hardware/spi.h:184-187 (SPI_LSB_FIRST 0, SPI_MSB_FIRST 1); a construction defaults to MSB first.
+    _wire()
     assert (SPI.MSB, SPI.LSB) == (1, 0)
-    assert SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7)).firstbit == SPI.MSB
+    assert SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12)).firstbit == SPI.MSB
 
 
 def test_the_fault_injector_counts_its_pending_entries() -> None:
     injector = FaultInjector()
-    injector.inject_fault("readinto", OSError(errno.EIO, "planted"), times=2)
+    injector.inject_fault("readinto", OSError, errno.EIO, "planted", times=2)
     assert (injector.pending("readinto"), injector.pending("write")) == (2, 0)
     try:
         injector.maybe_raise("readinto")
@@ -350,6 +437,7 @@ def test_the_fault_injector_counts_its_pending_entries() -> None:
 
 
 def test_spi_write_readinto_dispatches_to_the_wired_device() -> None:
+    _wire()
     spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
     try:
         spi.write_readinto(bytes([0x9F]), bytearray(4))  # mismatched lengths
@@ -366,7 +454,8 @@ def test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes() -> None:
     # Only spi0 carries the wozi wiring's own FRAM chip (machine.py's own docstring) - an id nothing
     # wires (see _wire_spi_device()) still behaves like a real, present-but-unconnected bus rather
     # than raising: write() is logged and silently dropped, readinto() zero-fills the buffer.
-    spi = SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7))
+    _wire()
+    spi = SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12))
     assert spi.device is None
     spi.write(bytes([0x9F]))
     buf = bytearray([0xFF, 0xFF, 0xFF])
@@ -375,6 +464,7 @@ def test_spi_id1_wires_no_device_and_reads_back_zeroed_bytes() -> None:
 
 
 def test_i2c_and_spi_deinit_are_recorded() -> None:
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     i2c.deinit()
     assert i2c.deinit_called is True
@@ -384,13 +474,13 @@ def test_i2c_and_spi_deinit_are_recorded() -> None:
 
 
 def test_i2c_log_stays_bounded_across_many_transactions() -> None:
-    # Regression test from baseline verification: I2C.log used to be a plain unbounded list, growing for the
-    # life of the process - the dominant contributor to a real MemoryError reproduced by running the
-    # assembled system end to end, its growth eventually needing a reallocation the fragmented heap refused.
+    # I2C.log is a ring of LOG_MAXLEN entries: an unbounded log grows for the life of the process until its
+    # reallocation fails on a fragmented heap, as an end-to-end run of the assembled system once showed.
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
-    for _ in range(machine._LOG_MAXLEN + 50):
-        i2c.writeto(0x00, b"")  # general-call address - always tolerated, logged every time
-    assert len(i2c.log) == machine._LOG_MAXLEN
+    for _ in range(LOG_MAXLEN + 50):
+        i2c.writeto(0x00, b"")  # general-call address - the SGP40 listens, logged every time
+    assert (len(i2c.log), i2c.log.dropped) == (LOG_MAXLEN, 51)  # the construction's init entry, then 250 writes
     assert i2c.log[-1] == ("writeto", 0x00, b"", True)  # most recent entry survives, not the oldest
 
 
@@ -443,20 +533,19 @@ def test_pin_simulate_edge_drives_the_line_a_pulled_up_input_reads() -> None:
 
 
 def test_i2c_is_one_object_per_id_keeping_chips_and_log_across_constructions() -> None:
-    machine.configure_i2c_wiring("wozi")
-    Pin.reset_registry()
+    _wire()
     first = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     chip = first.devices[0x77]
     again = I2C(1, scl=Pin(19), sda=Pin(18), freq=100000, timeout=1234)
     assert again is first and again.devices[0x77] is chip
     assert again.log[-1] == ("init", 100000, 1234)
     assert (again.freq, again.timeout) == (100000, 1234)
-    machine.configure_i2c_wiring("wozi")  # a new wiring is a new board: fresh buses and chips
+    machine.reset_peripherals()  # a new board: fresh buses and chips on the same plan
     assert I2C(1, scl=Pin(19), sda=Pin(18), freq=50000) is not first
 
 
 def test_i2c_address_prefixed_writeto_reaches_the_register_handler() -> None:
-    machine.configure_i2c_wiring("wozi")
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     assert i2c.writeto(0x77, bytes([0x1C, 0x05]), True) == 2  # OSR register, one payload byte
     assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x05])
@@ -464,7 +553,7 @@ def test_i2c_address_prefixed_writeto_reaches_the_register_handler() -> None:
 
 
 def test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register() -> None:
-    machine.configure_i2c_wiring("wozi")
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
     assert i2c.writeto(0x77, bytes([0x00]), False) == 1  # CHIP_ID pointer
     reply = bytearray(1)
@@ -474,20 +563,72 @@ def test_i2c_no_stop_address_write_then_readfrom_into_reads_that_register() -> N
 
 
 def test_i2c_zero_length_write_to_a_register_chip_is_the_probe() -> None:
-    machine.configure_i2c_wiring("wozi")
+    # A zero-length write goes through soft I2C, where a NAK reads ENODEV and a timeout stays ETIMEDOUT
+    # (ports/rp2/machine_i2c.c:127-145, extmod/machine_i2c.c:199-203, v1.29.0).
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
-    i2c.devices[0x77].fault.inject_fault("writeto", OSError(5, "probe NAK"))
-    try:
-        i2c.writeto(0x77, b"")
-        raise AssertionError("expected OSError")
-    except OSError:
-        pass
+    i2c.devices[0x77].fault.inject_fault("writeto", OSError, errno.EIO, "probe NAK")
+    i2c.devices[0x77].fault.inject_fault("writeto", OSError, errno.ETIMEDOUT, "probe stretched")
+    assert (_errno_of(lambda: i2c.writeto(0x77, b"")), _errno_of(lambda: i2c.writeto(0x77, b""))) == (errno.ENODEV, errno.ETIMEDOUT)
+
+
+def _wire(device: str = "wozi") -> None:
+    # One explicit board per test: the device's generated plan, derived from devices/<device>.toml.
+    with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
+        machine.configure_wiring(json.load(f))
+
+
+def test_i2c_an_empty_write_to_an_absent_address_reads_enodev_a_data_write_eio() -> None:
+    _wire()
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18))
+    assert (_errno_of(lambda: i2c.writeto(0x10, b"")), _errno_of(lambda: i2c.writeto(0x10, b"\x00"))) == (errno.ENODEV, errno.EIO)
+    assert _errno_of(lambda: i2c.readfrom_into(0x10, bytearray(1))) == errno.EIO
+
+
+@_inside_one_run
+def test_i2c_a_general_call_reaches_only_the_chips_that_listen() -> None:
+    # The SGP40 documents the general-call reset (datasheet Table 17); a bus with no listener gets no ACK.
+    _wire()
+    i2c1 = I2C(1, scl=Pin(19), sda=Pin(18))
+    heard: list[bytes] = []
+    i2c1.devices[0x59].handle_general_call = lambda data: heard.append(bytes(data))
+    assert i2c1.writeto(0x00, b"\x06") == 1
+    assert heard == [b"\x06"] and i2c1.log[-1] == ("writeto", 0x00, b"\x06", True)
+    i2c0 = I2C(0, scl=Pin(13), sda=Pin(12))
+    assert _errno_of(lambda: i2c0.writeto(0x00, b"\x06")) == errno.EIO
+
+
+def test_i2c_takes_rp2s_ids_and_pin_pairs_and_hands_the_pins_to_the_controller() -> None:
+    # machine_i2c.c:80-115 and machine_i2c.h:65-66: SCL odd, SDA even, bit 1 the bus; the init sets function and pull-up.
+    _wire()
+    I2C(1, scl=19, sda=18)
+    assert (Pin(19).mode, Pin(19).alt, Pin(19).pull, Pin(18).mode) == (Pin.ALT, Pin.ALT_I2C, Pin.PULL_UP, Pin.ALT)
+    assert _value_error(lambda: I2C(2, scl=Pin(19), sda=Pin(18))) == "I2C(2) doesn't exist"
+    assert _value_error(lambda: I2C(1, scl=Pin(18), sda=Pin(19))) == "bad SCL pin"
+    assert _value_error(lambda: I2C(1, scl=Pin(19), sda=Pin(16))) == "bad SDA pin"
+
+
+class _ShortChip:
+    # Answers fewer bytes than asked, as a chip read past its last register can.
+    def handle_readfrom_into(self, _nbytes: int) -> bytes:
+        return b"\x01"
+
+
+def test_i2c_reads_fill_the_callers_buffer_whatever_its_type() -> None:
+    _wire()
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18))
+    i2c.devices[0x10] = _ShortChip()
+    buf = bytearray(b"\xff\xff\xff")
+    i2c.readfrom_into(0x10, buf)
+    view = memoryview(bytearray(3))
+    i2c.readfrom_into(0x10, view)
+    assert (buf, bytes(view)) == (bytearray(b"\x01\x00\x00"), b"\x01\x00\x00")
 
 
 def test_i2c_register_faults_keep_the_chip_keys() -> None:
-    machine.configure_i2c_wiring("wozi")
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
-    i2c.devices[0x77].fault.inject_fault("readfrom_mem", OSError(5, "read fault"))
+    i2c.devices[0x77].fault.inject_fault("readfrom_mem", OSError, 5, "read fault")
     i2c.writeto(0x77, bytes([0x04]), False)
     try:
         i2c.readfrom_into(0x77, bytearray(6))
@@ -497,11 +638,12 @@ def test_i2c_register_faults_keep_the_chip_keys() -> None:
 
 
 def test_i2c_nack_after_returns_the_short_count_and_records_the_stop() -> None:
-    machine.configure_i2c_wiring("wozi")
+    _wire()
     i2c = I2C(1, scl=Pin(19), sda=Pin(18), freq=50000)
+    osr = i2c.devices[0x77].handle_readfrom_mem(0x1C, 1)  # its reset value, whatever the chip models
     i2c.nack_after[0x77] = 1
     assert i2c.writeto(0x77, bytes([0x1C, 0x07]), True) == 1  # the data byte NACKed
-    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == bytes([0x00])  # the chip took nothing
+    assert i2c.devices[0x77].handle_readfrom_mem(0x1C, 1) == osr  # the chip took nothing
     i2c.nack_after[0x77] = 0
     assert i2c.writeto(0x77, bytes([0x04]), False) == 0  # the register byte NACKed, no stop
     i2c.writeto(0x77, b"", True)  # the STOP the driver sends after a short no-stop write
@@ -510,17 +652,18 @@ def test_i2c_nack_after_returns_the_short_count_and_records_the_stop() -> None:
 
 
 def test_spi_log_stays_bounded_across_many_transactions() -> None:
-    spi = SPI(1, sck=Pin(5), mosi=Pin(6), miso=Pin(7))  # id 1 wires no device - write() still logs
-    for _ in range(machine._LOG_MAXLEN + 50):
+    _wire()
+    spi = SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12))  # id 1 wires no device - write() still logs
+    for _ in range(LOG_MAXLEN + 50):
         spi.write(bytes([0x00]))
-    assert len(spi.log) == machine._LOG_MAXLEN
+    assert (len(spi.log), spi.log.dropped) == (LOG_MAXLEN, 51)  # the construction's init entry, then 250 writes
     assert spi.log[-1] == ("write", bytes([0x00]))
 
 
 def test_bounded_log_reads_oldest_first_before_and_after_it_wraps() -> None:
     # Every read sees the entries oldest first once the oldest are overwritten in place, the head back at slot 0 included.
     for appended in (3, 4, 6, 8, 9):
-        log = machine._BoundedLog(4)
+        log: BoundedLog[int] = BoundedLog(4)
         for entry in range(appended):
             log.append(entry)
         expected = list(range(max(0, appended - 4), appended))
@@ -541,7 +684,7 @@ def test_bounded_log_reads_oldest_first_before_and_after_it_wraps() -> None:
 
 
 def test_bounded_log_clear_starts_over_at_slot_zero() -> None:
-    log = machine._BoundedLog(4)
+    log: BoundedLog[int] = BoundedLog(4)
     for entry in range(6):
         log.append(entry)
     log.clear()
@@ -556,6 +699,20 @@ def test_wdt_feed_increments_count() -> None:
     wdt.feed()
     wdt.feed()
     assert wdt.feed_count == 2
+
+
+@_inside_one_run
+def test_wdt_logs_count_what_they_drop_and_its_counters_saturate() -> None:
+    wdt = WDT(timeout=8000)
+    for _ in range(LOG_MAXLEN + 5):
+        wdt._record_would_trigger()
+        wdt.feed()
+    assert (len(wdt.would_have_triggered_log), wdt.would_have_triggered_log.dropped) == (LOG_MAXLEN, 5)
+    assert (len(wdt.feed_times), wdt.feed_times.dropped) == (LOG_MAXLEN, 5)
+    wdt.feed_count = wdt.would_have_triggered_count = COUNTER_CAP
+    wdt.feed()
+    wdt._record_would_trigger()
+    assert (wdt.feed_count, wdt.would_have_triggered_count) == (COUNTER_CAP, COUNTER_CAP)
 
 
 def test_wdt_rejects_a_nonzero_id() -> None:
@@ -595,7 +752,7 @@ def test_wdt_notifies_once_after_a_feed_free_window() -> None:
     # Short timeout plus a generous run() bound - the same "does the mechanism work at all"
     # spirit as the short-period timer test below, not a precise-cadence assertion.
     #
-    # Polling far finer than the WDT's own period (5ms vs. 150ms) matters here, not just as style: the
+    # Polling far finer than the WDT's own period (5ms vs. 100ms) matters here, not just as style: the
     # background monitor loops forever rather than stopping after one notification, so a granularity close
     # to its period races it, the observed count depending on scheduling.
     async def scenario() -> None:
@@ -635,7 +792,7 @@ def test_wdt_keeps_monitoring_after_a_would_have_triggered_notification() -> Non
 
 
 def test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification() -> None:
-    async def scenario() -> "deque[int]":
+    async def scenario() -> "BoundedLog[int]":
         wdt = WDT(timeout=_WDT_SHORT_TIMEOUT_MS)
         wdt.feed()
         wdt.feed()  # feed_count is 2 going into the unfed stretch below
@@ -792,6 +949,61 @@ def test_rtc_datetime_round_trips() -> None:
     assert rtc.datetime()[0:3] == (2026, 1, 1)
 
 
+class _Holder:
+    # A stand-in module: any object whose global `time` is the built-in module, as each loaded src/ module's is.
+    def __init__(self, clock: object) -> None:
+        self.time = clock
+
+
+def test_an_uninstalled_rtc_keeps_its_tuple_by_rp2s_rules() -> None:
+    # ports/rp2/machine_rtc.c:50-97: no constructor argument, an 8-field set that returns None, a getter that
+    # recomputes the weekday and reads field 7 as 0; rp2 boots at 2021-01-01 00:00:00 (ports/rp2/main.c:143).
+    rtc = RTC()
+    assert rtc.datetime() == (2021, 1, 1, 4, 0, 0, 0, 0)
+    assert rtc.datetime((2026, 1, 1, 0, 12, 30, 15, 99)) is None  # a wrong weekday, a non-zero field 7
+    assert RTC().datetime() == (2026, 1, 1, 3, 12, 30, 15, 0)
+    for call, error in ((lambda: RTC(0), TypeError), (lambda: rtc.datetime((2026, 1, 1, 0, 12, 30, 15)), ValueError)):  # type: ignore[call-arg]
+        try:
+            call()
+            raise AssertionError(f"expected {error.__name__}")
+        except error:
+            pass
+
+
+def test_the_wall_clock_answers_rp2s_eight_field_time_tuples() -> None:
+    clock = _wall_clock.WallClock()
+    assert (clock.gmtime(0), clock.localtime(0)) == ((1970, 1, 1, 0, 0, 0, 3, 1),) * 2  # extmod/modtime.c:55-75
+    assert len(clock.gmtime()) == 8 and isinstance(clock.time(), int)
+    assert clock.ticks_ms is time.ticks_ms  # every other name is the built-in's
+
+
+def test_step_moves_the_wall_clock_and_never_the_ticks() -> None:
+    clock = _wall_clock.WallClock()
+    clock.step(3600)
+    assert 3599 <= clock.time() - int(time.time()) <= 3601
+    assert clock.gmtime(0) == time.gmtime(0)[:8]
+
+
+def test_install_rebinds_only_modules_on_the_builtin_time_once() -> None:
+    plain, other = _Holder(time), _Holder(object())
+    clock = _wall_clock.install([plain, other])
+    assert (plain.time, other.time is clock, _wall_clock.installed()) == (clock, False, clock)
+    assert _wall_clock.install([plain]) is clock and plain.time is clock
+    machine.reset_test_state()
+    restored: object = plain.time
+    assert restored is time and _wall_clock.installed() is None
+
+
+def test_an_installed_clock_makes_an_rtc_set_move_the_wall_clock() -> None:
+    module = _Holder(time)
+    clock = _wall_clock.install([module])
+    RTC().datetime((2030, 6, 15, 0, 12, 0, 0, 0))
+    assert abs(clock.time() - 1907755200) <= 1  # 2030-06-15T12:00:00Z
+    assert RTC().datetime()[:6] == (2030, 6, 15, 5, 12, 0)  # a Saturday, the set second
+    clock.step(3600)
+    assert RTC().datetime()[4] == 13
+
+
 def test_timer_deinit_stops_further_callbacks() -> None:
     calls: list[int] = []
     timer = Timer()
@@ -810,16 +1022,9 @@ def test_timer_deinit_stops_further_callbacks() -> None:
 
 
 def test_timer_reinit_from_within_its_own_callback_does_not_raise() -> None:
-    # Regression test: a self-rearming chain that reuses one preallocated Timer through repeated .init()
-    # calls rather than constructing a fresh one per step (Part F.1) - re-.init() the SAME Timer object
-    # from inside that object's currently-firing callback.
-    #
-    # Timer.init()'s internal deinit() used to unconditionally call self._task.cancel(), cancelling the task
-    # that is at that moment running the very callback doing the re-init, which MicroPython's asyncio
-    # rejects with RuntimeError("can't cancel self").
-    #
-    # This is a real, valid pattern on real rp2 hardware - it just reprograms the alarm pool, the just-fired
-    # ONE_SHOT alarm already being consumed - so the twin must support it too.
+    # A self-rearming chain reuses one preallocated Timer (Part F.1), re-init()ing it from its own firing callback:
+    # valid on rp2, which only reprograms the alarm. Timer.init()'s deinit() must not cancel the task running that
+    # callback, which MicroPython's asyncio rejects with RuntimeError("can't cancel self").
     steps: list[int] = []
     timer = Timer()
 
@@ -874,6 +1079,427 @@ def test_timer_fires_for_real_on_a_short_period() -> None:
 
     run(scenario(), _RUN_BOUND_S)
     assert fired == [1]
+
+
+# ---------------------------------------------------------------------------
+# The shared twin helpers (_twin_common): the counter cap, the bounded log's drop count, the buffer fill.
+# ---------------------------------------------------------------------------
+
+
+def test_saturating_add_stops_at_the_shared_counter_cap() -> None:
+    assert COUNTER_CAP == 0x3FFFFFFF
+    assert (saturating_add(5), saturating_add(5, 3)) == (6, 8)
+    assert (saturating_add(COUNTER_CAP - 1), saturating_add(COUNTER_CAP), saturating_add(COUNTER_CAP - 2, 5)) == (COUNTER_CAP,) * 3
+
+
+def test_bounded_log_counts_what_it_drops_and_saturates_at_the_cap() -> None:
+    log: BoundedLog[int] = BoundedLog(2)
+    for entry in range(5):
+        log.append(entry)
+    assert (list(log), log.dropped) == ([3, 4], 3)
+    log.dropped = COUNTER_CAP
+    log.append(5)
+    assert (list(log), log.dropped) == ([4, 5], COUNTER_CAP)
+
+
+def test_fill_buffer_keeps_a_bytearrays_length_and_writes_into_a_memoryview() -> None:
+    short = bytearray(b"\xff\xff\xff\xff")
+    fill_buffer(short, b"\x01\x02")
+    assert short == bytearray(b"\x01\x02\x00\x00")
+    view = memoryview(bytearray(3))
+    fill_buffer(view, b"\x01\x02\x03\x04")
+    assert bytes(view) == b"\x01\x02\x03"
+    idle = bytearray(2)
+    fill_buffer(idle, b"", 0xFF)
+    assert idle == bytearray(b"\xff\xff")
+
+
+def test_state_paths_carries_the_mem_backup_path() -> None:
+    paths = StatePaths(fram="f.json", scd30=None, mem_backup="m.json")
+    assert (paths.fram, paths.scd30, paths.mem_backup) == ("f.json", None, "m.json")
+
+
+# ---------------------------------------------------------------------------
+# The peripheral registries, the configure hooks' construction rule and the per-test state reset.
+# ---------------------------------------------------------------------------
+
+
+def test_peripheral_answers_the_registered_bus_or_none() -> None:
+    _wire()
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18))
+    spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    uart = UART(0, tx=Pin(0), rx=Pin(1))
+    assert (machine.peripheral("i2c1"), machine.peripheral("spi0"), machine.peripheral("uart0")) == (i2c, spi, uart)
+    assert (machine.peripheral("i2c0"), machine.peripheral("spi1"), machine.peripheral("uart1")) == (None, None, None)
+    try:
+        machine.peripheral("i2c")
+        raise AssertionError("a malformed name answered")
+    except ValueError:
+        pass
+
+
+def test_reset_peripherals_forgets_every_bus() -> None:
+    _wire()
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18))
+    SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    UART(0, tx=Pin(0), rx=Pin(1))
+    machine.reset_peripherals()
+    assert [machine.peripheral(name) for name in ("i2c1", "spi0", "uart0")] == [None, None, None]
+    assert I2C(1, scl=Pin(19), sda=Pin(18)) is not i2c
+
+
+def test_every_configure_hook_refuses_once_a_bus_exists() -> None:
+    with open("build/generated_src/sensortask_wozi_wiring_plan.json") as f:
+        plan = json.load(f)
+    hooks: tuple[tuple[str, Callable[[], object]], ...] = (
+        ("configure_wiring", lambda: machine.configure_wiring(plan)),
+        ("configure_random_source", lambda: machine.configure_random_source(None)),
+        ("configure_scd30_state_path", lambda: machine.configure_scd30_state_path(None)),
+        ("configure_fram_state_path", lambda: machine.configure_fram_state_path(None)),
+        ("configure_mem_backup_state_path", lambda: machine.configure_mem_backup_state_path(None)),
+    )
+    for build in (lambda: I2C(1, scl=Pin(19), sda=Pin(18)), lambda: SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12)), lambda: UART(1, tx=Pin(8), rx=Pin(9))):
+        machine.configure_wiring(plan)
+        build()
+        for hook, call in hooks:
+            try:
+                call()
+                raise AssertionError(f"{hook}() after a bus existed was accepted")
+            except RuntimeError as e:
+                assert str(e).startswith(f"machine.{hook}() after a bus was constructed has no effect"), str(e)
+        machine.reset_peripherals()
+
+
+def test_configure_wiring_never_replaces_the_board_it_wired() -> None:
+    _wire()
+    first = I2C(1, scl=Pin(19), sda=Pin(18))
+    try:
+        _wire("dev")
+    except RuntimeError:
+        pass
+    assert I2C(1, scl=Pin(19), sda=Pin(18)) is first and 0x77 in first.devices
+
+
+def test_a_bus_needs_an_explicit_wiring_plan() -> None:
+    try:
+        I2C(1, scl=Pin(19), sda=Pin(18))
+        raise AssertionError("a bus wired a board nobody configured")
+    except RuntimeError as e:
+        assert "no wiring plan configured" in str(e)
+    assert not hasattr(machine, "configure_i2c_wiring")
+
+
+@_inside_one_run
+def test_reset_test_state_restores_every_machine_knob() -> None:
+    machine.configure_random_source(FixedRandom())
+    machine.configure_fram_state_path(_scratch.path("knob_fram.json"))
+    machine.configure_scd30_state_path(_scratch.path("knob_scd30.json"))
+    machine.configure_mem_backup_state_path(_scratch.path("knob_mem_backup.json"))
+    _wire()
+    I2C(0, scl=Pin(13), sda=Pin(12))
+    SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    UART(0, tx=Pin(0), rx=Pin(1))
+    machine.set_alarm_pool_free(0)
+    UART.would_have_blocked_bytes = 5
+    machine.reset_count = machine.bootloader_count = 3
+    machine.mem_backup(0)[0] = 7
+    RTC().datetime((2026, 1, 1, 4, 12, 0, 0, 0))
+    _flash_stall.use_max = True
+    _flash_stall.windows.append((0, 1))
+    machine.reset_test_state()
+    assert (_flash_stall.use_max, len(_flash_stall.windows)) == (False, 0)
+    assert (machine._wiring_plan, machine._random_source, machine._fram_state_path, machine._scd30_state_path, machine._mem_backup_state_path) == (None,) * 5
+    assert (machine._current_fram_chip, machine._current_scd30_chip, machine._ALARMS_FREE) == (None, None, 16)
+    assert [machine.peripheral(name) for name in ("i2c0", "spi0", "uart0")] == [None, None, None]
+    assert (UART.would_have_blocked_bytes, machine.reset_count, machine.bootloader_count) == (0, 0, 0)
+    assert (list(machine.mem_backup(0)), machine.reset_cause(), RTC().datetime()) == ([0] * 4, machine.PWRON_RESET, (2021, 1, 1, 4, 0, 0, 0, 0))
+    assert Pin._registry == {}
+
+
+# ---------------------------------------------------------------------------
+# mem_backup() across a simulated reset: the reset handler's flush, the next launch's configure.
+# ---------------------------------------------------------------------------
+
+
+def test_the_twin_meets_the_shared_mem_backup_contract() -> None:
+    for check in _mem_backup_contract.ALL_CHECKS:
+        check(machine)
+
+
+def test_a_flushed_mem_backup_reaches_the_next_launch_once() -> None:
+    path = _scratch.path("mem_backup_round_trip.json")
+    machine.configure_mem_backup_state_path(path)
+    assert machine.reset_cause() == machine.PWRON_RESET  # no file yet: a power-on
+    machine.mem_backup(0)[2] = 0xDEADBEEF
+    machine.mem_backup(1)[0] = 5
+    try:
+        reset()
+    except SimulatedResetError:
+        machine.flush_mem_backup()
+    machine.reset_test_state()  # the next launch is a fresh process: power-on state until the file is read
+    machine.configure_mem_backup_state_path(path)
+    assert (list(machine.mem_backup(0)), list(machine.mem_backup(1))) == ([0, 0, 0xDEADBEEF, 0], [5, 0, 0])
+    assert (machine.reset_cause(), machine.mem32[0x40058008], machine.mem32[0x40064008]) == (machine.WDT_RESET, 2, 0x100)
+    try:
+        os.stat(path)
+        raise AssertionError("the state file outlived the launch that read it")
+    except OSError:
+        pass
+    machine.reset_test_state()
+    machine.configure_mem_backup_state_path(path)
+    assert (machine.reset_cause(), list(machine.mem_backup(0))) == (machine.PWRON_RESET, [0] * 4)
+
+
+def test_a_bad_mem_backup_state_file_boots_as_a_power_on() -> None:
+    path = _scratch.path("mem_backup_bad.json")
+    good = {"cause": 3, "watchdog_reason": 2, "chip_reset": 256, "regions": [[1, 2, 3, 4], [5, 6, 7]]}
+    for text in ("{", json.dumps(dict(good, regions=[[1, 2, 3], [5, 6, 7]])), json.dumps(dict(good, cause="3")), json.dumps(dict(good, regions=[[1, 2, 3, 4], [5, 6, -7]])), json.dumps([good])):
+        with open(path, "w") as f:
+            f.write(text)
+        machine.reset_test_state()
+        machine.configure_mem_backup_state_path(path)
+        assert (machine.reset_cause(), list(machine.mem_backup(0)), list(machine.mem_backup(1))) == (machine.PWRON_RESET, [0] * 4, [0] * 3), text
+
+
+def test_an_unreadable_mem_backup_state_path_raises_rather_than_booting_as_a_power_on() -> None:
+    # Only a missing file means no reset preceded this launch; a path that cannot be read is the runner's own fault.
+    path = _scratch.path("mem_backup_dir")
+    os.mkdir(path)
+    try:
+        machine.configure_mem_backup_state_path(path)
+        raise AssertionError("an unreadable state path read as a power-on")
+    except OSError as e:
+        assert e.errno == errno.EISDIR, e
+    finally:
+        os.rmdir(path)
+
+
+# ---------------------------------------------------------------------------
+# The reset exceptions, the power-loss sibling and their counters.
+# ---------------------------------------------------------------------------
+
+
+def test_a_reset_and_a_power_loss_are_no_exceptions_a_product_can_swallow() -> None:
+    assert issubclass(SimulatedRebootError, BaseException) and not issubclass(SimulatedRebootError, Exception)
+    assert issubclass(machine.SimulatedPowerLoss, BaseException) and not issubclass(machine.SimulatedPowerLoss, Exception)
+    assert not issubclass(machine.SimulatedPowerLoss, SimulatedRebootError)
+
+
+def test_a_timer_calling_reset_ends_the_loop_past_an_except_exception_sibling() -> None:
+    survived: list[int] = []
+
+    async def swallowing() -> None:
+        while True:
+            try:
+                await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+                survived.append(1)
+            except Exception:  # a product loop that keeps going on any Exception
+                pass
+
+    async def scenario() -> None:
+        sibling = asyncio.create_task(swallowing())
+        Timer(mode=Timer.ONE_SHOT, period=_SHORT_PERIOD_MS, callback=lambda _t: reset())
+        await asyncio.sleep_ms(_RUN_BOUND_S * 1000)
+        sibling.cancel()
+
+    try:
+        run(scenario(), _RUN_BOUND_S + 1)
+        raise AssertionError("the loop outlived machine.reset()")
+    except SimulatedResetError:
+        pass
+
+
+def test_the_reset_counters_saturate_at_the_counter_cap() -> None:
+    machine.reset_count = machine.bootloader_count = COUNTER_CAP
+    for action in (reset, bootloader):
+        try:
+            action()
+        except SimulatedRebootError:
+            pass
+    assert (machine.reset_count, machine.bootloader_count) == (COUNTER_CAP, COUNTER_CAP)
+
+
+# ---------------------------------------------------------------------------
+# Timer: rp2's signature, the 16-alarm pool, one schedule per Timer, soft and hard callback failures.
+# ---------------------------------------------------------------------------
+
+
+def test_timer_refuses_any_id_but_the_soft_timer() -> None:
+    try:
+        Timer(0)
+        raise AssertionError("Timer(0) constructed")
+    except ValueError as e:
+        assert str(e) == "Timer doesn't exist"
+
+
+def test_timer_period_maths_follows_rp2() -> None:
+    async def scenario() -> "list[int]":
+        timers = [Timer(freq=10), Timer(period=5, tick_hz=1_000_000), Timer(period=0)]
+        periods = [timer._period_us for timer in timers]
+        for timer in timers:
+            timer.deinit()
+        return periods
+
+    assert run(scenario()) == [100_000, 5, 1]
+
+
+def test_the_seventeenth_alarm_raises_enomem_until_one_is_freed() -> None:
+    async def scenario() -> None:
+        timers = [Timer(period=1000, callback=lambda _t: None) for _ in range(16)]
+        bare = Timer()  # no settings: no alarm taken
+        try:
+            bare.init(period=1000, callback=lambda _t: None)
+            raise AssertionError("a 17th alarm was armed")
+        except OSError as e:
+            assert e.errno == errno.ENOMEM
+        timers[0].deinit()
+        bare.init(period=1000, callback=lambda _t: None)
+        sim = machine._simulation_timer()
+        sim.init(period=1000, callback=lambda _t: None)  # a chip's simulation clock never takes an alarm
+
+    run(scenario())
+
+
+def test_a_fired_one_shot_returns_its_alarm() -> None:
+    fired: list[int] = []
+
+    async def scenario() -> None:
+        machine.set_alarm_pool_free(1)
+        Timer(mode=Timer.ONE_SHOT, period=_SHORT_PERIOD_MS, callback=lambda _t: fired.append(1))
+        for _ in range(_CHAIN_POLL_TRIES):
+            if fired:
+                break
+            await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+        Timer(mode=Timer.ONE_SHOT, period=1000, callback=lambda _t: None)
+
+    run(scenario(), _RUN_BOUND_S)
+    assert fired == [1]
+
+
+def test_a_timer_rearming_from_its_own_callback_runs_one_schedule() -> None:
+    # The first call re-arms with a callback that only counts: a second loop left running would count twice a period.
+    calls: list[str] = []
+    timer = Timer()
+
+    def rearm(t: Timer) -> None:
+        calls.append("first")
+        t.init(period=_SHORT_PERIOD_MS, callback=lambda _t: calls.append("next"))
+
+    async def scenario() -> None:
+        timer.init(period=_SHORT_PERIOD_MS, callback=rearm)
+        await asyncio.sleep_ms(_REARM_WINDOW_MS)
+
+    run(scenario(), _RUN_BOUND_S)
+    assert calls[:1] == ["first"] and len(calls) <= _REARM_WINDOW_MS // _SHORT_PERIOD_MS, calls
+
+
+def test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on() -> None:
+    calls: list[int] = []
+
+    def flaky(_t: Timer) -> None:
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("planted callback failure")
+
+    async def scenario() -> None:
+        Timer(period=_SHORT_PERIOD_MS, callback=flaky)
+        for _ in range(_CHAIN_POLL_TRIES):
+            if len(calls) >= 2:
+                return
+            await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+
+    reported = _reports_during(lambda: run(scenario(), _RUN_BOUND_S))
+    assert len(calls) >= 2
+    assert reported == [("planted callback failure", False)]
+
+
+def test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm() -> None:
+    calls: list[int] = []
+
+    def failing(_t: Timer) -> None:
+        calls.append(1)
+        raise ValueError("planted hard callback failure")
+
+    async def scenario() -> None:
+        machine.set_alarm_pool_free(1)
+        Timer(period=_SHORT_PERIOD_MS, callback=failing, hard=True)
+        await asyncio.sleep_ms(_SHORT_PERIOD_MS * 5 // 2)  # past where a second call would land
+        Timer(period=1000, callback=lambda _t: None)  # the failed schedule's alarm is free again
+
+    reported = _reports_during(lambda: run(scenario(), _RUN_BOUND_S))
+    assert calls == [1]
+    assert reported == [("planted hard callback failure", True)]
+
+
+# ---------------------------------------------------------------------------
+# SPI power loss and wire time; I2C unplug and plug.
+# ---------------------------------------------------------------------------
+
+
+def test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss() -> None:
+    _wire()
+    spi = SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+    spi.lose_power_after(2)
+    spi.write(bytes([0x9F]))
+    spi.write_readinto(bytes(4), bytearray(4))  # one full-duplex transfer counts once
+    transfers: tuple[Callable[[], object], ...] = (lambda: spi.readinto(bytearray(4)), lambda: spi.write(b"\x06"))
+    for transfer in transfers:
+        try:
+            transfer()
+            raise AssertionError("a transaction ran after the power loss")
+        except machine.SimulatedPowerLoss:
+            pass
+
+
+def test_spi_wire_time_blocks_for_each_byte_moved() -> None:
+    _wire()
+    spi = SPI(1, sck=Pin(10), mosi=Pin(11), miso=Pin(12))
+    spi.wire_time_us_per_byte = _WIRE_US_PER_BYTE
+    start = time.ticks_us()
+    spi.write(bytes(20))
+    assert time.ticks_diff(time.ticks_us(), start) >= 20 * _WIRE_US_PER_BYTE
+
+
+def test_an_unplugged_chip_answers_nothing_until_plugged_back_powered_up() -> None:
+    _wire()
+    i2c = I2C(1, scl=Pin(19), sda=Pin(18))
+    chip = i2c.devices[0x77]
+    cycles: list[int] = []
+    chip.power_cycle = lambda: cycles.append(1)
+    i2c.unplug(0x77)
+    assert 0x77 not in i2c.scan()
+    try:
+        i2c.readfrom_mem(0x77, 0x00, 1)
+        raise AssertionError("an unplugged chip answered")
+    except OSError as e:
+        assert e.errno == errno.EIO
+    i2c.plug(0x77)
+    assert (i2c.devices[0x77], cycles) == (chip, [1])
+    try:
+        i2c.plug(0x77)  # already on the bus
+        raise AssertionError("plug() accepted a chip that was never unplugged")
+    except ValueError:
+        pass
+    i2c.unplug(0x77)
+    try:
+        i2c.unplug(0x77)
+        raise AssertionError("unplug() accepted a chip already off the bus")
+    except ValueError:
+        pass
+
+
+def test_the_fram_table_names_both_chips_and_refuses_an_unknown_size() -> None:
+    with open("build/generated_src/sensortask_wozi_wiring_plan.json") as f:
+        plan = json.load(f)
+    plan["spi"]["spi0"]["max_size"] = 0x8000
+    machine.configure_wiring(plan)
+    try:
+        SPI(0, sck=Pin(2), mosi=Pin(3), miso=Pin(4))
+        raise AssertionError("an FRAM of unknown size was wired")
+    except ValueError as e:
+        assert "no FRAM RDID for size 0x8000" in str(e)
+    expected = {0x2000: bytes([0x04, 0x7F, 0x03, 0x02]), 0x40000: bytes([0x04, 0x7F, 0x48, 0x03])}  # the two RDIDs the driver knows
+    assert expected == machine._FRAM_RDID_BY_MAX_SIZE
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import run
+from _port_bands import PortAllocator
 from _src_const import src_const
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -93,9 +94,8 @@ _ENTER_SLEEP_S = 0.1
 
 
 _HOST = "127.0.0.1"
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 21000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("asy_udp_socket")
 
 
 def _make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests never contend for the same address
@@ -103,9 +103,7 @@ def _make_addr() -> tuple[str, int]:  # a fresh loopback port per call, so tests
 
 
 def _make_port() -> int:  # a fresh port number only, for tests that build their own addr tuples
-    global _next_port
-    _next_port += 1
-    return _next_port
+    return _PORTS.next()
 
 
 def _raw(addr: tuple[str, int]) -> tuple[str, int]:

@@ -336,7 +336,8 @@ gates, traps).
 - **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, one `AmbPres`
   PUT (one SCD30 NVM write, `--allow-persistence-writes`), a power cycle, then 0x0010 read back:
   the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
-  measurement status as persisted). Twin row: `digital_twin/README.md`'s "SCD30 persistence".
+  measurement status as persisted). Twin row: the fidelity table's SCD30 pressure-persistence
+  assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
   `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
   pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
@@ -377,6 +378,34 @@ gates, traps).
   `--soak-tier` and `--allow-persistence-writes` (`tests_hardware/README.md`'s "What a failed stage-6
   credential does" names a candidate invocation). Wear: (a) one owned flash write, restored by the
   real-credentials test; (b) none. Twin row: `tests/test_digital_twin_wifi_modes.py`.
+- **Whether the chips other than the SGP40 ACK or NAK a general call** — on `dev`, a device script
+  sending the general-call reset (address 0x00, 0x06) on each I2C bus and recording ACK or NAK per bus
+  and which chips answer afterwards; no datasheet states it. Wear: none (no NVM write). Twin row: the
+  fidelity table's general-call assumption (`digital_twin/README.md`). Needs that device script.
+- **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`, a device
+  script sending 0x4600 once with a wrong CRC and once each with 1 s and 1801 s, reading the interval
+  back after each; the datasheet states no reaction, the twin ignores each. Wear: up to three SCD30
+  NVM writes if the chip takes them (`--allow-persistence-writes`). Twin row: the fidelity table's
+  SCD30 argument assumption. Needs that device script.
+- **Whether a CONFIG1 write restarts an in-flight ISL29125 conversion** — on `dev`, a device script
+  writing CONFIG1 unchanged part-way through a 100 ms 16-bit conversion and timing the next
+  conversion-done flag against the previous one; FN8424 Table 7 says only "ADC start at I2C write
+  0x01", the twin restarts it. Wear: none (volatile registers). Twin row: the fidelity table's
+  ISL29125 CONFIG1 assumption, which no test is tuned to. Needs that device script.
+- **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
+  16-bit command and then a measure command, recording whether the measure answers normally; the
+  datasheet states no reaction, the twin ignores it. Wear: none. Twin row: the fidelity table's SGP40
+  unknown-command assumption. Needs that device script.
+- **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
+  (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
+  synthetic block can be checked against a real one. Wear: none (a read). Twin row: the fidelity
+  table's BMP3XX calibration row, synthetic until then.
+- **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
+  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL, then
+  both read: whether the registers survive and which cause rp2 reports is not in the pinned
+  MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
+  watchdog reset. Wear: none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`).
+  Twin row: the fidelity table's bootloader assumption.
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
   segfault fix" below); G6, a rollover method that leaves the board running (item 12, adapt now,
@@ -712,6 +741,15 @@ gates, traps).
   apt Node 20 fails the major check); the host-coverage step, which runs the new pin, runs only
   under `scripts/test.sh --coverage`, beyond the recipe's plain `scripts/test.sh`, and `env --tier
   generic` installs nothing new.
+  **2026-10-14, the twin CI runner and job, shell and CI config, no dependency or installer
+  change**: `scripts/run_digital_twin_ci.sh <device>` gains `--gc-threshold -1|32768` and `--part
+  suite|harness` (without them both stages and both parts run, as before), and `.github/workflows/ci.yml`'s
+  `digital-twin-e2e` runs one job per device, GC stage and part. The chroot legs' `scripts/lint.sh`
+  shellchecks the script and actionlints the workflow; neither leg runs them.
+  **2026-10-14, the installer's command start, host Python only, no dependency change — the
+  installer leg is owed**: `toolchain/setup_toolchain.py`'s `run()` holds SIGINT, SIGTERM and SIGHUP
+  while a command starts and takes them once it can stop the command. The chroot legs lint and
+  type-check it; only the installer leg (`uv run toolchain/setup_toolchain.py`) runs it.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -912,8 +950,8 @@ gates, traps).
   byte-level transactions, not higher-level driver stand-ins) so the whole wired-together sensortask
   can be exercised as close to the real target as possible without physical hardware. **Fulfilled**:
   `digital_twin/` is the lowest-level-mocking module this requirement calls for (see
-  `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh` runs the whole
-  wired-together (buildgen-generated) `sensortask_wozi.py` against it end to end (see
+  `SPECIFICATION.md` Part A.10), and `scripts/run_unix_port_integration.sh` runs any device's whole
+  wired-together (buildgen-generated) module against it end to end (see
   `digital_twin/README.md`'s "Swapping the twin in for a Unix-port run" section). Comes out when
   that audit closes.
 - **Config-duplication centralization** — same keys hand-kept in sync across `_DEFAULT_CONFIG`, the
@@ -969,3 +1007,25 @@ gates, traps).
 
 Questions for the project owner, each dated, in the owner's format; nothing else in the repo parks a
 question.
+
+1. **Close the grkizi reboot-relaunch crash as not reproduced?** (entered 2026-10-14, agent) CI once recorded a
+   segmentation fault (SIGSEGV) in the digital twin at grkizi's Run 5c reboot relaunch (PR #58's run, 2026-09-25).
+   Run 5c alone, 50 times at each GC stage (`-1` and `32768`), on the code of the commit that adds this entry, with
+   the MicroPython v1.29.0 Unix-port `standard` build (sha256 `70358a465686f4bc…`, `scripts/_digital_twin_ci_suite.py
+   --device grkizi --only 5c --repeat 50`): 100 runs, no signal death, no failed check. Run 5c's relaunch path has
+   changed since, and the suite now names a signal death as a crash (`scripts/_twin_process.py`). (a) Close it:
+   nothing reruns it; a recurrence fails CI's grkizi twin job naming the signal and becomes a root-cause item.
+   (b) Keep it open: the 100 runs (about 61 min of grkizi twin time) repeat at each later gate. Either way no device's
+   firmware changes and no bus is involved: the twin runs on the host only.
+
+2. **Reboot when no sensor read timer can start?** (entered 2026-10-14, agent) The RP2040 gives `machine.Timer` 16 hardware
+   alarms. If none is free when the device boots, every sensor reader's read timer fails to start: each reader logs E `TIMER` and
+   ends, the task supervisor restarts it, and with every reader failing at once the restart budget is spent and the device
+   reboots about 5 s after boot, again on each boot while the alarms stay taken. One reader whose timer fails alone restarts
+   and reads once an alarm frees, with no reboot. (a) keep it: on every device a boot with no free alarm reboots, which frees
+   every alarm and so recovers a leak, but loops if the shortage returns at each boot; the readers concerned are SCD30 (i2c0)
+   and SGP40 (i2c1) on arzi, grkizi, klkizi and schlafzi, SCD30 (i2c0), SGP40 and BMP3XX (i2c1) on wozi, BMP3XX (i2c0),
+   SCD30, SGP40 and ISL29125 (i2c1) on dev; (b) degrade in place: a reader whose read timer cannot start keeps its task, logs
+   `TIMER` once and retries at its next pass, as the uptime and NTP timers already do: on every device those sensors stay
+   silent (no measurements) until an alarm frees while the web API, Wi-Fi and the logs run on, and no reboot follows; the
+   watchdog still covers a stuck loop. Until answered: (a), the current behaviour.

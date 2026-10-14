@@ -16,6 +16,7 @@ from _error_codes import code
 from _fake_time import DrivenTime, tick
 from _fast_sleep import FastAsyncSleep
 from _ntp_frames import FakeNtpServer, make_ntp_reply
+from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_const
 from _tmp_scratch import TmpScratch
@@ -483,15 +484,12 @@ def test_no_socket_is_built_without_a_dns_candidate() -> None:
 # resolver - the closest thing to production wiring this test suite can reach without root.
 # ---------------------------------------------------------------------------
 
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 25000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_ntp_wifi_dns_integration")
 
 
 def _make_port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
+    return _PORTS.next()
 
 
 def _make_ntp_server() -> FakeNtpServer:

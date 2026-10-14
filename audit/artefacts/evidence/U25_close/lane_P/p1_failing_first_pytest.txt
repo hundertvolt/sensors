@@ -1,0 +1,52 @@
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25p/tests/_twin_devices.py'
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25p/tests/_twin_devices.py'
+<frozen importlib._bootstrap_external>:1130: FileNotFoundError
+E       KeyError: 'pins'
+tests_scripts/test_buildgen_twin_wiring.py:153: KeyError
+E       assert ["tests_scrip...Plan['pins']"] == []
+E         
+E         Left contains 3 more items, first extra item: "tests_scripts/test_buildgen_twin_wiring.py:153: TwinWiringPlan['pins']"
+E         Use -v to get more diff
+tests_scripts/test_twin_wiring_contract.py:235: AssertionError
+E       KeyError: 'pins'
+tests_scripts/test_twin_wiring_contract.py:245: KeyError
+E       AssertionError: [(2, 'TwinWiringPlan', 'pins'), (3, 'TwinWiringPlan', 'pins')]
+E       assert [(2, 'pins'), (3, 'pins')] == [(3, 'clk')]
+E         
+E         At index 0 diff: (2, 'pins') != (3, 'clk')
+E         Left contains one more item: (3, 'pins')
+E         Use -v to get more diff
+tests_scripts/test_twin_wiring_contract.py:253: AssertionError
+E       FileNotFoundError: [Errno 2] No such file or directory: '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25p/tests/_twin_devices.py'
+/usr/lib/python3.11/pathlib.py:1044: FileNotFoundError
+        # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
+E       AssertionError: scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()
+E       assert False
+E        +  where False = all([None, <re.Match object; span=(26020, 27103), match='_flag_memory_errors() {\n    local tag="$1" log_f>, <re.Match object; span=(27407, 32097), match='run_test_file() {\n    local test_file="$1"\n    >])
+>       results = _run_file_job(repo_root, tmp_path, 'echo "1/1 passed, 0 failed, 0 skipped"', "exit 1", own_binary=True)
+first_attempt = 'echo "1/1 passed, 0 failed, 0 skipped"'
+        # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
+E       AssertionError: scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()
+E       assert False
+E        +  where False = all([None, <re.Match object; span=(26022, 27105), match='_flag_memory_errors() {\n    local tag="$1" log_f>, <re.Match object; span=(27409, 32100), match='run_test_file() {\n    local test_file="$1"\n    >])
+E       AssertionError: scripts/test.sh no longer defines _job_tag()
+E       assert None
+E       AssertionError: scripts/test.sh no longer defines _job_tag()
+E       assert None
+E       AssertionError: scripts/test.sh no longer defines _job_tag()
+E       assert None
+E       AssertionError: scripts/test.sh no longer defines _job_tag()
+E       assert None
+first_attempt = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
+        # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
+E       AssertionError: scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()
+E       assert False
+E        +  where False = all([None, <re.Match object; span=(26022, 27105), match='_flag_memory_errors() {\n    local tag="$1" log_f>, <re.Match object; span=(27409, 32100), match='run_test_file() {\n    local test_file="$1"\n    >])
+first_attempt = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
+        # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
+E       AssertionError: scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()
+E       assert False
+E        +  where False = all([None, <re.Match object; span=(26022, 27105), match='_flag_memory_errors() {\n    local tag="$1" log_f>, <re.Match object; span=(27409, 32100), match='run_test_file() {\n    local test_file="$1"\n    >])
+        log = f"[{tag}] FAIL test_one:\n[{tag}] AssertionError: boom\n[{tag}] SKIP test_two: no bmp3xx\n[{tag}] 1/3 passed, 1 failed, 1 skipped\n"
+E       AssertionError: scripts/test.sh no longer defines _job_tag()

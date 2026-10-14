@@ -436,6 +436,22 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+@contextlib.contextmanager
+def _signals_held() -> Iterator[None]:
+    # While run() starts a command, a signal whose Python handler would raise is recorded, then raised once the
+    # handlers are back, so it ends the installer only where run() can stop what it started (main thread only).
+    held: list[int] = []
+    on_main = threading.current_thread() is threading.main_thread()
+    swapped = {sig: signal.signal(sig, lambda signum, _frame: held.append(signum)) for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP) if on_main and callable(signal.getsignal(sig))}
+    try:
+        yield
+    finally:
+        for sig, handler in swapped.items():
+            signal.signal(sig, handler)
+        for signum in held:
+            signal.raise_signal(signum)
+
+
 def _stop(proc: "subprocess.Popen[str]", *, own_session: bool) -> None:
     # SIGTERM, then SIGKILL after the grace: to the command's whole session when it has its own (its
     # stragglers too), else to the command alone - sudo passes a SIGTERM on to the command it runs.
@@ -1454,31 +1470,34 @@ def run(cmd: list[str], cwd: Path | None = None, *, check: bool = True, env: dic
     shown = _redact(" ".join(cmd), secrets)
     print(f"$ {shown}" + (f"   (cwd={cwd})" if cwd else ""), flush=True)
     own_session = not _keeps_terminal(cmd, terminal=terminal)
-    proc = subprocess.Popen(
-        cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, encoding="utf-8", errors="replace", start_new_session=own_session,
-    )
+    proc: subprocess.Popen[str] | None = None
+    reader: threading.Thread | None = None
     lines: list[str] = []
-    reader = threading.Thread(target=_stream_output, args=(cast("IO[str]", proc.stdout), lines, secrets), daemon=True)
-    reader.start()
-    deadline = time.monotonic() + timeout_s
     finished = False
     try:
+        with _signals_held():  # a signal while the command starts lands in this try, whose finally stops it
+            proc = subprocess.Popen(
+                cmd, cwd=cwd, env=env, stdin=subprocess.DEVNULL if stdin_text is None else subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, encoding="utf-8", errors="replace", start_new_session=own_session,
+            )
+        reader = threading.Thread(target=_stream_output, args=(cast("IO[str]", proc.stdout), lines, secrets), daemon=True)
+        reader.start()
+        deadline = time.monotonic() + timeout_s
         if stdin_text is not None and proc.stdin is not None:
             # A short text into an empty pipe is taken whole without blocking; a command that exits
             # unread breaks the pipe, and its exit status says why.
             with contextlib.suppress(BrokenPipeError):
                 proc.stdin.write(stdin_text)
                 proc.stdin.close()
-        proc.wait(timeout=timeout_s)
-        reader.join(max(0.0, deadline - time.monotonic()))
-        finished = not reader.is_alive()  # else something it started still holds its output open
-    except subprocess.TimeoutExpired:
-        pass
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=timeout_s)
+            reader.join(max(0.0, deadline - time.monotonic()))
+            finished = not reader.is_alive()  # else something it started still holds its output open
     finally:
-        if not finished:
+        if proc is not None and not finished:
             _stop(proc, own_session=own_session)
-            reader.join(_STOP_GRACE_S)
+            if reader is not None:
+                reader.join(_STOP_GRACE_S)
     if not finished:
         raise SetupError(f"timed out after {timeout_s:g} s: {shown} - a stalled download, mirror or build; check connectivity and any proxy, then re-run (limits: SPECIFICATION.md Part N)")
     if check and proc.returncode != 0:

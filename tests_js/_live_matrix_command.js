@@ -2,12 +2,12 @@
 // shared, boot-once-per-file live digital-twin + real-browser harness driving many real UI
 // actions against one real backend. See SPECIFICATION.md Part H.7.
 import { execFileSync } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expectedDisplay } from "./_expected_display.js";
 import { drainChildOutput } from "./_memory_markers.js";
-import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, requireInterpreter, sleep, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
+import { HOST, READY_TIMEOUT_MS, SHUTDOWN_TIMEOUT_MS, makeConfigDir, removeConfigDir, requireInterpreter, sleep, spawnTwin, stopTwin, twinVerdict, waitUntilServing } from "./_twin_process.js";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // Clear of every fixed port this repo binds - see tests_js/_live_twin_command.js's own PORT comment;
@@ -27,6 +27,16 @@ let twinOutput = null;
 let livePage = null;
 /** @type {string | null} */
 let archiveRunDir = null;
+/** @type {string | null} */
+let twinConfigDir = null; // the matrix twin's own config directory, removed once it stopped
+
+/** Removes the matrix twin's config directory once the twin has stopped. */
+function dropConfigDir() {
+    if (twinConfigDir !== null) {
+        removeConfigDir(twinConfigDir);
+        twinConfigDir = null;
+    }
+}
 
 /**
  * The matrix's run settings, read without booting a twin: the shard $PUT_MATRIX_SHARD selects, once the interpreter
@@ -48,9 +58,8 @@ export function getLiveMatrixConfig() {
  * @returns {Promise<void>}
  */
 export async function startLiveMatrix({ context }, device) {
-    rmSync(path.join(REPO_ROOT, "digital_twin", "config"), { recursive: true, force: true });
-
-    twinProc = spawnTwin({ device, port: PORT });
+    twinConfigDir = makeConfigDir();
+    twinProc = spawnTwin({ device, port: PORT, configDir: twinConfigDir });
     const output = drainChildOutput(twinProc);
     twinOutput = output;
 
@@ -76,6 +85,7 @@ export async function startLiveMatrix({ context }, device) {
             // eslint-disable-next-line require-atomic-updates -- see stopLiveMatrix()'s own comment below
             twinProc = null;
         }
+        dropConfigDir();
         twinOutput = null;
         twinVerdict(`startLiveMatrix for ${device}`, [output], err, await output.closed(SHUTDOWN_TIMEOUT_MS));
         throw err; // not reached: the verdict throws for every failure
@@ -96,6 +106,7 @@ export async function stopLiveMatrix() {
         // eslint-disable-next-line require-atomic-updates -- see comment above
         twinProc = null;
     }
+    dropConfigDir();
     const output = twinOutput;
     twinOutput = null;
     // The run's memory gate (SPECIFICATION.md Part I.4(e)): read once the twin has stopped and its

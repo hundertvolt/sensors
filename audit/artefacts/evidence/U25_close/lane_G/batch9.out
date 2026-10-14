@@ -1,0 +1,48 @@
+test_digital_twin_sensortask_integration.arzi.-1 rc=1 wall=111.86 mem=0 :: 10/11 passed, 1 failed, 0 skipped
+FAIL test_the_captive_dns_listener_idles_at_its_idle_rate:
+test_digital_twin_sensortask_integration.dev.-1 rc=1 wall=22.52 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+test_digital_twin_sensortask_integration.grkizi.-1 rc=0 wall=20.99 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.-1 rc=0 wall=21.15 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.-1 rc=0 wall=20.92 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.-1 rc=0 wall=21.85 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_uart_link.-1 rc=0 wall=73.51 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_clock_jump.-1 rc=0 wall=25.92 mem=0 :: 6/6 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.-1 rc=0 wall=111.89 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.arzi.32768 rc=0 wall=114.95 mem=0 :: 11/11 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.dev.32768 rc=0 wall=24.19 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.grkizi.32768 rc=0 wall=21.92 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.32768 rc=0 wall=21.77 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.32768 rc=0 wall=21.67 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.32768 rc=0 wall=22.48 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_uart_link.32768 rc=0 wall=86.32 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard.32768 rc=0 wall=2.19 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep.32768 rc=0 wall=64.47 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.32768 rc=0 wall=26.28 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_uart_link.settrace rc=0 wall=131.71 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_uart_comm_hazard.settrace rc=0 wall=3.11 mem=0 :: 10/10 passed, 0 failed, 0 skipped
+test_digital_twin_uart_field_sweep.settrace rc=1 wall=67.74 mem=0 :: 9/10 passed, 1 failed, 0 skipped
+FAIL test_cur_chunk_boundaries_crc16:
+test_digital_twin_clock_jump.settrace rc=0 wall=30.78 mem=0 :: 6/6 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.settrace rc=0 wall=26.56 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.arzi.settrace rc=0 wall=118.21 mem=0 :: 11/11 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.dev.settrace rc=1 wall=28.62 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+test_digital_twin_sensortask_integration.grkizi.settrace rc=0 wall=23.49 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.settrace rc=0 wall=23.45 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.settrace rc=0 wall=23.18 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.settrace rc=0 wall=24.18 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+bite wf_a rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_stations_rule_settings_change_and_silent_mode_in_one_boot:
+bite wf_b rc=1 :: 0/1 passed, 1 failed, 0 skipped
+FAIL test_stations_rule_settings_change_and_silent_mode_in_one_boot:
+bite ul_crc rc=0 :: 1/1 passed, 0 failed, 0 skipped
+bite ch_reent rc=1 :: 0/2 passed, 2 failed, 0 skipped
+FAIL test_two_initiations_on_one_instance_crc16:
+--
+FAIL test_two_initiations_on_one_instance_nocrc:
+bite fs_cur rc=1 :: 0/2 passed, 2 failed, 0 skipped
+FAIL test_cur_chunk_boundaries_crc16:
+--
+FAIL test_cur_chunk_sweep_nocrc:
+BATCH-DONE

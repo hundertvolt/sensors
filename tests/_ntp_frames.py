@@ -1,4 +1,4 @@
-"""The NTP test frames: make_ntp_reply() builds a synchronized server's 48-byte reply (RFC 5905: LI 0, VN 3, mode 4,
+"""The NTP test frames: make_ntp_reply() is the twin responder's own reply builder (RFC 5905: LI 0, VN 3, mode 4,
 stratum 1, the Transmit Timestamp's seconds at offset 40), and FakeNtpServer answers one request on a loopback UDP port
 the caller owns, as a real independent socket, not the product's UDPSocket."""
 
@@ -6,9 +6,14 @@ import asyncio
 import errno
 import select
 import socket
-import struct
+import sys
 
-from _src_const import NTP_EPOCH_DELTA
+if "digital_twin/unixport" not in sys.path:
+    sys.path.append("digital_twin/unixport")  # the responder's fake-free directory, behind tests/ on the path
+
+from _ntp_responder import ntp_reply
+
+make_ntp_reply = ntp_reply  # one reply builder, the twin responder's (which imports nothing from tests/)
 
 
 class FakeNtpServer:
@@ -44,8 +49,3 @@ class FakeNtpServer:
                     self.sock.sendto(reply, from_addr)
                 return
             await asyncio.sleep_ms(self._poll_ms)
-
-
-def make_ntp_reply(unix_seconds: int) -> bytes:
-    header = b"\x1c\x01" + bytes(38)  # LI=0/VN=3/Mode=4 (server), Stratum=1 (synchronized), Poll..Receive Timestamp zeroed
-    return header + struct.pack("!I", (unix_seconds + NTP_EPOCH_DELTA) & 0xFFFFFFFF) + bytes(4)  # seconds, zeroed fraction

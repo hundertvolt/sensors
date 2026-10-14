@@ -275,8 +275,6 @@ max-returns = 10
 # TypedDict as a plain object.
 "tests/test_asy_uart_driver.py" = ["ANN401"]
 "tests/test_asy_uart_comm.py" = ["ANN401"]
-# ANN401, category 2 - digital_twin/_http_client.py's reader seam: MicroPython has ONE Stream for
-# both directions and readinto() has no clean non-Any type, so no annotation fits both.
 # ANN401, category 5 - driver-agnostic fan-in seams (the `_ValueSource` Protocol, C.14/L.6.3): every
 # reader's get_data() returns its own NamedTuple, so no single element type fits every producer.
 #
@@ -286,24 +284,14 @@ max-returns = 10
 # ANN401, category 5 again: I2CHazardAdapter's callables each take one real driver instance,
 # genericness across the whole I2C_HAZARD_CATALOG being the point.
 "tests/_bus_hazard_catalog.py" = ["ANN401"]
-# ANN401, category 6 - a dynamically __import__()ed module (a device's sensortask_<device>, or the
-# twin's machine module) has no static type; ModuleType would reject every attribute these files
-# need.
-"digital_twin/run_generic_integration.py" = ["ANN401"]
-"tests/_webserver_concurrency_scenarios.py" = ["ANN401"]
-# Category 6 too: the shared per-device scenario library imports whichever device's sensortask
-# module a parametrized scenario boots (L.4).
+# ANN401, category 6 - a dynamically __import__()ed module has no static type, and ModuleType would
+# reject every attribute used: the shared per-device scenario library imports whichever device's
+# sensortask module a parametrized scenario boots (L.4).
 "tests/_sensortask_scenarios.py" = ["ANN401"]
-# Category 6 too, for the construction scenarios split out of
-# test_digital_twin_sensortask_integration.py, whose remaining wozi-only tests import statically and
-# need no exemption.
-"tests/_digital_twin_construction_scenarios.py" = ["ANN401"]
 "digital_twin/launch.py" = ["S105"]
-"tests/test_digital_twin_network_neopixel.py" = ["S106"]
 # asy_webserver_service.py makes the same documented Part C.5.2 `_set_dict_cfg` dispatch call as
 # asy_api_response.py above.
 "src/asy_webserver_service.py" = ["SLF001"]
-"digital_twin/_http_client.py" = ["ANN401"]  # ANN401: category 2 above
 # S603 (untrusted subprocess input) has no satisfiable form for a build driver: build_firmware.py's
 # one call runs the repo's own build_website.sh by absolute path, shell=False. The rule stays live
 # everywhere else.
@@ -378,13 +366,9 @@ exclude = [
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",
     "digital_twin/run_generic_integration\\.py$",
-    "digital_twin/segfault_stress_repro\\.py$",
     "tests/test_digital_twin_.*\\.py$",
-    # Shared twin scenario libraries (leading underscore, so the glob above misses them), same
+    # The shared construction scenario library (leading underscore, so the glob above misses it), same
     # reason.
-    "tests/_webserver_concurrency_scenarios\\.py$",
-    # Same exception, same reason, one file over: tests/_digital_twin_construction_scenarios.py
-    # (imported by six tests/test_digital_twin_construction_<device>.py files).
     "tests/_digital_twin_construction_scenarios\\.py$",
 ]
 
@@ -422,7 +406,6 @@ ignore_missing_imports = true
 module = [
     "_boot_contiguity_probe",
     "_bus_hazard_catalog",
-    "_http_client",
     "_sensortask_scenarios",
     "_uart_link_contract",
     "allocation_need_per_source",
@@ -436,7 +419,6 @@ module = [
     "uart_crossover_exchange",
     "uart_crossover_recovery",
     "uart_driver_read_never_blocks_the_loop",
-    "unix_port_poll_prewarm",
 ]
 disallow_any_explicit = false
 

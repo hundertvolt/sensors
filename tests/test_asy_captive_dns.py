@@ -8,6 +8,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 
 from _async_harness import cancel, run
 from _error_codes import code
+from _port_bands import PortAllocator
 from _src_const import src_const
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
@@ -87,15 +88,12 @@ def _make_pr(level: int | None = None) -> PrintLogHistory:  # a fresh, independe
     return PrintLogHistory(level=level, name="TESTDNS")
 
 
-# Below the OS ephemeral range (32768-60999) so a concurrently-running ephemeral socket can
-# never be assigned this port - see scripts/test.sh's own TEST_PARALLELISM comment.
-_next_port = 22000
+# This file's own band of tests/_port_bands.py: files run concurrently, and a UDP collision is a silent timeout.
+_PORTS = PortAllocator("test_asy_captive_dns")
 
 
 def _make_port() -> int:
-    global _next_port
-    _next_port += 1
-    return _next_port
+    return _PORTS.next()
 
 
 def _resolved(host: str, port: int) -> tuple[str, int]:

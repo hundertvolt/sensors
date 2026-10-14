@@ -1,6 +1,6 @@
-"""Workaround for three confirmed MicroPython-Unix-port-only `socket` quirks that would otherwise break a real UDP round trip (DNS, NTP) here - entirely from twin-side code, `src/` untouched and correct for real hardware.
-Full account: digital_twin/README.md's "`_unix_port_udp_addr_shim.py`" section.
-Call `patch_asy_udp_socket_for_unix_port()` once, early, before constructing any `UDPSocket`."""
+"""Twin-side fix for the Unix port's sockaddr quirks (micropython#6924: bind/connect/sendto take a packed sockaddr,
+recvfrom returns one), so src/ only ever sees (host, port) tuples; it also refuses any UDP destination outside loopback
+and TEST-NET-1. Applied once, before any UDPSocket exists (digital_twin/README.md "_unix_port_udp_addr_shim.py")."""
 
 import socket
 import struct
@@ -27,25 +27,30 @@ _real_recvfrom = asy_udp_socket.UDPSocket.recvfrom
 _real_sendto = asy_udp_socket.UDPSocket.sendto
 _patched = False
 
-
-def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
-    if isinstance(addr, tuple) and len(addr) == 2 and isinstance(addr[0], str):
-        # getaddrinfo()'s sockaddr slot here is the opaque bytes object this Unix build's socket
-        # needs; src/ only ever sees tuples (IPv4-only project).
-        return cast("tuple[str, int]", socket.getaddrinfo(addr[0], addr[1])[0][-1])
-    return addr
-
-
-async def _patched_connect(self: "asy_udp_socket.UDPSocket") -> None:
-    # Every real call site already hands over a numeric (host, port) tuple, so this getaddrinfo()
-    # is always local and never a DNS query. It also resolves once: afterwards self._addr is a
-    # sockaddr bytes object, which the isinstance check skips on every later reconnect.
-    self._addr = _resolve_plain_addr(self._addr)
-    await _real_connect(self)
+_ALLOWED_PREFIXES = ("127.", "192.0.2.")  # loopback and RFC 5737 TEST-NET-1
+_ALLOWED_HOSTS = ("0.0.0.0",)  # the wildcard a server binds
+# A 4-byte AF_INET sockaddr: the host kernel's connect()/bind()/sendto() reject it with EINVAL inside src/'s own try,
+# so a refusal takes the product's handled failure path (backoff included) and nothing leaves the host
+_REFUSED_SOCKADDR = struct.pack("<H", socket.AF_INET) + bytes(2)
+# the project's counter cap (SPECIFICATION.md G.2), a local copy: this directory imports nothing from digital_twin/
+_COUNTER_CAP = 0x3FFFFFFF
+public_destinations_refused = 0  # twin-only test knob: refusals, saturating at _COUNTER_CAP
+last_refused: "tuple[str, int] | None" = None  # twin-only test knob: the destination of the latest refusal
+TEST_API = ("public_destinations_refused", "last_refused")
 
 
-async def _patched_sendto(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
-    return await _real_sendto(self, msg, _resolve_plain_addr(addr), timeout_ms=timeout_ms)
+def _count(addr: "tuple[str, int] | None") -> None:
+    global public_destinations_refused, last_refused
+    if public_destinations_refused < _COUNTER_CAP:
+        public_destinations_refused += 1
+    if addr is not None:
+        last_refused = addr
+
+
+def _ipv4_literal(host: str) -> bool:
+    # Four dot-separated decimal parts, each at most 255: what getaddrinfo() resolves without a lookup.
+    parts = host.split(".")
+    return len(parts) == 4 and all(part.isdigit() and int(part) <= 255 for part in parts)
 
 
 def _normalize_recvfrom_addr(addr: "T") -> "T | tuple[str, int]":
@@ -61,9 +66,47 @@ def _normalize_recvfrom_addr(addr: "T") -> "T | tuple[str, int]":
     return addr
 
 
+async def _patched_connect(self: "asy_udp_socket.UDPSocket") -> None:
+    # Each attempt at a refused destination counts; the first swaps in the refused sockaddr. An allowed destination is
+    # an IPv4 literal, so this getaddrinfo() is local, never a DNS query, and runs once (a sockaddr is kept).
+    addr: object = self._addr  # the refused sockaddr once swapped in: bytes, which the product's annotation does not name
+    if addr == _REFUSED_SOCKADDR:
+        _count(None)
+    elif _refused(self._addr):
+        _count(self._addr)
+        self._addr = cast("tuple[str, int]", _REFUSED_SOCKADDR)
+    else:
+        self._addr = _resolve_plain_addr(self._addr)
+    await _real_connect(self)
+
+
 async def _patched_recvfrom(self: "asy_udp_socket.UDPSocket", buf: int, timeout_ms: int = -1) -> "tuple[bytes | None, tuple[str, int] | None]":
     data, addr = await _real_recvfrom(self, buf, timeout_ms=timeout_ms)
     return data, _normalize_recvfrom_addr(addr)
+
+
+async def _patched_sendto(self: "asy_udp_socket.UDPSocket", msg: "bytes | bytearray", addr: "tuple[str, int]", timeout_ms: int = -1) -> "int | None":
+    if _refused(addr):
+        _count(addr)
+        return await _real_sendto(self, msg, cast("tuple[str, int]", _REFUSED_SOCKADDR), timeout_ms=timeout_ms)
+    return await _real_sendto(self, msg, _resolve_plain_addr(addr), timeout_ms=timeout_ms)
+
+
+def _refused(addr: object) -> bool:
+    # A (host, port) tuple whose host is no IPv4 literal on loopback or TEST-NET-1, a name included (refused before any
+    # lookup); any other shape passes on to src/, whose own try handles it.
+    if not (isinstance(addr, tuple) and len(addr) == 2 and isinstance(addr[0], str) and isinstance(addr[1], int)):
+        return False
+    host = addr[0]
+    return not (_ipv4_literal(host) and (host.startswith(_ALLOWED_PREFIXES) or host in _ALLOWED_HOSTS))
+
+
+def _resolve_plain_addr(addr: "T") -> "T | tuple[str, int]":
+    if isinstance(addr, tuple) and len(addr) == 2 and isinstance(addr[0], str):
+        # getaddrinfo()'s sockaddr slot here is the opaque bytes object this Unix build's socket
+        # needs; src/ only ever sees tuples (IPv4-only project).
+        return cast("tuple[str, int]", socket.getaddrinfo(addr[0], addr[1])[0][-1])
+    return addr
 
 
 def patch_asy_udp_socket_for_unix_port() -> None:

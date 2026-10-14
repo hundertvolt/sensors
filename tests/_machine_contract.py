@@ -22,6 +22,8 @@ _WDT_TIMEOUT_MAX_MS = 8388  # ports/rp2/machine_wdt.c:32-38, the RP2040's cap
 def _raised(call: "Callable[[], object]") -> "BaseException | None":
     try:
         call()
+    except KeyboardInterrupt:
+        raise  # the per-file timeout's interrupt ends the run, never a check's answer
     except BaseException as exc:  # a simulated reset is a BaseException on purpose
         return exc
     return None

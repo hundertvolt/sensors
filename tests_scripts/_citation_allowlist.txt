@@ -76,25 +76,14 @@ SPECIFICATION.md	src/sensortask_wozi.py
 SPECIFICATION.md	tests/test_digital_twin_run_dev_integration.py
 SPECIFICATION.md	tests_hardware/bus_topology.py
 UART_C_PORT_CHANGELOG.md	WP3
-digital_twin/README.md	WP1
-digital_twin/machine.py	Step 5
-digital_twin/machine.py	Step 5
-scripts/_digital_twin_ci_suite.py	WP1
-scripts/_digital_twin_ci_suite.py	WP1
-scripts/_digital_twin_ci_suite.py	WP2
-scripts/run_digital_twin_ci.sh	digital_twin/*.json
 scripts/run_digital_twin_ci.sh	src/sensortask_*.py
 scripts/run_unix_port_integration.sh	src/sensortask_*.py
 scripts/test.sh	devices/zz_test_*.toml
 src/asy_notification_service.py	improved-quality/neopixel_signal.py
-tests/_digital_twin_construction_scenarios.py	WP1
-tests/_digital_twin_construction_scenarios.py	WP1
-tests/_digital_twin_construction_scenarios.py	decision 10
 tests/test_asy_base_classes.py	Topic 6
 tests/test_asy_base_classes.py	WP4
 tests/test_asy_config_manager.py	WP5
 tests/test_asy_print_log.py	tests/_fram_mock.py
-tests/test_digital_twin_sensortask_integration.py	measure A
 tests/test_digital_twin_uart_link.py	WP3
 tests/test_setter_microdot_integration.py	WP5
 tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
