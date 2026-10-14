@@ -304,9 +304,23 @@ fi
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
-# tests_scripts/ needs nothing from the setcap or frozen-module steps below: it is real CPython
-# touching only pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real
-# build/generated_src/ or frozen_modules/ (tests_scripts/conftest.py's docstring).
+# Every twin boot binds privileged ports (its NTP responder's 123, a hotspot's DNS 53), the tests_scripts/ tier's twins
+# too, so the grant comes before that tier, for the build it boots (build-standard) and this run's own interpreter; fresh
+# every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
+cap_bins=("$unix_dir/build-standard/micropython")
+[ "$micropython_bin" = "${cap_bins[0]}" ] || cap_bins+=("$micropython_bin")
+for cap_bin in "${cap_bins[@]}"; do
+    echo "== Granting CAP_NET_BIND_SERVICE to $cap_bin (the twins' NTP responder and DNS server bind ports 123 and 53)"
+    if [ "$(id -u)" -eq 0 ]; then
+        setcap 'cap_net_bind_service=+ep' "$cap_bin"
+    else
+        sudo setcap 'cap_net_bind_service=+ep' "$cap_bin"
+    fi
+done
+
+# tests_scripts/ needs nothing from the frozen-module steps below: it is real CPython touching only
+# pytest's tmp_path fixtures and OS-assigned free ports, never this repo's real build/generated_src/
+# or frozen_modules/ (tests_scripts/conftest.py's docstring).
 #
 # So it is backgrounded HERE, overlapping its own run with essentially the whole rest of this
 # script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
@@ -421,16 +435,6 @@ results_dir="$(mktemp -d)"
     fi
 ) &
 tests_scripts_pid=$!
-
-# One twin test reaches a real hotspot scenario that binds the real privileged port 53, which a
-# non-root environment cannot do without this capability on the interpreter binary. Granted fresh
-# every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
-echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server test)"
-if [ "$(id -u)" -eq 0 ]; then
-    setcap 'cap_net_bind_service=+ep' "$micropython_bin"
-else
-    sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
-fi
 
 # The real wozi website, a gitignored artifact rebuilt every run - sub-second, no toolchain (Part
 # A.9). Every generated device module does a module-level `import frozen_html`, so it has to exist

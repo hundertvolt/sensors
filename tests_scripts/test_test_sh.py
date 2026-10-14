@@ -462,6 +462,45 @@ def test_a_coverage_run_traces_the_host_build_chain_through_the_pytest_tier(repo
 
 
 # ---------------------------------------------------------------------------
+# The bind capability: the tests_scripts/ tier boots twins on build-standard in either mode, and
+# every twin binds port 123 (its NTP responder), so the grant must reach that build before the tier.
+# ---------------------------------------------------------------------------
+
+
+def _granted(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
+    # Runs scripts/test.sh's own grant block with setcap (and sudo) stubbed to record the binary each grant names.
+    text = _test_sh_text(repo_root)
+    start = text.index("cap_bins=(")
+    end = text.index("\ndone\n", start) + len("\ndone\n")
+    record = tmp_path / "setcap.args"
+    stub_bin = tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    for name, body in (("setcap", f'printf "%s\\n" "$2" >>"{record}"'), ("sudo", '"$@"')):
+        (stub_bin / name).write_text(f"#!/usr/bin/env bash\n{body}\n")
+        (stub_bin / name).chmod(0o755)
+    unix_dir = tmp_path / "unix"
+    binary = unix_dir / ("build-settrace" if coverage else "build-standard") / "micropython"
+    script = tmp_path / "grant.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nunix_dir="{unix_dir}"\nmicropython_bin="{binary}"\n' + text[start:end])
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return [str(Path(line).relative_to(unix_dir)) for line in record.read_text().splitlines()]
+
+
+@pytest.mark.parametrize(("coverage", "expected"), [(False, ["build-standard/micropython"]), (True, ["build-standard/micropython", "build-settrace/micropython"])])
+def test_the_grant_reaches_every_binary_a_run_boots(repo_root: Path, tmp_path: Path, *, coverage: bool, expected: "list[str]") -> None:
+    assert _granted(repo_root, tmp_path, coverage=coverage) == expected
+
+
+def test_every_grant_comes_before_the_pytest_tier_is_backgrounded(repo_root: Path) -> None:
+    # Granted after the launch, the tier's first twin boots races the grant, and on a cold cache loses it (EACCES).
+    text = _test_sh_text(repo_root)
+    grants = [i for i in range(len(text)) if text.startswith("setcap 'cap_net_bind_service=+ep'", i)]
+    pytest_at = text.find(_PYTEST_LINE)
+    assert grants and pytest_at != -1, "scripts/test.sh no longer grants the bind capability or launches the tier - update this test with it"
+    assert max(grants) < pytest_at, "scripts/test.sh must grant the bind capability BEFORE backgrounding tests_scripts/ - its twins bind port 123"
+
+# ---------------------------------------------------------------------------
 # conftest.py's own session-start reclamation. The structural check above pins that it exists and
 # targets the reserved namespace; this drives the real function against a throwaway tree, because
 # what matters is WHICH files it deletes - a glob one character wider would reclaim a real device.
