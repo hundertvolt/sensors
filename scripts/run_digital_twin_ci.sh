@@ -105,6 +105,14 @@ fi
 echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
+# Port 53's UDP holders, printed before and after the twins: a socket there without SO_REUSEADDR fails the twins'
+# captive DNS bind (DNSSRV E INIT), and only the runner itself can name its process.
+port_53_holders() {
+    echo "== UDP port 53 holders ($1):"
+    if [ "$(id -u)" -eq 0 ]; then ss -H -uanp 'sport = :53' || true; else sudo -n ss -H -uanp 'sport = :53' || ss -H -uan 'sport = :53' || true; fi
+}
+port_53_holders "before the twins"
+
 worst=0
 record() { if [ "$1" -gt "$worst" ]; then worst=$1; fi; }
 
@@ -135,4 +143,5 @@ if runs_part harness; then
         rc=0; uv run scripts/_digital_twin_scenarios.py --micropython-bin "$micropython_bin" --device "$device" --gc-threshold "$stage" --exclusive-port-53 --logs-dir "digital_twin_ci_logs/scenarios/gc_threshold_${stage/-/neg}" || rc=$?; record "$rc"
     done
 fi
+port_53_holders "after the twins"
 exit "$worst"
