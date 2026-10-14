@@ -522,7 +522,8 @@ scripts/run_unix_port_integration.sh --device <name> --host 0.0.0.0 --port 8080 
 - `--config-dir PATH` — the product's config directory (default `digital_twin/config/`); the
   automated callers pass their own.
 - `--online-ntp` — write no NTP config and start no local NTP responder (by default the twin syncs
-  against its own responder on the loopback).
+  against its own responder on the loopback's port 123, so the interpreter needs `CAP_NET_BIND_SERVICE`:
+  `scripts/test.sh`, `scripts/run_digital_twin_ci.sh` and CI's web jobs grant it).
 - `--gc-threshold N` — override the boot-time `gc.threshold()` (default `32768`, matching every
   real firmware boot); `-1` is MicroPython's own real reactive-only default.
 - `--mem-sample-interval-ms N` — arm a background task that logs a `gc.mem_free()` reading every

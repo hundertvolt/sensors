@@ -133,6 +133,8 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
+          # Every twin boot binds the local NTP responder's port 123; a restored cache carries no file capabilities.
+          sudo setcap 'cap_net_bind_service=+ep' "$bin"
       # npm's pretest hook builds every device's website first. Everything but the live PUT matrix,
       # which is its own sharded job below (B.10.1).
       - name: Run unit tests (Vitest, real-browser mode)
@@ -184,6 +186,8 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
+          # Every twin boot binds the local NTP responder's port 123; a restored cache carries no file capabilities.
+          sudo setcap 'cap_net_bind_service=+ep' "$bin"
       - name: Run the live PUT matrix (shard ${{ matrix.shard }} of 3)
         run: npm run test:put-matrix
         env:
@@ -229,6 +233,8 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
+          # Every twin boot binds the local NTP responder's port 123; a restored cache carries no file capabilities.
+          sudo setcap 'cap_net_bind_service=+ep' "$bin"
       # A report, not a gate; re-runs the suite instrumented, minus the live matrix, whose js/ paths
       # the mock-server matrix already drives (B.10.1).
       - name: Run unit tests with coverage
@@ -306,6 +312,8 @@ jobs:
           if [ ! -x "$bin" ]; then
             uv run toolchain/setup_toolchain.py setup
           fi
+          # Every twin boot binds the local NTP responder's port 123; a restored cache carries no file capabilities.
+          sudo setcap 'cap_net_bind_service=+ep' "$bin"
           npm run build:site
       # Firefox+geckodriver from conda-forge (~106 MB, nothing to key on) cached under a fixed key -
       # bump the suffix to force a refresh. WebKit and Edge reinstall every run (B.10.1).
