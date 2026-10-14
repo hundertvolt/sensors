@@ -4739,7 +4739,7 @@ firmware. So `toolchain/setup_toolchain.py` builds the two as separate binaries 
 needs `sys.settrace` itself. `ports/rp2`'s firmware build never gets the flag either way, and nor
 does the third Unix build, `build-lwip` (B.14.4).
 
-Two consequences worth keeping in mind:
+Consequences worth keeping in mind:
 
 - **The build directory's path no longer identifies its variant.** A `~/pico-toolchain` predating
   the split has a `build-standard` that still carries the flag, and it is executable — so an
@@ -4754,7 +4754,7 @@ Two consequences worth keeping in mind:
 - **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
   is in HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive §1.2 item 7 and §3A).
-- **The tracer's own bookkeeping allocates nothing.** Tests measure their own heap under
+- **Recording a line allocates nothing.** Tests measure their own heap under
   `--coverage` too, so `tests/_coverage_runner.py` sizes one byte per line of every traced file
   before the test file runs and records a line by storing into it. A line first run inside a
   measured span therefore leaves the collected heap where an untraced run leaves it, which
@@ -4763,6 +4763,17 @@ Two consequences worth keeping in mind:
   functions are module-level: MicroPython heap-allocates a closure call's argument array once the
   closed-over values plus arguments pass five (`py/objclosure.c`), and one more captured name on
   the per-line function made whole coverage runs 2.6x slower (pinned by the same file).
+- **Each call event allocates one float, on purpose** (agent, 2026-10-14). The frame and code
+  object this build allocates per call and per resume span several GC blocks each, and
+  `py/gc.c`'s `gc_alloc()` moves its search start only after a single-block allocation, so a run
+  of calls with none rescans everything allocated since, up to the whole heap: 40,000 calls took
+  2.0 s against 43-72 ms with the runner's float, and `tests/test_asy_framing_codecs.py` 178 s
+  against 6.0 s with an identical line dump (its 240 s per-file bound had cost a CI retry); one
+  float per 16 call events left that file at 107 s, so it is one per event. The float is garbage at the next collection, so the collected heap above is unchanged; a
+  collection-free window counts it, 32 B per call event, which the settrace budgets of
+  `tests/test_asy_fram_allocation_budget.py` carry with their headroom unchanged.
+  `tests_scripts/test_coverage_runner.py` pins the traced calls faster than the untraced ones,
+  which stops holding once upstream retires the cause (F.9).
 
 ### E.5.3 `--coverage`'s three exit codes, and why its test result gates while its report does not
 
@@ -6418,6 +6429,7 @@ workaround.
 | Bounded poll fakes only (`_StepPoller`) | `tests/test_asy_uart_driver.py` and every `uart.poller` double; both machine fakes answer `MP_STREAM_GET_FILENO` with `EINVAL`, and `tests/machine.py` fails a test whose real poll queried a fake UART | none: a real `select.poll()` polls whatever descriptor a stream object answers `MP_STREAM_GET_FILENO` with, and the bounded fake is the test design | F.7 |
 | `TZ=UTC` for every Unix-port run | `scripts/test.sh`, the twin runners, the live-twin JS commands | the Unix `modtime.c` `mktime()` stops using the host libc's `$TZ` | F.7 |
 | Port-band scan for a free twin listener | `digital_twin/unix_port_poll_prewarm.py` `_bind_free_listener()` | the Unix port's socket gains `getsockname()` | F.7 |
+| One float per call event in the coverage tracer, so the allocator's search stays short | `tests/_coverage_runner.py` `_global_trace()` | `py/gc.c` moves its search start past a multi-block allocation too, or the settrace build stops allocating per call and resume | E.5.2 |
 | A settrace-free test rig beside the `sys.settrace` binary | `toolchain/setup_toolchain.py` `build_unix_port()`, `scripts/test.sh` | an idle compiled-in `sys.settrace` stops allocating per call; merging the binaries is the owner's call (owner, 2026-09-21) | E.5.2 |
 | Never nest `asyncio.run()` (segfaults instead of raising) | test helpers' synchronous scope; `tests/_async_harness.py`'s `run()`, the one `asyncio.run()` in `tests/`, refuses a nested call | `asyncio.run()` raises inside a running loop | F.1 |
 | Never await an ended task a second time (after a first await that raced its queued handler call, the second raises `None`) | `SystemService._supervise()` empties a slot right after logging its ended task; the twin integration test's cleanup skips ended tasks, and `tests/_async_harness.py`'s reap and `cancel()` pass over such a task | `core.py` keeps `t.data` on the path where the task was already awaited | F.1 |

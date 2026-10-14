@@ -178,6 +178,39 @@ def test_lines_run_for_the_first_time_leave_the_collected_heap_where_it_was(repo
     assert max(recorded) <= len(source), f"a recorded line lies past the file's end: {max(recorded)} > {len(source)}"
 
 
+_CALLS_PROBE = """import sys
+import time
+
+
+def callee():
+    return 1
+
+
+start = time.ticks_us()
+for _ in range(40000):
+    callee()
+print("CALLS", time.ticks_diff(time.ticks_us(), start))
+sys.exit(0)
+"""
+
+
+def _calls_us(completed: "subprocess.CompletedProcess[str]") -> int:
+    assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+    return next(int(line.split()[1]) for line in completed.stdout.splitlines() if line.startswith("CALLS "))
+
+
+def test_a_run_of_calls_under_the_tracer_never_rescans_the_heap(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+    # This build allocates a multi-block frame and code object per call, and py/gc.c starts a search after the last
+    # single-block allocation only, so a run of calls rescans everything it allocated: 40,000 untraced calls took 2.0 s
+    # against 43-72 ms traced (2026-10-14). Equal or slower traced means the tracer stopped keeping the search short.
+    probe = _probe(tmp_path, _CALLS_PROBE)
+    env = {"MICROPYPATH": "build/generated_src:src:tests:frozen_modules:.frozen", "TZ": "UTC"}
+    heap = ["-X", "heapsize=16M"]  # scripts/test.sh's heap: the rescan is bounded by the heap, not by the test
+    untraced = _calls_us(subprocess.run([str(settrace_bin), *heap, str(probe)], cwd=repo_root, env=env, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False))
+    traced = _calls_us(subprocess.run([str(settrace_bin), *heap, _RUNNER, str(probe), str(tmp_path / "raw.json")], cwd=repo_root, env=env, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False))
+    assert traced * 4 < untraced, f"40,000 traced calls took {traced} us against {untraced} us untraced: the tracer no longer keeps the allocator's search short"
+
+
 def test_every_traced_file_gets_its_line_table_up_front(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
     # A file without a table records through the allocating fallback; subdirectories count (digital_twin/unixport/).
     source = (repo_root / _RUNNER).read_text()

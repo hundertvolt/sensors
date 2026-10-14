@@ -49,9 +49,18 @@ def _dump(out_path: str) -> None:
 # every traced line here (2.6x slower whole-file runs, 2026-10-07).
 _TABLES: dict[str, bytearray] = {}
 _HITS: dict[str, dict[int, bool]] = {}  # a traced file or line no table holds: recorded, at an allocation's cost
+# This build allocates a frame and a code object of several blocks on every call and resume, and the allocator starts
+# a search after the last single-block allocation only: one float per call keeps each search short (SPECIFICATION.md
+# Part E.5.2). Garbage at the next collection: a collected heap measures the same, a collection-free window 32 B more.
+_SCAN_STEP = 1.0
+_SCAN_MARK = [_SCAN_STEP]
 
 
 def _global_trace(frame: "FrameType", event: str, _arg: object) -> "_Trace | None":
+    try:
+        _SCAN_MARK[0] = _SCAN_STEP + _SCAN_STEP
+    except MemoryError:  # a test's own full heap: an exception escaping here would leave the tracer switched off
+        pass
     if event == "call" and frame.f_code.co_filename.startswith(_TRACED_PREFIXES):
         return _local_trace
     return None

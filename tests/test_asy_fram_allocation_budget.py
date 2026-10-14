@@ -20,10 +20,11 @@ if TYPE_CHECKING:
     from asy_fram_manager import FRAMManager
 
 # Measured 2026-10-13, mock tier, median of five, 13-15% margin: build-settrace 263,232 B blank / 238,208 B valid;
-# build-standard 26,496 / 20,128 - the pair whose ratios carry to the board.
+# build-standard 26,496 / 20,128 - the pair whose ratios carry to the board. The coverage tracer's float per call adds
+# 58,976 / 54,336 B to the settrace pair (2026-10-14, SPECIFICATION.md E.5.2), added with the headroom unchanged.
 _SETTRACE_BUILD = hasattr(sys, "settrace")
-_BUDGET_BLANK = 302_000 if _SETTRACE_BUILD else 30_000
-_BUDGET_VALID = 270_000 if _SETTRACE_BUILD else 23_000
+_BUDGET_BLANK = 361_000 if _SETTRACE_BUILD else 30_000
+_BUDGET_VALID = 325_000 if _SETTRACE_BUILD else 23_000
 
 
 async def _priced(logger: PrintLogHistoryStore) -> "tuple[int, int]":
