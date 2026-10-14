@@ -100,12 +100,13 @@ _WDT_OVERRUN_WAIT_S = 9.0
 # @tunable l2.sensortask_integration_idle_window_s = 3.0
 _IDLE_WINDOW_S = 3.0
 _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
+_STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _WAIT_TIMEOUT_MS = int(_WAIT_TIMEOUT_S * 1000)
 _STATUS_DEATHS = 10
 _DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
 _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass costs a few with the supervisor's fast sleep
-# The collected heap across the deaths, in-loop with every real task live: measured within 1.1 KB at both GC stages,
-# while keeping each dead task and its exception measured 3.6 KB over the ten (2026-10-07).
+# The collected heap across the deaths, in-loop with every real task live: measured within 64 B at both GC stages,
+# while keeping each dead task and its exception measured 2.4 KB over the nine after the baseline (2026-10-14).
 _HEAP_DRIFT_BYTES = 2048
 # @tunable l2.sensortask_integration_heap_floor_reads = 3
 _FLOOR_READS = 3
@@ -164,6 +165,23 @@ async def _boot(port: int, cfg_path: "str | None" = None) -> "machine.WDT":
     return watchdog
 
 
+def _clear_twin_logs(watchdog: "machine.WDT") -> None:
+    # The twin's routine bookkeeping (bus transactions, line levels, feeds, register accesses, frames, WLAN calls) emptied:
+    # nothing in a running twin reads it, and it fills over minutes. A would-have-reset's log is evidence and stays.
+    for name in plan["buses"]:
+        cast("machine.I2C", machine.peripheral(name)).log.clear()
+    for name in plan["spi"]:
+        cast("machine.SPI", machine.peripheral(name)).log.clear()
+    for log in machine.Pin._value_logs.values():
+        log.clear()
+    for wlan in network._INTERFACES.values():
+        wlan.config_calls.clear()
+        wlan.connect_calls.clear()
+    module.neopixel._pixel.writes.clear()  # every devices/*.toml wires one
+    watchdog.feed_times.clear()
+    machine.mem32.log.clear()
+
+
 class _CountingPoller:
     # A socket's real poller with each ipoll() round counted: one per listener wake-up.
     def __init__(self, real: object) -> None:
@@ -206,15 +224,17 @@ def _fill_wire_logs() -> None:
             log.extend(bytes(log.maxlen))
 
 
-async def _heap_floor() -> int:
+async def _heap_floor(watchdog: "machine.WDT") -> int:
     # The collected heap with no task caught mid-call, read between UART link exchanges: the least of a few readings (a
-    # frame held mid-await is transient, a retained object is in every one). The harness's own finished tasks go first.
+    # frame held mid-await is transient, a retained object is in every one). The harness's own finished tasks and the
+    # twin's routine logs go first, with no await before the reading: neither is the device's heap.
     initiators = [s for s in module._collect_error_sources() if isinstance(s, UARTComm) and s._role == ROLE_INITIATOR]
     floor = -1
     for _ in range(_FLOOR_READS):
         idle = await _wait_until(lambda: not any(comm._busy for comm in initiators), timeout_s=_WAIT_TIMEOUT_S, interval_s=_BIND_POLL_S)
         assert idle, "a UART link exchange never ended"
         release_finished()
+        _clear_twin_logs(watchdog)
         gc.collect()
         used = gc.mem_alloc()
         floor = used if floor < 0 else min(floor, used)
@@ -435,6 +455,10 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         watchdog = await _boot(_ports.next())
         sysfunct: SystemService = module.sysfunct
         assert sysfunct.pr.set_level(0)
+        # A linked station, its link awaited below: with no SSID the hotspot fallback switches the radio and binds the
+        # captive DNS 8-14 s in, a one-time step a slow runner's deaths straddle (agent, 2026-10-14).
+        persisted, _results = await module.conn.cfgmgr.write_config({"SSID": "TestNet"})
+        assert persisted
         task_starters = module._collect_task_starters()
         status_idx = task_starters.index(sysfunct.start_asy_status)  # SYSTEM's own task: every device has it
         starts = [0] * len(task_starters)
@@ -454,6 +478,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
             await sysfunct.start_tasks(task_starters)
             supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert await _yield_until(lambda: all(starts)), starts
+            assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S), "the station never linked"
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
             sysfunct._uptime = _StatusFault()  # type: ignore[assignment]
             _fill_wire_logs()
@@ -470,7 +495,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                     assert await _yield_until_above(lambda: starts[status_idx], restarts), "the dead status task was never restarted"
                     fed = watchdog.feed_count
                     assert await _yield_until_above(lambda: watchdog.feed_count, fed + _DECAY_PASSES - 1), "the supervisor stopped passing"
-                    drift[death] = await _heap_floor()
+                    drift[death] = await _heap_floor(watchdog)
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
         finally:
             sysfunct._uptime = real_uptime
@@ -492,8 +517,8 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
     run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
     assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
     assert machine.reset_count == resets  # the restart budget never escalated to a reset
-    # The first death fills the twin's bookkeeping logs (the watchdog's feed times, the register log) to their caps:
-    # the baseline is the reading after it.
+    # The first reading still holds 0.9 KB the second no longer does (measured at both GC stages, 2026-10-14): the
+    # baseline is the reading after it.
     assert max(drift[1:]) - drift[1] <= _HEAP_DRIFT_BYTES, drift
 
 
