@@ -1,0 +1,21 @@
+
+######## SubagentHandback 2026-10-13T13:19:57.201Z
+Commit `1ac6e1f` on `audit/u23-of129` in `S/wt-u23w` (parent `16d8fae`, not pushed): the "hotspot timer started" line now prints only after the timer is actually armed. Every check passed.
+Sites checked in `src/asy_wifi_service.py`:
+- `_hotspot_client_absent()` (:493-501) is the only one changed. `pr.evt("No client connected - hotspot timer started")` now runs only when `await self._arm_hotspot_timer()` returns True. A failed arm prints only its own "Could not start hotspot timer:" error and sets `_hw_op_failed`; its persisted TIMER entry is the record. The comment there is unchanged.
+- No change, because none prints a "started"/"armed" claim before the result is known:
+  - the silent mode's arm in `_run_silent_mode()` (:741);
+  - the uptime-tick retry in `_connect_loop()` (:410-414), which prints only on failure;
+  - `start_uptime_timer()` (:907);
+  - `_arm_hotspot_timer()` itself (:321), which prints only its failure.
+  - The `Timer()` constructors (:257-258) are not arms. "timer stopped" (:506) follows `deinit()`, not an arm.
+- Outside the file set, read only: `asy_system_service.py:390` "Timer started:" already prints only on success.
+New test `test_the_window_started_line_follows_a_successful_arm_only` (with helper `_window_line_case`; the file goes from 264 to 265 tests). It runs three no-client ticks at the event level, with OSError and with MemoryError: a failed arm, a successful arm, then a tick with the window already running.
+Seen failing first on `16d8fae`: 264/265, with the started line printed before the error. Evidence is in `S/u23/of129p/seen_failing_16d8fae.txt`.
+Checks (each output has its `N/N passed` line or "no issues", and no memory marker in any MicroPython test output):
+- ruff on the 8 scopes: clean, 0.1 s.
+- mypy, cold cache: no-args 0 issues / 187 files (10.6 s); ci 0 / 174 (9.5 s); twin 0 / 53 (2.3 s); host 0 / 204 (7.8 s). The `typings` symlink is removed.
+- `tests/test_asy_wifi_service.py`: 265/265 at -1 (19.6 s), at 32768 (21.5 s) and under settrace (20.7 s), each within 0.1 s of 16d8fae's.
+- `tests/test_digital_twin_wifi_modes.py`: 1/1 at -1 (101.2 s) and at 32768 (101.6 s). It ran alone in its own netns, started with 2 and then 0 other heavy processes on the host.
+- pytest: `test_comment_block_cap` 458 passed (4.6 s), `test_decision_vocabulary` 6 (8.9 s), `test_code_conventions` 23 (4.4 s), `test_error_catalog` 38 (26.7 s).
+RUNS.md matches `ps`: all 7 of my lines ("OF-129 print agent") are closed, none is RUNNING, `ps` shows no process of mine, and the file ends with a newline. All logs and `results.tsv` are in `S/u23/of129p/`.

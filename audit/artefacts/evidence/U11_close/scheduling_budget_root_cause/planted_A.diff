@@ -1,0 +1,12 @@
+--- src/asy_uart_comm.py	2026-10-07 11:45:40.808365805 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/planted_A/asy_uart_comm.py	2026-10-07 11:57:20.774352198 +0000
+@@ -693,9 +693,6 @@
+             if not await self._send_ack(device, prev_uid):
+                 await self._fault(device, _ERR_UART_WRITE_FAILED, "ACK write failed at chunk", cur)
+                 return None
+-        if exp_size >= 0 and written != exp_size:
+-            await self._fault(device, _ERR_UART_SIZE_MISMATCH, "train delivered", written, "of", exp_size)
+-            return None
+         if not await self._send_ack(device, prev_uid):
+             await self._fault(device, _ERR_UART_WRITE_FAILED, "final ACK write failed")
+             return None

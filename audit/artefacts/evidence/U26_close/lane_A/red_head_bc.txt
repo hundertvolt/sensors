@@ -1,0 +1,36 @@
+E       AssertionError: ['sudo nmcli connection up br0-wifi-ap']
+tests_scripts/test_bench_control_restore.py:171: AssertionError
+E       AttributeError: 'BenchBridge' object has no attribute 'leave_dut_hotspot'
+tests_scripts/test_bench_control_restore.py:182: AttributeError
+_____ test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave ______
+    def test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave(monkeypatch: pytest.MonkeyPatch) -> None:
+        bridge, _host = _bridge(monkeypatch, {"connection delete": (10, "", "Error: unknown connection"), "connection show": (0, "br0\n", "")})
+E       AttributeError: 'BenchBridge' object has no attribute 'leave_dut_hotspot'
+tests_scripts/test_bench_control_restore.py:189: AttributeError
+_ test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it __
+    def test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it(monkeypatch: pytest.MonkeyPatch) -> None:
+        bridge, _host = _bridge(monkeypatch, {"connection delete": (4, "", "Error: not authorized"), "connection show": (0, f"br0\n{ROLE_REVERSAL_CLIENT_CONN}\n", "")})
+        with pytest.raises(HardwareTestFailureError, match=f"{ROLE_REVERSAL_CLIENT_CONN}.*still listed.*not authorized"):
+E           AttributeError: 'BenchBridge' object has no attribute 'leave_dut_hotspot'
+tests_scripts/test_bench_control_restore.py:195: AttributeError
+_______________ test_the_udp_capture_keeps_tcpdumps_error_stream _______________
+    def test_the_udp_capture_keeps_tcpdumps_error_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+tests_scripts/test_bench_control_restore.py:215: AssertionError
+        # A refused sudo or a missing tcpdump reads as "nothing captured" unless its exit and error stream are read.
+>       with pytest.raises(HardwareTestFailureError, match="tcpdump") as info:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+        # A refused sudo or a missing tcpdump reads as "nothing captured" unless its exit and error stream are read.
+>       with pytest.raises(HardwareTestFailureError, match="tcpdump") as info:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+        # A refused sudo or a missing tcpdump reads as "nothing captured" unless its exit and error stream are read.
+>       with pytest.raises(HardwareTestFailureError, match="tcpdump") as info:
+E       Failed: DID NOT RAISE HardwareTestFailureError
+FAILED tests_scripts/test_bench_control_restore.py::test_bringing_the_ap_up_leaves_an_active_ap_alone
+FAILED tests_scripts/test_bench_control_restore.py::test_leaving_the_dut_hotspot_deletes_the_client_profile_and_leaves_the_ap_down
+FAILED tests_scripts/test_bench_control_restore.py::test_a_failed_profile_delete_with_the_profile_gone_is_a_clean_leave
+FAILED tests_scripts/test_bench_control_restore.py::test_a_failed_profile_delete_with_the_profile_still_listed_raises_naming_it
+FAILED tests_scripts/test_bench_control_restore.py::test_the_udp_capture_keeps_tcpdumps_error_stream
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[1-sudo: a password is required]
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[127-sudo: tcpdump: command not found]
+FAILED tests_scripts/test_bench_control_restore.py::test_a_capture_that_never_started_raises_naming_tcpdump_and_why[1-tcpdump: wlan1: No such device exists]
+8 failed, 63 passed in 0.42s

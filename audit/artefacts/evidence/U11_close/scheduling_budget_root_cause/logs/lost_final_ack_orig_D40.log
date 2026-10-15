@@ -1,0 +1,8 @@
+== th=-1
+FLIP test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 18/177 k=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 55, 56, 58, 60, 61, 62] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1133, in _clean_ack_bytes
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1133, in _clean_ack_bytes  k=[40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
+     kind: AssertionError: the responder did not actually receive the train: [] @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1177, in _check_a_l  k=[55, 56, 58, 60, 61, 62]
+== th=32768
+FLIP test_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted_nocrc 18/177 k=[40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 52, 54, 55, 58, 59, 60, 61, 62] first=AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1133, in _clean_ack_bytes
+     kind: AssertionError:  @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1133, in _clean_ack_bytes  k=[40, 42, 43, 44, 45, 46, 47, 48, 49]
+     kind: AssertionError: the responder did not actually receive the train: [] @ File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/orig/test_uart_comm_hazard.py", line 1177, in _check_a_l  k=[50, 52, 54, 55, 58, 59, 60, 61, 62]

@@ -1,0 +1,282 @@
+
+######## SubagentHandback 2026-10-13T06:37:37.263Z
+WIP b1356d5
+
+Branch `audit/u23-m`, worktree `scratchpad/wt-u23m`, one commit on `8fff76f`. Nothing pushed. I staged only these four files, by name: `js/api-contract.js` (new), `js/mock-server.js`, `mockdata/samples.json`, `tests_js/mock-server.test.js`.
+
+## Website-input changes for your rebuild
+None of the three changes below reaches the production bundle at M1. `scripts/build_website.sh` hand-lists field-format, poll-manager, templates, definitions, render, nav and main, and none of them imports the new module yet. The frozen website and generated sites are byte-identical for my part.
+1. `js/api-contract.js` (new) exports `VALID`, `UNCHANGED`, `INVALID`, `FAILED`, `ERR_COUNT_CAP = 65535`, `GMTIME_KEYS = ["Year","Month","MDay","Hour","Minute","Second"]` and `isUnavailable(value)`. `isUnavailable` is true only for exactly `{"error":"unavailable"}`. The module imports nothing, and only `js/mock-server.js` imports it, which is enough for B's drift rule.
+2. `js/mock-server.js` is prototype-only and never staged.
+3. `mockdata/samples.json`: `status.system.UnixTime = 1754986443` after `UTCTime`. The value is the sample's UTCTime instant; the mock overwrites it from the clock on every GET.
+
+## What M1 delivers
+This is plan section 2's M1 bullet plus every behaviour in section 3's M rows, with rulings A-5, A-14 and A-30.
+- **Envelopes:** every one goes through `makeResponse()`.
+  - `STANDARD_CODES` equals the tree's `_STANDARD_CODES`, codes 2 and 3 included (A-5).
+  - It is one line, `const STANDARD_CODES = { 0: "Command executed", ... };`, with `/** @type {Record<number, string>} */` on the line above. Please check D's `readObjectConst` parses this form at the API base.
+- **Constants:** `COUNTER_CAP = 2 ** 30 - 1`, used by the uptime saturation.
+- **Routes:** derived from the definitions.
+  - A path no section declares passes through to the real fetch.
+  - Any other method on a known route gets `makeResponse(405)` with HTTP 405.
+- **Handlers:** `handleGet()` and `handlePut()` replace the 41-complexity handler.
+  - The PUT body is parsed in `try`; an unparseable or non-object body gets code 1 with HTTP 200.
+  - `controls.delayMs` adds a fixed timer when set. With it unset no timer runs, and the random latency is gone.
+- **Injected failures:**
+  - `partial-result` and "Simulated failure" are gone; an injected number now answers `makeResponse(n)` with HTTP n.
+  - The new `group-failure` is consumed by the next PUT; a GET leaves it pending. The request is applied, then every word it answered becomes "Failed", nested sensor maps included. This mirrors `handle_set_cmd()` failing after the persist.
+- **PUT answers:**
+  - `PUT /status`: `{"ResetErrors": true}` answers "Valid"; any other value or key answers "Invalid".
+  - Readonly keys answer "Invalid" and are stored nowhere (A-30).
+  - The LED busy answer is still "Failed" with descr "LED busy - retry later".
+- **A-14 rule:** an always-executed field is stored only when the composed data already has its key. So `ForceCalRef` reads back the last applied value (400 when fresh) and `ContMeas` never appears on GET. A dispatch field is never stored. `dispatchSensorQuirkField()` and `applySensorQuirksForGet()` are gone.
+- **GET answers:**
+  - Every `mask: true` field is masked.
+  - `system.UnixTime`, `networking.WifiTS` and each measurement `TS` are `Math.floor(Date.now()/1000)`.
+  - `SysUptime` and `WifiUptime` go up by one per GET and stop at `COUNTER_CAP`. Every other status value is served as stored; time keys never jitter.
+
+**Left for after the API base:**
+- **Derived dispatch:** `SystemCmd` from its options, `PauseTime` through `statusPath`, the LED from `subFields`. This needs D1's `statusPath` key and typedef, so `SYSTEM_CMDS`, `DISPATCH_KEYS`, `PAUSE_TIME_MAX`, the LED constants, `dispatchRangedAction()` and `dispatchLightCmdLed()` stay in M1.
+- **Resolution compare:** needs D1's `resolution` key.
+- **Remaining rows:** the rest of row 60, `test_js_api_mirrors.py`, `api-reference-agreement.test.js`, the loader (X8) and row 78.
+- **D.15 reorder:** the member reorder of `js/mock-server.js` stays my last edit at the final.
+
+**Additions beyond the plan's text:**
+- **Composition fix:** `composeGroup()`'s measurements/sensors branch copied `group.fields`, dispatch fields included, against its own JSDoc. With the GET filter removed, a sample carrying a sensor command would have been echoed back as a setting. I changed it to `fields` (one word) with a test seen failing first. Today's samples carry no such key, so no device's data changes.
+- **Test isolation:** `mock-server.test.js`'s `afterEach` now resets `uninstall` and calls `vi.unstubAllGlobals()`. The derived-route test needs it.
+
+## Tests written first and seen failing
+I ran 31 new or rewritten `mock-server.test.js` cases against the HEAD mock.
+- **Run 1:** 30 cases. All failed for the intended reasons: "OK" instead of "Command executed", code 5 "Simulated failure", 405 without `result`, PUT `/status` without `result`, FirmwareVersion "Valid", ForceCalRef 400 instead of 900, ProxyPW in plaintext, TS 1001, UnixTime undefined, uptime past the cap, LocalTime jittered, timer count 2, delay done before 249 ms, the stub not reached, `JSON.parse` throwing, and a Response status 0 for group-failure.
+- **Run 2:** the compose case (`SGP40: {ResetVOC: true}` was composed).
+
+Guards that already held on HEAD: the injected malformed-body envelope, `ContMeas` never on GET, `AmbPres` never Unchanged, and the LED busy descr. The partial-result case is removed.
+
+**Gap:** `isUnavailable()` has no importer and no test at M1. No file in my set fits a JS test of it; T's templates exact-shape case and my mirror test cover it later.
+
+## Status
+**Green** (`vitest`, each in `unshare -n`, `nice -n 19`):
+
+| File | Result |
+|---|---|
+| `mock-server.test.js` | 122/122 |
+| `mock-server-put-matrix.test.js` | 433/433 |
+| `mock-data-compose.test.js` | 26/26 |
+| `definitions-mockdata-coverage.test.js` | 9/9 |
+| `generated-definitions-render.test.js` | 48/48 |
+| `app.test.js` | 8/8 |
+
+Also green: `npm run lint` (rc 0); ruff over all eight scopes; mypy main pass, no-args and `src tests tests_hardware/device_scripts`, cold cache (both rc 0; no Python changed, typings symlink removed). These pytest checks all passed: `test_decision_vocabulary`, `test_citations`, `test_comment_block_cap`, `test_tunables_register`, `test_legacy_paths`, `test_import_placement`, `test_code_conventions`, `test_error_catalog`, `test_host_annotations`, `test_lint_ceilings`, `test_mypy_any_baseline`, `test_memory_error_gate_agreement`, `test_no_variant_literals`, `test_js_generated_definitions_loader`, `test_definitions_js_mirrors`.
+
+**Red**, each caused by another lane's half not having landed yet:
+1. **`tests_js/render.test.js` (C's file), 4 cases:**
+   - `:330` `expected 'Command executed — MeasInterval: Valid' to be 'OK — MeasInterval: Valid'`
+   - `:689` `expected 'Could not refresh Measurements: Error: GET /measurements failed: Internal server error' to match /simulated failure/i`
+   - `:1019` `expected 'Request failed: Error: Internal server error' to match /simulated failure/i`
+   - `:1058` the partial-result case: `Request failed: RangeError: Failed to construct 'Response': The status provided (0) is outside the range [200, 599].` It moves to a local stub under A.U23.13.
+2. **`npm run typecheck`, its only error:** `tests_js/render.test.js(1051,9): error TS2322: Type '"partial-result"' is not assignable to type 'MockFailure | undefined'.`
+3. **`tests_scripts/test_build_website_sh.py::test_every_real_js_and_html_file_is_accounted_for_by_the_staging_script` (`:130`):** `AssertionError: js/api-contract.js exists but isn't referenced by build_website.sh`. B's row 21.8 deletes this test.
+4. **`tests_js/lint-ceilings.test.js` "complexity sits at its measured maximum":** `expected 0 to be greater than 0`.
+   - The tree maximum moved from 41 (the mock's old fetch handler) to 37 (`validateDefinitions`, `js/definitions.js:131`, which D also splits).
+   - My files' maximum is 18 (`coerceAndValidate`, unchanged); the new handler is 14.
+   - max-depth 4, max-nested-callbacks 4 and max-classes-per-file 1 are unchanged. Nothing raised (A-26).
+
+## Wall times (`nice -n 19`, `unshare -n`; JS files, so no GC stages or settrace)
+| File | Before | After |
+|---|---|---|
+| `mock-server.test.js` | 47.8 s wall (vitest 33.07 s, 100 tests) | 3.7 s wall (1.64 s, 122 tests) |
+| `mock-server-put-matrix.test.js` | 124.4 s wall (122.48 s, 433 tests) | 3.6 s wall (1.83 s, 433 tests); no case removed |
+
+## Runs I started (all foreground, all exited; `ps` shows nothing of mine)
+- Baselines: `mock-server.test.js` (rc 0) and the put matrix (rc 0, entered in RUNS.md and marked done).
+- New tests on the HEAD mock (rc 1, the 30 designed failures) and the compose case alone (rc 1, designed).
+- After the change: `mock-server.test.js` and the put matrix (rc 0, twice each); the five consumer files (render rc 1 with the 4 C cases above, the rest rc 0, twice); `lint-ceilings` (rc 1, complexity).
+- Checks: `npm run lint` (rc 0, twice); `npm run typecheck` (rc 1, render only, twice); the pytest checks (all rc 0 except `test_build_website_sh` rc 1); ruff (rc 0); mypy ×2 (rc 0, RUNS.md, marked done); diagnostic ESLint measurements.
+
+## Silent-failure scan so far (the full scan comes in my final report)
+- **New, class 7, mode "malformed requests":** the mock accepts a PUT without `Content-Type: application/json`. The server answers code 1 there: Microdot `Request.json` returns None (`ext/microdot.py:464-474`), so `_body_as_dict` sends `make_response(1)`. The page always sends the header (`js/render.js:221`), so there is no live effect. Mirroring it would rewrite about 60 test calls that send no header, so I left it open.
+- **Inherently safe:** an unknown `nextFailure` string throws a visible `RangeError`; the typedef forbids it.
+- **Closed:**
+  - the injected failures' silent "Simulated failure" text and the partial-result injection;
+  - the readonly-key "Valid" (OF-93);
+  - status values jittering timestamps and the `LocalTime`/`UTCTime` structs;
+  - uptimes counting past `COUNTER_CAP`;
+  - the dispatch-sample echo in composition.
+
+For your merge: run `mock-server.test.js`, `mock-server-put-matrix.test.js`, `render.test.js` (expect the 4 C reds), `generated-definitions-render.test.js`, `app.test.js`, `mock-data-compose.test.js`, `definitions-mockdata-coverage.test.js` and `lint-ceilings.test.js`. Then run D's `source-constants.test.js` STANDARD_CODES case against my one-line literal.
+
+I am stopping at M1 until you resume me with the API base hash.
+
+######## SubagentHandback 2026-10-13T07:22:52.470Z
+## U23 lane M: final report
+Lane M is finished. It is one commit on top of your API base 3d29af9, on branch `audit/u23-m`: **faaa647** ("U23 lane M: the mock's PUT rules from the definitions, the JS wire-fact mirror test, the REST reference agreement"). It sits on b1356d5 (M1), which is already in your base. Nothing pushed.
+
+All of my files are green. What stays red belongs to C, S, D and X and is listed below with exact lines. Relay (1), the `test_citations` red, is fixed: the mirror test landed in this commit and no allow-list row was added.
+
+### Step table
+| Row | Step | State | Note |
+|---|---|---|---|
+| 12 | M.TSC.100 | applied | New `tests_scripts/test_js_api_mirrors.py`. The "drop erasefram" bite is U24's and not written. |
+| 21.9 | M.WEB.001 | applied (M1) | `js/api-contract.js`. |
+| 21.26 | M.WEB.040 | applied (M1) | `STANDARD_CODES` keeps codes 2 and 3 (A-5). |
+| 21.27 | M.WEB.041 | applied (M1 + final) | Every action field follows its definition:<br>• `SystemCmd`: its options.<br>• `PauseTime`: its min/max, and it is written where its `statusPath` points.<br>• `LightCmdLED`: its `subFields`, with the busy refusal over the duration member.<br>• `TempOffset` is compared at its resolution and stored rounded.<br>`SYSTEM_CMDS`, `DISPATCH_KEYS`, `PAUSE_TIME_MAX`, the LED constants, `dispatchRangedAction()` and `dispatchLightCmdLed()` are gone. A-14 and A-30 applied. |
+| 21.28 | M.WEB.042 | applied (M1) | |
+| 55 | M.WEB.050 | applied (U23 stage) | `API_REFERENCES`. The TOML stamp is U24's. |
+| 60 | M.WEB.052 | applied (U23 stage) | Header (U27) and restores (U24) not written. |
+| 71 | M.WEB.065 | applied | New `tests_js/api-reference-agreement.test.js`. |
+| 78 | M.WEB.060 | applied | The `_put_field_cases.js` comment, and the matrix expects a resolution field stored rounded (TempOffset's midpoint 327.675 is stored as 327.68). |
+| X7 | — | applied (M1) | |
+| X8 | — | applied | The loader test is parametrized over `definitions` and `api`. |
+| Relay (2) | — | applied | `mock-data-compose.test.js` reads maintenance fields by path. Its 12 reds on the base are green. |
+
+**Already landed (not redone):**
+- `dedupePutFieldCases()` and `validStringValue()` (`tests_js/_put_field_cases.js:102`, `:120`).
+- The matrix header and the never-Unchanged category (`mock-server-put-matrix.test.js:2`, `:336`).
+- The shape corpus cases and the byte bound (`mock-server.test.js:364`, `:382`).
+- The derived and near-miss `SystemCmd` cases (`:400`, `:414`).
+- The LED comments the step text gives (`:516`, `:536`, `:545`).
+- The masks title (`:661`).
+
+### Deviations (each the conservative choice; decided on the owner's behalf, agent, 2026-10-13)
+- **`afterEach` reset:** in `mock-server.test.js` it now sets `uninstall = undefined` and calls `vi.unstubAllGlobals()`. The derived-route case stubs the fetch the mock passes through to, and without this a stale uninstall would put the stub back in a later test. U24's `restoreMocks` work is not written.
+- **Two compose fixes in `js/mock-server.js`, both seen failing first:**
+  - *M1:* the measurements/sensors branch copied dispatch sample values.
+  - *Final:* the maintenance group is now composed by each field's `path`. Before, an instance-named module (e.g. `SGP40_second`) composed nothing, under the wrong key.
+- **`LED_DURATION_MEMBER = "T"`:** the duration member is a named constant, pinned by the mirror test to the last entry of `_LIGHT_CMD_FIELDS`.
+- **`group-failure`:** the request is applied, then every word becomes "Failed". That mirrors `handle_set_cmd()`'s `dict.fromkeys(results, FAILED)` after the persist. A `/status` `ResetErrors` reached this way answers "Failed", which covers the "raising ResetErrors source" mode.
+- **`writeAtPath()`:** a `statusPath` that runs through no object throws, so it fails visibly instead of storing nothing.
+- **Mirror test inputs:** it reads the dispatch tables from `definitions_for_toml()` per device, so it does not depend on `build/`.
+- **Agreement test:** it compares result words as sets.
+- **A-14:** `ForceCalRef` reads back the last applied value at U23, so U25 will find A.U25.12 (7) already landed.
+
+No file outside my set was edited. `mock-data-compose.test.js` joined the set through relay (2).
+
+### Tests seen failing before the fix
+**`mock-server.test.js`:**
+- *M1:* 31 cases (listed in my M1 report).
+- *Final:* 5 cases: the resolution compare, derived `SystemCmd`, `PauseTime` bounds and `statusPath`, `statusPath` absent, and `LightCmdLED` `subFields`. All failed on the M1 mock.
+
+**`mock-data-compose.test.js`:** compose by path (the result was `{SGP40: {}}`).
+
+**`test_js_generated_definitions_loader.py[api]`:** the helper globbed no `api/` directory.
+
+**`api-reference-agreement.test.js`:** run against the old loader, it failed with "does not provide an export named 'API_REFERENCES'".
+
+**`test_js_api_mirrors.py`:** the first run also caught the readonly status `PauseTime` (a bug in the test itself, now fixed).
+
+**Guards (passed at once):**
+- The 5 int/float policy cases.
+- The stray-key check.
+- The mirror test's equality and dispatch checks. Its 13 planted mismatches, the marker-spelling plant and the 3 dispatch plants are the proof that they bite.
+- The agreement checks' own bite case.
+
+### Results (all browser files in `unshare -n`, `nice -n 19`, one at a time)
+**Mine, all green:**
+- `mock-server.test.js`: 132/132
+- `mock-server-put-matrix.test.js`: 433/433
+- `mock-data-compose.test.js`: 28/28
+- `api-reference-agreement.test.js`: 19/19
+- `test_js_api_mirrors.py`: 26/26
+- `test_js_generated_definitions_loader.py`: 3/3
+
+**Also green:**
+- `generated-definitions-render`: 48/48
+- `app`: 8/8
+- `npm run lint` (rc 0)
+- ruff, all eight scopes
+- mypy main pass, both scopes, cold cache, typings symlink removed afterwards
+- mypy host pass (rc 0 after fixing one finding in my new file)
+- pytest: `test_citations`, `comment_block_cap`, `legacy_paths`, `import_placement`, `code_conventions`, `error_catalog`, `host_annotations`, `lint_ceilings`, `mypy_any_baseline`, `memory_error_gate_agreement`, `no_variant_literals`, `stage_website`, `build_website_sh`, `definitions_js_mirrors`
+
+No MicroPython file was touched, so there are no GC stages or settrace runs.
+
+**Red, not mine:**
+1. `tests_js/render.test.js` (C):
+   - `:330` "Command executed — …" vs "OK — …"
+   - `:689` and `:1019` `/simulated failure/`
+   - `:1058` (partial-result)
+   - "renders On (the schema defaultValue)" (D1 removed `defaultValue`)
+   - tsc: `render.test.js(513,134)` and `(1051,9)`
+2. `tests_js/live-backend-put-matrix.test.js` (S), tsc only: `(54,40)` and `(65,56)` still read `defaultValue`.
+3. `tests_js/definitions-mockdata-coverage.test.js` (C, row 62): all 6 devices report `status/sensors/SGP40_BackupTS` and similar. Its local `groupValuesFrom()` still flattens `${sensor}_${field}`, but the fields are now read by path.
+4. `source-constants.test.js` "reads the poll loop's back-off ceiling": D's, red until S1 (on your list).
+5. `lint-ceilings.test.js` complexity: the config says 41 and the tree maximum is now 22 (`js/render.js:196`, C). My files' maxima:
+   - complexity 20 (`mock-server-put-matrix.test.js`) and 18 (`js/mock-server.js`, `coerceAndValidate`)
+   - max-depth 4 (pre-existing in `composeMockData` and `_put_field_cases.js`)
+   - max-nested-callbacks 4 (tests)
+   Nothing raised.
+6. `test_decision_vocabulary`: `tests_js/_source_constants.js` "(an `export` in front accepted)". This is D's file and is already red on 3d29af9. I reworded my own two "accepted" hits.
+7. `test_tunables_register`: `buildgen/definitions.py:39 web.default_decimals` has no Part N row (X).
+
+### Wall times (`nice -n 19`)
+| File | Before | After |
+|---|---|---|
+| `mock-server.test.js` | 47.8 s wall (vitest 33.07 s, 100 tests) | 3.3 s wall (1.40 s, 132 tests) |
+| `mock-server-put-matrix.test.js` | 124.4 s (122.48 s, 433) | 3.2 s (1.57 s, 433) |
+| `mock-data-compose.test.js` | 4.3 s on the base (26 tests) | 3.0 s (1.34 s, 28 tests) |
+| `api-reference-agreement.test.js` (new) | — | 3.5 s (1.54 s) |
+| `test_js_api_mirrors.py` (new) | — | 1.9 s |
+| `test_js_generated_definitions_loader.py` | 1.5 s | 2.2 s (one more generator run) |
+
+No case was removed except partial-result, which the step removes.
+
+### Runs I started (all foreground, all exited; `ps` shows none of mine)
+- The browser files above, before and after each change.
+- `lint-ceilings` ×3.
+- `npm run lint` and `npm run typecheck`, several times.
+- The pytest files above, each before commit.
+- mypy main ×2 and host ×2 (both in RUNS.md, marked done).
+- ESLint measurement runs.
+- One temporary swap of the loader file to its HEAD version for the fail-first run, then restored.
+
+### Owed to other lanes
+**Lead, website inputs:** this commit changes only `js/mock-server.js` (prototype only, never staged) and test files. The production bundle, definitions and samples are unchanged since M1, so nothing needs rebuilding for my part.
+
+**Lead, allow-list:** I added no rows. `_decision_vocab_allowlist.txt:535` (`render.test.js`, "…mock-server.js special-cases tha[t]…") now describes behaviour that no longer exists. C's rewrite retires it.
+
+**X, SPECIFICATION.md:**
+- *G.2 mirror catalog:*
+  - `js/api-contract.js`: `VALID`, `UNCHANGED`, `INVALID`, `FAILED`, `ERR_COUNT_CAP`, `GMTIME_KEYS`, `isUnavailable()`.
+  - The mock's `COUNTER_CAP`, `STANDARD_CODES`, `LED_BUSY_DESCR`, `LED_DURATION_MEMBER` and `makeResponse()`'s "Unknown error".
+  - The dispatch definitions against `_SYSTEM_CMDS`, `_PAUSE_TIME_FIELD` and `_LIGHT_CMD_FIELDS`, and the src spelling scan for the marker. All pinned by `tests_scripts/test_js_api_mirrors.py`.
+- *H.4 mock paragraph:*
+  - Correct `:6630` "`ForceCalRef` always reports 400" to: it reads back the last applied value, 400 on a fresh mock.
+  - Routes, dispatch, masks and bounds now come from the definitions.
+  - `makeResponse()`, `delayMs` and `group-failure`; no random latency and no partial-result.
+  - Clock values for `UnixTime`, `WifiTS` and `TS`, and uptimes saturating at `COUNTER_CAP`.
+  - The mock stays stateless for commands (the OF-106 gap).
+- *The accepted resolution gap (A.U23.49):* "the browser has doubles only; the device compares a float in its stored single-precision form (SPECIFICATION.md A.8)" (agent, 2026-09-30). The mock compares `Math.round(v / r)`; the device compares `int(v * 100 + 0.5)` in float32. Both round half up on the non-negative range.
+- *H.8 test list:* `tests_js/api-reference-agreement.test.js`, `tests_scripts/test_js_api_mirrors.py`, and the loader's `API_REFERENCES`.
+- *Tunables:* no `@tunable` was added, renamed or withdrawn. No `l0.mock_latency_*` tag ever existed.
+
+**Y:** nothing.
+
+**For your gate run:**
+- Browser files: `mock-server`, `mock-server-put-matrix`, `mock-data-compose`, `api-reference-agreement`, `source-constants`, `generated-definitions-render`, `definitions-mockdata-coverage`, `render`, `app`, `lint-ceilings`.
+- pytest: `test_js_api_mirrors.py`, `test_js_generated_definitions_loader.py`, `test_citations.py`, `test_decision_vocabulary.py`, `test_stage_website.py`.
+- mypy host pass.
+
+### Silent-failure scan (my 11 files, by site and by mode)
+**Open findings:**
+- **F1 (new; you recorded it):** class 7, mode "malformed requests". The mock accepts a PUT without `Content-Type: application/json`, but the server answers code 1: `ext/microdot.py:464-474` returns None, so `_body_as_dict` fails. The page always sends the header (`js/render.js:221`), so there is no live effect.
+- **F2 (new):** class 4, modes "first load" and "after a firmware change". `composeMockData()`'s `?? { counter: 0, history: [] }` invents a healthy zero for an errcount module that has no sample. The compose test only checks that an entry exists, so it cannot see this. Minimal fix: throw `mock samples: no sample for module …`, as the group path already does. That site is landed U6 code (M.WEB.043), so I left it unfixed.
+
+**Closed:**
+- The "Simulated failure" text and the partial-result injection.
+- A readonly key answering "Valid" (OF-93).
+- Jitter on status timestamps and time structs.
+- Uptimes counting past the cap.
+- A dispatch sample value echoed back on GET.
+- Maintenance composed under the sample name instead of the module path.
+
+**Safe by construction:** an unknown injection value throws `RangeError` (visible); a bad `statusPath` throws; an unknown section fails at composition; duplicate routes fail the agreement test.
+
+**Modes checked:**
+- *Exercised through the mock:*
+  - A failing GET episode and its recovery: one-shot injections are consumed and the next request succeeds.
+  - Each PUT result shape: a word in place of a map, a missing key (via `group-failure`), and a whole-request failure (code 1 or HTTP status).
+  - The unavailable marker: stored data is served verbatim, so a test seeds it. Its spelling is pinned and `isUnavailable()` requires the exact shape.
+  - A raising `ResetErrors` source, via `group-failure`.
+  - A saturated counter: the uptimes, and errcount values a test can seed at 65535.
+  - A missing errcount: a `ResetErrors` PUT then throws visibly.
+- *Not modelled by the mock (S's stubs and live tier, or page level):* a stalled body read, a device reboot or reflash (BootSignature and WebsiteVersion never change), the connection ceiling, a second client, a hidden tab, a stopped page, and a section switch with a GET in flight (`delayMs` holds an answer if a test needs one).

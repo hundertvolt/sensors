@@ -1,0 +1,22 @@
+machine: mem_backup state file tests/_tmp/dtmachine/mem_backup_bad.json unreadable (syntax error in JSON) - booting as a power-on
+machine: mem_backup state file tests/_tmp/dtmachine/mem_backup_bad.json has the wrong shape - booting as a power-on
+machine: mem_backup state file tests/_tmp/dtmachine/mem_backup_bad.json has the wrong shape - booting as a power-on
+machine: mem_backup state file tests/_tmp/dtmachine/mem_backup_bad.json has the wrong shape - booting as a power-on
+machine: mem_backup state file tests/_tmp/dtmachine/mem_backup_bad.json has the wrong shape - booting as a power-on
+Traceback (most recent call last):
+  File "digital_twin/machine.py", line 1401, in _run
+  File "<string>", line 1373, in flaky
+ValueError: planted callback failure
+12 ms test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm
+15 ms test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on
+18 ms test_a_timer_rearming_from_its_own_callback_runs_one_schedule
+40 ms test_timer_fires_for_real_on_a_short_period
+41 ms test_timer_reinit_from_within_its_own_callback_does_not_raise
+122 ms test_wdt_feed_resets_the_countdown_and_prevents_a_notification
+141 ms test_timer_deinit_stops_further_callbacks
+149 ms test_wdt_on_would_trigger_callback_fires_with_the_wdt_instance
+150 ms test_mem32_answers_the_reset_registers_on_each_reset_path
+150 ms test_wdt_notifies_once_after_a_feed_free_window
+153 ms test_wdt_would_have_triggered_log_records_the_feed_count_at_each_notification
+302 ms test_wdt_keeps_monitoring_after_a_would_have_triggered_notification
+total 1345 ms

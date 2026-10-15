@@ -1,65 +1,59 @@
-"""Isolated-driver device script: heap layout after BOTH one-time boot lists, not just
-build_system() - the setup batch is the smaller half of the boot-confined placement reset's effect
-(SPECIFICATION.md Part I.4(f.1), HEAP_FRAGMENTATION_MEASUREMENTS.md archive 7E.3). Report only, no floors."""
+"""Isolated-driver device script: heap layout after BOTH one-time boot lists in the generated order (build_system(),
+run_setups(), start_tasks(), start_timers()), the supervisor never entered - the boot placement reset of
+SPECIFICATION.md Part I.4(f.1). Report only: flash/test_heap_layout.py holds each arm to the twin's bound."""
 
 import asyncio
+import errno
 import gc
+import os
 import time
 
-import micropython
-import sensortask_dev
+import _bench_device as device  # rendered: the bench device's generated module
+import machine
 
-import system_service
+import asy_system_service
+from asy_print_log import PrintLog
 
-# Explicit, never inherited - same reason as heap_headroom_after_full_system_build.py: until
-# 2026-09-24 this script's first arm ran at whatever it inherited (MEASUREMENTS M3.8).
+# @include _shared/facts.py
+# @include _shared/heap_probe.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.heap_probe import dump_map, report_checked
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+    from asy_system_service import SystemService
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# Explicit, never inherited: mpremote's soft reset keeps whatever threshold main.py left, so the first arm runs at -1.
 gc.threshold(-1)
-# Same doubling/halving bounds as heap_headroom_after_full_system_build.py, deliberately: the two
-# scripts' largest_block figures are only comparable if the probe is identical.
-_PROBE_MIN = 64
-_PROBE_MAX = 192 * 1024
-# Rereads allowed when the probe pins its own buffer (see _report_checked). Three is generous: one
-# has always been enough on the twin, at every heap size tried.
-_PROBE_RETRIES = 3
-
-# 4 s after the loop ENDS, so this reading is the run phase, not the list: the supervisor and the
-# started tasks churn with no collect, and the twin says B's gain decays there within ~2 s
-# (MEASUREMENTS M3.9). ~1 s later than archive 7F.2's, which that decay makes immaterial.
+# A scratch directory: every setup() finds its file absent here and writes its defaults once, never a production file.
+_SCRATCH_CFG_PATH = "hwtest-scratch/"
+# 4 s after the timers start, so this reading is the run phase, not the list: the started tasks churn with no collect.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_settle_ms = 4000
 _STARTER_SETTLE_MS = 4000
-# How long to wait for the starter loop itself to finish before giving up on it. The loop sleeps
-# 1.0 s in total whatever the starter count, plus each _start_task; 20 s is far above any plausible
-# real value and only exists so a wedged starter fails honestly instead of hanging.
+# Bounds mirroring tests/_boot_contiguity_probe.py's, so a twin reading and a board reading share their positions; a
+# feeder task keeps the watchdog fed across both bounded waits.
+# @tunable l3.heap_layout_after_full_boot_sequence_starter_loop_timeout_ms = 20000
 _STARTER_LOOP_TIMEOUT_MS = 20000
-# Added to one inter-starter interval once the last starter lands, to cover the loop's final sleep
-# and its final collect - ~41 ms on the RP2040 (MEASUREMENTS archive 7F.7), so 250 ms is ample.
-_STARTER_LOOP_GRACE_MS = 250
-# start_timers() waits on every timer's first fire. Guarded rather than awaited bare so a timer that
-# never fires fails this script honestly instead of hanging the suite (CLAUDE.md's known hang #2).
+# @tunable l3.heap_layout_after_full_boot_sequence_timers_timeout_s = 15
 _TIMERS_TIMEOUT_S = 15
-
 _ARM_LIVE = "collects"
 _ARM_SUPPRESSED = "suppressed"
 
 
-def _selected_arm() -> str:
-    # mpremote run takes no argv but does share globals with an `exec` earlier in the same raw-REPL
-    # session, which is how the suppressed arm is selected: exec "_ARM_OVERRIDE='suppressed'" first.
-    # Verified on this board, 2026-09-22; assigning sys.argv raises there, appending to it works.
-    arm = str(globals().get("_ARM_OVERRIDE", _ARM_LIVE))
-    if arm not in (_ARM_LIVE, _ARM_SUPPRESSED):
-        print(f"RESULT: FAIL unknown arm {arm!r} - expected {_ARM_LIVE!r} or {_ARM_SUPPRESSED!r}")
-        raise SystemExit(1)
-    return arm
-
-
 class _ProbeGc:
-    """Stands in for `gc` at the emitted collect sites: dumps a map at the positions asked for, then
-    forwards to the real collect only on the live arm. Ported from tests/_boot_contiguity_probe.py
-    so the board and the twin measure the same sequence at the same positions."""
-
-    # A dumped position collects on BOTH arms, via _dump_map() - the seam map has to be post-collect
-    # or the arms anchor at different places and nothing is comparable. The suppressed arm therefore
-    # keeps the leading collect and loses the per-unit ones, which makes it a conservative control.
+    # Stands in for `gc` at asy_system_service.py's boot-list collects: dumps a map at the positions asked for, then
+    # forwards to the real collect only on the live arm, as the twin's tests/_boot_contiguity_probe.py does. A dumped
+    # position collects on both arms (dump_map() collects first), so the seam map anchors both arms at one place.
 
     def __init__(self, tag: str, *, live: bool, dump_at: "tuple[int, ...]") -> None:
         self.tag = tag
@@ -69,157 +63,119 @@ class _ProbeGc:
 
     def collect(self) -> None:
         if self.calls in self.dump_at:
-            _dump_map(f"{self.tag}_{self.calls:02d}")
+            dump_map(f"{self.tag}_{self.calls:02d}")
         if self.live:
             gc.collect()
         self.calls += 1
 
 
-def _largest_block() -> int:
-    gc.collect()
-    low, high = 0, _PROBE_MAX
-    while low < high:
-        mid = (low + high + 1) // 2
-        if mid < _PROBE_MIN:
-            break
-        try:
-            probe = bytearray(mid)
-        except MemoryError:
-            high = mid - 1
-        else:
-            del probe
-            low = mid
-        gc.collect()
-    return low
-
-
-def _report(label: str) -> "tuple[int, int, int]":
-    gc.collect()
-    free, base = gc.mem_free(), gc.mem_alloc()
-    largest = _largest_block()
-    gc.collect()
-    retained = gc.mem_alloc() - base
-    print(f"HEAP {label}: free={free} alloc={gc.mem_alloc()} largest_block={largest} retained={retained} pct={largest * 100 // max(free, 1)}")
-    return free, largest, retained
-
-
-def _dump_map(label: str) -> None:
-    # The layout itself: mem_info(1) prints the per-block map and the exact largest free run,
-    # allocating nothing - so it cannot perturb what it measures, and it cannot hit the probe's own
-    # pinning artefact either. Parsed host-side by tests_hardware/heap_map.py.
-    gc.collect()
-    print(f"=== MAP {label} ===")
-    micropython.mem_info(1)
-    print(f"=== ENDMAP {label} ===")
-
-
-def _report_checked(label: str) -> "tuple[int, int]":
-    # A probe run can pin its own buffer through a stale root; every later attempt then fails and
-    # the search converges on the pinned size - always _PROBE_MAX >> k, e.g. 49,152 (MEASUREMENTS
-    # M2.2). retained > 0 is that state, and a rerun from a fresh frame clears it.
-    free, largest, retained = _report(label)
-    attempt = 0
-    while retained >= _PROBE_MIN and attempt < _PROBE_RETRIES:
-        attempt += 1
-        free, largest, retained = _report(f"{label}_retry{attempt}")
-    if retained >= _PROBE_MIN:
-        print(f"WARNING {label}: probe still holding {retained} B after {_PROBE_RETRIES} rereads - largest_block is a floor, not a figure")
-    return free, largest
+async def _boot_lists(sysfunct: "SystemService", starter_gc: _ProbeGc, wdt: "machine.WDT", stages: "list[int]") -> "dict[str, int]":
+    # main()'s order after the setup batch: the task starts, then the timers, the supervisor never entered; the lists'
+    # readings and maps on the way, and their durations returned.
+    task_starters = device._collect_task_starters()
+    timer_starters = device._collect_timer_starters()
+    trigger_starters = device._collect_trigger_starters()
+    fact("lists", {"starters": len(task_starters), "timers": len(timer_starters), "triggers": len(trigger_starters)})
+    asy_system_service.gc = starter_gc  # type: ignore[assignment]
+    t1 = time.ticks_ms()
+    try:
+        # start_tasks() returns right after its last collect, so the reading below is the loop's own end.
+        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters), _STARTER_LOOP_TIMEOUT_MS)
+        fact("starter_loop_done", True)
+    except asyncio.TimeoutError:
+        fact("starter_loop_done", False)
+    starters_ms = time.ticks_diff(time.ticks_ms(), t1)
+    free, largest = report_checked("after_starter_loop_end")
+    fact("heap_after_starter_loop_end", {"free": free, "largest_block": largest})
+    dump_map("after_starter_loop_end")
+    t2 = time.ticks_ms()
+    try:
+        await asyncio.wait_for(sysfunct.start_timers(trigger_starters, timer_starters), _TIMERS_TIMEOUT_S)
+        fact("timers_done", True)
+    except asyncio.TimeoutError:
+        fact("timers_done", False)
+    timers_ms = time.ticks_diff(time.ticks_ms(), t2)
+    # A failed stagger arm or a starter that raised degrades and logs, so the reading states what SYSTEM recorded.
+    fact("system", (await sysfunct.get_error_counter())["SYSTEM"])
+    free, largest = report_checked("after_start_timers")
+    fact("heap_after_start_timers", {"free": free, "largest_block": largest})
+    await fed_sleep_ms(wdt, _STARTER_SETTLE_MS)
+    free, largest = report_checked("after_starter_list")
+    fact("heap_after_starter_list", {"free": free, "largest_block": largest})
+    dump_map("after_starter_list")
+    # Control first, at the unchanged threshold: without it a difference in the next reading cannot be told from a
+    # difference between two probe runs at one position.
+    free, largest = report_checked("after_starter_list_control")
+    fact("heap_after_starter_list_control", {"free": free, "largest_block": largest})
+    # @tunable gc.threshold_bytes = 32768
+    gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
+    stages.append(gc.threshold())
+    free, largest = report_checked("after_starter_list_production_threshold")
+    fact("heap_after_starter_list_production_threshold", {"free": free, "largest_block": largest})
+    return {"starter_loop_ms": starters_ms, "start_timers_ms": timers_ms}
 
 
 async def _main() -> None:
-    print(f"GC_THRESHOLD={gc.threshold()}")  # set at module level, so the build runs at the (e) stage
-    arm = _selected_arm()
-    live = arm == _ARM_LIVE
-    # The seam: the generated module's first emitted collect, which runs before the batch's first
-    # setup unit. Without a map here heap_map.delta() has no `before` for the batch (7L).
+    wdt = arm()
+    arm_name = BENCH.get("ARM", _ARM_LIVE)
+    fact("arm", arm_name)
+    if arm_name not in (_ARM_LIVE, _ARM_SUPPRESSED):
+        done()
+        return
+    live = arm_name == _ARM_LIVE
+    stages = [gc.threshold()]
+    # The seam: run_setups()'s first collect, before the list's first unit. Both lists collect through
+    # asy_system_service's own `gc`, so each probe stands in for it while its list runs.
     batch_gc = _ProbeGc("batch", live=live, dump_at=(0,))
     starter_gc = _ProbeGc("starter", live=live, dump_at=())
-    sensortask_dev.gc = batch_gc  # type: ignore[assignment]
-    system_service.gc = starter_gc  # type: ignore[assignment]
-    print(f"ARM {arm}")
-
-    _report_checked("baseline")
-    t0 = time.ticks_ms()
+    free, largest = report_checked("baseline")
+    fact("heap_baseline", {"free": free, "largest_block": largest})
+    try:  # an aborted run's leftover first (none: ENOENT)
+        for name in os.listdir(_SCRATCH_CFG_PATH):
+            os.remove(_SCRATCH_CFG_PATH + name)
+        os.rmdir(_SCRATCH_CFG_PATH)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            fact("leftover_errno", e.errno)
+    os.mkdir(_SCRATCH_CFG_PATH)
+    # A task that dies unawaited is printed at every DebugLevel: start_tasks() keeps a handler already set.
+    asyncio.get_event_loop().set_exception_handler(PrintLog(level=1, name="UNRETRIEVED").report_unretrieved)
+    feeder = None
     try:
-        await sensortask_dev.build_system(cfg_path="", web_host="127.0.0.1", web_port=8080)
-    except Exception as e:
-        print(f"RESULT: FAIL build_system() raised on real hardware: {e!r}")
-        return
-    build_ms = time.ticks_diff(time.ticks_ms(), t0)
-    _report_checked("after_build_system")
-    _dump_map("after_build_system")
-
-    sysfunct = sensortask_dev.sysfunct
-    if sysfunct is None:
-        print("RESULT: FAIL build_system() completed but left sysfunct unset")
-        return
-    task_starters = sensortask_dev._collect_task_starters()
-    timer_starters = sensortask_dev._collect_timer_starters()
-    print(f"LISTS starters={len(task_starters)} timers={len(timer_starters)} batch_collects={batch_gc.calls}")
-
-    # main()'s own order, minus ntp_force_sync(): that one needs a reachable NTP server, and a
-    # network-dependent wait in the middle would put the measurement at the mercy of the bench LAN.
-    # It allocates during the gap between the two lists either way - stated, not measured here.
-    t1 = time.ticks_ms()
-    try:
-        await asyncio.wait_for(sysfunct.start_timers(timer_starters), _TIMERS_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        print(f"RESULT: FAIL start_timers() did not complete within {_TIMERS_TIMEOUT_S}s - a timer never fired")
-        return
-    timers_ms = time.ticks_diff(time.ticks_ms(), t1)
-    _report_checked("after_start_timers")
-
-    # Count the starters as they land, so the loop's own end is observed rather than timed out at a
-    # guessed constant. start_and_check_tasks() never returns - it falls into the supervisor - and
-    # its task list is a local, so the seam is only visible from here.
-    started = []
-    inner_start_task = sysfunct._start_task
-
-    async def _counting_start_task(starter: object, n: int) -> object:
-        task = await inner_start_task(starter, n)
-        started.append(n)
-        return task
-
-    sysfunct._start_task = _counting_start_task
-
-    t2 = time.ticks_ms()
-    supervisor = asyncio.create_task(sysfunct.start_and_check_tasks(task_starters))
-    loop_deadline = time.ticks_add(t2, _STARTER_LOOP_TIMEOUT_MS)
-    while len(started) < len(task_starters) and time.ticks_diff(loop_deadline, time.ticks_ms()) > 0:
-        await asyncio.sleep_ms(20)
-    if len(started) < len(task_starters):
-        print(f"RESULT: FAIL only {len(started)} of {len(task_starters)} starters ran within {_STARTER_LOOP_TIMEOUT_MS} ms")
-        return
-    # The last starter has landed but the loop has not: one `await asyncio.sleep(1.0/len(starters))`
-    # and the collect after it are still to come, and the collect IS the thing being measured. A
-    # collect counter would be exact but reads zero on the A-only arm, so wait that tail out instead.
-    await asyncio.sleep_ms(1000 // len(task_starters) + _STARTER_LOOP_GRACE_MS)
-    starters_ms = time.ticks_diff(time.ticks_ms(), t2)
-    # The reading measure B's second site is about: taken where the last collect of the starter list
-    # just ran, before the run phase has had time to undo it (MEASUREMENTS M3.9).
-    _report_checked("after_starter_loop_end")
-    _dump_map("after_starter_loop_end")
-
-    await asyncio.sleep_ms(_STARTER_SETTLE_MS)
-    free, largest = _report_checked("after_starter_list")
-    _dump_map("after_starter_list")
-    supervisor.cancel()
-
-    # Control first, at the unchanged threshold: without it a difference in the next line cannot be
-    # told from a difference between two probe runs at the same position - which is exactly how
-    # archive 7F.2's 49,152 was misread as a layout figure (MEASUREMENTS M2.2).
-    _report_checked("after_starter_list_control")
-    gc.threshold(32768)  # what buildgen.codegen.generate_boot_entry_source() sets in the real firmware
-    print(f"GC_THRESHOLD={gc.threshold()}")
-    _report_checked("after_starter_list_production_threshold")
-
-    print(f"COUNTS batch_collects={batch_gc.calls} starter_collects={starter_gc.calls}")
-    print(f"BOOT arm={arm} build_system_ms={build_ms} start_timers_ms={timers_ms} starter_loop_ms={starters_ms} settle_ms={_STARTER_SETTLE_MS}")
-    # No floor is asserted. No reading for this position exists yet on silicon, so a threshold here
-    # would be invented rather than measured; the figure is the deliverable and the comparison is
-    # between two firmware images at the same suite position (MEASUREMENTS M3.9).
-    print(f"RESULT: PASS heap after the whole boot sequence: {free} B free, {largest} B largest single block")
+        t0 = time.ticks_ms()
+        await device.build_system(watchdog=wdt, cfg_path=_SCRATCH_CFG_PATH, web_host="127.0.0.1", web_port=8080)
+        sysfunct = device.sysfunct
+        assert sysfunct is not None, "the generated build constructs SystemService unconditionally"
+        asy_system_service.gc = batch_gc  # type: ignore[assignment]
+        await sysfunct.run_setups(device._collect_setups())
+        build_ms = time.ticks_diff(time.ticks_ms(), t0)
+        free, largest = report_checked("after_build_system")
+        fact("heap_after_build_system", {"free": free, "largest_block": largest})
+        dump_map("after_build_system")
+        # main()'s own order, minus ntp_force_sync(): a network-dependent wait would put the reading at the bench LAN's
+        # mercy. Fed by a task of its own across both bounded waits: the supervisor, which feeds in production, never runs.
+        feeder = asyncio.create_task(fed_sleep_ms(wdt, _STARTER_LOOP_TIMEOUT_MS + _TIMERS_TIMEOUT_S * 1000 + _STARTER_SETTLE_MS))
+        timings = await _boot_lists(sysfunct, starter_gc, wdt, stages)
+        fact("counts", {"batch_collects": batch_gc.calls, "starter_collects": starter_gc.calls})
+        timings["build_system_ms"] = build_ms
+        timings["settle_ms"] = _STARTER_SETTLE_MS
+        fact("boot_ms", timings)
+    finally:
+        if feeder is not None:
+            feeder.cancel()
+        asy_system_service.gc = gc
+        pixel = getattr(device, "neopixel", None)  # the build constructs the rig's NeoPixel where the TOML wires one
+        if pixel is not None:
+            pixel.off()
+        for name in os.listdir(_SCRATCH_CFG_PATH):
+            os.remove(_SCRATCH_CFG_PATH + name)
+        os.rmdir(_SCRATCH_CFG_PATH)
+        # The boot-phase mark build_system() left: cleared, so the next reset does not read as a boot failure.
+        phase = machine.mem_backup(1)
+        for i in range(len(phase)):
+            phase[i] = 0
+    fact("gc_threshold", stages)
+    done()
 
 
 asyncio.run(_main())

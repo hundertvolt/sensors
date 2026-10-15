@@ -1,0 +1,37 @@
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_schlafzi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_wozi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_grkizi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_klkizi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_arzi:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+FAIL test_every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset_dev:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 35, in run
+  File "tests/_sensortask_scenarios.py", line 2812, in test
+  File "tests/_sensortask_scenarios.py", line 2162, in _scenario_writes_refused_during_the_shutdown
+AssertionError: ('reboot', [('S1', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S1', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S2', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, {'ResetErrors': 'Valid'})), ('S3', ('/status', {'ResetErrors': True}, 'a log was cleared')), ('S4', ('/status', {'ResetErrors': True}, 'a log was cleared'))])
+0/6 passed, 6 failed, 0 skipped

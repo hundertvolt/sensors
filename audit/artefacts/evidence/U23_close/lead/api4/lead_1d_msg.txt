@@ -1,0 +1,7 @@
+U23 lead: neverUnchanged() cites the section that states its rule
+
+The comment pointed at Part H.4, whose table never names the two classes; Part H.5 states that
+`dispatch` and `alwaysExecuted` mark both never-"Unchanged" classes. Wording otherwise unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

@@ -1,0 +1,52 @@
+        # runners select only their own marker, whatever -m is passed.
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+        # runners select only their own marker, whatever -m is passed.
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+        # runners select only their own marker, whatever -m is passed.
+        # runners select only their own marker, whatever -m is passed.
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+_ test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[build] _
+tree = PosixPath('/tmp/pytest-of-root/pytest-9922/test_a_failed_rollover_prepara0/repo')
+    def test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched(tree: Path, failing: str, builds: int) -> None:
+E        +  where 0 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-9922/test_a_failed_rollover_prepara0/repo/scripts/run_bench_rollover_test.sh'], returncode=0, stdout='', stderr='').returncode
+_ test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[bench-device] _
+tree = PosixPath('/tmp/pytest-of-root/pytest-9922/test_a_failed_rollover_prepara1/repo')
+    def test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched(tree: Path, failing: str, builds: int) -> None:
+E        +  where 0 = CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-9922/test_a_failed_rollover_prepara1/repo/scripts/run_bench_rollover_test.sh'], returncode=0, stdout='', stderr='').returncode
+FAILED tests_scripts/test_hardware_runners.py::test_skipping_the_lower_levels_is_never_clean
+FAILED tests_scripts/test_hardware_runners.py::test_the_bench_runner_gives_test_paths_to_the_bench_step_only
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[floor-rollover]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[narrowed-bench]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[narrowed-flash]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[narrowed-rollover]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[narrowed-soak]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[last-of-several-bench]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[last-of-several-flash]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[last-of-several-rollover]
+FAILED tests_scripts/test_hardware_runners.py::test_a_callers_marker_expression_narrows_each_runners_floor[last-of-several-soak]
+FAILED tests_scripts/test_hardware_runners.py::test_the_soak_runner_refuses_an_unknown_duration_naming_the_valid_ones
+FAILED tests_scripts/test_hardware_runners.py::test_the_soak_runners_duration_without_a_name_is_a_usage_error
+FAILED tests_scripts/test_hardware_runners.py::test_the_rollover_runner_builds_its_image_then_runs_only_the_rollover_round_on_it
+FAILED tests_scripts/test_hardware_runners.py::test_the_rollover_image_is_built_for_the_board_pytest_is_told_to_drive[separate]
+FAILED tests_scripts/test_hardware_runners.py::test_the_rollover_image_is_built_for_the_board_pytest_is_told_to_drive[attached]
+FAILED tests_scripts/test_hardware_runners.py::test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[build]
+FAILED tests_scripts/test_hardware_runners.py::test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched[bench-device]
+FAILED tests_scripts/test_hardware_runners.py::test_the_lower_levels_refuse_anything_but_one_hardware_level_before_running[none]
+FAILED tests_scripts/test_hardware_runners.py::test_the_lower_levels_refuse_anything_but_one_hardware_level_before_running[unknown]
+FAILED tests_scripts/test_hardware_runners.py::test_the_lower_levels_refuse_anything_but_one_hardware_level_before_running[two]
+FAILED tests_scripts/test_hardware_runners.py::test_every_uv_run_line_in_the_script_carries_no_sync[run_bench_rollover_test.sh]
+FAILED tests_scripts/test_hardware_runners.py::test_every_uv_run_line_in_the_script_carries_no_sync[run_bench_soak_tests.sh]
+FAILED tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[run_bench_rollover_test.sh]
+FAILED tests_scripts/test_hardware_runners.py::test_help_prints_usage_and_runs_nothing[_run_lower_levels.sh]
+25 failed, 28 passed in 14.07s

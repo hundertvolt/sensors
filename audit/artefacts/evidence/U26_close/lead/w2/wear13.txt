@@ -1,0 +1,35 @@
+NOTE (standard_state): twin run: the twin's board starts fresh, nothing to check
+NOTE (scd30_measuring): already measuring (no write)
+.....s.FFFF..                                                            [100%]
+=================================== FAILURES ===================================
+E   harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+    FACT command="resetconfig"
+    FACT hung_store="CFGMGR_WIFI"
+    FACT answer="Valid"
+    HANG 1442
+    FACT no_reset_after_ms=16000
+    DONE
+    digital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26w2run/tests_hardware/twin_board.py:80: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+E   harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+    FACT command="reboot"
+    FACT hung_store="CFGMGR_WIFI"
+    FACT answer="Valid"
+    HANG 1401
+    FACT no_reset_after_ms=16000
+    DONE
+    digital_twin/run_device_script.py: the watchdog would have reset the board 2 time(s)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26w2run/tests_hardware/twin_board.py:80: harness.HardwareTestFailureError: twin run of system_command_hang.py at gc.threshold(-1) starved the watchdog:
+E   AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 132, 'uartrsr_oe': False, 'streamed': False}
+    assert (False is True)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26w2run/tests_hardware/flash/test_uart_crossover.py:265: AssertionError: a frame was lost across a real flash write: {'frames_sent': 87, 'frames_intact': 0, 'flush_us': 132, 'uartrsr_oe': False, 'streamed': False}
+E   AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 127, 'uartrsr_oe': False, 'streamed': False}
+    assert (False is True)
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26w2run/tests_hardware/flash/test_uart_crossover.py:265: AssertionError: a frame was lost across a real flash write: {'frames_sent': 84, 'frames_intact': 0, 'flush_us': 127, 'uartrsr_oe': False, 'streamed': False}
+=========================== short test summary info ============================
+FAILED tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[resetconfig]
+FAILED tests_hardware/flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset[reboot]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[none]
+FAILED tests_hardware/flash/test_uart_crossover.py::test_a_real_config_write_during_traffic_loses_no_frame[crc16]
+SKIPPED [1] tests_hardware/flash/test_sensor_accuracy.py:207: needs the NeoPixel-aimed-at-the-ISL29125 rig - pass --allow-neopixel-sweep once it is set up (tests_hardware/README.md's rig section)
+4 failed, 8 passed, 1 skipped, 90 deselected in 86.21s (0:01:26)

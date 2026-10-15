@@ -613,7 +613,7 @@ class Response:
         """
         if ';' in value:
             raise ValueError('invalid cookie value')
-        http_cookie = '{cookie}={value}'.format(cookie=cookie, value=value)
+        http_cookie = f'{cookie}={value}'
         if path:
             http_cookie += '; Path=' + path
         if domain:
@@ -819,7 +819,7 @@ class Response:
         if max_age is None:
             max_age = cls.default_send_file_max_age
         if max_age is not None:
-            headers['Cache-Control'] = 'max-age={}'.format(max_age)
+            headers['Cache-Control'] = f'max-age={max_age}'
 
         if compressed:
             headers['Content-Encoding'] = compressed \
@@ -862,7 +862,7 @@ class URLPattern():
                        value of the segment. If omitted, the value is returned
                        as a string.
         """
-        cls.segment_patterns[type_name] = '/({})'.format(pattern)
+        cls.segment_patterns[type_name] = f'/({pattern})'
         cls.segment_parsers[type_name] = parser
 
     def __init__(self, url_pattern):
@@ -889,7 +889,7 @@ class URLPattern():
                     name = segment
                 parser = None
                 if type_.startswith('re:'):
-                    pattern += '/({pattern})'.format(pattern=type_[3:])
+                    pattern += f'/({type_[3:]})'
                 else:
                     if type_ not in self.segment_patterns:
                         raise ValueError('invalid URL segment type')
@@ -927,7 +927,7 @@ class URLPattern():
         return args
 
     def __repr__(self):  # pragma: no cover
-        return 'URLPattern: {}'.format(self.url_pattern)
+        return f'URLPattern: {self.url_pattern}'
 
 
 class HTTPException(Exception):
@@ -936,7 +936,7 @@ class HTTPException(Exception):
         self.reason = reason or str(status_code) + ' error'
 
     def __repr__(self):  # pragma: no cover
-        return 'HTTPException: {}'.format(self.status_code)
+        return f'HTTPException: {self.status_code}'
 
 
 class Microdot:
@@ -1090,6 +1090,24 @@ class Microdot:
                 # ...
         """
         return self.route(url_pattern, methods=['DELETE'])
+
+    def query(self, url_pattern):
+        """Decorator that is used to register a function as a ``QUERY``
+        request handler for a given URL.
+
+        :param url_pattern: The URL pattern that will be compared against
+                            incoming requests.
+
+        This decorator can be used as an alias to the ``route`` decorator with
+        ``methods=['QUERY']``.
+
+        Example::
+
+            @app.query('/users/<int:id>')
+            def query_user(request, id):
+                # ...
+        """
+        return self.route(url_pattern, methods=['QUERY'])
 
     def before_request(self, f):
         """Decorator to register a function to run before each request is
@@ -1560,6 +1578,14 @@ class Microdot:
                 res = await invoke_handler(
                     handler, req, res) or res
         res.is_head = (req and req.method == 'HEAD')
+        if req and hasattr(req.g, '_vary'):
+            if res.headers.get('Vary'):
+                vary = set(
+                    [h.strip() for h in res.headers['Vary'].split(',')])
+                vary.update(req.g._vary)
+            else:
+                vary = req.g._vary
+            res.headers['Vary'] = ', '.join(list(vary))
         return res
 
 

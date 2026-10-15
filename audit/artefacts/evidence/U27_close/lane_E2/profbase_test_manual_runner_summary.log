@@ -1,0 +1,12 @@
+.......                                                                  [100%]
+============================== slowest durations ===============================
+0.61s call     tests_scripts/test_manual_runner_summary.py::test_one_pass_and_one_fail_print_the_block_and_exit_1
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_ctrl_c_fails_the_current_step_lists_the_rest_as_not_run_and_exits_130
+0.15s call     tests_scripts/test_manual_runner_summary.py::test_an_observation_is_a_verdict_only_with_text
+0.13s call     tests_scripts/test_manual_runner_summary.py::test_a_step_returning_with_no_judgment_fails
+0.12s call     tests_scripts/test_manual_runner_summary.py::test_an_unexpected_exception_fails_its_step_and_the_run_continues
+0.12s call     tests_scripts/test_manual_runner_summary.py::test_every_step_passing_exits_0_with_a_pass_block
+0.12s call     tests_scripts/test_manual_runner_summary.py::test_an_unknown_only_name_prints_the_block_and_exits_2
+
+(14 durations < 0.005s hidden.  Use -vv to show these durations.)
+7 passed in 1.45s

@@ -1,0 +1,92 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24j
+
+ ❯ |chromium| tests_js/mock-data-compose.test.js (29 tests | 1 failed) 212ms
+   ✓ arzi's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 4ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 1ms
+   ✓ dev's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 0ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ grkizi's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 0ms
+     ✓ composes no key the definitions do not name 1ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ klkizi's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 0ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ schlafzi's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 0ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ✓ wozi's composed mock data (4)
+     ✓ gives every field of every group a value of its kind 0ms
+     ✓ composes no key the definitions do not name 0ms
+     ✓ has an entry for every errcount row 0ms
+     ✓ holds only codes the definitions' code tables describe 0ms
+   ❯ composeMockData (5)
+     ✓ throws for a group no sample matches 2ms
+     × throws for an errcount module no sample matches, never composing a healthy zero for it 192ms
+     ✓ composes a maintenance field by its path: an instance's entry under its own name, from its driver's sample 1ms
+     ✓ reports a maintenance value composed under a path no field reads 2ms
+     ✓ reports a value of the wrong kind and a stray key, so the checks above cannot pass vacuously 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/mock-data-compose.test.js > composeMockData > throws for an errcount module no sample matches, never composing a healthy zero for it
+AssertionError: expected [Function] to throw an error
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/mock-data-compose.test.js/composeMockData---throws-for-an-errcount-module-no-sample-matches--never-composing-a-healthy-zero-for-it.png
+
+[32m- Expected:[39m
+null
+
+[31m+ Received:[39m
+undefined
+
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=a8b794cd:3744:114
+ ❯ Proxy.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/index.C4tKZ0yW-Bgp1i2x2.js?v=a8b794cd:3409:14
+ ❯ tests_js/mock-data-compose.test.js:222:55
+    220|         const errcount = { key: "errcount", label: "Errors", kind: /**…
+    221|         const ghost = { ...defs, sections: [{ key: "status", label: "S…
+    222|         expect(() => composeMockData(ghost, SAMPLES)).toThrow('mock sa…
+       |                                                       ^
+    223|     });
+    224|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=a8b794cd:5684:20
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 28 passed (29)
+   Start at  15:42:35
+   Duration  1.65s (tests 41%, worker 35%, import 22%, setup 2%)
+
+== Summary: npm test ==
+Commit: e75d363 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 28 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/mock-data-compose.test.js > composeMockData > throws for an errcount module no sample matches, never composing a healthy zero for it: expected [Function] to throw an error
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

@@ -1,0 +1,14 @@
+rebuild rc=0 7s
+ruff rc=0 0s
+npm_lint rc=0 2s
+npm_typecheck rc=0 2s
+vt_shell rc=0 5s
+vt_main rc=0 3s
+vt_app rc=0 4s
+vt_render rc=0 8s
+vt_poll-manager rc=0 3s
+vt_mock-server rc=0 4s
+vt_mock-server-put-matrix rc=0 4s
+test_comment_block_cap rc=0 5s
+test_decision_vocabulary rc=1 9s
+done

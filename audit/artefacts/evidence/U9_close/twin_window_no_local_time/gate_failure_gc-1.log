@@ -1,0 +1,13 @@
+[test_digital_twin_sensortask_integration] FAIL test_the_notification_window_spanning_midnight_flashes_red:
+[test_digital_twin_sensortask_integration] Traceback (most recent call last):
+[test_digital_twin_sensortask_integration]   File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 27, in run
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 511, in test_the_notification_window_spanning_midnight_flashes_red
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 78, in run_timed
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "asyncio/funcs.py", line 1, in wait_for
+[test_digital_twin_sensortask_integration]   File "asyncio/funcs.py", line 1, in _run
+[test_digital_twin_sensortask_integration]   File "asyncio/core.py", line 1, in run_until_complete
+[test_digital_twin_sensortask_integration]   File "tests/test_digital_twin_sensortask_integration.py", line 470, in scenario
+[test_digital_twin_sensortask_integration] AssertionError: 

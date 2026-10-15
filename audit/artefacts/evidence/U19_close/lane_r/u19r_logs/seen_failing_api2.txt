@@ -1,0 +1,196 @@
+.........................................F.....FFFFFFFF                  [100%]
+=================================== FAILURES ===================================
+____ test_an_unreadable_result_word_or_code_fails_the_build[unhashable-key] ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-6346/test_an_unreadable_result_word3')
+filename = 'asy_api_response.py', old = '_STANDARD_CODES: dict[int, str] = {'
+new = '_STANDARD_CODES: dict[int, str] = {[1]: "x", '
+name = '_STANDARD_CODES is no longer a plain literal'
+
+    @pytest.mark.parametrize(
+        ("filename", "old", "new", "name"),
+        [
+            ("asy_config_manager.py", 'FAILED: "Final" = "Failed"', 'FAILED: "Final" = 4', "FAILED"),
+            ("asy_config_manager.py", 'VALID: "Final" = "Valid"', 'VALIDATED: "Final" = "Valid"', "VALID"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", "_STANDARD_CODES: dict[int, str] = {999: 999, ", "_STANDARD_CODES"),
+            ("asy_api_response.py", "_STANDARD_CODES: dict[int, str] = {", '_STANDARD_CODES: dict[int, str] = {[1]: "x", ', "_STANDARD_CODES is no longer a plain literal"),
+        ],
+        ids=["word-not-a-string", "word-missing", "code-text-not-a-string", "unhashable-key"],
+    )
+    def test_an_unreadable_result_word_or_code_fails_the_build(tmp_path: Path, filename: str, old: str, new: str, name: str) -> None:
+        src_dir = _src_with(tmp_path, filename, old, new)
+        with pytest.raises(BuildError, match=name):
+>           generate_api_reference(_model(DEVICE_NAMES[0], src_dir), src_dir)
+
+tests_scripts/test_api_reference.py:227: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+buildgen/api_reference.py:152: in generate_api_reference
+    "envelopeCodes": _read_standard_codes(src_dir, model.device),
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+buildgen/api_reference.py:103: in _read_standard_codes
+    codes = _module_literal(src_dir, _API_RESPONSE, "_STANDARD_CODES", device)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+buildgen/api_reference.py:70: in _module_literal
+    literal: object = ast.literal_eval(value)
+                      ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/lib/python3.11/ast.py:110: in literal_eval
+    return _convert(node_or_string)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+node = <ast.Dict object at 0x7f1b2a4d7910>
+
+    def _convert(node):
+        if isinstance(node, Constant):
+            return node.value
+        elif isinstance(node, Tuple):
+            return tuple(map(_convert, node.elts))
+        elif isinstance(node, List):
+            return list(map(_convert, node.elts))
+        elif isinstance(node, Set):
+            return set(map(_convert, node.elts))
+        elif (isinstance(node, Call) and isinstance(node.func, Name) and
+              node.func.id == 'set' and node.args == node.keywords == []):
+            return set()
+        elif isinstance(node, Dict):
+            if len(node.keys) != len(node.values):
+                _raise_malformed_node(node)
+>           return dict(zip(map(_convert, node.keys),
+E           TypeError: unhashable type: 'list'
+
+/usr/lib/python3.11/ast.py:99: TypeError
+___ test_a_field_key_the_reference_does_not_classify_fails_the_build[field] ____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f1b2a4a5bd0>
+nested = False
+
+    @pytest.mark.parametrize("nested", [False, True], ids=["field", "sub-field"])
+    def test_a_field_key_the_reference_does_not_classify_fails_the_build(monkeypatch: pytest.MonkeyPatch, nested: bool) -> None:
+        # Every definitions key is an API fact or the page's own: a new one is classified, never dropped unseen.
+        field = {**_GOOD_FIELD, "pattern": "^x$"}
+        if nested:
+            field = {"key": "C", "kind": "composite", "subFields": [field]}
+        definitions = {"sections": [{"key": "sensors", "rest": {"put": "/sensors"}, "groups": [{"key": "G", "fields": [field]}]}]}
+        monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
+>       with pytest.raises(BuildError, match=r"'pattern'.*neither an API fact nor the page's own"):
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_api_reference.py:256: Failed
+_ test_a_field_key_the_reference_does_not_classify_fails_the_build[sub-field] __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f1b2a310410>
+nested = True
+
+    @pytest.mark.parametrize("nested", [False, True], ids=["field", "sub-field"])
+    def test_a_field_key_the_reference_does_not_classify_fails_the_build(monkeypatch: pytest.MonkeyPatch, nested: bool) -> None:
+        # Every definitions key is an API fact or the page's own: a new one is classified, never dropped unseen.
+        field = {**_GOOD_FIELD, "pattern": "^x$"}
+        if nested:
+            field = {"key": "C", "kind": "composite", "subFields": [field]}
+        definitions = {"sections": [{"key": "sensors", "rest": {"put": "/sensors"}, "groups": [{"key": "G", "fields": [field]}]}]}
+        monkeypatch.setattr(api_reference, "generate_definitions", lambda _model, _src_dir: definitions)
+>       with pytest.raises(BuildError, match=r"'pattern'.*neither an API fact nor the page's own"):
+E       Failed: DID NOT RAISE BuildError
+
+tests_scripts/test_api_reference.py:256: Failed
+__________ test_a_string_shape_the_server_checks_is_an_api_fact[arzi] __________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+__________ test_a_string_shape_the_server_checks_is_an_api_fact[dev] ___________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+_________ test_a_string_shape_the_server_checks_is_an_api_fact[grkizi] _________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+_________ test_a_string_shape_the_server_checks_is_an_api_fact[klkizi] _________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+________ test_a_string_shape_the_server_checks_is_an_api_fact[schlafzi] ________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+__________ test_a_string_shape_the_server_checks_is_an_api_fact[wozi] __________
+
+references = {'arzi': {'device': 'arzi', 'envelopeCodes': {'0': 'Command executed', '1': 'Invalid JSON request', '2': 'Command spec...ields': [...], 'key': 'settings'}, {'fields': [...], 'key': 'build'}], 'method': 'GET', 'path': '/system'}, ...]}, ...}
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_a_string_shape_the_server_checks_is_an_api_fact(references: "dict[str, dict[str, object]]", device: str) -> None:
+        # asy_wifi_service.py refuses a Hostname that is not a host label, so its shape is part of the value domain.
+        identity = next(group for group in _groups(_route(references[device], "PUT", "/networking")) if group["key"] == "identity")
+        fields = identity["fields"]
+        assert isinstance(fields, list)
+>       assert {field["key"]: field.get("shape") for field in fields}["Hostname"] == "hostLabel"
+E       AssertionError: assert None == 'hostLabel'
+
+tests_scripts/test_api_reference.py:266: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_api_reference.py::test_an_unreadable_result_word_or_code_fails_the_build[unhashable-key]
+FAILED tests_scripts/test_api_reference.py::test_a_field_key_the_reference_does_not_classify_fails_the_build[field]
+FAILED tests_scripts/test_api_reference.py::test_a_field_key_the_reference_does_not_classify_fails_the_build[sub-field]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[arzi]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[dev]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[grkizi]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[klkizi]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[schlafzi]
+FAILED tests_scripts/test_api_reference.py::test_a_string_shape_the_server_checks_is_an_api_fact[wozi]
+9 failed, 46 passed in 15.18s

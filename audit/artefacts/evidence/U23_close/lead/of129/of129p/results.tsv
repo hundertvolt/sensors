@@ -1,0 +1,6 @@
+wt-u23w	before	test_asy_wifi_service	e	rc=1	19.8s	mem=0	264/265 passed, 1 failed, 0 skipped
+wt-u23w	after	test_asy_wifi_service	e	rc=0	19.6s	mem=0	265/265 passed, 0 failed, 0 skipped
+wt-u23w	after	test_asy_wifi_service	f	rc=0	21.5s	mem=0	265/265 passed, 0 failed, 0 skipped
+wt-u23w	after	test_asy_wifi_service	cov	rc=0	20.7s	mem=0	265/265 passed, 0 failed, 0 skipped
+wt-u23w	after	test_digital_twin_wifi_modes	e	rc=0	101.2s	mem=0	1/1 passed, 0 failed, 0 skipped
+wt-u23w	after	test_digital_twin_wifi_modes	f	rc=0	101.6s	mem=0	1/1 passed, 0 failed, 0 skipped

@@ -1,10 +1,9 @@
-"""Isolated-driver device script: live-detects this board's actual I2C topology and runs an
-address/command sweep, a reserved-address-range sweep, and (for a lone known device on a bus) a
-self-hazard broadcast-vs-read check."""
+"""Isolated-driver device script: scans every I2C bus the bench TOML declares, sweeps the known and the reserved
+addresses, runs the self-hazard broadcast-vs-read check for a lone known device, then the controller rung (recover())
+among every discovered device's reads and the SGP40 heater-off before a sibling read. Reports facts only."""
 
 import asyncio
-
-import machine
+import errno
 
 import asy_i2c_driver
 from asy_bmp3xx_driver import BMP3XX_I2C
@@ -12,171 +11,177 @@ from asy_isl29125_driver import ISL29125_I2C
 from asy_scd30_driver import SCD30_I2C
 from asy_sgp40_driver import SGP40_I2C
 
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/bus_reader_loops.py
+
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
-# The on-target copy of the address table: this is MicroPython running on the board, so it cannot
-# import the host-side device model. Adding a driver means adding it here too (Part K.7).
-KNOWN_ADDRESSES = {0x61: "SCD30", 0x59: "SGP40", 0x77: "BMP3xx", 0x44: "ISL29125"}
-GENERAL_CALL_ADDRESS = 0x00
-RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))
-_OTHER_RESERVED = [a for lo, hi in RESERVED_RANGES for a in range(lo, hi + 1) if a != GENERAL_CALL_ADDRESS]
+    import machine
+    from _shared.bus_reader_loops import Drivers, Seen, device_reader
+    from _shared.facts import _ERRORS_KEPT, done, errors, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
 
-# This bench's own real pin assignments (sensortask_dev.py's own construction comments) - scanned,
-# never assumed populated.
-_BUSES = ((0, 13, 12, 50000, None), (1, 15, 14, 50000, 200000))
+    Reader = Callable[[], Awaitable[str | None]]
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+_GENERAL_CALL_ADDRESS = 0x00  # I2C-bus specification 3.1.13: the general call
+_RESERVED_RANGES = ((0x00, 0x07), (0x78, 0x7F))  # I2C-bus specification Table 4: reserved addresses
+_OTHER_RESERVED = [a for lo, hi in _RESERVED_RANGES for a in range(lo, hi + 1) if a != _GENERAL_CALL_ADDRESS]
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcast_step_s = 0.2
+_BROADCAST_STEP_S = 0.2
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_run_bound_s = 30.0
+_RUN_BOUND_S = 30.0
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_self_reads = 8
+_SELF_READS = 8
+# @tunable l3.bus_topology_autodetect_and_hazard_sweep_broadcasts = 3
+_BROADCASTS = 3
 
 
-async def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | None":
-    # Mirrors I2CDevice._probe_for_device()'s own zero-length-write probe convention. Returns None
-    # on a clean NAK/timeout (the expected, healthy outcome for an absent/reserved address other
-    # than the general call), or a description of anything else that happened.
+class _Sweep(Seen):
+    # What the sweep saw beside the device reads' own findings: unexpected exceptions (bounded) and the EIOs among
+    # the drivers' transfers.
+    def __init__(self) -> None:
+        super().__init__()
+        self.total = 0
+        self.first: list[str] = []
+        self.write_eio = 0
+
+    def caught(self, where: str, e: Exception) -> str:
+        if isinstance(e, OSError) and e.errno == errno.EIO:
+            self.write_eio += 1
+        return f"{where}: {type(e).__name__}: {e}"
+
+    def fail(self, message: str) -> None:
+        self.total += 1
+        if len(self.first) < _ERRORS_KEPT:
+            self.first.append(message)
+
+
+def _probe(i2c: "asy_i2c_driver.I2C", address: int) -> "str | bool":
+    # The zero-length write I2CDevice._probe_for_device() uses: True on an ACK, False on a clean NAK or timeout (an
+    # absent device), else what happened.
     try:
         i2c.writeto(address, b"")
     except OSError:
-        return None  # clean NAK/timeout - exactly what an absent device should produce
-    except Exception as e:
+        return False
+    except Exception as e:  # anything but the bus's own error is a finding
         return f"{type(e).__name__}: {e}"
-    else:
-        return None  # ACKed - either a real device answered, or (0x00 only) the general call always "succeeds"
+    return True
 
 
-async def _read_scd30_once(scd: "SCD30_I2C") -> "str | None":
-    # No setup()/continuous-measurement dependency - read_measurement() degrades cleanly (cached
-    # fields stay None, no exception) if continuous measurement was never triggered on this
-    # particular device, which the lone-device self-hazard branch below never assumes either way.
+async def _read_checked(name: str, read: "Reader", sweep: _Sweep) -> bool:
     try:
-        await scd.read_measurement()
-    except Exception as e:
-        return f"{type(e).__name__}: {e}"
-    else:
-        return None
+        problem = await read()
+    except Exception as e:  # recorded; the host gives the verdict
+        sweep.fail(sweep.caught(name, e))
+        return False
+    if problem is not None:
+        sweep.fail(f"{name}: {problem}")
+    return problem is None
 
 
-async def _read_bmp3xx_once(bmp: "BMP3XX_I2C") -> "str | None":
-    try:
-        pressure, temperature = await bmp.get_pressure_and_temperature()
-        if not (300.0 <= pressure <= 1250.0 and -40.0 <= temperature <= 85.0):
-            return f"reading outside plausible bounds: Pres={pressure} Temp={temperature}"
-    except Exception as e:
-        return f"{type(e).__name__}: {e}"
-    else:
-        return None
+async def _recover_among_reads(i2c: "asy_i2c_driver.I2C", readers: "dict[str, Reader]", sweep: _Sweep) -> "tuple[int, int]":
+    # The controller rung on a healthy bus, issued while every discovered device reads: (its status, sibling failures).
+    before = sweep.total
+    status = [0]
+
+    async def rung() -> None:
+        await asyncio.sleep(0)
+        status[0] = await i2c.recover()
+
+    await asyncio.wait_for(asyncio.gather(rung(), *(_read_checked(f"{label} beside recover()", read, sweep) for label, read in readers.items())), _RUN_BOUND_S)
+    return status[0], sweep.total - before
 
 
-async def _read_sgp40_once(sgp: "SGP40_I2C") -> "str | None":
-    try:
-        raw = await sgp.measure_raw(temperature=25, relative_humidity=50)
-        if raw is None:
-            return "measure_raw() returned None"
-    except Exception as e:
-        return f"{type(e).__name__}: {e}"
-    else:
-        return None
-
-
-async def _read_isl29125_once(isl: "ISL29125_I2C") -> "str | None":
-    try:
-        green, red, blue = await isl.read_counts()
-        if not all(0 <= channel <= 0xFFFF for channel in (green, red, blue)):
-            return f"counts=({green}, {red}, {blue}) outside the 16-bit range - a torn burst"
-    except Exception as e:
-        return f"{type(e).__name__}: {e}"
-    else:
-        return None
-
-
-async def _self_hazard_check(i2c: "asy_i2c_driver.I2C", port_id: int, address: int) -> "list[str]":
-    """A lone known device on a bus, read repeatedly while general-call broadcasts race those
-    reads. A module-level function rather than an inline block so no closure here captures the
-    caller's bus-loop variables (ruff B023) - everything it needs is a parameter."""
-    name = KNOWN_ADDRESSES[address]
-    # Constructed and set up once, outside the read loop: a fresh object per call never runs
-    # setup(), and then crashes on its own cached calibration state (BMP3xx's _temp_calib/
-    # _pressure_calib are populated there and nowhere else).
-    read_once = None
-    try:
-        if address == 0x61:
-            scd = SCD30_I2C(i2c, address=address)
-            read_once = lambda: _read_scd30_once(scd)  # noqa: E731
-        elif address == 0x77:
-            bmp = BMP3XX_I2C(i2c, address=address)
-            await bmp.setup()
-            read_once = lambda: _read_bmp3xx_once(bmp)  # noqa: E731
-        elif address == 0x59:
-            sgp = SGP40_I2C(i2c, address=address)
-            await sgp.setup()
-            read_once = lambda: _read_sgp40_once(sgp)  # noqa: E731
-        elif address == 0x44:
-            isl = ISL29125_I2C(i2c, address=address)
-            await isl.setup()
-            read_once = lambda: _read_isl29125_once(isl)  # noqa: E731
-    except Exception as e:
-        return [f"bus {port_id}: {name} setup() before self-hazard check failed: {type(e).__name__}: {e}"]
-
-    if read_once is None:
-        return []
-    self_errors: list[str] = []
+async def _self_hazard(i2c: "asy_i2c_driver.I2C", label: str, read: "Reader", sweep: _Sweep) -> int:
+    # A lone known device read repeatedly while general-call broadcasts race the reads; returns the clean reads.
+    clean = [0]
 
     async def reads() -> None:
-        for i in range(8):
-            err = await read_once()
-            if err is not None:
-                self_errors.append(f"bus {port_id} {name} self-hazard read {i}: {err}")
+        for i in range(_SELF_READS):
+            clean[0] += 1 if await _read_checked(f"{label} self-hazard read {i}", read, sweep) else 0
             await asyncio.sleep(0)
 
     async def broadcasts() -> None:
-        for _ in range(3):
+        for _ in range(_BROADCASTS):
             try:
-                i2c.writeto(GENERAL_CALL_ADDRESS, b"\x06")
-            except OSError:
+                i2c.writeto(_GENERAL_CALL_ADDRESS, b"\x06")
+            except OSError:  # a NAKed broadcast is a bus outcome, not this check's subject
                 pass
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(_BROADCAST_STEP_S)
 
-    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), 30.0)
-    return self_errors
+    await asyncio.wait_for(asyncio.gather(reads(), broadcasts()), _RUN_BOUND_S)
+    return clean[0]
+
+
+async def _sweep_bus(bus_id: str, sweep: _Sweep, wdt: "machine.WDT", found: "dict[str, dict[str, object]]") -> None:
+    # One bus: scan, the known and reserved address sweep, the self-hazard check, the recover() rung, the heater-off.
+    bus = BENCH["bus"][bus_id]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    known = {address: label for label, address in BENCH["addresses"].items()}
+    scan = i2c.scan() or []
+    reserved_hits = []
+    for address in sorted(known) + _OTHER_RESERVED:
+        outcome = _probe(i2c, address)
+        if isinstance(outcome, str):
+            sweep.fail(f"{bus_id}: probing {address:#04x} misbehaved: {outcome}")
+        elif outcome and address in _OTHER_RESERVED:
+            reserved_hits.append(address)
+    found["addresses"][bus_id] = scan
+    found["unknown_addresses"][bus_id] = [a for a in scan if a not in known]
+    found["reserved_hits"][bus_id] = reserved_hits
+    wdt.feed()
+    readers: dict[str, Reader] = {}
+    drivers = Drivers(SCD30_I2C, BMP3XX_I2C, SGP40_I2C, ISL29125_I2C)
+    for address in [a for a in scan if a in known]:
+        try:
+            read = await device_reader(BENCH, known[address], i2c, sweep, drivers)
+        except Exception as e:  # a setup() that fails is the sweep's finding, not the script's end
+            sweep.fail(sweep.caught(f"{known[address]} setup()", e))
+            read = None
+        if read is not None:
+            readers[known[address]] = read
+        await asyncio.sleep(0)
+    if len(readers) == 1:
+        label, read = next(iter(readers.items()))
+        found["self_hazard"][bus_id] = {"device": label, "clean_reads": await _self_hazard(i2c, label, read, sweep), "planned": _SELF_READS}
+    wdt.feed()
+    if readers:
+        status, sibling_errors = await _recover_among_reads(i2c, readers, sweep)
+        found["recover_status"][bus_id] = status
+        found["recover_sibling_errors"][bus_id] = sibling_errors
+    sgp_label = next((label for label in readers if BENCH["instances"][label]["driver"] == "sgp40"), None)
+    siblings = [label for label in readers if label != sgp_label]
+    if sgp_label is not None and siblings:
+        # The SGP40 heater-off (datasheet Table 14), then one read of a sibling on the same bus.
+        await SGP40_I2C(i2c).turn_heater_off()
+        found["heater_off_ok"][bus_id] = await _read_checked(f"{siblings[0]} after the SGP40 heater-off", readers[siblings[0]], sweep)
+    wdt.feed()
 
 
 async def _main() -> None:
-    wdt = machine.WDT(timeout=8000)
-    findings: list[str] = []
-    all_discovered: dict[int, dict[int, str]] = {}
-
-    for port_id, scl, sda, freq, timeout in _BUSES:
-        i2c = asy_i2c_driver.I2C(port_id, scl, sda, frequency=freq, timeout=timeout)
-        scan = i2c.scan() or []
-        discovered = {addr: KNOWN_ADDRESSES.get(addr, f"unknown@{hex(addr)}") for addr in scan}
-        all_discovered[port_id] = discovered
-        wdt.feed()
-
-        # 1. Address sweep: every known address, present or not.
-        for addr, known_name in KNOWN_ADDRESSES.items():
-            err = await _probe(i2c, addr)
-            if err is not None:
-                findings.append(f"bus {port_id}: probing known address {hex(addr)} ({known_name}) misbehaved: {err}")
-        wdt.feed()
-
-        # 2. Reserved-range sweep (excluding the general call, covered elsewhere in depth).
-        for addr in _OTHER_RESERVED:
-            err = await _probe(i2c, addr)
-            if err is not None:
-                findings.append(f"bus {port_id}: probing reserved address {hex(addr)} misbehaved: {err}")
-        wdt.feed()
-
-        # 3. Self-hazard for a lone known device.
-        known_here = [addr for addr in scan if addr in KNOWN_ADDRESSES]
-        if len(known_here) == 1:
-            findings.extend(await _self_hazard_check(i2c, port_id, known_here[0]))
-        wdt.feed()
-
-    summary = ", ".join(f"bus {b}: {sorted(d.values())}" for b, d in all_discovered.items())
-    if findings:
-        print(f"RESULT: FAIL {len(findings)} issue(s) (discovered: {summary}): {'; '.join(findings[:10])}")
-    else:
-        print(f"RESULT: PASS discovered: {summary} - address/reserved-range sweep and self-hazard checks clean")
+    wdt = arm()
+    sweep = _Sweep()
+    keys = ("addresses", "unknown_addresses", "reserved_hits", "self_hazard", "recover_status", "recover_sibling_errors", "heater_off_ok")
+    found: dict[str, dict[str, object]] = {key: {} for key in keys}
+    for bus_id in sorted(b for b in BENCH["bus"] if b.startswith("i2c")):
+        await _sweep_bus(bus_id, sweep, wdt, found)
+    for key in keys:
+        fact(key, found[key])
+    fact("write_eio", sweep.write_eio)
+    fact("por_after_setup", sweep.por_after_setup)
+    fact("isl_divergences", sweep.isl_divergences)
+    errors("errors", sweep.total, sweep.first)
+    done()
 
 
 asyncio.run(_main())

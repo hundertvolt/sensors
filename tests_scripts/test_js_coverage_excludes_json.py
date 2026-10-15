@@ -10,11 +10,11 @@ _PRUNED = {".git", ".venv", "__pycache__", "build", "node_modules", "typings"}
 # The JSON the real website and its mock server fetch at runtime, which is what V8 reported and
 # the provider then failed to parse - named here so a rename makes this guard fail loudly rather
 # than quietly cover nothing.
-_RUNTIME_JSON_DIRS = ("html/definitions", "mockdata")
+_RUNTIME_JSON_DIRS = ("mockdata",)
 
 
 def _coverage_exclude_globs(repo_root: Path) -> list[str]:
-    text = (repo_root / "vitest.config.js").read_text()
+    text = (repo_root / "vitest.config.js").read_text(encoding="utf-8")
     block = text.find("coverage: {")
     assert block != -1, "vitest.config.js no longer configures test.coverage at all"
     match = re.search(r"exclude:\s*\[([^\]]*)\]", text[block:])

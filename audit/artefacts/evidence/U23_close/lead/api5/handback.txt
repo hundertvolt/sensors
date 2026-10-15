@@ -1,0 +1,47 @@
+
+######## SubagentHandback 2026-10-13T13:52:32.931Z
+**API5 = `1af97e9`** on `audit/u23-api5` in wt-u23api. Nothing pushed. Every red is EXPECTED (lane X's tunables rows); no UNEXPECTED red.
+
+**Merges:** all three were clean `--no-ff` merges. The heads matched (39420cc, cae669d, 1ac6e1f) and each contains 202a118. The merge commits are lead2 → 84ffbde, of111 → f784543, of129 → 982fac0.
+
+**Deviation:** I worked on a temporary branch, `audit/u23-api5-wip`, and renamed it to `audit/u23-api5` only after step 1d. Lane Y had a poll (pid 25447) that would stop the moment that branch name appeared. Creating it at step 1 would have handed Y the unmerged API4 tree. Y's RUNS.md line now reads "done (branch appeared)", so it saw 1af97e9.
+
+**Steps 1b–1d:**
+- **1b:** `test_decision_vocabulary` passed 6/6 on 982fac0. No row was stale, so there is no commit.
+- **1c (aa00d5b):** `js/definitions.js:69` now cites H.4 → H.5. `test_citations` 15 passed, `definitions.test.js` 45/45.
+- **1e (bbc420f):** both comments replaced with the exact text. `npm run lint` rc 0, `npm run typecheck` rc 0, `test_citations` 15 passed.
+- **1d, ceilings old → new:**
+  - `complexity` 41 → 22. Before the change, lint-ceilings went red on "complexity sits at its measured maximum" (`expected 0 to be greater than 0`). I measured the maximum with the ESLint API over the test's six lint targets; the highest is 22, `formatFieldValue` at `js/field-format.js:67`.
+  - `max-depth` 4, `max-nested-callbacks` 4 and `max-classes-per-file` 1 already sat at their maxima and are unchanged.
+  - I added no comment: the existing 2-line block already says "at the measured maximum".
+  - After the change, lint-ceilings is 4/4 and `npm run lint` rc 0.
+
+**Rebuild:** rc 0 ("rebuilt 1af97e9 arzi dev grkizi klkizi schlafzi wozi").
+
+**Duplicate names:** each of the six staged bundles has 130 top-level names, 0 imports left, 0 duplicates (API4 had 129).
+
+**`summary.txt` verbatim** (line breaks shown as spaces): ruff rc=0 mypy_noargs rc=0 mypy_ci rc=0 mypy_twin rc=0 mypy_host rc=0 npm_lint rc=0 npm_typecheck rc=0 lint_html rc=0 lint_css rc=0 vt_definitions rc=0 vt_definitions-shape-corpus rc=0 vt_source-constants rc=0 vt_mock-server rc=0 vt_mock-server-put-matrix rc=0 vt_generated-definitions-render rc=0 vt_mock-data-compose rc=0 vt_definitions-mockdata-coverage rc=0 vt_app rc=0 vt_templates rc=0 vt_render rc=0 vt_lint-ceilings rc=0 vt_main rc=0 vt_api-reference-agreement rc=0 vt_nav rc=0 vt_poll-manager rc=0 vt_shell rc=0 vt_accessibility rc=0 vt_site-functions rc=0 vt_expected-display rc=0 vt_memory-markers rc=0 done
+
+**Vitest list:** nothing added. The changed test files `poll-manager`, `render` and `shell` were already on it. Live-tier files not run here:
+- `live-backend.test.js`: the lead-edits-2 agent ran it, 18/18.
+- `live-backend-put-matrix.test.js`: it changed here only by step 1e's comment edit. The lead2 merge also changed `tests_js/_live_matrix_command.js`; I ran neither.
+
+**`tests_scripts/` tier:** 4510 passed, 11 skipped, 1 failed (rc 1, 10:21): `test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree`. Its 13 assertion lines are identical to API4's.
+
+**Step 4:** the diff lists only OF-111/OF-129 files: `src/asy_webserver_service.py`, `src/asy_wifi_service.py`, `tests/_sensortask_scenarios.py`, `tests/test_asy_webserver_service.py`, `tests/test_asy_wifi_service.py`.
+- All 18 runs passed with 0 memory markers. Walls, -1 / 32768:
+  - webserver 222/222: 24.2 / 24.8 s
+  - wifi 265/265: 19.8 / 21.8 s
+  - system service 167/167: 27.1 / 34.0 s
+  - sensortask, 89/89 each: dev 67.0 / 93.0, wozi 45.5 / 65.4, schlafzi 40.3 / 57.7, klkizi 41.1 / 58.1, grkizi 41.6 / 57.9, arzi 42.1 / 57.8 s
+- `_sensortask_scenarios.py` is also imported by `tests/test_neopixel_wifi_integration.py` and `tests/_boot_contiguity_probe.py`. I did not run them; it is an OF-111 file and that branch ran its consumers.
+
+**Classification:**
+- **EXPECTED (lane X rows):** no Part N row yet for `web.default_decimals` (`buildgen/definitions.py:39`, `tests_scripts/test_buildgen_definitions.py:377`), `l1.lwip_host_spin_window_rounds`, `web.clock_mismatch_s`, `web.poll_backoff_max_ms`, `web.device_watch_interval_ms`, `l0.section_render_wait_ms` (accessibility, generated-definitions-render and site-functions tests), `l0.live_concurrent_tabs_timeout_ms` and `l0.live_restart_recovery_timeout_ms`. Two rows also lack the `site-functions.test.js` site: `l0.render_wait_timeout_ms` (`SPECIFICATION.md:10161`) and `l0.render_poll_ms` (`:10162`).
+- **UNEXPECTED:** none.
+
+**Runs:** every run I started has exited: the step 1b/1c/1e/1d/2 foreground runs, quick.sh (pid 32426), l0.sh (32444) and pool.sh (2579), plus my wait loops and monitor. No process is left, and the typings symlink is removed.
+
+**RUNS.md matches `ps`: yes.** No RUNNING line is open, no heavy process is running, and the file ends with a newline.
+
+Logs are in `/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/api5/`.

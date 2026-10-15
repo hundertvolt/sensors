@@ -1,0 +1,345 @@
+PASS test_a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response
+FAIL test_a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 786, in _scenario_simultaneous_bodies
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_a_full_ceiling_of_real_page_loads_is_served_without_truncation:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 680, in _scenario_all_admitted_page_loads_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 512, in _scenario_stale_slot_reclaimed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_above_max_connections_all_flaky_survives:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 415, in _scenario_above_max_all_flaky
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 395, in _scenario_above_max_mixed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_all_flaky_connections_dont_wedge_the_server:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 335, in _scenario_all_flaky
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_connection_count_fluctuating_in_real_time_server_stays_healthy:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 430, in _scenario_fluctuating_real_time
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_connections_at_each_count_from_one_to_max_connections_all_succeed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 376, in _scenario_each_count_up_to_max
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_connections_beyond_max_connections_are_rejected_cleanly_not_crashed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 285, in _scenario_beyond_max_rejected_cleanly
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_every_admitted_connection_is_actually_served_a_complete_correct_response:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 643, in _scenario_all_admitted_are_really_served
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_existing_connections_survive_an_overflow_burst_untouched:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 476, in _scenario_existing_survive_overflow
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_high_concurrency_burst_at_historical_segfault_repro_scale_survives:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 354, in _scenario_high_concurrency_burst
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_mixed_healthy_and_flaky_connections_dont_wedge_the_server:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 317, in _scenario_mixed_healthy_and_flaky
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_multiple_browser_like_sessions_concurrently_all_succeed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 544, in _scenario_multiple_browser_sessions
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_n_healthy_concurrent_connections_up_to_max_connections_all_succeed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 270, in _scenario_n_healthy_up_to_max
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_realistic_mixed_openhab_polling_and_browser_session_concurrently:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 563, in _scenario_openhab_and_browser
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_realistic_mixed_polling_and_a_concurrent_real_config_write:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 586, in _scenario_polling_and_config_write
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 609, in _scenario_mixed_traffic_above_ceiling
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+FAIL test_the_accept_queue_is_never_shallower_than_the_admission_ceiling:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/microtest.py", line 38, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 851, in test
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 254, in run_timed
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 97, in _drive
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 713, in _scenario_backlog_covers_the_ceiling
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneMN/c1full/tests/_webserver_concurrency_scenarios.py", line 94, in _boot
+  File "digital_twin/machine.py", line 320, in configure_wiring
+  File "digital_twin/machine.py", line 284, in _require_unconstructed
+RuntimeError: machine.configure_wiring() after a bus was constructed has no effect - call it before build_system(), or machine.reset_peripherals() first
+1/20 passed, 19 failed, 0 skipped
+RC=1 WALL=1.165052540 FILE=tests/test_digital_twin_webserver_concurrency_arzi.py STAGE=-1

@@ -1,0 +1,41 @@
+Plugin "vitest:mocks:interceptor" defines Vite-specific hooks (configureServer) in a plugin returned from applyToEnvironment. These hooks will be ignored.
+
+ RUN  v5.0.0 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u20b
+      API started at http://localhost:63315/
+
+ ✓ |chromium| tests_js/mock-server.test.js (94 tests) 20594ms
+   ✓ installMockFetch (94)
+     ✓ leaves error counters untouched when ResetErrors is absent 350ms
+     ✓ bounds a byte-bounded string in UTF-8 bytes, not characters 387ms
+     ✓ validates PUT /system's SystemCmd against the fixed real command set: "reboot" answers Valid 300ms
+     ✓ answers Invalid for a key no group of the endpoint lists, a dispatch key sent to another endpoint included 398ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 435ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1197ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1914ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 544ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 560ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 661ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 579ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 475ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 510ms
+     ✓ omits the command-only Calibrate from GET readback, as it already does for ContMeas/ResetVOC 349ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 514ms
+
+ Test Files  1 passed (1)
+      Tests  94 passed (94)
+   Start at  10:45:58
+   Duration  23.98s (tests 96%, worker 3%, import 1%)
+
+== Summary: npm test ==
+Commit: 7efb5f2 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 94 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

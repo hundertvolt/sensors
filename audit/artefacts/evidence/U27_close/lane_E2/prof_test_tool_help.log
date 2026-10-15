@@ -1,0 +1,11 @@
+....................                                                     [100%]
+============================= slowest 8 durations ==============================
+0.53s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_firmware.py]
+0.48s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[toolchain/setup_toolchain.py]
+0.47s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/typecheck.sh]
+0.43s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[digital_twin/launch.py]
+0.43s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/build_website.sh]
+0.42s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_bench_hardware_suite.sh]
+0.42s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_digital_twin_ci.sh]
+0.40s call     tests_scripts/test_tool_help.py::test_help_answers_with_usage_and_touches_nothing[scripts/run_unix_port_integration.sh]
+20 passed in 7.77s

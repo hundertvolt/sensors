@@ -1,0 +1,6 @@
+tests/test_digital_twin_wifi_modes.py: note: In function "_boot":
+tests/test_digital_twin_wifi_modes.py:64:1: error: Explicit "Any" is not
+allowed  [explicit-any]
+    async def _boot() -> "Any":
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 53 source files)

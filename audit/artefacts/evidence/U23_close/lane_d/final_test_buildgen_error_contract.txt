@@ -1,0 +1,17 @@
+F....................................................................... [ 39%]
+........................................................................ [ 79%]
+......................................                                   [100%]
+=================================== FAILURES ===================================
+_______________ test_every_rule_in_buildgen_has_exactly_one_row ________________
+
+    def test_every_rule_in_buildgen_has_exactly_one_row() -> None:
+        literals = _rule_literals()
+        missing = {rule: sites for rule, sites in sorted(literals.items()) if rule not in _ROWS}
+>       assert not missing, f"rule ids raised under buildgen/ with no row here - add one malformed input per id: {missing}"
+E       AssertionError: rule ids raised under buildgen/ with no row here - add one malformed input per id: {'api.wire-text-not-string': ['buildgen/api_reference.py:115']}
+E       assert not {'api.wire-text-not-string': ['buildgen/api_reference.py:115']}
+
+tests_scripts/test_buildgen_error_contract.py:562: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_error_contract.py::test_every_rule_in_buildgen_has_exactly_one_row
+1 failed, 181 passed in 25.99s

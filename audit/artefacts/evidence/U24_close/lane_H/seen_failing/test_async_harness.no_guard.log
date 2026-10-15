@@ -1,0 +1,15 @@
+PASS test_a_base_exception_ending_the_loop_leaves_a_later_run_possible
+PASS test_a_child_raising_while_cancelled_fails_the_run
+PASS test_a_raising_coroutine_still_cancels_its_children
+PASS test_cancel_and_cancel_all_end_their_tasks_and_wait_for_them
+PASS test_create_task_is_the_real_one_again_after_run_on_every_path
+FAIL test_run_from_inside_a_coroutine_is_refused_not_crashed:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u24h/tests/microtest.py", line 38, in _call
+  File "tests/test_async_harness.py", line 177, in test_run_from_inside_a_coroutine_is_refused_not_crashed
+AssertionError: exit status 35584: ['Segmentation fault', '']
+PASS test_run_returns_the_coroutines_value_and_a_bound_raises_timeout
+PASS test_run_timed_bounds_the_coroutine_and_leaves_nothing_parked
+PASS test_three_sleepers_the_coroutine_spawned_are_gone_after_run
+8/9 passed, 1 failed, 0 skipped
+RESULT tests/test_async_harness.py stage=-1 rc=1 wall=0.1s

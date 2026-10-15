@@ -1,0 +1,6 @@
+FAIL test_make_response_every_standard_code_present:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27u/tests/microtest.py", line 38, in _call
+  File "tests/test_asy_api_response.py", line 105, in test_make_response_every_standard_code_present
+AssertionError: 
+24/25 passed, 1 failed, 0 skipped

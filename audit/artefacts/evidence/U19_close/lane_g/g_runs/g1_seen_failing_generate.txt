@@ -1,0 +1,30 @@
+E         Right contains one more item: 'log'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:228: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_one_wifi_snapshot_and_no_radio[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_networking_status_reads_the_webservers_drop_window[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_led_callback_takes_the_validated_values_and_only_signals[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_webserver_reads_the_system_uptime_for_its_drop_window[wozi]
+24 failed, 131 deselected in 5.87s

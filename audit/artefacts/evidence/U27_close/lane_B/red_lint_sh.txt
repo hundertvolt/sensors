@@ -1,0 +1,24 @@
+>       assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 6 · failed 1 ·' in '== Summary: scripts/lint.sh ==\nCommit: unknown\nCounts (checks): passed 5 · failed 1 · skipped 0 · deselected 0 · re...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+>       assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 6 · failed 1 ·' in '== Summary: scripts/lint.sh ==\nCommit: unknown\nCounts (checks): passed 5 · failed 1 · skipped 0 · deselected 0 · re...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+>       assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 6 · failed 1 ·' in '== Summary: scripts/lint.sh ==\nCommit: unknown\nCounts (checks): passed 5 · failed 1 · skipped 0 · deselected 0 · re...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+>       assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 6 · failed 1 ·' in '== Summary: scripts/lint.sh ==\nCommit: unknown\nCounts (checks): passed 5 · failed 1 · skipped 0 · deselected 0 · re...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+FAILED tests_scripts/test_lint_sh.py::test_the_guard_passes_a_clean_tree - As...
+FAILED tests_scripts/test_lint_sh.py::test_a_method_assign_suppression_anywhere_in_src_fails_the_gate[obj.meth = other  # type: ignore[method-assign]]
+FAILED tests_scripts/test_lint_sh.py::test_a_method_assign_suppression_anywhere_in_src_fails_the_gate[obj.meth = other  # type: ignore[assignment,method-assign]]
+FAILED tests_scripts/test_lint_sh.py::test_a_method_assign_suppression_anywhere_in_src_fails_the_gate[obj.meth = other  # type: ignore[method-assign,assignment]]
+FAILED tests_scripts/test_lint_sh.py::test_the_same_suppression_outside_src_is_left_alone
+FAILED tests_scripts/test_lint_sh.py::test_a_guard_that_cannot_look_fails_closed
+FAILED tests_scripts/test_lint_sh.py::test_the_live_tree_satisfies_the_guard
+FAILED tests_scripts/test_lint_sh.py::test_help_prints_the_usage_and_exits_0
+FAILED tests_scripts/test_lint_sh.py::test_any_other_argument_is_a_usage_error_naming_it
+FAILED tests_scripts/test_lint_sh.py::test_outside_the_project_venv_nothing_runs
+FAILED tests_scripts/test_lint_sh.py::test_a_clean_run_generates_first_then_ends_with_the_block_counting_every_check
+FAILED tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[ruff]
+FAILED tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[shellcheck]
+FAILED tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[actionlint]
+FAILED tests_scripts/test_lint_sh.py::test_a_failing_check_is_named_in_the_block_and_fails_the_run[zizmor]
+15 failed in 1.41s

@@ -1,0 +1,13 @@
+FAIL test_a_cancelled_newest_write_leaves_no_entry_unwritten:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u14l/tests/microtest.py", line 35, in run
+  File "tests/test_asy_print_log.py", line 826, in test_a_cancelled_newest_write_leaves_no_entry_unwritten
+AssertionError: [b'\x01\x00\x00\x00\x01']
+PASS test_wrn_s_records_in_the_warning_sub_range
+--
+FAIL test_a_failed_write_leaves_the_next_queued_call_to_write:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u14l/tests/microtest.py", line 35, in run
+  File "tests/test_asy_print_log.py", line 851, in test_a_failed_write_leaves_the_next_queued_call_to_write
+AssertionError: [b'\x01\x00\x00\x00\x01', b'\x03\x00\x01\x02\x03']
+PASS test_history_length_negative_is_clamped_to_zero_not_a_raise

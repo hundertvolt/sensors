@@ -1,0 +1,15 @@
+.F.....                                                                  [100%]
+=================================== FAILURES ===================================
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_ntp_wifi_dns_integration.py', 'test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12', 'asy_dns_client')
+E       assert not [('tests/test_ntp_wifi_dns_integration.py', 'test_dns_resolution_totally_unreachable_through_the_real_chain_persists_errno_12', 'asy_dns_client')]
+
+tests_scripts/test_import_placement.py:268: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+1 failed, 6 passed in 6.03s

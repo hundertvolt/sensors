@@ -1,0 +1,38 @@
+______ test_a_device_whose_readers_declare_no_read_triggers_collects_none ______
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8')
+src_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/src')
+ext_dir = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/ext')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-4729/test_a_device_whose_readers_de0')
+
+    def test_a_device_whose_readers_declare_no_read_triggers_collects_none(repo_root: Path, src_dir: Path, ext_dir: Path, tmp_path: Path) -> None:
+        src = _src_with_read_triggers(src_dir, tmp_path, ())
+        for path in src.glob("asy_*_driver.py"):
+>           assert "def get_trigger_starters" not in path.read_text(), path.name
+E           AssertionError: asy_sgp40_driver.py
+E           assert 'def get_trigger_starters' not in '# SPDX-File...eturn True\n'
+E             
+E             'def get_trigger_starters' is contained here:
+E               n []
+E               
+E                   def get_trigger_starters(self) -> "list[Callable[[], None]]":
+E             ?     ++++++++++++++++++++++++
+E                       return [self.start_timer]...
+E             
+E             ...Full output truncated (214 lines hidden), use '-vv' to show
+
+tests_scripts/test_buildgen_generate.py:230: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests_hardware/bench/test_bus_concurrency_under_api_load.py:289: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests_hardware/bench/test_bus_concurrency_under_api_load.py:459: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+tests_scripts/test_http_client_ceiling_close.py::test_the_bench_retry_wrapper_counts_each_ceiling_retry_and_the_report_clears_them
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests_hardware/bench/test_bus_concurrency_under_api_load.py:548: PytestUnknownMarkWarning: Unknown pytest.mark.persistence_write - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.persistence_write
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

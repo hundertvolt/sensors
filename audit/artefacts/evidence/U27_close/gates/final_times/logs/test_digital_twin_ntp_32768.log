@@ -1,0 +1,52 @@
+FAIL test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_ntp.py", line 344, in test_a_booted_device_syncs_at_its_first_sync_with_a_clean_log
+  File "tests/test_digital_twin_ntp.py", line 98, in _booted
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/_digital_twin_construction_scenarios.py", line 214, in load_device
+  File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+PASS test_a_datagram_that_is_no_client_request_is_counted_and_unanswered
+FAIL test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_ntp.py", line 476, in test_a_lost_sync_keeps_the_local_time_and_the_alert_flashing
+  File "tests/test_digital_twin_ntp.py", line 98, in _booted
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/_digital_twin_construction_scenarios.py", line 214, in load_device
+  File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+PASS test_a_malformed_or_public_literal_is_refused_the_same_way
+PASS test_a_public_destination_is_refused_counted_and_fails_on_the_products_own_path
+PASS test_a_request_gets_a_synchronised_server_reply_at_the_hosts_utc
+PASS test_a_second_responder_on_a_held_port_waits_and_takes_it_once_freed
+PASS test_a_send_to_a_refused_address_fails_on_the_products_own_path
+FAIL test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_ntp.py", line 368, in test_an_outage_from_boot_backs_off_and_a_returning_responder_syncs_within_the_step
+  File "tests/test_digital_twin_ntp.py", line 98, in _booted
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/_digital_twin_construction_scenarios.py", line 214, in load_device
+  File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_ntp.py", line 394, in test_an_sgp40_restore_waits_out_the_outage_and_follows_the_sync
+  File "tests/test_digital_twin_ntp.py", line 98, in _booted
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/_digital_twin_construction_scenarios.py", line 214, in load_device
+  File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+FAIL test_each_failing_reply_leaves_synced_false_with_its_catalog_code:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/microtest.py", line 38, in _call
+  File "tests/test_digital_twin_ntp.py", line 438, in test_each_failing_reply_leaves_synced_false_with_its_catalog_code
+  File "tests/test_digital_twin_ntp.py", line 98, in _booted
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8/tests/_digital_twin_construction_scenarios.py", line 214, in load_device
+  File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+ImportError: no module named 'frozen_html'
+PASS test_each_failure_mode_answers_as_its_name_says
+PASS test_offset_s_shifts_the_served_time_exactly
+PASS test_serving_never_starves_a_task_beside_it
+PASS test_the_epoch_delta_is_the_clients_own
+PASS test_the_request_counter_saturates_at_the_projects_cap
+11/16 passed, 5 failed, 0 skipped

@@ -1,0 +1,6 @@
+FAIL test_the_silent_wait_holds_no_lock_and_yields
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 3009, in test_the_silent_wait_holds_no_lock_and_yields
+AssertionError: ('an iteration ran with another task held off', [(1, 1, True), (2, 1, True), (5, 2, True), (8, 3, True), (11, 4, True), (14, 5, True), (17, 6, True), (20, 7, True), (23, 8, True), (26, 9, True), (29, 10, True), (32, 11, True), (35, 12, True), (38, 13, True)])
+selected: 1 failed: 1

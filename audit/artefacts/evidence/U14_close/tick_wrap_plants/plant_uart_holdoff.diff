@@ -1,0 +1,11 @@
+--- src/asy_uart_comm.py@f351490
++++ bite_c/asy_uart_comm.py
+@@ -354,7 +354,7 @@
+         # callback, and the flag it would have set is then never set - the legacy module's permanent
+         # hang. A deadline cannot be dropped, and needs no alarm-pool slot.
+         while self._holdoff_active:
+-            remaining = time.ticks_diff(self._holdoff_deadline, time.ticks_ms())
++            remaining = self._holdoff_deadline - time.ticks_ms()
+             if remaining <= 0:
+                 self._holdoff_active = False
+                 return

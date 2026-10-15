@@ -1,0 +1,255 @@
+digital_twin/launch.py: note: In function "main":
+digital_twin/launch.py:385:30: error: Argument 1 to "configure_wiring" has
+incompatible type "_Plan"; expected "dict[str, Any]"  [arg-type]
+        machine.configure_wiring(plan)
+                                 ^~~~
+digital_twin/launch.py:403:22: error: Argument 1 to "_apply_fault" has
+incompatible type "tuple[str, str, int]"; expected
+"tuple[str, str, int, int | None, str]"  [arg-type]
+            _apply_fault(fault, chips, wlan)
+                         ^~~~~
+digital_twin/launch.py: note: In function "parse_args":
+digital_twin/launch.py:491:26: error: Argument 2 to "Injections" has
+incompatible type "list[tuple[str, str, int, int | None, str]]"; expected
+"list[tuple[str, str, int]]"  [arg-type]
+            Injections(seed, faults, hangs, wifi_outcomes),
+                             ^~~~~~
+tests/test_digital_twin_machine.py: note: In function "_twin_injector":
+tests/test_digital_twin_machine.py:146:43: error: Argument 2 to "inject_fault"
+of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+            injector.inject_fault("readinto", OSError(errno.EIO, "planted"...
+                                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_machine.py: note: In function "test_the_fault_injector_counts_its_pending_entries":
+tests/test_digital_twin_machine.py:352:39: error: Argument 2 to "inject_fault"
+of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+        injector.inject_fault("readinto", OSError(errno.EIO, "planted"), t...
+                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_rejects_an_unknown_profile":
+tests/test_digital_twin_generic_wiring.py:146:9: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+            machine.configure_i2c_wiring("not-a-real-profile")
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:154:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:167:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_uses_scd30_irq_pin_11_not_wozis_8":
+tests/test_digital_twin_generic_wiring.py:180:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11":
+tests/test_digital_twin_generic_wiring.py:188:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_default_wiring_before_any_configure_call_is_wozi":
+tests/test_digital_twin_generic_wiring.py:201:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")  # restore the default explic...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_launch.py: note: In function "_config":
+tests/test_digital_twin_launch.py:72:63: error: Argument 2 to "Injections" has
+incompatible type "list[tuple[str, str, int, int | None, str]]"; expected
+"list[tuple[str, str, int]]"  [arg-type]
+    ...unch.LaunchConfig(_in_memory(), Injections(seed, faults, [], wifi), wi...
+                                                        ^~~~~~
+tests/test_digital_twin_launch.py: note: In function "test_parse_args_combines_every_flag_together":
+tests/test_digital_twin_launch.py:218:47: error: Argument 2 to "Injections" has
+incompatible type "list[tuple[str, str, int, int | None, str]]"; expected
+"list[tuple[str, str, int]]"  [arg-type]
+        assert config.injections == Injections(7, faults, [("scd30", "read...
+                                                  ^~~~~~
+tests/test_digital_twin_launch.py: note: In function "test_collect_chips_keys_each_wired_chip_by_its_instance_key_through_peripheral":
+tests/test_digital_twin_launch.py:263:30: error: Argument 1 to
+"configure_wiring" has incompatible type "_Plan"; expected "dict[str, Any]" 
+[arg-type]
+        machine.configure_wiring(plan)
+                                 ^~~~
+tests/test_digital_twin_isl29125_autorange.py:16:5: error: Module
+"_isl29125_chip" has no attribute "Isl29125Chip"; maybe "ISL29125Chip"? 
+[attr-defined]
+        from _isl29125_chip import Isl29125Chip
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_isl29125_autorange.py: note: In function "_make_dev_reader":
+tests/test_digital_twin_isl29125_autorange.py:64:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_generic_integration.py:67:1: error: Cannot find implementation
+or library stub for module named "_wall_clock"  [import-not-found]
+    import _wall_clock
+    ^
+digital_twin/run_generic_integration.py:67:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+digital_twin/run_generic_integration.py: note: In function "main":
+digital_twin/run_generic_integration.py:428:30: error: Argument 1 to
+"configure_wiring" has incompatible type "_Plan"; expected "dict[str, Any]" 
+[arg-type]
+        machine.configure_wiring(plan)
+                                 ^~~~
+digital_twin/run_generic_integration.py:464:26: error: Argument 1 to
+"_apply_fault" has incompatible type "tuple[str, str, int]"; expected
+"tuple[str, str, int, int | None, str]"  [arg-type]
+                _apply_fault(fault, chips, wlan, source=_SOURCE)
+                             ^~~~~
+digital_twin/run_generic_integration.py: note: In function "parse_args":
+digital_twin/run_generic_integration.py:557:37: error: Argument 2 to
+"Injections" has incompatible type
+"list[tuple[str, str, int, int | None, str]]"; expected
+"list[tuple[str, str, int]]"  [arg-type]
+            injections=Injections(seed, faults, hangs, wifi_outcomes),
+                                        ^~~~~~
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_run_config_compares_and_prints_its_grouped_fields":
+tests/test_digital_twin_run_generic_integration.py:106:76: error: List item 0
+has incompatible type "tuple[str, str, int, None, str]"; expected
+"tuple[str, str, int]"  [list-item]
+    ...nfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", ...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_run_generic_integration.py:108:84: error: List item 0
+has incompatible type "tuple[str, str, int, None, str]"; expected
+"tuple[str, str, int]"  [list-item]
+    ...nfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", ...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_parse_args_fault_hang_and_wifi_outcome_reuse_launchs_own_parsers":
+tests/test_digital_twin_run_generic_integration.py:125:12: error:
+Non-overlapping equality check (left operand type: "list[tuple[str, str, int]]",
+right operand type: "list[tuple[str, str, int, int, str]]") 
+[comparison-overlap]
+        assert config.injections.faults == [("sgp40", "writeto", 2, 0x59, ...
+               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_collect_chips_finds_each_chip_through_the_constructed_bus_not_a_wrapper":
+tests/test_digital_twin_run_generic_integration.py:223:30: error: Argument 1 to
+"configure_wiring" has incompatible type "_Plan"; expected "dict[str, Any]" 
+[arg-type]
+        machine.configure_wiring(plan)
+                                 ^~~~
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly":
+tests/test_digital_twin_run_generic_integration.py:343:38: error: List item 0
+has incompatible type "tuple[str, str, int, None, str]"; expected
+"tuple[str, str, int]"  [list-item]
+            injections=Injections(None, [("sgp40", "writeto", 2, None, "os...
+                                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_uart_link.py:34:1: error: Module "machine" has no
+attribute "configure_i2c_wiring"  [attr-defined]
+    from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  #...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_uart_link.py: note: In function "test_the_generic_runner_joins_the_two_buses_its_wiring_plan_names":
+tests/test_digital_twin_uart_link.py:287:57: error: Argument 1 to
+"_wire_uart_crossover" has incompatible type Module; expected "_Booted" 
+[arg-type]
+    ...k = run_generic_integration._wire_uart_crossover(sensortask_dev, plan)
+                                                        ^~~~~~~~~~~~~~
+tests/test_digital_twin_uart_link.py:287:57: note: Following member(s) of Module "sensortask_dev" have conflicts:
+tests/test_digital_twin_uart_link.py:287:57: note:     __file__: expected "str", got "str | None"
+tests/test_digital_twin_uart_link.py:287:57: note:     webserver: expected "object", got "WebserverService"
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:227:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:241:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:255:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:269:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_write_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:284:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:296:42: error: Argument 2 to
+"inject_fault" of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+            chip.fault.inject_fault("write", OSError(5))
+                                             ^~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_read_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:326:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py:344:45: error: Argument 2 to
+"inject_fault" of "FaultInjector" has incompatible type "OSError"; expected
+"type[BaseException]"  [arg-type]
+            chip.fault.inject_fault("readinto", OSError(5))
+                                                ^~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun":
+tests/test_digital_twin_bus_hazard_concurrency.py:372:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect":
+tests/test_digital_twin_bus_hazard_concurrency.py:419:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_gates_the_real_twin_chip":
+tests/test_digital_twin_bus_hazard_concurrency.py:463:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it":
+tests/test_digital_twin_bus_hazard_concurrency.py:493:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives":
+tests/test_digital_twin_bus_hazard_concurrency.py:519:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_does_not_survive_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:551:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:582:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words":
+tests/test_digital_twin_bus_hazard_concurrency.py:625:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads":
+tests/test_digital_twin_bus_hazard_concurrency.py:662:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_dev_i2c1":
+tests/test_digital_twin_bus_hazard_concurrency.py:744:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared":
+tests/test_digital_twin_bus_hazard_concurrency.py:897:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_two_failing_readers_on_one_bus_run_each_bus_rung_once":
+tests/test_digital_twin_bus_hazard_concurrency.py:913:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 47 errors in 9 files (checked 55 source files)
+wall=2.404
+rc=1

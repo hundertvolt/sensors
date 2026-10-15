@@ -1,0 +1,9 @@
+........................................                                 [100%]
+============================= slowest 6 durations ==============================
+8.83s call     tests_scripts/test_error_catalog.py::test_no_test_tier_keeps_its_own_copy_of_a_code
+1.10s call     tests_scripts/test_error_catalog.py::test_generated_modules_follow_the_catalog
+0.56s call     tests_scripts/test_error_catalog.py::test_a_renamed_code_keyword_passes_the_sweep_and_fails_its_floor
+0.43s call     tests_scripts/test_error_catalog.py::test_device_script_bindings_equal_the_catalog
+0.33s call     tests_scripts/test_error_catalog.py::test_every_code_argument_is_built_from_catalog_names
+0.29s call     tests_scripts/test_error_catalog.py::test_the_sweep_reads_every_code_keyword
+40 passed in 12.21s

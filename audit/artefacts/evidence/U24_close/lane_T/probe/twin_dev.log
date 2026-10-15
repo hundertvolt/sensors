@@ -1,0 +1,3 @@
+digital_twin/run_generic_integration.py starting - device='dev' module='sensortask_dev' host='127.0.0.1' port=18555 fram_state_path=None scd30_state_path=None seed=None duration=15.0 faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+digital_twin/run_generic_integration.py: stop file seen, ending the run
+digital_twin/run_generic_integration.py [dev] shutdown: would_have_triggered_count=0

@@ -1,0 +1,17 @@
+test_unix_port_sh	0	6.8	52 passed in 6.49s
+test_test_sh	0	50.4	165 passed in 50.11s
+test_port_lock	0	6.4	44 passed in 6.10s
+test_coverage_runner	0	3.0	19 passed in 2.80s
+test_digital_twin_boot_contiguity	0	13.5	36 passed in 13.25s
+test_frozen_first_shadowing	0	0.4	2 passed in 0.12s
+test_require_clean_hardware_run_sh	0	3.5	19 passed in 3.20s
+test_hardware_runners	1	3.4	20 passed, 37 errors in 3.10s
+test_mpremote_connect_sh	0	0.4	5 passed in 0.18s
+test_tool_help	0	8.6	20 passed in 8.32s
+test_twin_board	0	3.8	17 passed in 3.23s
+test_manual_runner_summary	0	2.7	14 passed in 2.41s
+test_shell_conventions	1	1.2	7 failed, 66 passed in 0.92s
+test_devices_sh	0	0.5	11 passed in 0.20s
+test_require_python	1	0.5	4 failed, 23 passed in 0.21s
+test_twin_never_needs_tests_on_its_path	1	1.1	1 failed, 53 passed in 0.84s
+done

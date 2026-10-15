@@ -1,5 +1,5 @@
 """Stateful fake for the MB85RS64V FRAM chip itself, on top of tests/machine.py's fake `machine.SPI` (raw bus only) - interprets the real opcode stream (RDID/RDSR/WRSR/WREN/WRDI/READ/WRITE) so FRAM_SPI's own logic runs for real against it, per SPECIFICATION.md Part E.4's mocking boundary.
-WEL semantics are verified directly against the MB85RS64V datasheet (DS501-00015-4v0-E). Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below; the inherited machine.SPI bus-level knobs (rx_overrun/inject_fault) reach this chip too, via readinto()."""
+Each WEL rule cites its MB85RS64V datasheet page (DS501-00015-4v0-E) on its line. Fault-injection knobs simulate one transaction's effect being eaten by a bus disturbance, not "unplug the whole bus" - see each knob's own comment below; the inherited machine.SPI bus-level knobs (rx_overrun/inject_fault) reach this chip too, via readinto()."""
 
 from machine import SPI as FakeSPI
 
@@ -18,17 +18,33 @@ _OPCODE_WRSR = 0x01
 _OPCODE_READ = 0x03
 _OPCODE_WRITE = 0x02
 _OPCODE_RDID = 0x9F
+_ADDR_2BYTE_MAX_SIZE = 0x10000  # a larger array takes a 3-byte address (MB85RS2MTA DS501-00032 p.9)
 
 
 class FakeMB85RS64V(FakeSPI):
+    # The part, as class attributes: build_system() constructs the fake through asy_spi_driver with
+    # machine.SPI's own arguments, so another part is a subclass overriding these two.
+    SIZE = 0x2000
+    RDID = bytes([0x04, 0x7F, 0x03, 0x02])
+
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
-        self.memory = bytearray(0x2000)
-        self.status = 0x00  # WEL clear, no write protection
-        self.rdid_response = bytes([0x04, 0x7F, 0x03, 0x02])  # correct MB85RS64V ID by default
+        self.size = self.SIZE
+        self.memory = bytearray(self.SIZE)
+        # Address bytes after READ/WRITE: 2 up to 64 KB (MB85RS64V DS501-00015 p.9), 3 above (MB85RS2MTA
+        # p.9); the upper bits beyond the array are ignored on both parts (p.9: "upper address bit is invalid").
+        self._addr_width = 2 if self.SIZE <= _ADDR_2BYTE_MAX_SIZE else 3
+        self.status = 0x00  # WEL clear after power-on (p.6), no write protection
+        self.rdid_response = self.RDID  # what RDID answers; a test may change it
+        self.rdid_once: bytes | None = None  # answered by the next RDID only, then rdid_response again
+        self.rdid_count = 0  # RDID commands the controller clocked out
         self.drop_wren = False  # simulate WREN's opcode transfer getting corrupted on the wire
+        self.drop_next_wren = 0  # simulate N consecutive WREN transfers getting corrupted
         self.drop_next_wrdi = 0  # simulate N consecutive WRDI transfers getting corrupted
         self.drop_wrsr = False  # simulate WRSR's status-byte transfer getting corrupted
+        # A chip gone silent (deselected, unpowered, dead): every write vanishes and SO reads this
+        # byte constantly - 0x00 for a line pulled low, 0xFF for one floating high. None: a live chip.
+        self.silent: int | None = None
         # These two suppress the datasheet's own auto-clear specifically so FRAM_SPI's explicit WRDI-
         # verification and retry path - defense in depth against that auto-clear itself glitching - stays
         # exercised by a real simulated fault rather than being permanently unreachable.
@@ -39,66 +55,44 @@ class FakeMB85RS64V(FakeSPI):
         # design - payload-level data integrity is asy_fram_manager.py's CRC/dual-copy job instead.
         self.corrupt_next_write_data: bytes | None = None  # what actually lands, if not the real payload
         # Set by a test after FRAM_SPI construction, the pin not existing until __init__ runs. Models the
-        # datasheet's WRITING PROTECT table via the wel property below: WRSR is accepted only when WEL=1 and
+        # datasheet's WRITING PROTECT table (p.11) via the wel property below: WRSR is accepted only when WEL=1 and
         # (WPEN=0 or WP=1). None models WP tied high, the driver's assumption without a wp_pin.
         self.wp_pin: Pin | None = None
+        self.write_transactions = 0  # WRITE commands that reached their data phase, WEL set or not
+        self.opcodes: list[int] | None = None  # a test sets a list to record every command's opcode
         self._pending_op: int | None = None
         self._pending_addr: int | None = None
 
-    @property
-    def wel(self) -> bool:
-        return bool(self.status & 0x02)
-
     def _decode_addr(self, data: bytes) -> int:
-        return (data[1] << 8) | data[2]  # 2-byte address form, matches this driver's <=0xFFFF path
+        addr = 0
+        for byte in data[1 : 1 + self._addr_width]:
+            addr = (addr << 8) | byte
+        return addr % self.size
 
-    def write(self, buf: object) -> None:
-        data = bytes(buf)  # type: ignore[call-overload]
-        if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
-            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
-            if self.wel:
-                stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
-                end = self._pending_addr + len(stored)
-                self.memory[self._pending_addr : end] = stored
-                self.corrupt_next_write_data = None
-            if not self.disturb_write_autoclear:
-                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition
-            self._pending_op = None
-            self._pending_addr = None
-            return
-        opcode = data[0]
+    def _latch_command(self, opcode: int, data: bytes) -> None:
         if opcode == _OPCODE_WREN:
-            if not self.drop_wren:
-                self.status |= 0x02
+            if self.drop_next_wren > 0:
+                self.drop_next_wren -= 1
+            elif not self.drop_wren:
+                self.status |= 0x02  # WREN sets WEL (p.7)
         elif opcode == _OPCODE_WRDI:
             if self.drop_next_wrdi > 0:
                 self.drop_next_wrdi -= 1
             else:
-                self.status &= ~0x02
+                self.status &= ~0x02  # WRDI resets WEL (p.6, p.7)
         elif opcode == _OPCODE_WRSR:
-            # Requires WEL set first, exactly like WRITE - the datasheet has WEL indicate whether the array
-            # and status register are writable - and WRSR cannot write bit 1 itself, so the current WEL is
-            # preserved.
+            # Requires WEL set first, exactly like WRITE (p.7: WREN before WRSR or WRITE), and WRSR cannot write
+            # bit 1 itself, so the current WEL is preserved (p.8).
             #
-            # It also requires the status register itself to be unlocked per the WRITING PROTECT table:
+            # It also requires the status register itself to be unlocked per the WRITING PROTECT table (p.11):
             # WPEN=0, or WP=1 if wired, checked against the current WPEN/WP rather than the value being
             # written.
             wp_level = 1 if self.wp_pin is None else self.wp_pin.value()
             sr_unlocked = not (self.status & 0x80) or wp_level == 1
             if self.wel and not self.drop_wrsr and sr_unlocked:
-                self.status = (data[1] & ~0x02) | (self.status & 0x02)
+                self.status = (data[1] & ~0x03) | (self.status & 0x02)  # bit 1 is WEL's, bit 0 fixed at 0 (p.8)
             if not self.disturb_wrsr_autoclear:
-                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRSR recognition
-        elif opcode == _OPCODE_WRITE:
-            self._pending_op = _OPCODE_WRITE
-            self._pending_addr = self._decode_addr(data)
-        elif opcode == _OPCODE_READ:
-            self._pending_op = _OPCODE_READ
-            self._pending_addr = self._decode_addr(data)
-        elif opcode == _OPCODE_RDSR:
-            self._pending_op = _OPCODE_RDSR
-        elif opcode == _OPCODE_RDID:
-            self._pending_op = _OPCODE_RDID
+                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRSR recognition (p.6)
 
     def readinto(self, buf: bytearray | memoryview, _write_value: int = 0x00) -> None:
         # Overriding readinto() shadows the base fake's bus-level fault check, so it is called explicitly:
@@ -108,14 +102,59 @@ class FakeMB85RS64V(FakeSPI):
         # Raising before the buffer is filled matches the base fake; on real hardware an overrun leaves
         # partial garbage there, which is why the caller must not trust it either way.
         self._maybe_raise("readinto", len(buf))
-        if self._pending_op == _OPCODE_READ and self._pending_addr is not None:
+        if self.silent is not None:
+            buf[:] = bytes([self.silent]) * len(buf)
+        elif self._pending_op == _OPCODE_READ and self._pending_addr is not None:
             n = len(buf)
             buf[:] = self.memory[self._pending_addr : self._pending_addr + n]
         elif self._pending_op == _OPCODE_RDSR:
             buf[:] = bytes([self.status])
         elif self._pending_op == _OPCODE_RDID:
-            buf[:] = self.rdid_response[: len(buf)]
+            answer = self.rdid_response if self.rdid_once is None else self.rdid_once
+            self.rdid_once = None
+            buf[:] = answer[: len(buf)]
         else:
             buf[:] = bytes(len(buf))
         self._pending_op = None
         self._pending_addr = None
+
+    @property
+    def wel(self) -> bool:
+        return bool(self.status & 0x02)
+
+    def write(self, buf: object) -> None:
+        # The recorders (opcodes, rdid_count, write_transactions) count what the controller clocked out;
+        # a silent chip still sees the command framing but acts on none of it.
+        data = bytes(buf)  # type: ignore[call-overload]
+        live = self.silent is None
+        if self._pending_op == _OPCODE_WRITE and self._pending_addr is not None:
+            # data phase of a previously-opened WRITE (opcode+address arrived in the prior call)
+            self.write_transactions += 1
+            if live and self.wel:  # a WRITE without WEL is not performed (p.7, p.11)
+                stored = data if self.corrupt_next_write_data is None else self.corrupt_next_write_data
+                end = self._pending_addr + len(stored)
+                self.memory[self._pending_addr : end] = stored
+                self.corrupt_next_write_data = None
+            if live and not self.disturb_write_autoclear:
+                self.status &= ~0x02  # WEL auto-clears at the CS rising edge after WRITE recognition (p.6)
+            self._pending_op = None
+            self._pending_addr = None
+            return
+        opcode = data[0]
+        if self.opcodes is not None:
+            self.opcodes.append(opcode)
+        if opcode == _OPCODE_RDID:
+            self.rdid_count += 1
+        if opcode in (_OPCODE_WRITE, _OPCODE_READ):
+            self._pending_op = opcode
+            self._pending_addr = self._decode_addr(data)
+        elif opcode in (_OPCODE_RDSR, _OPCODE_RDID):
+            self._pending_op = opcode
+        elif live:
+            self._latch_command(opcode, data)
+
+
+class FakeMB85RS2MTA(FakeMB85RS64V):
+    # The 256 KB part (MB85RS2MTA DS501-00032 p.10): its size and its identification; a 3-byte address (p.9).
+    SIZE = 0x40000
+    RDID = bytes([0x04, 0x7F, 0x48, 0x03])

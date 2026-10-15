@@ -1,0 +1,22 @@
+U23 lead: a section switch lets the left section's GET on the wire finish instead of resetting it
+
+Leaving a section aborted its in-flight GET, so the browser reset a connection the device was still
+answering and the device logged a peer reset (W48) into its web-server error count on ordinary
+navigation (agent, 2026-10-13, decided on the owner's behalf for review). The section's stop now
+drops its queued GETs at once; its GET on the wire runs to its end, discarded (nothing painted, no
+banner, no log, the device clock untouched), when another section is rendered into the same element
+in the same turn. With no section following - the page's own stop before a reload - it is still
+aborted, together with any GET it took over from an earlier switch. pollManager.request() gains a
+fifth argument, a queue signal that drops a request only while it waits its turn.
+
+The render test that pinned the next section's first GET not queuing behind the left one pinned the
+abort itself; it is replaced by the switch case (seen failing first: the left fetch's signal was
+aborted); a new case stops the page right after a switch and needs the taken-over GET aborted (seen
+failing first). The page-stop case now also asserts the abort (a guard, bitten by a planted no-abort
+defect). Live, wozi, eight switches each with a /status GET on the wire after ResetErrors: before,
+8 of 8 aborted (net::ERR_ABORTED) and the page showed "Web Server: 8"; after, every GET ran to its
+end and every row read 0. The next section's first GET now waits for the left one: median 216.6 ms
+after the click against 6.6 ms before (one /status on the twin, at most the 15 s request cap).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

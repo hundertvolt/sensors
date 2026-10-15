@@ -1,0 +1,30 @@
+>       assert f"\nCounts (checks): passed {len(_STAGES) + len(_RUNS)} · failed 0 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 10 · failed 0 ·' in '== Summary: scripts/typecheck.sh ==\nCommit: unknown\nCounts (checks): passed 7 · failed 0 · skipped 0 · deselected 0...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: PASS\nExit code: 0\n'
+>       assert f"\nCounts (checks): passed {len(_STAGES) + len(_RUNS) - 1} · failed 1 ·" in block
+E       AssertionError: assert '\nCounts (checks): passed 9 · failed 1 ·' in '== Summary: scripts/typecheck.sh ==\nCommit: unknown\nCounts (checks): passed 6 · failed 1 · skipped 0 · deselected 0...e\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: FAIL\nExit code: 1\n'
+E         Counts (checks): passed 7 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+FAILED tests_scripts/test_typecheck_sh.py::test_a_clean_run_counts_every_stage_and_run_and_exits_0
+FAILED tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[digital_twin/typecheck.ini-twin pass: digital_twin/typecheck.ini]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[tests/network.py-network check: pyproject.toml [tool.mypy]]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[tests_scripts/conftest.py-conftest check: host_typecheck.ini]
+FAILED tests_scripts/test_typecheck_sh.py::test_extra_paths_narrow_only_the_main_pass
+FAILED tests_scripts/test_typecheck_sh.py::test_an_unknown_option_is_refused_naming_it_before_anything_runs
+FAILED tests_scripts/test_typecheck_sh.py::test_outside_the_project_venv_nothing_runs
+FAILED tests_scripts/test_typecheck_sh.py::test_a_stub_pin_of_another_release_is_refused_naming_the_key[board-of-another-release]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_stub_pin_of_another_release_is_refused_naming_the_key[stdlib-of-another-release]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_stub_pin_of_another_release_is_refused_naming_the_key[stdlib-missing]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_stub_pin_of_another_release_is_refused_naming_the_key[no-stubs-table]
+FAILED tests_scripts/test_typecheck_sh.py::test_the_exact_pins_are_installed_and_recorded
+FAILED tests_scripts/test_typecheck_sh.py::test_an_install_that_is_not_exactly_the_pins_fails_and_records_nothing[two-board-installs]
+FAILED tests_scripts/test_typecheck_sh.py::test_an_install_that_is_not_exactly_the_pins_fails_and_records_nothing[another-stdlib-release]
+FAILED tests_scripts/test_typecheck_sh.py::test_an_install_that_is_not_exactly_the_pins_fails_and_records_nothing[no-board-install]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_changed_or_missing_stub_spec_wipes_the_old_tree_first[micropython-rp2-rpi_pico_w-stubs==1.28.0.post1 micropython-stdlib-stubs==1.28.0.post1]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_changed_or_missing_stub_spec_wipes_the_old_tree_first[None]
+FAILED tests_scripts/test_typecheck_sh.py::test_an_unchanged_stub_spec_keeps_the_tree
+FAILED tests_scripts/test_typecheck_sh.py::test_both_defects_present_are_repaired
+FAILED tests_scripts/test_typecheck_sh.py::test_a_tree_upstream_fixed_is_left_untouched
+FAILED tests_scripts/test_typecheck_sh.py::test_a_moved_tree_fails_the_repair_naming_the_path[no-builtins]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_moved_tree_fails_the_repair_naming_the_path[no-notimplemented]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_moved_tree_fails_the_repair_naming_the_path[no-future-class]
+FAILED tests_scripts/test_typecheck_sh.py::test_a_missing_asyncio_package_fails_the_repair
+24 failed, 4 passed in 3.07s

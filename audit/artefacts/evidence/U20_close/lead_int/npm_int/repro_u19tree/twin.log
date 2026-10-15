@@ -1,0 +1,1918 @@
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=8099 fram_state_path=None scd30_state_path=None seed=None duration=None faults=[] hangs=[] wifi_outcomes=[] mem_sample_interval_ms=None
+Serving forever at http://127.0.0.1:8099/ - Ctrl+C to stop
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Config data was written.
+SYSTEM System uptime: 2
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+FRAM FRAM verification set to 60 write cycles.
+SGP40 initialized with storage
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 VOC backup load trigger
+SGP40 Backup counter: 1 Trigger: 60
+FRAM Uninitialized data in block 0, reading block 1
+FRAM Uninitialized data in block 1
+SGP40 No backup found
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 3
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+SYSTEM All tasks running.
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 4
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for TempOffset
+WIFI Wifi inactive
+SYSTEM System uptime: 5
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 4 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 6
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 5 Trigger: 60
+SGP40 read
+SGP40 data stored
+WIFI Wifi off
+SYSTEM System uptime: 7
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 6 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for TempOffset
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+WIFI Wifi mode set
+SYSTEM System uptime: 8
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 7 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI WLAN hotspot was started
+DNSSRV Waiting for DNS request...
+SYSTEM System uptime: 9
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 8 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 10
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 9 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 11
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 10 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 12
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 11 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 13
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 12 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI No client connected - hotspot timer started
+SYSTEM System uptime: 14
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 13 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 15
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 14 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 read
+SCD30 data stored
+SYSTEM System uptime: 16
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 15 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 17
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 16 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1581.7677001953125, t=20.11932945251465, rh=64.37831878662109)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 1
+SYSTEM System uptime: 18
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 17 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 19
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 18 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1594.75732421875, t=20.176790237426758, rh=66.68759918212891)
+FRAM Writing block 0 data
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 20
+FRAM Writing block 1 data
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 19 Trigger: 60
+SCD30 Error counter increased to 2
+SGP40 read
+SGP40 data stored
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 21
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 20 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 22
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 21 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 23
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 22 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1640.6861572265625, t=19.932758331298828, rh=69.67578887939453)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 3
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+FRAM Writing block 1 data
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SYSTEM System uptime: 24
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 23 Trigger: 60
+SCD30 I2C bus cleared, status 0
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1604.2547607421875, t=20.490812301635742, rh=67.52685546875)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 4
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 I2C controller re-initialised, status 0
+SYSTEM System uptime: 25
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 24 Trigger: 60
+SYSTEM All tasks running.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1569.5516357421875, t=21.23565673828125, rh=70.0)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 5
+SYSTEM System uptime: 26
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 25 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for MeasInterval
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+SYSTEM System uptime: 27
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 26 Trigger: 60
+SYSTEM All tasks running.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1530.22265625, t=21.279359817504883, rh=67.56060791015625)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 6
+FRAM Writing block 0 data
+SYSTEM System uptime: 28
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 27 Trigger: 60
+FRAM Writing block 1 data
+SCD30 Maximum error count reached!
+SGP40 read
+SGP40 data stored
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 29
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 28 Trigger: 60
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM Task 10 ended: returned
+SYSTEM Task ended - attempting restart, error counter increased to 100 - task 10
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for MeasInterval
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SYSTEM System uptime: 30
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 29 Trigger: 60
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 31
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 30 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 99
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 32
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 31 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for MeasInterval
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1469.5582275390625, t=22.04520606994629, rh=64.88419342041016)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 1
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SYSTEM System uptime: 33
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 32 Trigger: 60
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 98
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1463.36572265625, t=22.624357223510742, rh=67.47438049316406)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SCD30 Error counter increased to 2
+SYSTEM System uptime: 34
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 33 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 35
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 34 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 97
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 36
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 35 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SYSTEM System uptime: 37
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 36 Trigger: 60
+FRAM Writing block 0 data
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 96
+FRAM Writing block 1 data
+SGP40 read
+SGP40 data stored
+SCD30 Reading rejected: reading outside measurement range (co2=1457.173095703125, t=23.595430374145508, rh=67.51271057128906)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 3
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+FRAM Writing block 1 data
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SCD30 I2C bus cleared, status 0
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 38
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 37 Trigger: 60
+SCD30 Reading rejected: reading outside measurement range (co2=1435.6107177734375, t=23.76299476623535, rh=69.83535003662109)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SGP40 read
+SGP40 data stored
+SCD30 Error counter increased to 4
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 I2C controller re-initialised, status 0
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 39
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 38 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 95
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 40
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 39 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1443.4122314453125, t=23.281837463378906, rh=70.0)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 5
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 41
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 40 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 94
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1401.157470703125, t=23.238950729370117, rh=67.95274353027344)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 6
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 42
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 41 Trigger: 60
+SCD30 Maximum error count reached!
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 43
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 42 Trigger: 60
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SGP40 read
+SGP40 data stored
+SYSTEM Task 10 ended: returned
+SYSTEM Task ended - attempting restart, error counter increased to 194 - task 10
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 44
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 43 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 45
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 44 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 193
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 46
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 45 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 Interrupt Start Trigger
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 47
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 46 Trigger: 60
+SCD30 Reading rejected: reading outside measurement range (co2=1464.1356201171875, t=21.789785385131836, rh=70.0)
+FRAM Writing block 0 data
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 192
+FRAM Writing block 1 data
+SGP40 read
+SGP40 data stored
+SCD30 Error counter increased to 1
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1428.0577392578125, t=22.419336318969727, rh=67.46030426025391)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 2
+SYSTEM System uptime: 48
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 47 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 49
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 48 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 191
+SGP40 read
+SGP40 data stored
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 50
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 49 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Invalid value for Altitude
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 51
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 50 Trigger: 60
+SCD30 Reading rejected: reading outside measurement range (co2=1432.583984375, t=22.857149124145508, rh=65.96969604492188)
+FRAM Writing block 0 data
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 190
+FRAM Writing block 1 data
+SGP40 read
+SGP40 data stored
+SCD30 Error counter increased to 3
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 I2C bus cleared, status 0
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1478.3077392578125, t=23.810998916625977, rh=65.58783721923828)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 52
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 51 Trigger: 60
+SCD30 Error counter increased to 4
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 I2C controller re-initialised, status 0
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 53
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 52 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 189
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1496.9775390625, t=23.837238311767578, rh=68.26914978027344)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SCD30 Error counter increased to 5
+SYSTEM System uptime: 54
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 53 Trigger: 60
+FRAM Writing block 0 data
+SGP40 read
+SGP40 data stored
+FRAM Writing block 1 data
+SCD30 Invalid value for Altitude
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 55
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 54 Trigger: 60
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 188
+SGP40 read
+SGP40 data stored
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1531.9398193359375, t=23.44036102294922, rh=68.43801879882813)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 6
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Maximum error count reached!
+SYSTEM System uptime: 56
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 55 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 57
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 56 Trigger: 60
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+FRAM Writing block 0 data
+SCD30 Invalid value for Altitude
+SGP40 read
+SGP40 data stored
+FRAM Writing block 1 data
+SYSTEM Task 10 ended: returned
+SYSTEM Task ended - attempting restart, error counter increased to 288 - task 10
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 58
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 57 Trigger: 60
+SGP40 read
+SGP40 data stored
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 59
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 58 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 287
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 60
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 59 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 Interrupt Start Trigger
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+SYSTEM System uptime: 61
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1512.966552734375, t=25.09821319580078, rh=69.507568359375)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 29
+SCD30 Error counter increased to 1
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 286
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1514.6802978515625, t=24.106977462768555, rh=66.78469848632813)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 2
+SYSTEM System uptime: 62
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 28
+SYSTEM System uptime: 63
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 27
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 285
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 64
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 26
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1543.68798828125, t=23.688400268554688, rh=68.76023864746094)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM System uptime: 65
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SCD30 Error counter increased to 3
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 25
+SCD30 I2C bus cleared, status 0
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 284
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1541.55810546875, t=24.580350875854492, rh=68.20856475830078)
+FRAM Writing block 0 data
+SYSTEM System uptime: 66
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+FRAM Writing block 1 data
+SCD30 Error counter increased to 4
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 24
+SCD30 I2C controller re-initialised, status 0
+SYSTEM System uptime: 67
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 23
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 283
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Reading rejected: reading outside measurement range (co2=1495.4935302734375, t=24.888181686401367, rh=67.48625946044922)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 5
+SYSTEM System uptime: 68
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 22
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 69
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 21
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 282
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SCD30 Reading rejected: reading outside measurement range (co2=1503.1656494140625, t=24.657360076904297, rh=69.9525146484375)
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Error counter increased to 6
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SCD30 Maximum error count reached!
+SYSTEM System uptime: 70
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 20
+SYSTEM System uptime: 71
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 19
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM Task 10 ended: returned
+FRAM Writing block 0 data
+FRAM Writing block 1 data
+SYSTEM Task error counter above 300 - reboot triggered!
+SYSTEM Reboot triggered
+FRAM Storage pause set to True
+SYSTEM Storage paused
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 72
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 18
+SYSTEM System uptime: 73
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 17
+SYSTEM Task ended - attempting restart, error counter increased to 382 - task 10
+SCD30 Writing config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - No new / unchanged config data.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 74
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 16
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SCD30 Interrupt Start Trigger
+SYSTEM System uptime: 75
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SCD30 Interrupt Start Trigger
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 15
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 381
+UNRETRIEVED TASK EXCEPTION: Task exception wasn't retrieved
+Traceback (most recent call last):
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_system_service.py", line 305, in _reset_when_due
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-smC/digital_twin/machine.py", line 1368, in reset
+SimulatedResetError: machine.reset() called - the twin does not actually restart the process
+SCD30 Interrupt Start Trigger
+SYSTEM System uptime: 76
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SCD30 Interrupt Start Trigger
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 14
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 Writing config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Config data staged, flash write scheduled.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Config data was written.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1482.94677734375, t=26.526920318603516, rh=68.61724853515625)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 1
+SYSTEM System uptime: 77
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 13
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 380
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1524.5836181640625, t=26.433359146118164, rh=67.58498382568359)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 2
+SYSTEM System uptime: 78
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 12
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 79
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 11
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 379
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 80
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 10
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+SCD30 Writing config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - No new / unchanged config data.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1563.4637451171875, t=25.722110748291016, rh=66.13468170166016)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 3
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 I2C bus cleared, status 0
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SYSTEM System uptime: 81
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 9
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 378
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1586.329345703125, t=24.97487449645996, rh=66.41203308105469)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 4
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 I2C controller re-initialised, status 0
+SYSTEM System uptime: 82
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 8
+SYSTEM System uptime: 83
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 7
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 377
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1537.9903564453125, t=25.155479431152344, rh=65.62732696533203)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 5
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 84
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 6
+SYSTEM System uptime: 85
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 5
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 376
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1496.5289306640625, t=24.396408081054688, rh=67.60826110839844)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 6
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Maximum error count reached!
+SYSTEM System uptime: 86
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 4
+SYSTEM System uptime: 87
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 3
+FRAM FRAM communication paused, not writing FRAM!
+SYSTEM PrintLog: History write failed!
+SYSTEM Task 10 ended: returned
+SYSTEM Task ended - attempting restart, error counter increased to 376 - task 10
+SCD30 Writing config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Config data staged, flash write scheduled.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Config data was written.
+SYSTEM System uptime: 88
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 2
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 89
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+SGP40 Backup NTP wait time: 1
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 375
+SCD30 Interrupt Start Trigger
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into list.
+NTP Sync-age tick counter at 0
+NTP NTP resync triggered.
+NTP NTP sync starting.
+NTP Network not available, skipping sync attempt.
+SYSTEM System uptime: 90
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 0 Trigger: 60
+SCD30 Interrupt Start Trigger
+SGP40 read
+SGP40 Backup data created successfully
+SGP40 data stored
+SGP40 Backup trigger.
+SGP40 Writing backup.
+FRAM FRAM write timestamp not valid
+FRAM FRAM communication paused, not writing FRAM!
+FRAM FRAM communication paused, not writing FRAM!
+SGP40 PrintLog: History write failed!
+SGP40 Write error during backup!
+SCD30 initialized
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1551.3739013671875, t=24.814285278320313, rh=67.34841918945313)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 1
+SYSTEM System uptime: 91
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 1 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 374
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1577.2191162109375, t=24.434106826782227, rh=66.72467803955078)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 2
+SYSTEM System uptime: 92
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 2 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 93
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 3 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 373
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+SYSTEM System uptime: 94
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 4 Trigger: 60
+SGP40 read
+SGP40 data stored
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Device recovery after 2 failed cycles: done
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1555.0283203125, t=23.612871170043945, rh=69.19921112060547)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 3
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 I2C bus cleared, status 0
+SYSTEM System uptime: 95
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 5 Trigger: 60
+SGP40 read
+SGP40 data stored
+SCD30 Writing config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - No new / unchanged config data.
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 372
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1565.1561279296875, t=24.56859016418457, rh=66.55113220214844)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 4
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 I2C controller re-initialised, status 0
+SCD30 Reading config via cfgmgr.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into dict.
+SGP40 Reading config via cfgmgr.
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into dict.
+CFGMGR_SYSTEM digital_twin/config/config_SYSTEM.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+SYSTEM System uptime: 96
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 6 Trigger: 60
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+WIFI Reading config via cfgmgr.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into dict.
+CFGMGR_WIFI digital_twin/config/config_WIFI.cfg - Reading config data into list.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NTP Reading config via cfgmgr.
+CFGMGR_NTP digital_twin/config/config_NTP.cfg - Reading config data into dict.
+NOTIFY Reading config via cfgmgr.
+CFGMGR_NOTIFY digital_twin/config/config_NOTIFY.cfg - Reading config data into dict.
+SGP40 read
+SGP40 data stored
+SYSTEM System uptime: 97
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 7 Trigger: 60
+SGP40 read
+SGP40 data stored
+SYSTEM All tasks running.
+SYSTEM Task error counter reduced to 371
+SCD30 sensor trigger
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+CFGMGR_SCD30 digital_twin/config/config_SCD30.cfg - Reading config data into list.
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Reading rejected: reading outside measurement range (co2=1570.9091796875, t=24.703367233276367, rh=64.4752197265625)
+FRAM FRAM communication paused, not writing FRAM!
+SCD30 PrintLog: History write failed!
+SCD30 Error counter increased to 5
+SYSTEM System uptime: 98
+SGP40 sensor trigger
+CFGMGR_SGP40 digital_twin/config/config_SGP40.cfg - Reading config data into list.
+SGP40 Backup counter: 8 Trigger: 60
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=3
+digital_twin/run_generic_integration.py: interrupted

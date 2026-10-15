@@ -1,0 +1,25 @@
+== MicroPython stubs: 1.29.0.post1 (for firmware 1.29.0)
+== Generating buildgen device modules into build/generated_src/ (for import resolution)
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/build/generated_src
+Success: no issues found in 203 source files
+Success: no issues found in 53 source files
+scripts/_render_coverage.py:15:1: error: Cannot find implementation or library
+stub for module named "coverage"  [import-not-found]
+    import coverage
+    ^
+scripts/_render_coverage.py:15:1: note: See https://mypy.readthedocs.io/en/stable/running_mypy.html#missing-imports
+Found 1 error in 1 file (checked 213 source files)
+error: host_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean.
+== Summary: scripts/typecheck.sh ==
+Commit: be52286
+Counts (checks): passed 6 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - host pass: host_typecheck.ini
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

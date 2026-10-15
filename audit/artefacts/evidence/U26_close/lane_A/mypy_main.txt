@@ -1,0 +1,36 @@
+digital_twin/run_device_script.py: note: In function "_configure_state":
+digital_twin/run_device_script.py:42:5: error: Module has no attribute
+"configure_fram_state_path"  [attr-defined]
+        machine.configure_fram_state_path(state_dir + "/fram.bin")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_device_script.py:43:5: error: Module has no attribute
+"configure_scd30_state_path"  [attr-defined]
+        machine.configure_scd30_state_path(state_dir + "/scd30.json")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_device_script.py:44:5: error: Module has no attribute
+"configure_mem_backup_state_path"  [attr-defined]
+        machine.configure_mem_backup_state_path(state_dir + "/mem_backup.j...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_device_script.py: note: In function "main":
+digital_twin/run_device_script.py:106:9: error: Module has no attribute
+"configure_wiring"  [attr-defined]
+            machine.configure_wiring(json.load(f))
+            ^~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_device_script.py:128:8: error: "WDT" has no attribute
+"would_have_triggered_count"  [attr-defined]
+        if watchdog.would_have_triggered_count:
+           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_device_script.py:129:74: error: "WDT" has no attribute
+"would_have_triggered_count"  [attr-defined]
+    ...REFIX}: the watchdog would have reset the board {watchdog.would_have_t...
+                                                        ^~~~~~~~~~~~~~~~~~~~~...
+tests_hardware/device_scripts/fram_raw_dump.py: note: In function "_main":
+tests_hardware/device_scripts/fram_raw_dump.py:47:62: error: Argument 1 to
+"hexlify" has incompatible type "memoryview[int]"; expected "bytes"  [arg-type]
+    ...        print(f"FRAM {address:06x} {binascii.hexlify(view).decode()}")
+                                                            ^~~~
+tests_hardware/device_scripts/fram_raw_dump.py:57:35: error: Argument 1 to
+"hexlify" has incompatible type "bytearray"; expected "bytes"  [arg-type]
+        fact("rdid", binascii.hexlify(fram._id_buf).decode())
+                                      ^~~~~~~~~~~~
+Found 8 errors in 2 files (checked 215 source files)

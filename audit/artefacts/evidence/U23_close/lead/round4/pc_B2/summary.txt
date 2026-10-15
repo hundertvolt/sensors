@@ -1,0 +1,6 @@
+ruff rc=0 0s
+npm_lint rc=0 2s
+npm_typecheck rc=0 2s
+vt_lint-ceilings rc=1 12s
+pytest rc=1 125s
+done

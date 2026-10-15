@@ -1,0 +1,19 @@
+js/app.js:62: class or style write outside js/templates.js: .classList.remove(
+js/app.js:75: class or style write outside js/templates.js: .classList.remove(
+js/app.js:88: class or style write outside js/templates.js: .classList.remove(
+js/main.js:29: class or style write outside js/templates.js: .classList.remove(
+js/nav.js:25: class or style write outside js/templates.js: .classList.remove(
+js/nav.js:29: class or style write outside js/templates.js: .classList.add(
+js/nav.js:52: document.addEventListener outside the entries
+js/render.js:378: class or style write outside js/templates.js: .classList.add(
+js/render.js:382: class or style write outside js/templates.js: .classList.remove(
+js/render.js:78: a selector template interpolates a value without CSS.escape()
+js/render.js:88: a selector template interpolates a value without CSS.escape()
+js/render.js:111: a selector template interpolates a value without CSS.escape()
+js/render.js:165: a selector template interpolates a value without CSS.escape()
+js/render.js:268: a selector template interpolates a value without CSS.escape()
+js/render.js:296: a selector template interpolates a value without CSS.escape()
+js/render.js:311: a selector template interpolates a value without CSS.escape()
+js/render.js:320: a selector template interpolates a value without CSS.escape()
+js/render.js:325: a selector template interpolates a value without CSS.escape()
+js/render.js:329: a selector template interpolates a value without CSS.escape()

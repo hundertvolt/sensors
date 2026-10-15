@@ -1,0 +1,2 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [101] last_k 102 288312 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant_us 1500 runaway False 1 / 1 passed

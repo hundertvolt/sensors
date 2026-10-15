@@ -1,0 +1,15 @@
+......................                                                   [100%]
+============================= slowest 12 durations =============================
+17.24s call     tests_scripts/test_digital_twin_generated_boot.py::test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalation
+8.16s call     tests_scripts/test_digital_twin_generated_boot.py::test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_ends
+5.80s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+5.19s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+5.02s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+4.22s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+3.96s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[grkizi]
+3.92s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+3.91s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+3.89s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+0.43s call     tests_scripts/test_digital_twin_generated_boot.py::test_every_sgp40_instance_needs_its_own_served_maintenance_entry
+0.25s call     tests_scripts/test_digital_twin_generated_boot.py::test_a_twin_that_dies_before_serving_keeps_its_output
+22 passed in 62.22s (0:01:02)

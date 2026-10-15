@@ -1,0 +1,185 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23d
+
+ ❯ |chromium| tests_js/definitions.test.js (43 tests | 4 failed) 441ms
+   ❯ validateDefinitions (31)
+     ✓ accepts a minimal well-formed document 5ms
+     ✓ rejects a non-object 0ms
+     ✓ rejects a missing/unsupported schemaVersion 0ms
+     ✓ rejects a landingSection that matches no real section 0ms
+     ✓ rejects a section missing key or label 0ms
+     ✓ rejects a section missing rest.get 0ms
+     ✓ rejects a section with a missing or unrecognized pollGroup 0ms
+     ✓ accepts every real pollGroup value 0ms
+     ✓ rejects a non-positive or non-numeric section pollIntervalMs when present 1ms
+     ✓ rejects a missing or non-positive defaultPollIntervalMs 0ms
+     × holds both poll intervals to setTimeout's ceiling 189ms
+     × takes the site's default decimals as an integer from 0 to 100 only 81ms
+     ✓ rejects a missing device.id 0ms
+     ✓ rejects a missing landingSection 0ms
+     ✓ rejects a missing/empty sections array 0ms
+     ✓ rejects a section that isn't an object 0ms
+     ✓ rejects a section missing groups (not an array) and a group missing key/label 0ms
+     ✓ rejects an errcount group whose modules isn't an array 0ms
+     ✓ rejects a non-errcount group whose fields isn't an array 0ms
+     ✓ accepts an errcount group without requiring fields 0ms
+     ✓ accepts a readonly field carrying a nested path and a decimals hint 0ms
+     ✓ rejects a malformed path 0ms
+     ✓ rejects a path on a writable field, where a PUT body is always flat 0ms
+     × asks for confirmation on an enum or a toggle only, and only with a boolean 77ms
+     ✓ rejects a malformed decimals hint 1ms
+     ✓ accepts the generated arzi definitions 0ms
+     ✓ accepts the generated dev definitions 0ms
+     ✓ accepts the generated grkizi definitions 0ms
+     ✓ accepts the generated klkizi definitions 0ms
+     ✓ accepts the generated schlafzi definitions 0ms
+     ✓ accepts the generated wozi definitions 0ms
+   ✓ resolveFieldValue (6)
+     ✓ reads a flat key when no path is given 0ms
+     ✓ walks a nested path instead of the flat key 0ms
+     ✓ distinguishes RGB.B from HSB.B, which is the whole reason the body is nested 0ms
+     ✓ yields undefined for a path that does not resolve, never a half-walked sub-object 0ms
+     ✓ yields undefined for a value the GET did not report, whatever the field's kind 0ms
+     ✓ passes a null through as a real value 0ms
+   ❯ loadDefinitions (6)
+     ✓ returns the parsed definitions on a valid fetch 2ms
+     ✓ throws on a non-ok HTTP response 2ms
+     ✓ throws with the validation problems on a malformed document 1ms
+     ✓ throws a clear message (not a raw SyntaxError) when the response isn't valid JSON (a transmission error) 1ms
+     × waits for the request already in flight before it fetches (one request at a time) 72ms
+     ✓ never hangs forever on a connection that never responds 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/definitions.test.js > validateDefinitions > holds both poll intervals to setTimeout's ceiling
+AssertionError: expected [] to deeply equal [ Array(1) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions.test.js/validateDefinitions---holds-both-poll-intervals-to-setTimeout-s-ceiling.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   "defaultPollIntervalMs must be a positive number of at most 2147483647 ms",[39m
+[32m- ][39m
+[31m+ [][39m
+
+ ❯ tests_js/definitions.test.js:107:106
+    105|         expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollInte…
+    106|         expect(validateDefinitions(sectionWith(TIMEOUT_CEILING_MS))).t…
+    107|         expect(validateDefinitions({ ...MINIMAL_VALID, defaultPollInte…
+       |                                                                                                          ^
+    108|             "defaultPollIntervalMs must be a positive number of at mos…
+    109|         ]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/definitions.test.js > validateDefinitions > takes the site's default decimals as an integer from 0 to 100 only
+AssertionError: -1: expected [] to deeply equal [ Array(1) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions.test.js/validateDefinitions---takes-the-site-s-default-decimals-as-an-integer-from-0-to-100-only.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   "defaultDecimals must be an integer from 0 to 100 when present",[39m
+[32m- ][39m
+[31m+ [][39m
+
+ ❯ tests_js/definitions.test.js:118:113
+    116|         }
+    117|         for (const defaultDecimals of [-1, 1.5, 101, "2", null]) {
+    118|             expect(validateDefinitions({ ...MINIMAL_VALID, defaultDeci…
+       |                                                                                                                 ^
+    119|                 "defaultDecimals must be an integer from 0 to 100 when…
+    120|             ]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |chromium| tests_js/definitions.test.js > validateDefinitions > asks for confirmation on an enum or a toggle only, and only with a boolean
+AssertionError: {"key":"C","label":"Command","kind":"enum","options":[{"value":"reboot","label":"Reboot"}],"confirm":"yes"}: expected [] to deeply equal [ Array(1) ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions.test.js/validateDefinitions---asks-for-confirmation-on-an-enum-or-a-toggle-only--and-only-with-a-boolean.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- [[39m
+[32m-   "sections[0].groups[0].fields[0].confirm must be a boolean on an enum or toggle field when present",[39m
+[32m- ][39m
+[31m+ [][39m
+
+ ❯ tests_js/definitions.test.js:233:82
+    231|             { key: "R", label: "Reading", kind: "readonly", confirm: t…
+    232|         ]) {
+    233|             expect(validateDefinitions(withField(field)), JSON.stringi…
+       |                                                                                  ^
+    234|                 "sections[0].groups[0].fields[0].confirm must be a boo…
+    235|             ]);
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=4af87150:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |chromium| tests_js/definitions.test.js > loadDefinitions > waits for the request already in flight before it fetches (one request at a time)
+AssertionError: expected "vi.fn()" to be called 1 times, but got 2 times
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/definitions.test.js/loadDefinitions---waits-for-the-request-already-in-flight-before-it-fetches--one-request-at-a-time-.png
+
+ ❯ tests_js/definitions.test.js:337:30
+    335|         const loading = loadDefinitions("definitions/fixture-device.js…
+    336|         await vi.waitFor(() => expect(releases).toHaveLength(1));
+    337|         expect(window.fetch).toHaveBeenCalledTimes(1);
+       |                              ^
+    338|         releases[0]?.();
+    339|         await pending;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 39 passed (43)
+   Start at  06:33:20
+   Duration  1.79s (tests 58%, worker 32%, import 10%)
+
+== Summary: npm test ==
+Commit: 8fff76f (uncommitted changes)
+Levels: L0
+Counts (tests): passed 39 · failed 4 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/definitions.test.js > validateDefinitions > holds both poll intervals to setTimeout's ceiling: expected [] to deeply equal [ Array(1) ]
+  - tests_js/definitions.test.js > validateDefinitions > takes the site's default decimals as an integer from 0 to 100 only: -1: expected [] to deeply equal [ Array(1) ]
+  - tests_js/definitions.test.js > validateDefinitions > asks for confirmation on an enum or a toggle only, and only with a boolean: {"key":"C","label":"Command","kind":"enum","options":[{"value":"reboot","label":"Reboot"}],"confirm":"yes"}: expected [] to deeply equal [ Array(1) ]
+  - tests_js/definitions.test.js > loadDefinitions > waits for the request already in flight before it fetches (one request at a time): expected "vi.fn()" to be called 1 times, but got 2 times
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

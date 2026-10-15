@@ -1,0 +1,7 @@
+scripts/_render_coverage.py:15: error: Unused "type: ignore" comment 
+[unused-ignore]
+    import coverage  # type: ignore[import-not-found]
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 1 error in 1 file (checked 204 source files)
+wall 7.646 s
+rc=1

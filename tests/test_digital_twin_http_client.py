@@ -3,6 +3,9 @@ one real end-to-end socket round trip - its own file since _http_client.py is sh
 digital-twin entry point, not owned by any one of them."""
 
 import asyncio
+import errno
+import socket
+import struct
 import sys
 
 try:
@@ -11,18 +14,125 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
-    from typing import Any, TypeVar
+    from typing import TypeVar
 
     T = TypeVar("T")
 
 sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comment for why
 
 import _http_client as http_client
+from _async_harness import run_timed
+from _port_bands import PortAllocator
+
+_PORTS = PortAllocator("test_digital_twin_http_client")  # one canned server's port per test, from this file's band
+# @tunable l2.http_client_run_bound_s = 5.0
+_RUN_BOUND_S = 5.0
+# @tunable l2.http_client_mid_body_pause_ms = 20
+_MID_BODY_PAUSE_MS = 20
+# @tunable l2.http_client_fetch_timeout_s = 0.001
+_FETCH_TIMEOUT_S = 0.001
+# @tunable l2.http_client_silent_server_s = 2
+_SILENT_SERVER_S = 2
 
 
-def run_timed(coro: "Coroutine[Any, Any, T]", timeout_s: float = 5.0) -> "T":
-    return asyncio.run(asyncio.wait_for(coro, timeout_s))
+async def _body_cut_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    await _drain_request(reader)
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nabc")
+    await writer.drain()
+    await writer.wait_closed()
+
+
+async def _canned_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    await reader.readline()  # request line - ignored, this fake always answers the same way
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    body = b'{"ok": true}'
+    writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
+    await writer.drain()
+    await writer.wait_closed()
+
+
+async def _canned_server_no_content_length(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Matches GET /'s real shape, the static-file route via Response.send_file() passing a raw stream body:
+    # no Content-Length at all, body delivered across several writes, and EOF - this connection closing -
+    # ends it. Exactly the shape that sent every real GET / through the unsized path.
+    await reader.readline()
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    body = b"x" * 3000  # bigger than _read_until_close()'s own default 1024-byte scratch buffer
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n")
+    await writer.drain()
+    for offset in range(0, len(body), 777):  # deliberately not a multiple of the scratch buffer
+        writer.write(body[offset : offset + 777])
+        await writer.drain()
+    await writer.wait_closed()
+
+
+async def _canned_server_split_body(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Writes the body across two separate drain()s with a real yield between them, forcing fetch()'s
+    # own _read_exact() to actually loop - proves the fix over a real socket, not only against
+    # _ChunkedReader's own scripted fake.
+    await reader.readline()
+    while True:
+        line = await reader.readline()
+        if line in (b"\r\n", b"\n", b""):
+            break
+    body = b'{"a": 1, "b": 2}'
+    half = len(body) // 2
+    writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body[:half])
+    await writer.drain()
+    await asyncio.sleep_ms(_MID_BODY_PAUSE_MS)
+    writer.write(body[half:])
+    await writer.drain()
+    await writer.wait_closed()
+
+
+async def _drain_request(reader: "asyncio.StreamReader") -> None:
+    await reader.readline()
+    while (await reader.readline()) not in (b"\r\n", b"\n", b""):
+        pass
+
+
+def _fetch_failure(handler: "object", port: int, timeout_s: "float | None" = None) -> BaseException:
+    async def scenario() -> BaseException:
+        server = await asyncio.start_server(handler, "127.0.0.1", port)  # type: ignore[arg-type]
+        try:
+            if timeout_s is None:
+                await http_client.fetch("127.0.0.1", port, "GET", "/anything")
+            else:
+                await http_client.fetch("127.0.0.1", port, "GET", "/anything", None, timeout_s)
+        except Exception as e:  # the failure class is what each case asserts
+            return e
+        finally:
+            server.close()
+            await server.wait_closed()
+        raise AssertionError("fetch() returned a response")
+
+    return run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+
+
+async def _header_cut_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    await _drain_request(reader)
+    writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n")
+    await writer.drain()
+    await writer.wait_closed()
+
+
+async def _resetting_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    # Linger 0 makes the close an RST, the abortive form of a refusal: no response byte is ever written.
+    await _drain_request(reader)
+    writer.s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))  # type: ignore[attr-defined]  # MicroPython's Stream keeps its socket as .s (extmod/asyncio/stream.py:9)
+    await writer.wait_closed()
+
+
+async def _silent_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
+    await _drain_request(reader)
+    await asyncio.sleep(_SILENT_SERVER_S)
+    await writer.wait_closed()
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +226,15 @@ def test_parse_header_line_strips_surrounding_whitespace() -> None:
 def test_parse_header_line_returns_none_for_the_blank_terminator() -> None:
     assert http_client.parse_header_line(b"\r\n") is None
     assert http_client.parse_header_line(b"\n") is None
-    assert http_client.parse_header_line(b"") is None  # EOF-truncated readline()
+
+
+def test_an_eof_inside_the_header_block_is_an_incomplete_response() -> None:
+    # An EOF-truncated readline() (b"") is a server that closed mid-headers, never the end of a complete header block.
+    try:
+        http_client.parse_header_line(b"")
+        raise AssertionError("expected IncompleteResponseError")
+    except http_client.IncompleteResponseError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +253,10 @@ class _ChunkedReader:
     # came back empty - which must be retried, never treated as EOF; only a real b"" may be.
     def __init__(self, chunks: "list[bytes | None]") -> None:
         self._chunks = list(chunks)
+        self.requests: list[int] = []  # the buffer length of every readinto() call, in order
 
-    async def readinto(self, buf: bytearray) -> "int | None":
+    async def readinto(self, buf: "bytearray | memoryview") -> "int | None":
+        self.requests.append(len(buf))
         if not self._chunks:
             return 0
         chunk = self._chunks.pop(0)
@@ -149,25 +269,24 @@ class _ChunkedReader:
 
 def test_read_exact_fills_the_buffer_across_multiple_partial_reads() -> None:
     reader = _ChunkedReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._read_exact(reader, 8))
+    result = run_timed(http_client._read_exact(reader, 8), _RUN_BOUND_S)
     assert bytes(result) == b"abcdefgh"
 
 
 def test_read_exact_returns_a_right_sized_buffer_for_a_single_read() -> None:
     reader = _ChunkedReader([b"hello"])
-    result = run_timed(http_client._read_exact(reader, 5))
+    result = run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_S)
     assert bytes(result) == b"hello"
     assert len(result) == 5
 
 
-def test_read_exact_raises_eof_on_premature_stream_closure() -> None:
-    # Only 2 of the 5 requested bytes ever arrive, then the stream reports EOF (readinto() -> 0) -
-    # matches Stream.readexactly()'s own EOFError contract exactly (extmod/asyncio/stream.py).
+def test_read_exact_raises_incomplete_response_on_premature_stream_closure() -> None:
+    # Only 2 of the 5 requested bytes ever arrive, then the stream reports EOF (readinto() -> 0): a body cut short.
     reader = _ChunkedReader([b"ab"])
     try:
-        run_timed(http_client._read_exact(reader, 5))
-        raise AssertionError("expected EOFError")
-    except EOFError:
+        run_timed(http_client._read_exact(reader, 5), _RUN_BOUND_S)
+        raise AssertionError("expected IncompleteResponseError")
+    except http_client.IncompleteResponseError:
         pass
 
 
@@ -178,13 +297,13 @@ def test_read_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof()
     # A first version of _read_exact() conflated None with a real 0-byte EOF, which read as an intermittent,
     # false "connection closed" under exactly the scheduling jitter a busy CI runner produces more of.
     reader = _ChunkedReader([None, b"ab", None, b"c"])
-    result = run_timed(http_client._read_exact(reader, 3))
+    result = run_timed(http_client._read_exact(reader, 3), _RUN_BOUND_S)
     assert bytes(result) == b"abc"
 
 
 # ---------------------------------------------------------------------------
-# _read_until_close() - the unsized fallback path GET / actually takes (Microdot's send_file()
-# passes a raw stream body, so no Content-Length is ever set - see this function's own comment).
+# _read_until_close() - the unsized fallback for a body that ends at EOF; GET / is sized now (the
+# static route sets Content-Length), so fetch() reads it through _read_exact() - see digital_twin/README.md.
 # ---------------------------------------------------------------------------
 
 
@@ -194,8 +313,10 @@ class _EofReader:
     # verbatim - proving _read_until_close() bounds each read to len(buf), not the scripted chunk's length.
     def __init__(self, chunks: "list[bytes | None]") -> None:
         self._chunks = list(chunks)
+        self.requests: list[int] = []  # the buffer length of every readinto() call, in order
 
-    async def readinto(self, buf: bytearray) -> "int | None":
+    async def readinto(self, buf: "bytearray | memoryview") -> "int | None":
+        self.requests.append(len(buf))
         if not self._chunks:
             return 0
         chunk = self._chunks.pop(0)
@@ -207,17 +328,20 @@ class _EofReader:
             self._chunks.insert(0, chunk[n:])
         return n
 
+    def remaining(self) -> bytes:
+        return b"".join(chunk for chunk in self._chunks if chunk)
+
 
 def test_read_until_close_joins_chunks_across_multiple_reads() -> None:
     reader = _EofReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._read_until_close(reader))
+    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
     assert result == b"abcdefgh"
     assert isinstance(result, bytes)
 
 
 def test_read_until_close_retries_a_spurious_none_read() -> None:
     reader = _EofReader([None, b"ab", None, b"c"])
-    result = run_timed(http_client._read_until_close(reader))
+    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
     assert result == b"abc"
 
 
@@ -229,7 +353,7 @@ def test_read_until_close_bounds_each_read_to_the_scratch_buffer_size() -> None:
     http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
     try:
         reader = _EofReader([b"0123456789"])
-        result = run_timed(http_client._read_until_close(reader))
+        result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
     finally:
         http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
     assert result == b"0123456789"
@@ -237,7 +361,7 @@ def test_read_until_close_bounds_each_read_to_the_scratch_buffer_size() -> None:
 
 def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream() -> None:
     reader = _EofReader([])
-    result = run_timed(http_client._read_until_close(reader))
+    result = run_timed(http_client._read_until_close(reader), _RUN_BOUND_S)
     assert result == b""
 
 
@@ -250,24 +374,24 @@ def test_read_until_close_returns_empty_bytes_for_an_immediately_closed_stream()
 # ---------------------------------------------------------------------------
 
 
-def test_drain_exact_consumes_every_byte_without_returning_anything() -> None:
-    reader = _ChunkedReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._drain_exact(reader, 8))
-    assert result is None
+def test_drain_exact_consumes_exactly_n_bytes_without_returning_anything() -> None:
+    reader = _EofReader([b"abc", b"de", b"fghNEXT"])
+    result = run_timed(http_client._drain_exact(reader, 8), _RUN_BOUND_S)
+    assert (result, reader.remaining()) == (None, b"NEXT")  # the next response's bytes stay unread
 
 
-def test_drain_exact_raises_eof_on_premature_stream_closure() -> None:
+def test_drain_exact_raises_incomplete_response_on_premature_stream_closure() -> None:
     reader = _ChunkedReader([b"ab"])
     try:
-        run_timed(http_client._drain_exact(reader, 5))
-        raise AssertionError("expected EOFError")
-    except EOFError:
+        run_timed(http_client._drain_exact(reader, 5), _RUN_BOUND_S)
+        raise AssertionError("expected IncompleteResponseError")
+    except http_client.IncompleteResponseError:
         pass
 
 
 def test_drain_exact_retries_a_spurious_none_read_instead_of_treating_it_as_eof() -> None:
     reader = _ChunkedReader([None, b"ab", None, b"c"])
-    run_timed(http_client._drain_exact(reader, 3))  # no exception raised is the assertion
+    run_timed(http_client._drain_exact(reader, 3), _RUN_BOUND_S)  # no exception raised is the assertion
 
 
 def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() -> None:
@@ -277,26 +401,28 @@ def test_drain_exact_bounds_its_own_scratch_buffer_to_the_shared_chunk_size() ->
     original = http_client._READ_UNTIL_CLOSE_CHUNK_BYTES
     http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = 4
     try:
-        reader = _EofReader([b"0123456789"])
-        run_timed(http_client._drain_exact(reader, 10))
+        reader = _EofReader([b"0123456789AB"])
+        run_timed(http_client._drain_exact(reader, 10), _RUN_BOUND_S)
+        assert max(reader.requests) <= 4 and reader.remaining() == b"AB", (reader.requests, reader.remaining())
     finally:
         http_client._READ_UNTIL_CLOSE_CHUNK_BYTES = original
 
 
 def test_drain_until_close_consumes_every_chunk_without_returning_anything() -> None:
     reader = _EofReader([b"abc", b"de", b"fgh"])
-    result = run_timed(http_client._drain_until_close(reader))
-    assert result is None
+    result = run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)
+    assert (result, len(reader.requests), reader.remaining()) == (None, 4, b"")  # each chunk once, then the EOF read
 
 
 def test_drain_until_close_retries_a_spurious_none_read() -> None:
     reader = _EofReader([None, b"ab", None, b"c"])
-    run_timed(http_client._drain_until_close(reader))  # no exception raised is the assertion
+    run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)
+    assert (len(reader.requests), reader.remaining()) == (5, b"")  # four scripted reads, then the EOF one
 
 
 def test_drain_until_close_returns_for_an_immediately_closed_stream() -> None:
     reader = _EofReader([])
-    run_timed(http_client._drain_until_close(reader))  # no exception raised is the assertion
+    run_timed(http_client._drain_until_close(reader), _RUN_BOUND_S)  # no exception raised is the assertion
 
 
 # ---------------------------------------------------------------------------
@@ -318,88 +444,42 @@ def test_http_response_json_decodes_the_body() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _canned_server(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
-    await reader.readline()  # request line - ignored, this fake always answers the same way
-    while True:
-        line = await reader.readline()
-        if line in (b"\r\n", b"\n", b""):
-            break
-    body = b'{"ok": true}'
-    writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
-    await writer.drain()
-    await writer.wait_closed()
-
-
 def test_fetch_round_trips_a_real_request_through_a_real_socket() -> None:
     async def scenario() -> None:
-        server = await asyncio.start_server(_canned_server, "127.0.0.1", 18099)
+        port = _PORTS.next()
+        server = await asyncio.start_server(_canned_server, "127.0.0.1", port)
         try:
-            res = await http_client.fetch("127.0.0.1", 18099, "GET", "/anything")
+            res = await http_client.fetch("127.0.0.1", port, "GET", "/anything")
             assert res.status_code == 200
             assert res.json() == {"ok": True}
         finally:
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
-
-
-async def _canned_server_split_body(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
-    # Writes the body across two separate drain()s with a real yield between them, forcing fetch()'s
-    # own _read_exact() to actually loop - proves the fix over a real socket, not only against
-    # _ChunkedReader's own scripted fake.
-    await reader.readline()
-    while True:
-        line = await reader.readline()
-        if line in (b"\r\n", b"\n", b""):
-            break
-    body = b'{"a": 1, "b": 2}'
-    half = len(body) // 2
-    writer.write(f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body[:half])
-    await writer.drain()
-    await asyncio.sleep_ms(20)
-    writer.write(body[half:])
-    await writer.drain()
-    await writer.wait_closed()
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_fetch_reassembles_a_body_delivered_across_two_separate_writes() -> None:
     async def scenario() -> None:
-        server = await asyncio.start_server(_canned_server_split_body, "127.0.0.1", 18100)
+        port = _PORTS.next()
+        server = await asyncio.start_server(_canned_server_split_body, "127.0.0.1", port)
         try:
-            res = await http_client.fetch("127.0.0.1", 18100, "GET", "/anything")
+            res = await http_client.fetch("127.0.0.1", port, "GET", "/anything")
             assert res.status_code == 200
             assert res.json() == {"a": 1, "b": 2}
         finally:
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
-
-
-async def _canned_server_no_content_length(reader: "asyncio.StreamReader", writer: "asyncio.StreamWriter") -> None:
-    # Matches GET /'s real shape, the static-file route via Response.send_file() passing a raw stream body:
-    # no Content-Length at all, body delivered across several writes, and EOF - this connection closing -
-    # ends it. Exactly the shape that sent every real GET / through the unsized path.
-    await reader.readline()
-    while True:
-        line = await reader.readline()
-        if line in (b"\r\n", b"\n", b""):
-            break
-    body = b"x" * 3000  # bigger than _read_until_close()'s own default 1024-byte scratch buffer
-    writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n")
-    await writer.drain()
-    for offset in range(0, len(body), 777):  # deliberately not a multiple of the scratch buffer
-        writer.write(body[offset : offset + 777])
-        await writer.drain()
-    await writer.wait_closed()
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes() -> None:
     async def scenario() -> None:
-        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", 18101)
+        port = _PORTS.next()
+        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", port)
         try:
-            res = await http_client.fetch("127.0.0.1", 18101, "GET", "/anything")
+            res = await http_client.fetch("127.0.0.1", port, "GET", "/anything")
             assert res.status_code == 200
             assert "Content-Length" not in res.headers
             assert res.body == b"x" * 3000
@@ -407,7 +487,7 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 # ---------------------------------------------------------------------------
@@ -419,23 +499,25 @@ def test_fetch_reads_a_body_with_no_content_length_until_the_connection_closes()
 
 def test_fetch_with_read_body_false_drains_a_sized_response_without_materializing_it() -> None:
     async def scenario() -> None:
-        server = await asyncio.start_server(_canned_server, "127.0.0.1", 18102)
+        port = _PORTS.next()
+        server = await asyncio.start_server(_canned_server, "127.0.0.1", port)
         try:
-            res = await http_client.fetch("127.0.0.1", 18102, "GET", "/anything", read_body=False)
+            res = await http_client.fetch("127.0.0.1", port, "GET", "/anything", read_body=False)
             assert res.status_code == 200
             assert res.body == b""
         finally:
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
 
 
 def test_fetch_with_read_body_false_drains_an_unsized_response_without_materializing_it() -> None:
     async def scenario() -> None:
-        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", 18103)
+        port = _PORTS.next()
+        server = await asyncio.start_server(_canned_server_no_content_length, "127.0.0.1", port)
         try:
-            res = await http_client.fetch("127.0.0.1", 18103, "GET", "/anything", read_body=False)
+            res = await http_client.fetch("127.0.0.1", port, "GET", "/anything", read_body=False)
             assert res.status_code == 200
             assert "Content-Length" not in res.headers
             assert res.body == b""
@@ -443,7 +525,47 @@ def test_fetch_with_read_body_false_drains_an_unsized_response_without_materiali
             server.close()
             await server.wait_closed()
 
-    run_timed(scenario(), timeout_s=5.0)
+    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+
+
+# ---------------------------------------------------------------------------
+# fetch()'s failure classes: a refusal (no response byte) is CeilingRefusedError, a response cut short is
+# IncompleteResponseError, nothing listening stays the plain OSError open_connection() raises, and timeout_s bounds it.
+# ---------------------------------------------------------------------------
+
+
+def test_a_reset_before_any_response_byte_is_a_ceiling_refusal() -> None:
+    failure = _fetch_failure(_resetting_server, _PORTS.next())
+    assert isinstance(failure, http_client.CeilingRefusedError), repr(failure)
+    assert failure.errno == errno.ECONNRESET
+
+
+def test_a_close_inside_the_header_block_is_an_incomplete_response() -> None:
+    failure = _fetch_failure(_header_cut_server, _PORTS.next())
+    assert isinstance(failure, http_client.IncompleteResponseError), repr(failure)
+    assert not isinstance(failure, http_client.CeilingRefusedError)
+
+
+def test_a_close_inside_the_body_is_an_incomplete_response() -> None:
+    failure = _fetch_failure(_body_cut_server, _PORTS.next())
+    assert isinstance(failure, http_client.IncompleteResponseError), repr(failure)
+
+
+def test_nothing_listening_stays_a_plain_oserror_and_no_refusal() -> None:
+    async def scenario() -> BaseException:
+        try:
+            await http_client.fetch("127.0.0.1", _PORTS.next(), "GET", "/anything")
+        except OSError as e:
+            return e
+        raise AssertionError("fetch() reached a listener on a port nothing binds")
+
+    failure = run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    assert not isinstance(failure, (http_client.CeilingRefusedError, http_client.IncompleteResponseError)), repr(failure)
+
+
+def test_fetch_with_timeout_s_gives_up_on_a_server_that_never_answers() -> None:
+    failure = _fetch_failure(_silent_server, _PORTS.next(), _FETCH_TIMEOUT_S)
+    assert isinstance(failure, asyncio.TimeoutError), repr(failure)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,129 @@
+.F...................................................................... [ 10%]
+........................................................................ [ 20%]
+........................................................................ [ 30%]
+........................................................................ [ 40%]
+........................................................................ [ 50%]
+........................................................................ [ 60%]
+........................................................................ [ 70%]
+...............................................F................F....... [ 81%]
+........................................................................ [ 91%]
+...........................................FF.................           [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests_scripts/test_tests_hardware_conftest_constants.py	A candidate longer than the field's own cap could never be a live Hostname, so s
+E       assert not [('tests_scripts/test_tests_hardware_conftest_constants.py', "A candidate longer than the field's own cap could never be a live Hostname, so s")]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26b')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: tests_scripts/test_device_script_fram_regions.py:30: l0.fram_regions_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:43: l4.conftest_provision_put_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:45: l4.conftest_dut_ip_exec_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:47: l4.conftest_http_ready_probe_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:49: l4.conftest_http_ready_poll_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:51: l4.conftest_ip_and_http_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:53: l4.dut_serving_after_sta_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:55: l4.conftest_sta_tail_step_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:57: l4.conftest_vl805_read_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:59: l4.conftest_end_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/conftest.py:61: l4.conftest_end_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:119: l4.harness_usb_unbind_settle_max_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:121: l4.harness_usb_bind_settle_max_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:142: l4.observe_during_tail_after_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:144: l4.observe_during_tail_step_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:152: l3.reflash_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/harness.py:154: l3.reflash_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/scd30_prerequisite.py:18: l3.scd30_prerequisite_interval_read_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/scd30_prerequisite.py:20: l3.scd30_prerequisite_wait_margin_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/bench/conftest.py:17: l4.board_image_system_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/scd30_data_ready_wait.py:25: l3.scd30_data_ready_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/scd30_data_ready_wait.py:27: l3.scd30_data_ready_wait_margin_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/facts.py:7: l3.device_script_errors_kept is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/heap_probe.py:19: l3.heap_probe_min is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/heap_probe.py:21: l3.heap_probe_max_kib is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/heap_probe.py:24: l3.heap_probe_retries is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/settle.py:20: l3.settle_step_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/settle.py:22: l3.settle_budget_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/device_scripts/_shared/watchdog.py:12: l3.device_script_feed_step_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/flash/conftest.py:24: l3.flash_leave_serving_present_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests_hardware/flash/conftest.py:26: l3.flash_leave_serving_boot_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10416: wdt.timeout_ms: Sites list [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_sample_cadence.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')], the tags say [('buildgen/validate.py', '8000'), ('digital_twin/launch.py', '8000'), ('digital_twin/run_device_script.py', '8000'), ('digital_twin/run_generic_integration.py', '8000'), ('tests_hardware/device_scripts/_shared/watchdog.py', '8000'), ('tests_hardware/device_scripts/allocation_need_per_source.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py', '8000'), ('tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py', '8000'), ('tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py', '8000'), ('tests_hardware/device_scripts/fram_capacity_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_pause_unpause_and_gating.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py', '8000'), ('tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py', '8000'), ('tests_hardware/device_scripts/fram_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/heap_headroom_after_full_system_build.py', '8000'), ('tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py', '8000'), ('tests_hardware/device_scripts/heap_under_connection_ceiling.py', '8000'), ('tests_hardware/device_scripts/isl29125_cross_device_concurrency.py', '8000'), ('tests_hardware/device_scripts/isl29125_lighting_scenarios.py', '8000'), ('tests_hardware/device_scripts/isl29125_mechanism_envelope.py', '8000'), ('tests_hardware/device_scripts/isl29125_mock_conformance_probe.py', '8000'), ('tests_hardware/device_scripts/isl29125_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/isl29125_real_irq_edge.py', '8000'), ('tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/scd30_plausibility_read.py', '8000'), ('tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py', '8000'), ('tests_hardware/device_scripts/serving_at_default_gc.py', '8000'), ('tests_hardware/device_scripts/sgp40_fram_backup_restore.py', '8000'), ('tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py', '8000'), ('tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py', '8000'), ('tests_hardware/device_scripts/sgp40_sample_cadence.py', '8000'), ('tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py', '8000'), ('tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_exchange.py', '8000'), ('tests_hardware/device_scripts/uart_crossover_recovery.py', '8000'), ('tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py', '8000'), ('tests_hardware/device_scripts/uart_idle_poll_rate.py', '8000'), ('tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py', '8000'), ('tests_hardware/device_scripts/unretrieved_task_exception_handler.py', '8000'), ('tests_hardware/harness.py', '8000')]
+E         SPECIFICATION.md:10598: l1.unix_heapsize: Sites list [('scripts/test.sh', '16M'), ('tests_scripts/test_digital_twin_boot_contiguity.py', '16M')], the tags say [('scripts/test.sh', '16M'), ('tests_scripts/test_device_script_fram_regions.py', '16M'), ('tests_scripts/test_digital_twin_boot_contiguity.py', '16M')]
+E         SPECIFICATION.md:10997: l4.soak_duration_short_s: Sites list [('tests_hardware/soak_tiers.py', '60.0')], the tags say [('tests_hardware/soak_durations.py', '60.0'), ('tests_hardware/soak_tiers.py', '60.0')]
+E         SPECIFICATION.md:10998: l4.soak_duration_mid_s: Sites list [('tests_hardware/soak_tiers.py', '600.0')], the tags say [('tests_hardware/soak_durations.py', '600.0'), ('tests_hardware/soak_tiers.py', '600.0')]
+E         SPECIFICATION.md:10999: l4.soak_duration_long_h: Sites list [('tests_hardware/soak_tiers.py', '6')], the tags say [('tests_hardware/soak_durations.py', '6'), ('tests_hardware/soak_tiers.py', '6')]
+E         SPECIFICATION.md:11036: l4.hotspot_role_reversal_join_hotspot_timeout_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '45.0'), ('tests_hardware/bench/test_network_resilience.py', '45.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '45.0'), ('tests_hardware/bench/test_network_resilience.py', '45.0'), ('tests_hardware/conftest.py', '45.0')]
+E         SPECIFICATION.md:11037: l4.hotspot_role_reversal_hotspot_scan_timeout_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '30.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '30.0'), ('tests_hardware/conftest.py', '30.0')]
+E         SPECIFICATION.md:11038: l4.hotspot_role_reversal_hotspot_scan_poll_s: Sites list [('tests_hardware/bench/test_hotspot_role_reversal.py', '2.0')], the tags say [('tests_hardware/bench/test_hotspot_role_reversal.py', '2.0'), ('tests_hardware/conftest.py', '2.0')]
+E         SPECIFICATION.md:11183: l3.toolchain_flash_boot_load_timeout_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '120'), ('tests_hardware/harness.py', '120'), ('tests_hardware/manual/manual_toolchain.py', '120')]
+E         SPECIFICATION.md:11184: l3.toolchain_flash_boot_load_retry_backoff_s: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '2.0')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '2.0'), ('tests_hardware/harness.py', '2.0')]
+E         SPECIFICATION.md:11186: l3.toolchain_flash_boot_picotool_load_attempts: Sites list [('tests_hardware/flash/test_toolchain_flash_boot.py', '5')], the tags say [('tests_hardware/flash/test_toolchain_flash_boot.py', '5'), ('tests_hardware/harness.py', '5')]
+E         SPECIFICATION.md:11332: l3.conftest_scd30_rw_script_timeout_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['tests_scripts/test_device_script_fram_regions.py:30: l0.fram_regions_boot_timeout_s is tagged but has no SPECIFICATI...ests_hardware/conftest.py:51: l4.conftest_ip_and_http_timeout_s is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+_______ test_no_function_level_or_dynamic_import_outside_the_named_lists _______
+
+    def test_no_function_level_or_dynamic_import_outside_the_named_lists() -> None:
+        unexpected = collect_sites() - Counter(_PENDING)
+        new = sorted(site for site in unexpected.elements() if not is_named(site))
+>       assert not new, "imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:\n" + "\n".join(f"  {s}" for s in new)
+E       AssertionError: imports belong at module top, static (SPECIFICATION.md F.1) - move these, or name them there:
+E           ('tests_hardware/conftest.py', '_scd30_snapshot', 'scd30_prerequisite')
+E           ('tests_hardware/conftest.py', 'board', 'twin_board')
+E           ('tests_scripts/test_board_image_fixture.py', '_bench_conftest', 'exec_module')
+E           ('tests_scripts/test_board_image_fixture.py', '_bench_conftest', 'module_from_spec')
+E           ('tests_scripts/test_board_image_fixture.py', '_bench_conftest', 'spec_from_file_location')
+E           ('tests_scripts/test_device_script_fram_regions.py', '<module>', '__import__')
+E           ('tests_scripts/test_tests_hardware_conftest_constants.py', '_load', 'exec_module')
+E           ('tests_scripts/test_tests_hardware_conftest_constants.py', '_load', 'module_from_spec')
+E           ('tests_scripts/test_tests_hardware_conftest_constants.py', '_load', 'spec_from_file_location')
+E       assert not [('tests_hardware/conftest.py', '_scd30_snapshot', 'scd30_prerequisite'), ('tests_hardware/conftest.py', 'board', 'twi...test', 'spec_from_file_location'), ('tests_scripts/test_device_script_fram_regions.py', '<module>', '__import__'), ...]
+
+tests_scripts/test_import_placement.py:196: AssertionError
+____________ test_no_file_outside_the_device_tomls_names_a_variant _____________
+
+    def test_no_file_outside_the_device_tomls_names_a_variant() -> None:
+        found = collect_findings()
+        new = {path: hits[:3] for path, hits in found.items() if path not in _NOT_YET_CLEANED}
+>       assert not new, "variant literals outside devices/ - take the device from data, an argument or a TOML property:\n" + "\n".join(f"  {p}: {h}" for p, h in sorted(new.items()))
+E       AssertionError: variant literals outside devices/ - take the device from data, an argument or a TOML property:
+E           tests_hardware/bench_control.py: [(319, '"dev"')]
+E       assert not {'tests_hardware/bench_control.py': [(319, '"dev"')]}
+
+tests_scripts/test_no_variant_literals.py:136: AssertionError
+___________ test_every_not_yet_cleaned_entry_still_carries_a_literal ___________
+
+    def test_every_not_yet_cleaned_entry_still_carries_a_literal() -> None:
+        found = collect_findings()
+        stale = sorted(path for path in _NOT_YET_CLEANED if path not in found)
+>       assert not stale, f"these files are clean now - remove their _NOT_YET_CLEANED entries: {stale}"
+E       AssertionError: these files are clean now - remove their _NOT_YET_CLEANED entries: ['tests_hardware/conftest.py', 'tests_hardware/harness.py']
+E       assert not ['tests_hardware/conftest.py', 'tests_hardware/harness.py']
+
+tests_scripts/test_no_variant_literals.py:142: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_no_function_level_or_dynamic_import_outside_the_named_lists
+FAILED tests_scripts/test_no_variant_literals.py::test_no_file_outside_the_device_tomls_names_a_variant
+FAILED tests_scripts/test_no_variant_literals.py::test_every_not_yet_cleaned_entry_still_carries_a_literal
+5 failed, 705 passed in 104.74s (0:01:44)
+
+real	1m54.171s
+user	1m52.915s
+sys	0m4.194s

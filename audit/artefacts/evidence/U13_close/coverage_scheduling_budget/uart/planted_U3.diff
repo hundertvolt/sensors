@@ -1,0 +1,11 @@
+--- ../wt-u13rc/src/asy_uart_comm.py	2026-10-07 16:03:00.883708676 +0000
++++ planted_U3/asy_uart_comm.py	2026-10-07 16:40:28.737020448 +0000
+@@ -901,6 +901,8 @@
+                 await self._fault(device, err, "invalid ACK for frame", cur_chunk)
+             return False
+         self._note_valid_frame()
++        if cur_chunk == 100:  # PLANTED U3: a spurious error on a clean chunk
++            await self._err(_ERR_TIMEOUT, "planted")
+         return True
+ 
+     # -- starters ----------------------------------------------------------

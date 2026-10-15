@@ -1,10 +1,10 @@
-"""Manual tests: a real phone/laptop joining the DUT's fallback hotspot, loading its website end
-to end, and observing whether OS-level captive-portal auto-detection fires against
-src/captive_dns.py's DNS-only spoof (no HTTP redirect exists - genuinely unknown until tried)."""
+"""Manual tests, an execution mode of L4 (manual/runner.py): a real phone/laptop joining the DUT's fallback hotspot,
+loading its website end to end, and the captive-portal observation - the hotspot answers DNS with its own address
+and redirects an unknown HTTP path to `/` (SPECIFICATION.md A.5, src/asy_captive_dns.py); what an OS makes of it is open."""
 
-from __future__ import annotations
-
-from runner import confirm, confirm_pass, print_instruction, register, state_expected_outcome
+import evidence
+from harness import hotspot_password
+from runner import confirm, confirm_pass, observe, print_instruction, register, state_expected_outcome
 
 
 @register(
@@ -16,9 +16,9 @@ def test_real_sta_fail_hotspot_fallback_second_client() -> None:
     print_instruction('This test needs the DUT already in (or about to enter) hotspot fallback mode - e.g. after PUT /networking {"SSID": ""}.')
     state_expected_outcome("a hotspot named after the DUT's configured Hostname appears in your phone/laptop's WiFi list within ~30s.")
     confirm("Trigger hotspot fallback now (or wait for it to happen organically), then press Enter once you're watching for the AP to appear")
-    print_instruction("On your phone/laptop, scan for WiFi networks and join the DUT's hotspot (password: 12345678) within 60 seconds.")
-    confirm("Press Enter once you've successfully joined and received a real IP address (check your device's WiFi settings)")
-    confirm_pass("Did your phone/laptop receive a real DHCP-leased IP address on the DUT's hotspot?")
+    print_instruction(f"On your phone/laptop, scan for WiFi networks and join the DUT's hotspot (password: {hotspot_password()}) within 60 seconds.")
+    confirm("Press Enter once you've joined (check your device's WiFi settings for its address)")
+    confirm_pass("Did your phone/laptop receive a real DHCP-leased IP address on the DUT's hotspot? [y/N]")
 
 
 @register(
@@ -27,22 +27,23 @@ def test_real_sta_fail_hotspot_fallback_second_client() -> None:
     "[USB+WiFi][MANUAL]",
 )
 def test_real_end_to_end_hotspot_session_real_client() -> None:
-    print_instruction("Join the DUT's hotspot (SSID = its configured Hostname, password 12345678) with a phone/laptop, within 60 seconds.")
+    print_instruction(f"Join the DUT's hotspot (SSID = its configured Hostname, password {hotspot_password()}) with a phone/laptop, within 60 seconds.")
     confirm("Press Enter once joined")
     print_instruction("Open a browser on that device and navigate to http://<gateway IP, usually 192.168.4.1>/")
-    state_expected_outcome("the device's real website loads (title, styling, live measurements) within a few seconds - the same page the automated tier's test_hotspot_role_reversal.py::test_real_static_website_content_serves_over_the_hotspot_link proves programmatically, now observed by an actual human browser.")
+    state_expected_outcome("the device's real website loads (title, styling, live measurements) within a few seconds - the page bench/test_hotspot_role_reversal.py proves programmatically, now seen by a real browser.")
     confirm("Press Enter once you've loaded the page")
     confirm_pass()
 
 
 @register(
     "real_phone_captive_portal_auto_detection",
-    "Observe whether a real phone/laptop's OS-level 'sign in to network' captive-portal auto-detection popup fires against src/captive_dns.py's DNS-only spoof (no HTTP-level redirect exists) - a genuinely open question, not settled by reading the code alone.",
+    "Observe whether a real phone/laptop's OS-level 'sign in to network' captive-portal popup fires against the hotspot's DNS answer and its redirect of unknown paths to / - open until tried; the observation is recorded as text.",
     "[USB+WiFi][MANUAL]",
 )
 def test_real_phone_captive_portal_auto_detection() -> None:
     print_instruction("Join the DUT's hotspot with a real phone (iOS/Android) or laptop - watch closely for any 'Sign in to network' / captive portal popup during or immediately after joining.")
-    state_expected_outcome("UNKNOWN - this is genuinely open. Either a popup appears (the OS's own captive-portal probe request, e.g. a GET to a known connectivity-check URL, happened to land on the DUT's real webserver root and got treated as a captive portal), or nothing appears (the DNS-only spoof isn't enough to trigger the OS's own detection heuristic). Record which one happened - this is exploratory, not a strict pass/fail.")
+    state_expected_outcome("open: a popup (the OS's connectivity probe reached the DUT's webserver and was redirected to /) or none. Either is data, recorded below.")
     confirm("Press Enter once you've joined and waited ~15 seconds to see whether a popup appears")
-    print_instruction("Record what you observed (a popup appeared / no popup appeared / something else) for the project owner - this test always reports PASS since either outcome is valid data, not a failure.")
-    confirm("Press Enter to finish")
+    text = observe("Describe what you observed (device and OS, popup or none, what it showed):")
+    if text:
+        evidence.save_text("captive-portal.txt", text + "\n")

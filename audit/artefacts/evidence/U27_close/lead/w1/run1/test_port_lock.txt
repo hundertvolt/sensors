@@ -1,0 +1,24 @@
+.........................F..................                             [100%]
+=================================== FAILURES ===================================
+_ test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_digital_twin_ci.sh] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10121/test_each_runner_holds_its_por1')
+runner = 'scripts/run_digital_twin_ci.sh'
+
+    @pytest.mark.parametrize("runner", list(_RUNNERS))
+    def test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit(tmp_path: Path, runner: str) -> None:
+        # The stub uv fails the toolchain step, the first thing past the locks: an abort under set -e.
+        done, _, calls = _run_runner(tmp_path, runner)
+        assert done.returncode == 1, done.stderr
+        held = " ".join(sorted(f"sensors-port-{port}.lock" for port in _RUNNERS[runner][1]))
+        first = calls.read_text(encoding="utf-8").splitlines()[0]
+>       assert first.startswith("uv run toolchain/setup_toolchain.py setup"), done.stderr
+E       AssertionError: 
+E       assert False
+E        +  where False = <built-in method startswith of str object at 0x7f3498f834b0>('uv run toolchain/setup_toolchain.py setup')
+E        +    where <built-in method startswith of str object at 0x7f3498f834b0> = 'uv run --no-sync scripts/_archive_evidence.py --runner digital_twin_ci_fixture_device digital_twin_ci_logs/fixture_device | held: sensors-port-18080.lock sensors-port-53.lock '.startswith
+
+tests_scripts/test_port_lock.py:398: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_port_lock.py::test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit[scripts/run_digital_twin_ci.sh]
+1 failed, 43 passed in 6.11s

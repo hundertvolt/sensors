@@ -1,4 +1,4 @@
-"""Pins the product's own request timeouts (asy_webserver_service.py's `outer_cap_s`/`per_call_timeout_s`)
+"""Pins the product's own request timeouts (asy_webserver_service.py's `_DEFAULT_OUTER_CAP_S`/`_DEFAULT_PER_CALL_TIMEOUT_S`)
 to every place that mirrors or must stay inside them - the web UI's give-up time, both tiers' ResetErrors
 timeouts, the bench's connection-holding instruments. Read with ast, since src/ can't be imported here."""
 
@@ -13,14 +13,23 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
+
+from buildgen.validate import device_max_connections, webserver_init_default
+
+# Join bounds on the loopback fixtures' threads below.
+# @tunable l0.request_timeout_ceiling_join_timeout_s = 5.0
+_JOIN_TIMEOUT_S = 5.0
+# @tunable l0.request_timeout_ceiling_hammer_join_timeout_s = 2.0
+_HAMMER_JOIN_TIMEOUT_S = 2.0
 
 
 def _default_for_parameter(source_path: Path, param: str) -> float:
-    """The literal default of a keyword parameter, found anywhere in a module's function/method
-    signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
-    read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py."""
-    tree = ast.parse(source_path.read_text())
+    # The literal default of a keyword parameter, found anywhere in a module's function/method
+    # signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
+    # read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py.
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     # Collected rather than short-circuited on the first hit: a second signature declaring the same
     # parameter with a different default would make "the" ceiling ambiguous, and silently pinning
     # whichever one ast happened to reach first is exactly the drift this file exists to catch.
@@ -46,25 +55,31 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
 
 
 def _module_constant(source_path: Path, name: str) -> float:
-    """A module-level numeric constant's literal value."""
-    tree = ast.parse(source_path.read_text())
+    # A module-level numeric constant's literal value, plain (`NAME = 5.0`) or `const()`-wrapped (`NAME = const(5.0)`).
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     for node in tree.body:
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, int | float) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return float(node.value.value)
+        if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)):
+            continue
+        value = node.value
+        if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "const" and len(value.args) == 1:
+            value = value.args[0]
+        if isinstance(value, ast.Constant) and isinstance(value.value, int | float):
+            return float(value.value)
     raise AssertionError(f"no module-level numeric constant {name!r} in {source_path}")
 
 
 @pytest.fixture(scope="session")
 def outer_cap_s(repo_root: Path) -> float:
-    return _default_for_parameter(repo_root / "src" / "asy_webserver_service.py", "outer_cap_s")
+    # ServingLimits' outer_cap_s field takes its shipped value from this constant (generated code passes it).
+    return _module_constant(repo_root / "src" / "asy_webserver_service.py", "_DEFAULT_OUTER_CAP_S")
 
 
 def test_the_web_ui_gives_up_exactly_at_the_servers_own_ceiling(repo_root: Path, outer_cap_s: float) -> None:
     # CLAUDE.md's src/<->js/ cross-language mirror obligation (SPECIFICATION.md Part G) applied to
     # the one number that decides whether a slow request is a server abort the UI can report or a
     # client-side give-up it cannot explain. Only the two ends being equal makes the first true.
-    js_text = (repo_root / "js" / "poll-manager.js").read_text()
-    match = re.search(r"export const DEFAULT_TIMEOUT_MS = (\d+);", js_text)
+    js_text = (repo_root / "js" / "poll-manager.js").read_text(encoding="utf-8")
+    match = re.search(r"(?:export )?const DEFAULT_TIMEOUT_MS = (\d+);", js_text)
     assert match is not None, "js/poll-manager.js no longer declares DEFAULT_TIMEOUT_MS - update this mirror check with it"
     assert float(match.group(1)) / 1000.0 == outer_cap_s, f"js/poll-manager.js's DEFAULT_TIMEOUT_MS ({match.group(1)}ms) must mirror asy_webserver_service.py's outer_cap_s ({outer_cap_s}s)"
 
@@ -85,7 +100,7 @@ def test_the_ci_suites_reset_errors_timeout_can_actually_fire_as_a_server_abort(
 def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_root: Path, outer_cap_s: float) -> None:
     # tests_hardware/ hardcodes its value, having no import path to src/, so it is the copy most
     # likely to drift. Below the cap a slow-but-legitimate reset reads as a client timeout and is
-    # misdiagnosed as a network fault (BACKLOG item 24 has the measurements).
+    # misdiagnosed as a network fault (SPECIFICATION.md C.7).
 
     # Only the lower bound is asserted: unlike the twin's loopback copy, this one carries extra
     # slack for real WiFi latency on the server abort's own close.
@@ -94,7 +109,7 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
     assert reset_timeout > outer_cap_s, f"tests_hardware/error_log_helpers.py's reset timeout ({reset_timeout}s) must sit above the server's own {outer_cap_s}s cap"
     # It must also actually be the value the helper passes - a named constant that no call site uses
     # would satisfy the bound above while every real request still ran on a stale literal.
-    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
+    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(encoding="utf-8"), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
 
 
 # The two instruments that HOLD connections open against the board. Both failed silently on silicon
@@ -104,14 +119,11 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
 
 @pytest.fixture(scope="session")
 def per_call_timeout_s(repo_root: Path) -> float:
-    return _default_for_parameter(repo_root / "src" / "asy_webserver_service.py", "per_call_timeout_s")
+    return _module_constant(repo_root / "src" / "asy_webserver_service.py", "_DEFAULT_PER_CALL_TIMEOUT_S")
 
 
 def _largest_shipped_ceiling(repo_root: Path) -> int:
-    from buildgen.validate import device_max_connections, webserver_init_default
-
-    shipped = [p for p in (repo_root / "devices").glob("*.toml") if not p.name.startswith("zz_test_")]
-    return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(p, repo_root / "src") for p in shipped])
+    return max([webserver_init_default(repo_root / "src", "max_connections")] + [device_max_connections(device_toml(d), repo_root / "src") for d in DEVICE_NAMES])
 
 
 def test_the_ceiling_probe_can_walk_its_whole_limit_inside_the_servers_own_timeouts(repo_root: Path, outer_cap_s: float, per_call_timeout_s: float) -> None:
@@ -145,7 +157,7 @@ def test_conflicting_defaults_are_refused_rather_than_silently_picking_one(tmp_p
     # value. ast.walk() order is not the source order a reader would assume, so "whichever came
     # first" would pin an arbitrary one of the two and still report every mirror as in sync.
     source = tmp_path / "two_defaults.py"
-    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n")
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="conflicting defaults"):
         _default_for_parameter(source, "outer_cap_s")
 
@@ -154,7 +166,7 @@ def test_a_parameter_that_carries_no_literal_default_is_refused(tmp_path: Path) 
     # A required parameter, or one defaulting to an expression rather than a literal, leaves nothing
     # to mirror. Failing loud here is what stops the ceiling checks degrading into no-ops.
     source = tmp_path / "no_default.py"
-    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n")
+    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="no literal default"):
         _default_for_parameter(source, "outer_cap_s")
 
@@ -163,7 +175,7 @@ def test_the_same_default_declared_twice_is_not_a_conflict(tmp_path: Path) -> No
     # The guard must bite on disagreement only - two signatures agreeing on the ceiling is exactly
     # the mirroring this file wants, not a failure.
     source = tmp_path / "agreeing.py"
-    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n")
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(source, "outer_cap_s") == 15.0
 
 
@@ -171,10 +183,10 @@ def test_defaults_are_read_from_every_argument_position(tmp_path: Path) -> None:
     # Python binds posonly/positional/kwonly defaults from two separate ast lists, and the real
     # signature has moved between those positions before. Missing one reads as "no default at all".
     posonly = tmp_path / "posonly.py"
-    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n")
+    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(posonly, "outer_cap_s") == 15.0
     trailing = tmp_path / "trailing.py"
-    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n")
+    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(trailing, "outer_cap_s") == 15.0
 
 
@@ -182,7 +194,7 @@ def test_a_missing_module_constant_is_refused_rather_than_read_as_zero(tmp_path:
     # tests_hardware/'s copy is the one most likely to be renamed away, and a parser returning a
     # falsy placeholder would make the "above the cap" bound fail confusingly instead of naming it.
     source = tmp_path / "constants.py"
-    source.write_text("_OTHER_TIMEOUT_S = 30.0\n")
+    source.write_text("_OTHER_TIMEOUT_S = 30.0\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
 
@@ -191,9 +203,18 @@ def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> N
     # A constant turned into a string/None keeps the name alive while making every comparison
     # against it meaningless - so the name matching is deliberately not enough on its own.
     source = tmp_path / "stringly.py"
-    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n')
+    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n_CAP_S = const("15.0")\n', encoding="utf-8")
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
+    with pytest.raises(AssertionError, match="no module-level numeric constant"):
+        _module_constant(source, "_CAP_S")
+
+
+def test_a_const_wrapped_constant_reads_like_a_plain_one(tmp_path: Path) -> None:
+    # src/'s defaults are MicroPython const()s; the reader unwraps the one literal argument.
+    source = tmp_path / "consts.py"
+    source.write_text("_DEFAULT_OUTER_CAP_S = const(15.0)\n_DEFAULT_MAX_CONNECTIONS = const(6)\n_PLAIN_S = 2.5\n", encoding="utf-8")
+    assert [_module_constant(source, n) for n in ("_DEFAULT_OUTER_CAP_S", "_DEFAULT_MAX_CONNECTIONS", "_PLAIN_S")] == [15.0, 6.0, 2.5]
 
 
 @pytest.fixture(scope="module")
@@ -234,7 +255,7 @@ def _connections_the_holder_opens(holder: ModuleType, *, server_answers: bool, w
     stop.set()
     done.set()
     for thread in threads:
-        thread.join(timeout=5.0)
+        thread.join(timeout=_JOIN_TIMEOUT_S)
     for conn in accepted:
         conn.close()
     server.close()
@@ -287,27 +308,40 @@ def test_the_ceiling_holder_ends_as_soon_as_its_test_sets_stop(ceiling_holder: M
     hammer.start()
     time.sleep(0.2)
     stop.set()
-    hammer.join(timeout=2.0)
+    hammer.join(timeout=_HAMMER_JOIN_TIMEOUT_S)
     assert not hammer.is_alive(), "the holder outlived its test's stop"
     assert len(held_out) == 4
 
 
 def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(repo_root: Path, per_call_timeout_s: float) -> None:
-    # A held socket silent past per_call_timeout_s is answered and logs wrnno=2, failing the test's
+    # A held socket silent past per_call_timeout_s is answered and logs HTTP_CALL_TIMEOUT, failing the test's
     # own empty-WEBSERVER-log check; one extra blocking in recv for 10 s held the set that long.
-    source = (repo_root / "tests_hardware" / "bench" / "test_network_resilience.py").read_text()
-    fn = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.FunctionDef) and n.name == "test_connections_at_and_above_the_real_socket_limit_degrade_cleanly")
-    sent: set[str] = set()
-    read_timeouts: list[float] = []
-    for call in ast.walk(fn):
-        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.args):
-            continue
-        arg = call.args[0]
-        if call.func.attr == "sendall":
-            sent.add(ast.unparse(arg))
-        elif call.func.attr == "settimeout" and ast.unparse(call.func.value) == "extra" and isinstance(arg, ast.Constant) and isinstance(arg.value, int | float):
-            read_timeouts.append(float(arg.value))
+    path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
+    source = path.read_text(encoding="utf-8")
+
+    def value(arg: ast.expr) -> float | None:
+        if isinstance(arg, ast.Name):
+            return _module_constant(path, arg.id)
+        return float(arg.value) if isinstance(arg, ast.Constant) and isinstance(arg.value, int | float) else None
+
+    functions = {n.name: n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}
+    fn = functions["test_connections_at_and_above_the_real_socket_limit_degrade_cleanly"]
+
+    def with_helpers(node: ast.AST) -> "list[ast.AST]":
+        # The node and the module-level functions it calls: an attempt may live in a helper (_extra_outcome()).
+        called = {c.func.id for c in ast.walk(node) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in functions}
+        return [node, *(functions[name] for name in sorted(called))]
+
+    sent = {ast.unparse(c.args[0]) for c in ast.walk(fn) if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "sendall" and c.args}
     assert "HELD_REQUEST_LINE" in sent, "the held sockets never send a request line, so nothing can pad them"
-    loop = next(n for n in ast.walk(fn) if isinstance(n, ast.For) and "extra.connect" in ast.unparse(n))  # the attempt loop
-    assert "_pad" in {c.func.id for c in ast.walk(loop) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)}, "the held sockets are not padded on every attempt"
-    assert read_timeouts and read_timeouts[-1] + 1.0 < per_call_timeout_s, f"the extra's read timeout ({read_timeouts[-1:]}s) plus the 1 s retry sleep outlasts per_call_timeout_s ({per_call_timeout_s}s) between pads"
+    loops = [n for n in ast.walk(fn) if isinstance(n, ast.For) and any("extra.connect" in ast.unparse(part) for part in with_helpers(n))]
+    assert loops, "no attempt loop connects an extra socket, itself or through a helper"
+    attempt = with_helpers(loops[0])
+    calls = sorted((c for part in attempt for c in ast.walk(part) if isinstance(c, ast.Call)), key=lambda c: (c.lineno, c.col_offset))
+    assert "_pad" in {c.func.id for c in calls if isinstance(c.func, ast.Name)}, "the held sockets are not padded on every attempt"
+    # The extra's last settimeout() before its read is the read timeout.
+    read_timeouts = [s for c in calls if isinstance(c.func, ast.Attribute) and c.func.attr == "settimeout" and ast.unparse(c.func.value) == "extra" and c.args and (s := value(c.args[0])) is not None]
+    sleeps = [c.args[0] for c in ast.walk(loops[0]) if isinstance(c, ast.Call) and ast.unparse(c.func) == "time.sleep" and c.args]
+    retry_sleeps = [s for s in map(value, sleeps) if s is not None]
+    assert retry_sleeps, "the attempt loop has no retry sleep this check can read"
+    assert read_timeouts and read_timeouts[-1] + max(retry_sleeps) < per_call_timeout_s, f"the extra's read timeout ({read_timeouts[-1:]}s) plus the {max(retry_sleeps)} s retry sleep outlasts per_call_timeout_s ({per_call_timeout_s}s) between pads"

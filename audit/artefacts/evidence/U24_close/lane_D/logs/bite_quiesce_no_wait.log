@@ -1,0 +1,28 @@
+PASS test_a_concurrent_reader_never_sees_a_config_file_half_written_or_half_deleted
+PASS test_a_host_stall_inside_a_stretched_clear_does_not_read_as_a_held_clock
+PASS test_a_recovery_between_a_split_session_still_returns_a_valid_value
+PASS test_a_recovery_during_a_held_bus_clear_lets_no_sibling_transfer_in
+PASS test_a_register_read_is_two_transfers_with_no_sibling_transfer_between_them
+PASS test_a_sensor_cancelled_inside_its_session_leaves_the_bus_free_and_the_sibling_read_valid
+PASS test_a_short_ack_on_one_device_fails_only_that_device_and_leaves_sibling_reads_valid
+FAIL test_an_erase_lets_a_write_and_a_read_in_flight_finish_whole_refuses_later_ones_and_holds_each_unit_whole:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u24/laneD/bite/quiesce_no_wait/tests/microtest.py", line 38, in _call
+  File "tests/test_bus_hazard_multi_device.py", line 1005, in test_an_erase_lets_a_write_and_a_read_in_flight_finish_whole_refuses_later_ones_and_holds_each_unit_whole
+AssertionError: ['turns=10: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=20: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=30: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=40: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=50: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=60: begun=[True, True] settled=[False, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=70: begun=[True, True] settled=[True, False] finished=[True, True] whole=True refused=[False, None] erased=True wire=[0, True, 8192, True]', 'turns=80: begun=[True, True] settled=[True, False] finished=[True, True] whole=False refused=[False, None] erased=True wire=[0, True, 8192, True]']
+PASS test_an_isl29125_reapply_mid_read_leaves_every_sibling_read_valid
+PASS test_an_scd30_soft_reset_mid_read_leaves_every_sibling_read_valid
+PASS test_cross_device_bmp3xx_and_sgp40_interleave_and_both_stay_correct
+PASS test_cross_device_isl29125_and_sgp40_interleave_and_both_stay_correct
+PASS test_general_call_absent_sibling_bmp3xx_alone_on_the_bus_survives_a_broadcast_too
+PASS test_heater_off_and_an_sgp40_measure_serialise_through_the_device_session
+PASS test_no_reserved_i2c_address_collides_with_any_promoted_devices_own_address
+PASS test_sgp40_bus_fault_does_not_corrupt_or_stall_a_concurrent_isl29125_read
+PASS test_sgp40_general_call_reset_does_not_disturb_a_concurrent_bmp3xx_read
+PASS test_sgp40_general_call_reset_does_not_disturb_a_concurrent_isl29125_read
+PASS test_sgp40_heater_off_does_not_disturb_a_concurrent_scd30_read_loop
+PASS test_spi_async_and_synchronous_sessions_share_one_bus_without_cs_overlap
+PASS test_spi_synchronous_session_never_leaves_the_bus_locked_when_a_transfer_raises
+PASS test_the_erase_writes_each_status_byte_then_every_unit_once_ascending_at_the_parts_address_width
+PASS test_three_concurrent_sessions_on_the_same_sgp40_instance_never_scramble_each_others_reads
+22/23 passed, 1 failed, 0 skipped

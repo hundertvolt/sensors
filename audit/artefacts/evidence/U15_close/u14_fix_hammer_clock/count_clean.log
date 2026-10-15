@@ -1,0 +1,12 @@
+== faulted nocrc
+clean run: pass, 592 sleeps inside the measured window (of 738 after it opened), 546 ms
+== faulted crc16
+clean run: pass, 609 sleeps inside the measured window (of 1606 after it opened), 2180 ms
+== clean nocrc
+clean run: pass, 3167 sleeps inside the measured window (of 3167 after it opened), 1464 ms
+== clean crc16
+clean run: pass, 3251 sleeps inside the measured window (of 3251 after it opened), 1598 ms
+== retention nocrc
+clean run: pass, 3206 sleeps inside the measured window (of 3206 after it opened), 1237 ms
+== retention crc16
+clean run: pass, 3371 sleeps inside the measured window (of 3371 after it opened), 1387 ms

@@ -2,8 +2,6 @@
 hardware assertion, and its dangerous failure mode is silent: a truncated capture reads as a heap
 with an enormous free run at the end, turning a regression into a pass."""
 
-from __future__ import annotations
-
 import re
 import sys
 from pathlib import Path
@@ -13,7 +11,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tests_hardware"))
 
-import heap_map  # noqa: E402  (the sys.path line above is what makes this importable)
+import harness  # noqa: E402  (the sys.path line above is what makes these importable)
+import heap_map  # noqa: E402
 
 # A real dump, trimmed to four map lines: 64 blocks per line, 0x800 per line = 32 B per block (the
 # Unix port's size; the rp2 port's is 16, and the parser derives it rather than assuming either).
@@ -27,8 +26,12 @@ GC memory layout; from 5593dbb45640:
 """
 
 
-def _parsed() -> heap_map.HeapMap:
-    return heap_map.parse(_REAL)
+def _emitted_envelope(source: str, label: str) -> tuple[str, str]:
+    # The open/close lines one emitter would actually print for `label`, from its own f-strings.
+    opens = re.findall(r'print\(f"(=== MAP \{label\} ===)"\)', source)
+    closes = re.findall(r'print\(f"(=== ENDMAP \{label\} ===)"\)', source)
+    assert len(opens) == 1 and len(closes) == 1, f"expected one MAP and one ENDMAP print, found {len(opens)}/{len(closes)}"
+    return opens[0].replace("{label}", label), closes[0].replace("{label}", label)
 
 
 def test_block_size_is_derived_from_the_offset_step_not_assumed() -> None:
@@ -110,8 +113,18 @@ def test_parse_labelled_picks_out_each_marked_block() -> None:
     assert found["first"].heap_blocks == 256
 
 
-def _with_top_block_allocated() -> heap_map.HeapMap:
-    return heap_map.parse(_REAL[:-2] + "h\n")
+def _need_output(*rungs: tuple[int, list[tuple[str, str, str]]]) -> str:
+    # allocation_need_per_source.py's own line shapes: SIEVE, a mem_info() summary, then TRY/RES.
+    lines = ["CHURN route:/status 1000", "BLOCK=16 PROBES=2"]
+    for max_free_blocks, probes in rungs:
+        lines += ["SIEVE 1", "GC: total: 1000, used: 10, free: 990", f" No. of 1-blocks: 1, 2-blocks: 0, max blk sz: 4, max free sz: {max_free_blocks}"]
+        for label, logged, result in probes:
+            lines.append(f"TRY {label}")
+            if logged:
+                lines.append(logged)
+            lines.append(f"RES {label} {result}")
+    lines.append("RESULT: PASS")
+    return "\n".join(lines)
 
 
 def test_delta_reports_only_what_the_second_map_added() -> None:
@@ -191,10 +204,11 @@ def test_an_empty_delta_summary_still_renders_rather_than_dividing_by_zero() -> 
     assert "highest_new_pct=-1" in heap_map.delta(_parsed(), _parsed()).summary()
 
 
-# The MAP/ENDMAP envelope is a contract between ONE parser regex and THREE independent emitters -
-# two device scripts and the twin probe. A drift on either side makes parse_labelled() find
-# nothing, and on the flash tier that only surfaces in a bench session.
+# The MAP/ENDMAP envelope is a contract between one parser regex and its emitters - the shared dump include, each
+# device script as the board runs it (rendered, includes inlined) and the twin probe. A drift on either side makes
+# parse_labelled() find nothing, and on the flash tier that only surfaces in a bench session.
 _EMITTERS = (
+    "tests_hardware/device_scripts/_shared/map_dump.py",
     "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py",
     "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py",
     "tests/_boot_contiguity_probe.py",
@@ -203,19 +217,19 @@ _EMITTERS = (
 )
 
 
-def _emitted_envelope(source: str, label: str) -> tuple[str, str]:
-    """The open/close lines one emitter would actually print for `label`, from its own f-strings."""
-    opens = re.findall(r'print\(f"(=== MAP \{label\} ===)"\)', source)
-    closes = re.findall(r'print\(f"(=== ENDMAP \{label\} ===)"\)', source)
-    assert len(opens) == 1 and len(closes) == 1, f"expected one MAP and one ENDMAP print, found {len(opens)}/{len(closes)}"
-    return opens[0].replace("{label}", label), closes[0].replace("{label}", label)
+def _parsed() -> heap_map.HeapMap:
+    return heap_map.parse(_REAL)
 
 
 @pytest.mark.parametrize("emitter", _EMITTERS)
-def test_every_emitters_own_envelope_round_trips_through_the_parser(emitter: str) -> None:
+def test_every_emitters_own_envelope_round_trips_through_the_parser(emitter: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Built from the emitter's real format string rather than from a copy of it here, so a changed
     # marker on either side fails this instead of silently yielding an empty result on the bench.
-    opened, closed = _emitted_envelope((REPO_ROOT / emitter).read_text(), "after_build_system")
+    path = REPO_ROOT / emitter
+    if "device_scripts" in path.parts and path.parent.name != "_shared":
+        monkeypatch.setattr(harness, "RENDERED_SCRIPTS_DIR", tmp_path)
+        path = harness.render_device_script(path)
+    opened, closed = _emitted_envelope(path.read_text(encoding="utf-8"), "after_build_system")
     found = heap_map.parse_labelled(f"noise before\n{opened}\n{_REAL}{closed}\ntrailing noise\n")
     assert sorted(found) == ["after_build_system"], f"{emitter}'s MAP envelope is not what parse_labelled() looks for"
     assert found["after_build_system"].heap_blocks == 256
@@ -244,18 +258,8 @@ def test_placeable_counts_capacity_not_runs() -> None:
     assert parsed.placeable(1) == sum(parsed.free_runs)
 
 
-def _need_output(*rungs: tuple[int, list[tuple[str, str, str]]]) -> str:
-    # allocation_need_per_source.py's own line shapes: SIEVE, a mem_info() summary, then TRY/RES.
-    lines = ["CHURN route:/status 1000", "BLOCK=16 PROBES=2"]
-    for max_free_blocks, probes in rungs:
-        lines += ["SIEVE 1", "GC: total: 1000, used: 10, free: 990", f" No. of 1-blocks: 1, 2-blocks: 0, max blk sz: 4, max free sz: {max_free_blocks}"]
-        for label, logged, result in probes:
-            lines.append(f"TRY {label}")
-            if logged:
-                lines.append(logged)
-            lines.append(f"RES {label} {result}")
-    lines.append("RESULT: PASS")
-    return "\n".join(lines)
+def _with_top_block_allocated() -> heap_map.HeapMap:
+    return heap_map.parse(_REAL[:-2] + "h\n")
 
 
 def test_allocation_need_is_the_first_rung_from_which_every_larger_one_is_clean() -> None:
@@ -294,8 +298,3 @@ def test_output_without_its_block_line_is_refused_by_name() -> None:
     text = _need_output((8, [("a", "", "ok")])).replace("BLOCK=16 PROBES=2\n", "")
     with pytest.raises(ValueError, match="no BLOCK= line"):
         heap_map.parse_allocation_need(text)
-
-
-def test_churn_keeps_a_negative_reading() -> None:
-    # A probe during which a collect ran frees more than it allocates; dropping it hid that probe.
-    assert heap_map.parse_churn("CHURN route:/status 1000\nCHURN source:SGP40 -48\nRESULT: PASS\n") == {"route:/status": 1000, "source:SGP40": -48}

@@ -1,0 +1,134 @@
+PASS test_run_continues_after_sendto_reports_failure
+PASS test_dns_server_logger_is_named_dnssrv
+PASS test_response_accepts_edge_valid_ip_configurations
+PASS test_response_rejects_invalid_ip_combined_with_empty_domain_state
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server error: simulated unexpected failure
+PASS test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers
+PASS test_run_ignores_malformed_query_without_stalling
+PASS test_dns_server_uses_in_memory_logging_when_fram_is_none
+PASS test_ipv4_to_int_rejects_multiple_simultaneous_fault_recombinations
+PASS test_response_builds_expected_packet_for_valid_domain
+PASS test_run_rejects_non_str_server_ip_or_netmask
+PASS test_dns_query_rejects_question_truncated_right_before_qtype_qclass
+PASS test_dns_server_debug_none_leaves_logger_at_off
+PASS test_dns_server_debug_level_is_forwarded_to_the_logger
+PASS test_response_answers_the_root_domain_query_not_indistinguishable_from_a_parse_failure
+PASS test_response_rejects_single_invalid_ip_parameter_without_raising
+PASS test_ipv4_to_int_rejects_out_of_range_octet
+PASS test_response_rejects_non_str_ip_parameter
+PASS test_ipv4_to_int_rejects_non_numeric_octet
+PASS test_run_ignores_source_address_that_is_not_a_valid_ipv4_string
+PASS test_run_rejects_multiple_simultaneous_invalid_server_ip_and_netmask_recombinations
+PASS test_dns_server_default_logger_is_off
+PASS test_response_hardcodes_qdcount_even_when_original_header_declares_more_questions
+PASS test_dns_query_init_rejects_list_shaped_data_that_reaches_decode
+PASS test_response_ignores_trailing_data_after_the_question_and_hardcodes_counts
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid server_ip/netmask, not starting: not-an-ip 255.255.255.0
+PASS test_run_rejects_invalid_server_ip_or_netmask_logs_a_persisted_error
+FAIL test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 891, in test_run_reuses_same_dns_server_instance_across_multiple_hotspot_cycles
+  File "src/asy_udp_socket.py", line 44, in __init__
+TypeError: addr must be a (host: str, port: int) tuple, got bytearray(b'\x02\x00U\xf1\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00')
+FAIL test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 940, in test_run_real_socket_survives_a_burst_of_consecutive_malformed_datagrams
+  File "tests/test_asy_captive_dns.py", line 71, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 924, in scenario
+  File "src/asy_udp_socket.py", line 44, in __init__
+TypeError: addr must be a (host: str, port: int) tuple, got bytearray(b'\x02\x00U\xf2\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00')
+FAIL test_integration_survives_async_connects_fire_and_forget_cancel_pattern:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 969, in test_integration_survives_async_connects_fire_and_forget_cancel_pattern
+  File "tests/test_asy_captive_dns.py", line 71, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 957, in scenario
+  File "src/asy_udp_socket.py", line 44, in __init__
+TypeError: addr must be a (host: str, port: int) tuple, got bytearray(b'\x02\x00U\xf4\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00')
+PASS test_dns_query_non_standard_opcode_yields_empty_domain
+PASS test_run_answers_on_subnet_request
+PASS test_reset_error_counter_returns_true_and_clears
+PASS test_run_backs_off_with_increasing_delay_on_repeated_empty_recvfrom
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server error during disconnect: simulated disconnect failure
+PASS test_run_disconnect_reporting_a_genuine_exception_logs_a_persisted_error
+PASS test_run_recv_backoff_resets_after_a_successful_receive
+PASS test_run_ignores_off_subnet_request_then_answers_next_on_subnet_request
+PASS test_dns_server_get_error_counter_forwards_to_the_real_print_log
+PASS test_dns_query_init_rejects_single_invalid_data_parameter_without_raising
+PASS test_dns_query_malformed_or_truncated_data_yields_empty_domain
+PASS test_dns_query_reuses_the_given_logger_instead_of_constructing_its_own
+PASS test_run_disconnect_reporting_a_second_cancellation_does_not_raise_or_log
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV DNS Server socket teardown did not complete cleanly.
+FAIL test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 1180, in test_run_logs_a_persisted_warning_when_disconnect_reports_incomplete_teardown
+  File "tests/test_asy_captive_dns.py", line 71, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 1178, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/_error_codes.py", line 28, in code
+KeyError: DNS_TEARDOWN
+PASS test_response_returns_none_for_empty_domain
+PASS test_dns_query_parses_single_and_multi_label_domain
+DNSSRV Init with memory logging.
+PASS test_dns_server_init_binds_the_standard_dns_port_in_server_mode
+PASS test_ipv4_to_int_rejects_single_invalid_parameter_type
+FAIL test_run_handles_real_loopback_traffic_without_crashing:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 679, in test_run_handles_real_loopback_traffic_without_crashing
+  File "tests/test_asy_captive_dns.py", line 71, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 665, in scenario
+  File "src/asy_udp_socket.py", line 44, in __init__
+TypeError: addr must be a (host: str, port: int) tuple, got bytearray(b'\x02\x00U\xf5\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00')
+PASS test_run_accepts_all_valid_server_ip_netmask_configurations
+PASS test_dns_server_error_source_and_logger_fan_in_report_itself
+PASS test_ipv4_to_int_rejects_wrong_octet_count
+PASS test_run_recv_backoff_caps_at_the_ceiling
+PASS test_dns_server_history_length_comes_from_the_log_config
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Reply to 127.0.0.5:5000 dropped by sendto().
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Reply to 127.0.0.5:5000 dropped by sendto().
+PASS test_run_sendto_failure_logs_a_persisted_warning
+PASS test_run_rejects_invalid_server_ip_or_netmask_without_raising
+PASS test_dns_query_init_accepts_all_valid_data_configurations
+PASS test_run_rejects_single_invalid_server_ip_parameter
+PASS test_ipv4_to_int_valid
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid DNS request data or address, not sending response.
+DNSSRV PrintLog: Uninitialized, call setup first!
+DNSSRV Invalid DNS request data or address, not sending response.
+FAIL test_run_invalid_recvfrom_data_logs_a_persisted_warning:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/microtest.py", line 35, in run
+  File "tests/test_asy_captive_dns.py", line 650, in test_run_invalid_recvfrom_data_logs_a_persisted_warning
+  File "tests/test_asy_captive_dns.py", line 71, in run
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "tests/test_asy_captive_dns.py", line 646, in scenario
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18c/tests/_error_codes.py", line 28, in code
+KeyError: DNS_BAD_REQUEST
+PASS test_run_rejects_single_invalid_netmask_parameter
+PASS test_dns_server_get_error_counter_reflects_a_real_logged_error
+PASS test_run_cancellation_disconnects_cleanly
+54/60 passed, 6 failed, 0 skipped
+rc=1 elapsed=21.861253673s

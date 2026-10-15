@@ -1,0 +1,41 @@
+ 16:09:09 up 10:17,  0 user,  load average: 13.68, 12.49, 9.02
+12 x busy.sh 70s started
+rep 0 FAIL 2/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 4', 'offset=2: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [32244, 13082, 15536, 16060, 17112, 24348, 16756, 34210, 17340, 17386, 16433] 
+  offset 1 waits(us): [75770] held
+  offset 2 waits(us): [41673, 12184, 12918, 8602, 6769, 14220, 19206, 15985, 11984, 89485] held
+  offset 3 waits(us): [19003, 8882, 17232, 7644, 13577, 20537, 24781, 7688, 13433, 9558, 4481] 
+  offset 4 waits(us): [18247, 19834, 41728, 28242, 11981, 8120, 5859, 9448, 13417, 34103, 15120] 
+  offset 5 waits(us): [13980, 19444, 29753, 9357, 13207, 22511, 11880, 15636, 25130, 45477, 25606] 
+rep 1 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=3: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [44294, 34203, 9046, 10999, 19456, 15928, 15458, 21583, 12320, 16849, 18288] 
+  offset 1 waits(us): [27043, 32819, 18884, 22114, 18707, 7441, 30469, 18533, 13990, 9996, 20561] 
+  offset 2 waits(us): [9686, 8795, 7321, 10384, 9693, 16286, 23901, 22135, 17235, 27801, 20156] 
+  offset 3 waits(us): [13000, 10122, 13625, 18982, 12108, 20546, 11906, 8347, 24632, 164351] held
+  offset 4 waits(us): [15890, 14060, 11919, 22380, 16898, 13622, 9291, 7345, 23400, 8302, 12133] 
+  offset 5 waits(us): [25971, 9245, 15089, 19140, 22716, 13727, 11812, 13086, 8048, 7217, 11358] 
+rep 2 FAIL 1/6 timing offset(s) reproduced a hazard: ['offset=2: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [32704, 23156, 25391, 20935, 29077, 47738, 31481, 23264, 21408, 22886, 19071] 
+  offset 1 waits(us): [32116, 9882, 8710, 26038, 22466, 20510, 20881, 18602, 43033, 35764, 23305] 
+  offset 2 waits(us): [11939, 6231, 6357, 7977, 12098, 28991, 91003] held
+  offset 3 waits(us): [40146, 24804, 17812, 18202, 14668, 20591, 18001, 24811, 39477, 29302, 44202] 
+  offset 4 waits(us): [39037, 30674, 26445, 16747, 13719, 22403, 21317, 26785, 12728, 29701, 7519] 
+  offset 5 waits(us): [28609, 15647, 15910, 18021, 11271, 15566, 13066, 22417, 17302, 22167, 27238] 
+rep 3 FAIL 2/6 timing offset(s) reproduced a hazard: ['offset=1: the recovery did not clear the planted held SDA: status 7', 'offset=4: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [28512, 32638, 23734, 26483, 25344, 26976, 28239, 15940, 17371, 16012, 9595] 
+  offset 1 waits(us): [9806, 24020, 13437, 9856, 7487, 11657, 11331, 8857, 12026, 6509, 50403] held
+  offset 2 waits(us): [40044, 22377, 10727, 15431, 20386, 7673, 17155, 6827, 7524, 7197, 5971] 
+  offset 3 waits(us): [14272, 11018, 9544, 11347, 9644, 12290, 10681, 10364, 10790, 12546, 13859] 
+  offset 4 waits(us): [22403, 20304, 14068, 19627, 41532, 17309, 25099, 18820, 24578, 50130] held
+  offset 5 waits(us): [44784, 44623, 17605, 37032, 11149, 5692, 4429, 6561, 6619, 5748, 5569] 
+rep 4 FAIL 2/6 timing offset(s) reproduced a hazard: ['offset=2: the recovery did not clear the planted held SDA: status 5', 'offset=3: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [22073, 25093, 14393, 10485, 17734, 9028, 27740, 23658, 24394, 18737, 11452] 
+  offset 1 waits(us): [24480, 32299, 13636, 31962, 10930, 15886, 13430, 10793, 16460, 12256, 31820] 
+  offset 2 waits(us): [23195, 11838, 16331, 21353, 8556, 53267] held
+  offset 3 waits(us): [35574, 12709, 25607, 70684, 58813, 25222, 60845, 13657, 25389, 55516] held
+  offset 4 waits(us): [39687, 23577, 12062, 18192, 17794, 6975, 23268, 22972, 18970, 7071, 17878] 
+  offset 5 waits(us): [37621, 10101, 15063, 14509, 24477, 21322, 11706, 17095, 21379, 13709, 18794] 
+rep 5 FAIL 2/6 timing offset(s) reproduced a hazard: ['offset=0: the recovery did not clear the planted held SDA: status 5', 'offset=5: the recovery did not clear the planted held SDA: status 5']
+  offset 0 waits(us): [23145, 21024, 22319, 9621, 22339, 162208] held
+  offset 1 waits(us): [22363, 18859, 12944, 10006, 12076, 11427, 9797, 12281, 9662, 7857, 12715] 
+  offset 2 waits(us): [35260, 6259, 8257, 2132 16:10:14 up 10:18,  0 user,  load average: 22.54, 15.41, 10.26

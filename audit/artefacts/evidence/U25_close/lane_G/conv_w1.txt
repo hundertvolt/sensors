@@ -1,0 +1,48 @@
+== test_decision_vocabulary: 1 failed, 5 passed in 8.52s
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           tests/test_digital_twin_sensortask_integration.py	Deliberately does not wait out an auto-unpause: the command's duration is a hard
+E           tests/test_digital_twin_sensortask_integration.py	PauseTime is deliberately excluded from GET /notification's flat settings, so it
+E           tests/test_digital_twin_sensortask_integration.py	See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ
+E       assert not [('tests/test_digital_twin_sensortask_integration.py', "Deliberately does not wait out an auto-unpause: the command's ...l_twin_sensortask_integration.py', 'See SPECIFICATION.md Part A.9 - the frozen_html website, served by WebserverServ')]
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+== test_citations: 1 failed, 14 passed in 9.95s
+E           CLAUDE.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/segfault_stress_repro.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: digital_twin/unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/test_digital_twin_unix_port_gc_unwedge.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+E           SPECIFICATION.md: tests/test_sensortask_dev.py
+== test_comment_block_cap: 485 passed in 3.85s
+== test_tunables_register: 1 failed, 14 passed in 3.61s
+E         tests/test_digital_twin_machine_uart.py:31: l2.machine_uart_frame_wire_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:33: l2.machine_uart_frame_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:37: l2.machine_uart_stall_baud is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine_uart.py:39: l2.machine_uart_stall_pages is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:61: l2.ntp_reply_wait_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:64: l2.ntp_run_bound_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_ntp.py:275: l2.ntp_sync_wait_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10790: l2.twin_ready_poll_ms: Sites list [('digital_twin/run_generic_integration.py', '20'), ('digital_twin/segfault_stress_repro.py', '20')], the tags say [('digital_twin/run_generic_integration.py', '20')]
+== test_legacy_paths: 3 passed in 1.67s
+== test_import_placement: 7 passed in 6.75s
+== test_code_conventions: 25 passed in 3.91s
+== test_error_catalog: 40 passed in 16.96s
+== test_host_annotations: 12 passed in 1.72s
+== test_lint_ceilings: 19 passed in 8.81s
+== test_mypy_any_baseline: 7 passed in 0.06s
+== test_memory_error_gate_agreement: 13 passed in 3.56s
+== test_port_bands: 1 failed, 15 passed in 1.96s
+E       assert ["tests/_webs...999, 'tcp'))"] == []
+E         
+E         Left contains one more item: "tests/_webserver_concurrency_scenarios.py: rows [], literal ports [] (its own row (19700, 19999, 'tcp'))"
+E         Use -v to get more diff
+FAILED tests_scripts/test_port_bands.py::test_every_test_file_that_binds_a_port_draws_it_from_its_band
+== test_twin_entry_point_order: 1 failed, 7 passed in 0.95s
+E       AssertionError: ["test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, no...poll_set', 'require_fresh'] with the shim absent, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']", ...]
+E       assert ["test_digita..._port']", ...] == []
+E         
+E         Left contains 9 more items, first extra item: "test_digital_twin_construction.py: module-level calls start ['getenv', 'prewarm_poll_set'] with the shim present, not ['prewarm_poll_set', 'patch_asy_udp_socket_for_unix_port']"
+E         Use -v to get more diff
+FAILED tests_scripts/test_twin_entry_point_order.py::test_every_booting_twin_test_file_prewarms_then_shims_first
+== test_no_variant_literals: 19 passed in 9.28s

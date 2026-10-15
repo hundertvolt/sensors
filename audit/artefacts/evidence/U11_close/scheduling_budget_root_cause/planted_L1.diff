@@ -1,0 +1,11 @@
+--- src/asy_uart_comm.py	2026-10-07 11:45:40.808365805 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u11rc/planted_L1/asy_uart_comm.py	2026-10-07 12:50:23.181254153 +0000
+@@ -886,6 +886,8 @@
+             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
+             return False
+         if not await self._read_frame(device, self._timeout):
++            if cur_chunk == chunks and chunks > 1:
++                return True  # PLANTED: a missing final ACK is taken as success
+             await self._fault(device, _ERR_UART_NO_ACK, "no ACK for frame", cur_chunk)
+             return False
+         err = self._validate(self._rx.get_buf(), _CMD_ACK, 1, 1, uid)

@@ -1,9 +1,7 @@
 {
-    // Second, separate tsc invocation for tests_js/_live_twin_command.js and
-    // tests_js/_live_matrix_command.js - Node-context server-side code (Vitest Commands API
-    // implementations), not browser code. See tsconfig.json's own "exclude" comment for why this
-    // can't just be folded into the main pass, and CLAUDE.md's "Code quality tooling" for the
-    // identical shape this mirrors on the Python side (digital_twin/typecheck.ini).
+    // Node-context pass: the Vitest Commands API modules and their Node-only helpers, the npm test summary reporter and the
+    // cross-browser smoke - server-side Node code, kept out of tsconfig.json's browser pass (see its
+    // "exclude" comment); the same two-environment split as digital_twin/typecheck.ini.
     "compilerOptions": {
         "target": "ES2022",
         "module": "ES2022",
@@ -14,11 +12,9 @@
         "checkJs": true,
         "noEmit": true,
         "strict": true,
-        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings
-        // on the Python side. All of these were verified to hold before being switched on; the two
-        // that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
-        // in js/ rather than left off. skipLibCheck stays TRUE deliberately: the only findings it
-        // hides are inside third-party .d.ts files this project does not own.
+        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings; each held before it was
+        // switched on, and the two that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
+        // in js/, not left off. skipLibCheck stays true: the only findings it hides are in third-party .d.ts files.
         "noUncheckedIndexedAccess": true,
         "exactOptionalPropertyTypes": true,
         "noImplicitOverride": true,
@@ -31,5 +27,5 @@
         "verbatimModuleSyntax": true,
         "skipLibCheck": true
     },
-    "include": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "scripts/cross_browser_smoke.mjs"]
+    "include": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js", "scripts/cross_browser_smoke.mjs", "scripts/_cross_browser_probe.mjs", "scripts/_page_load_connections.mjs"]
 }

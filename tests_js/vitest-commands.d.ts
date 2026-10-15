@@ -1,39 +1,31 @@
-// Ambient module augmentation for the custom Vitest browser commands registered in
-// vitest.config.js (`test.browser.commands`, implemented in tests_js/_live_twin_command.js and
-// tests_js/_live_matrix_command.js) - the shape Vitest's own docs use for this is a `declare
-// module` block, which isn't valid syntax in a plain, runtime-executed .js file, hence this
-// type-only sidecar. See tests_js/live-backend.test.js and tests_js/live-backend-put-matrix.test.js
-// for the callers.
+// Types for the custom Vitest browser commands vitest.config.js registers from the Node-context tests_js command
+// modules: Vitest's own form is a `declare module` block, which a plain runtime-executed .js file cannot hold, hence
+// this type-only sidecar for live-backend*.test.js and the other callers.
 //
-// Deliberately NOT `import type {...} from "./_live_twin_command.js"` (or the matrix file) +
-// `typeof`: each file's own real signature takes the Vitest-injected `ctx` as its first parameter
-// (see each file's own JSDoc) on the functions that need it, which callers never pass themselves
-// (Vitest's RPC layer supplies it server-side) - using `typeof` here would describe the wrong
-// (implementation-side) arity, and would also pull those Node-context files into this
-// browser-context program's dependency graph, leaking their `node:*`/`process`/`Buffer` ambient
-// types into every other tests_js/*.js file's own type-check (tsconfig.json's own "exclude"
-// comment explains why those files need a separate program at all). These return types are kept in
-// sync by hand with each file's own `@returns` JSDoc - small, co-located declarations, not worth a
-// shared import at the cost of either problem above.
+// Written out, not `typeof` imports: each implementation takes Vitest's injected `ctx` first, which callers never pass,
+// and an import would pull Node's ambient types into the browser-context program (tsconfig.json's "exclude"). Each
+// return type is kept in sync by hand with its command's own @returns JSDoc.
 //
-// The `export {}` below is required, not decorative: without at least one top-level import/export
-// of its own, TS treats this file as an ambient *script*, and the `declare module` block inside it
-// then *replaces* the real "vitest/browser" module wholesale (confirmed directly - removing this
-// line makes the real module's own `commands` export vanish) rather than *augmenting* it, which is
-// the whole point here.
+// Required, not decorative: without a top-level import/export of its own TS reads this file as an ambient script, and
+// the `declare module` block then replaces the real "vitest/browser" module (its `commands` export vanished when this
+// line was removed) instead of augmenting it.
 export {};
+
+/** One process taking a port lock: in node through tests_js/_port_lock.js or in bash through scripts/_port_lock.sh. */
+type PortLockActor = { lang: "node" | "bash"; port: number; runner: string; twice?: boolean; dropHeld?: boolean; then?: PortLockActor };
 
 declare module "vitest/browser" {
     interface BrowserCommands {
-        runLiveBackendSmoke: () => Promise<
-            | { skipped: true; reason: string }
-            | { skipped: false; titleHasSensorStation: boolean; deviceName: string; debugLevelApplyStatus: string | null }
-        >;
-        runLiveBackendConcurrentTabs: () => Promise<
-            | { skipped: true; reason: string }
-            | { skipped: false; tabs: number; loaded: number; deviceNames: string[] }
-        >;
-        startLiveMatrix: () => Promise<{ skipped: true; reason: string } | { skipped: false; shard: string }>;
+        runLiveBackendSmoke: (device: string, testTimeoutMs: number) => Promise<{
+            titleHasSensorStation: boolean;
+            deviceName: string;
+            firstStatus: string | null;
+            resubmitStatus: string | null;
+        }>;
+        runLiveBackendConcurrentTabs: (device: string, testTimeoutMs: number) => Promise<{ tabs: number; loadedFirstPass: number; loadedAfterRetry: number; failures: string[] }>;
+        runLiveBackendRestartRecovery: (device: string, testTimeoutMs: number) => Promise<{ bannerShown: boolean; recovered: boolean; reloaded: boolean }>;
+        getLiveMatrixConfig: () => Promise<{ shard: string }>;
+        startLiveMatrix: (device: string) => Promise<void>;
         stopLiveMatrix: () => Promise<void>;
         getRealCurrentValues: (paths: string[]) => Promise<Record<string, unknown>>;
         applyField: (args: {
@@ -43,6 +35,9 @@ declare module "vitest/browser" {
             field: import("../js/definitions.js").FieldDef;
             value: unknown;
             expectRenderedValue: unknown;
+            defaultDecimals?: number | undefined;
+            confirmMessage?: string;
+            readCaption?: boolean;
         }) => Promise<{
             applyStatus: string;
             captionText: string | null;
@@ -61,6 +56,23 @@ declare module "vitest/browser" {
             toggleValue: string | null;
             toggleText: string | null;
             selectValue: string | null;
+            valueText: string | null;
+            errcountRows: string[];
+        }>;
+        archiveErrcount: (label: string) => Promise<string>;
+        probeLintRule: (args: { rule: string; value: number }) => Promise<number>;
+        probePortLock: (args: {
+            holder?: PortLockActor;
+            taker: PortLockActor;
+            inherit?: { owner: string; held: string };
+            plant?: { port: number; pid: "dead" | ""; runner: string };
+        }) => Promise<{
+            holderPid: number | null;
+            code: number | null;
+            stdout: string;
+            stderr: string;
+            lock: { runner: string | null; pid: string | null } | null;
+            rootAfterTaker: string[];
         }>;
     }
 }

@@ -6,13 +6,14 @@ test: a typo'd or misplaced attempt must fail loud, never read as "no tag here".
 # built on it lives in test_buildgen_requires_tag.py. SPECIFICATION.md Part L.5 names this file's
 # own matrix dimensions - scan, wording, payload and verdict.
 
+import ast
 from pathlib import Path
 
 import pytest
 
 from buildgen import tag_comments
-from buildgen.errors import BuildError
-from buildgen.tag_comments import CommentToken, _levenshtein, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, looks_like_tag_payload
+from buildgen.errors import BuildError, BuildInternalError
+from buildgen.tag_comments import KNOWN_TAG_NAMES, KNOWN_TAGS, CommentToken, _levenshtein, _looks_like_requires_payload, check_for_near_miss_tags, find_leading_word, iter_comment_tokens, specs_for
 
 
 def _tok(text: str, lineno: int = 1, col: int = 0, *, indented: bool = False) -> CommentToken:
@@ -20,7 +21,15 @@ def _tok(text: str, lineno: int = 1, col: int = 0, *, indented: bool = False) ->
 
 
 def _check(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = None) -> None:
-    check_for_near_miss_tags(tokens, Path("x.py"), "dev", "x", exact or set())
+    check_for_near_miss_tags(tokens, Path("x.py"), "fixture", "x", exact or set())
+
+
+def _assert_silent_but_live(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = None) -> None:
+    # The check accepts these tokens, and the same list with one typo'd tag added raises: the pair
+    # proves the scan walked the list rather than stopping early.
+    _check(tokens, exact)
+    with pytest.raises(BuildError, match="misspelled @requires tag"):
+        _check([*tokens, _tok("# @require bus.timeout>=200000", lineno=99)], exact)
 
 
 # ---------------------------------------------------------------------------
@@ -30,8 +39,8 @@ def _check(tokens: "list[CommentToken]", exact: "set[tuple[int, int]] | None" = 
 
 def test_iter_comment_tokens_finds_a_real_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("# a real comment\nx = 1\n")
-    tokens = iter_comment_tokens(path, "dev", "x")
+    path.write_text("# a real comment\nx = 1\n", encoding="utf-8")
+    tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0] == CommentToken(1, 0, "# a real comment", False)
 
@@ -40,21 +49,21 @@ def test_iter_comment_tokens_ignores_hash_inside_string_literal(tmp_path: Path) 
     # A naive per-line regex would mistake this for a comment - tokenize-based scanning knows it's
     # inside a string literal and correctly finds zero real comments.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text('x = "value # @requires bus.timeout>=200000"\n')
-    assert iter_comment_tokens(path, "dev", "x") == []
+    path.write_text('x = "value # @requires bus.timeout>=200000"\n', encoding="utf-8")
+    assert iter_comment_tokens(path, "fixture", "x") == []
 
 
 def test_iter_comment_tokens_ignores_hash_inside_docstring(tmp_path: Path) -> None:
     # The multi-line sibling of the case above - this module's own docstring quotes tag grammar.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n')
-    assert iter_comment_tokens(path, "dev", "x") == []
+    path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n', encoding="utf-8")
+    assert iter_comment_tokens(path, "fixture", "x") == []
 
 
 def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n")
-    tokens = iter_comment_tokens(path, "dev", "x")
+    path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n", encoding="utf-8")
+    tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0].inside_block is True
 
@@ -62,8 +71,8 @@ def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
 def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path) -> None:
     # Indentation is "the line has leading whitespace", not "the line starts with spaces".
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n\t# tab-indented comment\n\tpass\n")
-    assert iter_comment_tokens(path, "dev", "x")[0].inside_block is True
+    path.write_text("def f():\n\t# tab-indented comment\n\tpass\n", encoding="utf-8")
+    assert iter_comment_tokens(path, "fixture", "x")[0].inside_block is True
 
 
 def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_is_not_indented(tmp_path: Path) -> None:
@@ -71,8 +80,8 @@ def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_i
     # statement itself is unindented - so inside_block must not be the token's column, or a
     # legitimate trailing tag placement would be rejected as sitting inside a body.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_WIRING = ()  # trailing comment\n")
-    tokens = iter_comment_tokens(path, "dev", "x")
+    path.write_text("_WIRING = ()  # trailing comment\n", encoding="utf-8")
+    tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0].col > 0
     assert tokens[0].inside_block is False
@@ -82,16 +91,16 @@ def test_iter_comment_tokens_bracketed_continuation_line_at_module_level_is_not_
     # Inside a module-level statement's brackets the comment's own line is indented by style, but
     # the statement it belongs to is not - so physical indentation is the wrong question to ask.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n")
-    (tok,) = iter_comment_tokens(path, "dev", "x")
+    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n", encoding="utf-8")
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (2, False)
 
 
 def test_iter_comment_tokens_bracketed_continuation_line_inside_a_body_is_inside_a_block(tmp_path: Path) -> None:
     # The mirror image: same bracketed shape, but the enclosing statement is itself in a body.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n")
-    (tok,) = iter_comment_tokens(path, "dev", "x")
+    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n", encoding="utf-8")
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (3, True)
 
 
@@ -99,8 +108,8 @@ def test_iter_comment_tokens_module_level_comment_after_an_indented_block_is_not
     # Guards the reason block depth can't simply be counted from INDENT/DEDENT: the tokenizer emits
     # no DEDENT for a comment line, so this comment is still "inside" the function by that measure.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n")
-    (tok,) = iter_comment_tokens(path, "dev", "x")
+    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n", encoding="utf-8")
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (3, False)
 
 
@@ -108,15 +117,15 @@ def test_iter_comment_tokens_statement_indentation_resets_after_brackets_close(t
     # The bracket-depth bookkeeping must unwind cleanly, or every comment after the first bracketed
     # module-level statement would inherit a stale answer.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n")
-    tokens = iter_comment_tokens(path, "dev", "x")
+    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n", encoding="utf-8")
+    tokens = iter_comment_tokens(path, "fixture", "x")
     assert [(t.text, t.inside_block) for t in tokens] == [("# inner", True), ("# outer", False)]
 
 
 def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n")
-    tokens = iter_comment_tokens(path, "dev", "x")
+    path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n", encoding="utf-8")
+    tokens = iter_comment_tokens(path, "fixture", "x")
     assert [(t.lineno, t.text, t.inside_block) for t in tokens] == [
         (1, "#!/usr/bin/env python3", False),
         (2, "# first", False),
@@ -127,20 +136,20 @@ def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Pat
 
 def test_iter_comment_tokens_last_line_without_trailing_newline(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("x = 1\n# @requires bus.timeout>=200000")
-    assert iter_comment_tokens(path, "dev", "x")[0].lineno == 2
+    path.write_text("x = 1\n# @requires bus.timeout>=200000", encoding="utf-8")
+    assert iter_comment_tokens(path, "fixture", "x")[0].lineno == 2
 
 
 def test_iter_comment_tokens_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("")
-    assert iter_comment_tokens(path, "dev", "x") == []
+    path.write_text("", encoding="utf-8")
+    assert iter_comment_tokens(path, "fixture", "x") == []
 
 
 def test_iter_comment_tokens_handles_utf8_bom(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"\xef\xbb\xbf# @requires bus.timeout>=200000\nx = 1\n")
-    assert iter_comment_tokens(path, "dev", "x")[0].text == "# @requires bus.timeout>=200000"
+    assert iter_comment_tokens(path, "fixture", "x")[0].text == "# @requires bus.timeout>=200000"
 
 
 def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path) -> None:
@@ -148,7 +157,7 @@ def test_iter_comment_tokens_honors_a_pep263_coding_cookie(tmp_path: Path) -> No
     # the interpreter does (cookie/BOM aware), so a legal driver file is never rejected for it.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"# -*- coding: latin-1 -*-\n# caf\xe9\n# @requires bus.timeout>=200000\n")
-    assert [t.text for t in iter_comment_tokens(path, "dev", "x")][1:] == ["# caf\xe9", "# @requires bus.timeout>=200000"]
+    assert [t.text for t in iter_comment_tokens(path, "fixture", "x")][1:] == ["# caf\xe9", "# @requires bus.timeout>=200000"]
 
 
 def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(tmp_path: Path) -> None:
@@ -158,7 +167,7 @@ def test_iter_comment_tokens_undecodable_source_fails_loud_not_a_raw_traceback(t
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"# caf\xe9\nx = 1\n")
     with pytest.raises(BuildError, match="encoding declaration"):
-        iter_comment_tokens(path, "dev", "x")
+        iter_comment_tokens(path, "fixture", "x")
 
 
 def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp_path: Path) -> None:
@@ -167,16 +176,80 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
     # later line and reported an unindented module-level tag as indented.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
-    (tok,) = iter_comment_tokens(path, "dev", "x")
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (4, False)
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        pytest.param("def f():\n    x = 1\n# @requires bus.timeout>=200000\n    y = 2\n", True, id="inside-a-function-body"),
+        pytest.param("class A:\n    def f(self):\n        pass\n# @requires bus.timeout>=200000\n    def g(self):\n        pass\n", True, id="between-two-methods"),
+        pytest.param("def f():\n    pass\n# @requires bus.timeout>=200000\n(x, y) = (1, 2)\n", False, id="before-a-bracketed-module-statement"),
+        pytest.param("def f():\n    pass\n# @requires bus.timeout>=200000\n", False, id="after-a-function-at-end-of-file"),
+    ],
+)
+def test_iter_comment_tokens_column_0_comment_takes_the_level_of_the_next_statement(tmp_path: Path, source: str, *, expected: bool) -> None:
+    # A column-0 comment says nothing by its own indentation: the next statement decides.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text(source, encoding="utf-8")
+    (tok,) = iter_comment_tokens(path, "fixture", "x")
+    assert (tok.col, tok.inside_block) == (0, expected)
 
 
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])
 def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(tmp_path: Path, source: str) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
-    with pytest.raises(BuildError, match="syntax error"):
-        iter_comment_tokens(path, "dev", "x")
+    path.write_text(source, encoding="utf-8")
+    with pytest.raises(BuildError, match="syntax error") as raised:
+        iter_comment_tokens(path, "fixture", "x")
+    assert raised.value.rule == "source.syntax-error"
+
+
+def test_iter_comment_tokens_unreadable_file_is_a_build_error_not_a_raw_oserror(tmp_path: Path) -> None:
+    with pytest.raises(BuildError, match="cannot read") as raised:
+        iter_comment_tokens(tmp_path / "asy_x_driver.py", "fixture", "x")
+    assert (raised.value.rule, raised.value.instance) == ("src.unreadable", "x")
+
+
+def test_one_content_is_tokenized_once_whatever_its_path(tmp_path: Path) -> None:
+    # Every tag family and every device reads the same drivers: the bytes are the key, not the path.
+    source = b"# @requires bus.timeout>=200000\nX = 1\n"
+    first, second = tmp_path / "a" / "asy_x_driver.py", tmp_path / "b" / "asy_x_driver.py"
+    for path in (first, second):
+        path.parent.mkdir()
+        path.write_bytes(source)
+    tag_comments._comment_tokens.cache_clear()
+    assert iter_comment_tokens(first, "fixture", "x") == iter_comment_tokens(second, "other_fixture", "y")
+    info = tag_comments._comment_tokens.cache_info()
+    assert (info.misses, info.hits) == (1, 1)
+
+
+def test_a_changed_file_is_tokenized_again(tmp_path: Path) -> None:
+    # A test that plants a tag in a copied tree rewrites a file in place: its new bytes must be read.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @requires bus.timeout>=200000\n", encoding="utf-8")
+    assert [t.text for t in iter_comment_tokens(path, "fixture", "x")] == ["# @requires bus.timeout>=200000"]
+    path.write_text("X = 1\n# @requires bus.freq>=400000\n", encoding="utf-8")
+    assert [(t.lineno, t.text) for t in iter_comment_tokens(path, "fixture", "x")] == [(2, "# @requires bus.freq>=400000")]
+
+
+def test_each_caller_gets_its_own_token_list(tmp_path: Path) -> None:
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# one\n# two\n", encoding="utf-8")
+    mine = iter_comment_tokens(path, "fixture", "x")
+    mine.clear()
+    assert [t.text for t in iter_comment_tokens(path, "fixture", "x")] == ["# one", "# two"]
+
+
+def test_a_broken_file_raises_for_each_caller_with_its_own_device_and_instance(tmp_path: Path) -> None:
+    # An error is never cached: the second reader of one broken file gets its own BuildError, not the first's.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("x = (1,\n", encoding="utf-8")
+    for device, label in (("fixture", "x"), ("other_fixture", "y")):
+        with pytest.raises(BuildError, match="syntax error") as raised:
+            iter_comment_tokens(path, device, label)
+        assert (raised.value.device, raised.value.instance) == (device, label)
 
 
 # ---------------------------------------------------------------------------
@@ -234,8 +307,8 @@ def test_levenshtein(a: str, b: str, expected: int) -> None:
 
 
 @pytest.mark.parametrize("op", [">=", "<=", "==", "!=", "=", ">", "<"])
-def test_looks_like_tag_payload_every_operator(op: str) -> None:
-    assert looks_like_tag_payload(f"# @requires bus.timeout{op}200000") is True
+def test_looks_like_requires_payload_every_operator(op: str) -> None:
+    assert _looks_like_requires_payload(f"# @requires bus.timeout{op}200000") is True
 
 
 @pytest.mark.parametrize(
@@ -251,8 +324,8 @@ def test_looks_like_tag_payload_every_operator(op: str) -> None:
         ("# @requires a bit more care here", False),
     ],
 )
-def test_looks_like_tag_payload(text: str, *, expected: bool) -> None:
-    assert looks_like_tag_payload(text) is expected
+def test_looks_like_requires_payload(text: str, *, expected: bool) -> None:
+    assert _looks_like_requires_payload(text) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -261,8 +334,9 @@ def test_looks_like_tag_payload(text: str, *, expected: bool) -> None:
 
 
 def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure() -> None:
-    with pytest.raises(BuildError, match="malformed @requires tag"):
+    with pytest.raises(BuildError, match="malformed @requires tag") as raised:
         _check([_tok("# @requires timeout>=200000")])  # missing "bus." prefix
+    assert raised.value.rule == "tag.malformed"
 
 
 @pytest.mark.parametrize(
@@ -270,8 +344,9 @@ def test_check_for_near_miss_tags_flags_exact_keyword_bad_structure() -> None:
     ["require", "requiress", "requirez", "requries", "requir"],  # delete/insert/substitute/transpose/distance-2
 )
 def test_check_for_near_miss_tags_flags_every_typo_shape(word: str) -> None:
-    with pytest.raises(BuildError, match="misspelled @requires tag"):
+    with pytest.raises(BuildError, match="misspelled @requires tag") as raised:
         _check([_tok(f"# @{word} bus.timeout>=200000")])
+    assert raised.value.rule == "tag.misspelled"
 
 
 def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag() -> None:
@@ -281,8 +356,9 @@ def test_check_for_near_miss_tags_flags_wrong_case_as_the_exact_tag() -> None:
 
 
 def test_check_for_near_miss_tags_flags_missing_at_sigil() -> None:
-    with pytest.raises(BuildError, match="leading '@' missing"):
+    with pytest.raises(BuildError, match="leading '@' missing") as raised:
         _check([_tok("# requires bus.timeout>=200000")])
+    assert raised.value.rule == "tag.missing-sigil"
 
 
 def test_check_for_near_miss_tags_flags_exact_keyword_with_only_a_number() -> None:
@@ -308,7 +384,7 @@ def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
     # Mirrors a real near-collision in this repo, where a wrapped comment line began with the
     # tag's own name: a comment opening with "@requires" but carrying no field/operator/value
     # shape must never be flagged, or prose mentioning the tag would break every build.
-    _check([_tok("# @requires tag, not here).")])  # no raise
+    _assert_silent_but_live([_tok("# @requires tag, not here).")])
 
 
 @pytest.mark.parametrize(
@@ -323,11 +399,14 @@ def test_check_for_near_miss_tags_ignores_prose_without_payload_shape() -> None:
     ],
 )
 def test_check_for_near_miss_tags_stays_silent(text: str) -> None:
-    _check([_tok(text)])  # no raise
+    _assert_silent_but_live([_tok(text)])
 
 
 def test_check_for_near_miss_tags_skips_already_exact_matched_tokens() -> None:
-    _check([_tok("# @requires bus.timeout>=200000")], exact={(1, 0)})  # no raise - already counted
+    tokens = [_tok("# @requires bus.timeout>=200000")]
+    _assert_silent_but_live(tokens, exact={(1, 0)})  # already counted
+    with pytest.raises(BuildError, match="malformed @requires tag"):
+        _check(tokens)  # the same token, not counted as an exact match
 
 
 def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one() -> None:
@@ -338,14 +417,14 @@ def test_check_for_near_miss_tags_still_flags_a_second_bad_tag_beside_a_good_one
 
 
 def test_check_for_near_miss_tags_empty_token_list() -> None:
-    _check([])  # no raise
+    _assert_silent_but_live([])
 
 
 def test_check_for_near_miss_tags_typo_tolerance_narrows_for_a_short_tag_name(monkeypatch: pytest.MonkeyPatch) -> None:
     # Two edits away from a 3-letter name is most of the dictionary, so a short tag name (the
     # planned "@web") tolerates only one - otherwise adding it to the registry would start failing
     # builds over unrelated @-words. "wet" is one edit from "web"; "wed"/"we" would be too.
-    web = tag_comments.TagSpec("web", tag_comments.looks_like_tag_payload)
+    web = tag_comments.TagSpec("web", _looks_like_requires_payload)
     monkeypatch.setattr(tag_comments, "KNOWN_TAGS", (web,))
     with pytest.raises(BuildError, match="misspelled @web tag"):
         _check([_tok("# @wet name=x")])
@@ -360,14 +439,14 @@ def test_known_tag_names_mirrors_the_registry() -> None:
 @pytest.mark.parametrize(
     "text,family,expected",
     [
-        ("# @wiring fram_target AsyFramManager fram optional kwarg", "wiring", True),
+        ("# @wiring fram_target FRAMManager fram optional kwarg", "wiring", True),
         # With the sigil, any bare-word payload counts - that is what catches a tag whose elements
         # were dropped, at the accepted cost of flagging the prose nobody writes ("@wiring is what
         # this module needs"). Sentence punctuation still rules a comment out immediately.
         ("# @wiring is what this module needs, more of it", "wiring", False),
         ("# wiring is what this module needs more of", "wiring", False),
-        ("# @value-wiring temperature_source temperature_source temperature_field required", "value-wiring", True),
-        ("# @limits trigger_sec 1..3600", "limits", True),
+        ("# @value-wiring temperature_source temperature required", "value-wiring", True),
+        ("# @limits trigger_s 1..3600", "limits", True),
         ("# @limits address in {0x76, 0x77}", "limits", True),
         ("# @limits are checked elsewhere in this file", "limits", False),
         ("# @requires bus.timeout>=200000", "requires", True),
@@ -381,10 +460,64 @@ def test_each_family_recognizes_its_own_payload_shape_and_not_prose(text: str, f
     assert spec.looks_like_payload(text) is expected
 
 
-def test_looks_like_tag_payload_accepts_an_explicit_family(tmp_path: Path) -> None:
-    # The helper defaults to @requires' own shape; passing a family switches it to that family's
-    # predicate, which is how each grammar module gates its own near-miss detection.
-    (wiring,) = [s for s in tag_comments.KNOWN_TAGS if s.name == "wiring"]
-    text = "# @wiring fram_target AsyFramManager fram optional kwarg"
-    assert tag_comments.looks_like_tag_payload(text, wiring) is True
-    assert tag_comments.looks_like_tag_payload(text) is False  # no operator - not @requires-shaped
+def test_a_family_predicate_reads_its_own_shape_where_requires_reads_none() -> None:
+    # Each grammar module gates its own near-miss detection on its family's predicate: a wiring
+    # tag is wiring-shaped, while @requires' operator-based shape sees no payload in it.
+    (wiring,) = specs_for("wiring")
+    text = "# @wiring fram_target FRAMManager fram optional kwarg"
+    assert wiring.looks_like_payload(text) is True
+    assert _looks_like_requires_payload(text) is False  # no operator - not @requires-shaped
+
+
+def test_specs_for_returns_the_one_registered_family() -> None:
+    for name in KNOWN_TAG_NAMES:
+        assert specs_for(name) == tuple(spec for spec in KNOWN_TAGS if spec.name == name)
+        assert len(specs_for(name)) == 1
+
+
+def test_specs_for_an_unregistered_family_is_a_generator_bug() -> None:
+    with pytest.raises(BuildInternalError, match="tag family 'nope' is not in KNOWN_TAGS"):
+        specs_for("nope")
+
+
+def _module_specs(tree: ast.Module) -> "dict[str, str]":
+    # Module-level `<name> = specs_for("<family>")` bindings: name -> family.
+    found = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == "specs_for":
+            (target,) = node.targets
+            (arg,) = node.value.args
+            assert isinstance(target, ast.Name) and isinstance(arg, ast.Constant) and isinstance(arg.value, str)
+            found[target.id] = arg.value
+    return found
+
+
+def test_every_family_module_polices_its_own_registered_spec(repo_root: Path) -> None:
+    # Each check_for_near_miss_tags() caller passes a specs_for() tuple (never the all-families
+    # default), and each registered family is fetched by exactly one module.
+    fetched: dict[str, list[str]] = {}
+    for path in sorted((repo_root / "buildgen").glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        specs = _module_specs(tree)
+        for name, family in specs.items():
+            fetched.setdefault(family, []).append(f"{path.name}:{name}")
+        for call in ast.walk(tree):
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == "check_for_near_miss_tags":
+                arg = call.args[5] if len(call.args) > 5 else next((k.value for k in call.keywords if k.arg == "specs"), None)
+                assert isinstance(arg, ast.Name) and arg.id in specs, f"{path.name}:{call.lineno} passes no specs_for() tuple"
+    assert sorted(fetched) == sorted(KNOWN_TAG_NAMES)
+    assert all(len(sites) == 1 for sites in fetched.values()), fetched
+
+
+def test_the_near_miss_verdict_follows_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:
+    # The verdict is cached by the tokens, not by the path: a fixed or a newly broken file is read again.
+    path = tmp_path / "asy_x_driver.py"
+    path.write_text("# @require bus.timeout>=200000\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="misspelled @requires tag"):
+        check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", set(), specs_for("requires"))
+    path.write_text("# @requires bus.timeout>=200000\n", encoding="utf-8")
+    check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", {(1, 0)}, specs_for("requires"))
+    path.write_text("# @require bus.timeout>=200000\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="misspelled @requires tag") as raised:
+        check_for_near_miss_tags(iter_comment_tokens(path, "dev2", "y"), path, "dev2", "y", set(), specs_for("requires"))
+    assert (raised.value.device, raised.value.instance) == ("dev2", "y")  # a repeated verdict names its own caller

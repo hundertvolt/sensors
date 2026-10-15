@@ -1,0 +1,38 @@
+Lane K working notes (for the final report)
+K1 = 6f3e10e on 7efb5f2.
+Fail-first seen on base export (u20k_work/base):
+ - test_buildgen_defaults.py: 5 failed (TypeError signature; kw-only params returned () on base)
+ - test_buildgen_driver_registry.py: collection ImportError (no data_fields)
+ - scratch_model_wiring.py: DID NOT RAISE (base) -> passes on K1
+ - scratch_dump_toml.py: 2 failed AttributeError (base) -> 4 pass on K1
+ - e2e: base fixture writer AttributeError; K1 BuildError instance.wiring-not-table
+Already landed: _dump_scalar inline tables/arrays (_toml_fixtures.py:68-72, U7 40a3508); trigger_s key (U10); MAINTENANCE_NAMES; _OVERRIDES names.
+Deviations: JsonValue None last (RUF036); model.instance_key() removed (typed load_device binds driver/name_ext); data_fields cache keyed on source text (lru_cache) not path; dump_toml writes non-table wiring as a key line.
+Red on K1 tree only from other lanes' halves:
+ - validate.py:682 default_init_params(4 args) -> TypeError on default sub-table (multi_instance fixture): test_buildgen_graph::test_multi_instance..., test_config_schemas x2, more in validate/generate
+ - host mypy: 261 errors codegen 89, validate 165, twin_wiring 4, test_buildgen_validate 3 (TomlValue)
+ - test_citations allowlist line 80 'buildgen/buildspec.py\tSession 2' stale
+ - with V's one-line fix simulated (u20k_work/k1sim): 932 passed in neighbour files
+Generated output identical base vs K1 (diff -r ignoring build date).
+Timings K1: lane K/T test files 574->585 tests ~10s; host mypy ~7s.
+
+== Resumed on API base db6ce58 ==
+Main commit 519fb24 (K + T steps). Regenerated build + wozi frozen site (node_modules symlink, PATH=.venv/bin).
+Fail-first seen (on db6ce58 code before each fix):
+ - tag_comments: collection ImportError (specs_for); col-0 inside-body cases: 2 of 4 FAIL (False vs True); AST polices test failed (limits.py:96 no specs_for) until modules switched
+ - limits: 19 failed (rule ids + 5 non-finite); name-shape & typo-boundary = guards (passed at once)
+ - requires: 18 failed (rule ids, 5 non-finite, bool actual True compared silently)
+ - value_wiring: 3 failed (rule ids); name-shape, typo-boundary guards
+ - wiring: rule asserts written after code change; shown failing on pre-K1 base export (20 failed)
+ - web_tag: 52 failed (rule ids, hidden x6, non-finite x4)
+ - schema_ast: 13 failed (unreadable x4 incl circular, malformed x6, location, circular-elsewhere RecursionError, multi-field); concatenation row = guard
+ - config_schemas: old lint misses _FIELD_WARN_CO2, _LIGHT_CMD_FIELDS, duplicate bite -> [] (scratch run on api snapshot)
+ - graph: cycle rule + 2 source-edge rows failed
+ - driver_registry/defaults rule asserts: 8 failed
+ - model rules: scratch 10 failed, 1 passed (instance.wiring-not-table already from K1)
+ - version: table test = guard; value pin removed
+Deferred: step 133/135 alias typing -> +1,197 host mypy errors (validate test 995, generate test 187, graph test 7, fixture 33) -> U24 with callers.
+Base-red not mine: test_buildgen_validate::test_the_watchdog_mirror_matches_the_generated_boot, test_buildgen_generate::test_a_stated_rx_ring_reaches_the_uart_constructor, test_device_tomls::test_no_fixed_driver_address_falls_in_a_reserved_range (ImportError FIXED_ADDRESSES), test_code_conventions::test_the_generated_narrowing_exemption_is_still_needed, test_tunables_register (Part N rows).
+Generated output identical to api base after all changes.
+Times before (api base): defaults 2.1s/11, driver_registry 1.6/42, graph 5.0/7, version 0.5/5, tag_comments 0.8/96, limits 2.1/57, requires 2.3/122, value_wiring 1.0/29, wiring 2.3/63, web_tag 2.9/127, schema_ast 0.9/18, config_schemas 4.2/10
+Missing rule/fix at 519fb24: api_reference 12, codegen 11, definitions 22, validate 89 = 134 (all G/C/V).

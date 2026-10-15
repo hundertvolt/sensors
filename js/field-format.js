@@ -1,18 +1,74 @@
 /**
- * Pure field-value formatting - split out of js/templates.js so a Node-context test harness can
- * reuse it with no DOM dependency. See SPECIFICATION.md Part H.8.1 for the full rationale.
+ * Pure field-value formatting with no DOM dependency: templates.js puts its text into the page.
+ * See SPECIFICATION.md Part H.8.1.
  */
 
-// Deliberately a narrow local shape, not `import("./definitions.js").FieldDef` - see
-// SPECIFICATION.md Part H.8.1 for why. A real FieldDef object satisfies it structurally either way.
-/** @typedef {{kind: string, mask?: boolean, format?: string, decimals?: number, options?: {value: unknown, label: string}[]} & Record<string, unknown>} FormattableField */
+import { GMTIME_KEYS } from "./api-contract.js";
+
+// A narrow local shape: the formatter reads only these members; a real FieldDef satisfies it structurally.
+/** @typedef {{kind: string, mask?: boolean, format?: string, decimals?: number, options?: {value: unknown, label: string}[], specialValues?: {value: unknown, meaning: string}[]} & Record<string, unknown>} FormattableField */
+/** @typedef {{deviceNowS: number | null, defaultDecimals?: number | undefined}} FormatContext */
+
+const INVALID_TIME_TEXT = "invalid time value";
+// A timestamp up to this far ahead of the page's estimate of the device clock reads as now: the
+// estimate trails the device by a /status request's latency.
+// @tunable web.clock_mismatch_s = 5
+const CLOCK_MISMATCH_S = 5;
+
+/**
+ * @param {number} epochS a Unix timestamp
+ * @param {unknown} deviceNowS the device's own Unix time, or null when it is not known yet
+ * @returns {string} the timestamp's age against the device's clock
+ */
+function formatEpochAge(epochS, deviceNowS) {
+    if (typeof deviceNowS !== "number") {
+        return "age unknown";
+    }
+    const age = deviceNowS - epochS;
+    if (age < -CLOCK_MISMATCH_S) {
+        return "clock mismatch";
+    }
+    const ageS = Math.max(Math.floor(age), 0);
+    if (ageS < 120) {
+        return `${ageS} s ago`;
+    }
+    if (ageS < 7200) {
+        return `${Math.floor(ageS / 60)} min ago`;
+    }
+    if (ageS < 172800) {
+        return `${Math.floor(ageS / 3600)} h ago`;
+    }
+    return `${Math.floor(ageS / 86400)} d ago`;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string} `Y-MM-DD hh:mm:ss` read through GMTIME_KEYS, or the invalid-time text.
+ */
+function formatTimeStruct(value) {
+    // Real shape: the generated module's _gmtimestruct_to_dict() (buildgen/codegen.py); Weekday/Yearday unused.
+    if (typeof value !== "object" || value === null) {
+        return INVALID_TIME_TEXT;
+    }
+    const members = GMTIME_KEYS.map((key) => /** @type {Record<string, unknown>} */ (value)[key]);
+    if (!members.every((member) => Number.isInteger(member))) {
+        return INVALID_TIME_TEXT;
+    }
+    const [year, ...rest] = members.map((member) => String(member).padStart(2, "0"));
+    return `${year}-${rest[0]}-${rest[1]} ${rest[2]}:${rest[3]}:${rest[4]}`;
+}
 
 /**
  * @param {FormattableField} field
  * @param {unknown} value
+ * @param {FormatContext} [context] the device's clock and the definitions' default decimals
  * @returns {string}
  */
-export function formatFieldValue(field, value) {
+export function formatFieldValue(field, value, context = { deviceNowS: null }) {
+    const special = field.format === "epoch" ? (field.specialValues ?? []).find((candidate) => candidate.value === value) : undefined;
+    if (special !== undefined) {
+        return special.meaning;
+    }
     if (value === undefined || value === null) {
         return "—";
     }
@@ -24,17 +80,25 @@ export function formatFieldValue(field, value) {
         return match ? match.label : String(value);
     }
     if (field.format === "gmtimestruct") {
-        // Real shape: src/sensortask_wozi.py's _gmtimestruct_to_dict() - {year, month, mday, hour,
-        // minute, second, weekday} (weekday unused here), never a pre-formatted string.
-        const t = /** @type {{year: number, month: number, mday: number, hour: number, minute: number, second: number}} */ (value);
-        const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
-        return `${t.year}-${pad(t.month)}-${pad(t.mday)} ${pad(t.hour)}:${pad(t.minute)}:${pad(t.second)}`;
+        return formatTimeStruct(value);
+    }
+    const finite = typeof value === "number" && Number.isFinite(value);
+    if (field.format === "epoch" && finite) {
+        return formatEpochAge(value, context.deviceNowS);
     }
     // The `decimals` display hint, and the one place in the stack that rounds an emitted value: no
     // driver in src/ rounds anything, so without this a declared precision is an aspiration.
     // Finite numbers only - a string, struct, NaN or Infinity passes through untouched.
-    if (typeof field.decimals === "number" && typeof value === "number" && Number.isFinite(value)) {
+    if (finite && typeof field.decimals === "number") {
         return value.toFixed(field.decimals);
+    }
+    // The site default for a float with no decimals hint (owner, 2026-10-02: "limit to 2 or 3 digits behind
+    // the decimal point, don't print full floats. But only for the website, the API delivers full resolution.").
+    if (finite && !Number.isInteger(value) && typeof context.defaultDecimals === "number") {
+        return value.toFixed(context.defaultDecimals);
+    }
+    if (Array.isArray(value)) {
+        return value.length === 0 ? "none" : value.map(String).join(", ");
     }
     return String(value);
 }

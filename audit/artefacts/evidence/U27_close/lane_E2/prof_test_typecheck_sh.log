@@ -1,0 +1,11 @@
+............................                                             [100%]
+============================= slowest 8 durations ==============================
+0.17s call     tests_scripts/test_typecheck_sh.py::test_a_clean_run_counts_every_stage_and_run_and_exits_0
+0.14s call     tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[tests_scripts/conftest.py-conftest check: host_typecheck.ini]
+0.14s call     tests_scripts/test_typecheck_sh.py::test_extra_paths_narrow_only_the_main_pass
+0.14s call     tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[digital_twin/typecheck.ini-twin pass: digital_twin/typecheck.ini]
+0.14s call     tests_scripts/test_typecheck_sh.py::test_a_failing_run_is_named_and_fails_the_script_after_every_run[tests/network.py-network check: pyproject.toml [tool.mypy]]
+0.14s call     tests_scripts/test_typecheck_sh.py::test_the_exact_pins_are_installed_and_recorded
+0.13s call     tests_scripts/test_typecheck_sh.py::test_an_install_that_is_not_exactly_the_pins_fails_and_records_nothing[another-stdlib-release]
+0.11s call     tests_scripts/test_typecheck_sh.py::test_an_install_that_is_not_exactly_the_pins_fails_and_records_nothing[two-board-installs]
+28 passed in 2.05s

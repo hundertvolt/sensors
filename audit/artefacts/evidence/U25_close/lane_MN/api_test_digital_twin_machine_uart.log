@@ -1,0 +1,14 @@
+PASS test_a_poller_asks_only_for_its_mask
+PASS test_a_second_instance_on_one_bus_id_supersedes_the_first
+PASS test_delivery_takes_real_wire_time
+PASS test_faster_baud_delivers_faster
+PASS test_ioctl_answers_einval_to_get_fileno
+PASS test_poll_mask_reports_what_the_link_delivered
+PASS test_reads_pump_the_wire_without_settle
+PASS test_reset_peripherals_frees_every_dma_channel
+PASS test_the_finaliser_aborts_the_channel
+PASS test_twin_link_satisfies_the_shared_contract
+PASS test_twin_poller_is_not_a_real_select_poll
+PASS test_twin_poller_requeries_ioctl
+12/12 passed, 0 failed, 0 skipped
+RC=0 WALL=3.719046523 FILE=tests/test_digital_twin_machine_uart.py STAGE=-1

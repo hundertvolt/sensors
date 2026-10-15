@@ -1,0 +1,11 @@
+--- /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23L/js/shell.js	2026-10-13 10:16:11.234544698 +0000
++++ /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u23/round4/bite_tree3/js/shell.js	2026-10-13 13:24:49.829699371 +0000
+@@ -140,7 +140,7 @@
+             return;
+         }
+         stopped = true;
+-        stopSection();
++        // PLANTED: the page stop leaves the section running
+         stopWatch();
+         watchAbort.abort();
+         nav.dispose();

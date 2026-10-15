@@ -1,0 +1,5 @@
+npm_lint rc=0
+npm_typecheck rc=0
+vt_lint-ceilings rc=1
+pytest rc=1
+done

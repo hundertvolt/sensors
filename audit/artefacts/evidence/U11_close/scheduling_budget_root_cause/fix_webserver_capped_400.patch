@@ -1,0 +1,80 @@
+diff --git a/tests/test_asy_webserver_service.py b/tests/test_asy_webserver_service.py
+index d04cae0..631bd0e 100644
+--- a/tests/test_asy_webserver_service.py
++++ b/tests/test_asy_webserver_service.py
+@@ -18,6 +18,7 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
+ from microdot import Microdot, Request, Response
+ 
+ import asy_config_manager as cm
++import asy_webserver_service
+ from asy_print_log import LogConfig
+ from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
+ 
+@@ -1774,11 +1775,66 @@ def test_an_outer_cap_timeout_logs_the_request_cap_code() -> None:
+     assert _newest_entry(service) == (code("W", "HTTP_REQUEST_CAP"), "W")
+ 
+ 
++class _VirtualClock:
++    # Stands in for the module's wait_for() timers: a deadline elapses only when the test advances
++    # the clock, so the order of two bounds is fixed by the test, never by host scheduling.
++    def __init__(self) -> None:
++        self.now = 0.0
++
++    async def sleep(self, t: float) -> None:
++        # Yields rather than parking on an Event: wait_for()'s runner cancels its waiter only while
++        # that waiter's task data is None, which an Event wait would set (extmod/asyncio/funcs.py).
++        deadline = self.now + t
++        while self.now < deadline:
++            await asyncio.sleep_ms(0)
++
++    def wait_for(self, aw: "Coroutine[Any, Any, T]", timeout: float) -> "Coroutine[Any, Any, T]":
++        # MicroPython's wait_for() takes its sleep as a third argument (extmod/asyncio/funcs.py).
++        return asyncio.wait_for(aw, timeout, self.sleep)  # type: ignore[call-arg]
++
++
++class _Entered:
++    # Wraps a hanging stream double and sets `entered` once its first call has started, which is
++    # after the proxy registered that call's bound - the point the test may move the clock past.
++    def __init__(self, inner: "Any") -> None:
++        self._inner = inner
++        self.entered = asyncio.Event()
++
++    def __getattr__(self, name: str) -> "Any":
++        attr = getattr(self._inner, name)
++        if not name.startswith(("read", "awrite")):
++            return attr
++
++        async def call(*args: "Any") -> "Any":
++            self.entered.set()
++            return await attr(*args)
++
++        return call
++
++
+ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> None:
+     # The read bound fires and is logged; microdot's 400 then hangs until the outer cap cuts it,
+     # and that second reclaim is the cap's, not a per-call one the earlier read had flagged.
+     service, _app = _make_service(per_call_timeout_s=0.2, outer_cap_s=0.3)
+-    run_timed(service._serve(_HangingReader(), _HangingWriter()), timeout_s=2.0)
++    clock = _VirtualClock()
++    timers = type("VirtualTimers", (), {n: getattr(asyncio, n) for n in ("CancelledError", "Task", "TimeoutError", "gather", "get_event_loop", "start_server")})()
++    timers.wait_for = clock.wait_for
++    reader, writer = _Entered(_HangingReader()), _Entered(_HangingWriter())
++
++    async def scenario() -> None:
++        served = asyncio.create_task(service._serve(reader, writer))
++        await reader.entered.wait()
++        clock.now = 0.2  # the read's bound (0.2) is due; the cap (0.3) is not
++        await writer.entered.wait()
++        clock.now = 0.3  # the cap is due; the 400 write's own bound (0.2 + 0.2) is not
++        await served
++
++    real_asyncio = asy_webserver_service.asyncio
++    asy_webserver_service.asyncio = timers
++    try:
++        run_timed(scenario())  # the default bound; the virtual clock makes the pass itself instant
++    finally:
++        asy_webserver_service.asyncio = real_asyncio
+     entry = run(service.get_error_counter())["WEBSERVER"]
+     assert entry["ErrCount"] == 2, entry
+     assert entry["ErrNum"][-2:] == [code("W", "HTTP_CALL_TIMEOUT"), code("W", "HTTP_REQUEST_CAP")], entry

@@ -1,22 +1,21 @@
 """Parses a driver module's `# @wiring <toml_field> <ProducerClass> <target> <required|optional>
-<kwarg|attr|setter>` comment tags (SPECIFICATION.md Part C.14.2 documents the shape and all three
-modes) - a comment, never a real Python value, per SPECIFICATION.md Part L.5."""
+<kwarg|attr>` comment tags (SPECIFICATION.md Part C.14.2 documents the shape and both modes) - a
+comment, never a real Python value, per SPECIFICATION.md Part L.5."""
 
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildgen.errors import BuildError
-from buildgen.tag_comments import KNOWN_TAGS, check_for_near_miss_tags, iter_comment_tokens
+from buildgen.tag_comments import check_for_near_miss_tags, iter_comment_tokens, specs_for
 
-_MODES = ("kwarg", "attr", "setter")
-_SPECS = tuple(spec for spec in KNOWN_TAGS if spec.name == "wiring")
+_SPECS = specs_for("wiring")
 
 # Every element is its own capture group with its own alternation, so dropping any one of the five
 # leaves the line matching no tag at all - which check_for_near_miss_tags() then reports as a
 # malformed @wiring tag rather than letting it pass as "no tag here".
 _TAG_RE = re.compile(
-    r"#+\s*@wiring\s+(?P<toml_field>\w+)\s+(?P<producer_class>\w+)\s+(?P<target>\w+)\s+(?P<required>required|optional)\s+(?P<mode>kwarg|attr|setter)\s*$",
+    r"#+\s*@wiring\s+(?P<toml_field>\w+)\s+(?P<producer_class>\w+)\s+(?P<target>\w+)\s+(?P<required>required|optional)\s+(?P<mode>kwarg|attr)\s*$",
 )
 
 
@@ -26,10 +25,9 @@ class WiringField:
     producer_class: str  # a plain class-name string (e.g. "SCD30_Reader") - never imported/resolved to a real type object
     target: str
     required: bool
-    mode: str  # "kwarg" | "attr" | "setter"
-    # mode decides how the producer reaches its consumer (Part C.14.2): "kwarg" passes the
-    # instance as a constructor kwarg, "attr" its `target` attribute or bound method, "setter"
-    # calls it once after both exist. Per-value wiring is _VALUE_WIRING's, not this tag's.
+    mode: str  # "kwarg" | "attr"
+    # mode decides how the producer reaches its consumer (Part C.14.2), both at construction:
+    # "kwarg" passes the instance, "attr" its `target` attribute or bound method.
 
 
 def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ...]":
@@ -45,12 +43,21 @@ def parse_wiring(path: Path, device: str, driver: str) -> "tuple[WiringField, ..
             raise BuildError(
                 device,
                 f"{path}:{tok.lineno}: @wiring tag must be at module level, not inside a class/function body: {tok.text.strip()!r}",
+                rule="tag.not-module-level",
+                fix="move the tag to module level, beside the driver's schema",
                 instance=driver,
             )
         fields.append(WiringField(m.group("toml_field"), m.group("producer_class"), m.group("target"), m.group("required") == "required", m.group("mode")))
     duplicate = _first_duplicate([f.toml_field for f in fields])
     if duplicate is not None:
-        raise BuildError(device, f"{path}: declares two @wiring tags for {duplicate!r} - each TOML field is wired exactly once", instance=driver, field=duplicate)
+        raise BuildError(
+            device,
+            f"{path}: declares two @wiring tags for {duplicate!r}",
+            rule="tag.duplicate-field",
+            fix="keep one @wiring tag per TOML field: each is wired exactly once",
+            instance=driver,
+            field=duplicate,
+        )
     check_for_near_miss_tags(tokens, path, device, driver, exact_matches, _SPECS)
     return tuple(fields)
 

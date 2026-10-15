@@ -1,0 +1,98 @@
+diff --git a/tests/test_uart_comm_hazard.py b/tests/test_uart_comm_hazard.py
+index bd1dc5f..8a0274e 100644
+--- a/tests/test_uart_comm_hazard.py
++++ b/tests/test_uart_comm_hazard.py
+@@ -663,12 +663,21 @@ def _check_a_peer_initiating_mid_transaction_reports_peer_initiated(crc: "CrcMak
+ 
+ 
+ def _check_a_size_mismatch_against_an_expected_size_reports_it_distinctly(crc: "CrcMaker") -> None:
+-    pair = Pair(payload_size=_PAYLOAD, timeout=_TIMEOUT_MS, get_callback=echo_get(b"vv"), set_callback=accept_set())
+-    assert run(pair.setup()) is True
+     # The answer is 2 bytes; the caller declared it expects 5. A wrong-length answer must be named,
+-    # not silently truncated or padded into something plausible.
+-    assert run(pair.with_listener(pair.initiator.uart_get(0x01, exp_size=5)), limit=_LIMIT_S) is None
+-    assert last_errno(pair.initiator) == code("E", "UART_SIZE_MISMATCH")
++    # not silently truncated or padded into something plausible, and its final ACK withheld (J.4).
++    pair = hazard_pair(crc)
++    ack = raw_frame(uid=1, cmd=_CMD_ACK, size=0, chunks=1, cur=1, payload=b"", crc=crc)
++    # The peer's whole answer is queued before the call, so every read finds its frame waiting and a
++    # host stall cannot expire a reply budget first: the verdict is scheduling-independent (J.7).
++    pair.fake_a.feed_rx(
++        ack
++        + raw_frame(uid=1, cmd=_CMD_SET, size=1, chunks=2, cur=1, payload=b"\x01", crc=crc)
++        + raw_frame(uid=2, cmd=_CMD_SET, size=2, chunks=2, cur=2, payload=b"vv", crc=crc),
++    )
++    assert run(pair.initiator.uart_get(0x01, exp_size=5), limit=_LIMIT_S) is None
++    assert errnos(pair.initiator) == [code("E", "UART_SIZE_MISMATCH")], f"got {errnos(pair.initiator)}"
++    get = raw_frame(uid=1, cmd=_CMD_GET, size=1, chunks=1, cur=1, payload=b"\x01", crc=crc)
++    assert pair.wire_from_initiator() == get + ack, "the mismatched train's final chunk was acknowledged"
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -1126,55 +1135,23 @@ def _hammer_faulted(crc: "CrcMaker") -> None:
+ # ---------------------------------------------------------------------------
+ 
+ 
+-def _clean_ack_bytes(crc: "CrcMaker") -> int:
+-    # Bytes the responder puts on the wire for one clean 8-byte SET, so a test can truncate exactly
+-    # one frame short of the end instead of guessing the ACK count.
+-    probe = hazard_pair(crc)
+-    assert run(probe.with_listener(probe.initiator.uart_set(0x02, b"acted-on")), limit=_EXCHANGE_LIMIT_S) is True
+-    total = len(probe.wire_from_responder())
+-    assert total >= wire_frame(crc) * 2, f"expected at least two ACK frames, saw {total} bytes"
+-    return total
+-
+-
+ def _check_a_lost_final_ack_is_reported_as_failure_though_the_peer_acted(crc: "CrcMaker") -> None:
+     # The protocol's at-least-once seam: the final ACK is deferred until after the responder's
+     # total-size check, so a lost one leaves the peer having accepted the whole train while
+     # this side reports failure. A caller that retries on False must tolerate that (Part J).
+     pair = hazard_pair(crc)
+-    delivered: list[bytes] = []
+-    # The payload is read off uart_listen()'s own ListenResult, not a message_callback: that
+-    # callback is dispatched by the owned _listen_loop(), which this test does not run.
+-    responder = UARTComm(
+-        pair.driver_b, ROLE_RESPONDER, payload_size=_PAYLOAD, timeout=pair.responder._timeout,
+-        callbacks=ResponderCallbacks(echo_get(b"v"), accept_set(), None), name="UART_LOSTACK",
+-    )
+-    assert run(responder.setup()) is True
+-    to_initiator = pair.link.direction_from(pair.fake_b)
+-    # Measured out here, never inside the coroutine below: _clean_ack_bytes() drives its own
+-    # asyncio.run(), and nesting one inside a running loop segfaults this interpreter rather than
+-    # raising (CLAUDE.md's known segfault cause).
+-    cut_after = _clean_ack_bytes(crc) - wire_frame(crc)
+-
+-    async def scenario() -> bool:
+-        listener = asyncio.create_task(responder.uart_listen())
+-        # Drop the responder's last outgoing frame - its final ACK - and nothing else.
+-        to_initiator.truncate_after = cut_after
+-        try:
+-            return await pair.initiator.uart_set(0x02, b"acted-on")
+-        finally:
+-            await responder.clear()
+-            try:
+-                result = await asyncio.wait_for(listener, _STEP_BOUND_S)
+-                if result.payload is not None:
+-                    delivered.append(bytes(result.payload))
+-            except asyncio.TimeoutError:
+-                listener.cancel()
+-
+-    result = run(scenario(), limit=_MISMATCH_LIMIT_S)
+-    assert result is False, "a lost final ACK was reported as success"
+-    assert errnos(pair.initiator), "a lost final ACK produced no logged error"
++    first_ack = raw_frame(uid=1, cmd=_CMD_ACK, size=0, chunks=1, cur=1, payload=b"", crc=crc)
++    # Every read finds its frame already waiting, so no host stall can expire a budget first (J.7):
++    # the initiator runs with only the header's ACK queued, so the final one is lost by construction.
++    pair.fake_a.feed_rx(first_ack)
++    assert run(pair.initiator.uart_set(0x02, b"acted-on"), limit=_LIMIT_S) is False, "a lost final ACK was reported as success"
++    assert errnos(pair.initiator) == [code("E", "UART_NO_ACK")], f"got {errnos(pair.initiator)}"
++    # The responder then reads the very bytes the initiator sent, already queued on its side.
++    result = run(pair.responder.uart_listen(), limit=_LIMIT_S)
+     # The asymmetry itself: the responder did the work the initiator was told failed.
+-    assert delivered == [b"acted-on"], f"the responder did not actually receive the train: {delivered!r}"
++    assert result.payload is not None and bytes(result.payload) == b"acted-on", f"the responder did not actually receive the train: {result!r}"
++    final_ack = raw_frame(uid=2, cmd=_CMD_ACK, size=0, chunks=1, cur=1, payload=b"", crc=crc)
++    assert pair.wire_from_responder() == first_ack + final_ack, "the responder's ACKs differ from the ones the initiator was scripted with"
+ 
+ 
+ def _check_a_peer_that_resets_mid_transaction_converges_once_it_returns(crc: "CrcMaker") -> None:

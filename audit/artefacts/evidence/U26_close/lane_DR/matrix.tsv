@@ -1,0 +1,14 @@
+arzi	-1	rc=0 wall=112.242366421s 11/11 passed, 0 failed, 0 skipped	mem=0
+arzi	32768	rc=0 wall=114.429473157s 11/11 passed, 0 failed, 0 skipped	mem=0
+dev	-1	rc=0 wall=23.672147157s 4/11 passed, 0 failed, 7 skipped	mem=0
+dev	32768	rc=0 wall=25.274569659s 4/11 passed, 0 failed, 7 skipped	mem=0
+grkizi	-1	rc=0 wall=22.045179375s 4/11 passed, 0 failed, 7 skipped	mem=0
+grkizi	32768	rc=0 wall=22.691408149s 4/11 passed, 0 failed, 7 skipped	mem=0
+klkizi	-1	rc=0 wall=21.932068301s 4/11 passed, 0 failed, 7 skipped	mem=0
+klkizi	32768	rc=0 wall=22.765605470s 4/11 passed, 0 failed, 7 skipped	mem=0
+schlafzi	-1	rc=0 wall=22.208789434s 4/11 passed, 0 failed, 7 skipped	mem=0
+schlafzi	32768	rc=0 wall=22.792886768s 4/11 passed, 0 failed, 7 skipped	mem=0
+wozi	-1	rc=0 wall=22.585968661s 4/11 passed, 0 failed, 7 skipped	mem=0
+wozi	32768	rc=0 wall=23.650976854s 4/11 passed, 0 failed, 7 skipped	mem=0
+dev	cov	rc=0 wall=26.361725932s 4/11 passed, 0 failed, 7 skipped	mem=0
+MATRIX_DONE

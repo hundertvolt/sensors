@@ -1,0 +1,62 @@
+...........F.F.......................................................... [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 31%]
+........................................................................ [ 42%]
+........................................................................ [ 53%]
+........................................................................ [ 63%]
+........................................................................ [ 74%]
+................................F....................................... [ 85%]
+........................................................................ [ 95%]
+............................                                             [100%]
+=================================== FAILURES ===================================
+_ test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions _
+
+    def test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions() -> None:
+        assert len(list(_TESTS.glob("test_*.py"))) >= 80  # the floor: a glob matching nothing would pass vacuously
+>       assert _trailer_problems(_TESTS) == []
+E       AssertionError: assert ['test_digita...test trailer'] == []
+E         
+E         Left contains 2 more items, first extra item: 'test_digital_twin_launch.py: does not end with the canonical microtest trailer'
+E         Use -v to get more diff
+
+tests_scripts/test_microtest.py:292: AssertionError
+____________________ test_json_loads_reads_no_response_body ____________________
+
+    def test_json_loads_reads_no_response_body() -> None:
+        sites = _json_loads_sites(_TESTS)
+        assert sites.pop("_strict_json.py", []), "the oracle's own json.loads() was not found - the scan reads nothing"
+        counts = {name: len(lines) for name, lines in sites.items()}
+>       assert counts == {name: count for name, (count, _reason) in _JSON_LOADS_ALLOWED.items()}, sites
+E       AssertionError: {'test_asy_base_classes.py': [1457], 'test_asy_config_manager.py': [2381, 2415], 'test_asy_system_service.py': [3060, 3020, 3085], 'test_digital_twin_run_generic_integration.py': [353], ...}
+E       assert {'test_asy_ba...n.py': 1, ...} == {'test_asy_ba...t_json.py': 2}
+E         
+E         Omitting 4 identical items, use -vv to show
+E         Left contains 1 more item:
+E         {'test_digital_twin_run_generic_integration.py': 1}
+E         Use -v to get more diff
+
+tests_scripts/test_microtest.py:305: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u25mn')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N row
+E         digital_twin/unixport/_ntp_responder.py:22: twin.ntp_responder_poll_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:30: l2.http_client_fetch_timeout_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_http_client.py:32: l2.http_client_silent_server_s is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:89: l2.machine_timer_short_period_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:91: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_digital_twin_machine.py:93: l2.machine_spi_wire_time_us_per_byte is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['digital_twin/run_generic_integration.py:167: l2.twin_feed_gap_fold_ms is tagged but has no SPECIFICATION.md Part N r...st_digital_twin_machine.py:91: l2.machine_timer_rearm_window_ms is tagged but has no SPECIFICATION.md Part N row', ...]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_microtest.py::test_every_test_file_ends_with_the_canonical_trailer_and_binds_only_functions
+FAILED tests_scripts/test_microtest.py::test_json_loads_reads_no_response_body
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+3 failed, 673 passed in 98.71s (0:01:38)

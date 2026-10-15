@@ -1,0 +1,52 @@
+
+######## SubagentHandback 2026-10-13T13:17:32.243Z
+**Commit `cae669d`** on `audit/u23-of111` in `S/wt-u23o`: one commit on 202a118, not pushed. The message is `S/u23/lead7_msg.txt` with the placeholder filled, the owner quote kept verbatim and the trailers last.
+
+**The change.** `src/asy_webserver_service.py`:
+- `:122` adds `_SHUTDOWN_CMDS` (reboot, bootloader, resetconfig, erasefram).
+- `:561` adds `self._shutdown_accepted = False` (one-way).
+- `:871-872`: `_run_system_cmd()` sets it when one of those four words answers "Valid".
+- `:835-837`: `_put_status()` then answers `ResetErrors` "Failed" and starts no reset.
+
+**How "accepted" is detected.** The real state is `SystemService._shutdown`, but the webserver cannot reach it. Its routes only see the `system_cmd` callback, so reading it would need a new `RouteSources` field and a `buildgen/codegen.py` change, both outside my file set. The webserver therefore records its own "Valid" answer. I checked that this matches the acceptance exactly: `asyncio.Lock.__aexit__` does not yield (`extmod/asyncio/lock.py:54-55`, v1.29.0), so no other request runs between the acceptance and the flag being set. mempause, a refused or raising command, and a word that is not a command leave ResetErrors open.
+
+**Tests** (`tests/test_asy_webserver_service.py`, `tests/_sensortask_scenarios.py`, the shared scenario):
+- A new unit test covers all four words. On the old src (via a scratch overlay) it failed for each word: "Valid", two reset calls, every log and the drop count cleared.
+- The guard test for mempause and non-accepted commands passed on the old src, as a guard should.
+- `every_api_write_is_refused_from_a_system_commands_acceptance_to_its_reset` now expects "Failed" at every step S1-S6. It seeds an entry in every FRAM store, then compares every error log and both blocks of every log chunk on the chip around the PUT. On the old src it failed on all six devices at the first word, reboot: "Valid" at S1-S3 and logs cleared at S1 and S4.
+- No twin test pins the old answer.
+
+**Runs** (results in `S/u23/of111/results.tsv`). Every file below passed its N/N line at -1, 32768 and settrace, with zero memory markers. Times are after, with lane D's times as before:
+
+| File | -1 | 32768 | settrace |
+|---|---|---|---|
+| webserver_service (222) | 21.8 → 23.0 | 22.7 → 24.3 | 50.8 → 56.6 |
+| system_service | 26.4 → 27.5 | 33.1 → 33.4 | 35.4 → 38.1 |
+| dev | 69.4 → 65.6 | 93.9 → 96.0 | 119.7 → 127.7 |
+| wozi | 49.3 → 46.9 | 66.0 → 66.8 | 91.3 → 98.9 |
+| arzi | 42.6 → 41.8 | 57.7 → 59.0 | 82.2 → 84.5 |
+| grkizi | 43.0 → 41.6 | 58.1 → 59.2 | 82.1 → 88.2 |
+| klkizi | 43.0 → 41.2 | 60.2 → 59.0 | 79.8 → 87.9 |
+| schlafzi | 44.3 → 41.7 | 59.9 → 60.7 | 81.3 → 86.1 |
+
+- These three files are not in lane D's table, so I measured "before" myself with the old src overlay; they are unchanged: test_asy_webserver_connections 1.3/1.4/1.5 s (after only), test_readiness_gates about 0.2 s, test_neopixel_wifi_integration 2.8/3.3/3.5 → 2.9/3.3/3.6 s, test_website_build_integration 0.3 s.
+- Two failures along the way were my own mistakes, both root-caused and fixed:
+  1. dev under settrace hit `MemoryError` allocating 262145 bytes. The scenario copied dev's whole 256 KiB FRAM image 48 times; it now copies only the log chunks, 480 B on wozi.
+  2. wozi failed at -1 and under settrace because my queue ran two copies of one file in one worktree at once (CONCURRENCY rule 4). All the affected runs were thrown away and rerun with one run per worktree.
+- ruff over the 8 scopes is clean, and all four mypy passes are clean.
+- The pytest set passed except `test_tunables_register`. Its rows are lane X's Part N rows, already red at 202a118 and naming none of my files.
+
+**Facts lanes X and Y must write:**
+- **SPEC A.8, `/status` (around :1008-1010):** `result.ResetErrors` also answers "Failed", clearing nothing, from the acceptance of reboot, bootloader, resetconfig or erasefram (owner, 2026-10-13: "1 b").
+- **SPEC A.8 (around :1048):** replace "`ResetErrors` answers "Failed" once the sequence has closed FRAM" with "from the moment a sequence is accepted, clearing nothing, so the FRAM-backed logs survive into the reset".
+- **DEVICE_REFERENCE "Clearing the error logs":** "From the moment a Reboot, Reboot into bootloader, Reset to defaults or Erase FRAM command is accepted until the unit restarts, the reset answers "Failed" and clears nothing; clear the logs once the unit is back."
+- The JS mock stays stateless (ruling A-10), so it never models this window. Its `js/mock-server.js:735` comment ("as _put_status() answers it") is now incomplete.
+
+**New findings from the silent-failure scan:**
+1. Class 4/7, mode mempause: ResetErrors answers "Failed" (FRAM paused) yet clears every RAM ring and the drop window, and each store's next write saves the cleared ring.
+2. Class 6/7, mode supervisor task-budget reboot: `_reboot()` awaits a flush before pausing FRAM. A ResetErrors in that window still clears the logs that explain the reboot.
+3. Residual risk: a ResetErrors that began before the acceptance completes its resets.
+
+**RUNS.md and processes.** `ps` shows nothing of mine and none of my RUNS.md lines are open. `runs.py` now ends every line with "\n". Lines 343 and 353 are still joined to lead edits 2's lines, and at 353 my line shows their result. Editing their line was refused, so I appended a note line instead.
+
+**For the lead to run:** `tests_scripts/test_digital_twin_boot_contiguity.py`. Its probe imports the scenario module, and the webserver gained one attribute.

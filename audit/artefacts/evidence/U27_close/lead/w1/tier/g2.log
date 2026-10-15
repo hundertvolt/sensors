@@ -1,0 +1,127 @@
+........................................................................ [  5%]
+........................................................................ [ 11%]
+........................................................................ [ 16%]
+........................................................................ [ 22%]
+........................................................................ [ 27%]
+........................................................................ [ 33%]
+........................................................................ [ 39%]
+........................................................................ [ 44%]
+........................................................................ [ 50%]
+........................................................................ [ 55%]
+........................................................................ [ 61%]
+........................................................................ [ 66%]
+............................................................FFFFFF...... [ 72%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 89%]
+........................................................................ [ 94%]
+..................................................................       [100%]
+=================================== FAILURES ===================================
+__________ test_every_uart_link_instance_gets_its_silent_fault[arzi] ___________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+___________ test_every_uart_link_instance_gets_its_silent_fault[dev] ___________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+_________ test_every_uart_link_instance_gets_its_silent_fault[grkizi] __________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+_________ test_every_uart_link_instance_gets_its_silent_fault[klkizi] __________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+________ test_every_uart_link_instance_gets_its_silent_fault[schlafzi] _________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+__________ test_every_uart_link_instance_gets_its_silent_fault[wozi] ___________
+
+ci_suite = <module '_digital_twin_ci_suite' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/scripts/_digital_twin_ci_suite.py'>
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
+        instances = ci_suite._plan_instances(device_toml(device))
+        links = [inst.key for inst in instances if inst.driver == "uart_link"]
+>       ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: RunContext.__init__() missing 1 required positional argument: 'routes'
+
+tests_scripts/test_digital_twin_ci_suite_matrix.py:77: TypeError
+============================= slowest 15 durations =============================
+16.88s call     tests_scripts/test_digital_twin_generated_boot.py::test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalation
+8.67s setup    tests_scripts/test_build_device_websites_sh.py::test_every_device_gets_its_own_site_from_its_generated_definitions[arzi]
+7.95s call     tests_scripts/test_stripped_image_boots.py::test_every_compiled_image_boots_and_serves_like_its_source
+7.93s call     tests_scripts/test_tests_hardware_collect_matrix.py::test_every_option_combination_collects_with_nothing_attached
+7.64s call     tests_scripts/test_digital_twin_generated_boot.py::test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_ends
+7.45s call     tests_scripts/test_buildgen_fuzz.py::test_a_mutated_device_builds_or_fails_with_a_build_error
+5.21s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[novel_combo.toml]
+4.60s call     tests_scripts/test_digital_twin_generated_boot.py::test_synthetic_fixture_boots_and_serves_over_real_http[multi_instance.toml]
+4.56s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[dev]
+4.10s setup    tests_scripts/test_stripped_image_boots.py::test_each_image_holds_only_compiled_modules_and_the_stub_site
+3.87s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[wozi]
+3.86s setup    tests_scripts/test_frozen_inputs_reproducible.py::test_two_hash_seeds_stage_byte_identical_inputs
+3.64s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[klkizi]
+3.60s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[schlafzi]
+3.58s call     tests_scripts/test_digital_twin_generated_boot.py::test_real_device_boots_its_generated_module_and_serves_over_real_http[arzi]
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[arzi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[dev]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[grkizi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[klkizi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[schlafzi]
+FAILED tests_scripts/test_digital_twin_ci_suite_matrix.py::test_every_uart_link_instance_gets_its_silent_fault[wozi]
+6 failed, 1284 passed in 200.10s (0:03:20)

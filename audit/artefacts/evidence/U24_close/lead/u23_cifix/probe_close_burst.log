@@ -1,0 +1,28 @@
+tab 1 loaded at 1371 ms
+tab 2 loaded at 2929 ms
+tab 3 loaded at 4539 ms
+tab 4 loaded at 6122 ms
+tab 5 loaded at 7645 ms
+tab 6 loaded at 9249 ms
+  page 3 closed after 11 ms
+  page 2 closed after 13 ms
+  page 1 closed after 23 ms
+  page 4 closed after 26 ms
+  page 5 closed after 29 ms
+  page 6 closed after 50 ms
+twin-alive all closed
+rc=0
+tab 1 loaded at 1532 ms
+tab 2 loaded at 3024 ms
+tab 3 loaded at 4486 ms
+tab 4 loaded at 6097 ms
+tab 5 loaded at 7752 ms
+tab 6 loaded at 9621 ms
+  page 1 closed after 12 ms
+  page 4 closed after 18 ms
+  page 3 closed after 28 ms
+  page 2 closed after 31 ms
+  page 5 closed after 39 ms
+  page 6 closed after 87 ms
+parallel-stop all closed
+rc=0

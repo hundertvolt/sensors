@@ -1,0 +1,16 @@
+diff --git a/js/mock-server.js b/js/mock-server.js
+index 7c11ac2..9171ab2 100644
+--- a/js/mock-server.js
++++ b/js/mock-server.js
+@@ -732,8 +732,9 @@ export function installMockFetch(defs, initialData, controls) {
+     }
+ 
+     /**
+-     * {"ResetErrors": true} is the one request, as _put_status() answers it (SPECIFICATION.md A.8): it
+-     * refills every errcount entry and answers "Valid"; any other value or key answers "Invalid".
++     * {"ResetErrors": true} is the one request, as _put_status() answers it (SPECIFICATION.md A.8): it refills every
++     * errcount entry and answers "Valid"; any other value or key answers "Invalid". Stateless, it answers as a running
++     * device outside its "Failed" windows: from an accepted reboot or erase command on, and during mempause.
+      * @param {Record<string, unknown>} body
+      * @returns {Record<string, string>}
+      */

@@ -1,0 +1,19 @@
+== a_hung_shutdown_step_is_ended_by_the_watchdog: Each controlled-shutdown step hung from outside: the command answers Valid, no reset follows, the watchdog engages.
+== Launching: /root/pico-toolchain/micropython/ports/unix/build-standard/micropython digital_twin/run_generic_integration.py --module sensortask_dev --wiring-plan /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/bite_tree/build/generated_src/sensortask_dev_wiring_plan.json --device dev --host 127.0.0.1 --port 20166 --fram-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/bite_dev_hang_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/fram_state.json --scd30-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/bite_dev_hang_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/scd30_state.json --mem-backup-state-path /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/bite_dev_hang_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/mem_backup_state.json --config-dir /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/bite_dev_hang_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/state_01/config/ --gc-threshold -1 --test-shutdown-hang S6 (log: /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u25/laneSH/hlogs/bite_dev_hang_neg1/a_hung_shutdown_step_is_ended_by_the_watchdog/twin_01.log)
+FAILED: a_hung_shutdown_step_is_ended_by_the_watchdog - AssertionError: S6 (reboot): the watchdog never engaged (ShutdownLine(would_have_triggered_count=0, feed_count=27, largest_feed_gap_ms=2004, mem_backup_r0=(710803457, 9, 363177388, 0), public_destinations_refused=0, flash_stall_longest_ms=239, uart={'uart_link_init': UartCounts(transfers=24, failures=0, rx_laps_and_errors=0), 'uart_link_resp': UartCounts(transfers=0, failures=0, rx_laps_and_errors=0)})) (28.6s)
+== Summary: scripts/_digital_twin_scenarios.py ==
+Commit: unknown
+Levels: L2 (dev)
+GC stage: -1
+Counts (scenarios): passed 0 · failed 1 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - a_hung_shutdown_step_is_ended_by_the_watchdog: AssertionError: S6 (reboot): the watchdog never engaged (ShutdownLine(would_have_triggered_count=0, feed_count=27, largest_feed_gap_ms=2004, mem_backup_r0=(710803457, 9, 363177388, 0), public_destinations_refused=0, flash_stall_longest_ms=239, uart={'uart_link_init': UartCounts(transfers=24, failures=0, rx_laps_and_errors=0), 'uart_link_resp': UartCounts(transfers=0, failures=0, rx_laps_and_errors=0)})) (28.6s)
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1
+rc=1 wall=28s

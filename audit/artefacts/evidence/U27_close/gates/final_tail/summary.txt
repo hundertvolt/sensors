@@ -1,0 +1,3 @@
+mem markers: 0 files
+ok 10
+nonzero rc 0

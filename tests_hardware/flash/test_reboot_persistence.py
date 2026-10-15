@@ -1,79 +1,49 @@
-"""Flash-tier automated tests: real reboot/persistence via a genuine `hard_reset()` (mpremote's
-DTR-based reset, the closest real equivalent to a power-cycle without pulling power). Uses
-hard_reset()+tail_log(), not run_isolated()/exec(), so the real boot.py/main.py path runs undisturbed."""
+"""Flash-tier reboot tests: a genuine `hard_reset()` (a raw-REPL `machine.reset()`, a real MCU reset that re-runs the
+frozen `main.py`), observed passively so the boot path runs undisturbed."""
 
-from __future__ import annotations
-
-import re
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from harness import Board, wait_until
+from harness import DEVICE_SCRIPTS_DIR, boot_lines, crash_lines, parse_facts, wait_for_boot, wait_until
 
-DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
-RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
+if TYPE_CHECKING:
+    from harness import Board
+
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_2_reboot_settings_persistence",)
+
+# One exec when the read phase never ran: the test-only file goes, absent or not.
+_REMOVE_MARKER_FILE = "import os\ntry:\n  os.remove('config_HWTEST_REBOOT.cfg')\nexcept OSError:\n  pass"
+# @tunable l3.reboot_persistence_reachable_timeout_s = 30.0
+_REACHABLE_TIMEOUT_S = 30.0
+# @tunable l3.reboot_persistence_reachable_poll_s = 1.0
+_REACHABLE_POLL_S = 1.0
+# @tunable l3.reboot_persistence_boot_log_tail_s = 20.0
+_BOOT_LOG_TIMEOUT_S = 20.0
 
 
-def _parse_result(output: str) -> tuple[bool, str]:
-    match = RESULT_RE.search(output)
-    if match is None:
-        raise AssertionError(f"device script printed no RESULT line - full output:\n{output}")
-    return match.group(1) == "PASS", match.group(2).strip()
-
-
-# ---------------------------------------------------------------------------
-# Item 13 - config.json (a real ConfigManager-backed file) survives a genuine reboot.
-# ---------------------------------------------------------------------------
-
-
+# A config value written through the real ConfigManager survives a genuine reset.
 @pytest.mark.persistence_write
-def test_config_value_survives_a_genuine_hard_reset(board: Board) -> None:
-    write_output = board.run_isolated(DEVICE_SCRIPTS / "reboot_persist_write.py")
-    ok, detail = _parse_result(write_output)
-    assert ok, f"pre-reboot write failed: {detail}\nfull output:\n{write_output}"
-
-    board.hard_reset()
-    wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after hard_reset()")
-
-    read_output = board.run_isolated(DEVICE_SCRIPTS / "reboot_persist_read.py")
-    ok, detail = _parse_result(read_output)
-    assert ok, f"post-reboot read failed: {detail}\nfull output:\n{read_output}"
-
-
-# ---------------------------------------------------------------------------
-# This bench only flashes the refactored `src/` build (dev_boot.py frozen as "main.py"), never
-# the legacy `modules/_boot.py` mechanism of BACKLOG open question 1. Proves a real hard reset
-# brings the whole application layer back - ConfigManager/FRAM, not just the interpreter.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.persistence_write
-def test_boot_import_mechanism_actually_boots_the_real_system(board: Board) -> None:
-    # This bench's board is left at production-quiet DebugLevel=0 between sessions, which suppresses
-    # the pr.one()-level boot-chatter lines this check looks for - raise DebugLevel for the one
-    # hard_reset() this test needs, then always restore it to 0 afterward (`finally`).
-    raise_output = board.run_isolated(DEVICE_SCRIPTS / "system_debug_level_raise_for_boot_log_check.py")
-    ok, detail = _parse_result(raise_output)
-    assert ok, f"failed to raise DebugLevel before the boot check: {detail}\nfull output:\n{raise_output}"
-
+def test_config_value_survives_a_genuine_hard_reset(board: "Board") -> None:
+    read = False
     try:
+        written = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "reboot_persist_write.py"))
+        assert written.get("flushed") is True and "leftover_remove_errno" not in written, f"the pre-reboot write did not reach flash: {written}"
         board.hard_reset()
-        # Passive observation only (tail_log(), never exec()/run_isolated()) from here on - a real
-        # reboot's own boot.py/main.py sequence must run completely undisturbed for this to mean
-        # anything.
-        lines = board.tail_log(duration_s=20.0)
-        joined = "\n".join(lines)
-        assert "CFGMGR_" in joined or "FRAM" in joined, (
-            "no sensortask_dev startup log lines observed after a genuine hard reset (with DebugLevel "
-            "raised, so this isn't the known DebugLevel=0 suppression) - the frozen boot chain's "
-            "import machinery may not be resolving on this real hardware/firmware build.\n"
-            f"captured log:\n{joined}"
-        )
+        # The next step enters the raw REPL anyway, so an active reachability poll costs the boot nothing here.
+        wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after hard_reset()")
+        read = True
+        facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "reboot_persist_read.py"))
+        assert facts.get("valid") is True and facts.get("marker") == facts.get("expected"), f"the marker did not survive the reset: {facts}"
     finally:
-        # write_config() only persists to disk, not the live debug-level registry - one more real
-        # hard_reset() makes the restored 0 genuinely live again, not just correct-on-disk.
-        restore_output = board.run_isolated(DEVICE_SCRIPTS / "system_debug_level_restore_after_boot_log_check.py")
-        ok, detail = _parse_result(restore_output)
-        assert ok, f"failed to restore DebugLevel to 0 after the boot check - board may be left non-default: {detail}\nfull output:\n{restore_output}"
-        board.hard_reset()
-        wait_until(board.is_reachable, timeout_s=30.0, poll_interval_s=1.0, description="board reachable again after restoring DebugLevel=0")
+        if not read:
+            board.exec(_REMOVE_MARKER_FILE)
+            board.hard_reset()
+
+
+# This bench flashes only the generated boot entry, frozen as "main.py", never the legacy
+# `legacy/firmware/modules/_boot.py` mechanism that CLAUDE.md's `_boot.py` rule describes. A real
+# hard reset must bring the whole application layer back - ConfigManager/FRAM, not just the interpreter.
+def test_boot_import_mechanism_actually_boots_the_real_system(board: "Board") -> None:
+    board.hard_reset()
+    lines = wait_for_boot(board, _BOOT_LOG_TIMEOUT_S)
+    assert boot_lines(lines) and not crash_lines(lines), "the generated boot entry's startup lines did not arrive cleanly after a genuine hard reset:\n" + "\n".join(lines)

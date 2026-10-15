@@ -12,7 +12,7 @@ rules:
         # tj-actions/changed-files attack.
         "*": hash-pin
   self-repository:
-    # Disabled, not fixed: it wants `uses: $/.github/...`, which actionlint 1.7.12 rejects as
-    # invalid, so both gates cannot pass. Low severity; revisit once actionlint learns the syntax
-    # (CLAUDE.md).
+    # Disabled, not fixed: it wants `uses: $/.github/...`, which actionlint 1.7.12 rejects, so
+    # both gates cannot pass (agent, 2026-09-10). Re-enable when actionlint accepts the syntax
+    # (checked at each actionlint pin bump).
     disable: true

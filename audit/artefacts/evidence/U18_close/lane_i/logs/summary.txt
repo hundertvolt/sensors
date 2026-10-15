@@ -1,0 +1,34 @@
+before test_readiness_gates std rc=1 t=.147993777s mem=0 :: 13/14 passed, 1 failed, 0 skipped
+before test_readiness_gates thr rc=1 t=.259171511s mem=0 :: 13/14 passed, 1 failed, 0 skipped
+before test_readiness_gates cov rc=1 t=.178869561s mem=0 :: 13/14 passed, 1 failed, 0 skipped
+before test_neopixel_wifi_integration std rc=0 t=.406427729s mem=0 :: 3/3 passed, 0 failed, 0 skipped
+before test_neopixel_wifi_integration thr rc=0 t=.544350900s mem=0 :: 3/3 passed, 0 failed, 0 skipped
+before test_neopixel_wifi_integration cov rc=0 t=.625472639s mem=0 :: 3/3 passed, 0 failed, 0 skipped
+before test_setter_microdot_integration std rc=1 t=3.845569906s mem=0 :: 33/34 passed, 1 failed, 0 skipped
+before test_setter_microdot_integration thr rc=1 t=4.008965210s mem=0 :: 33/34 passed, 1 failed, 0 skipped
+before test_setter_microdot_integration cov rc=1 t=3.973649668s mem=0 :: 33/34 passed, 1 failed, 0 skipped
+before test_ntp_wifi_dns_integration std rc=1 t=.138289326s mem=0 :: 3/9 passed, 6 failed, 0 skipped
+before test_ntp_wifi_dns_integration thr rc=1 t=.182566695s mem=0 :: 3/9 passed, 6 failed, 0 skipped
+before test_ntp_wifi_dns_integration cov rc=1 t=.158066220s mem=0 :: 3/9 passed, 6 failed, 0 skipped
+before test_ntp_fram_system_integration std rc=1 t=11.928264010s mem=0 :: 7/12 passed, 5 failed, 0 skipped
+before test_ntp_fram_system_integration thr rc=1 t=11.513083203s mem=0 :: 7/12 passed, 5 failed, 0 skipped
+before test_ntp_fram_system_integration cov rc=1 t=11.501911330s mem=0 :: 7/12 passed, 5 failed, 0 skipped
+DONE
+dev1 test_readiness_gates std rc=0 t=.300301636s mem=0 :: 14/14 passed, 0 failed, 0 skipped
+dev1 test_neopixel_wifi_integration std rc=1 t=3.021494252s mem=0 :: 5/6 passed, 1 failed, 0 skipped
+after1 test_readiness_gates std rc=0 t=.163300813s mem=0 :: 14/14 passed, 0 failed, 0 skipped
+after1 test_readiness_gates thr rc=0 t=.253423209s mem=0 :: 14/14 passed, 0 failed, 0 skipped
+after1 test_readiness_gates cov rc=0 t=.279233308s mem=0 :: 14/14 passed, 0 failed, 0 skipped
+after1 test_neopixel_wifi_integration std rc=1 t=1.757753175s mem=0 :: 5/6 passed, 1 failed, 0 skipped
+after1 test_neopixel_wifi_integration thr rc=1 t=2.024342550s mem=0 :: 5/6 passed, 1 failed, 0 skipped
+after1 test_neopixel_wifi_integration cov rc=1 t=2.138223885s mem=0 :: 5/6 passed, 1 failed, 0 skipped
+after1 test_setter_microdot_integration std rc=0 t=3.931598924s mem=0 :: 39/39 passed, 0 failed, 0 skipped
+after1 test_setter_microdot_integration thr rc=0 t=4.087952217s mem=0 :: 39/39 passed, 0 failed, 0 skipped
+after1 test_setter_microdot_integration cov rc=0 t=3.978113206s mem=0 :: 39/39 passed, 0 failed, 0 skipped
+after1 test_ntp_wifi_dns_integration std rc=0 t=1.489850220s mem=0 :: 13/13 passed, 0 failed, 0 skipped
+after1 test_ntp_wifi_dns_integration thr rc=0 t=1.578494891s mem=0 :: 13/13 passed, 0 failed, 0 skipped
+after1 test_ntp_wifi_dns_integration cov rc=0 t=1.575693812s mem=0 :: 13/13 passed, 0 failed, 0 skipped
+after1 test_ntp_fram_system_integration std rc=0 t=11.953635818s mem=0 :: 12/12 passed, 0 failed, 0 skipped
+after1 test_ntp_fram_system_integration thr rc=0 t=12.226150885s mem=0 :: 12/12 passed, 0 failed, 0 skipped
+after1 test_ntp_fram_system_integration cov rc=0 t=12.220224523s mem=0 :: 12/12 passed, 0 failed, 0 skipped
+DONE-after1

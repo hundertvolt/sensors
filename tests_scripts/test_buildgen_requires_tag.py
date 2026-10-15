@@ -7,11 +7,15 @@ SCD30 clock-stretch tag plus every malformed/violated case."""
 # exists to prevent, and the reject side once per dimension - a build that aborts, aborts.
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from buildgen.errors import BuildError
 from buildgen.requires_tag import RequiresTag, check_requires_tags, parse_requires_tags
+
+if TYPE_CHECKING:
+    from buildgen.model import TomlDoc, TomlValue
 
 _OPS = [">=", "<=", "==", "!=", ">", "<"]
 
@@ -33,13 +37,15 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[RequiresTag, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
-    return parse_requires_tags(path, "dev", "x")
+    path.write_text(source, encoding="utf-8")
+    return parse_requires_tags(path, "fixture", "x")
 
 
-def _parse_expecting(tmp_path: Path, source: str, match: str) -> None:
-    with pytest.raises(BuildError, match=match):
+def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None" = None) -> None:
+    with pytest.raises(BuildError, match=match) as raised:
         _parse(tmp_path, source)
+    if rule is not None:
+        assert raised.value.rule == rule
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +147,7 @@ def test_parse_requires_tags_line_break_lookalike_does_not_fake_an_indented_tag(
     # level". See test_buildgen_tag_comments.py for the mechanism.
     path = tmp_path / "asy_x_driver.py"
     path.write_bytes(b"X = 'a\x0bb'\ndef f():\n    pass\n# @requires bus.timeout>=200000\n")
-    (tag,) = parse_requires_tags(path, "dev", "x")
+    (tag,) = parse_requires_tags(path, "fixture", "x")
     assert (tag.field, tag.op, tag.value) == ("timeout", ">=", 200000)
 
 
@@ -179,13 +185,13 @@ def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> No
     ],
 )
 def test_parse_requires_tags_real_drivers(src_dir: Path, driver: str, instance: str, expected: "tuple[RequiresTag, ...]") -> None:
-    assert parse_requires_tags(src_dir / driver, "dev", instance) == expected
+    assert parse_requires_tags(src_dir / driver, "fixture", instance) == expected
 
 
 def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
     # The near-miss detector only fires on comments that *look* like tags; this is the other half -
     # a tag added to some other driver without a test here would otherwise go unrecorded.
-    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_requires_tags(p, "dev", "x")}
+    tagged = {p.name for p in sorted(src_dir.glob("*.py")) if parse_requires_tags(p, "fixture", "x")}
     assert tagged == {"asy_scd30_driver.py", "asy_sgp40_driver.py"}
 
 
@@ -197,27 +203,35 @@ def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    "source,match,rule",
     [
         # D2 wording
-        ("# @require bus.timeout>=200000\n", "misspelled @requires tag"),
-        ("# @Requires bus.timeout>=200000\n", "malformed @requires tag"),
-        ("# requires bus.timeout>=200000\n", "leading '@' missing"),
+        ("# @require bus.timeout>=200000\n", "misspelled @requires tag", "tag.misspelled"),
+        ("# @Requires bus.timeout>=200000\n", "malformed @requires tag", "tag.malformed"),
+        ("# requires bus.timeout>=200000\n", "leading '@' missing", "tag.missing-sigil"),
         # D3 format
-        ("# @requires timeout>=200000\n", "malformed @requires tag"),  # "bus." prefix dropped
-        ("# @requires bus.timeout=200000\n", "malformed @requires tag"),  # single "=" typo
-        ("# @requires bus.timeout 200000\n", "malformed @requires tag"),  # operator dropped
-        ("# @requires bus.timeout>=\n", "malformed @requires tag"),  # value dropped
-        ("# @requires bus . timeout>=200000\n", "malformed @requires tag"),  # spaces around the dot
-        ("# @requires bus.timeout>=200000 ms\n", "malformed @requires tag"),  # trailing junk
-        ("# @requires timeout 200000\n", "malformed @requires tag"),  # prefix *and* operator dropped
+        ("# @requires timeout>=200000\n", "malformed @requires tag", "tag.malformed"),  # "bus." prefix dropped
+        ("# @requires bus.timeout=200000\n", "malformed @requires tag", "tag.malformed"),  # single "=" typo
+        ("# @requires bus.timeout 200000\n", "malformed @requires tag", "tag.malformed"),  # operator dropped
+        ("# @requires bus.timeout>=\n", "malformed @requires tag", "tag.malformed"),  # value dropped
+        ("# @requires bus . timeout>=200000\n", "malformed @requires tag", "tag.malformed"),  # spaces around the dot
+        ("# @requires bus.timeout>=200000 ms\n", "malformed @requires tag", "tag.malformed"),  # trailing junk
+        ("# @requires timeout 200000\n", "malformed @requires tag", "tag.malformed"),  # prefix *and* operator dropped
         # D2 content
-        ("# @requires bus.timeout>=not_a_number\n", "malformed @requires value"),
-        ("# @requires bus.timeout>=1.2.3\n", "malformed @requires value"),
+        ("# @requires bus.timeout>=not_a_number\n", "malformed @requires value", "tag.not-a-number"),
+        ("# @requires bus.timeout>=1.2.3\n", "malformed @requires value", "tag.not-a-number"),
     ],
 )
-def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: str, match: str) -> None:
-    _parse_expecting(tmp_path, source, match)
+def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: str, match: str, rule: str) -> None:
+    _parse_expecting(tmp_path, source, match, rule)
+
+
+@pytest.mark.parametrize("raw", ["nan", "NaN", "inf", "-inf", "infinity"])
+def test_parse_requires_tags_rejects_a_non_finite_value(tmp_path: Path, raw: str) -> None:
+    # float() reads all of these, and every comparison with one is silently false or true.
+    with pytest.raises(BuildError, match="is not a finite number") as raised:
+        _parse(tmp_path, f"# @requires bus.timeout>={raw}\n")
+    assert (raised.value.rule, raised.value.fix) == ("tag.non-finite-number", "write a finite number")
 
 
 @pytest.mark.parametrize(
@@ -231,7 +245,7 @@ def test_parse_requires_tags_rejects_every_broken_shape(tmp_path: Path, source: 
 def test_parse_requires_tags_rejects_locations_inside_a_body(tmp_path: Path, source: str) -> None:
     # Location dimension: a well-formed tag hidden inside a body isn't "close to the schema" the way
     # module-level _WIRING/_VAL_* placement is - it must fail, not silently parse.
-    _parse_expecting(tmp_path, source, "module level")
+    _parse_expecting(tmp_path, source, "module level", "tag.not-module-level")
 
 
 @pytest.mark.parametrize(
@@ -288,41 +302,46 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) 
 def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, value: int, *, satisfied: bool) -> None:
     tags = (RequiresTag("timeout", op, value, f"@requires bus.timeout{op}{value}"),)
     if satisfied:
-        check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")  # no raise
+        check_requires_tags(tags, {"timeout": actual}, "fixture", "scd30", "i2c0")  # no raise; the raising rows prove the comparison
     else:
-        with pytest.raises(BuildError, match="does not satisfy"):
-            check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")
+        with pytest.raises(BuildError, match="does not satisfy") as raised:
+            check_requires_tags(tags, {"timeout": actual}, "fixture", "scd30", "i2c0")
+        assert raised.value.rule == "requires.unsatisfied"
 
 
 @pytest.mark.parametrize("actual,value", [(100, 99.5), (100.5, 100), (100.0, 100)])
 def test_check_requires_tags_mixed_int_float_comparison(actual: "int | float", value: "int | float") -> None:
+    # The second call, one unit below the bound, proves the comparison ran.
     tags = (RequiresTag("frequency", ">=", value, "@requires bus.frequency>=x"),)
-    check_requires_tags(tags, {"frequency": actual}, "dev", "scd30", "i2c0")  # no raise
+    check_requires_tags(tags, {"frequency": actual}, "fixture", "scd30", "i2c0")
+    with pytest.raises(BuildError, match="does not satisfy"):
+        check_requires_tags(tags, {"frequency": actual - 1}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_zero_is_a_present_value_not_a_missing_field() -> None:
     # bus_table.get() returning a falsy 0 must go down the comparison path, not the "missing field"
     # path - a `if not actual` bug here would report the wrong error for a perfectly valid table.
-    check_requires_tags((RequiresTag("offset", "==", 0, "@requires bus.offset==0"),), {"offset": 0}, "dev", "scd30", "i2c0")
+    check_requires_tags((RequiresTag("offset", "==", 0, "@requires bus.offset==0"),), {"offset": 0}, "fixture", "scd30", "i2c0")
     with pytest.raises(BuildError, match="does not satisfy"):
-        check_requires_tags((RequiresTag("offset", "!=", 0, "@requires bus.offset!=0"),), {"offset": 0}, "dev", "scd30", "i2c0")
+        check_requires_tags((RequiresTag("offset", "!=", 0, "@requires bus.offset!=0"),), {"offset": 0}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_missing_bus_field() -> None:
     tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
-    with pytest.raises(BuildError, match="is missing field"):
-        check_requires_tags(tags, {}, "dev", "scd30", "i2c0")
+    with pytest.raises(BuildError, match="is missing field") as raised:
+        check_requires_tags(tags, {}, "fixture", "scd30", "i2c0")
+    assert raised.value.rule == "requires.missing-bus-field"
 
 
-@pytest.mark.parametrize("actual", ["200ms", [200000], {"us": 200000}, None])
-def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: object) -> None:
-    # A malformed TOML value (e.g. "200ms" where an int is expected) must produce a clean
-    # BuildError, not an uncaught TypeError from comparing str >= int. A None value is
-    # indistinguishable from an absent key here, and reports as the missing field it effectively is.
-    tags = (RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),)
+@pytest.mark.parametrize("actual", ["200ms", [200000], {"us": 200000}, True, None])
+def test_check_requires_tags_wrong_type_fails_loud_not_a_raw_traceback(actual: "TomlValue | None") -> None:
+    # A malformed TOML value (e.g. "200ms", or a bool, which Python would compare as 1) must produce
+    # a clean BuildError. TOML has no null: None stands for the absent key, the missing field.
+    tags = (RequiresTag("timeout", ">=", 1, "@requires bus.timeout>=1"),)
+    bus_table: TomlDoc = {} if actual is None else {"timeout": actual}
     expected = "is missing field" if actual is None else "not comparable"
     with pytest.raises(BuildError, match=expected):
-        check_requires_tags(tags, {"timeout": actual}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, bus_table, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_reports_the_first_violated_tag_of_several() -> None:
@@ -331,12 +350,15 @@ def test_check_requires_tags_reports_the_first_violated_tag_of_several() -> None
         RequiresTag("frequency", "<=", 100000, "@requires bus.frequency<=100000"),
     )
     with pytest.raises(BuildError, match="frequency"):
-        check_requires_tags(tags, {"timeout": 250000, "frequency": 400000}, "dev", "scd30", "i2c0")
+        check_requires_tags(tags, {"timeout": 250000, "frequency": 400000}, "fixture", "scd30", "i2c0")
 
 
 def test_check_requires_tags_all_satisfied() -> None:
+    # The second call, frequency moved one past its bound, proves both tags were compared.
     tags = (
         RequiresTag("timeout", ">=", 200000, "@requires bus.timeout>=200000"),
         RequiresTag("frequency", "<=", 400000, "@requires bus.frequency<=400000"),
     )
-    check_requires_tags(tags, {"timeout": 250000, "frequency": 100000}, "dev", "scd30", "i2c0")  # no raise
+    check_requires_tags(tags, {"timeout": 250000, "frequency": 100000}, "fixture", "scd30", "i2c0")
+    with pytest.raises(BuildError, match="frequency"):
+        check_requires_tags(tags, {"timeout": 250000, "frequency": 400001}, "fixture", "scd30", "i2c0")

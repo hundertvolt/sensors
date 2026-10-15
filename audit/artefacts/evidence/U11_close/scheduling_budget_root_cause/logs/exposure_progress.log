@@ -1,0 +1,11 @@
+== start exposure_hazard_nocrc_D40.log 12:24:56
+== end exposure_hazard_nocrc_D40.log rc=0 12:58:40
+== start exposure_asy_uart_comm_D110.log 12:58:40
+== end exposure_asy_uart_comm_D110.log rc=0 13:26:45
+== start exposure_asy_uart_link_driver_D110.log 13:26:45
+== end exposure_asy_uart_link_driver_D110.log rc=0 13:28:41
+== start exposure_asy_uart_driver_D210.log 13:28:41
+== end exposure_asy_uart_driver_D210.log rc=0 13:29:07
+== start exposure_hazard_crc16_D250.log 13:29:07
+== end exposure_hazard_crc16_D250.log rc=0 14:04:03
+ALLDONE

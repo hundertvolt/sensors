@@ -1,0 +1,58 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+__________________ test_an_own_feed_inside_a_while_loop_fails __________________
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-7984/test_an_own_feed_inside_a_whil0/src')
+
+    def test_an_own_feed_inside_a_while_loop_fails(src_copy: Path) -> None:
+        # One feed per bounded step: a while loop in the sequence could feed for ever, the hung step the watchdog exists for.
+        anchor = '        self.pr.evt("Shutdown: supervised tasks stopped")\n'
+        _edit(src_copy / "asy_system_service.py", anchor, "        while self._storage is None:\n            self._own_feed()\n" + anchor)
+        findings = src_findings(src_copy)
+>       assert len(findings) == 1 and findings[0].startswith("SystemService._shutdown_sequence():") and "uses _own_feed inside a while loop" in findings[0], findings
+E       AssertionError: []
+E       assert (0 == 1)
+E        +  where 0 = len([])
+
+tests_scripts/test_watchdog_feed_sites.py:343: AssertionError
+__ test_an_own_feed_reference_outside_the_service_fails[asy_fram_manager.py] ___
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-7984/test_an_own_feed_reference_out0/src')
+plant = 'asy_fram_manager.py'
+
+    @pytest.mark.parametrize("plant", ["asy_fram_manager.py", "asy_system_service.py"])
+    def test_an_own_feed_reference_outside_the_service_fails(src_copy: Path, plant: str) -> None:
+        # Only SystemService's pinned sites reference _own_feed: any other file or function reaching it feeds past the latch.
+        path = src_copy / plant
+        path.write_text(path.read_text(encoding="utf-8") + "\n\ndef _zz_feed(service):\n    service._own_feed()\n", encoding="utf-8")
+        line = path.read_text(encoding="utf-8").count("\n")
+>       assert src_findings(src_copy) == [f"{plant}:{line} _zz_feed(): references _own_feed outside SystemService's pinned set"]
+E       assert [] == ["asy_fram_ma...s pinned set"]
+E         
+E         Right contains one more item: "asy_fram_manager.py:794 _zz_feed(): references _own_feed outside SystemService's pinned set"
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:352: AssertionError
+_ test_an_own_feed_reference_outside_the_service_fails[asy_system_service.py] __
+
+src_copy = PosixPath('/tmp/pytest-of-root/pytest-7984/test_an_own_feed_reference_out1/src')
+plant = 'asy_system_service.py'
+
+    @pytest.mark.parametrize("plant", ["asy_fram_manager.py", "asy_system_service.py"])
+    def test_an_own_feed_reference_outside_the_service_fails(src_copy: Path, plant: str) -> None:
+        # Only SystemService's pinned sites reference _own_feed: any other file or function reaching it feeds past the latch.
+        path = src_copy / plant
+        path.write_text(path.read_text(encoding="utf-8") + "\n\ndef _zz_feed(service):\n    service._own_feed()\n", encoding="utf-8")
+        line = path.read_text(encoding="utf-8").count("\n")
+>       assert src_findings(src_copy) == [f"{plant}:{line} _zz_feed(): references _own_feed outside SystemService's pinned set"]
+E       assert [] == ["asy_system_...s pinned set"]
+E         
+E         Right contains one more item: "asy_system_service.py:721 _zz_feed(): references _own_feed outside SystemService's pinned set"
+E         Use -v to get more diff
+
+tests_scripts/test_watchdog_feed_sites.py:352: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_an_own_feed_inside_a_while_loop_fails
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_an_own_feed_reference_outside_the_service_fails[asy_fram_manager.py]
+FAILED tests_scripts/test_watchdog_feed_sites.py::test_an_own_feed_reference_outside_the_service_fails[asy_system_service.py]
+3 failed, 19 deselected in 1.98s

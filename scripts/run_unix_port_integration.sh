@@ -1,39 +1,54 @@
 #!/usr/bin/env bash
-# Dedicated entry point for the digital twin's full Unix-port integration run:
-# digital_twin/run_generic_integration.py against the real twin buses under the real MicroPython
-# Unix-port interpreter, for any real device (--device, default wozi; SPECIFICATION.md Part L.4).
+# Manual twin launch of one device: digital_twin/run_generic_integration.py under the real Unix port, separate from
+# scripts/test.sh (owner, 2026-08-13). With no further flags it serves on localhost:8080 forever (owner, 2026-08-13:
+# browser-reachable, escalation watchable), its chip state and config persisting in digital_twin/.
 #
-# Deliberately separate from scripts/test.sh: the twin needs its own MICROPYPATH with no "tests"
-# segment (digital_twin/README.md's "never together" rule), and this run can serve forever with no
-# --duration, which would hang that script's own test-file loop.
+# Its MICROPYPATH is the twin layout of scripts/micropypath.toml: ext/ because every generated sensortask_<device>.py
+# imports vendored ext/microdot.py, and no tests/ (digital_twin/README.md's "never together" rule).
 #
-# That path needs "ext", unlike scripts/test.sh's, because every generated sensortask_<device>.py
-# imports vendored ext/microdot.py - a test file works around the ext-less path with its own
-# sys.path.insert, the real entry point needs the real fix.
+# Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]
+#   e.g. --fault sgp40:writeto, --host 0.0.0.0 --port 8080 (reachable from outside).
 #
-# "build/generated_src" is there because no static src/sensortask_*.py exists any more (Part L.2):
-# both the module and its wiring plan are generated fresh below.
-#
-# Usage: scripts/run_unix_port_integration.sh [--device <name>] [flags forwarded to the twin]
-#   e.g. --device dev, --fault sgp40:writeto, --host 0.0.0.0 --port 8080 (reachable from outside).
-#
-# --device is this script's own flag (one of the six real devices, not forwarded) and picks which
-# generated module/wiring plan to boot; every other flag goes straight through to
-# run_generic_integration.py's parse_args(), whose docstring has the full list.
-#
-# No flags just launches wozi on localhost:8080 and serves forever. There is no --soak flag any
-# more: the HTTP+memory-trend soak check moved host-side into
-# scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md's "Driver/DUT process separation").
+# --device is this script's own required flag (a devices/*.toml stem but the zz_test_ fixtures, not forwarded);
+# every other flag goes to run_generic_integration.py, whose --help lists them. The host-side soak is
+# scripts/_digital_twin_ci_suite.py's Run 11 (SPECIFICATION.md "Driver/DUT process separation").
 set -euo pipefail
+usage_line="Usage: scripts/run_unix_port_integration.sh --device <name> [flags forwarded to the twin]"
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    cat <<EOF
+$usage_line
+Launches digital_twin/run_generic_integration.py for one device, a devices/<name>.toml, under the
+real Unix port; with no further flags it serves on localhost:8080 until stopped, its chip state and
+config kept in digital_twin/ across runs. Every flag but --device goes to run_generic_integration.py
+(its own --help lists them, the state paths among them). It fails at once while another suite holds port 53.
+
+Environment:
+  PICO_TOOLCHAIN_DIR   toolchain cache (default: ~/pico-toolchain)
+  SKIP_APT=1           skip the system-package step of a toolchain build (default: 0)
+EOF
+    exit 0
+fi
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 export TZ=UTC  # same reasoning as scripts/test.sh's own identical export, which has the account.
 
-device="wozi"
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_devices.sh
+_usage_error() {
+    local devices
+    devices="$(derived_devices)" || devices=""
+    printf '%s\n%s\nvalid devices: %s\n' "$1" "$usage_line" "${devices//$'\n'/ }" >&2
+    exit 2
+}
+
+device=""
+device_given=0
 forward_args=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --device)
+            [ $# -ge 2 ] || _usage_error "error: --device needs a device name"
+            device_given=1
             device="$2"
             shift 2
             ;;
@@ -43,20 +58,24 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+[ "$device_given" = "1" ] || _usage_error "error: --device is required"
+require_device "$device"
 
-toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
-micropython_bin="$toolchain_dir/micropython/ports/unix/build-standard/micropython"
+# The twin's captive DNS server binds the product's port 53: one suite holds it at a time, and a second
+# exits 1 here, before anything is built (CLAUDE.md). The one EXIT trap releases it.
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_port_lock.sh
+trap port_lock_release_all EXIT
+port_lock_take 53 scripts/run_unix_port_integration.sh
 
-if [ ! -x "$micropython_bin" ]; then
-    echo "MicroPython Unix port not found at $micropython_bin - building it now" >&2
-    skip_apt_flag=()
-    if [ "${SKIP_APT:-0}" = "1" ]; then
-        skip_apt_flag=(--skip-apt)
-    fi
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-fi
+# The one Unix-port probe (scripts/_unix_port.sh): a missing or stale binary is rebuilt here, and the shared
+# toolchain lock it takes is held while the twin serves.
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_unix_port.sh
+unix_port_ensure standard
+micropython_bin="$(unix_port_bin standard)"
 
-# The twin's DNSServer binds the real privileged port 53, which a non-root environment cannot do
+# The twin's captive DNS server binds the real privileged port 53, which a non-root environment cannot do
 # without this capability on the interpreter binary. Granted fresh every invocation, for the reason
 # scripts/run_digital_twin_ci.sh's identical block gives.
 echo "== Granting CAP_NET_BIND_SERVICE to $micropython_bin (needed for the real port-53 DNS server)"
@@ -66,13 +85,17 @@ else
     sudo setcap 'cap_net_bind_service=+ep' "$micropython_bin"
 fi
 
-echo "== Building the real $device website into frozen_modules/frozen_html.py"
-scripts/build_website.sh "$device"
+site="build/generated_html/$device"
+echo "== Building the real $device website into $site/frozen_html.py"
+scripts/build_website.sh "$device" "$site/frozen_html.py"
 
 echo "== Generating buildgen device modules + wiring plans into build/generated_src/"
-uv run scripts/_generate_sensortask_modules.py
+uv run --no-sync scripts/_generate_sensortask_modules.py
 
 module="sensortask_${device}"
 wiring_plan="build/generated_src/${module}_wiring_plan.json"
+twin_path="$(micropypath twin)"
+# The device's own built site in place of frozen_modules/, so scripts/test.sh's frozen_modules/ is never touched.
+twin_path="${twin_path/frozen_modules/$site}"
 echo "== Running digital_twin/run_generic_integration.py (device: $device)"
-MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" "$micropython_bin" digital_twin/run_generic_integration.py --module "$module" --wiring-plan "$wiring_plan" --device "$device" "${forward_args[@]}"
+MICROPYPATH="$twin_path" "$micropython_bin" digital_twin/run_generic_integration.py --module "$module" --wiring-plan "$wiring_plan" --device "$device" "${forward_args[@]}"

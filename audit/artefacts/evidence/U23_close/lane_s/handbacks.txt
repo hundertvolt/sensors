@@ -1,0 +1,312 @@
+
+######## SubagentHandback 2026-10-13T09:13:56.884Z
+WIP dec9e2f
+
+Lane S stopped at its first WIP commit, as the brief orders. It is on branch `audit/u23-s` in `scratchpad/wt-u23s`, on top of `d90bd96`, not pushed. It changes 11 files, all in my set: `js/poll-manager.js`, `js/shell.js` (new), `js/nav.js`, `js/main.js`, `js/app.js`, `tests_js/poll-manager.test.js`, `tests_js/shell.test.js` (new), `tests_js/nav.test.js`, `tests_js/main.test.js`, `tests_js/app.test.js` and `tests_scripts/test_request_timeout_ceiling.py`. I edited no file outside the set.
+
+`main.test.js` and `app.test.js` cannot load in my tree until C1 lands `showBanner()` in `js/render.js`. With the banner pair stubbed in a scratch copy, both pass (8/8 and 10/10).
+
+**Step table**
+| row | M-id | status | note |
+|---|---|---|---|
+| 21.10 | M.WEB.002 | applied | see deviations 1 and 2 |
+| 21.11 | M.WEB.003 | applied | see deviations 3 and 4 |
+| 21.22 | M.WEB.025 | applied | `js/shell.js` |
+| 21.23 | M.WEB.026 | applied | see deviation 5 |
+| 21.24 | M.WEB.030 | applied | red until C1 |
+| 21.25 | M.WEB.031 | applied | red until C1 |
+| 52 | M.TSC.121 | applied (U23 stage) | regex `(?:export )?const DEFAULT_TIMEOUT_MS = (\d+);` |
+| 69 | M.WEB.051 | applied (U23 stage) | `isBusy` case removed; header (U27) and restores (U24) not written |
+| 63 | M.WEB.059 | partly | nav done in full; main/app rewritten (stop handles, `dataset.shown`, stubs, `:137` fix, `:49`/`:127`/`:144` texts, URL restored with `replaceState`); the rest is S2 on the API base |
+| 65 | M.WEB.064 | partly | 11 cases; the device-clock and pending-Apply reload cases need C1's render context, so they are S2 |
+| 15 | M.TSC.202 | already landed, holds | `test_live_command_device_args.py` 4/4 |
+| 16 | M.TWIN.136 | holds | the staged bundle keeps `definitions.json` (5 hits) and has no `installMockFetch`/`KNOWN_DEVICES` |
+| 64, 72, 74, 79, 80, 81, X10 | | not started | S3 |
+
+**Deviations (each reversible)**
+1. `request()` answers a non-ok response whose body is not JSON with `{ok:false, status, body:null}`. The spec says to parse "exactly as today"; this is lane D's relayed finding, and its test failed first on HEAD ("not valid JSON").
+2. `fetchTextWithTimeout()` races both the fetch and the body read against an abort promise, so a fetch that ignores its signal still ends. The timeout error carries `{cause}`.
+3. `startPolling()` skips its first tick while the page is hidden and ticks once on becoming visible. I took the JSDoc's "nothing runs while hidden" over "every caller of `tick()` is the first call".
+4. The next poll timer is armed in `finally`, so an `onError` that throws neither stops the loop nor hides the error.
+5. `initNav()` sets the closed state once at init, so the drawer starts `inert` and `data-nav-open="false"` whatever the markup says.
+6. `startShell()`:
+   - the watch's requests carry the shell's own abort signal, which is how "no request follows `stop()`" holds;
+   - a reload stops the shell first (no further watch, device sockets freed);
+   - `onRecovered` is a wrapper that never rejects;
+   - a popped or deep-linked key goes through `knownOrLanding()`, so the "unreachable" comment stays true;
+   - a `SectionHistory` typedef was added.
+7. `main.js` also imports `historyOf`. The spec's import list omits it but its call uses it.
+8. D.15 order applied in `js/`: `PollManager` before `fetchTextWithTimeout` (case-sensitive ASCII); `historyOf`, `startShell`, `visibilityOf`; `fetchDeviceList` before `requestJson`.
+
+**Seen failing first**
+- `poll-manager.test.js`: 11 failed on the old code. The abort-before-turn, in-flight abort and stalled-body cases also failed on their own in isolated `-t` runs.
+  - Guards (pass on HEAD too): "body completes just before the timeout", "stop() while in flight", "visibility change after stop()".
+- Row 52: `test_the_web_ui_gives_up_exactly_at_the_servers_own_ceiling` failed after the export drop ("no longer declares DEFAULT_TIMEOUT_MS") and passes after the regex change.
+- `nav.test.js`: 8/8 failed on HEAD's `nav.js`.
+- `shell.test.js`: failed to import (the module did not exist).
+- `main.test.js`: on a scratch export of HEAD, 4 failed (stop handle not a function; `dataset.shown` three times). HEAD also reproduces the known `:137` failure.
+- `app.test.js`: on HEAD, 6 failed and 4 passed.
+
+**Runs and results** (all at `nice -n 19`, browser files each in their own `unshare -n`)
+- **Vitest green:**
+  - `poll-manager` 21/21
+  - `nav` 8/8
+  - `shell` 11/11
+  - `definitions` 43/43
+  - `source-constants` 7/7 (its `POLL_BACKOFF_MAX_MS` case is now green)
+  - `generated-definitions-render` 48/48
+- **Vitest red, all expected:**
+  - `render` 30/35: the same 5 failures as W1, C's.
+  - `lint-ceilings` 3/4: the complexity case, pre-existing, the lead's at the final.
+  - `main`, `app`: import error until C1.
+- **pytest:** `test_request_timeout_ceiling` 19/19. The pre-commit set (run after `git add`) is green except two expected reds, listed below.
+- **mypy:** host, main no-args, and `src tests tests_hardware/device_scripts` all report 0 issues (203, 187 and 174 files; cold cache; the `typings` symlink was removed).
+- **Lint:** ruff clean; `npm run lint` clean.
+- **Stager:** all six devices stage. Bundle order: `poll-manager, definitions, field-format, templates, render, nav, shell, main`.
+- **GC stages and settrace:** not applicable, no MicroPython file touched.
+
+**Red checks to report (never worked around)**
+- `npm run typecheck`:
+  - `js/app.js(9,10)` and `js/main.js(8,10)` TS2305 `showBanner` (C1)
+  - `js/shell.js(128,60)` TS2554, `renderSection` called with 4 arguments (C1)
+  - `tests_js/live-backend-put-matrix.test.js(54,40)` and `(65,56)` `defaultValue` (mine, S3)
+  - `render.test.js` (C)
+- `main.test.js`, `app.test.js`: "The requested module '/js/render.js' does not provide an export named 'showBanner'" (C1).
+- `test_tunables_register`: `js/poll-manager.js:12 web.poll_backoff_max_ms` and `js/shell.js:16 web.device_watch_interval_ms` have no Part N row (for X).
+- `test_decision_vocabulary`: `_decision_vocab_allowlist.txt:530` (`tests_js/main.test.js` "The actual point of inlining …") no longer occurs; the lead drops it.
+
+**Timings** (wall seconds, before → after)
+| file | before | after |
+|---|---|---|
+| `poll-manager.test.js` | 3.8 (11 tests) | 4.0–4.2 (21) |
+| `nav.test.js` | 4.1 (5) | 3.2–3.8 (8) |
+| `main.test.js` | 3.0 (7) | 4.2 (8, scratch copy) |
+| `app.test.js` | 3.2 (8) | 3.2 (10, scratch copy) |
+| `shell.test.js` | new | 3.7 (11) |
+
+**Facts owed**
+- **For X, new tags:**
+  - `web.poll_backoff_max_ms = 60000`, at `js/poll-manager.js:12`. Basis: "estimated (agent, 2026-09-30), measurement owed: the L2 live restart-recovery test's time-to-recover at the cap". Margin: "one request per minute per failing section against the ~2.2 requests/s the server sustains (SPEC H.7)". Re-check trigger: "`web.poll_interval_ms` or the served throughput changes".
+  - `web.device_watch_interval_ms = 60000`, at `js/shell.js:16`. Same basis. Margin: "two requests per minute per tab against the ~2.2 requests/s (SPEC H.7)". Same re-check trigger.
+- **For X, unchanged tags:** `web.outer_cap_s` still `js/poll-manager.js — 15000`, now a non-exported constant; `l0.poll_manager_poll_ms = 20` unchanged.
+- **API end state:** as section 3's S rows, plus:
+  - a non-ok non-JSON response gives `body: null`;
+  - a hidden start runs no tick;
+  - `historyOf(win)` returns `{current, push, onPop}`;
+  - the shell stops itself before calling `reload()`;
+  - `onRecovered: () => void` never rejects.
+- **ESLint maxima of my files:** complexity 9 (`tick`, `watchOnce`); max-depth 3 (`poll-manager.js:92`); max-nested-callbacks 4 (`tests_js/main.test.js`, equal to the ceiling). No ceiling raised.
+- **Website inputs changed (lead rebuild):** `js/poll-manager.js`, `js/nav.js`, `js/main.js`, `js/app.js`, and the new `js/shell.js`, which joins the production closure.
+- **Relays to C:**
+  - `js/render.js:50-59` `describeGetFailure()` labels a non-ok response with a null body "returned an empty body"; it should check `ok` first and say "HTTP n".
+  - Call `applyTracker.end()` in a `finally`, or a deferred reload never runs.
+  - Feed the Status section's own `/status` polls to `deviceClock.observe()`.
+- **For the lead to run after merging with C1:** vitest `poll-manager`, `nav`, `shell`, `main`, `app`, `definitions`, `source-constants`, `render`, `generated-definitions-render`, `lint-ceilings`; `npm run typecheck`; `test_request_timeout_ceiling.py`, `test_tunables_register.py`, `test_decision_vocabulary.py`; and, after the rebuild, `tests/test_website_build_integration.py` and the twin real-website file.
+
+**Silent-failure scan** (my files; class / mode / step)
+| # | finding | class | mode | status |
+|---|---|---|---|---|
+| 1 | A non-ok non-JSON body read as "not valid JSON" | 4 | first load under a plain server | fixed (deviation 1) |
+| 2 | A stalled body read blocked the single-flight queue forever | 5/6 | stalled body read | fixed (M.WEB.002) |
+| 3 | "Poll failed:" logged per tick; polling continued in hidden tabs | — | failing episode, hidden tab | fixed (M.WEB.003) |
+| 4 | Aborted queued work still ran after a section switch | — | section switch, stopped page | fixed; the queue part is S1, C uses it |
+| 5 | A reflash during the window between page load and the first successful watch is never detected (the first build seen is already the new one) | 5 | reflash | new, low |
+| 6 | A pending Apply that never calls `end()` blocks the deferred reload | 6 | reload during a pending Apply | new; depends on C, relayed |
+| 7 | A `/system`-only failure is silent outside the System section | 7 | failing watch | partly inherent: the System section's own GET banners it |
+| 8 | An engine without `AbortSignal.any` fails every request given a signal; this is visible as a banner, not silent | — | cross-browser | the lead's smoke run (row 28) covers it |
+| 9 | Clock step on NTP sync: ages lag by at most one watch interval | 5 | time | inherent; the Status section's polls refresh it sooner |
+| 10 | A throwing `onError` | — | — | inherently safe (deviation 4) |
+
+Also checked, nothing found in my files: hidden tab, device reboot (a plain reboot sees the same build, so no reload), stopped page, connection ceiling (the watch adds 0.03 req/s per tab). The modes owned by other lanes' files (saturated counter, missing errcount, unavailable marker, PUT result shapes, mock injected failures, a raising `ResetErrors` source, a second client) do not occur in mine.
+
+A note I could not test: HEAD's `Promise.race` likely surfaced a real hung fetch as "AbortError" rather than "timed out", because fetch's own abort rejection runs before event listeners. A stub cannot reproduce that order. The new code words the timeout from `timeout.signal.aborted`, so it no longer depends on that order.
+
+**Runs:** all were foreground and all exited; the RUNS.md entries are marked done, and `ps` shows nothing of mine. Two scratch trees are kept: `u23/laneS/head_tree` (HEAD export) and `u23/laneS/preview_tree`, whose `render.js` copy has a stubbed banner pair that is never committed.
+
+######## SubagentHandback 2026-10-13T09:43:03.314Z
+WIP S2 437e51f
+
+S2 is done: the shell, entry and nav cases are complete on the merged API base, including the device-clock and pending-Apply cases. Scan finding 5 (reflash before the first successful watch) is not closed, because a page-carried build id would reload every page on real images; reasons below. I have stopped here; S3 waits for your resume.
+
+Branch `audit/u23-s` in `scratchpad/wt-u23s`, not pushed:
+- `0caa85b` merges `0d9611b` (`--no-ff`). After it I rebuilt with `u23/rebuild.sh wt-u23s` (exit 0, 7 s).
+- `437e51f` changes only `tests_js/shell.test.js`, `tests_js/main.test.js` and `tests_js/app.test.js`. No `js/` change in S2.
+
+**Step table update**
+- **Row 63 (M.WEB.059): applied.** Nav was complete at S1. Added for both entries: a `#<key>` deep link opens its section through `historyOf(window)`; a menu selection pushes the hash and Back returns. Escape anywhere on the page closes the drawer (`main.js`'s `keyTarget: document`). The `app.js` case also checks that `?device=` survives the deep link, the push and Back.
+- **Row 65 (M.WEB.064): applied.** Three cases added:
+  - **Device clock:** ages read "age unknown" until `/status` carries `UnixTime`, then follow the device's clock as fake time passes ("2 min ago", then "2 h ago"). The device clock is a day off the browser's, so reading the browser's clock would show "1 d ago".
+  - **Pending Apply:** a changed build seen while an Apply is pending does not reload until that Apply, including its post-write GET, has settled; then it reloads exactly once. The test holds the second watch's `/status` while Apply is pressed, so `/system` lands inside the Apply. The setup still holds if C later adds a GET before the PUT.
+  - **Recovery watch:** when a section recovers from a failing episode, one more watch runs at once, well before the 60 s cadence.
+
+**How each test was shown to work**
+- The three shell cases cover S1 code, so I could not see them fail first. Instead I planted a defect in a scratch copy of `js/shell.js` for each, and each case failed:
+  - age read off the browser's clock;
+  - no pending-Apply check;
+  - no `onRecovered`.
+- The four entry cases failed first on HEAD's entries (scratch export of `d90bd96`):
+  - deep link: got "Measurements", expected "Status";
+  - menu push: hash was "", expected "#status";
+  - Escape: `navOpen` was undefined;
+  - app `?device=` case: got "Measurements".
+
+**Runs** (all at `nice -n 19`, each browser file in its own `unshare -n`)
+
+| file | result | time |
+|---|---|---|
+| `poll-manager.test.js` | 21/21 | 4.1 s |
+| `nav.test.js` | 8/8 | 3.8 s |
+| `shell.test.js` | 14/14 (was 11) | 4.5 s (S1 3.7 s) |
+| `main.test.js` | 11/11 (was 8) | 3.3–4.3 s |
+| `app.test.js` | 11/11 (was 10) | 3.2–5.1 s |
+| `definitions.test.js` | 43/43 | |
+| `source-constants.test.js` | 7/7 | |
+| `render.test.js` | 49/50 | |
+| `lint-ceilings.test.js` | 3/4 | |
+
+- `shell`, `main` and `app` passed three more times each.
+- The one `render.test.js` failure is C's `defaultValue` case.
+- The `lint-ceilings` failure is the pre-existing complexity case you set at the final.
+- `npm run lint` is clean.
+- `npm run typecheck` still fails on `live-backend-put-matrix.test.js` (54,40) and (65,56), mine for S3, and on C's `render.test.js` (560,134).
+- The pre-commit pytest set, run after `git add`, passes except `test_tunables_register`, which waits for lane X's Part N rows: `js/poll-manager.js:12` and `js/shell.js:16` are mine; the rest are other lanes'.
+- No Python changed in S2, so ruff and mypy are unchanged from S1 (green).
+- Every run is marked done in RUNS.md and no process of mine is left.
+
+**ESLint maxima of the grown test files:** complexity 7, max-depth 2, max-nested-callbacks 4 (`main.test.js`, at the ceiling). No ceiling raised.
+
+**Scan finding 5 — not closed, here is why**
+1. **The site never sees the device's build id.** That id is `_BUILD_DATE`, part of `build_info` in the generated module. `scripts/build_firmware.py` calls `generate_device()` without a `build_date`, so it stamps its own `current_build_date()`. It then stages the site through `scripts/build_website.sh` from definitions written by a separate generator run. Carrying one stamp into both would need edits to buildgen (D), the stager (B) and `build_firmware.py` (owned by nobody at U23) — none of them cheap or in lane S.
+2. **The obvious shortcut is worse than the gap.** A page id stamped by any other run would differ from the device's `BuildDate` on every real image. The watch would then reload on every page load, with no bound.
+
+I propose the item go to U27, the build-chain unit: one build stamp handed to both the generated module and the stager, so the watch can compare against the page's own id.
+
+A smaller option that stays inside lane S: reload once on the first successful watch whenever the page's first watch failed. Its failure mode would be one extra reload after a network glitch. I did not apply it because it is unrequested new behaviour; it is your call.
+
+The window itself is small: the device must go down between serving the page and answering the watch's first request, which runs at once.
+
+**For the lead**
+- No website input changed in S2, so no rebuild is needed.
+- Files to run after the S2 merge: `shell`, `main`, `app` (vitest) and `test_tunables_register.py`.
+- Scratch trees, which are not worktrees: `u23/laneS/head_tree` is a HEAD export with my new tests; `u23/laneS/preview_tree` is the current tree with no stubs, used for the planted defects.
+
+######## SubagentHandback 2026-10-13T11:54:25.994Z
+FINAL b8ccba7
+
+Lane S is finished. The S3 live tier is green: `live-backend.test.js` 18/18 in 167.6 s, and the three put-matrix shards pass 114, 119 and 116 cases in 362.0 / 387.1 / 387.7 s, each inside its 20-minute job. My remaining red checks are `test_tunables_register` (lane X's Part N rows) and four stale decision-vocabulary allow-list rows for you to drop; the `defaultValue` typecheck lines are fixed.
+
+Branch `audit/u23-s` in `scratchpad/wt-u23s`, not pushed:
+- `f40c66a` merges `9a8700f` (`--no-ff`); I rebuilt with `u23/rebuild.sh` (exit 0).
+- `ee68c17` is S3.
+- `b8ccba7` keeps a whole run's error-count archives together and reads the reset's error rows without remounting the page.
+- Earlier commits: WIP S1 `dec9e2f`, WIP S2 `437e51f`.
+
+**Step table (lane S)**
+
+| row | M-id | status | note |
+|---|---|---|---|
+| 21.10 | M.WEB.002 | applied (S1) | |
+| 21.11 | M.WEB.003 | applied (S1) | |
+| 21.22 | M.WEB.025 | applied (S1) | |
+| 21.23 | M.WEB.026 | applied (S1) | |
+| 21.24 | M.WEB.030 | applied (S1) | |
+| 21.25 | M.WEB.031 | applied (S1) | |
+| 52 | M.TSC.121 | applied, U23 stage | |
+| 63 | M.WEB.059 | applied (S1/S2) | |
+| 65 | M.WEB.064 | applied (S1/S2) | |
+| 69 | M.WEB.051 | applied, U23 stage | |
+| 72 | M.WEB.069 | applied | new `tests_js/_expected_display.js` and `tests_js/expected-display.test.js` |
+| 64 | M.WEB.061 | U23 parts applied | see below |
+| 74 | M.WEB.062 | U23 parts applied | see below |
+| 79 | M.WEB.063 | applied | see below |
+| 80 | M.WEB.074 | applied | two commands registered |
+| 81 | M.WEB.076 | applied | new commands and return shapes |
+| X10 | A-12 / OF-115 | applied | see OF-115 evidence |
+| 15 | M.TSC.202 | already landed, holds | 4/4 |
+| 16 | M.TWIN.136 | holds | |
+| — | the `defaultValue` lines | fixed | `npm run typecheck` is clean |
+
+- **Row 64:** exact "valid" then "unchanged" on the DebugLevel smoke; tabs fill the device's whole `max_connections` with reload recovery; new `runLiveBackendRestartRecovery`; reset signs fail the command. The probe, `_micropypath.js`, port lock, config dir, `--mem-backup-state-path` and missing-interpreter throw are U24/U25/U27's and not written.
+- **Row 74:** `getRealCurrentValues()` refuses a non-ok status and an error envelope; `applyField()` sets a toggle to the wanted value, fills a composite, answers exactly the expected confirmation and fails on any other dialog, and waits for the Apply button to re-enable; captions are checked through `expectedDisplay`; new `archiveErrcount()`; the `:331` JSDoc is rewritten; the frame is unchanged.
+- **Row 79:**
+  - `live-backend.test.js` uses `it`, exact words, and the two new tagged-timeout cases.
+  - The put matrix drops `groupHasDispatchField` and `ValidOrUnchanged`; adds `willRoundTrip`; reads the current value inside each test; keeps the never-Unchanged class for the sensors section only.
+  - The action-field block covers PauseTime, LightCmdLED, SystemCmd mempause and ResetErrors (archived first). The mask exclusion cites `render.test.js`; skip branches stay (U24).
+
+**Deviations, each reversible**
+- S1 deviations 1-8 were accepted (agent, 2026-10-13).
+- `expectedDisplay(field, value, defaultDecimals?)` takes a third argument. The page gives a fraction without its own `decimals` the site's `defaultDecimals`, and every device has such float fields (FlashDur 0.5 shows "0.50").
+- LightCmdLED is sent with `T: 10`, not `T: 1`. Measured: the page's second send lands about 1.5 s after the first, past a 1-second signal. A direct curl probe confirms the device refuses an immediate second command at `T: 1` ("LED busy - retry later").
+- The action probes run in this order: ResetErrors, LightCmdLED, PauseTime, SystemCmd. Root-caused: ResetErrors after `mempause` answers "Failed", because FRAM is paused (`asy_fram_manager.py:413` "FRAM communication paused, not clearing FRAM!"). Reproduced with curl.
+- `remountAndReadField` gained a `readonly` read (`valueText`) and an `errcount` read (`errcountRows`, "<module>: <count>", read in place). I extended it rather than add a command, so M.WEB.074's command list stays as specified.
+- `applyField` gained optional `defaultDecimals`, `confirmMessage` and `readCaption`.
+- The restart command has the same skip branch as the other two (U24 removes all three).
+- The smoke's 45000 ms timeout stays an untagged literal, as at HEAD.
+- The outer cap and back-off cap are read from `js/poll-manager.js`'s source in the Node module, so no new mirrored literal.
+- `memory-markers.test.js`: `test(` became `it(`, for consistency with the live-backend change.
+- The live-backend header keeps its skip sentence until U24.
+
+**Seen failing first, and guards**
+- `memory-markers.test.js` failed on import of the missing export `TWIN_RESET_MARKERS`, then passed 12/12.
+- `expected-display.test.js` failed because the module was missing, then passed 6/6.
+- I ran the new live tests against a scratch export of the U23 start commit `8fff76f`, with its own sites built, for wozi:
+  - The exact-words smoke passed there, so it is a **guard**. The plan expected it to fail on a sparse-omitted resubmit, but that tree already answered "unchanged".
+  - The full-ceiling tabs check also passed there: a guard.
+  - The restart check failed there only because that page's banner is a CSS class, not U23's `data-shown` attribute. That is a markup difference, not a behaviour failure.
+  - At `d90bd96` the smoke failed because the drawer could not open (old `nav.js` with B's CSS); that intermediate tree is not evidence.
+
+**OF-115 closing evidence**
+- `TWIN_RESET_MARKERS = ["SimulatedResetError", "reboot triggered"]` are scanned in the same drain as the memory markers, before the tail is trimmed, with their own `resetLines()` accessor. `MEMORY_ERROR_MARKERS` is untouched and `test_memory_error_gate_agreement` passes 13/13.
+- The smoke, tabs and restart verdicts and `startLiveMatrix`/`stopLiveMatrix` all fail on either sign.
+- Bite: with a marker every twin line matches, planted in a scratch copy, both gates fail with "the twin reset itself…" (smoke and matrix on wozi).
+- Real runs: zero reset lines across the 18 live tests and all three shards.
+
+**Live-tier times** (`nice -n 19`, this host; "before" is `8fff76f` with HEAD's own test files, same host)
+- `live-backend.test.js`: 52.8 s before, 167.6 s now. Per device: smoke 3.9-4.6 s, tabs 10.2-23.2 s, restart 6.3-9.3 s.
+  - Two devices took about 23 s on the tabs check, meaning a tab needed its reload. That is within the contract, but the counts are not printed when the test passes.
+- Put-matrix shards (CI's three shards): 223.2 / 237.4 / 233.0 s before, 362.0 / 387.1 / 387.7 s on the final code (+62-66%).
+  - About 0.8 s more per test: the page's GET before each Apply, plus the current-value read now done in every test. The 24 action cases are new.
+- `web-unit-tests` as a whole was not measured (lanes may not run `npm run test:unit`). This file adds about 115 s, so I expect the job to stay well under 15 minutes.
+
+**Facts owed**
+- **Lane X, Part N rows for my tags:**
+
+| tag | value | site | basis |
+|---|---|---|---|
+| `web.poll_backoff_max_ms` | 60000 | `js/poll-manager.js:12` | A.U23.05's texts. Measured: the page recovered from a twin restart in 6.3-9.3 s, on its second or third retry, well under the cap |
+| `web.device_watch_interval_ms` | 60000 | `js/shell.js:16` | A.U23.06's texts |
+| `l0.live_concurrent_tabs_timeout_ms` | 200000 | `tests_js/live-backend.test.js:9` | boot 20 s + first pass (15 s cap + 5 s) + six 20 s reloads + stop; measured 10.2-23.2 s |
+| `l0.live_restart_recovery_timeout_ms` | 180000 | `tests_js/live-backend.test.js:12` | two 20 s boots + 10 s banner + 60 s back-off cap + stops and drains; measured 6.3-9.3 s |
+
+- **Lane X, SPEC sentences:**
+  - H.7 changes from "`max_connections // 2` … never exceeded" to the full ceiling with reload recovery.
+  - New restart-recovery case; the action-field block, with reboot/bootloader/resetconfig/erasefram not driven live.
+  - Exact words per field class; the independent display oracle (with `defaultDecimals`).
+  - `archiveErrcount` writes one `build/archive/live_twin/` run directory per test process, newest three kept; reset signs fail live runs.
+  - H.4 and DEVICE_REFERENCE "Clearing the error logs" (lane Y): `ResetErrors` answers "Failed" while a `mempause` holds storage.
+  - H.8 test list gains `expected-display.test.js` and the reset-sign cases.
+- **Lead:**
+  - Drop `_decision_vocab_allowlist.txt` rows `:519`, one of `:520-:522`, one of `:523-:524`, and `:528`.
+  - No Any-baseline change.
+  - ESLint maxima of my files: complexity 18 (`live-backend-put-matrix.test.js`); max-depth 4 (`_live_twin_command.js`, at the ceiling); max-nested-callbacks 4 (at the ceiling). No ceiling raised.
+  - No website-input change in S3 (tests and `vitest.config.js` only), so no rebuild is needed.
+- **Files to run after the merge:** the six vitest files I touched in S3, both live files (`live-backend.test.js` and each shard via `PUT_MATRIX_SHARD`), `test_live_command_device_args.py`, `test_live_twin_ceiling_parser.py`, `test_memory_error_gate_agreement.py`, `test_js_coverage_*.py`, `test_tunables_register.py` and `test_decision_vocabulary.py`.
+
+**Other checks run:** `npm run lint` and `npm run typecheck` are clean. Every pre-commit pytest file passes except `test_decision_vocabulary` and `test_tunables_register`, for the two reasons above. MicroPython GC stages and settrace do not apply: no Python or MicroPython file changed in S3.
+
+**Runs:** every run of mine exited and its RUNS.md line is marked done; the `RUNNING` line for this agent, at 10:15:58, is yours to strike.
+- The scratch exports and preview tree are removed; my run logs and helper scripts stay in `u23/laneS/`.
+- **`.venv` side effect:** the live commands' existing `uv run` calls created `wt-u23s/.venv` from uv's cache. It worked offline inside the netns and is git-ignored.
+- `build/archive/live_twin/` holds three runs.
+
+**Scan findings**
+1. **OF-115 closed** (class 3/4, twin reset mode), evidence above.
+2. **New, owner C, `js/render.js`** (class 7; mode: section switch with a GET in flight). Aborting a left section's in-flight GET resets the TCP connection, and the device logs W48 `HTTP_PEER_RESET` in its web-server error count. Ordinary navigation therefore raises device warnings: seen as "Web Server: 1" on dev right after ResetErrors when the page remounted the live Status section.
+   - Option a: abort only queued requests and let the in-flight one finish (its result discarded).
+   - Option b: keep the abort and document it.
+   - Not fixed: outside my files.
+3. **New, fixed here** (class 2): one archive call per device with keep-3 pruning would have dropped the earlier devices of the same run; now one run directory per test process.
+4. **New, documentation** (lanes X/Y): ResetErrors during a `mempause` answers "Failed" (visible, not silent; the FRAM logs cannot be cleared then).
+5. **New, low** (class 4): the full-ceiling check's first-pass failures are asserted but not reported on success, so the evidence is lost on a pass. Proposed for U27/U28: print the result.
+6. **New, environment** (for U27's probe frame): the live commands' `uv run` creates a `.venv` and a script environment from uv's cache.
+7. Scan finding 5 from S2 (reflash before the first watch) was ruled an open finding for U27; nothing written for it here.

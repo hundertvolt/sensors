@@ -1,0 +1,48 @@
+U19 lead: the owner's answers to the two hotspot questions
+
+The owner answered BACKLOG.md's two owner questions in session on 2026-10-08.
+
+Question 1, verbatim: "**1. Bound how long a hotspot client holds the unit?** (entered
+2026-10-08, agent) A phone joined to the fallback hotspot keeps the unit off its home network for
+as long as it stays associated, as the legacy firmware did; the LED now shows it. (a) keep it
+unbounded: on every device the unit stays reachable only through its hotspot until the phone
+leaves; (b) bound it to a number of hotspot windows, then retry the home network with the client
+still joined: the phone loses the setup page mid-use after the bound, on every device."
+The owner's answer, verbatim: "1: a, because the user may want to do other settings after setting
+the wifi, still using the same coupled device. it only must be sure that once no clients are
+connected to the hotspot anymore, the device will try to connect to the actual wifi settings
+without a reboot required."
+
+Question 2, verbatim: "**2. Leave the hotspot after a non-credential PUT?** (entered 2026-10-08,
+agent) A `Hostname`, `Country` or `HotspotPW` PUT made from the hotspot page triggers a reconnect,
+which tries the stored network; with the router down, two failed streaks switch Wi-Fi off until a
+power cycle. (a) keep it: any Wi-Fi field reconnects, on every device; (b) from hotspot mode only
+`SSID` or `PW` reconnect, and the other fields apply at the next hotspot start, on every device."
+The owner's answer, verbatim: "2. a."
+
+SPECIFICATION.md A.4 (Wi-Fi state machine): "how long such a client may hold it is not bounded"
+becomes the owner's decision with the question and the answer quoted: unbounded while a client is
+associated; its leaving needs no reboot, since the next stations check starts the hotspot window,
+whose end retries STA with the stored settings. The LED-pattern clause before it keeps its
+"(agent, 2026-10-06)" tag; only its "; how" became ". How" (no meaning change). The rest of the
+paragraph is unchanged.
+
+SPECIFICATION.md A.8 (PUT shapes, /networking): every WiFi field (SSID, PW, Country, Hostname,
+HotspotPW) fires reconnect_wifi(), also from the hotspot page, where the reconnect leaves the
+hotspot for the stored network, tagged with the owner's '2. a.' and the question. The NTP,
+LEDWifiOn and DNSFallback clauses are unchanged.
+
+BACKLOG.md: both questions leave the owner-question list; the section and its intro stay.
+
+tests/test_asy_wifi_service.py: test_integration_a_hotspot_client_holds_the_unit_until_it_leaves_
+then_the_window_end_retries_sta drives the real _connect_loop() and hotspot watcher through the
+fake radio: the router down brings the hotspot up; a joined client stops the timer and three
+would-be window ends leave the unit in its hotspot; the client's leaving arms the timer at the next
+stations check; the fire leaves the hotspot (STA seeking) and the next step joins the stored
+network, in the same loop task, with no restart and no reset. Its watcher flag parks on an
+asyncio.Event, so no wait polls a non-fd object. It fails on four planted defects in a scratch copy
+of src/asy_wifi_service.py: a client's leaving never re-arms the timer; the reconnect trigger stays
+in the hotspot; a client does not stop the timer; no STA attempt after a hotspot phase.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

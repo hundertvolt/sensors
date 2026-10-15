@@ -1,0 +1,51 @@
+U23 lane D: WIP D1 - the definitions contract, the device clock and the server's marker constants
+
+The @web grammar takes clearable (a string's Clear button), ignoredWhenSet
+(a sibling that overrides the field) and resolution (the step the device
+rounds a number to), each on its kind, and retires defaultValue. The
+generator emits them, codeTones from the catalog's CalLight tones (0
+neutral, 1 good, 2 warn, 3 warn), the decimals a resolution needs,
+defaultDecimals 2 (web.default_decimals), confirm on SystemCmd and
+ResetErrors, PauseTime's statusPath, a path on every maintenance field,
+the Device Clock row (UnixTime, from utc_now() in every generated
+_system_status()), "Last Cycle Time" for the notification TS and the
+ResetReason click clause. The REST reference classifies the new keys
+and drops the always-executed toggle from its GET routes.
+js/definitions.js: the validator split per section, group, field and
+hint, with every malformed shape refused and both poll intervals held
+to setTimeout's ceiling; loadDefinitions() fetches through the
+single-flight queue; resolveFieldValue() returns the raw walk; no
+test-only export. The shared corpus and _shape_problems() follow; tests
+read constants from a module's source (tests_js/_source_constants.js).
+src/: UNAVAILABLE spells the degraded-source marker at its six sites,
+_UNKNOWN_DESCR the unknown-code text; the wire is unchanged.
+
+Owner decisions carried: "add a dialog to all system commands and the
+clear error history as well. But only on the website, not on the API
+side. The API stays single command." (owner, 2026-10-01, asked whether
+the DNS fallback Clear asks first); "maintain a reasonable number of
+digits per value ... But only for the website, the API delivers full
+resolution. Configured in the website config file, derived or defined
+from the value sourcing modules" (owner, 2026-10-02, website display
+details).
+
+Decimals per datasheet (agent, 2026-10-13): SCD30 CO2 0 (repeatability
+10 ppm), Temp, Hum, WetBulb, DewPoint 1 (0.1 degC, 0.1 %RH; datasheet
+Tables 1-3); TempOffset 2 from its 0.01 degC tick (Interface Description
+1.4.7). BMP3XX none: the site default 2 fits - pressure resolves to
+0.016-2.64 Pa with relative accuracy 3-9 Pa (BMP390 3, BMP388 8, BMP384
+9; 0.03-0.09 hPa), temperature to 0.005 degC at x1 with 0.003-0.005 degC
+RMS noise, so 0.01 hPa and 0.01 degC sit at or above the chip's
+resolution. SGP40 values are integers (no key); ISL29125 keeps its tags.
+
+Decided on the owner's behalf (agent, 2026-10-13), conservative and
+reversible: two new build rules, web.key-needs-number and
+web.ignored-when-set-unknown (their error-contract rows are listed for
+the lead); an out-of-range resolution reuses tag.not-a-number,
+tag.non-finite-number, web.value-not-in-set and web.decimals-range; the
+sibling check runs after the untagged-field check and refuses a hidden
+or other-group sibling; readIntConst() also reads an exported constant;
+the catalog test gains the status-table shape check it lacked.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

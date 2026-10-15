@@ -1,0 +1,17 @@
+FAIL test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "_only.py", line 389, in test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+  File "tests/_async_harness.py", line 254, in run_timed
+  File "tests/_async_harness.py", line 97, in _drive
+  File "tests/_async_harness.py", line 150, in _run_tracked
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/funcs.py", line 1, in wait_for
+  File "asyncio/funcs.py", line 1, in _run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "_only.py", line 387, in scenario
+  File "_only.py", line 279, in _run_real_task_graph_and_assert_healthy
+AssertionError: dev: the general call reached the bus but not the twin SGP40
+0/1 passed, 1 failed, 0 skipped

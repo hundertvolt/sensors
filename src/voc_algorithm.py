@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 # Ported from DFRobot's Python translation, not Sensirion's C - provenance: THIRD_PARTY_LICENSES.md.
 
-"""Sensirion's Gas Index Algorithm (VOC-only variant), fixed-point (Q16.16) port of the archived C reference (Sensirion/embedded-sgp, sgp40_voc_index/sensirion_voc_algorithm.c/.h) via DFRobot's Python translation.
-Verified constant-for-constant and against vocalgorithm_process()'s exact operation order.
-Every method returns a well-defined value, never raises.
+"""Sensirion's VOC Index algorithm (fixed-point Q16.16), a literal port of DFRobot's Python translation of the archived
+Sensirion/embedded-sgp C source; its successor is Sensirion/gas-index-algorithm (name map and differences:
+SPECIFICATION.md Part F.4). Every method returns a value, never raises.
 """
 
 import struct
@@ -37,10 +37,13 @@ _VOCALGORITHM_LP_TAU_SLOW = const(500)
 _VOCALGORITHM_LP_ALPHA = const(-0.2)
 _VOCALGORITHM_PERSISTENCE_UPTIME_GAMMA = const(10800)
 _VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__GAMMA_SCALING = const(64)
-_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(32767)
+# 16383, not the C reference's 32767: keeps both uptime counters below rp2's small-int limit (F16(16382) <
+# 2**30). Both feed only sigmoids that are constant from 10223 s, so the output is unchanged (agent, 2026-09-29).
+_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX = const(16383)
 _FIX16_MAXIMUM = const(0x7FFFFFFF)
-_FIX16_MINIMUM = const(0x80000000)
-_FIX16_OVERFLOW = const(0x80000000)
+# INT32_MIN, as the C fix16_t reads 0x80000000
+_FIX16_MINIMUM = const(-0x80000000)
+_FIX16_OVERFLOW = const(-0x80000000)
 _FIX16_ONE = const(0x00010000)
 _FIX16_FRACTION_MAX = const(65535)  # 16-bit remainder check in _fix16_sqrt()
 
@@ -50,6 +53,14 @@ _SRAW_CLAMP_MIN = const(20001)
 _SRAW_CLAMP_MAX = const(52767)
 
 _VOC_PARAMS_MEMSIZE = const(256)  # 32 * 8 bytes
+
+
+def _int32(value: int) -> int:
+    # C's fix16_t is int32: every helper takes and returns it wrapped (agent, 2026-09-29).
+    if _FIX16_MINIMUM <= value <= _FIX16_MAXIMUM:
+        return value
+    value &= 0xFFFFFFFF
+    return value - 0x100000000 if value & 0x80000000 else value
 
 
 class DFRobot_vocalgorithmParams:
@@ -93,9 +104,10 @@ class DFRobot_vocalgorithmParams:
         self.m_adaptive_lowpass_x3 = 0
 
     def pack_into(self, buf: bytearray | memoryview, offset: int = 0) -> bool:
+        # Every field is frozen, the uptime_gamma/uptime_gating learning counters included (owner, 2026-07-21)
         try:
             struct.pack_into(
-                "32q",
+                "<32q",
                 buf,
                 offset,
                 self.mvoc_index_offset,
@@ -138,9 +150,13 @@ class DFRobot_vocalgorithmParams:
 
     def unpack_from(self, buf: bytes | bytearray | memoryview, offset: int = 0) -> bool:
         try:
-            values = struct.unpack_from("32q", buf, offset)
+            values = struct.unpack_from("<32q", buf, offset)
         except Exception:
             return False
+        # Restored values must be int32 like the C state; uptimes above the small-int limit (an older build's backup) are clamped.
+        for value in values:
+            if not _FIX16_MINIMUM <= value <= _FIX16_MAXIMUM:
+                return False
         (
             self.mvoc_index_offset,
             self.mtau_mean_variance_hours,
@@ -175,6 +191,9 @@ class DFRobot_vocalgorithmParams:
             self.m_adaptive_lowpass_x2,
             self.m_adaptive_lowpass_x3,
         ) = values
+        limit = (_VOCALGORITHM_MEAN_VARIANCE_ESTIMATOR__FIX16_MAX - _VOCALGORITHM_SAMPLING_INTERVAL) * _FIX16_ONE
+        self.m_mean_variance_estimator_uptime_gamma = min(self.m_mean_variance_estimator_uptime_gamma, limit)
+        self.m_mean_variance_estimator_uptime_gating = min(self.m_mean_variance_estimator_uptime_gating, limit)
         return True
 
 
@@ -208,8 +227,8 @@ class VOCAlgorithm:
         return int(a) >> 16
 
     def _fix16_mul(self, inarg0: float, inarg1: float) -> int:
-        inarg0 = int(inarg0)
-        inarg1 = int(inarg1)
+        inarg0 = _int32(int(inarg0))
+        inarg1 = _int32(int(inarg1))
         A = inarg0 >> 16
         B = (inarg0 & 0xFFFFFFFF) & 0xFFFF if inarg0 < 0 else inarg0 & 0xFFFF
         C = inarg1 >> 16
@@ -231,11 +250,11 @@ class VOCAlgorithm:
             product_hi = product_hi - 1
         result = (product_hi << 16) | (product_lo >> 16)
         result += 1
-        return result
+        return _int32(result)
 
     def _fix16_div(self, a: float, b: float) -> int:
-        a = int(a)
-        b = int(b)
+        a = _int32(int(a))
+        b = _int32(int(b))
         if b == 0:
             return _FIX16_MINIMUM
         remainder = a if a >= 0 else (a * (-1)) & 0xFFFFFFFF
@@ -244,7 +263,7 @@ class VOCAlgorithm:
         bit = 0x10000
         while divider < remainder:
             divider = divider << 1
-            bit <<= 1
+            bit = (bit << 1) & 0xFFFFFFFF
         if not bit:
             return _FIX16_OVERFLOW
         if divider & 0x80000000:
@@ -261,7 +280,7 @@ class VOCAlgorithm:
             bit >>= 1
         if remainder >= divider:
             quotient += 1
-        result = quotient
+        result = _int32(quotient)
         if (a ^ b) & 0x80000000:
             if result == _FIX16_MINIMUM:
                 return _FIX16_OVERFLOW
@@ -269,7 +288,7 @@ class VOCAlgorithm:
         return result
 
     def _fix16_sqrt(self, x: float) -> int:
-        x = int(x)
+        x = _int32(int(x))
         num = x & 0xFFFFFFFF
         result = 0
         bit = 1 << 30
@@ -297,7 +316,7 @@ class VOCAlgorithm:
         return result
 
     def _fix16_exp(self, x: float) -> int:
-        x = int(x)
+        x = _int32(int(x))
         if x >= self._f16(10.3972):
             return _FIX16_MAXIMUM
         if x <= self._f16(-11.7835):

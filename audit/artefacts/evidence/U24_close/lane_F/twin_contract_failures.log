@@ -1,0 +1,12 @@
+check_i2c_state_survives_reconstruction None
+check_irq_edge_values None
+check_pin_constants None
+check_pin_defaults AssertionError: 
+check_pin_pull_semantics AssertionError: 
+check_readfrom_mem_into_delegates None
+check_reset_never_returns AssertionError: an `except Exception` would swallow the reset
+check_scan_never_raises None
+check_spi_bit_order None
+check_wdt_feed_times None
+check_wdt_timeout_bounds None
+check_inject_fault_fifo AssertionError: each raise must be a fresh exception

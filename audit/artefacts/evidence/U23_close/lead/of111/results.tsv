@@ -1,0 +1,66 @@
+seenfail	scenario6	e	rc=1	23.2s	mem=0	0/6 passed, 6 failed, 0 skipped
+seenfail	test_asy_webserver_service	e	rc=1	23.7s	mem=0	221/222 passed, 1 failed, 0 skipped
+seenfail2	scenario6-oldsrc	e	rc=1	23.5s	mem=0	0/6 passed, 6 failed, 0 skipped
+check	scenario6	e	rc=0	39.7s	mem=0	6/6 passed, 0 failed, 0 skipped
+seenfail2	test_asy_webserver_service	e	rc=1	24.3s	mem=0	221/222 passed, 1 failed, 0 skipped
+after	test_asy_webserver_service	e	rc=0	23.0s	mem=0	222/222 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	e	rc=0	62.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_asy_webserver_service	f	rc=0	24.3s	mem=0	222/222 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	f	rc=0	89.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_asy_webserver_service	cov	rc=0	56.6s	mem=0	222/222 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	cov	rc=1	118.4s	mem=1	88/89 passed, 1 failed, 0 skipped
+after	test_sensortask_wozi	e	rc=0	45.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	f	rc=143	10.5s	mem=0	
+after	test_asy_system_service	e	rc=0	27.5s	mem=0	167/167 passed, 0 failed, 0 skipped
+seenfail3	scenario6-oldsrc	e	rc=1	23.0s	mem=0	0/6 passed, 6 failed, 0 skipped
+check2	scenario6	e	rc=0	38.7s	mem=0	6/6 passed, 0 failed, 0 skipped
+probe	chunkprobe-wozi	e	rc=0	0.8s	mem=0	
+--- fix: test-side whole-chip copy replaced by log-chunk spans; earlier sensortask results void
+after	test_sensortask_dev	cov	rc=0	121.3s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_asy_system_service	f	rc=0	33.4s	mem=0	167/167 passed, 0 failed, 0 skipped
+after	test_asy_system_service	cov	rc=0	38.1s	mem=0	167/167 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	e	rc=0	65.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	f	rc=0	93.6s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_asy_webserver_connections	e	rc=0	1.3s	mem=0	23/23 passed, 0 failed, 0 skipped
+after	test_asy_webserver_connections	f	rc=0	1.4s	mem=0	23/23 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	e	rc=1	47.4s	mem=0	84/89 passed, 5 failed, 0 skipped
+after	test_asy_webserver_connections	cov	rc=0	1.5s	mem=0	23/23 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	cov	rc=1	96.2s	mem=0	87/89 passed, 2 failed, 0 skipped
+after	test_readiness_gates	e	rc=0	0.2s	mem=0	14/14 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	f	rc=143	17.7s	mem=0	
+--- void above for every test_sensortask_* row and wozi/dev/arzi of queue1/queue2: two runs of one file overlapped in wt-u23o (CONCURRENCY rule 4); from here one run per worktree, lanes a (wt-u23o) and b (u23/of111/wt2)
+after	test_sensortask_grkizi	cov	rc=0	88.2s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	cov	rc=0	127.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_grkizi	f	rc=0	59.2s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	f	rc=0	96.0s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_dev	e	rc=0	65.6s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_grkizi	e	rc=0	41.6s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_klkizi	cov	rc=0	87.9s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_klkizi	f	rc=0	59.0s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_klkizi	e	rc=0	41.2s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_schlafzi	cov	rc=0	86.1s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	cov	rc=0	98.9s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_schlafzi	f	rc=0	60.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_schlafzi	e	rc=0	41.7s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_neopixel_wifi_integration	e	rc=0	2.9s	mem=0	8/8 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	f	rc=0	66.8s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_neopixel_wifi_integration	f	rc=0	3.3s	mem=0	8/8 passed, 0 failed, 0 skipped
+after	test_neopixel_wifi_integration	cov	rc=0	3.6s	mem=0	8/8 passed, 0 failed, 0 skipped
+after	test_website_build_integration	e	rc=0	0.2s	mem=0	7/7 passed, 0 failed, 0 skipped
+after	test_website_build_integration	f	rc=0	0.3s	mem=0	7/7 passed, 0 failed, 0 skipped
+after	test_website_build_integration	cov	rc=0	0.3s	mem=0	7/7 passed, 0 failed, 0 skipped
+before	test_neopixel_wifi_integration	e	rc=0	2.8s	mem=0	8/8 passed, 0 failed, 0 skipped
+before	test_neopixel_wifi_integration	f	rc=0	3.3s	mem=0	8/8 passed, 0 failed, 0 skipped
+before	test_neopixel_wifi_integration	cov	rc=0	3.5s	mem=0	8/8 passed, 0 failed, 0 skipped
+before	test_website_build_integration	e	rc=0	0.3s	mem=0	7/7 passed, 0 failed, 0 skipped
+before	test_website_build_integration	f	rc=0	0.3s	mem=0	7/7 passed, 0 failed, 0 skipped
+before	test_website_build_integration	cov	rc=0	0.3s	mem=0	7/7 passed, 0 failed, 0 skipped
+after	test_sensortask_wozi	e	rc=0	46.9s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_arzi	cov	rc=0	84.5s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_arzi	f	rc=0	59.0s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_sensortask_arzi	e	rc=0	41.8s	mem=0	89/89 passed, 0 failed, 0 skipped
+after	test_readiness_gates	f	rc=0	0.3s	mem=0	14/14 passed, 0 failed, 0 skipped
+after	test_readiness_gates	cov	rc=0	0.2s	mem=0	14/14 passed, 0 failed, 0 skipped
+before	test_readiness_gates	e	rc=0	0.2s	mem=0	14/14 passed, 0 failed, 0 skipped
+before	test_readiness_gates	f	rc=0	0.3s	mem=0	14/14 passed, 0 failed, 0 skipped
+before	test_readiness_gates	cov	rc=0	0.3s	mem=0	14/14 passed, 0 failed, 0 skipped

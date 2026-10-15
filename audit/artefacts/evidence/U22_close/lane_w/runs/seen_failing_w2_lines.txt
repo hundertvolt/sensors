@@ -1,0 +1,13 @@
+test_a_failed_period_arm_is_persisted_and_retried_in_the_silent_mode | line 2736: await client._run_silent_mode() | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_a_raising_silent_attempt_feeds_the_hardware_streak_and_keeps_the_mode | line 2782: real = client._run_silent_mode | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_500_silent_periods_stay_silent_and_bounded | line 277: await client._run_silent_mode() | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_a_restart_in_the_silent_mode_keeps_it_dark_and_re_arms_the_period | line 2851: run(client._run_silent_mode())  # the period runs | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_a_dropped_silent_period_fire_is_recovered_by_the_next_period | line 2901: await client._run_silent_mode()  # arms the period | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_the_first_silent_attempt_waits_one_period_after_the_entry | line 2925: run(client._run_silent_mode()) | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_the_wifi_service_never_scans | line 277: await client._run_silent_mode() | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_the_silent_wait_holds_no_lock_and_yields | line 2966: real = client._run_silent_mode | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'
+test_integration_a_unit_goes_silent_after_its_second_streak_and_rejoins_when_the_router_returns | line 4194: assert await _until(lambda: client._conn_phase == _PHASE_SILENT), "the second streak must go silent" | AssertionError: the second streak must go silent
+test_integration_new_credentials_over_the_hotspot_reopen_it_once_more | line 4233: assert await _until(lambda: len(radio.built) == 4 and client._hotspot_timer_running), "the hotspot must reopen | AssertionError: the hotspot must reopen
+test_integration_an_unfilled_stations_answer_never_holds_the_hotspot | line 4263: assert client._hotspot_timer_running, "the unfilled answer must arm the window" | AssertionError: the unfilled answer must arm the window
+test_a_raising_stations_query_under_a_client_arms_the_window_until_the_next_good_check | line 3222: assert run(scenario()) == [False, True, False] | AssertionError: 
+test_turning_the_wifi_led_on_while_silent_lights_nothing_until_the_link | line 277: await client._run_silent_mode() | AttributeError: 'WifiService' object has no attribute '_run_silent_mode'

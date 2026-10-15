@@ -1,0 +1,27 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________ test_sourcing_it_changes_none_of_the_callers_shell_options __________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9797/test_sourcing_it_changes_none_0')
+
+    def test_sourcing_it_changes_none_of_the_callers_shell_options(tmp_path: Path) -> None:
+        # Read in the calling shell itself: a $(...) would not show errexit, which bash clears in command substitutions.
+        before, after = tmp_path / "before", tmp_path / "after"
+        probe = f'opts() {{ printf "%s\\n" "$-"; set +o; shopt -p; }}; opts >{before}; source {shlex.quote(str(_LIB))}; opts >{after}'
+        done = subprocess.run(["/bin/bash", "-c", probe], capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+        assert (done.returncode, done.stderr) == (0, ""), done
+>       assert after.read_text(encoding="utf-8") == before.read_text(encoding="utf-8")
+E       AssertionError: assert 'hBc\nset +o ...-u xpg_echo\n' == 'hBc\nset +o ...-u xpg_echo\n'
+E         
+E         Skipping 335 identical leading characters in diff, use -v to show
+E         Skipping 1262 identical trailing characters in diff, use -v to show
+E           sical
+E         - set +o pipefai
+E         ?     ^
+E         + set -o pipefai
+E         ?     ^
+
+tests_scripts/test_devices_sh.py:78: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_devices_sh.py::test_sourcing_it_changes_none_of_the_callers_shell_options
+1 failed in 0.07s

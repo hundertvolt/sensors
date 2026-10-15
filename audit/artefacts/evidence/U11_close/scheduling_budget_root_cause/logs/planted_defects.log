@@ -1,0 +1,84 @@
+== planted=none test=orig th=-1
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=none test=orig th=32768
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=none test=fixed th=-1
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=none test=fixed th=32768
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=A test=orig th=-1
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=A test=orig th=32768
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=A test=fixed th=-1
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=A test=fixed th=32768
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=B test=orig th=-1
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=B test=orig th=32768
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: 
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: 
+0/2 passed, 2 failed, 0 skipped
+== planted=B test=fixed th=-1
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: got [22]
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: got [22]
+0/2 passed, 2 failed, 0 skipped
+== planted=B test=fixed th=32768
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: got [22]
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: got [22]
+0/2 passed, 2 failed, 0 skipped
+== planted=C test=orig th=-1
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=C test=orig th=32768
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc
+PASS test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16
+2/2 passed, 0 failed, 0 skipped
+== planted=C test=fixed th=-1
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: the mismatched train's final chunk was acknowledged
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: the mismatched train's final chunk was acknowledged
+0/2 passed, 2 failed, 0 skipped
+== planted=C test=fixed th=32768
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_nocrc:
+AssertionError: the mismatched train's final chunk was acknowledged
+FAIL test_a_size_mismatch_against_an_expected_size_reports_it_distinctly_crc16:
+AssertionError: the mismatched train's final chunk was acknowledged
+0/2 passed, 2 failed, 0 skipped

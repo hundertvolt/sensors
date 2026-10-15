@@ -1,10 +1,10 @@
 """Per-driver "what does this need from the TOML" facts: required/optional fields, which drivers
 sit on a bus, and which have a real TOML-configurable `address` (SPECIFICATION.md's schema note -
-datasheet-checked by Session 2, not re-derived here)."""
+each fact datasheet-checked (agent, 2026-09-09), not re-derived here)."""
 
-# The one hand-maintained per-driver table here; everything else buildgen needs is AST-derived
-# from src/. It cannot be derived: the shipped TOML field names and src/'s constructor parameter
-# names are two independently-evolved naming spaces. Adding a driver adds a row (Part L.6).
+# One of the two tables buildgen keeps by hand (owner, 2026-09-18; the other is definitions.py's
+# status/errcount catalog): TOML field names and constructor parameter names are independent naming
+# spaces. A resolvable driver without its row is a named build error (Part L.6.6).
 
 # TOML fields every instance of this driver must declare (beyond "driver"/"name_ext", which
 # model.py itself already requires/defaults) - a missing one is a build-time error
@@ -21,19 +21,19 @@ REQUIRED_TOML_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 # TOML fields a driver's instances *may* declare, beyond the required ones above - present because
-# the underlying constructor param has its own default (e.g. BMP3xx_Reader's own address=0x77).
+# the underlying constructor param has its own default (e.g. BMP3XX_Reader's own address=0x77).
 OPTIONAL_TOML_FIELDS: dict[str, tuple[str, ...]] = {
-    "scd30": ("trigger_sec",),
+    "scd30": ("trigger_s",),
     "sgp40": (),
-    "bmp3xx": ("address", "trigger_sec"),
+    "bmp3xx": ("address", "trigger_s"),
     # No "address": 0x44 is hard-wired (no address-select pin, datasheet p15), so this belongs in
     # FIXED_ADDRESS_DRIVERS. irq_pull_up exists because the INT line is open-drain (p6): a board
     # with its own external pull-up sets it false so the internal one is not engaged too.
-    "isl29125": ("trigger_sec", "irq_pull_up"),
+    "isl29125": ("trigger_s", "irq_pull_up"),
     "fram": (),
     "neopixel": (),
     "notification": (),
-    "uart_link": (),
+    "uart_link": ("crc", "max_transfer_bytes"),
 }
 
 # Every field an instance of this driver may legitimately declare (beyond "driver"/"name_ext") -
@@ -48,7 +48,7 @@ BUS_ATTACHED_DRIVERS = frozenset(REQUIRED_TOML_FIELDS) - {"neopixel", "notificat
 
 # Which bus kind each bus-attached driver's "bus" field must resolve to. Without it a TOML typo
 # pairing a uart_link with an i2c bus built cleanly - the bus only had to exist - and failed at
-# boot inside UART_Comm with a raw AttributeError. Every BUS_ATTACHED_DRIVERS member belongs here.
+# boot inside UARTComm with a raw AttributeError. Every BUS_ATTACHED_DRIVERS member belongs here.
 BUS_KIND_BY_DRIVER: dict[str, str] = {
     "scd30": "i2c",
     "sgp40": "i2c",
@@ -66,3 +66,6 @@ ADDRESS_CAPABLE_DRIVERS = frozenset({"bmp3xx"})
 # instances on one bus cannot be told apart (Part L.5). "uart_link" joins them for a related
 # reason - a UART is point-to-point and has no address concept at all.
 FIXED_ADDRESS_DRIVERS = BUS_ATTACHED_DRIVERS - ADDRESS_CAPABLE_DRIVERS - {"fram"}
+
+# CRC mode of a uart_link end -> (asy_crc_checks class, width in bytes); held equal to src/asy_crc_checks.py by a test
+UART_CRC_MODES: dict[str, tuple[str, int]] = {"none": ("CRCPass", 0), "crc16": ("CRC16", 2)}

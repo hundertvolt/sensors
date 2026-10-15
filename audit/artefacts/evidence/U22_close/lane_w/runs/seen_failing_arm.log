@@ -1,0 +1,6 @@
+FAIL test_a_silent_period_that_cannot_be_armed_feeds_the_hardware_streak
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u22w_tools/sel_runner.py", line 8, in <module>
+  File "tests/test_asy_wifi_service.py", line 2859, in test_a_silent_period_that_cannot_be_armed_feeds_the_hardware_streak
+AssertionError: ('the streak never reached its give-up', [400], [80, 17])
+selected: 1 failed: 1

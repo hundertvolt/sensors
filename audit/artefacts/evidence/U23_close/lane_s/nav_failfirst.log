@@ -1,0 +1,311 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u23s
+
+ ❯ |chromium| tests_js/nav.test.js (8 tests | 8 failed) 741ms
+   ❯ initNav (8)
+     × builds the drawer from definitions and toggles data-nav-open when the hamburger is clicked 167ms
+     × closes the drawer when the backdrop is clicked 78ms
+     × closes the drawer on Escape pressed on the key target it was given 74ms
+     × closes the drawer and fires onSelect with the clicked section's key 72ms
+     × setCurrent marks exactly one link aria-current, moving it between calls 79ms
+     × keeps the closed drawer inert and names the hamburger's action; opening lifts it and focuses the first link 97ms
+     × returns focus to the hamburger when the drawer closes with focus inside it 94ms
+     × dispose() removes every listener it added: on the key target, the hamburger, the backdrop and the links 79ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 8 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > builds the drawer from definitions and toggles data-nav-open when the hamburger is clicked
+AssertionError: expected undefined to be 'false' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---builds-the-drawer-from-definitions-and-toggles-data-nav-open-when-the-hamburger-is-clicked.png
+
+[32m- Expected:[39m
+"false"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/nav.test.js:67:44
+     65|
+     66|         expect(drawerEl.querySelectorAll("[data-section-key]")).toHave…
+     67|         expect(appShellEl.dataset.navOpen).toBe("false");
+       |                                            ^
+     68|
+     69|         hamburgerEl.click();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > builds the drawer from definitions and toggles data-nav-open when the hamburger is clicked
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer when the backdrop is clicked
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer on Escape pressed on the key target it was given
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer and fires onSelect with the clicked section's key
+ FAIL  |chromium| tests_js/nav.test.js > initNav > setCurrent marks exactly one link aria-current, moving it between calls
+ FAIL  |chromium| tests_js/nav.test.js > initNav > keeps the closed drawer inert and names the hamburger's action; opening lifts it and focuses the first link
+ FAIL  |chromium| tests_js/nav.test.js > initNav > returns focus to the hamburger when the drawer closes with focus inside it
+ FAIL  |chromium| tests_js/nav.test.js > initNav > dispose() removes every listener it added: on the key target, the hamburger, the backdrop and the links
+TypeError: nav?.dispose is not a function
+
+Failure screenshots:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---builds-the-drawer-from-definitions-and-toggles-data-nav-open-when-the-hamburger-is-clicked.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-when-the-backdrop-is-clicked.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-on-Escape-pressed-on-the-key-target-it-was-given.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-and-fires-onSelect-with-the-clicked-section-s-key.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---setCurrent-marks-exactly-one-link-aria-current--moving-it-between-calls.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---keeps-the-closed-drawer-inert-and-names-the-hamburger-s-action--opening-lifts-it-and-focuses-the-first-link.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---returns-focus-to-the-hamburger-when-the-drawer-closes-with-focus-inside-it.png
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---dispose---removes-every-listener-it-added--on-the-key-target--the-hamburger--the-backdrop-and-the-links.png
+
+ ❯ tests_js/nav.test.js:54:14
+     52|
+     53|     afterEach(() => {
+     54|         nav?.dispose();
+       |              ^
+     55|         nav = undefined;
+     56|         if (elements) {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ wrapper node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4457:37
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5955:52
+ ❯ run node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:3845:20
+ ❯ limiterFn node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:3855:59
+ ❯ runHook node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5954:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer when the backdrop is clicked
+AssertionError: expected undefined to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-when-the-backdrop-is-clicked.png
+
+[32m- Expected:[39m
+"true"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/nav.test.js:82:44
+     80|
+     81|         hamburgerEl.click();
+     82|         expect(appShellEl.dataset.navOpen).toBe("true");
+       |                                            ^
+     83|
+     84|         backdropEl.click();
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer on Escape pressed on the key target it was given
+AssertionError: expected undefined to be 'true' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-on-Escape-pressed-on-the-key-target-it-was-given.png
+
+[32m- Expected:[39m
+"true"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/nav.test.js:93:44
+     91|
+     92|         hamburgerEl.click();
+     93|         expect(appShellEl.dataset.navOpen).toBe("true");
+       |                                            ^
+     94|
+     95|         keyTarget.dispatchEvent(new KeyboardEvent("keydown", { key: "E…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > closes the drawer and fires onSelect with the clicked section's key
+AssertionError: expected undefined to be 'false' // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---closes-the-drawer-and-fires-onSelect-with-the-clicked-section-s-key.png
+
+[32m- Expected:[39m
+"false"
+
+[31m+ Received:[39m
+undefined
+
+ ❯ tests_js/nav.test.js:108:44
+    106|
+    107|         expect(onSelect).toHaveBeenCalledWith("status");
+    108|         expect(appShellEl.dataset.navOpen).toBe("false");
+       |                                            ^
+    109|     });
+    110|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > setCurrent marks exactly one link aria-current, moving it between calls
+TypeError: nav?.setCurrent is not a function
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---setCurrent-marks-exactly-one-link-aria-current--moving-it-between-calls.png
+
+ ❯ tests_js/nav.test.js:114:14
+    112|         const { drawerEl } = start();
+    113|
+    114|         nav?.setCurrent("measurements");
+       |              ^
+    115|         const measurementsLink = /** @type {HTMLElement} */ (drawerEl.…
+    116|         const statusLink = /** @type {HTMLElement} */ (drawerEl.queryS…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > keeps the closed drawer inert and names the hamburger's action; opening lifts it and focuses the first link
+AssertionError: expected false to be true // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---keeps-the-closed-drawer-inert-and-names-the-hamburger-s-action--opening-lifts-it-and-focuses-the-first-link.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ tests_js/nav.test.js:127:32
+    125|     it("keeps the closed drawer inert and names the hamburger's action…
+    126|         const { drawerEl, hamburgerEl } = start();
+    127|         expect(drawerEl.inert).toBe(true);
+       |                                ^
+    128|         expect(hamburgerEl.getAttribute("aria-label")).toBe("Open navi…
+    129|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > returns focus to the hamburger when the drawer closes with focus inside it
+AssertionError: expected false to be true // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---returns-focus-to-the-hamburger-when-the-drawer-closes-with-focus-inside-it.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+ ❯ tests_js/nav.test.js:140:51
+    138|         const { drawerEl, hamburgerEl } = start();
+    139|         hamburgerEl.click();
+    140|         expect(drawerEl.matches(":focus-within")).toBe(true);
+       |                                                   ^
+    141|
+    142|         keyTarget.dispatchEvent(new KeyboardEvent("keydown", { key: "E…
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/16]⎯
+
+ FAIL  |chromium| tests_js/nav.test.js > initNav > dispose() removes every listener it added: on the key target, the hamburger, the backdrop and the links
+AssertionError: expected [ +0, 1, 1 ] to deeply equal [ 1, 1, 1 ]
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/nav.test.js/initNav---dispose---removes-every-listener-it-added--on-the-key-target--the-hamburger--the-backdrop-and-the-links.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   1,[39m
+[31m+   0,[39m
+[2m    1,[22m
+[2m    1,[22m
+[2m  ][22m
+
+ ❯ tests_js/nav.test.js:155:48
+    153|         const onSelect = vi.fn();
+    154|         nav = initNav({ defs: DEFS, ...elements, keyTarget, onSelect }…
+    155|         expect(counters.map((left) => left())).toEqual([1, 1, 1]);
+       |                                                ^
+    156|         const statusLink = /** @type {HTMLElement} */ (elements.drawer…
+    157|
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DDzazuHB.js?v=93ddd73f:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/16]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  8 failed (8)
+   Start at  08:57:38
+   Duration  1.95s (tests 74%, worker 22%, import 4%)
+
+== Summary: npm test ==
+Commit: d90bd96 (uncommitted changes)
+Levels: L0
+Counts (tests): passed 0 · failed 8 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/nav.test.js > initNav > builds the drawer from definitions and toggles data-nav-open when the hamburger is clicked: expected undefined to be 'false' // Object.is equality
+  - tests_js/nav.test.js > initNav > closes the drawer when the backdrop is clicked: expected undefined to be 'true' // Object.is equality
+  - tests_js/nav.test.js > initNav > closes the drawer on Escape pressed on the key target it was given: expected undefined to be 'true' // Object.is equality
+  - tests_js/nav.test.js > initNav > closes the drawer and fires onSelect with the clicked section's key: expected undefined to be 'false' // Object.is equality
+  - tests_js/nav.test.js > initNav > setCurrent marks exactly one link aria-current, moving it between calls: nav?.setCurrent is not a function
+  - tests_js/nav.test.js > initNav > keeps the closed drawer inert and names the hamburger's action; opening lifts it and focuses the first link: expected false to be true // Object.is equality
+  - tests_js/nav.test.js > initNav > returns focus to the hamburger when the drawer closes with focus inside it: expected false to be true // Object.is equality
+  - tests_js/nav.test.js > initNav > dispose() removes every listener it added: on the key target, the hamburger, the backdrop and the links: expected [ +0, 1, 1 ] to deeply equal [ 1, 1, 1 ]
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

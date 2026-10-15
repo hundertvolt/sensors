@@ -1,0 +1,36 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u18j
+
+ ✓ |chromium| tests_js/mock-server.test.js (70 tests) 15513ms
+   ✓ installMockFetch (70)
+     ✓ validates PUT /networking against the networking group's own field defs 421ms
+     ✓ accepts a string field's schema special before its length bounds, as the server does 312ms
+     ✓ never persists SystemCmd into systemConfig - it's a dispatched action, not a stored setting (matches real GET /system, which never includes it) 433ms
+     ✓ validates PUT /notification's PauseTime range like the real backend's _dispatch_notification_pause() and dispatches it to the live status value, not a stored setting 1022ms
+     ✓ dispatches PUT /notification's LightCmdLED like the real backend's _dispatch_notification_led()/_notification_led_callback(), never as a persisted setting 1517ms
+     ✓ refuses PUT /notification's LightCmdLED with Failed while an accepted flash still runs, and accepts one again once its t has passed 674ms
+     ✓ dispatches PUT /sensors' ForceCalRef like the real backend's set_forced_recalibration_reference(): range-validated but never Unchanged, and GET always reads back the fixed real-hardware constant 400 regardless of what was applied 512ms
+     ✓ runs PUT /sensors' AmbPres on every apply: never Unchanged, and GET reads back the value applied 732ms
+     ✓ dispatches PUT /sensors' ContMeas like the real backend's _set_dict_cfg() ContMeas branch: bool-only, always Valid, never persisted or reported by GET at all 631ms
+     ✓ dispatches PUT /sensors' ResetVOC like the real backend's _push_reset_voc(): bool-only, always Valid, never persisted or reported by GET at all 464ms
+     ✓ masks PW (and HotspotPW) on every GET /networking, whatever was applied 430ms
+     ✓ accepts Calibrate repeatedly - it is a trigger, not a one-shot 441ms
+
+ Test Files  1 passed (1)
+      Tests  70 passed (70)
+   Start at  01:59:34
+   Duration  16.92s (tests 98%, worker 1%)
+
+== Summary: npm test ==
+Commit: c11ca0a (uncommitted changes)
+Levels: L0
+Counts (tests): passed 70 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

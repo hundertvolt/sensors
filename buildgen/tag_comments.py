@@ -2,13 +2,16 @@
 `# @requires`/`# @wiring`/`# @value-wiring`/`# @limits`/`# @web`/`# @web-group`, and the standing
 rule that a near-miss attempt at one must fail the build loud (SPECIFICATION.md Part L.5)."""
 
+import dataclasses
+import functools
+import io
 import re
 import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from buildgen.errors import BuildError
+from buildgen.errors import BuildError, BuildInternalError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -18,7 +21,6 @@ if TYPE_CHECKING:
 # me" predicate: the payload shapes differ, and one shared heuristic would go blind on whichever
 # it was not written for - the silent miss this module exists to prevent.
 
-# A new family goes here, plus its own strict-grammar module beside requires_tag.py.
 def _looks_like_requires_payload(text: str) -> bool:
     if _PAYLOAD_OPERATOR_RE.search(text):
         return True
@@ -26,7 +28,7 @@ def _looks_like_requires_payload(text: str) -> bool:
 
 
 def _payload_words(text: str) -> "tuple[bool, list[str]]":
-    """Whether the comment carried the "@" sigil, plus whatever follows its leading word."""
+    # Whether the comment carried the "@" sigil, plus whatever follows its leading word.
     stripped = text.lstrip("#").strip()
     at_sign = stripped.startswith("@")
     if at_sign:
@@ -108,6 +110,8 @@ class TagSpec:
         return self.looks_like_attempt(text) if self.looks_like_attempt is not None else self.looks_like_payload(text)
 
 
+# A new family registers here; its module fetches its spec with specs_for(), which fails for an
+# unregistered name.
 KNOWN_TAGS = (
     TagSpec("requires", _looks_like_requires_payload, _looks_like_requires_attempt),
     TagSpec("wiring", _looks_like_wiring_payload),
@@ -117,6 +121,15 @@ KNOWN_TAGS = (
     TagSpec("web-group", _looks_like_web_group_payload),
 )
 KNOWN_TAG_NAMES = tuple(spec.name for spec in KNOWN_TAGS)
+
+
+def specs_for(name: str) -> "tuple[TagSpec, ...]":
+    # The one registered spec of a family, for its grammar module's near-miss check. An empty
+    # tuple would switch that check off silently, so an unregistered name is a generator bug.
+    specs = tuple(spec for spec in KNOWN_TAGS if spec.name == name)
+    if len(specs) != 1:
+        raise BuildInternalError(f"tag family {name!r} is not in KNOWN_TAGS")
+    return specs
 
 _SHORT_TAG_NAME_LEN = 4  # 3-4 letters (the planned "@web") only tolerates one typo, see below
 
@@ -181,37 +194,54 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def iter_comment_tokens(path: Path, device: str, instance_label: str) -> "list[CommentToken]":
-    """Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
-    string/docstring is never mistaken for a real comment. Each token also carries whether it sits
-    inside a class/function body rather than at module level."""
-    tokens = []
+    # Every real COMMENT token in `path`, tokenize-based (not per-line regex) so a "#" inside a
+    # string/docstring is never mistaken for a real comment. Each token also carries whether it sits
+    # inside a class/function body rather than at module level.
+    try:
+        source = path.read_bytes()
+    except OSError as e:
+        raise BuildError(device, f"cannot read {path}: {e}", rule="src.unreadable", fix=f"restore {path.name} in the source directory", instance=instance_label) from e
+    try:
+        return list(_comment_tokens(source))
+    except (IndentationError, SyntaxError, tokenize.TokenError) as e:
+        raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=instance_label) from e
+
+
+@functools.lru_cache(maxsize=1024)
+def _comment_tokens(source: bytes) -> "tuple[CommentToken, ...]":
+    # Keyed on the file's bytes, so every tag family and every device reading one driver tokenizes it
+    # once, and a changed file is a new key. An error is never cached: each caller raises its own.
+    tokens: list[CommentToken] = []
     # Bracket depth plus whether the statement that opened it was indented: inside brackets a
     # comment is always indented by style, so only the enclosing statement says whether this is
     # module level. Outside them the line's own indentation answers it, and DEDENT depth cannot.
     depth = 0
     stmt_indented = False
-    try:
-        with path.open("rb") as f:  # tokenize decodes it itself, honoring a PEP 263 cookie/BOM
-            for tok in tokenize.tokenize(f.readline):
-                if tok.type == tokenize.COMMENT:
-                    # tok.line is the tokenizer's own physical line. Re-deriving it by indexing
-                    # str.splitlines() misaligns: that also breaks on \x0b/\x0c/\u2028, which the
-                    # tokenizer treats as ordinary characters, shifting every later line by one.
-                    inside_block = stmt_indented if depth else tok.line[:1].isspace()
-                    tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
-                elif tok.type == tokenize.OP and tok.string in "()[]{}":
-                    depth += 1 if tok.string in "([{" else -1
-                elif not depth and tok.type not in _NON_STATEMENT_TOKENS:
-                    stmt_indented = tok.line[:1].isspace()
-    except (tokenize.TokenError, SyntaxError, IndentationError) as e:
-        raise BuildError(device, f"{path} has a syntax error: {e}", instance=instance_label) from e
-    return tokens
+    pending: list[int] = []  # column-0 comments outside brackets, which the next statement places
+    for tok in tokenize.tokenize(io.BytesIO(source).readline):  # decodes itself, honoring a PEP 263 cookie/BOM
+        if tok.type == tokenize.COMMENT:
+            # tok.line is the tokenizer's own physical line. Re-deriving it by indexing
+            # str.splitlines() misaligns: that also breaks on \x0b/\x0c/\u2028, which the
+            # tokenizer treats as ordinary characters, shifting every later line by one.
+            if not depth and tok.start[1] == 0:
+                pending.append(len(tokens))  # module level unless a body statement follows
+            inside_block = stmt_indented if depth else tok.line[:1].isspace()
+            tokens.append(CommentToken(tok.start[0], tok.start[1], tok.string, inside_block))
+            continue
+        if not depth and tok.type not in _NON_STATEMENT_TOKENS:
+            stmt_indented = tok.line[:1].isspace()
+            for i in pending:
+                tokens[i] = dataclasses.replace(tokens[i], inside_block=stmt_indented)
+            pending.clear()
+        if tok.type == tokenize.OP and tok.string in "()[]{}":
+            depth += 1 if tok.string in "([{" else -1
+    return tuple(tokens)
 
 
 def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
-    """The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
-    dimensions a typo can drop, so the two are reported separately rather than the sigil being a
-    precondition for seeing the word at all."""
+    # The comment's opening word plus whether it carried the "@" sigil - "@" itself is one of the
+    # dimensions a typo can drop, so the two are reported separately rather than the sigil being a
+    # precondition for seeing the word at all.
     stripped = comment_text.lstrip("#").strip()
     at_sign = stripped.startswith("@")
     if at_sign:
@@ -222,22 +252,47 @@ def find_leading_word(comment_text: str) -> "tuple[str | None, bool]":
     return (m.group(0) if m else None, at_sign)
 
 
-def looks_like_tag_payload(comment_text: str, spec: "TagSpec | None"=None) -> bool:
-    """Whether a comment carries the rough payload shape of a real tag - the gate that keeps
-    ordinary prose merely *mentioning* a tag name from being treated as a broken tag. Defaults to
-    @requires' own shape when no family is named."""
-    if spec is None:
-        return _looks_like_requires_payload(comment_text)
-    return spec.looks_like_payload(comment_text)
-
-
 def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: str, instance_label: str, exact_matches: "set[tuple[int, int]]", specs: "tuple[TagSpec, ...] | None"=None) -> None:
-    """Raises BuildError for a comment that looks like a typo'd/malformed attempt at a
-    KNOWN_TAG_NAMES tag not already in `exact_matches`. `specs` narrows which families are policed -
-    each grammar module passes its own, so a valid tag of another family isn't misreported."""
+    # Raises BuildError for a comment that looks like a typo'd/malformed attempt at a
+    # KNOWN_TAG_NAMES tag not already in `exact_matches`. `specs` narrows which families are policed -
+    # each grammar module passes its own, so a valid tag of another family isn't misreported.
+    #
     # The failure mode this guards against is real: a driver signature change once silently broke
     # two tests_hardware/device_scripts/ call sites for a full day because nothing validated the
     # comment that should have caught it - see SPECIFICATION.md Part L.5 for the incident.
+    miss = _first_near_miss(tuple(tokens), frozenset(exact_matches), KNOWN_TAGS if specs is None else specs)
+    if miss is None:
+        return
+    lineno, known, kind, text = miss
+    if kind == "malformed":
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: malformed @{known} tag (doesn't match the required grammar): {text!r}",
+            rule="tag.malformed",
+            fix=f"write it in the @{known} grammar of SPECIFICATION.md Part L.6.4, or reword the comment so it reads as prose",
+            instance=instance_label,
+        )
+    if kind == "missing-sigil":
+        raise BuildError(
+            device,
+            f"{path}:{lineno}: comment looks like an @{known} tag with its leading '@' missing: {text!r}",
+            rule="tag.missing-sigil",
+            fix=f"add the '@' to make it an @{known} tag, or reword the comment so it reads as prose",
+            instance=instance_label,
+        )
+    raise BuildError(
+        device,
+        f"{path}:{lineno}: comment looks like a misspelled @{known} tag: {text!r}",
+        rule="tag.misspelled",
+        fix=f"spell the tag @{known}, or reword the comment so it reads as prose",
+        instance=instance_label,
+    )
+
+
+@functools.lru_cache(maxsize=1024)
+def _first_near_miss(tokens: "tuple[CommentToken, ...]", exact_matches: "frozenset[tuple[int, int]]", specs: "tuple[TagSpec, ...]") -> "tuple[int, str, str, str] | None":
+    # The first near miss as (line, family, kind, stripped text), or None. Cached by the tokens
+    # themselves, so every family and device scanning one unchanged driver pays once.
     for tok in tokens:
         if (tok.lineno, tok.col) in exact_matches:
             continue
@@ -245,7 +300,7 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
         if word is None:
             continue
         lower = word.lower()
-        for spec in (KNOWN_TAGS if specs is None else specs):
+        for spec in specs:
             known = spec.name
             structured = spec.looks_like_payload(tok.text)
             # An exact tag name gets whatever leniency its own family allows; a merely typo'd word
@@ -254,11 +309,10 @@ def check_for_near_miss_tags(tokens: "list[CommentToken]", path: Path, device: s
             if lower == known:
                 if not exact_evidence:
                     break  # prose merely naming this tag - and not a typo of any other one either
-                if at_sign:
-                    raise BuildError(device, f"{path}:{tok.lineno}: malformed @{known} tag (doesn't match the required grammar): {tok.text.strip()!r}", instance=instance_label)
-                raise BuildError(device, f"{path}:{tok.lineno}: comment looks like an @{known} tag with its leading '@' missing: {tok.text.strip()!r}", instance=instance_label)
+                return tok.lineno, known, "malformed" if at_sign else "missing-sigil", tok.text.strip()
             # A typo'd word is only ever a near miss *with* the sigil: "required"/"require" are
             # within edit distance 2 of "requires" but are also ordinary English a prose comment can
             # legitimately open with, so demanding the "@" there is what keeps this false-positive free.
             if at_sign and structured and _levenshtein(lower, known) <= _max_typo_distance(known):
-                raise BuildError(device, f"{path}:{tok.lineno}: comment looks like a misspelled @{known} tag: {tok.text.strip()!r}", instance=instance_label)
+                return tok.lineno, known, "misspelled", tok.text.strip()
+    return None

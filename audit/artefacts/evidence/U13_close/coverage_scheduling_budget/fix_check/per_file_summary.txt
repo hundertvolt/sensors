@@ -1,0 +1,11 @@
+multi_m1 rc=0 1s 15/15 passed, 0 failed, 0 skipped ME=0
+multi_gc rc=0 1s 15/15 passed, 0 failed, 0 skipped ME=0
+uart_m1 rc=0 56s 17/17 passed, 0 failed, 0 skipped ME=0
+uart_gc rc=0 59s 17/17 passed, 0 failed, 0 skipped ME=0
+multi_cov rc=0 2s 15/15 passed, 0 failed, 0 skipped ME=0
+gen_m1 rc=0 84s 36/36 passed, 0 failed, 0 skipped ME=0
+gen_gc rc=0 84s 36/36 passed, 0 failed, 0 skipped ME=0
+gen_cov rc=0 85s 36/36 passed, 0 failed, 0 skipped ME=0
+uart_cov rc=0 74s 17/17 passed, 0 failed, 0 skipped ME=0
+
+[exited with code 0]

@@ -1,0 +1,14 @@
+{"label": "L0_pytest_tests_scripts", "cmd": "uv run pytest tests_scripts -q", "rc": 0, "wall_s": 327.4, "host_peak_ram_mb": 1448.8, "max_child_rss_mb": 69.7, "ssd_writes_mb": 6534.4, "utc": "2026-10-06T06:40:33Z"}
+{"label": "L0_npm_lint", "cmd": "npm run lint", "rc": 0, "wall_s": 3.0, "host_peak_ram_mb": 158.5, "max_child_rss_mb": 173.2, "ssd_writes_mb": 1.5, "utc": "2026-10-06T06:40:36Z"}
+{"label": "L0_npm_typecheck", "cmd": "npm run typecheck", "rc": 0, "wall_s": 1.5, "host_peak_ram_mb": 73.7, "max_child_rss_mb": 173.2, "ssd_writes_mb": 0.0, "utc": "2026-10-06T06:40:38Z"}
+{"label": "L0_npm_lint_html", "cmd": "npm run lint:html", "rc": 0, "wall_s": 0.9, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 173.2, "ssd_writes_mb": 0.0, "utc": "2026-10-06T06:40:38Z"}
+{"label": "L0_npm_lint_css", "cmd": "npm run lint:css", "rc": 0, "wall_s": 1.5, "host_peak_ram_mb": 51.7, "max_child_rss_mb": 173.2, "ssd_writes_mb": 2.0, "utc": "2026-10-06T06:40:40Z"}
+{"label": "L0_npm_test", "cmd": "npm test", "rc": 0, "wall_s": 597.6, "host_peak_ram_mb": 1362.0, "max_child_rss_mb": 531.9, "ssd_writes_mb": 1492.9, "utc": "2026-10-06T06:50:38Z"}
+{"label": "L1_test_sh_gc_default", "cmd": "scripts/test.sh", "rc": 0, "wall_s": 375.2, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 531.9, "ssd_writes_mb": 708.3, "utc": "2026-10-06T06:56:53Z"}
+{"label": "L1_test_sh_gc_32768", "cmd": "GC_THRESHOLD=32768 scripts/test.sh", "rc": 0, "wall_s": 365.5, "host_peak_ram_mb": 140.1, "max_child_rss_mb": 531.9, "ssd_writes_mb": 124.8, "utc": "2026-10-06T07:02:58Z"}
+{"label": "L1_test_sh_coverage", "cmd": "scripts/test.sh --coverage", "rc": 0, "wall_s": 501.9, "host_peak_ram_mb": 938.5, "max_child_rss_mb": 531.9, "ssd_writes_mb": 1786.4, "utc": "2026-10-06T07:11:20Z"}
+{"label": "L34_hw_collect_only", "cmd": "uv run pytest tests_hardware --collect-only -q", "rc": 0, "wall_s": 0.4, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 531.9, "ssd_writes_mb": 0.0, "utc": "2026-10-06T07:11:21Z"}
+{"label": "lint_sh", "cmd": "scripts/lint.sh", "rc": 0, "wall_s": 1.1, "host_peak_ram_mb": 0.0, "max_child_rss_mb": 531.9, "ssd_writes_mb": 0.0, "utc": "2026-10-06T07:11:22Z"}
+{"label": "typecheck_sh", "cmd": "scripts/typecheck.sh", "rc": 0, "wall_s": 12.7, "host_peak_ram_mb": 327.5, "max_child_rss_mb": 531.9, "ssd_writes_mb": 10.6, "utc": "2026-10-06T07:11:34Z"}
+{"label": "firmware_build_verify", "cmd": "RUN_SLOW_FIRMWARE_BUILD=1 uv run pytest tests_scripts/test_build_firmware.py -k test_real_firmware_build_produces_a_valid_uf2", "rc": 1, "wall_s": 517.6, "host_peak_ram_mb": 425.5, "max_child_rss_mb": 531.9, "ssd_writes_mb": 1551.2, "utc": "2026-10-06T07:20:12Z"}
+{"label": "toolchain_test", "cmd": "uv run toolchain/setup_toolchain.py test", "rc": 1, "wall_s": 34.5, "host_peak_ram_mb": 448.1, "max_child_rss_mb": 531.9, "ssd_writes_mb": 56.6, "utc": "2026-10-06T07:20:46Z"}

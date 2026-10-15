@@ -1,6 +1,6 @@
-This license covers the DNS query-parsing/response-building logic in src/captive_dns.py's
-DNSQuery class (and its unpromoted ancestor, python/CommonDrivers/captive_dns.py), which is a
-derivative of:
+This license covers the DNS query-parsing/response-building logic in src/asy_captive_dns.py's
+DNSQuery class (and its unpromoted ancestor,
+legacy/firmware/python/CommonDrivers/captive_dns.py), which is a derivative of:
 
     Micropython-DNSServer-Captive-Portal
     https://github.com/p-doyle/Micropython-DNSServer-Captive-Portal

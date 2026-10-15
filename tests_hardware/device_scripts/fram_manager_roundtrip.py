@@ -1,43 +1,54 @@
-"""Isolated-driver device script: AsyFramManager/FRAM_SPI against the real MB85RS2MTA SPI FRAM chip
-- exercises the real chunk-owner chain (fram.setup()'s RDID probe, get_chunk()'s dual-copy/CRC
-allocator, chunk.write()/read()) with a deterministic non-trivial byte pattern."""
+"""Isolated-driver device script: FRAMManager/FRAM_SPI against the real FRAM part - the chunk-owner chain (setup()'s
+RDID probe, get_chunk()'s dual-copy/CRC allocator, chunk.write()/read()) with a non-trivial pattern, the part's RDID
+reported; the chunk is cleared after setup and again on the way out, so no pattern survives the run."""
 
 import asyncio
+import binascii
 
 import asy_spi_driver
-from asy_fram_manager import AsyFramManager
-from crc_checks import CRC8
+from asy_crc_checks import CRC8
+from asy_fram_manager import FRAMManager
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 CHUNK_SIZE = 32
 PATTERN = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))  # non-trivial, not all-zero/all-0xFF
 
 
 async def _main() -> None:
-    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = AsyFramManager(spi0, 5, max_size=0x40000, debug=None)
-    if not await fram.setup():
-        print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5 (RDID probe failed)")
-        return
-
-    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8())
-    if chunk is None:
-        print("RESULT: FAIL get_chunk() returned None - allocator rejected a fresh chunk request")
-        return
-
-    if not await chunk.write(PATTERN):
-        print("RESULT: FAIL chunk.write() returned False - real SPI write to FRAM failed")
-        return
-
-    read_back = await chunk.read()
-    if read_back is None:
-        print("RESULT: FAIL chunk.read() returned None after a successful write - real SPI read/CRC/dual-copy check failed")
-        return
-
-    if bytes(read_back) != PATTERN:
-        print(f"RESULT: FAIL read-back data does not match written pattern - wrote {PATTERN.hex()}, read {bytes(read_back).hex()}")
-        return
-
-    print(f"RESULT: PASS wrote and read back {CHUNK_SIZE} bytes matching the pattern via the real FRAM chip")
+    arm()
+    chip = next(instance for instance in BENCH["instances"].values() if instance["driver"] == "fram")
+    bus = BENCH["bus"][chip["bus"]]
+    spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
+    fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
+    ready = await fram.setup()
+    fact("setup", ready)
+    fact("rdid", binascii.hexlify(bytes(fram.fram._id_buf)).decode())
+    chunk = fram.get_chunk(CHUNK_SIZE, crc=CRC8(), owner="fram_manager_roundtrip") if ready else None
+    fact("allocated", chunk is not None)
+    if chunk is not None:
+        try:
+            fact("cleared_first", await chunk.clear())
+            fact("written", await chunk.write(PATTERN))
+            read_back = await chunk.read()
+            fact("read_ok", read_back is not None)
+            fact("matches", read_back is not None and bytes(read_back) == PATTERN)
+        finally:
+            fact("cleared_last", await chunk.clear())
+    done()
 
 
 asyncio.run(_main())

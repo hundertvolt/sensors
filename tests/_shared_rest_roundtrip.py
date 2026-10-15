@@ -2,7 +2,7 @@
 (and tests_hardware/'s CPython runner). Flat module, not a `_shared/` subpackage, matching this
 directory's existing convention for shared-but-nonpublic test modules."""
 
-from _strict_json import check_strict_json
+from _strict_json import check_strict_json, strict_loads
 
 try:
     from typing import TYPE_CHECKING
@@ -10,32 +10,37 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
     from types import ModuleType
-    from typing import Any
 
 
 def assert_named_modules_constructed(module: "ModuleType", names: "tuple[str, ...]") -> None:
-    """Shared "build_system() wired up every long-lived object" check. Takes the name tuple as a
-    parameter since the two callers' tuples differ by one entry (`webserver`)."""
+    # Shared "build_system() wired up every long-lived object" check. Takes the name tuple as a
+    # parameter since the two callers' tuples differ by one entry (`webserver`).
     for name in names:
         assert hasattr(module, name), f"{module.__name__}.{name} was not constructed"
         assert getattr(module, name) is not None
 
 
-def assert_sensor_payload_not_self_wrapped(payload: "dict[str, Any]", expected_names: "set[str]") -> None:
-    """Regression guard for GET /measurements and /sensors: checks each sensor's own value isn't
-    re-wrapped (was {"SCD30": {"SCD30": {...}}}, see asy_webserver_service.py) and isn't empty."""
+def assert_sensor_payload_not_self_wrapped(payload: "Mapping[str, object]", expected_names: "set[str]") -> None:
+    # Checks GET /measurements and /sensors return each sensor's fields directly, not wrapped again under the sensor's
+    # own name, and never empty.
     assert set(payload.keys()) == expected_names
     for name, fields in payload.items():
+        assert isinstance(fields, dict), f"{name}'s value is no object: {fields!r}"
         assert name not in fields, f"{name}'s own value is still self-wrapped: {fields!r}"
         assert fields, f"{name} returned no fields at all"
 
 
+def drain_json(body: "bytes | Iterable[str | bytes]") -> object:
+    # drain_json_response_body(), then its decoded value: the one way a test parses a response it drained.
+    return strict_loads(drain_json_response_body(body))
+
+
 def drain_json_response_body(body: "bytes | Iterable[str | bytes]") -> bytes:
-    """Drains a response body - plain bytes, or the synchronous list_iterator some streamed
-    routes use (see SPECIFICATION.md Part F.1) - into one bytes object, checked as strict JSON
-    first: the interpreter's own json.loads() would accept a streamed body's separator slip."""
+    # Drains a response body - plain bytes, or the synchronous list_iterator some streamed
+    # routes use (see SPECIFICATION.md Part F.1) - into one bytes object, checked as strict JSON
+    # first: the interpreter's own json.loads() would accept a streamed body's separator slip.
     drained = body if isinstance(body, bytes) else b"".join(chunk.encode() if isinstance(chunk, str) else chunk for chunk in body)
     check_strict_json(drained)
     return drained

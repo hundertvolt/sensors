@@ -1,0 +1,10 @@
+test_digital_twin_sensortask_integration.arzi.-1 rc=0 wall=111.49 mem=0 :: 11/11 passed, 0 failed, 0 skipped
+test_digital_twin_sensortask_integration.dev.-1 rc=1 wall=22.37 mem=0 :: 3/11 passed, 1 failed, 7 skipped
+FAIL test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0:
+test_digital_twin_sensortask_integration.grkizi.-1 rc=0 wall=20.87 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.klkizi.-1 rc=0 wall=20.94 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.schlafzi.-1 rc=0 wall=20.86 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_sensortask_integration.wozi.-1 rc=0 wall=21.44 mem=0 :: 4/11 passed, 0 failed, 7 skipped
+test_digital_twin_uart_link.-1 rc=0 wall=72.41 mem=0 :: 21/21 passed, 0 failed, 0 skipped
+test_digital_twin_wifi_modes.-1 rc=0 wall=25.97 mem=0 :: 1/1 passed, 0 failed, 0 skipped
+BATCH-DONE

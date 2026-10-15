@@ -1,0 +1,238 @@
+digital_twin/_twin_common.py: note: In member "__getitem__" of class "BoundedLog":
+digital_twin/_twin_common.py:90:9: error: Explicit "Any" is not allowed 
+[explicit-any]
+            def __getitem__(self, index: slice) -> "list[_T]": ...
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/_twin_common.py:92:5: error: Explicit "Any" is not allowed 
+[explicit-any]
+        def __getitem__(self, index: "int | slice") -> "_T | list[_T]":
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/_twin_common.py: note: In member "count" of class "BoundedLog":
+digital_twin/_twin_common.py:126:34: error: Argument 1 to "count" of "list" has
+incompatible type "object"; expected "_T"  [arg-type]
+            return self._items.count(entry)
+                                     ^~~~~
+digital_twin/machine.py:16:1: error: Module "_bmp3xx_chip" has no attribute
+"BMP3XXChip"  [attr-defined]
+    from _bmp3xx_chip import BMP3XXChip
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py:17:1: error: Module "_fram_chip" has no attribute
+"FRAMChip"  [attr-defined]
+    from _fram_chip import FRAMChip
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py:18:1: error: Module "_isl29125_chip" has no attribute
+"ISL29125Chip"; maybe "Isl29125Chip"?  [attr-defined]
+    from _isl29125_chip import ISL29125Chip
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py:19:1: error: Module "_scd30_chip" has no attribute
+"SCD30Chip"; maybe "Scd30Chip"?  [attr-defined]
+    from _scd30_chip import SCD30Chip
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py:20:1: error: Module "_sgp40_chip" has no attribute
+"SGP40Chip"; maybe "Sgp40Chip"?  [attr-defined]
+    from _sgp40_chip import SGP40Chip
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/machine.py:266: error: Unused "type: ignore" comment 
+[unused-ignore]
+                found: I2C | SPI | UART | None = registry.get(int(name[len...
+                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+digital_twin/launch.py: note: In function "parse_args":
+digital_twin/launch.py:186:9: error: Missing positional argument "mem_backup"
+in call to "StatePaths"  [call-arg]
+            StatePaths(fram_state_path, scd30_state_path),
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/launch.py: note: In function "_apply_fault":
+digital_twin/launch.py:199:29: error: Incompatible types in assignment
+(expression has type "OSError", target has type "tuple[Any, ...]")  [assignment]
+            wlan.raise_on[op] = OSError(errno.EIO, message)
+                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_machine.py: note: In function "test_bounded_log_reads_oldest_first_before_and_after_it_wraps":
+tests/test_digital_twin_machine.py:537:15: error: Need type annotation for
+"log"  [var-annotated]
+            log = BoundedLog(4)
+                  ^~~~~~~~~~~~~
+tests/test_digital_twin_machine.py: note: In function "test_bounded_log_clear_starts_over_at_slot_zero":
+tests/test_digital_twin_machine.py:558:11: error: Need type annotation for
+"log"  [var-annotated]
+        log = BoundedLog(4)
+              ^~~~~~~~~~~~~
+tests/test_digital_twin_machine.py: note: In function "test_every_configure_hook_refuses_once_a_bus_exists":
+tests/test_digital_twin_machine.py:975:17: error: Call to untyped function
+(unknown) in typed context  [no-untyped-call]
+                    call()
+                    ^~~~~~
+tests/test_digital_twin_machine.py: note: In function "test_spi_lose_power_after_k_fails_the_next_transaction_with_a_power_loss":
+tests/test_digital_twin_machine.py:1233:13: error: Call to untyped function
+(unknown) in typed context  [no-untyped-call]
+                transfer()
+                ^~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_rejects_an_unknown_profile":
+tests/test_digital_twin_generic_wiring.py:146:9: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+            machine.configure_i2c_wiring("not-a-real-profile")
+            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:154:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_matches_the_documented_layout":
+tests/test_digital_twin_generic_wiring.py:167:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_dev_uses_scd30_irq_pin_11_not_wozis_8":
+tests/test_digital_twin_generic_wiring.py:180:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_configure_i2c_wiring_wozi_uses_scd30_irq_pin_8_not_devs_11":
+tests/test_digital_twin_generic_wiring.py:188:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_generic_wiring.py: note: In function "test_default_wiring_before_any_configure_call_is_wozi":
+tests/test_digital_twin_generic_wiring.py:201:5: error: Module has no attribute
+"configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")  # restore the default explic...
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_launch.py:24:14: error: Missing positional argument
+"mem_backup" in call to "StatePaths"  [call-arg]
+    _IN_MEMORY = StatePaths(None, None)  # neither chip persists: every ma...
+                 ^~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_launch.py: note: In function "test_parse_args_with_no_flags_returns_all_defaults":
+tests/test_digital_twin_launch.py:121:28: error: Missing positional argument
+"mem_backup" in call to "StatePaths"  [call-arg]
+        assert config.state == StatePaths(None, None)
+                               ^~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_launch.py: note: In function "test_parse_args_combines_every_flag_together":
+tests/test_digital_twin_launch.py:215:28: error: Missing positional argument
+"mem_backup" in call to "StatePaths"  [call-arg]
+        assert config.state == StatePaths("tests/_tmp/launch_fram.bin", "t...
+                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~...
+tests/test_digital_twin_isl29125_autorange.py: note: In function "_make_dev_reader":
+tests/test_digital_twin_isl29125_autorange.py:64:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_generic_integration.py: note: In member "__init__" of class "RunConfig":
+digital_twin/run_generic_integration.py:85:54: error: Missing positional
+argument "mem_backup" in call to "StatePaths"  [call-arg]
+    ...    self.state = state if state is not None else StatePaths(None, None...
+                                                        ^~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_generic_integration.py: note: In function "_apply_fault":
+digital_twin/run_generic_integration.py:151:29: error: Incompatible types in
+assignment (expression has type "OSError", target has type "tuple[Any, ...]") 
+[assignment]
+            wlan.raise_on[op] = OSError(errno.EIO, message)
+                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+digital_twin/run_generic_integration.py: note: In function "parse_args":
+digital_twin/run_generic_integration.py:450:15: error: Missing positional
+argument "mem_backup" in call to "StatePaths"  [call-arg]
+            state=StatePaths(fram_state_path, scd30_state_path),
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_parse_args_minimal_valid_config":
+tests/test_digital_twin_run_generic_integration.py:68:28: error: Missing
+positional argument "mem_backup" in call to "StatePaths"  [call-arg]
+        assert config.state == StatePaths(None, None)
+                               ^~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_run_generic_integration.py: note: In function "test_main_boots_arms_a_fault_and_shuts_down_cleanly":
+tests/test_digital_twin_run_generic_integration.py:315:15: error: Missing
+positional argument "mem_backup" in call to "StatePaths"  [call-arg]
+            state=StatePaths(None, None),
+                  ^~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_uart_link.py:34:1: error: Module "machine" has no
+attribute "configure_i2c_wiring"  [attr-defined]
+    from machine import WDT, LinkPoller, UARTLink, configure_i2c_wiring  #...
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:227:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call":
+tests/test_digital_twin_bus_hazard_concurrency.py:241:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:255:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_dev_real_task_graph_survives_a_full_ceiling_api_burst_during_bus_load":
+tests/test_digital_twin_bus_hazard_concurrency.py:269:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_write_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:284:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_recovers_after_an_injected_spi_read_fault":
+tests/test_digital_twin_bus_hazard_concurrency.py:326:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun":
+tests/test_digital_twin_bus_hazard_concurrency.py:372:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect":
+tests/test_digital_twin_bus_hazard_concurrency.py:419:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_gates_the_real_twin_chip":
+tests/test_digital_twin_bus_hazard_concurrency.py:463:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_write_protect_blocks_reads_too_and_the_data_survives_it":
+tests/test_digital_twin_bus_hazard_concurrency.py:493:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives":
+tests/test_digital_twin_bus_hazard_concurrency.py:519:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_storage_pause_does_not_survive_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:551:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_wozi_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot":
+tests/test_digital_twin_bus_hazard_concurrency.py:582:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words":
+tests/test_digital_twin_bus_hazard_concurrency.py:625:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads":
+tests/test_digital_twin_bus_hazard_concurrency.py:662:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "_dev_i2c1":
+tests/test_digital_twin_bus_hazard_concurrency.py:744:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("dev")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared":
+tests/test_digital_twin_bus_hazard_concurrency.py:897:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_digital_twin_bus_hazard_concurrency.py: note: In function "test_two_failing_readers_on_one_bus_run_each_bus_rung_once":
+tests/test_digital_twin_bus_hazard_concurrency.py:913:5: error: Module has no
+attribute "configure_i2c_wiring"  [attr-defined]
+        machine.configure_i2c_wiring("wozi")
+        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Found 49 errors in 11 files (checked 53 source files)

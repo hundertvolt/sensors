@@ -1,0 +1,12 @@
+test_decision_vocabulary: 1 failed, 5 passed in 9.35s
+test_citations: 15 passed in 9.72s
+test_comment_block_cap: 432 passed in 3.52s
+test_tunables_register: 1 failed, 14 passed in 3.33s
+test_legacy_paths: 3 passed in 1.59s
+test_import_placement: 7 passed in 7.51s
+test_code_conventions: 23 passed in 3.65s
+test_fault_or_warning_never_both: 11 passed in 3.15s
+test_mypy_any_baseline: 7 passed in 0.07s
+test_lint_ceilings: 19 passed in 10.70s
+test_error_catalog: 31 passed in 18.85s
+test_counter_steps: 9 passed in 3.47s

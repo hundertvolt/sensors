@@ -1,0 +1,4 @@
+test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [99] last_k 100 max_ok_wait_vms 73 expired_waits 162 303978 ms
+SUMMARY test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16 plant all 1500 1 / 1 passed 303978 ms
+test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [99] last_k 100 max_ok_wait_vms 73 expired_waits 162 243916 ms
+SUMMARY test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16 plant all 1500 1 / 1 passed 243916 ms

@@ -1,0 +1,2 @@
+test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 rep 0 PASS clean_awaits [101] last_k 102 max_ok_wait_vms 79 expired_waits 197 364761 ms
+SUMMARY test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16 plant all 1500 1 / 1 passed 364761 ms

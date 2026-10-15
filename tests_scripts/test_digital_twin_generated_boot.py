@@ -1,33 +1,50 @@
-"""Proves a Session-3-generated `sensortask_<device>.py` module actually boots under the digital twin's real MicroPython Unix-port environment and serves real REST requests - not just that it `ast.parse()`s (buildgen/'s own documented proof depth ceiling) or that buildgen.twin_wiring's plan looks right in isolation (test_buildgen_twin_wiring.py).
-Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for the hand-written sensortask_wozi.py; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
-See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
+"""Proves each generated sensortask_<device>.py boots under the digital twin's real MicroPython
+Unix-port environment and serves real REST requests, beyond ast.parse() and the wiring plan's own tests
+(test_buildgen_twin_wiring.py). See digital_twin/README.md's "Booting a generated device"."""
 
-from __future__ import annotations
-
+import ast
 import http.client
 import json
 import os
+import re
 import socket
 import subprocess
+import sys
+import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
 from _devices import DEVICE_NAMES
 from _devices import device_toml as device_toml_path
+from _script_loader import load_script_module
 
 from buildgen.definitions import generate_definitions
 from buildgen.generate import generate_device
 from buildgen.twin_wiring import compute_twin_wiring
+from buildgen.validate import module_int_const
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from buildgen.generate import GeneratedDevice
+    from buildgen.jsontypes import JsonDict, JsonValue
     from buildgen.model import DeviceModel
 
 _HOST = "127.0.0.1"
 _HTTP_OK = 200
+# @tunable l0.generated_boot_boot_timeout_s = 30.0
 _BOOT_TIMEOUT_S = 30.0
+# @tunable l0.generated_boot_shutdown_timeout_s = 15.0
 _SHUTDOWN_TIMEOUT_S = 15.0
+# @tunable l0.generated_boot_poll_timeout_s = 1.0
+_POLL_TIMEOUT_S = 1.0  # one readiness GET
+# @tunable l0.generated_boot_poll_step_s = 0.25
+_POLL_STEP_S = 0.25
+# @tunable l0.generated_boot_exit_wait_s = 5
+_EXIT_WAIT_S = 5  # a signalled twin's exit, before the next, harder signal
 # Must outlast real boot-to-serving latency plus the smoke loop's sequential round trips. The
 # old `3` passed only on unintentional slack in a slower shutdown sequence; removing that slack
 # exposed the budget as always having been too tight, not a new regression.
@@ -36,15 +53,22 @@ _SHUTDOWN_TIMEOUT_S = 15.0
 # loggers: each does a chunk read/write on its first task run, all sharing one process-wide lock
 # inside the same ~1s task-start stagger window.
 
-# Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across the six real
-# devices, dev slowest. A boot-time-only, self-resolving cost that leaves steady-state serving
-# untouched - and boot latency is not a thing to optimise for its own sake (CLAUDE.md).
-_TWIN_DURATION_S = 15
+# Measured, not estimated: boot-to-first-200 lands between ~4.5s and ~6.3s across every generated
+# device. A boot-time-only, self-resolving cost that leaves steady-state serving untouched - and
+# boot latency is not a thing to optimise for its own sake (CLAUDE.md).
+# @tunable l0.generated_boot_twin_duration_s = 15
+_TWIN_DURATION_S = 15  # the bound: the run ends on its stop file once the smoke loop is done
 # No real static content is needed - this suite never requests "/" (asy_webserver_service.py's own
 # static route only touches frozen_html lazily, per request - see this file's own module docstring
 # reasoning, confirmed directly by reading that route's implementation).
 _STUB_FROZEN_HTML = '"""Test-only stub - digital_twin/machine.py has no static content of its own; this suite never requests \'/\'."""\n'
-_SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/status")
+_STOP_SEEN = "stop file seen, ending the run"  # digital_twin/run_generic_integration.py's _serve_until()
+# @tunable l0.generated_boot_link_poll_gap_s = 3.0
+_LINK_POLL_GAP_S = 3.0  # between the two link-counter reads: a few exercise rounds at the link's own pace
+# @tunable l0.generated_boot_reset_wait_s = 120.0
+_RESET_WAIT_S = 120.0  # a sustained SGP40 fault spending the supervisor's restart budget, then the reset
+_RESET_EXIT = 3  # digital_twin/run_generic_integration.py's _EXIT_SIMULATED_RESET
+_RESET_LINE = re.compile(r"\] machine reset: kind=reset reset_count=1 ")
 
 # Discovered, never listed: a device TOML added to devices/ is covered by every test below with no
 # edit here, which is the whole point of a generated build chain. Same for a new synthetic fixture,
@@ -54,75 +78,81 @@ _SMOKE_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/sta
 # time, before conftest.py reclaims a zz_test_*.toml leaked by a SIGKILLed run - and this is the
 # one suite that would actually BOOT that deliberately malformed fixture.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_LAYOUTS = _REPO_ROOT / "scripts" / "micropypath.toml"
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
+# The sections whose groups each read the GET body under the group's own key (js/render.js groupSourceFrom()).
+_GROUP_KEYED_SECTIONS = frozenset({"measurements", "sensors", "status"})
 
 
-@pytest.fixture
-def src_dir(repo_root: Path) -> Path:
-    return repo_root / "src"
+def _get_routes(source: Path) -> "tuple[str, ...]":
+    # The GET paths of the service's one route table, ROUTES, read by ast: a route it gains is smoked with no edit here.
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == ["ROUTES"]:
+            return tuple(str(path) for method, path, _handler in ast.literal_eval(node.value) if method == "GET")
+    raise AssertionError(f"{source} declares no ROUTES table")
 
 
-@pytest.fixture
-def ext_dir(repo_root: Path) -> Path:
-    return repo_root / "ext"
+_SMOKE_ENDPOINTS = _get_routes(_REPO_ROOT / "src" / "asy_webserver_service.py")
 
 
-@pytest.fixture
-def fixtures_dir(repo_root: Path) -> Path:
-    return repo_root / "tests_scripts" / "buildgen_fixtures"
+def _boot_generated_device(root: "Path | None", generated: "GeneratedDevice", micropython_bin: Path, tmp_path: Path, port: int, *, image: bool = False) -> list[str]:
+    # Boots `generated` from `root` (a compiled image's stage when `image`; None: its source module and the stub site)
+    # under run_generic_integration.py, smokes every GET route and returns the failures (none: a clean boot, clean
+    # answers and a clean shutdown); the runner's own files go to tmp_path.
+    stop_file = tmp_path / "stop"
+    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--duration", str(_TWIN_DURATION_S), "--stop-file", str(stop_file), root=root, image=image)
+    definitions = generate_definitions(generated.model, _REPO_ROOT / "src")
+
+    def smoke(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
+        failures: list[str] = []
+        for path in _SMOKE_ENDPOINTS:
+            status, raw, content_type = _http_get(port, path)
+            try:
+                body = _strict_json(raw) if "json" in content_type else None
+            except ValueError as e:
+                failures.append(f"GET {path} -> {e}: {raw[:200]!r}")
+                continue
+            if status != _HTTP_OK:
+                failures.append(f"GET {path} -> {status}")
+                continue
+            if not isinstance(body, dict):
+                failures.append(f"GET {path} -> non-JSON-object body {body!r}")
+                continue
+            failures.extend(_section_key_failures(definitions, path, body))
+            if path == "/status":
+                # Rides the body this loop already fetched - the parity checks cost no extra boot,
+                # and inherit this test's own generic device/fixture coverage for free.
+                failures.extend(_errcount_parity_failures(definitions, body))
+                failures.extend(_status_field_parity_failures(definitions, body))
+                failures.extend(_maintenance_key_failures(generated.model, body))
+            elif path == "/system":
+                failures.extend(_system_path_failures(definitions, body))
+        stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
+        return failures
+
+    failures, output = _run_twin(cmd, _REPO_ROOT, env, smoke)
+    if _STOP_SEEN not in output:
+        failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
+    return failures
 
 
-def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((_HOST, 0))
-        return int(s.getsockname()[1])
+def _dicts(value: "JsonValue") -> "list[JsonDict]":
+    # A definitions list whose every entry is an object, as the schema requires.
+    assert isinstance(value, list) and all(isinstance(item, dict) for item in value), value
+    return [item for item in value if isinstance(item, dict)]
 
 
-def _http_get(port: int, path: str, timeout: float = 5.0) -> tuple[int, Any]:
-    conn = http.client.HTTPConnection(_HOST, port, timeout=timeout)
-    try:
-        conn.request("GET", path)
-        res = conn.getresponse()
-        raw = res.read()
-        content_type = res.getheader("Content-Type", "")
-        parsed = json.loads(raw) if raw and "json" in content_type else None
-        return res.status, parsed
-    finally:
-        conn.close()
-
-
-def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its own captured output")
-        try:
-            status, _ = _http_get(port, "/system", timeout=1.0)
-            if status == _HTTP_OK:
-                return
-        except OSError:
-            pass
-        time.sleep(0.25)
-    raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
-
-
-def _website_errcount_keys(model: DeviceModel, src_dir: Path) -> set[str]:
-    """The errcount rows js/templates.js will render for this device, from the real generator."""
-    groups = [g for section in generate_definitions(model, src_dir)["sections"] for g in section["groups"] if g.get("kind") == "errcount"]
-    assert len(groups) == 1, f"expected exactly one errcount group for {model.device}, got {len(groups)}"
-    return {row["key"] for row in groups[0]["modules"]}
-
-
-def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: object) -> list[str]:
-    """Compares the error sources GET /status really publishes against the website's own catalog.
-    The API derives itself from the live object graph; buildgen/definitions.py's catalog is
-    hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6."""
+def _errcount_parity_failures(definitions: "JsonDict", status_body: object) -> list[str]:
+    # Compares the error sources GET /status really publishes against the website's own catalog.
+    # The API derives itself from the live object graph; buildgen/definitions.py's catalog is
+    # hand-kept. Both drift directions are silent in the product - SPECIFICATION.md Part H.6.
     if not isinstance(status_body, dict) or not isinstance(status_body.get("errcount"), dict):
         return ["GET /status carried no usable errcount object, so no parity claim would mean anything"]
     published = set(status_body["errcount"])
-    displayed = _website_errcount_keys(model, src_dir)
+    displayed = _website_errcount_keys(definitions)
     # No exemptions: _errcount_group() derives its rows per logger instance (fixed
-    # 2026-09-18), so the two multi-instance fixtures agree exactly like the six real devices.
+    # 2026-09-18), so the two multi-instance fixtures agree exactly like every generated device.
     missing = published - displayed
     extra = displayed - published
     failures = []
@@ -132,25 +162,212 @@ def _errcount_parity_failures(model: DeviceModel, src_dir: Path, status_body: ob
         failures.append(f"website errcount rows with no published source (each renders a permanent 0): {sorted(extra)}")
     return failures
 
+# The allocation-failure markers every gate shares, from the hardware tier's harness
+# (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(_REPO_ROOT / "tests_hardware" / "harness.py", "harness_for_generated_boot").MEMORY_ERROR_MARKERS)
 
-def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
-    """Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
-    real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
-    failures (empty list = clean boot, clean REST responses, clean shutdown)."""
-    generated = generate_device(device_toml, src_dir, ext_dir)
+
+def _free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((_HOST, 0))
+        return int(s.getsockname()[1])
+
+
+def _groups(definitions: "JsonDict", section_key: "str | None" = None) -> "list[tuple[JsonDict, JsonDict]]":
+    # (section, group) for every group of the definitions, or of the one section named.
+    return [(s, g) for s in _dicts(definitions["sections"]) if section_key in (None, s["key"]) for g in _dicts(s.get("groups", []))]
+
+
+def _http_get(port: int, path: str, timeout: float = 5.0) -> "tuple[int, bytes, str]":
+    conn = http.client.HTTPConnection(_HOST, port, timeout=timeout)
+    try:
+        conn.request("GET", path)
+        res = conn.getresponse()
+        return res.status, res.read(), res.getheader("Content-Type", "")
+    finally:
+        conn.close()
+
+
+def _maintenance_key_failures(model: "DeviceModel", status_body: object) -> list[str]:
+    # One maintenance entry per SGP40 instance, keyed by its REST identity (resolved_name, SPECIFICATION.md
+    # Part C.14.1) and read from that instance: a source reading the wrong global answers the error marker.
+    sensors = status_body.get("sensors") if isinstance(status_body, dict) else None
+    if not isinstance(sensors, dict):
+        return ["GET /status carried no sensors object, so no maintenance claim would mean anything"]
+    expected = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    unserved = [name for name in expected if not isinstance(sensors.get(name), dict) or "error" in sensors[name]]
+    return [f"SGP40 maintenance entries GET /status does not serve: {unserved} of {expected} (served: {sorted(sensors)})"] if unserved else []
+
+
+def _no_constant(name: str) -> "JsonValue":
+    raise ValueError(f"not strict JSON: {name} is no JSON value")
+
+
+def _no_duplicate_keys(pairs: "list[tuple[str, JsonValue]]") -> "JsonDict":
+    keys = [key for key, _value in pairs]
+    duplicated = sorted({key for key in keys if keys.count(key) > 1})
+    if duplicated:
+        raise ValueError(f"not strict JSON: duplicate keys {duplicated}")
+    return dict(pairs)
+
+
+def _path(field: "JsonDict") -> "list[str] | None":
+    path = field.get("path")
+    return [str(step) for step in path] if isinstance(path, list) else None
+
+
+def _readonly_fields(definitions: "JsonDict", section_key: str) -> "list[tuple[str, JsonDict]]":
+    return [(str(g["key"]), f) for _s, g in _groups(definitions, section_key) if g.get("kind") != "errcount" for f in _dicts(g.get("fields", [])) if f.get("kind") == "readonly"]
+
+
+def _resolves(body: object, path: list[str]) -> bool:
+    # Whether a readonly field's `path` resolves in a GET body; a null leaf is a published value.
+    for step in path:
+        if not isinstance(body, dict) or step not in body:
+            return False
+        body = body[step]
+    return True
+
+
+def _run_twin(cmd: list[str], cwd: Path, env: dict[str, str], session: "Callable[[subprocess.Popen[str]], list[str]]", shutdown_timeout_s: float = _SHUTDOWN_TIMEOUT_S) -> tuple[list[str], str]:
+    # Runs `session` against the spawned twin, then its exit and output verdicts; returns the
+    # failures and the twin's whole merged output.
+    proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    # Drained while the twin runs: a pipe read only after exit blocks a child past 64 KiB of output.
+    lines: list[str] = []
+    reader = threading.Thread(target=lambda: lines.extend(proc.stdout or ()), daemon=True)
+    reader.start()
+    failures: list[str] = []
+    try:
+        failures.extend(session(proc))
+    except (OSError, RuntimeError, ValueError, http.client.HTTPException) as exc:
+        failures.append(f"twin session aborted: {type(exc).__name__}: {exc}")
+    finally:
+        try:
+            proc.wait(timeout=shutdown_timeout_s)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                proc.wait(timeout=_EXIT_WAIT_S)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=_EXIT_WAIT_S)
+            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
+        reader.join(timeout=shutdown_timeout_s)
+        if reader.is_alive():
+            failures.append("the twin's output never reached end of file after its exit - the output below is incomplete")
+        output = "".join(lines)
+        failures.extend(_twin_output_failures(proc.returncode, output))
+    return failures, output
+
+
+def _section_key_failures(definitions: "JsonDict", route: str, body: "JsonDict") -> list[str]:
+    # Every key the device's own page reads from this GET: each field but the dispatch-only ones, an always-executed
+    # toggle and a field read from /status (SPECIFICATION.md H.5's GET rule), under its group's key where the section is keyed so.
+    sections = [s for s in _dicts(definitions["sections"]) if isinstance(rest := s.get("rest"), dict) and rest.get("get") == route]
+    if not sections:
+        return [f"GET {route}: no section of the device's definitions reads it"]
+    missing: list[str] = []
+    for section in sections:
+        for _s, group in _groups(definitions, str(section["key"])):
+            source = body.get(str(group["key"])) if section["key"] in _GROUP_KEYED_SECTIONS else body
+            read = [f for f in _dicts(group.get("fields", [])) if not (f.get("dispatch") or f.get("alwaysExecuted") or "statusPath" in f)]
+            missing.extend(f"{group['key']}.{f['key']}" for f in read if not _resolves(source, _path(f) or [str(f["key"])]))
+    return [f"GET {route} lacks keys its page reads (each renders blank): {missing}"] if missing else []
+
+
+def _status_field_parity_failures(definitions: "JsonDict", status_body: object) -> list[str]:
+    # Every readonly field the Status page names must be in GET /status - the page's catalog of these
+    # rows is hand-kept, so a key it names but the device never publishes renders blank, silently.
+    if not isinstance(status_body, dict):
+        return ["GET /status carried no object, so no field parity claim would mean anything"]
+    missing = []
+    for group_key, field in _readonly_fields(definitions, "status"):
+        source = status_body.get(group_key)
+        path = _path(field)
+        found = _resolves(source, path) if path is not None else isinstance(source, dict) and field["key"] in source
+        if not found:
+            missing.append(f"{group_key}.{field['key']}")
+    return [f"Status page fields GET /status does not publish (each renders blank): {missing}"] if missing else []
+
+
+def _strict_json(raw: bytes) -> "JsonValue":
+    # RFC 8259 JSON only: a duplicated key or a NaN/Infinity literal is a malformed body, never the last value wins.
+    parsed: JsonValue = json.loads(raw, object_pairs_hook=_no_duplicate_keys, parse_constant=_no_constant)
+    return parsed
+
+
+def _system_path_failures(definitions: "JsonDict", system_body: object) -> list[str]:
+    # Every readonly System field reads GET /system through its `path` (the build information).
+    unresolved = [f"{group_key}.{field['key']}" for group_key, field in _readonly_fields(definitions, "system") if (path := _path(field)) is not None and not _resolves(system_body, path)]
+    return [f"System page paths GET /system does not resolve: {unresolved}"] if unresolved else []
+
+
+def test_a_get_route_the_service_gains_is_smoked(tmp_path: Path) -> None:
+    source = (_REPO_ROOT / "src" / "asy_webserver_service.py").read_text(encoding="utf-8")
+    anchor = '    ("GET", "/measurements", "_get_measurements"),\n'
+    assert source.count(anchor) == 1
+    planted = tmp_path / "asy_webserver_service.py"
+    planted.write_text(source.replace(anchor, anchor + '    ("GET", "/zz_planted", "_get_zz_planted"),\n'), encoding="utf-8")
+    assert "/zz_planted" in _get_routes(planted)
+
+
+@pytest.mark.parametrize("raw", [b'{"a": 1, "a": 2}', b'{"a": {"b": 1, "b": 1}}', b'{"a": NaN}', b"[Infinity]"])
+def test_a_body_that_is_no_strict_json_is_refused(raw: bytes) -> None:
+    with pytest.raises(ValueError, match="strict JSON"):
+        _strict_json(raw)
+
+
+def test_the_section_key_check_names_each_key_a_page_reads_and_the_body_lacks() -> None:
+    # Pure, no boot: a group-keyed section reads under the group's key, a flat one at the top; commands and
+    # always-executed toggles have no GET value, and a statusPath field is read from /status instead.
+    fields: list[JsonValue] = [{"key": "A"}, {"key": "Cmd", "dispatch": True}, {"key": "Run", "alwaysExecuted": True}, {"key": "P", "statusPath": ["x"]}, {"key": "R", "path": ["RGB", "R"]}]
+    definitions: JsonDict = {"sections": [{"key": "sensors", "rest": {"get": "/sensors"}, "groups": [{"key": "CHIP", "fields": fields}]}, {"key": "system", "rest": {"get": "/system"}, "groups": [{"key": "g", "fields": [{"key": "B"}]}]}]}
+    assert _section_key_failures(definitions, "/sensors", {"CHIP": {"A": 1, "RGB": {"R": None}}}) == []
+    assert _section_key_failures(definitions, "/system", {"B": 0}) == []
+    assert "CHIP.R" in _section_key_failures(definitions, "/sensors", {"CHIP": {"A": 1}})[0]
+    assert "g.B" in _section_key_failures(definitions, "/system", {"g": {"B": 0}})[0]
+    assert _section_key_failures(definitions, "/zz", {}) == ["GET /zz: no section of the device's definitions reads it"]
+
+
+def test_the_group_keyed_sections_mirror_the_website() -> None:
+    # js/render.js groupSourceFrom() decides which sections read a group's body under its key; this file must agree.
+    source = (_REPO_ROOT / "js" / "render.js").read_text(encoding="utf-8")
+    body = source[source.index("function groupSourceFrom(") :].split("\n}", 1)[0]
+    assert set(re.findall(r'section\.key === "(\w+)"', body)) == _GROUP_KEYED_SECTIONS
+
+
+def test_the_status_field_parity_check_reads_a_maintenance_field_by_its_path() -> None:
+    # Pure, no boot: a maintenance field resolves only where GET /status nests it, under its instance's name.
+    field: JsonDict = {"key": "SGP40_BackupTS", "label": "L", "kind": "readonly", "path": ["SGP40", "BackupTS"]}
+    definitions: JsonDict = {"sections": [{"key": "status", "groups": [{"key": "sensors", "fields": [field]}]}]}
+    assert _status_field_parity_failures(definitions, {"sensors": {"SGP40": {"BackupTS": None}}}) == []
+    for body in ({"sensors": {"SGP40_BackupTS": None}}, {"sensors": {"SGP40_b": {"BackupTS": 1}}}, {"sensors": {"SGP40": {"error": "unavailable"}}}):
+        assert _status_field_parity_failures(definitions, body), body
+
+
+def _twin_micropypath(root: Path, *, image: bool = False) -> str:
+    # scripts/micropypath.toml's twin layout, root in place of build/generated_src: root carries its own module and stub
+    # frozen_html.py, so frozen_modules goes, and a compiled image's stage holds every module it freezes, so src and ext.
+    micropypath = tomllib.loads(_LAYOUTS.read_text(encoding="utf-8"))["twin"]
+    dropped = {"frozen_modules", "src", "ext"} if image else {"frozen_modules"}
+    # Each segment of the read layout kept or swapped, for the reason above.
+    return ":".join(str(root) if segment == "build/generated_src" else segment for segment in micropypath.split(":") if segment not in dropped)
+
+
+def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: Path, port: int, *args: str, mem_backup: str = "", root: "Path | None" = None, image: bool = False) -> "tuple[list[str], dict[str, str]]":
+    # The runner's argv and env, the wiring plan written to tmp_path; with no root the module and stub site go there too.
+    # FRAM and SCD30 state stay in memory and the config directory is tmp_path's own, so a boot writes nothing outside.
     module_name = f"sensortask_{generated.model.device}"
-    (tmp_path / f"{module_name}.py").write_text(generated.module_source)
-    (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML)
-
-    wiring_plan = compute_twin_wiring(generated.model)
+    if root is None:
+        root = tmp_path
+        (tmp_path / f"{module_name}.py").write_text(generated.module_source, encoding="utf-8")
+        (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML, encoding="utf-8")
     wiring_plan_path = tmp_path / "wiring_plan.json"
-    wiring_plan_path.write_text(json.dumps(wiring_plan))
-
+    wiring_plan_path.write_text(json.dumps(compute_twin_wiring(generated.model)), encoding="utf-8")
+    (tmp_path / "config").mkdir(exist_ok=True)
     env = dict(os.environ)
-    # tmp_path first: makes `import sensortask_<device>` (inside run_generic_integration.py) resolve
-    # to THIS generated module rather than any same-named hand-written one under src/ (wozi/dev) -
-    # every other import the generated module needs still falls through to `src/`/`ext/`, unaffected.
-    env["MICROPYPATH"] = f"{tmp_path}:src:digital_twin:ext:.frozen"
+    env["MICROPYPATH"] = _twin_micropypath(root, image=image)
     env["TZ"] = "UTC"
     cmd = [
         str(micropython_bin),
@@ -160,60 +377,212 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         "--device", generated.model.device,
         "--host", _HOST,
         "--port", str(port),
-        "--duration", str(_TWIN_DURATION_S),
+        "--fram-state-path", "", "--scd30-state-path", "", "--mem-backup-state-path", mem_backup,
+        "--config-dir", f"{tmp_path / 'config'}/",
+        *args,
     ]
-    proc = subprocess.Popen(cmd, cwd=repo_root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    failures: list[str] = []
-    try:
-        _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
-        for path in _SMOKE_ENDPOINTS:
-            status, body = _http_get(port, path)
-            if status != _HTTP_OK:
-                failures.append(f"GET {path} -> {status}")
-            elif not isinstance(body, dict):
-                failures.append(f"GET {path} -> non-JSON-object body {body!r}")
-            elif path == "/status":
-                # Rides the body this loop already fetched - the parity check costs no extra boot,
-                # and inherits this test's own generic device/fixture coverage for free.
-                failures.extend(_errcount_parity_failures(generated.model, src_dir, body))
-    finally:
-        try:
-            proc.wait(timeout=_SHUTDOWN_TIMEOUT_S)
-        except subprocess.TimeoutExpired:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-            failures.append("subprocess did not exit cleanly within the duration + shutdown window - had to be terminated")
-        output = proc.stdout.read() if proc.stdout else ""
-        if proc.returncode not in (0, None):
-            failures.append(f"subprocess exited with code {proc.returncode}:\n{output}")
+    return cmd, env
+
+
+def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
+    # The finished twin's own verdict: its exit status, and every output line holding an
+    # allocation-failure marker (SPECIFICATION.md Part I.4(e)), quoted - a clean exit included.
+    failures = [f"subprocess exited with code {returncode}:\n{output}"] if returncode not in (0, None) else []
+    marked = [line for line in output.splitlines() if any(marker in line for marker in _MEMORY_ERROR_MARKERS)]
+    if marked:
+        failures.append("allocation-failure marker in the twin's output:\n" + "\n".join(marked))
     return failures
+
+
+def _uart_link_device() -> str:
+    # The device wiring a uart_link pair, found by data rather than named.
+    found = [d for d in DEVICE_NAMES if 'driver = "uart_link"' in device_toml_path(d).read_text(encoding="utf-8")]
+    assert found, "no device wires a uart_link pair - the CRC16 boot has nothing to derive from"
+    return found[0]
+
+
+def _uartlink_counts(port: int) -> "tuple[object, object]":
+    status, raw, _content_type = _http_get(port, "/status")
+    body = _strict_json(raw)
+    assert status == _HTTP_OK and isinstance(body, dict), (status, raw[:200])
+    sensors = body.get("sensors")
+    link = sensors.get("UARTLINK") if isinstance(sensors, dict) else None
+    assert isinstance(link, dict), f"GET /status carries no sensors.UARTLINK block ({sensors!r})"
+    return link.get("Transfers"), link.get("Failures")
+
+
+def _wait_until_serving(proc: subprocess.Popen[str], port: int, timeout_s: float) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(f"digital twin subprocess exited early with code {proc.returncode} before ever serving - see its output in the failures below")
+        try:
+            status, _raw, _content_type = _http_get(port, "/system", timeout=_POLL_TIMEOUT_S)
+            if status == _HTTP_OK:
+                return
+        except OSError:
+            pass
+        time.sleep(_POLL_STEP_S)
+    raise TimeoutError(f"generated device never started serving on {_HOST}:{port} within {timeout_s}s")
+
+
+def _website_errcount_keys(definitions: "JsonDict") -> set[str]:
+    # The errcount rows js/templates.js will render for this device: the union over every errcount
+    # group, wherever the definitions place one (the captive DNS history sits on Networking).
+    groups = [g for _s, g in _groups(definitions) if g.get("kind") == "errcount"]
+    assert groups, f"no errcount group in {definitions['device']}'s definitions"
+    return {str(row["key"]) for g in groups for row in _dicts(g.get("modules", []))}
+
+
+@pytest.fixture
+def ext_dir(repo_root: Path) -> Path:
+    return repo_root / "ext"
+
+
+def test_an_allocation_failure_in_a_clean_exiting_twin_is_a_failure() -> None:
+    # The degrade-and-pass case: src/ logs str(e), so a caught allocation failure reads "memory
+    # allocation failed" in a twin that still serves every request and exits 0.
+    output = "serving\n[E] WEBSERVER: memory allocation failed, allocating 2048 bytes\nshutdown complete\n"
+    failures = _twin_output_failures(0, output)
+    assert len(failures) == 1, failures
+    assert "memory allocation failed, allocating 2048 bytes" in failures[0]
+    assert _twin_output_failures(0, "serving\nshutdown complete\n") == []
+    assert _twin_output_failures(1, "Traceback\n")[0].startswith("subprocess exited with code 1")
+
+
+def test_every_sgp40_instance_needs_its_own_served_maintenance_entry(src_dir: Path, ext_dir: Path, fixtures_dir: Path) -> None:
+    # The multi-instance fixture's two SGP40s each need an entry under their own name; a missing one or the
+    # error marker in place of one is reported, an extra non-SGP40 entry (dev's UARTLINK shape) is not.
+    model = generate_device(fixtures_dir / "multi_instance.toml", src_dir, ext_dir).model
+    names = sorted(str(spec.resolved_name) for spec in model.instances.values() if spec.driver == "sgp40")
+    assert len(names) == 2, names
+    served = {name: {"BackupTS": None, "RestoreTS": None} for name in names}
+    assert _maintenance_key_failures(model, {"sensors": {**served, "UARTLINK": {}}}) == []
+    assert names[1] in _maintenance_key_failures(model, {"sensors": {names[0]: served[names[0]]}})[0]
+    assert names[0] in _maintenance_key_failures(model, {"sensors": {**served, names[0]: {"error": "unavailable"}}})[0]
+    assert _maintenance_key_failures(model, {})[0].startswith("GET /status carried no sensors object")
+
+
+def test_a_twin_printing_more_than_a_pipe_buffer_is_drained_while_it_runs(tmp_path: Path) -> None:
+    # 128 KiB of boot chatter fills a 64 KiB pipe: read only after exit, the child blocks on its
+    # write and is then reported as hung, its real output never scanned.
+    child = "import sys\nfor i in range(2048):\n    sys.stdout.write(f'{i:05d} ' + 'x' * 57 + '\\n')\nprint('last line of a long boot')\n"
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), lambda _proc: [], shutdown_timeout_s=10)
+    assert failures == []
+    assert len(output) > 128 * 1024
+    assert output.endswith("last line of a long boot\n")
+
+
+def test_a_twin_that_dies_before_serving_keeps_its_output(tmp_path: Path) -> None:
+    # The boot crash is the evidence: an aborted session must still report the child's own output.
+    child = "print('boot banner'); print('Traceback: planted boot crash'); raise SystemExit(3)"
+
+    def session(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, _free_port(), 10)
+        return []
+
+    failures, output = _run_twin([sys.executable, "-c", child], tmp_path, dict(os.environ), session)
+    assert "planted boot crash" in output
+    assert any(f.startswith("twin session aborted: RuntimeError: digital twin subprocess exited early with code 3") for f in failures), failures
+    assert any(f.startswith("subprocess exited with code 3:") and "planted boot crash" in f for f in failures), failures
 
 
 @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
 def test_synthetic_fixture_boots_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
-    # The two mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
-    # the generic wiring mechanism handles a hardware combination none of the 6 real devices use,
-    # not just wozi/dev's own two already-hand-verified layouts.
-    device_toml = fixtures_dir / device_toml_name
-    port = _free_port()
-    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
-    assert failures == []
+    # The mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
+    # the generic wiring mechanism handles a hardware combination no real device uses, beyond the
+    # real devices' own layouts.
+    generated = generate_device(fixtures_dir / device_toml_name, src_dir, ext_dir)
+    assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
     # (SPECIFICATION.md Part L.4: "ideally every" entry point).
-    toml_path = device_toml_path(device)
+    generated = generate_device(device_toml_path(device), src_dir, ext_dir)
+    assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
+
+
+@pytest.fixture
+def fixtures_dir(repo_root: Path) -> Path:
+    return repo_root / "tests_scripts" / "buildgen_fixtures"
+
+
+@pytest.fixture
+def src_dir(repo_root: Path) -> Path:
+    return repo_root / "src"
+
+
+def test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_ends(
+    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path,
+) -> None:
+    # Its TOML with crc = "crc16" on both ends, generated and booted like the shipped devices: the link's transfers rise
+    # across two reads a few seconds apart and none fails, so both ends speak the same CRC framing.
+    device = _uart_link_device()
+    text = device_toml_path(device).read_text(encoding="utf-8")
+    derived = tmp_path / f"{device}.toml"
+    derived.write_text(text.replace('driver = "uart_link"\n', 'driver = "uart_link"\ncrc = "crc16"\n'), encoding="utf-8")
+    assert derived.read_text(encoding="utf-8").count('crc = "crc16"') == text.count('driver = "uart_link"') == 2
+    generated = generate_device(derived, src_dir, ext_dir)
+    assert generated.module_source.count("crc=CRC16()") == 2, "the derived module does not build both link buses with CRC16"
     port = _free_port()
-    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
-    assert failures == []
+    stop_file = tmp_path / "stop"
+    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--duration", str(_TWIN_DURATION_S), "--stop-file", str(stop_file))
+
+    def link_session(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
+        first = _uartlink_counts(port)
+        time.sleep(_LINK_POLL_GAP_S)  # the property is a count rising over time; a probe cannot shorten it
+        second = _uartlink_counts(port)
+        stop_file.touch()
+        transfers = (first[0], second[0])
+        ok = all(isinstance(t, int) for t in transfers) and int(str(second[0])) > int(str(first[0])) and first[1] == second[1] == 0
+        return [] if ok else [f"the CRC16 link did not exercise cleanly: Transfers {transfers!r}, Failures {(first[1], second[1])!r}"]
+
+    failures, output = _run_twin(cmd, repo_root, env, link_session)
+    assert failures == [], output[-2000:]
+
+
+def test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalation(
+    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path,
+) -> None:
+    # A sustained SGP40 write fault spends the restart budget: the run exits as a simulated reset, prints its reset
+    # line, flushes the watchdog scratch registers with the watchdog cause, and the next launch reads the escalation.
+    device = next(d for d in DEVICE_NAMES if 'driver = "sgp40"' in device_toml_path(d).read_text(encoding="utf-8"))
+    generated = generate_device(device_toml_path(device), src_dir, ext_dir)
+    mem_backup = tmp_path / "mem_backup_state.json"
+    port = _free_port()
+    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--fault", "sgp40:writeto:500", mem_backup=str(mem_backup))
+
+    def until_reset(proc: subprocess.Popen[str]) -> list[str]:
+        proc.wait(timeout=_RESET_WAIT_S)
+        return []
+
+    failures, output = _run_twin(cmd, repo_root, env, until_reset)
+    assert failures == [f"subprocess exited with code {_RESET_EXIT}:\n{output}"], failures
+    assert _RESET_LINE.search(output), output[-2000:]
+    state = json.loads(mem_backup.read_text(encoding="utf-8"))
+    wdt_reset = re.search(r"^WDT_RESET = (\d+)$", (repo_root / "digital_twin" / "machine.py").read_text(encoding="utf-8"), re.MULTILINE)
+    assert wdt_reset is not None and state["cause"] == int(wdt_reset.group(1)), state
+
+    stop_file = tmp_path / "stop"
+    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--duration", str(_TWIN_DURATION_S), "--stop-file", str(stop_file), mem_backup=str(mem_backup))
+    expected = module_int_const(src_dir, "asy_system_service.py", "_RR_TASK_BUDGET")
+
+    def read_reason(proc: subprocess.Popen[str]) -> list[str]:
+        _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
+        _status, raw, _content_type = _http_get(port, "/status")
+        body = _strict_json(raw)
+        stop_file.touch()
+        system = body.get("system") if isinstance(body, dict) else None
+        reason = system.get("ResetReason") if isinstance(system, dict) else None
+        return [] if reason == expected else [f"the relaunch reads ResetReason {reason!r}, not the escalation's {expected}"]
+
+    failures, output = _run_twin(cmd, repo_root, env, read_reason)
+    assert failures == [], output[-2000:]

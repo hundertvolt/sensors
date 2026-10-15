@@ -1,0 +1,12 @@
+probe_memp_mem_malloc_plus1 = 1
+probe_memp_overflow_check_plus1 = 1
+probe_memp_size_plus1 = 1
+probe_mem_alignment = 4
+probe_sizeof_ptr = 4
+probe_num_listen = 8
+probe_memp_align_size_listen = 72
+probe_sizeof_tcp_pcb_listen = 72
+probe_offsetof_recv = 172
+probe_offsetof_errf = 184
+probe_sizeof_tcp_pcb = 196
+flags from /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u21tc-s/micropython/ports/rp2/build-listenprobe/CMakeFiles/firmware.dir/flags.make

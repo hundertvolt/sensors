@@ -2,173 +2,188 @@
 reachable network, unavailable on flash tier) - generates load over WiFi while passively
 tail_log()-watching for a MemoryError or an unexpected mid-soak reboot."""
 
-from __future__ import annotations
-
 import threading
 from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import pytest
-from error_log_helpers import get_errcount, reset_all_error_logs
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections
-from soak_tiers import SOAK_TIER_SECONDS
+from error_log_helpers import assert_no_task_ended, errcount_entry, get_errcount, reset_all_error_logs, save_errcount
+from harness import MEMORY_ERROR_MARKERS, bench_device, boot_lines, configured_max_connections, crash_lines, fram_backed_logger_names, get_routes, wait_until
+from soak_durations import SOAK_DURATION_SECONDS
 
 if TYPE_CHECKING:
     from harness import Board
 
-# The FRAM-backed modules (Part A.7); WIFI/NTP/every CFGMGR_* logger are RAM-only. Read these
-# before clearing state on any unexpected error. ISL29125 is dev-only, and every lookup below is
-# .get()-guarded, so listing it costs nothing on a variant that does not carry it.
-_FRAM_BACKED_MODULES = ("SYSTEM", "SGP40", "BMP3XX", "SCD30", "ISL29125", "NEOPIXEL", "NOTIFY")
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm", "ci_suite._run_11_soak")
 
-# 4 GET threads at true max speed (unlike the modest, soak-gated test below) plus 1 thread
-# PUTting SGP40.SGPResetVOC every 3s - reproduces the request density that originally found real
-# MemoryErrors within 45s. Not soak-tier gated - 120s needs no --soak-tier flag to run.
+# max_connections GET threads at true max speed (unlike the modest soak below) plus 1 thread PUTting SGP40.ResetVOC
+# every 3s - the request density that originally found real MemoryErrors within 45s; 120s needs no soak flag.
+# @tunable l4.memory_stress_bench_hammer_duration_s = 120.0
 _HAMMER_DURATION_S = 120.0
-_HAMMER_PATHS = ("/measurements", "/sensors")
-_HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer must
-# saturate admission, so it scales with max_connections rather than restating what it once was
+_HAMMER_PATHS = tuple(get_routes())  # every registered JSON GET route
+_HAMMER_THREAD_COUNT = configured_max_connections()  # the build's own ceiling: the hammer saturates admission
+# @tunable l4.memory_stress_bench_fetch_timeout_s = 5.0
+_FETCH_TIMEOUT_S = 5.0
+# @tunable l4.memory_stress_bench_join_timeout_s = 10.0
+_JOIN_TIMEOUT_S = 10.0
+# @tunable l4.memory_stress_bench_voc_reset_interval_s = 3.0
+_VOC_RESET_INTERVAL_S = 3.0
+# Readers' answered requests, the writer's never counted: writer starvation is accepted degradation (owner, 2026-09-28).
+# @tunable l4.memory_stress_bench_min_answered = 100
+_MIN_ANSWERED = 100
+# @tunable l4.memory_stress_bench_soak_request_step_s = 0.2
+_SOAK_REQUEST_STEP_S = 0.2
+# Failed soak requests as a share of those sent, so the bound scales with the chosen duration.
+# @tunable l4.soak_request_failure_rate = 0.001
+_SOAK_REQUEST_FAILURE_RATE = 0.001
+# @tunable l4.memory_stress_bench_recovery_timeout_s = 30.0
+_RECOVERY_TIMEOUT_S = 30.0
+# @tunable l4.memory_stress_bench_recovery_poll_s = 1.0
+_RECOVERY_POLL_S = 1.0
 
 
-def _run_max_speed_hammer_load(board: Board, dut_ip: str, duration_s: float) -> tuple[list[str], int, list[str]]:
+class _Hammer:
+    # One hammer run's record: readers' answered requests, the writer's PUTs answered 200, every failure, and the MemFree
+    # each answered /status carried.
+    def __init__(self) -> None:
+        self.answered = 0
+        self.accepted = 0
+        self.errors: list[str] = []
+        self.mem_free: list[int] = []
+        self.lock = threading.Lock()
+
+
+def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    save_errcount(dut_ip, request.node.name)  # what the board logged before this test is evidence (CLAUDE.md)
+    reset_all_error_logs(dut_ip, request.node.name)
+    lines, record = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
+    _assert_no_crash_or_reboot(lines, "max-speed hammer load")
+    # Answered means processed and answered with a 200 under load, which a wedged server cannot fake.
+    assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_RECOVERY_TIMEOUT_S, poll_interval_s=_RECOVERY_POLL_S, description="GET /status serving again after the hammer")
+    assert_no_task_ended(dut_ip, "max-speed hammer load")
+    result_note(f"{record.answered} reads answered, {record.accepted} ResetVOC writes accepted, {len(record.errors)} refused; MemFree floor {min(record.mem_free, default=-1)} B over {len(record.mem_free)} /status answers")
+    reset_all_error_logs(dut_ip, request.node.name)
+
+
+@pytest.mark.soak_duration
+def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    # The hammer above over a named soak duration (mid = 600s matches the one real WDT_RESET observed); captures the
+    # FRAM-backed errcount in the assertion message before any clear (CLAUDE.md).
+    duration = request.config.getoption("--soak-duration")
+    if duration is None:
+        pytest.skip("real extended max-speed hammer load - run via scripts/run_bench_soak_tests.sh --duration mid (600s, matching the original WDT-reset investigation's own duration)")
+    save_errcount(dut_ip, request.node.name)
+    reset_all_error_logs(dut_ip, request.node.name)
+    lines, record = _run_max_speed_hammer_load(board, dut_ip, SOAK_DURATION_SECONDS[duration])
+    counts = get_errcount(dut_ip)
+    logged = {name: entry for name in fram_backed_logger_names(bench_device()) if (entry := errcount_entry(counts, name))["counter"] > 0}
+    try:
+        _assert_no_crash_or_reboot(lines, "the extended max-speed hammer load")
+        assert_no_task_ended(dut_ip, "extended max-speed hammer load")
+        assert not logged, f"a FRAM-backed module logged a real error during the hammer load - real diagnostic evidence, captured before any cleanup: {logged!r}"
+        assert record.answered >= _MIN_ANSWERED, f"too few reads answered during the hammer load ({record.answered} ok, {len(record.errors)} rejected/errored) - server may have wedged"
+        result_note(f"{record.answered} reads answered, {record.accepted} ResetVOC writes accepted over {SOAK_DURATION_SECONDS[duration]:g}s; MemFree floor {min(record.mem_free, default=-1)} B")
+    finally:
+        reset_all_error_logs(dut_ip, request.node.name)  # only after the assertions above reported any FRAM-backed history
+
+
+@pytest.mark.soak_duration
+def test_http_soak_stays_live(board: "Board", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    duration = request.config.getoption("--soak-duration")
+    if duration is None:
+        pytest.skip("real HTTP soak over one named duration - run via scripts/run_bench_soak_tests.sh --duration {short,mid,long}")
+    save_errcount(dut_ip, request.node.name)  # the board's log before this test is evidence, saved before the clear
+    reset_all_error_logs(dut_ip, request.node.name)  # the task-end check below counts from here
     stop = threading.Event()
     request_errors: list[str] = []
-    success_count = 0
-    lock = threading.Lock()
+    sent: list[int] = []
 
-    def _get_hammer(thread_index: int) -> None:
-        nonlocal success_count
+    def soak_reader() -> None:
+        i = 0
+        while not stop.is_set():
+            path = _HAMMER_PATHS[i % len(_HAMMER_PATHS)]
+            i += 1
+            sent.append(1)
+            try:
+                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_FETCH_TIMEOUT_S)
+                if res.status_code != 200:
+                    request_errors.append(f"GET {path} -> {res.status_code}")
+            except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
+                request_errors.append(f"GET {path} -> {exc!r}")
+            stop.wait(_SOAK_REQUEST_STEP_S)  # a modest, sustained request rate - not a flood (the hammer above is the flood)
+
+    reader = threading.Thread(target=soak_reader, name="soak-reader")
+    try:
+        reader.start()
+        lines = board.tail_log(duration_s=SOAK_DURATION_SECONDS[duration])
+    finally:
+        stop.set()
+        alive = _load.join([reader], _JOIN_TIMEOUT_S)
+    assert not alive, "the soak reader never finished"
+    _assert_no_crash_or_reboot(lines, "the HTTP soak")
+    assert_no_task_ended(dut_ip, "the HTTP soak")
+    result_note(f"{len(request_errors)} of {len(sent)} soak requests failed over {SOAK_DURATION_SECONDS[duration]:g}s")
+    assert len(request_errors) <= _SOAK_REQUEST_FAILURE_RATE * len(sent), f"too many failed/non-200 requests during the soak ({len(request_errors)} of {len(sent)}): {request_errors[:10]}"
+
+
+def _assert_no_crash_or_reboot(lines: "list[str]", what: str) -> None:
+    # The soak gate: either allocation marker covers a load that allocated, failed, logged it and carried on (the board
+    # never prints the class name for a caught one); a crash line adds a traceback, a boot line a reboot mid-load.
+    allocation = [line for line in lines if any(marker in line for marker in MEMORY_ERROR_MARKERS)]
+    assert not allocation, f"observed an allocation failure during {what}, caught or not:\n" + "\n".join(allocation)
+    assert not crash_lines(lines), f"observed a crash during {what}:\n" + "\n".join(crash_lines(lines))
+    assert not boot_lines(lines), f"observed an unexpected reboot during {what} (real memory exhaustion -> WDT reset?):\n" + "\n".join(boot_lines(lines))
+
+
+def _run_max_speed_hammer_load(board: "Board", dut_ip: str, duration_s: float) -> "tuple[list[str], _Hammer]":
+    stop = threading.Event()
+    record = _Hammer()
+
+    def get_hammer(thread_index: int) -> None:
         i = thread_index
         while not stop.is_set():
             path = _HAMMER_PATHS[i % len(_HAMMER_PATHS)]
             i += 1
             try:
-                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
-                with lock:
-                    if res.status_code == 200:
-                        success_count += 1
-                    else:
-                        request_errors.append(f"GET {path} -> {res.status_code}")
-            except (OSError, http_client.HTTP_ERROR) as exc:
-                # With the hammer saturating max_connections, ConnectionResetError is the
-                # server's intended reject-when-full behavior, not a fault - not asserted against
-                # below; only genuine 200s count as proof the server stayed alive (SPECIFICATION.md H.7).
-                with lock:
-                    request_errors.append(f"GET {path} -> {exc!r}")
+                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=_FETCH_TIMEOUT_S)
+                free = _load.as_object(res.json().get("system"), "system").get("MemFree") if path == "/status" and res.status_code == 200 else None
+            except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError) as exc:
+                # A reset at max_connections is the server's reject-when-full, not a fault (SPECIFICATION.md H.7).
+                with record.lock:
+                    record.errors.append(f"GET {path} -> {exc!r}")
+                continue
+            with record.lock:
+                if res.status_code == 200:
+                    record.answered += 1
+                    if isinstance(free, int):
+                        record.mem_free.append(free)
+                else:
+                    record.errors.append(f"GET {path} -> {res.status_code}")
 
-    def _reset_voc_periodically() -> None:
-        nonlocal success_count
-        while not stop.wait(3.0):
+    def reset_voc_periodically() -> None:
+        while not stop.wait(_VOC_RESET_INTERVAL_S):
             try:
-                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"SGPResetVOC": True}}, timeout_s=5.0)
-                with lock:
-                    if res.status_code == 200:
-                        success_count += 1
-                    else:
-                        request_errors.append(f"PUT /sensors SGPResetVOC -> {res.status_code}")
+                res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"ResetVOC": True}}, timeout_s=_FETCH_TIMEOUT_S)
             except (OSError, http_client.HTTP_ERROR) as exc:
-                with lock:
-                    request_errors.append(f"PUT /sensors SGPResetVOC -> {exc!r}")
+                with record.lock:
+                    record.errors.append(f"PUT /sensors ResetVOC -> {exc!r}")
+                continue
+            with record.lock:
+                if res.status_code == 200:
+                    record.accepted += 1
+                else:
+                    record.errors.append(f"PUT /sensors ResetVOC -> {res.status_code}")
 
-    threads = [threading.Thread(target=_get_hammer, args=(i,), daemon=True) for i in range(_HAMMER_THREAD_COUNT)]
-    threads.append(threading.Thread(target=_reset_voc_periodically, daemon=True))
-    for t in threads:
-        t.start()
+    threads = [threading.Thread(target=get_hammer, args=(i,), name=f"hammer-{i}") for i in range(_HAMMER_THREAD_COUNT)]
+    threads.append(threading.Thread(target=reset_voc_periodically, name="voc-resets"))
     try:
+        for thread in threads:
+            thread.start()
         lines = board.tail_log(duration_s=duration_s)
     finally:
         stop.set()
-        for t in threads:
-            t.join(timeout=10.0)
-    return lines, success_count, request_errors
-
-
-def _assert_no_crash_or_reboot(lines: list[str]) -> None:
-    # "Traceback" catches a crash; MEMORY_ERROR_MARKERS is what catches load that allocated,
-    # failed, logged it and carried on - a pass at this bar until 2026-09-22, and the case the
-    # rule is actually named for (the board never prints the class name for a caught one).
-    joined = "\n".join(lines)
-    # "config is ready"/"FRAM SPI FRAM Driver Setup complete" are the genuinely one-time-per-
-    # setup() completion lines, confirmed real reboot signals (see tests_hardware/README.md for
-    # why a naive "CFGMGR_" substring check was a false-positive-prone predecessor to this).
-    crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
-    reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
-    assert not crash_markers, "observed a crash/MemoryError during max-speed hammer load:\n" + "\n".join(crash_markers)
-    assert not reboot_markers, "observed an unexpected mid-hammer reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
-
-
-def test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot(board: Board, dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, _HAMMER_DURATION_S)
-    _assert_no_crash_or_reboot(lines)
-    # A success here means the server accepted, processed and answered with valid JSON under load
-    # - which a wedged-but-not-crashed server cannot fake, unlike an absent crash marker.
-    # max_connections rejections do not count against it (_run_max_speed_hammer_load()).
-    assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
-    reset_all_error_logs(dut_ip)
-
-
-@pytest.mark.long_soak
-def test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    """Long-duration form (--soak-tier mid = 600s, matching the one real WDT_RESET this project
-    has observed) of the bounded test above - captures FRAM-backed errcount in the assertion
-    message before any cleanup clears it (CLAUDE.md's standing rule)."""
-    tier = request.config.getoption("--soak-tier")
-    if tier is None:
-        pytest.skip("real extended max-speed hammer load - run via scripts/run_bench_soak_tests.sh --tier mid (600s, matching the original WDT-reset investigation's own duration)")
-    duration_s = SOAK_TIER_SECONDS[tier]
-    reset_all_error_logs(dut_ip)
-    lines, success_count, request_errors = _run_max_speed_hammer_load(board, dut_ip, duration_s)
-    errcount_after = get_errcount(dut_ip)
-    fram_errcount_after = {mod: errcount_after[mod] for mod in _FRAM_BACKED_MODULES if errcount_after.get(mod, {}).get("counter", 0) > 0}
-    try:
-        _assert_no_crash_or_reboot(lines)
-        assert not fram_errcount_after, f"a FRAM-backed module logged a real error during the hammer load - real diagnostic evidence, captured before any cleanup: {fram_errcount_after!r}"
-        assert success_count > 100, f"too few successful requests got through during the hammer load ({success_count} ok, {len(request_errors)} rejected/errored) - server may have wedged"
-    finally:
-        # Deliberately only cleared AFTER the assertions above have already captured/reported
-        # whatever FRAM-backed history existed - never clear before a failure had the chance to
-        # surface it, per this file's own new standing rule.
-        reset_all_error_logs(dut_ip)
-
-
-@pytest.mark.long_soak
-def test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic(board: Board, dut_ip: str, request: pytest.FixtureRequest) -> None:
-    tier = request.config.getoption("--soak-tier")
-    if tier is None:
-        pytest.skip("real HTTP soak, one of three named duration tiers - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long}")
-    duration_s = SOAK_TIER_SECONDS[tier]
-    stop = threading.Event()
-    request_errors: list[str] = []
-
-    def _hammer() -> None:
-        paths = ("/measurements", "/sensors", "/status", "/networking")
-        i = 0
-        while not stop.is_set():
-            path = paths[i % len(paths)]
-            i += 1
-            try:
-                res = http_client.fetch(dut_ip, 80, "GET", path, timeout_s=5.0)
-                if res.status_code != 200:
-                    request_errors.append(f"GET {path} -> {res.status_code}")
-            except (OSError, http_client.HTTP_ERROR) as exc:  # a real transient network hiccup during a long soak is expected sometimes
-                request_errors.append(f"GET {path} -> {exc!r}")
-            stop.wait(0.2)  # a modest, sustained request rate - not a flood (that's item 17's job)
-
-    hammer_thread = threading.Thread(target=_hammer, daemon=True)
-    hammer_thread.start()
-    try:
-        lines = board.tail_log(duration_s=duration_s)
-    finally:
-        stop.set()
-        hammer_thread.join(timeout=10.0)
-
-    joined = "\n".join(lines)
-    crash_markers = [ln for ln in lines if "Traceback" in ln or any(marker in ln for marker in MEMORY_ERROR_MARKERS)]
-    # "config is ready"/"FRAM SPI FRAM Driver Setup complete" are the genuinely one-time-per-setup()
-    # completion lines - "CFGMGR_" alone is NOT a reboot marker, since it's stamped on every
-    # routine per-cycle config read too (see tests_hardware/README.md for the false-positive history).
-    reboot_markers = [ln for ln in lines if "config is ready" in ln or "FRAM SPI FRAM Driver Setup complete" in ln]
-    assert not crash_markers, "observed a crash/MemoryError during the HTTP soak:\n" + "\n".join(crash_markers)
-    assert not reboot_markers, "observed an unexpected mid-soak reboot (real memory exhaustion -> WDT reset?):\n" + "\n".join(reboot_markers) + f"\nfull log:\n{joined}"
-    assert len(request_errors) < 5, f"too many failed/non-200 requests during the soak ({len(request_errors)}): {request_errors[:10]}"
+        alive = _load.join(threads, _JOIN_TIMEOUT_S)
+    assert not alive, f"{alive} still running after the hammer"
+    return lines, record
