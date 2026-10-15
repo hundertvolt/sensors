@@ -30,8 +30,6 @@ DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux 
 HEAP_FRAGMENTATION_MEASUREMENTS.md	**It holds method, not results.** Current-state facts and rules live where they
 HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`
 HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
-README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
-README.md	# deliberate, dedicated invocation, one of three named tiers (see tests_hardware
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
 README.md	Set the log level to `all` (5) via the real API, then reboot to see a full start
 README.md	`DRIVER_SPEC.md`, `src/README.md`, `tests/README.md`, `toolchain/README.md`, `WI
@@ -347,99 +345,33 @@ tests/test_uart_comm_hazard.py	Byte order is part of the wire contract, not an i
 tests/test_uart_comm_hazard.py	The protocol's at-least-once seam: the final ACK is deferred until after the res
 tests/test_uart_comm_hazard.py	Which byte does not matter here and is deliberately not pinned: the claim is tha
 tests/test_uart_comm_hazard.py	what must never happen is two transactions interleaving frames on the wire.
-tests_hardware/README.md	# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash t
-tests_hardware/README.md	# need their own deliberate, dedicated invocation, one of three named tiers (sho
 tests_hardware/README.md	**Deliberately not `fram._allocated_size <= fram.size`** - `FRAMManager.get_chun
-tests_hardware/README.md	**Do not rely on this test skipping cleanly if you deliberately want to skip sta
 tests_hardware/README.md	**Standing policy from this pass on, applied everywhere it's practical**: reset
-tests_hardware/README.md	**What counts as a limited-endurance store**: the SCD30's own on-chip NVM, and t
-tests_hardware/README.md	- **Does `machine.soft_reset()` reset the hardware counter `time.ticks_ms()` rea
 tests_hardware/README.md	- **Real socket-limit degradation** (`test_connections_at_and_above_the_real_soc
-tests_hardware/README.md	- **UART's sharpest invariant (`asy_uart_driver.py`/`asy_uart_comm.py` may never
 tests_hardware/README.md	- **`tests_hardware/manual/`'s files are deliberately named away from the `test_
-tests_hardware/README.md	A **dispatch-only** PUT is deliberately outside the gate, because it is never pe
-tests_hardware/README.md	At `DebugLevel=0` (this project's own production-quiet default — see DEVICE_REFE
 tests_hardware/README.md	Deliberately a stability/sanity check, not a numerical-accuracy claim against a
 tests_hardware/README.md	Deliberately stops at ~3.6s real time (task_errors capped at 200): a task that d
 tests_hardware/README.md	Found (2026-09-11) by running the exchange script with UART1 deliberately moved
 tests_hardware/README.md	One case (`test_abrupt_disconnect_ mid_response_does_not_hang_the_server`) has a
 tests_hardware/README.md	Residue is the accepted outcome;
 tests_hardware/README.md	SCD30's own `set_temperature_offset()` is a real NVM write, so this is deliberat
-tests_hardware/README.md	That is the deliberate cost of the owner's rule, not an oversight — gating them
 tests_hardware/README.md	The practical consequence for a bench session: a responder notices the first byt
-tests_hardware/README.md	They are also the suite's longest pair at roughly ten minutes combined, so optin
 tests_hardware/README.md	`bus_concurrency_isl29125_write_vs_siblings.py` now cycles through a deliberatel
 tests_hardware/README.md	`fram_error_log_reset_race_verify.py` is the one deliberate exception — it exist
 tests_hardware/README.md	`is_reachable()` stays `mpremote`-based deliberately, for the few callers specif
 tests_hardware/README.md	deliberately not duplicated here.
-tests_hardware/bench/test_bus_concurrency_under_api_load.py	Same accepted real-pass pattern as test_network_resilience.py's flapping test -
 tests_hardware/bench/test_heap_under_connection_ceiling.py	Row 5 of the decision table, and the reason §5 needs only two images: this walks
-tests_hardware/bench/test_hotspot_role_reversal.py	content deliberately not asserted, see below
-tests_hardware/bench/test_memory_stress_bench.py	A success here means the server accepted, processed and answered with valid JSON
-tests_hardware/bench/test_memory_stress_bench.py	Deliberately only cleared AFTER the assertions above have already captured/repor
-tests_hardware/bench/test_network_resilience.py	A connect()'d client socket that only accepts datagrams from its true peer must
-tests_hardware/bench/test_network_resilience.py	Always runs, even on a failed assertion above - this test's own last hard_reset(
-tests_hardware/bench/test_network_resilience.py	Before Part I.6 the content cap was 4096 and max_body_length was microdot's own
-tests_hardware/bench/test_network_resilience.py	Length/type-only schema (see this test's own module comment above) - accepted as
-tests_hardware/bench/test_network_resilience.py	This opens several times max_connections' worth of connections, so most are refu
-tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
-tests_hardware/bench/test_network_resilience.py	never leave a deliberately-provoked fault in the live error history
-tests_hardware/bench/test_network_resilience.py	the one deliberately-provoked failed attempt above did legitimately log somethin
 tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	Invariant 1: a calibration run measures a CANDIDATE ratio and must never become
-tests_hardware/bench/test_sensor_config_push_over_real_hardware.py	PauseTime is dispatch-only, so GET /notification has nothing to read back - but
 tests_hardware/bench/test_uart_link_under_api_load.py	a rejected connection under a deliberate overload is an accepted outcome
-tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py	Restore the datasheet/production default (x1, see asy_bmp3xx_driver.py's own _in
-tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py	Deliberately discarded - see _SETTLE_S.
-tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py	this script must never be called more than once per opt-in run.
-tests_hardware/device_scripts/float_boundary_2pow24.py	Deliberately not `coerced == float(above)` - float(above) is recomputed on this
-tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	mpremote-only by design;
-tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from _ORIGINAL_PATTERN
-tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	deliberately distinct from every other pattern above
-tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py	Clear first: this chunk is real, persistent on-chip storage, so setup() above ju
-tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Deliberately NOT cleared first, against tests_hardware/README.md's clear-at-the-
-tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	Proves the restored history is ALL-OR-NOTHING (never partial, never garbage) and
-tests_hardware/device_scripts/fram_error_log_reset_race_verify.py	The chunk must be writable again afterwards - a reset-wedged chunk that stays un
-tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	what the interrupted write attempts, must never land
-tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py	Hard requirement: the raced write must never have reached the chip.
-tests_hardware/device_scripts/fram_same_device_rw_concurrency.py	deliberately distinct from SEED_PATTERN
-tests_hardware/device_scripts/fram_write_protect_roundtrip.py	Reads being gated too is intended, accepted behavior - SPECIFICATION.md Part A.4
 tests_hardware/device_scripts/fram_write_protect_roundtrip.py	deliberately desynced from the chip, see above
-tests_hardware/device_scripts/heap_headroom_after_full_system_build.py	Deliberately measured at MicroPython's own reactive-only default first: a headro
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	Same doubling/halving bounds as heap_headroom_after_full_system_build.py, delibe
-tests_hardware/device_scripts/isl29125_lighting_scenarios.py	Deliberately NOT rig.observe(): a switch caused by getting INTO position is not
 tests_hardware/device_scripts/isl29125_lighting_scenarios.py	False if it never settled on one.
-tests_hardware/device_scripts/isl29125_lighting_scenarios.py	across every scenario - reset_scenario() deliberately leaves it alone
 tests_hardware/device_scripts/isl29125_lighting_scenarios.py	consecutive same-range samples that count as "the entry range has settled"
 tests_hardware/device_scripts/isl29125_lighting_scenarios.py	entry_light is parked and settled BEFORE counting, so a budget measures only its
-tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Parks the pixel at one STEADY level (the overlay path, never a ramp) and samples
-tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Responsiveness, NOT calibration: brighter light must never report dimmer, and th
-tests_hardware/device_scripts/isl29125_mechanism_envelope.py	The applied ratio is config now and only a user PUT changes it, so this asserts
-tests_hardware/device_scripts/isl29125_mechanism_envelope.py	Two settled holds have no such confound.
 tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
-tests_hardware/device_scripts/isl29125_real_irq_edge.py	deliberately long: only a real interrupt can beat it
-tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py	An IR-compensation-only change: a 2-byte burst at 0x02, which deliberately does
-tests_hardware/device_scripts/scd30_plausibility_read.py	Let the sensor's own post-reset response-time settle (see module docstring) befo
-tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py	Deliberately discarded - see _SETTLE_S.
-tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py	noqa: B007 - deliberately read after the loop (below) to report how many Timers
-tests_hardware/device_scripts/uart_crossover_exchange.py	Every wait below is bounded and feeds as it goes: a link that never answers park
-tests_hardware/device_scripts/uart_crossover_recovery.py	Isolated-driver device script: the failure half of the crossover-jumper tier - o
 tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py	Isolated-driver device script: the shipped asy_uart_driver read path must never
-tests_hardware/device_scripts/uart_idle_poll_rate.py	The ratio is what the finding is about, so the bound is deliberately loose on ab
-tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py	The floor is deliberately far below the unloaded rate - this asserts the link ke
-tests_hardware/device_scripts/uart_read_never_blocks_the_loop.py	Isolated-driver device script: the clamped read path must never hold the CPU for
 tests_hardware/device_scripts/watchdog_starvation_reset.py	Isolated-driver device script: deliberately starves the RP2040 hardware watchdog
-tests_hardware/flash/test_bus_concurrency.py	Deliberately does NOT depend on scd30_continuous_measurement_triggered - this sw
-tests_hardware/flash/test_bus_concurrency.py	The SCD30-as-writer half of the same gap, deliberately outside the routine group
-tests_hardware/flash/test_bus_electrical_timing.py	Deliberately its own separate marker/flag, never bundled with the long_soak/--so
-tests_hardware/flash/test_sensor_accuracy.py	The device script's _scenarios() table sums to ~8.5 minutes of real segment time
-tests_hardware/flash/test_toolchain_flash_boot.py	Deliberate re-provisioning only.
-tests_hardware/flash/test_toolchain_flash_boot.py	The real UF2 flash-and-boot smoke test is gated behind `--allow-flash-cycle` and
-tests_hardware/flash/test_uart_crossover.py	The two failure classes that matter on real hardware: the one the design recover
-tests_hardware/harness.py	Deliberately ignore the return code/output - see this method's own docstring.
-tests_hardware/harness.py	Like run_isolated(), but for a script that deliberately triggers a real machine.
 tests_hardware/harness.py	Raised for a genuine real-hardware assertion failure - deliberately a plain Asse
 tests_hardware/harness.py	resolve_board_device()'s ambiguous-hardware raise is the deliberate exception: t
-tests_hardware/manual/runner.py	Deliberately no `if __name__ == "__main__":` block here - running this file dire
 tests_js/_live_matrix_command.js	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 tests_js/definitions-mockdata-coverage.test.js	Mirrors js/render.js's own groupValuesFrom(), duplicated deliberately: that func
 tests_js/live-backend-put-matrix.test.js	Fills+applies `value` expecting real rejection, then confirms the render never m
@@ -490,7 +422,6 @@ tests_scripts/test_request_timeout_ceiling.py	A constant turned into a string/No
 tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
 tests_scripts/test_test_sh.py	That wording is deliberately not the interpreter's, so the widened pattern still
 tests_scripts/test_test_sh.py	`set -e` plus a failing command substitution would kill the run before it printe
-tests_scripts/test_tests_hardware_conftest_constants.py	A candidate longer than the field's own cap could never be a live Hostname, so s
 tests_scripts/test_tests_hardware_persistence_write_gating.py	The AND-gate itself: --allow-scd30-extra-write must never substitute for --allow
 toolchain/micropython_overrides.py	PCBs past the ceiling: a closed connection's FIN_WAIT pcb outlives its slot (tcp
 toolchain/setup_toolchain.py	Deliberately a full clone, not `--depth 1`: a shallow clone only has one ref's h

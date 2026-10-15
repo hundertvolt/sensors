@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _script_loader import load_script_module
 
 _COPIED = (
     "scripts/run_flash_hardware_suite.sh",
@@ -24,14 +25,15 @@ _COPIED = (
     "scripts/_summary_block.py",
 )
 
-# One stub for every external command: logs the call, fails when told to, for `uv run pytest` writes
-# a canned run record (failing ones on request) where asked, and runs the real archive and verdict.
+# One stub for every external command: logs the call (uv's as written, matched without --no-sync), fails
+# when told to, for `uv run pytest` writes a canned run record where asked, runs the real archive and verdict.
 _STUB = """#!{python}
 import json, os, subprocess, sys
 name = os.path.basename(sys.argv[0])
-args = sys.argv[1:]
+raw = sys.argv[1:]
+args = raw[:1] + raw[2:] if name == "uv" and raw[1:2] == ["--no-sync"] else raw
 with open(os.environ["STUB_CALLS"], "a") as calls:
-    calls.write(json.dumps({{"cmd": name, "argv": args, "gc": os.environ.get("GC_THRESHOLD", "")}}) + "\\n")
+    calls.write(json.dumps({{"cmd": name, "argv": args, "raw": raw, "gc": os.environ.get("GC_THRESHOLD", "")}}) + "\\n")
 if name == "uv":
     if args[:2] == ["run", "pytest"]:
         record = next(a.split("=", 1)[1] for a in args if a.startswith("--run-record="))
@@ -114,6 +116,10 @@ def test_the_flash_runner_runs_every_lower_level_first_in_order(tree: Path) -> N
     assert _lower(calls) == ["test.sh", "test.sh:32768", "npm:test", *(f"twin:{d}" for d in _devices(tree))]
     assert _pytest_targets(calls) == [["tests_hardware/flash"]]
     assert "Levels: L0 L1 L2 L3" in _block(result.stdout)
+    # A plain `uv run` builds the whole dev group first, so a third-party outage would read as a
+    # board fault: every uv call inside a hardware run passes --no-sync.
+    uv_calls = _uv_calls_written(tree)
+    assert uv_calls and all(argv[:2] == ["run", "--no-sync"] for argv in uv_calls), uv_calls
 
 
 def test_the_device_loop_is_derived_and_skips_leaked_test_fixtures(tree: Path) -> None:
@@ -164,7 +170,7 @@ def test_each_hardware_step_keeps_its_own_three_runs(tree: Path) -> None:
     for _ in range(2):
         result, _ = _run(tree, "run_bench_hardware_suite.sh")
         assert result.returncode == 0, result.stdout + result.stderr
-    _run(tree, "run_bench_soak_tests.sh", "--tier", "short")
+    _run(tree, "run_bench_soak_tests.sh", "--duration", "short")
     _run(tree, "run_flash_hardware_suite.sh")
     evidence = "pytest.log,run_record.json"
     assert _archives(tree) == {
@@ -204,16 +210,52 @@ def test_the_bench_runner_without_lower_levels_is_not_clean(tree: Path) -> None:
 
 
 def test_the_soak_runner_runs_no_lower_level_and_names_its_duration(tree: Path) -> None:
-    result, calls = _run(tree, "run_bench_soak_tests.sh", "--tier", "short")
+    result, calls = _run(tree, "run_bench_soak_tests.sh", "--duration", "short")
     assert result.returncode == 0, result.stdout + result.stderr
     assert not _lower(calls), "soak sits on top of a clean bench run; it reruns nothing below"
     assert "Levels: soak duration short (not a level)" in _block(result.stdout)
 
 
+def test_the_soak_runner_selects_its_marker_and_passes_its_duration(tree: Path) -> None:
+    _, calls = _run(tree, "run_bench_soak_tests.sh", "--duration", "mid", "-k", "x")
+    argv = next(argv for cmd, argv, _ in calls if cmd == "uv" and argv[:2] == ["run", "pytest"])
+    assert argv[argv.index("-m") + 1] == "soak_duration", argv
+    assert argv[argv.index("--soak-duration") + 1] == "mid", argv
+
+
 def test_the_soak_runner_without_a_duration_is_a_usage_error(tree: Path) -> None:
     result, calls = _run(tree, "run_bench_soak_tests.sh")
-    assert result.returncode == 2
+    assert result.returncode == 2, result.stdout + result.stderr
     assert not calls
+
+
+@pytest.mark.parametrize(("script", "steps"), [("run_flash_hardware_suite.sh", 1), ("run_bench_hardware_suite.sh", 2)])
+def test_every_runner_step_excludes_the_soak_and_rollover_markers(tree: Path, repo_root: Path, script: str, steps: int) -> None:
+    # Each marker the floor names is one tests_hardware/markers.py registers: an unknown name would select nothing away.
+    _, calls = _run(tree, script, "--skip-lower-levels")
+    floors = [argv[argv.index("-m") + 1] for cmd, argv, _ in calls if cmd == "uv" and argv[:2] == ["run", "pytest"]]
+    assert floors == ["not soak_duration and not multi_day_rollover"] * steps, floors
+    registered = load_script_module(repo_root / "tests_hardware" / "markers.py", "markers_for_the_runner_floor").MARKERS
+    named = {word for word in floors[0].split() if word not in {"not", "and", "or"}}
+    assert named <= set(registered), f"the floor names markers no conftest registers: {sorted(named - set(registered))}"
+
+
+def _uv_calls_written(tree: Path) -> "list[list[str]]":
+    calls = tree / "calls.jsonl"
+    return [list(e["raw"]) for e in map(json.loads, calls.read_text().splitlines()) if e["cmd"] == "uv"] if calls.exists() else []
+
+
+@pytest.mark.parametrize("script", ["_require_clean_hardware_run.sh", "run_manual_hardware_tests.sh", "mpremote_connect.sh", "typecheck.sh"])
+def test_every_uv_run_line_in_the_script_carries_no_sync(repo_root: Path, script: str) -> None:
+    # The source form of the rule, so a branch the stubbed runs above never take is covered too.
+    lines = [line.strip() for line in (repo_root / "scripts" / script).read_text().splitlines() if "uv run" in line and not line.lstrip().startswith("#")]
+    assert lines, f"{script} has no uv run line - the scan has stopped seeing them"
+    assert all("uv run --no-sync " in line for line in lines), lines
+
+
+def test_the_mpremote_runner_passes_its_device_and_arguments_on(tree: Path) -> None:
+    _, calls = _run(tree, "mpremote_connect.sh", "exec", "print(1)", MPREMOTE_DEVICE="/dev/stub-board")
+    assert [argv for cmd, argv, _ in calls if cmd == "uv"] == [["run", "mpremote", "connect", "/dev/stub-board", "exec", "print(1)"]]
 
 
 @pytest.mark.parametrize("script", ["run_flash_hardware_suite.sh", "run_bench_hardware_suite.sh", "run_bench_soak_tests.sh", "run_manual_hardware_tests.sh", "mpremote_connect.sh"])

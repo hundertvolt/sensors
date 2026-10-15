@@ -200,8 +200,8 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.pyflakes]
-# Imported for its side effect: frozen_html mounts the website.
-allowed-unused-imports = ["frozen_html"]
+# Imported for their side effect: frozen_html mounts the website; each manual step module registers its steps.
+allowed-unused-imports = ["frozen_html", "manual_bus_electrical", "manual_persistence", "manual_sensor_accuracy", "manual_toolchain", "manual_wifi"]
 
 # Ceilings sit at the measured maximum and only go down, enforced by
 # tests_scripts/test_lint_ceilings.py; a signature mirroring an external API is exempted per file
@@ -212,7 +212,7 @@ max-complexity = 20
 [tool.ruff.lint.pylint]
 max-args = 8
 max-branches = 20
-max-statements = 75
+max-statements = 73
 max-returns = 10
 
 # Per-file exemptions live HERE, centrally and with a reason, rather than as `# noqa` comments
@@ -317,14 +317,9 @@ max-returns = 10
 # `file:`/custom-scheme exposure the rule warns about is unreachable - there is no attacker-supplied
 # scheme to audit.
 "tests_hardware/http_client.py" = ["S310"]
-# S112: injected packet loss makes individual request failures the fault itself; the assertions are
-# about torn reads, and logging each would drown the finding.
-"tests_hardware/bench/test_bus_concurrency_under_api_load.py" = ["S112"]
 # S105: tests that join the DUT's hotspot must know its fallback password, accepted permanently
 # (owner, 2026-09-26; see asy_wifi_service.py above) - copies of an accepted risk, exempted per file.
 "tests_hardware/conftest.py" = ["S105"]
-"tests_hardware/bench/test_hotspot_role_reversal.py" = ["S105"]
-"tests_hardware/bench/test_network_resilience.py" = ["S105"]
 # S105: same "copy of a risk accepted permanently (owner, 2026-09-26), not a new credential"
 # reasoning as the tests_hardware/ entries above, for buildgen's [device].hotspot_password
 # minimum-length boundary test - it asserts against the real WPA2 8-character floor literal.
@@ -332,7 +327,10 @@ max-returns = 10
 # RUF007: device_scripts/ is MicroPython firmware-target code uploaded to the board and run there
 # (see tests_hardware/README.md) - `itertools` does not exist in the rp2 port at all, so
 # `itertools.pairwise()` is unimplementable, exactly like the global RUF005/RUF037/FURB122 entries.
-"tests_hardware/device_scripts/**" = ["RUF007"]
+#
+# TC004: a script names its rendered includes under `if TYPE_CHECKING:` for mypy alone; the render
+# inlines their definitions, so on the board the names exist at run time.
+"tests_hardware/device_scripts/**" = ["RUF007", "TC004"]
 
 [tool.mypy]
 # The micropython-stubs project's documented setup: typings/ replaces mypy's typeshed so
@@ -366,6 +364,7 @@ exclude = [
     "digital_twin/neopixel\\.py$",
     "digital_twin/launch\\.py$",
     "digital_twin/run_generic_integration\\.py$",
+    "digital_twin/run_device_script\\.py$",
     "tests/test_digital_twin_.*\\.py$",
     # The shared construction scenario library (leading underscore, so the glob above misses it), same
     # reason.
@@ -426,3 +425,5 @@ disallow_any_explicit = false
 # pytest runs tests_scripts/ only, the host build chain's CPython suite; tests/ runs under the real
 # MicroPython interpreter via scripts/test.sh (Part E.1).
 testpaths = ["tests_scripts"]
+# A marker no conftest registers is a collection error, not a silent no-op: tests_hardware/markers.py holds the table.
+addopts = ["--strict-markers"]

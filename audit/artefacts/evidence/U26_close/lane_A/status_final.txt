@@ -1,0 +1,24 @@
+ M buildgen/generate.py
+ M digital_twin/_http_client.py
+ M digital_twin/run_device_script.py
+ M tests_hardware/bench_control.py
+ M tests_hardware/error_log_helpers.py
+ M tests_hardware/harness.py
+ M tests_hardware/heap_map.py
+ M tests_hardware/http_client.py
+ M tests_hardware/twin_board.py
+ M tests_hardware/website_identity.py
+ M tests_scripts/test_bench_control_restore.py
+ M tests_scripts/test_bench_harness_helpers.py
+ M tests_scripts/test_buildgen_generate.py
+ M tests_scripts/test_heap_map_parser.py
+ M tests_scripts/test_http_client_ceiling_close.py
+ M tests_scripts/test_memory_error_gate_agreement.py
+ M tests_scripts/test_twin_board.py
+?? scripts/record_twin_instrument_runs.py
+?? tests_hardware/conformance.py
+?? tests_hardware/heap_bounds.py
+?? tests_hardware/kick_then_reset.py
+?? tests_hardware/plausibility_bounds.py
+?? tests_scripts/test_http_client_shape_parity.py
+?? tests_scripts/test_twin_record.py

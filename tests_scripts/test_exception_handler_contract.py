@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
+from _repo_scan import python_files
 from _script_loader import load_script_module
 
 from buildgen.generate import generate_device
@@ -248,8 +249,7 @@ def entry_findings(label: str, tree: ast.Module, entry: str) -> list[str]:
 def _entry_points(root: Path) -> list[tuple[str, ast.Module, str]]:
     found: list[tuple[str, ast.Module, str]] = []
     for directory in _ENTRY_DIRS:
-        # Recursive (digital_twin/unixport/), but never tests/_tmp: per-test scratch that other files churn.
-        for path in sorted(p for p in (root / directory).rglob("*.py") if "_tmp" not in p.relative_to(root).parts):
+        for path in python_files(root, directory):
             label = path.relative_to(root).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"))
             if label == _MICROTEST_FILE:
@@ -453,35 +453,65 @@ _DEVICE_SCRIPTS = "tests_hardware/device_scripts"
 _FIRMWARE_MODULE_PREFIX = "sensortask_"
 
 
-def _is_firmware_main_call(node: ast.AST) -> bool:
+def _device_aliases(tree: ast.Module) -> frozenset[str]:
+    # The names the rendered device import binds (`import _bench_device as device`): harness.py renders it to the
+    # bench device's generated module, so `device.main()` is the firmware's main().
+    return frozenset(a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names if a.name == "_bench_device")
+
+
+def _is_firmware_main_call(node: ast.AST, aliases: frozenset[str] = frozenset()) -> bool:
     return (
         isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "main"
-        and isinstance(node.func.value, ast.Name) and node.func.value.id.startswith(_FIRMWARE_MODULE_PREFIX)
+        and isinstance(node.func.value, ast.Name) and (node.func.value.id.startswith(_FIRMWARE_MODULE_PREFIX) or node.func.value.id in aliases)
     )
 
 
+def _runs_firmware(tree: ast.Module) -> bool:
+    aliases = _device_aliases(tree)  # once per script: a walk per node made the scan quadratic
+    return any(_is_firmware_main_call(n, aliases) for n in ast.walk(tree))
+
+
 def _installed_handler(stmt: ast.stmt) -> str | None:
-    # The handler name of `asyncio.get_event_loop().set_exception_handler(<name>)`, else None.
+    # The handler of `asyncio.get_event_loop().set_exception_handler(<name>)`: a function's name, or "<log>.report_unretrieved"
+    # for the product's own report on a module-level log; else None.
     if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _is_attr_call(stmt.value, "set_exception_handler")):
         return None
     call = stmt.value
     target = call.func.value if isinstance(call.func, ast.Attribute) else None
-    if not (_is_attr_call(target, "get_event_loop") if target is not None else False) or len(call.args) != 1 or not isinstance(call.args[0], ast.Name):
+    if not (_is_attr_call(target, "get_event_loop") if target is not None else False) or len(call.args) != 1:
         return None
-    return call.args[0].id
+    arg = call.args[0]
+    if isinstance(arg, ast.Attribute) and arg.attr == "report_unretrieved" and isinstance(arg.value, ast.Name):
+        return f"{arg.value.id}.report_unretrieved"
+    return arg.id if isinstance(arg, ast.Name) else None
+
+
+def _fixed_error_level_log(tree: ast.Module, name: str) -> bool:
+    # `<name> = PrintLog(level=<int >= 1>, ...)` at module level: asy_print_log.py's report_unretrieved() prints at
+    # level >= _LOG_ERR (1), so a log fixed at that level reports at every DebugLevel the board's config holds.
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and [getattr(t, "id", None) for t in node.targets] == [name] and isinstance(node.value, ast.Call):
+            level = next((kw.value for kw in node.value.keywords if kw.arg == "level"), None)
+            return getattr(node.value.func, "id", "") == "PrintLog" and isinstance(level, ast.Constant) and isinstance(level.value, int) and level.value >= 1
+    return False
 
 
 def device_script_findings(label: str, tree: ast.Module) -> list[str]:
     findings: list[str] = []
     functions = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    aliases = _device_aliases(tree)
     for func in functions.values():
-        calls = [n for n in ast.walk(func) if _is_firmware_main_call(n)]
+        calls = [n for n in ast.walk(func) if _is_firmware_main_call(n, aliases)]
         if not calls:
             continue
         body = [s for s in func.body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
         handler = _installed_handler(body[0]) if body else None
         if handler is None:
             findings.append(f"{label}:{func.lineno} {func.name}() runs the firmware's main() without first installing an always-printing report")
+            continue
+        if handler.endswith(".report_unretrieved"):
+            if not _fixed_error_level_log(tree, handler.split(".", 1)[0]):
+                findings.append(f"{label}:{func.lineno} installs {handler}, whose log is no module-level PrintLog at a fixed level >= 1")
             continue
         report = functions.get(handler)
         if not isinstance(report, ast.FunctionDef):
@@ -496,7 +526,7 @@ def device_script_findings(label: str, tree: ast.Module) -> list[str]:
 def test_every_device_script_running_the_firmware_installs_an_always_printing_report_first() -> None:
     scripts = sorted((REPO_ROOT / _DEVICE_SCRIPTS).glob("*.py"))
     trees = {p.relative_to(REPO_ROOT).as_posix(): ast.parse(p.read_text(encoding="utf-8")) for p in scripts}
-    running = [label for label, tree in trees.items() if any(_is_firmware_main_call(n) for n in ast.walk(tree))]
+    running = [label for label, tree in trees.items() if _runs_firmware(tree)]
     assert running, "no device script runs the firmware's main() - discovery has stopped seeing them"
     findings = [f for label in running for f in device_script_findings(label, trees[label])]
     assert not findings, "\n".join(findings)
@@ -517,6 +547,23 @@ _GOOD_SCRIPT = (
 
 def test_a_clean_device_script_reports_nothing() -> None:
     assert device_script_findings("planted.py", ast.parse(_GOOD_SCRIPT)) == []
+
+
+_PRODUCT_REPORT_SCRIPT = (
+    "import asyncio\nimport _bench_device as device\nfrom asy_print_log import PrintLog\n\n"
+    "_REPORT = PrintLog(level=1, name='UNRETRIEVED TASK EXCEPTION:')\n\n\n"
+    "async def _run():\n"
+    "    asyncio.get_event_loop().set_exception_handler(_REPORT.report_unretrieved)\n"
+    "    task = asyncio.get_event_loop().create_task(device.main())\n"
+)
+
+
+def test_the_products_report_on_a_fixed_error_level_log_counts_and_a_silent_one_does_not() -> None:
+    tree = ast.parse(_PRODUCT_REPORT_SCRIPT)
+    assert _device_aliases(tree) == {"device"}
+    assert device_script_findings("product.py", tree) == []
+    silent = device_script_findings("silent.py", ast.parse(_PRODUCT_REPORT_SCRIPT.replace("level=1", "level=0")))
+    assert len(silent) == 1 and "no module-level PrintLog at a fixed level >= 1" in silent[0], silent
 
 
 @pytest.mark.parametrize(
@@ -547,7 +594,9 @@ _GATE_DIRS = ("tests_hardware/flash", "tests_hardware/bench")
 _TAIL = "tail_log"
 _MARKERS = "MEMORY_ERROR_MARKERS"
 _TASK_END_CHECK = "assert_no_new_task_raised"
-_LOG_READS = frozenset({"get_errcount", "read_live_system_log"})
+# The stricter whole-SYSTEM check: any task end since the test's own opening clear, so it counts only after one.
+_SINCE_CLEAR_CHECK = "assert_no_task_ended"
+_LOG_READS = frozenset({"get_errcount", "read_live_system_log", "save_errcount"})
 _LOG_CLEAR = "reset_all_error_logs"
 
 
@@ -576,9 +625,13 @@ def gate_findings(label: str, tree: ast.Module) -> list[str]:
         calls = _called_names(func)
         if not any(c == _TAIL or c in tailing for _, c in calls):
             continue
-        if not any(c == _TASK_END_CHECK for _, c in calls):
-            findings.append(f"{label}:{func.lineno} {name}() tails the console for memory markers but never calls {_TASK_END_CHECK}()")
         clears = [line for line, c in calls if c == _LOG_CLEAR]
+        tails = [line for line, c in calls if c == _TAIL or c in tailing]
+        if not any(c == _TASK_END_CHECK for _, c in calls):
+            if not any(c == _SINCE_CLEAR_CHECK for _, c in calls):
+                findings.append(f"{label}:{func.lineno} {name}() tails the console for memory markers but never calls {_TASK_END_CHECK}()")
+            elif not (clears and clears[0] < tails[0]):
+                findings.append(f"{label}:{func.lineno} {name}() calls {_SINCE_CLEAR_CHECK}() without clearing the logs before its load")
         reads = [line for line, c in calls if c in _LOG_READS or c in reading]
         if clears and not (reads and reads[0] < clears[0]):
             findings.append(f"{label}:{clears[0]} {name}() clears the error logs before reading them")
@@ -617,6 +670,18 @@ def test_a_clean_gate_reports_nothing() -> None:
     assert gate_findings("planted.py", ast.parse(_GOOD_GATE)) == []
     through_a_helper = _GOOD_GATE.replace("    before = get_errcount(dut_ip)\n", "    _read_first(dut_ip)\n")
     assert gate_findings("planted.py", ast.parse(through_a_helper)) == []
+    # The evidence save is a read, and the whole-SYSTEM check after the test's own opening clear is a task-end check.
+    assert gate_findings("planted.py", ast.parse(_SINCE_CLEAR_GATE)) == []
+
+
+_SINCE_CLEAR_GATE = _GOOD_GATE.replace("    before = get_errcount(dut_ip)\n", "    save_errcount(dut_ip, 'soak')\n").replace("assert_no_new_task_raised({}, after, 'soak')", "assert_no_task_ended(dut_ip, 'soak')")
+
+
+def test_the_whole_system_check_needs_the_tests_own_opening_clear() -> None:
+    late = _SINCE_CLEAR_GATE.replace("    reset_all_error_logs(dut_ip)\n    lines = _load(board)\n", "    lines = _load(board)\n    reset_all_error_logs(dut_ip)\n")
+    assert late != _SINCE_CLEAR_GATE
+    findings = gate_findings("planted.py", ast.parse(late))
+    assert any("without clearing the logs before its load" in f for f in findings), findings
 
 
 @pytest.mark.parametrize(
@@ -647,7 +712,7 @@ def test_a_planted_gate_is_reported(old: str, new: str, needle: str) -> None:
 @pytest.fixture
 def helpers(monkeypatch: pytest.MonkeyPatch) -> "ModuleType":
     monkeypatch.syspath_prepend(str(REPO_ROOT / "tests_hardware"))
-    return load_script_module(REPO_ROOT / "tests_hardware" / "error_log_helpers.py", "error_log_helpers")
+    return load_script_module(REPO_ROOT / "tests_hardware" / "error_log_helpers.py", "error_log_helpers_for_contract")
 
 
 def _log(counter: int, *entries: tuple[str, int]) -> dict[str, object]:

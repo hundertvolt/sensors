@@ -43,19 +43,21 @@ fi
 
 archive_name="${runner,,}"
 archive_name="${archive_name//[^a-z0-9_]/_}"
-if ! EVIDENCE_DIR="$(uv run scripts/_archive_evidence.py --runner "$archive_name" --new-dir)" || [ ! -d "$EVIDENCE_DIR" ]; then
+# --no-sync on every uv call: an implicit sync would put a third-party fetch inside a hardware run.
+if ! EVIDENCE_DIR="$(uv run --no-sync scripts/_archive_evidence.py --runner "$archive_name" --new-dir)" || [ ! -d "$EVIDENCE_DIR" ]; then
     echo "error: could not create the evidence directory under build/archive/$archive_name/" >&2
     exit 1
 fi
+export EVIDENCE_DIR  # the evidence helper saves a run's saved files beside its log and record
 log="$EVIDENCE_DIR/pytest.log"
 record="$EVIDENCE_DIR/run_record.json"
 
-PYTHONPATH=scripts uv run pytest -p _pytest_run_record --run-record="$record" "$@" -v 2>&1 | tee "$log"
+PYTHONPATH=scripts uv run --no-sync pytest -p _pytest_run_record --run-record="$record" "$@" -v 2>&1 | tee "$log"
 pytest_exit="${PIPESTATUS[0]}"
 
 verdict_args=(--run-record "$record" --pytest-exit "$pytest_exit" --runner "$runner" --levels "$levels")
 if [ -n "$not_clean_reason" ]; then
     verdict_args+=(--not-clean-reason "$not_clean_reason")
 fi
-uv run scripts/_hardware_verdict.py "${verdict_args[@]}"
+uv run --no-sync scripts/_hardware_verdict.py "${verdict_args[@]}"
 exit $?

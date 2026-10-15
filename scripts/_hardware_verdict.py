@@ -25,9 +25,10 @@ from _summary_block import Summary, from_run_record  # type: ignore[import-not-f
 # that option is unset. The wear gates deselect instead and reach the verdict as deselections.
 GATE_OPTIONS = {
     "flash_cycle": "allow_flash_cycle",
-    "long_soak": "soak_tier",
-    "multi_day_rollover": "allow_multi_day_rollover_wait",
+    "soak_duration": "soak_duration",
+    "multi_day_rollover": "allow_multi_day_rollover",
     "neopixel_sweep": "allow_neopixel_sweep",
+    "toolchain_reverify": "allow_toolchain_reverify",
 }
 
 PERMANENT_SKIPS = (

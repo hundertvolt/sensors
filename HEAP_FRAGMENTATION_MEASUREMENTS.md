@@ -278,6 +278,7 @@ call logs empty, so only the firmware's own blocks are measured (`SPECIFICATION.
 | `device_scripts/serving_at_default_gc.py`, `heap_under_connection_ceiling.py` | serving at `-1`; heap with the connection ceiling held open |
 | `bench/test_serving_heap_at_default_gc.py`, `bench/test_heap_under_connection_ceiling.py`, `flash/test_memory_stress.py` | the host sides, with `sweep_levels()`, tallies and the derived assertions |
 | `tests_scripts/test_device_script_gc_threshold.py`, `test_device_script_config_flush.py` | §M3.8's and the config-flush habit's static enforcement |
+| `digital_twin/run_device_script.py` + `scripts/record_twin_instrument_runs.py` (+ `tests_hardware/twin_board.py`) | runs a device script unchanged in the twin, and the flash tier's tests against `TwinBoard` (`pytest --twin`); the recorder writes the twin record (twin_record.json in `tests_hardware/`: every instrument's twin run, the bench tier's as needing the bridge), which `tests_scripts/test_twin_record.py` keeps current. **Always do this before silicon**: it found three instrument defects the board would otherwise have |
 
 ### M5.2 Interpreter builds
 
@@ -314,7 +315,6 @@ Scratchpad tools, rebuilt from these descriptions when needed (names from the ar
 | wire-identity prototype (`proto.py`) | record every CS edge and transfer on the fake `SPI`/`Pin`, assert a restructured path's trace equals the current one, then price both with the fakes' own allocations removed |
 | serving sweep (`sweep.py` / `drive.py` / `boot.py`) | boot the frozen twin at a heap and threshold; a separate CPython process drives N simultaneous requests × R rounds (one socket each, `threading.Barrier(N)`, bodies drained never kept, 1 s settle since a slot outlives its response); failures counted from the twin's own log and grouped by size and last three frames (`classify.py`) |
 | peak twin (`boot_peak.py` / `drive_peak.py` / `sweep_peak.py`) | the silicon `--peak` load against a fresh twin per level under a cgroup CPU quota (`QUOTA`), `MAXCONN` patched into the frozen generated module, a rejection counter on `_open_conns.increment`; host resets beyond the device's rejections are true failures |
-| device scripts in the twin (`twin_wrap.py` / `validate_bench.py`) | run a device script **unchanged** after `run_generic_integration`'s setup, and a bench test module's own functions against a fake `Board` whose `run_isolated()` is `twin_wrap.py`. **Always do this before silicon**: it found three instrument defects the board would otherwise have |
 
 ### M5.4 The removed silicon sweep tool
 

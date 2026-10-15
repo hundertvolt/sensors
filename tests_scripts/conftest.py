@@ -6,9 +6,13 @@ import os
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 import pytest
 from _script_loader import load_script_module
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -16,6 +20,39 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # importlib. pytest's rootless import mode puts only tests_scripts/ on sys.path, never the repo
 # root, so `import buildgen` needs this.
 sys.path.insert(0, str(REPO_ROOT))
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # Some tests here load bench modules, so their marks must be known under --strict-markers too:
+    # tests_hardware/markers.py is the one table both tiers register.
+    load_script_module(REPO_ROOT / "tests_hardware" / "markers.py", "_tests_hardware_markers").register(config)
+
+
+def _exit_fails_the_test() -> "Generator[None, None, None]":
+    # A pytest.exit() reached inside one test (a bench conftest function under test, say) would end the whole tier with
+    # every later test unrun and one trailing line to show it: it fails that test, and the session goes on.
+    try:
+        return (yield)
+    except pytest.exit.Exception as exc:
+        pytest.fail(f"pytest.exit() inside a test ends the session with every later test unrun: {exc.msg}", pytrace=False)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_setup(item: pytest.Item) -> "Generator[None, None, None]":
+    del item
+    return (yield from _exit_fails_the_test())
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> "Generator[None, None, None]":
+    del item
+    return (yield from _exit_fails_the_test())
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_teardown(item: pytest.Item, nextitem: "pytest.Item | None") -> "Generator[None, None, None]":
+    del item, nextitem
+    return (yield from _exit_fails_the_test())
 
 
 @pytest.fixture(scope="session", autouse=True)

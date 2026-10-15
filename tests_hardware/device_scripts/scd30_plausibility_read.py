@@ -1,81 +1,98 @@
-"""Isolated-driver device script: one real SCD30 reading checked against datasheet-sourced sane
-bounds (CO2 200-10000 ppm, below the datasheet's 400 floor since sub-400 readings are real and
-unremarkable; Hum 0-100%RH; Temp -40-70 degC). Discards readings during the post-reset settle window (tau63% >10s)."""
+"""Isolated-driver device script: one real SCD30 reading through SCD30_Reader after the post-reset settle (tau63 above
+10 s), reported for the host to check against plausibility_bounds.py. With BENCH["mode"] == "frc_window" it instead
+runs the reader's FRC readiness accumulation over a synthetic 3600 s window, sending no SCD30 command."""
 
 import asyncio
-
-import machine
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_Reader
 
-CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
-HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
-TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    import machine
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
 # @tunable l3.scd30_plausibility_read_settle_s = 45.0
-_SETTLE_S = 45.0  # datasheet-bound response-time window (see docstring) plus margin
+_SETTLE_S = 45.0  # the datasheet's response time (tau63 above 10 s) plus margin
 # @tunable l3.scd30_plausibility_read_step_s = 0.5
 _STEP_S = 0.5
 # @tunable l3.scd30_plausibility_read_poll_tries = 30
 _POLL_TRIES = 30
+_TRIGGER_S = 3
+# The synthetic FRC window: FRCWindow's 3600 s maximum at the 2 s minimum interval, CO2 a fixed integer pattern
+# (exact in float32, so only the accumulation can lose precision) around a constant temperature.
+_FRC_INTERVAL_S = 2  # source: the SCD30's minimum interval (Interface Description 1.4.3)
+_FRC_SAMPLES = 1800
+_FRC_TEMPERATURE_C = 22.0
 
 
-async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    reader = SCD30_Reader(i2c1, 11, trigger_s=3, max_module_error=999)
-    reader.start_timer()  # wires the real GPIO IRQ + the 500ms self-healing poll timer
-    read_task = asyncio.create_task(reader._read_loop())
-    init_irq_task = asyncio.create_task(reader._irq_loop())
+def _frc_co2(i: int) -> float:
+    return 800.0 + (i * 7) % 21 - 10  # host test: the same series, summed in double precision
 
-    # Let the sensor's own post-reset response-time settle (see module docstring) before trusting
-    # any reading - readings seen during this window are deliberately discarded.
-    for _ in range(int(_SETTLE_S / _STEP_S)):
-        wdt.feed()
-        await asyncio.sleep(_STEP_S)
 
-    # get_data() -> the SCD30 namedtuple (CO2, Temp, Hum, WetBulb, DewPoint, TS) - see
-    # asy_scd30_driver.py's own `SCD30 = namedtuple(...)` definition; field names are capitalized,
-    # not the lowercase attribute names a first guess from the datasheet's own prose might suggest.
-    data = None
-    for _ in range(_POLL_TRIES):  # ~15s at 0.5s polling - generous relative to the sensor's own ~2s default interval
+def _frc_window(reader: SCD30_Reader, wdt: "machine.WDT") -> None:
+    # The reader's own accumulation (_frc_add()) and close (_frc_close()), no chip: the float32 sums and verdict out.
+    for i in range(_FRC_SAMPLES):
+        reader._frc_add(_frc_co2(i), _FRC_TEMPERATURE_C)
+        if i % 100 == 0:
+            wdt.feed()
+    fact("frc_samples", reader._frc_n)
+    fact("frc_sums", {"d": reader._frc_sum_d, "d2": reader._frc_sum_d2, "id": reader._frc_sum_id})
+    fact("frc_thresholds", {"noise": reader._frc_noise, "rate": reader._frc_rate})
+    fact("frc_verdict", reader._frc_close(_FRC_INTERVAL_S))
+    fact("frc_interval_s", _FRC_INTERVAL_S)
+
+
+async def _read(reader: SCD30_Reader, wdt: "machine.WDT") -> None:
+    reader.start_timer()  # the real GPIO IRQ and the self-healing poll timer
+    tasks = (reader.start_asy_read(), reader.start_asy_irq())
+    await fed_sleep_ms(wdt, int(_SETTLE_S * 1000))  # readings inside the settle window are discarded on purpose
+    data = await reader.get_data()  # the SCD30 namedtuple: CO2, Temp, Hum, WetBulb, DewPoint, FRCState, FRCWait, TS
+    polls = 0
+    while data.CO2 is None and polls < _POLL_TRIES:
+        await fed_sleep_ms(wdt, int(_STEP_S * 1000))
         data = await reader.get_data()
-        if data.CO2 is not None:
-            break
-        wdt.feed()
-        await asyncio.sleep(_STEP_S)
-
-    read_task.cancel()
-    init_irq_task.cancel()
-    died: list[str] = []
-    for task in (read_task, init_irq_task):
+        polls += 1
+    died = []
+    for task in tasks:
+        task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        except Exception as e:  # a task that died on its own fails the run, never passes it
+        except Exception as e:  # a task that died on its own is a fact the host fails on
             died.append(repr(e))
-    if died:
-        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
-        return
+        await asyncio.sleep(0)
+    reader.stop_timer()
+    fact("co2", data.CO2)
+    fact("humidity", data.Hum)
+    fact("temperature", data.Temp)
+    fact("polls", polls)
+    fact("died", died)
 
-    if data is None or data.CO2 is None:
-        print("RESULT: FAIL no CO2 reading obtained within the wait window - sensor not responding or not wired to i2c1")
-        return
 
-    failures = []
-    if not (CO2_MIN_PPM <= data.CO2 <= CO2_MAX_PPM):
-        failures.append(f"CO2={data.CO2!r} outside [{CO2_MIN_PPM}, {CO2_MAX_PPM}] ppm")
-    if data.Hum is not None and not (HUMIDITY_MIN_RH <= data.Hum <= HUMIDITY_MAX_RH):
-        failures.append(f"Hum={data.Hum!r} outside [{HUMIDITY_MIN_RH}, {HUMIDITY_MAX_RH}] %RH")
-    if data.Temp is not None and not (TEMP_MIN_C <= data.Temp <= TEMP_MAX_C):
-        failures.append(f"Temp={data.Temp!r} outside [{TEMP_MIN_C}, {TEMP_MAX_C}] degC")
-
-    if failures:
-        print(f"RESULT: FAIL {'; '.join(failures)}")
+async def _main() -> None:
+    wdt = arm()
+    chip = BENCH["instances"]["scd30"]
+    bus = BENCH["bus"][chip["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    reader = SCD30_Reader(i2c, chip["irq_pin"], trigger_s=_TRIGGER_S, max_module_error=999)
+    if BENCH.get("mode") == "frc_window":
+        _frc_window(reader, wdt)
     else:
-        print(f"RESULT: PASS CO2={data.CO2} Hum={data.Hum} Temp={data.Temp}")
+        await _read(reader, wdt)
+    done()
 
 
 asyncio.run(_main())

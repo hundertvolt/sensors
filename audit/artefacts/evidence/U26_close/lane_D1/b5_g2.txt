@@ -1,0 +1,145 @@
+=== test_persistence_write_marker_completeness
+........F........F.....F...                                              [100%]
+=================================== FAILURES ===================================
+E   AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+        added: []
+        gone: ['_repair_leftover']
+    assert {'_recover_st...ined_hotspot'} == {'_recover_st..._worker', ...}
+      
+      Extra items in the right set:
+      '_repair_leftover'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_persistence_write_marker_completeness.py:388: AssertionError: the set of non-test functions issuing a persisting PUT changed - triage each one and update _KNOWN_PERSISTING_HELPERS.
+E   AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+        bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per_source.py (build_system() over the production config) unmarked
+        manual/manual_persistence.py::test_power_loss_during_the_shutdown_commands runs config_files_restore.py (open() in a write mode) without a listed, confirm()-first manual step
+        scd30_same_device_rw_concurrency.py (set_ambient_pressure()) has no runner in tests_hardware/
+        flash/test_sensor_accuracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked
+    assert not ['bench/test_serving_heap_at_default_gc.py::test_every_source_and_route_fits_a_small_free_run runs allocation_need_per...uracy.py::test_sgp40_sample_cadence runs sgp40_sample_cadence.py (build_system() over the production config) unmarked']
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_persistence_write_marker_completeness.py:591: AssertionError: these device scripts write flash or the SCD30's NVM outside the gate:
+E   AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+    assert not {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_att...test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], ...}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_persistence_write_marker_completeness.py:719: AssertionError: unregistered markers (a collection error under --strict-markers): {'tests_hardware/bench/test_hotspot_role_reversal.py::test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_survives_extended_max_speed_hammer_load_with_fram_diagnostics_preserved': ['long_soak'], 'tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic': ['long_soak'], 'tests_hardware/flash/test_bus_electrical_timing.py::test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout': ['long_soak'], 'tests_hardware/flash/test_sensor_accuracy.py::test_sgp40_sample_cadence': ['long_soak']}
+=========================== short test summary info ============================
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_the_set_of_persisting_helpers_is_exactly_the_triaged_one
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_every_device_script_that_persists_is_run_only_by_a_gated_test
+FAILED tests_scripts/test_persistence_write_marker_completeness.py::test_no_test_carries_an_unregistered_marker
+3 failed, 24 passed in 2.30s
+=== rc=1 time=3.188985615 test_persistence_write_marker_completeness
+=== test_device_script_facts
+FF.F........                                                             [100%]
+=================================== FAILURES ===================================
+E   AssertionError: a device script prints RESULT; it reports facts and the host test decides: {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'bmp3xx_same_device_rw_concurrency.py': [88, 90], 'bus_concurrency_cross_device_scd30_sgp40.py': [102, 104], 'bus_concurrency_isl29125_write_vs_siblings.py': [113, 115], 'bus_concurrency_same_device_scd30.py': [104, 106], 'bus_concurrency_scd30_write_vs_siblings.py': [109, 111], 'bus_deinit_is_a_noop_on_real_hardware.py': [47, 51, 66, 68], 'bus_topology_autodetect_and_hazard_sweep.py': [186, 188], 'float_boundary_2pow24.py': [40, 42], 'fram_cs_hijack_fault_injection_and_recovery.py': [93, 102, 173, 175], 'fram_reset_race_during_write_seed_and_race.py': [76, 34, 40, 45, 50], 'fram_reset_race_during_write_verify_recovery.py': [31, 76, 78], 'fram_same_device_rw_concurrency.py': [33, 39, 83, 85], 'heap_under_connection_ceiling.py': [83, 89], 'isl29125_cross_device_concurrency.py': [125, 127], 'isl29125_lighting_scenarios.py': [374, 376], 'isl29125_mechanism_envelope.py': [264, 266], 'isl29125_plausibility_read.py': [68, 72, 100, 102], 'isl29125_real_irq_edge.py': [130, 137, 140, 142], 'isl29125_same_device_rw_concurrency.py': [89, 91], 'scd30_plausibility_read.py': [60, 64, 76, 78], 'scd30_real_irq_edge.py': [47, 52, 54], 'scd30_same_device_rw_concurrency.py': [93, 95], 'scheduler_saturation_drop.py': [58, 60], 'serving_at_default_gc.py': [133, 139], 'sgp40_general_call_reset_hazard.py': [130, 132], 'sgp40_same_device_concurrent_sessions.py': [50, 52], 'sgp40_sample_cadence.py': [78, 39, 34, 44, 59], 'sgp40_voc_algorithm_quality.py': [76, 92, 94], 'timer_alarm_pool_exhaustion.py': [16, 20, 22], 'uart_crossover_exchange.py': [146, 148], 'uart_crossover_recovery.py': [160, 162], 'uart_driver_read_never_blocks_the_loop.py': [144, 173, 175], 'uart_idle_poll_rate.py': [114, 116], 'uart_link_under_concurrent_system_load.py': [245, 247], 'uart_read_never_blocks_the_loop.py': [78, 80], 'wifi_country_hostname_edge_values.py': [40, 14, 16, 31, 33, 35]}
+    assert not {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'bmp3xx_same_device_rw_concurrency.py': [88, 90], 'bus_concurrency_cross_device_scd30_sgp40.py': [102, 104], ...}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_device_script_facts.py:52: AssertionError: a device script prints RESULT; it reports facts and the host test decides: {'allocation_need_per_source.py': [165, 171], 'bmp3xx_plausibility_read.py': [53, 57, 69, 71], 'bmp3xx_same_device_rw_concurrency.py': [88, 90], 'bus_concurrency_cross_device_scd30_sgp40.py': [102, 104], 'bus_concurrency_isl29125_write_vs_siblings.py': [113, 115], 'bus_concurrency_same_device_scd30.py': [104, 106], 'bus_concurrency_scd30_write_vs_siblings.py': [109, 111], 'bus_deinit_is_a_noop_on_real_hardware.py': [47, 51, 66, 68], 'bus_topology_autodetect_and_hazard_sweep.py': [186, 188], 'float_boundary_2pow24.py': [40, 42], 'fram_cs_hijack_fault_injection_and_recovery.py': [93, 102, 173, 175], 'fram_reset_race_during_write_seed_and_race.py': [76, 34, 40, 45, 50], 'fram_reset_race_during_write_verify_recovery.py': [31, 76, 78], 'fram_same_device_rw_concurrency.py': [33, 39, 83, 85], 'heap_under_connection_ceiling.py': [83, 89], 'isl29125_cross_device_concurrency.py': [125, 127], 'isl29125_lighting_scenarios.py': [374, 376], 'isl29125_mechanism_envelope.py': [264, 266], 'isl29125_plausibility_read.py': [68, 72, 100, 102], 'isl29125_real_irq_edge.py': [130, 137, 140, 142], 'isl29125_same_device_rw_concurrency.py': [89, 91], 'scd30_plausibility_read.py': [60, 64, 76, 78], 'scd30_real_irq_edge.py': [47, 52, 54], 'scd30_same_device_rw_concurrency.py': [93, 95], 'scheduler_saturation_drop.py': [58, 60], 'serving_at_default_gc.py': [133, 139], 'sgp40_general_call_reset_hazard.py': [130, 132], 'sgp40_same_device_concurrent_sessions.py': [50, 52], 'sgp40_sample_cadence.py': [78, 39, 34, 44, 59], 'sgp40_voc_algorithm_quality.py': [76, 92, 94], 'timer_alarm_pool_exhaustion.py': [16, 20, 22], 'uart_crossover_exchange.py': [146, 148], 'uart_crossover_recovery.py': [160, 162], 'uart_driver_read_never_blocks_the_loop.py': [144, 173, 175], 'uart_idle_poll_rate.py': [114, 116], 'uart_link_under_concurrent_system_load.py': [245, 247], 'uart_read_never_blocks_the_loop.py': [78, 80], 'wifi_country_hostname_edge_values.py': [40, 14, 16, 31, 33, 35]}
+E   AssertionError: a script's output must reach harness.parse_facts(): {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and parses no facts'], 'bench/test_serving_heap_at_default_gc.py': ['test_every_source_and_route_fits_a_small_free_run runs a script and parses no facts', 'test_serving_sweep_at_the_reactive_default runs a script and parses no facts'], 'conformance.py': ['run_probe_on_twin runs a script and parses no facts'], 'flash/test_bus_concurrency.py': ['test_same_device_concurrent_sessions_never_corrupt_each_other runs a script and parses no facts', 'test_cross_device_concurrent_sessions_genuinely_interleave runs a script and parses no facts', 'test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions runs a script and parses no facts', 'test_bmp3xx_same_device_read_write_concurrency runs a script and parses no facts', 'test_isl29125_same_device_read_write_concurrency runs a script and parses no facts', 'test_sgp40_concurrent_sessions_each_get_a_tick runs a script and parses no facts', 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours runs a script and parses no facts', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads runs a script and parses no facts', 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads runs a script and parses no facts', 'test_isl29125_real_irq_edge_beats_the_periodic_fallback runs a script and parses no facts', 'test_bus_topology_autodetect_address_and_reserved_range_sweep runs a script and parses no facts', 'test_fram_same_device_read_write_concurrency runs a script and parses no facts', 'test_fram_cs_pin_hijack_fault_injection_and_recovery runs a script and parses no facts', 'test_fram_hard_reset_race_during_write_and_recovery runs a script and parses no facts', 'test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton runs a script and parses no facts'], 'flash/test_bus_electrical_timing.py': ['test_soft_timer_callback_drop_self_heals_under_scheduler_saturation runs a script and parses no facts', 'test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted runs a script and parses no facts', 'test_scd30_real_irq_edge_drives_a_real_read runs a script and parses no facts', 'test_single_precision_float_boundary_at_2pow24 runs a script and parses no facts'], 'flash/test_sensor_accuracy.py': ['test_scd30_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_sgp40_voc_algorithm_produces_plausible_and_stable_results runs a script and parses no facts', 'test_sgp40_sample_cadence runs a script and parses no facts', 'test_isl29125_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration runs a script and parses no facts', 'test_isl29125_survives_recombined_realistic_lighting_scenarios runs a script and parses no facts', 'test_isl29125_register_probe_matches_the_digital_twins_fake_chip runs a script and parses no facts'], 'flash/test_uart_crossover.py': ['_run_or_fail runs a script and parses no facts']}
+    assert not {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and par...pt and parses no facts', 'test_sgp40_concurrent_sessions_each_get_a_tick runs a script and parses no facts', ...], ...}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_device_script_facts.py:76: AssertionError: a script's output must reach harness.parse_facts(): {'bench/test_heap_under_connection_ceiling.py': ['test_heap_at_peak_while_a_full_ceiling_is_held runs a script and parses no facts'], 'bench/test_serving_heap_at_default_gc.py': ['test_every_source_and_route_fits_a_small_free_run runs a script and parses no facts', 'test_serving_sweep_at_the_reactive_default runs a script and parses no facts'], 'conformance.py': ['run_probe_on_twin runs a script and parses no facts'], 'flash/test_bus_concurrency.py': ['test_same_device_concurrent_sessions_never_corrupt_each_other runs a script and parses no facts', 'test_cross_device_concurrent_sessions_genuinely_interleave runs a script and parses no facts', 'test_sgp40_general_call_reset_does_not_corrupt_concurrent_scd30_and_isl29125_transactions runs a script and parses no facts', 'test_bmp3xx_same_device_read_write_concurrency runs a script and parses no facts', 'test_isl29125_same_device_read_write_concurrency runs a script and parses no facts', 'test_sgp40_concurrent_sessions_each_get_a_tick runs a script and parses no facts', 'test_isl29125_cross_device_concurrency_with_its_i2c1_neighbours runs a script and parses no facts', 'test_isl29125_config_write_does_not_disturb_concurrent_sibling_reads runs a script and parses no facts', 'test_scd30_config_write_does_not_disturb_concurrent_sibling_reads runs a script and parses no facts', 'test_isl29125_real_irq_edge_beats_the_periodic_fallback runs a script and parses no facts', 'test_bus_topology_autodetect_address_and_reserved_range_sweep runs a script and parses no facts', 'test_fram_same_device_read_write_concurrency runs a script and parses no facts', 'test_fram_cs_pin_hijack_fault_injection_and_recovery runs a script and parses no facts', 'test_fram_hard_reset_race_during_write_and_recovery runs a script and parses no facts', 'test_i2c_and_spi_deinit_are_silent_noops_and_each_bus_id_is_a_singleton runs a script and parses no facts'], 'flash/test_bus_electrical_timing.py': ['test_soft_timer_callback_drop_self_heals_under_scheduler_saturation runs a script and parses no facts', 'test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted runs a script and parses no facts', 'test_scd30_real_irq_edge_drives_a_real_read runs a script and parses no facts', 'test_single_precision_float_boundary_at_2pow24 runs a script and parses no facts'], 'flash/test_sensor_accuracy.py': ['test_scd30_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_bmp3xx_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_sgp40_voc_algorithm_produces_plausible_and_stable_results runs a script and parses no facts', 'test_sgp40_sample_cadence runs a script and parses no facts', 'test_isl29125_real_reading_is_within_datasheet_plausible_bounds runs a script and parses no facts', 'test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration runs a script and parses no facts', 'test_isl29125_survives_recombined_realistic_lighting_scenarios runs a script and parses no facts', 'test_isl29125_register_probe_matches_the_digital_twins_fake_chip runs a script and parses no facts'], 'flash/test_uart_crossover.py': ['_run_or_fail runs a script and parses no facts']}
+E   AssertionError: loops in an async def that can loop back without an await (script: loop lines): {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bmp3xx_same_device_rw_concurrency.py': [42], 'bus_concurrency_cross_device_scd30_sgp40.py': [42, 55], 'bus_concurrency_same_device_scd30.py': [60, 80], 'isl29125_cross_device_concurrency.py': [101], 'isl29125_lighting_scenarios.py': [361], 'isl29125_mechanism_envelope.py': [252], 'isl29125_plausibility_read.py': [59], 'isl29125_real_irq_edge.py': [121], 'scd30_plausibility_read.py': [52], 'scd30_real_irq_edge.py': [39], 'scd30_same_device_rw_concurrency.py': [53], 'sgp40_general_call_reset_hazard.py': [74, 116], 'uart_driver_read_never_blocks_the_loop.py': [101, 112]}
+    assert not {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bmp3xx_same_device_rw_concurrency.py': [42], 'bus_concurrency_cross_device_scd30_sgp40.py': [42, 55], ...}
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_device_script_facts.py:164: AssertionError: loops in an async def that can loop back without an await (script: loop lines): {'allocation_need_per_source.py': [149, 155], 'bmp3xx_plausibility_read.py': [44], 'bmp3xx_same_device_rw_concurrency.py': [42], 'bus_concurrency_cross_device_scd30_sgp40.py': [42, 55], 'bus_concurrency_same_device_scd30.py': [60, 80], 'isl29125_cross_device_concurrency.py': [101], 'isl29125_lighting_scenarios.py': [361], 'isl29125_mechanism_envelope.py': [252], 'isl29125_plausibility_read.py': [59], 'isl29125_real_irq_edge.py': [121], 'scd30_plausibility_read.py': [52], 'scd30_real_irq_edge.py': [39], 'scd30_same_device_rw_concurrency.py': [53], 'sgp40_general_call_reset_hazard.py': [74, 116], 'uart_driver_read_never_blocks_the_loop.py': [101, 112]}
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_facts.py::test_no_device_script_prints_a_verdict
+FAILED tests_scripts/test_device_script_facts.py::test_every_host_function_that_runs_a_script_parses_its_facts
+FAILED tests_scripts/test_device_script_facts.py::test_every_loop_in_an_async_def_awaits_on_every_path_back
+3 failed, 9 passed in 0.53s
+=== rc=1 time=.764155138 test_device_script_facts
+=== test_bench_harness_helpers
+................FF.F.F.F....F........................................... [ 24%]
+........................................................................ [ 48%]
+...FF................................................................... [ 72%]
+.......FF...F...F.F..................................................... [ 96%]
+.........                                                                [100%]
+=================================== FAILURES ===================================
+E   AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 435'] == []
+      
+      Left contains one more item: 'line 435'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_bus_concurrency_under_api_load.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 131', ...', 'line 227'] == []
+      
+      Left contains 5 more items, first extra item: 'line 131'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_end_to_end_timing.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 217'] == []
+      
+      Left contains one more item: 'line 217'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_hotspot_role_reversal.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 151', ...ine 441', ...] == []
+      
+      Left contains 10 more items, first extra item: 'line 151'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_network_resilience.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 116', 'line 153'] == []
+      
+      Left contains 2 more items, first extra item: 'line 116'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_rest_endpoints_over_sta.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+    assert ['line 54', '...', 'line 124'] == []
+      
+      Left contains 3 more items, first extra item: 'line 54'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:534: AssertionError: test_wifi_networking.py: call harness.recover_by_reset()/kick_then_reset() instead
+E   AssertionError: test_network_resilience.py repairs no leftover through harness.schema_default()
+    assert []
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:790: AssertionError: test_network_resilience.py repairs no leftover through harness.schema_default()
+E   AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+    assert []
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:790: AssertionError: test_sensor_config_push_over_real_hardware.py repairs no leftover through harness.schema_default()
+E   AssertionError: test_bus_concurrency_under_api_load.py: stop and join the thread in a finally
+    assert ['test_concur...d (line 547)'] == []
+      
+      Left contains 6 more items, first extra item: 'test_concurrent_get_sensors_under_real_multi_client_load_never_corrupts_or_crashes (line 139)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_bus_concurrency_under_api_load.py: stop and join the thread in a finally
+E   AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+    assert ['test_real_c...er (line 92)'] == []
+      
+      Left contains one more item: 'test_real_concurrent_client_burst_does_not_crash_the_webserver (line 92)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_end_to_end_timing.py: stop and join the thread in a finally
+E   AssertionError: test_network_resilience.py: stop and join the thread in a finally
+    assert ['test_concur... (line 1167)'] == []
+      
+      Left contains 3 more items, first extra item: 'test_concurrent_mixed_body_sizes_are_never_answered_with_the_wrong_status (line 936)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_network_resilience.py: stop and join the thread in a finally
+E   AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+    assert ['_burst (line 90)'] == []
+      
+      Left contains one more item: '_burst (line 90)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_serving_heap_at_default_gc.py: stop and join the thread in a finally
+E   AssertionError: test_uart_link_under_api_load.py: stop and join the thread in a finally
+    assert ['test_the_li...e (line 176)'] == []
+      
+      Left contains 3 more items, first extra item: 'test_the_link_stays_healthy_while_the_api_is_hammered (line 77)'
+      Use -v to get more diff
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26d1/tests_scripts/test_bench_harness_helpers.py:837: AssertionError: test_uart_link_under_api_load.py: stop and join the thread in a finally
+=========================== short test summary info ============================
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_hotspot_role_reversal.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_rest_endpoints_over_sta.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_no_bench_module_resets_the_board_outside_the_reported_helpers[test_wifi_networking.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_leftover_repair_reads_its_target_through_schema_default[test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_leftover_repair_reads_its_target_through_schema_default[test_sensor_config_push_over_real_hardware.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_bus_concurrency_under_api_load.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_end_to_end_timing.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_network_resilience.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_serving_heap_at_default_gc.py]
+FAILED tests_scripts/test_bench_harness_helpers.py::test_every_started_hardware_thread_is_joined_on_every_path[bench/test_uart_link_under_api_load.py]
+13 failed, 284 passed in 2.06s
+=== rc=1 time=2.991671830 test_bench_harness_helpers
+=== test_manual_runner_summary
+.......                                                                  [100%]
+7 passed in 0.93s
+=== rc=0 time=1.165118680 test_manual_runner_summary

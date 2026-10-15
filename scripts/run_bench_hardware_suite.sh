@@ -42,7 +42,7 @@ elif ! scripts/_run_lower_levels.sh L4; then
     exit 1
 fi
 
-floor="not long_soak and not multi_day_rollover"
+floor="not soak_duration and not multi_day_rollover"
 # The flash step has its own runner name, so its evidence keeps its own newest three.
 scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_flash_step --levels "L3" tests_hardware/flash -m "$floor" "${args[@]}"
 scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite "${levels[@]}" "${paths[@]}" -m "$floor" "${args[@]}"

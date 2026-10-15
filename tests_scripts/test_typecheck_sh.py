@@ -2,12 +2,17 @@
 records the version it resolved and wipes an install of another spec. Driven on copies of the script, with
 mypy, uv and python3 stubbed, so nothing is installed or generated."""
 
+import configparser
+import glob
 import os
+import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+import tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -168,3 +173,101 @@ def test_a_failing_board_stub_check_is_named_as_the_stub_install_stage(tmp_path:
     done = _run(tmp_path, dist_infos=())
     assert done.returncode == 1, done.stdout + done.stderr
     assert "Failed:\n  - stub install: exited 1\n" in _block(done.stdout)
+
+
+# --- every file the main pass leaves out is checked by the twin pass ----------------------------
+
+# The one file the main pass excludes that no pass may check: a bare `network.py` in a scanned root
+# wins resolution over the real stub project-wide, silently turning WLAN types into Any (SPECIFICATION.md B.15).
+_IN_NO_PASS = {"tests/network.py": "a bare network.py wins resolution over the real stub project-wide (SPECIFICATION.md B.15)"}
+_TWIN_INI = "digital_twin/typecheck.ini"
+
+
+def _python_files(root: Path, target: str) -> "set[str]":
+    # The .py/.pyi files a mypy target names, repo-relative: a directory walked, a glob expanded.
+    found: set[str] = set()
+    for match in sorted(glob.glob(target, root_dir=root)) or [target]:
+        path = root / match
+        files = sorted(path.rglob("*.py*")) if path.is_dir() else [path]
+        found |= {f.relative_to(root).as_posix() for f in files if f.suffix in {".py", ".pyi"} and f.is_file()}
+    return found
+
+
+def _main_pass_exclusions(root: Path) -> "set[str]":
+    # The files pyproject's [tool.mypy] `files` would check but its `exclude` removes.
+    cfg = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["mypy"]
+    seen = {rel for target in cfg["files"] for rel in _python_files(root, target)}
+    return {rel for rel in seen if any(re.search(pattern, rel) for pattern in cfg["exclude"])}
+
+
+def _twin_pass_targets(root: Path) -> "set[str]":
+    # The files the twin pass checks as scripts/typecheck.sh invokes it, minus the ini's own exclude.
+    lines = [line.strip() for line in (root / "scripts" / "typecheck.sh").read_text(encoding="utf-8").splitlines() if line.strip().startswith(f"mypy --config-file {_TWIN_INI} ")]
+    assert len(lines) == 1, f"scripts/typecheck.sh no longer invokes the twin pass on one line: {lines}"
+    targets = shlex.split(lines[0].split("||")[0])[3:]
+    assert targets, "the twin pass names no target"
+    ini = configparser.ConfigParser()
+    ini.read(root / _TWIN_INI)
+    excluded = ini.get("mypy", "exclude", fallback="").strip()
+    return {rel for target in targets for rel in _python_files(root, target) if not (excluded and re.search(excluded, rel))}
+
+
+def test_every_file_the_main_pass_excludes_is_a_twin_pass_target() -> None:
+    # pyproject's comment says the twin pass checks what the main pass excludes; this proves it, so a
+    # file excluded there is never in no pass at all.
+    excluded = _main_pass_exclusions(REPO_ROOT)
+    assert set(_IN_NO_PASS) <= excluded, f"stale entries in _IN_NO_PASS: {sorted(set(_IN_NO_PASS) - excluded)}"
+    unchecked = sorted(excluded - _twin_pass_targets(REPO_ROOT) - set(_IN_NO_PASS))
+    assert not unchecked, f"excluded from the main pass yet in no twin pass target, so no mypy pass checks them: {unchecked}"
+
+
+def test_the_exclusion_guard_sees_a_planted_unchecked_file(tmp_path: Path) -> None:
+    # A file the main pass excludes and the twin pass never names is reported.
+    for rel in ("pyproject.toml", "scripts/typecheck.sh", _TWIN_INI):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / rel, tmp_path / rel)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "_planted_twin_library.py").write_text("", encoding="utf-8")
+    text = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(text.replace("exclude = [\n", 'exclude = [\n    "tests/_planted_twin_library\\\\.py$",\n', 1), encoding="utf-8")
+    assert "tests/_planted_twin_library.py" in _main_pass_exclusions(tmp_path) - _twin_pass_targets(tmp_path)
+
+
+# The one file the host pass excludes that no pass checks (two trivial fixtures, SPECIFICATION.md B.15).
+_HOST_IN_NO_PASS = {"tests_scripts/conftest.py": "with both test tiers on mypy_path both conftests are a bare `conftest`"}
+_HOST_INI = "host_typecheck.ini"
+
+
+def _host_pass_exclusions(root: Path) -> "set[str]":
+    ini = configparser.ConfigParser()
+    ini.read(root / _HOST_INI)
+    excluded = ini.get("mypy", "exclude").strip()
+    seen = {rel for target in ini.get("mypy", "files").split(",") for rel in _python_files(root, target.strip())}
+    return {rel for rel in seen if re.search(excluded, rel)}
+
+
+def _checked_elsewhere(root: Path) -> "set[str]":
+    # The main pass's files, the twin pass's, and every file typecheck.sh names on a host line (named, it ignores exclude).
+    cfg = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["mypy"]
+    main = {rel for target in cfg["files"] for rel in _python_files(root, target)} - _main_pass_exclusions(root)
+    lines = [line.strip() for line in (root / "scripts" / "typecheck.sh").read_text(encoding="utf-8").splitlines() if line.strip().startswith(f"mypy --config-file {_HOST_INI}")]
+    named = {rel for line in lines for target in shlex.split(line.split("||")[0])[3:] for rel in _python_files(root, target)}
+    return main | _twin_pass_targets(root) | named
+
+
+def test_every_file_the_host_pass_excludes_is_checked_by_another_run() -> None:
+    excluded = _host_pass_exclusions(REPO_ROOT)
+    assert set(_HOST_IN_NO_PASS) <= excluded, f"stale entries in _HOST_IN_NO_PASS: {sorted(set(_HOST_IN_NO_PASS) - excluded)}"
+    unchecked = sorted(excluded - _checked_elsewhere(REPO_ROOT) - set(_HOST_IN_NO_PASS))
+    assert not unchecked, f"excluded from the host pass yet named by no other mypy run, so none checks them: {unchecked}"
+
+
+def test_the_host_exclusion_guard_sees_a_planted_unchecked_file(tmp_path: Path) -> None:
+    for rel in ("pyproject.toml", "scripts/typecheck.sh", _TWIN_INI, _HOST_INI):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO_ROOT / rel, tmp_path / rel)
+    (tmp_path / "tests_hardware").mkdir()
+    (tmp_path / "tests_hardware" / "planted_host_module.py").write_text("", encoding="utf-8")
+    text = (tmp_path / _HOST_INI).read_text(encoding="utf-8")
+    (tmp_path / _HOST_INI).write_text(text.replace("exclude = (?x)(", "exclude = (?x)(^tests_hardware/planted_host_module\\.py$|", 1), encoding="utf-8")
+    assert "tests_hardware/planted_host_module.py" in _host_pass_exclusions(tmp_path) - _checked_elsewhere(tmp_path)

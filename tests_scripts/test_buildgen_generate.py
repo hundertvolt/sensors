@@ -39,19 +39,28 @@ if TYPE_CHECKING:
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-@pytest.fixture
-def src_dir(repo_root: Path) -> Path:
-    return repo_root / "src"
+@functools.cache
+def _all_sources(name: str) -> "tuple[str, str, str]":
+    # The module and both boot entries of a real device or a buildgen fixture.
+    result = _real(name) if name in DEVICE_NAMES else generate_device(_REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
+    return result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source
 
 
-@pytest.fixture
-def ext_dir(repo_root: Path) -> Path:
-    return repo_root / "ext"
+def _body(source: str) -> "list[ast.stmt]":
+    # A generated file's statements after its docstring.
+    tree = ast.parse(source)
+    first = tree.body[0]
+    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)
+    return tree.body[1:]
 
 
-@pytest.fixture
-def fixtures_dir(repo_root: Path) -> Path:
-    return repo_root / "tests_scripts" / "buildgen_fixtures"
+def _build_date_problems(module_source: str, now: datetime) -> "list[str]":
+    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", module_source)
+    assert match is not None
+    stamp = datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
+    if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
+        return [f"the build date {match.group(1)} is not timezone-aware UTC"]
+    return [] if abs(now - stamp) <= timedelta(minutes=1) else [f"the build date {match.group(1)} is not within a minute of the generation time {now:%Y-%m-%dT%H:%M:%SZ}"]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -63,27 +72,26 @@ def test_real_device_generates_syntactically_valid_module(device: str) -> None:
     ast.parse(result.boot_entry_source, filename=f"{device}_boot.py")
 
 
-@functools.cache
-def _real(device: str) -> GeneratedDevice:
-    # One generation per real device for the read-only pins below; a test that mutates builds its own.
-    return generate_device(device_toml(device), _REPO_ROOT / "src", _REPO_ROOT / "ext")
-
-
-def _body(source: str) -> "list[ast.stmt]":
-    # A generated file's statements after its docstring.
-    tree = ast.parse(source)
-    first = tree.body[0]
-    assert isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str)
-    return tree.body[1:]
-
-
 def _calls(nodes: "list[ast.stmt]", name: str) -> "list[ast.Call]":
     return [n for stmt in nodes for n in ast.walk(stmt) if isinstance(n, ast.Call) and ast.unparse(n.func) == name]
 
 
-def _index(stmts: "list[ast.stmt]", text: str) -> int:
-    (found,) = [i for i, stmt in enumerate(stmts) if ast.unparse(stmt) == text]
-    return found
+def _collected_modules(source: str, collector: str) -> "list[str]":
+    (loop,) = [n for n in ast.walk(_function(source, collector)) if isinstance(n, ast.For)]
+    assert isinstance(loop.iter, ast.Tuple)
+    return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
+
+
+def _expected_spread(model: DeviceModel) -> "list[str]":
+    # The device's trigger readers in construction order with their TOML buses, through trigger_spread()
+    # (the rule itself is pinned on synthetic input below): the device's order is data, never a literal here.
+    keys = [k for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
+    return trigger_spread([(instance_label(k), str(model.instances[k].fields["bus"])) for k in keys])
+
+
+def _fram_var(result: GeneratedDevice) -> str:
+    (key,) = [key for key in result.model.instances if key[0] == "fram"]
+    return instance_label(key)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -142,11 +150,9 @@ def test_real_device_boot_entry_records_an_interrupt_before_the_watchdog_resets(
     assert [ast.unparse(s) for s in tail.finalbody] == ["asyncio.new_event_loop()"]
 
 
-def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
-    # Up to gc.threshold(), without the watchdog lines and the interrupt record's import.
-    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, write_reset_record"}
-    texts = [ast.unparse(stmt) for stmt in stmts]
-    return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
+def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
+    tree = ast.parse(source)
+    return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -175,15 +181,9 @@ def test_real_device_manual_start_line_names_every_keyword_main_takes(device: st
     assert match.group(1).split(", ") == [a.arg for a in main.args.kwonlyargs if a.arg != "watchdog"]
 
 
-def _setup_names(source: str) -> "list[str]":
-    # The bound setup methods _collect_setups() returns, in order.
-    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.List)
-    out = []
-    for elt in returned.elts:
-        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
-        out.append(elt.value.id)
-    return out
+def _index(stmts: "list[ast.stmt]", text: str) -> int:
+    (found,) = [i for i, stmt in enumerate(stmts) if ast.unparse(stmt) == text]
+    return found
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -315,21 +315,15 @@ def test_real_device_system_command_callback_answers_the_service_for_every_comma
     }
 
 
-def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
-    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
-            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
-            value = ast.literal_eval(node.value.args[0])
-            assert isinstance(value, tuple)
-            return value
-    raise AssertionError(f"{path.name} has no {name}")
+def _loads_outside_annotations(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "list[ast.Name]":
+    skip = {id(sub) for stmt in ast.walk(fn) if isinstance(stmt, ast.AnnAssign) for sub in ast.walk(stmt.annotation)}
+    return [n for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in skip]
 
 
-def _status_entries(source: str, name: str) -> "dict[str, str]":
-    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
-    assert isinstance(returned, ast.Dict)
-    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
+@functools.cache
+def _real(device: str) -> GeneratedDevice:
+    # One generation per real device for the read-only pins below; a test that mutates builds its own.
+    return generate_device(device_toml(device), _REPO_ROOT / "src", _REPO_ROOT / "ext")
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -408,6 +402,42 @@ def test_real_device_expected_facts_name_the_setups_construction_and_phases_the_
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_expected_facts_name_the_fram_backed_loggers(device: str) -> None:
+    # SYSTEM's log is FRAM-backed exactly when [device.wiring] sets fram_target; every FRAM-wired instance's own
+    # logger is in the set and the FRAM store's own never is (it cannot keep its failures through itself).
+    result = _real(device)
+    found = result.expected_facts["fram_backed_loggers"]
+    assert isinstance(found, list) and all(isinstance(name, str) for name in found), found
+    loggers = [str(name) for name in found]
+    assert loggers == sorted(set(loggers)), loggers
+    device_table = result.model.doc["device"]
+    assert isinstance(device_table, dict)
+    wiring = device_table.get("wiring", {})
+    assert isinstance(wiring, dict)
+    assert ("SYSTEM" in loggers) == ("fram_target" in wiring), loggers
+    wired = result.expected_facts["fram_wired"]
+    assert isinstance(wired, list)
+    specs = list(result.model.instances.values())
+    assert {spec.resolved_name for spec in specs if spec.label in wired} <= set(loggers), loggers
+    assert not {spec.resolved_name for spec in specs if spec.driver == "fram"} & set(loggers), loggers
+
+
+def test_a_config_log_its_class_keeps_off_fram_is_no_fram_backed_logger() -> None:
+    # A class-level _CFG_LOG_FRAM = False (read from the driver source, never named in buildgen/) keeps the
+    # module's CFGMGR_ log RAM-only while the module's own log stays on FRAM.
+    checked = []
+    for device in devices_with("scd30"):
+        result = _real(device)
+        wired, loggers = result.expected_facts["fram_wired"], result.expected_facts["fram_backed_loggers"]
+        assert isinstance(wired, list) and isinstance(loggers, list)
+        for spec in result.model.instances.values():
+            if spec.driver == "scd30" and spec.label in wired:
+                assert spec.resolved_name in loggers and f"CFGMGR_{spec.resolved_name}" not in loggers, (device, loggers)
+                checked.append(device)
+    assert checked, "no device wires an scd30 to FRAM - the check compares nothing"
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) -> None:
     # Guard: the build checks key collisions on the same SETTINGS_GROUPS rows codegen renders.
     source = _real(device).module_source
@@ -420,11 +450,25 @@ def test_real_device_serves_the_settings_groups_of_the_one_table(device: str) ->
 _EMITTED_FUNCTIONS = frozenset({"build_system", "main", "_gmtimestruct_to_dict", "_system_cmd_callback", "_notification_led_callback", "_notification_pause_callback", "_networking_status", "_system_status", "_notification_status"})
 
 
-@functools.cache
-def _all_sources(name: str) -> "tuple[str, str, str]":
-    # The module and both boot entries of a real device or a buildgen fixture.
-    result = _real(name) if name in DEVICE_NAMES else generate_device(_REPO_ROOT / "tests_scripts" / "buildgen_fixtures" / f"{name}.toml", _REPO_ROOT / "src", _REPO_ROOT / "ext")
-    return result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source
+def _runtime_module_names(tree: ast.Module) -> "set[str]":
+    # Every name the module binds at runtime: imports, assignments, annotation-only globals and defs,
+    # never one imported under TYPE_CHECKING (it does not exist on the device).
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            names |= {(a.asname or a.name).split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            names |= {a.asname or a.name for a in node.names}
+        elif isinstance(node, ast.Assign):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Try):
+            names |= {t.id for sub in ast.walk(node) if isinstance(sub, ast.Assign) for t in sub.targets if isinstance(t, ast.Name)}
+            names |= {a.asname or a.name for sub in ast.walk(node) if isinstance(sub, ast.ImportFrom) for a in sub.names}
+    return names
 
 
 _GENERATED = [*DEVICE_NAMES, "novel_combo", "multi_instance"]
@@ -452,30 +496,29 @@ def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None
     assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
 
 
-def _runtime_module_names(tree: ast.Module) -> "set[str]":
-    # Every name the module binds at runtime: imports, assignments, annotation-only globals and defs,
-    # never one imported under TYPE_CHECKING (it does not exist on the device).
-    names: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            names |= {(a.asname or a.name).split(".")[0] for a in node.names}
-        elif isinstance(node, ast.ImportFrom):
-            names |= {a.asname or a.name for a in node.names}
-        elif isinstance(node, ast.Assign):
-            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            names.add(node.name)
-        elif isinstance(node, ast.Try):
-            names |= {t.id for sub in ast.walk(node) if isinstance(sub, ast.Assign) for t in sub.targets if isinstance(t, ast.Name)}
-            names |= {a.asname or a.name for sub in ast.walk(node) if isinstance(sub, ast.ImportFrom) for a in sub.names}
-    return names
+def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
+    # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
+    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    settings = next(k.value for k in routes.keywords if k.arg == "settings")
+    assert isinstance(settings, ast.Dict)
+    groups = next(v for k, v in zip(settings.keys, settings.values, strict=True) if isinstance(k, ast.Constant) and k.value == page)
+    assert isinstance(groups, ast.List)
+    out = []
+    for call in groups.elts:
+        assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
+        out.append((ast.unparse(call.args[0]), ast.literal_eval(call.args[1]), {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
+    return out
 
 
-def _loads_outside_annotations(fn: "ast.FunctionDef | ast.AsyncFunctionDef") -> "list[ast.Name]":
-    skip = {id(sub) for stmt in ast.walk(fn) if isinstance(stmt, ast.AnnAssign) for sub in ast.walk(stmt.annotation)}
-    return [n for stmt in fn.body for n in ast.walk(stmt) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and id(n) not in skip]
+def _setup_names(source: str) -> "list[str]":
+    # The bound setup methods _collect_setups() returns, in order.
+    returned = next(n.value for n in ast.walk(_function(source, "_collect_setups")) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.List)
+    out = []
+    for elt in returned.elts:
+        assert isinstance(elt, ast.Attribute) and elt.attr == "setup" and isinstance(elt.value, ast.Name), ast.unparse(elt)
+        out.append(elt.value.id)
+    return out
 
 
 @pytest.mark.parametrize("name", _GENERATED)
@@ -548,17 +591,22 @@ def test_a_device_without_any_bus_generates(tmp_path: Path, src_dir: Path, ext_d
     assert not [n for n in ast.walk(ast.parse(result.module_source)) if isinstance(n, ast.Call) and ast.unparse(n.func).startswith("asy_") and ast.unparse(n.func).endswith(("I2C", "SPI", "UART"))]
 
 
-def _uart_bus_calls(source: str) -> "dict[str, str]":
-    fn = _function(source, "build_system")
-    return {s.targets[0].id: ast.unparse(s.value) for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "asy_uart_driver.UART"}
+def _shared_head(stmts: "list[ast.stmt]") -> "list[str]":
+    # Up to gc.threshold(), without the watchdog lines and the interrupt record's import.
+    own = {"from machine import WDT", f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})", "from asy_system_service import RR_INTERRUPTED, write_reset_record"}
+    texts = [ast.unparse(stmt) for stmt in stmts]
+    return [t for t in texts[: texts.index("gc.threshold(32768)") + 1] if t not in own]
 
 
-def _uart_link_model(src_dir: Path) -> DeviceModel:
-    # The device carrying a uart_link pair, chosen by that property, never by name.
-    (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
-    model = build_model(device_toml(device), src_dir)
-    build_construction_order(model)
-    return model
+def _src_tuple_const(path: Path, name: str) -> "tuple[str, ...]":
+    # A module-level `name = const((...))` read from source: an underscore const() is no attribute on MicroPython.
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and [ast.unparse(t) for t in node.targets] == [name]:
+            assert isinstance(node.value, ast.Call) and ast.unparse(node.value.func) == "const"
+            value = ast.literal_eval(node.value.args[0])
+            assert isinstance(value, tuple)
+            return value
+    raise AssertionError(f"{path.name} has no {name}")
 
 
 def test_a_link_naming_a_crc_mode_gets_that_check_on_its_uart_bus_and_its_import(src_dir: Path) -> None:
@@ -609,14 +657,27 @@ def test_an_unstated_rx_ring_is_left_to_the_uart_constructor_default(src_dir: Pa
     assert "rx_ring=" not in calls[buses[1]]
 
 
-def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
-    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
-    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
+def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
+    # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
+    copy = tmp_path / "src"
+    shutil.copytree(src_dir, copy)
+    for path in copy.glob("asy_*_driver.py"):
+        text = path.read_text()
+        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
+    for driver in drivers:
+        path = copy / f"asy_{driver}_driver.py"
+        text = path.read_text()
+        match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
+        assert match is not None, driver
+        method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
+        path.write_text(text[: match.end()] + method + text[match.end() :])
+    return copy
 
 
-def _uart_link_lines(source: str) -> "dict[str, ast.Call]":
-    fn = _function(source, "build_system")
-    return {s.targets[0].id: s.value for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "UARTLinkDriver"}
+def _status_entries(source: str, name: str) -> "dict[str, str]":
+    returned = next(n.value for n in ast.walk(_function(source, name)) if isinstance(n, ast.Return))
+    assert isinstance(returned, ast.Dict)
+    return {str(k.value): ast.unparse(v) for k, v in zip(returned.keys, returned.values, strict=True) if isinstance(k, ast.Constant)}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -682,13 +743,9 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(src_
     assert result.module_source.count('"FirmwareVersion": _FIRMWARE_VERSION') == 1
 
 
-def _build_date_problems(module_source: str, now: datetime) -> "list[str]":
-    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", module_source)
-    assert match is not None
-    stamp = datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
-    if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
-        return [f"the build date {match.group(1)} is not timezone-aware UTC"]
-    return [] if abs(now - stamp) <= timedelta(minutes=1) else [f"the build date {match.group(1)} is not within a minute of the generation time {now:%Y-%m-%dT%H:%M:%SZ}"]
+def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
+    # Each sub-table of doc[key], checked; a new dict over the same tables, so an edit to one reaches `doc`.
+    return {name: table(sub) for name, sub in table(doc.get(key, {})).items()}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -703,9 +760,13 @@ def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
     assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
 
 
-def _function(source: str, name: str) -> "ast.FunctionDef | ast.AsyncFunctionDef":
-    tree = ast.parse(source)
-    return next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+def _trigger_modules(source: str) -> "list[str]":
+    func = _function(source, "_collect_trigger_starters")
+    loops = [n for n in ast.walk(func) if isinstance(n, ast.For)]
+    if not loops:
+        return []
+    assert isinstance(loops[0].iter, ast.Tuple)
+    return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -800,18 +861,9 @@ def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(devic
     assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
 
 
-def _settings_groups(source: str, page: str) -> "list[tuple[str, tuple[str, ...], dict[str, str]]]":
-    # (module, field names, hook keywords) of each SettingsGroup the generated RouteSources lists for `page`.
-    routes = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
-    settings = next(k.value for k in routes.keywords if k.arg == "settings")
-    assert isinstance(settings, ast.Dict)
-    groups = next(v for k, v in zip(settings.keys, settings.values, strict=True) if isinstance(k, ast.Constant) and k.value == page)
-    assert isinstance(groups, ast.List)
-    out = []
-    for call in groups.elts:
-        assert isinstance(call, ast.Call) and ast.unparse(call.func) == "SettingsGroup"
-        out.append((ast.unparse(call.args[0]), ast.literal_eval(call.args[1]), {str(k.arg): ast.unparse(k.value) for k in call.keywords}))
-    return out
+def _uart_bus_calls(source: str) -> "dict[str, str]":
+    fn = _function(source, "build_system")
+    return {s.targets[0].id: ast.unparse(s.value) for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "asy_uart_driver.UART"}
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -839,43 +891,23 @@ def test_real_device_settings_groups_accept_exactly_what_their_page_shows_as_wri
     assert sorted(k for group in shown["system"] for k in group) == sorted(k for group in accepted["system"] for k in group)
 
 
-@pytest.fixture(scope="module")
-def triggers_src(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "Callable[[tuple[str, ...]], Path]":
-    # One copy per driver set for the module, so the device-parametrized tests share its writes and its parses.
-    copies: dict[tuple[str, ...], Path] = {}
-
-    def copy_for(drivers: "tuple[str, ...]") -> Path:
-        if drivers not in copies:
-            copies[drivers] = _src_with_read_triggers(repo_root / "src", tmp_path_factory.mktemp("triggers"), drivers)
-        return copies[drivers]
-
-    return copy_for
+def _uart_link_lines(source: str) -> "dict[str, ast.Call]":
+    fn = _function(source, "build_system")
+    return {s.targets[0].id: s.value for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "UARTLinkDriver"}
 
 
-def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, ...]") -> Path:
-    # A src/ copy in which exactly the named drivers' reader classes declare their own read triggers.
-    copy = tmp_path / "src"
-    shutil.copytree(src_dir, copy)
-    for path in copy.glob("asy_*_driver.py"):
-        text = path.read_text()
-        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
-    for driver in drivers:
-        path = copy / f"asy_{driver}_driver.py"
-        text = path.read_text()
-        match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
-        assert match is not None, driver
-        method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
-        path.write_text(text[: match.end()] + method + text[match.end() :])
-    return copy
+def _uart_link_model(src_dir: Path) -> DeviceModel:
+    # The device carrying a uart_link pair, chosen by that property, never by name.
+    (device,) = [d for d in DEVICE_NAMES if any(k[0] == "uart_link" for k in _real(d).model.instances)]
+    model = build_model(device_toml(device), src_dir)
+    build_construction_order(model)
+    return model
 
 
-def _trigger_modules(source: str) -> "list[str]":
-    func = _function(source, "_collect_trigger_starters")
-    loops = [n for n in ast.walk(func) if isinstance(n, ast.For)]
-    if not loops:
-        return []
-    assert isinstance(loops[0].iter, ast.Tuple)
-    return [elt.id for elt in loops[0].iter.elts if isinstance(elt, ast.Name)]
+def _webserver_keywords(source: str) -> dict[str, object]:
+    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ServingLimits"]
+    assert len(calls) == 1, len(calls)
+    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
 
 
 _TRIGGER_DRIVERS = ("bmp3xx", "isl29125", "sgp40")
@@ -883,11 +915,9 @@ _TRIGGER_DRIVERS = ("bmp3xx", "isl29125", "sgp40")
 _SPREAD_DEVICES = [d for d in DEVICE_NAMES if sum(d in devices_with(driver) for driver in _TRIGGER_DRIVERS) >= 2]
 
 
-def _expected_spread(model: DeviceModel) -> "list[str]":
-    # The device's trigger readers in construction order with their TOML buses, through trigger_spread()
-    # (the rule itself is pinned on synthetic input below): the device's order is data, never a literal here.
-    keys = [k for k in model.construction_order if isinstance(k, tuple) and k[0] in _TRIGGER_DRIVERS]
-    return trigger_spread([(instance_label(k), str(model.instances[k].fields["bus"])) for k in keys])
+@pytest.fixture
+def ext_dir(repo_root: Path) -> Path:
+    return repo_root / "ext"
 
 
 def test_the_spread_reaches_a_real_device() -> None:
@@ -902,15 +932,14 @@ def test_read_triggers_are_collected_with_bus_sharing_readers_furthest_apart(ext
     assert "scd30" not in _trigger_modules(result.module_source)
 
 
-def _collected_modules(source: str, collector: str) -> "list[str]":
-    (loop,) = [n for n in ast.walk(_function(source, collector)) if isinstance(n, ast.For)]
-    assert isinstance(loop.iter, ast.Tuple)
-    return [elt.id for elt in loop.iter.elts if isinstance(elt, ast.Name)]
+@pytest.fixture
+def fixtures_dir(repo_root: Path) -> Path:
+    return repo_root / "tests_scripts" / "buildgen_fixtures"
 
 
-def _fram_var(result: GeneratedDevice) -> str:
-    (key,) = [key for key in result.model.instances if key[0] == "fram"]
-    return instance_label(key)
+@pytest.fixture
+def src_dir(repo_root: Path) -> Path:
+    return repo_root / "src"
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -1304,7 +1333,7 @@ def test_isl29125_without_trigger_s_or_fram_target_omits_both(tmp_path: Path, sr
 
 
 def test_isl29125_irq_pull_up_false_is_rendered_into_the_constructor_call(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
-    # A board with its own external pull-up resistor (the real dev bench) sets this - the driver's
+    # A board with its own external pull-up resistor (the real bench board) sets this - the driver's
     # own default (omitted here) is True, the internal pull-up, for a board with no resistor of
     # its own.
     doc = base_doc()
@@ -1450,10 +1479,17 @@ def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path,
     assert " - fix: " in result.stderr
 
 
-def _webserver_keywords(source: str) -> dict[str, object]:
-    calls = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ServingLimits"]
-    assert len(calls) == 1, len(calls)
-    return {kw.arg: ast.literal_eval(kw.value) for kw in calls[0].keywords if kw.arg in ("max_connections", "backlog")}
+@pytest.fixture(scope="module")
+def triggers_src(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> "Callable[[tuple[str, ...]], Path]":
+    # One copy per driver set for the module, so the device-parametrized tests share its writes and its parses.
+    copies: dict[tuple[str, ...], Path] = {}
+
+    def copy_for(drivers: "tuple[str, ...]") -> Path:
+        if drivers not in copies:
+            copies[drivers] = _src_with_read_triggers(repo_root / "src", tmp_path_factory.mktemp("triggers"), drivers)
+        return copies[drivers]
+
+    return copy_for
 
 
 @pytest.mark.parametrize(

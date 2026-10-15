@@ -6,6 +6,8 @@ import ast
 import re
 from pathlib import Path
 
+from _repo_scan import python_files
+
 _PYTHON_SCOPES = ("src", "tests", "tests_scripts", "tests_hardware", "scripts", "toolchain", "buildgen", "digital_twin")
 
 
@@ -21,7 +23,7 @@ def _top_level_imports(repo_root: Path) -> set[str]:
     # `uv run` script dependency rather than a venv one, so importlib alone would not see it.
     names: set[str] = set()
     for scope in _PYTHON_SCOPES:
-        for path in sorted((repo_root / scope).rglob("*.py")):
+        for path in python_files(repo_root, scope):
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Import):
                     names.update(alias.name.split(".")[0] for alias in node.names)

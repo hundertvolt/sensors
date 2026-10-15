@@ -1,94 +1,95 @@
-"""Isolated-driver device script: the ISL29125's same-device "ongoing read, incoming write" proof
-(Part C.8). Its config registers are volatile (p7), so this writes freely; the sharper hazard is
-the DESTRUCTIVE 0x08 status read, which a config write landing mid-cycle must not tear."""
+"""Isolated-driver device script: the ISL29125's same-device "ongoing read, incoming write" proof (SPECIFICATION.md
+Part C.8). Its config registers are volatile (FN8424 p.7), so this writes freely; the sharper hazard is the destructive
+0x08 status read, which a config write landing mid-cycle must not tear. Reports facts; the host gives the verdict."""
 
 import asyncio
-
-import machine
 
 import asy_i2c_driver
 from asy_isl29125_driver import ISL29125_I2C
 
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/bus_reader_loops.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.bus_reader_loops import Record, Stop, read_loop, report_errors
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
 # @tunable l3.isl29125_same_device_rw_concurrency_read_iterations = 20
-READ_ITERATIONS = 20
+_READ_ITERATIONS = 20
 # @tunable l3.isl29125_same_device_rw_concurrency_write_iterations = 6
-WRITE_ITERATIONS = 6
+_WRITE_ITERATIONS = 6
 # @tunable l3.isl29125_same_device_rw_concurrency_read_step_ms = 50
 _READ_STEP_MS = 50
 # @tunable l3.isl29125_same_device_rw_concurrency_write_step_ms = 90
 _WRITE_STEP_MS = 90
-_IR_ADJUST_VALUES = (0, 16, 32, 40, 48, 63)  # every one legal per p10's own 0-63 ALSCC field
-_STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (p12, Table 15)
+# The writer starts once the reader completed its first read, at most this long after (a deadline, not a head start).
+# @tunable l3.isl29125_same_device_rw_concurrency_writer_delay_ms = 120
+_WRITER_DELAY_MS = 120
+# @tunable l3.isl29125_same_device_rw_concurrency_writer_poll_ms = 10
+_WRITER_POLL_MS = 10
+_IR_ADJUST_VALUES = (0, 16, 32, 40, 48, 63)  # every one legal per FN8424 p.10's 0-63 field
+_STATUS_RESERVED_MASK = 0xC8  # B7:B6 and B3 read zero on a working part (FN8424 p.12, Table 15)
+_IR_ADJUST_MASK = 0x3F  # source: CONFIG2's IR Comp Adjust bits B[5:0] (FN8424 p.10)
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    # Constructs the PROTOCOL layer directly, never ISL29125_Reader: Part C.8's standing rule for a
-    # concurrency script exercising persisted config, so nothing here touches the RP2040's flash.
-    # The ISL has no on-chip NVM either, so rewriting its config costs nothing.
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    isl = ISL29125_I2C(i2c1)
+    wdt = arm()
+    # The protocol layer directly, never ISL29125_Reader (Part C.8): nothing here touches the RP2040's flash, and the
+    # part has no NVM, so rewriting its configuration costs nothing.
+    bus = BENCH["bus"][BENCH["instances"]["isl29125"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    isl = ISL29125_I2C(i2c)
     await isl.setup()
+    torn = [0]
 
-    read_errors = []
-    read_completed = 0
-    write_errors = []
-    write_completed = 0
+    async def read() -> "str | None":
+        status = await isl.read_status()
+        counts = await isl.read_counts()
+        if status & _STATUS_RESERVED_MASK or not all(0 <= c <= 0xFFFF for c in counts):
+            torn[0] += 1
+            return f"status={status:#04x} counts={counts}: a reserved status bit or a count outside 16 bits - a torn read"
+        return None
 
-    async def reader() -> None:
-        nonlocal read_completed
-        for i in range(READ_ITERATIONS):
-            try:
-                status = await isl.read_status()
-                if status & _STATUS_RESERVED_MASK:
-                    read_errors.append(f"iter {i}: status={status:#04x} has a reserved bit set - the read was torn or the part is faulty")
-                green, red, blue = await isl.read_counts()
-                if not all(0 <= channel <= 0xFFFF for channel in (green, red, blue)):
-                    read_errors.append(f"iter {i}: counts=({green}, {red}, {blue}) outside the 16-bit range")
-                if green == red == blue == 0xFFFF and status & _STATUS_RESERVED_MASK:
-                    read_errors.append(f"iter {i}: all-ones counts with an implausible status - the bus looks dead, not saturated")
-            except Exception as e:
-                read_errors.append(f"iter {i}: read raised {e!r}")
-            else:
-                read_completed += 1
-            wdt.feed()
-            await asyncio.sleep_ms(_READ_STEP_MS)
+    reader_rec, write_rec = Record("isl29125_reader"), Record("isl29125_writer")
 
     async def writer() -> None:
-        nonlocal write_completed
-        await asyncio.sleep_ms(120)  # let the reader get well into its run first
-        for i in range(WRITE_ITERATIONS):
+        waited_ms = 0
+        while reader_rec.reads + reader_rec.total == 0 and waited_ms < _WRITER_DELAY_MS:
+            await fed_sleep_ms(wdt, _WRITER_POLL_MS)
+            waited_ms += _WRITER_POLL_MS
+        for i in range(_WRITE_ITERATIONS):
             wanted = _IR_ADJUST_VALUES[i % len(_IR_ADJUST_VALUES)]
             try:
-                # An IR-compensation-only change: a 2-byte burst at 0x02, which deliberately does
-                # NOT restart the conversion, so a concurrent read keeps producing real data.
+                # IR compensation only: a 2-byte burst at 0x02 that does not restart the conversion.
                 await isl.configure(ir_adjust=wanted)
-                snapshot = await isl.get_config_snapshot()
-                readback = snapshot[1] & 0x3F
-                if readback != wanted:
-                    write_errors.append(f"iter {i}: wrote IRCompAdjust={wanted}, read back {readback}")
-            except Exception as e:
-                write_errors.append(f"iter {i}: write raised {e!r}")
+                readback = (await isl.get_config_snapshot())[1] & _IR_ADJUST_MASK
+            except (OSError, RuntimeError, ValueError) as e:
+                write_rec.fail(f"write {i}: {e!r}")
             else:
-                write_completed += 1
-            wdt.feed()
-            await asyncio.sleep_ms(_WRITE_STEP_MS)
+                if readback == wanted:
+                    write_rec.reads += 1
+                else:
+                    write_rec.fail(f"write {i}: wrote IRCompAdjust={wanted}, read back {readback}")
+            await fed_sleep_ms(wdt, _WRITE_STEP_MS)
 
-    await asyncio.gather(reader(), writer())
-
-    failures = []
-    if read_completed != READ_ITERATIONS:
-        failures.append(f"only {read_completed}/{READ_ITERATIONS} reads completed")
-    if write_completed != WRITE_ITERATIONS:
-        failures.append(f"only {write_completed}/{WRITE_ITERATIONS} writes completed")
-    failures.extend(read_errors)
-    failures.extend(write_errors)
-
-    if failures:
-        print(f"RESULT: FAIL {'; '.join(failures)}")
-    else:
-        print(f"RESULT: PASS {read_completed} reads and {write_completed} config writes interleaved with no torn value")
+    await asyncio.gather(read_loop(read, _READ_ITERATIONS, _READ_STEP_MS, wdt, reader_rec, Stop()), writer())
+    fact("reads", reader_rec.reads)
+    fact("reads_planned", _READ_ITERATIONS)
+    fact("torn_reads", torn[0])
+    fact("writes_ok", write_rec.reads)
+    fact("writes_planned", _WRITE_ITERATIONS)
+    report_errors([reader_rec, write_rec])
+    done()
 
 
 asyncio.run(_main())

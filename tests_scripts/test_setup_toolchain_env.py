@@ -222,12 +222,6 @@ def test_resolve_pico_device_raises_on_ambiguous_match(setup_toolchain: ModuleTy
         setup_toolchain.resolve_pico_device(None)
 
 
-def test_the_installer_and_the_bench_harness_look_for_one_board_name(setup_toolchain: ModuleType, repo_root: Path) -> None:
-    # tests_hardware/harness.py still carries its own copy of the glob; until it reads this one, they must agree.
-    harness = load_script_module(repo_root / "tests_hardware" / "harness.py", "harness")
-    assert setup_toolchain.BOARD_BY_ID_GLOB == harness._BOARD_BY_ID_GLOB
-
-
 def test_board_prints_the_resolved_path_without_a_lock_or_a_versions_read(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.delenv("MPREMOTE_DEVICE", raising=False)
     monkeypatch.setattr(setup_toolchain, "resolve_board_serial", lambda: [Path("/dev/serial/by-id") / _MICROPYTHON_BY_ID])
@@ -716,7 +710,7 @@ def test_the_bench_suite_derives_the_connection_names_from_this_module(setup_too
     # for a connection nobody creates, and its skip gate deselects rather than fails.
     harness_path = repo_root / "tests_hardware" / "harness.py"
     harness_src = harness_path.read_text()
-    harness = load_script_module(harness_path, "harness")
+    harness = load_script_module(harness_path, "harness_for_toolchain_env")
     for attr in ("BENCH_BRIDGE_CONN", "BENCH_ETH_CONN", "BENCH_AP_CONN"):
         assert f"{attr} = setup_toolchain.{attr}" in harness_src, (
             f"tests_hardware/harness.py declares {attr} itself instead of reading it from this module - "

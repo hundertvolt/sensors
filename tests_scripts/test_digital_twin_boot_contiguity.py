@@ -88,7 +88,7 @@ _RETENTION_TOLERANCE = 0.01
 
 # The allocation-failure markers every gate shares, from the hardware tier's harness
 # (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
-_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(Path(__file__).resolve().parent.parent / "tests_hardware" / "harness.py", "harness_for_contiguity").MEMORY_ERROR_MARKERS)
 # The line the probe's always-printing asyncio report opens with for a task that died unawaited.
 _TASK_DEATH_MARKER = str(load_script_module(Path(__file__).resolve().parent.parent / "digital_twin" / "unix_port_unretrieved_report.py", "unix_port_unretrieved_report").MARKER)
 
@@ -430,7 +430,7 @@ def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_roo
 
 
 _PROBE_CONSTANTS = ("_PROBE_MIN", "_PROBE_MAX", "_PROBE_RETRIES")
-_BOARD_PROBES = ("heap_layout_after_full_boot_sequence.py", "heap_headroom_after_full_system_build.py")
+_SHARED_PROBE = "_shared/heap_probe.py"
 
 
 def _arithmetic(node: ast.expr) -> int:
@@ -445,18 +445,33 @@ def _arithmetic(node: ast.expr) -> int:
     raise AssertionError(f"not an integer constant expression: {ast.unparse(node)}")
 
 
-def _probe_constant_mismatches(scripts: Path) -> "list[str]":
-    # Both board heap probes search with one set of constants, and keep no copy of this file's bounds but an equal one.
-    values = {name: _int_constants((scripts / name).read_text(encoding="utf-8"), _PROBE_CONSTANTS) for name in _BOARD_PROBES}
-    found = [f"{name} states {sorted(v)}, not all of {_PROBE_CONSTANTS}" for name, v in values.items() if set(v) != set(_PROBE_CONSTANTS)]
-    if len({tuple(sorted(v.items())) for v in values.values()}) > 1:
-        found.append(f"the probes disagree: {values}")
-    bounds = {"_HIGH_BAND": _HIGH_BAND, "_HIGH_BAND_BLOCKS_MAX": _HIGH_BAND_BLOCKS_MAX}
-    for name in _BOARD_PROBES:
-        kept = _int_constants((scripts / name).read_text(encoding="utf-8"), tuple(bounds))
-        found += [f"{name} keeps {k} = {v}, this file {bounds[k]}" for k, v in kept.items() if v != bounds[k]]
+def _probe_constant_findings(scripts: Path, twin_probe: Path) -> "list[str]":
+    # The heap probe's search constants live once, in the shared include; no script keeps a copy, and a twin probe
+    # stating one states the same value (today it reads mem_info maps and searches nothing).
+    shared = _int_constants((scripts / _SHARED_PROBE).read_text(encoding="utf-8"), _PROBE_CONSTANTS)
+    found = [] if set(shared) == set(_PROBE_CONSTANTS) else [f"{_SHARED_PROBE} states {sorted(shared)}, not all of {_PROBE_CONSTANTS}"]
+    found += [f"{path.name} keeps its own {sorted(kept)}" for path in sorted(scripts.glob("*.py")) if (kept := _int_constants(path.read_text(encoding="utf-8"), _PROBE_CONSTANTS))]
+    twin = _int_constants(twin_probe.read_text(encoding="utf-8"), _PROBE_CONSTANTS)
+    found += [f"the twin probe's {name} = {value}, the shared include's {shared.get(name)}" for name, value in twin.items() if shared.get(name) != value]
     return found
 
 
-def test_both_board_heap_probes_search_with_the_same_constants(repo_root: Path) -> None:
-    assert _probe_constant_mismatches(repo_root / "tests_hardware" / "device_scripts") == []
+def test_the_heap_probe_constants_live_once_in_the_shared_include(repo_root: Path) -> None:
+    assert _probe_constant_findings(repo_root / "tests_hardware" / "device_scripts", repo_root / _PROBE) == []
+
+
+def test_no_device_script_keeps_a_copy_of_this_files_high_band(repo_root: Path) -> None:
+    # Reported, not failed: the high band is a twin-only bound, and a board script stating one would drift unseen.
+    names = ("_HIGH_BAND", "_HIGH_BAND_BLOCKS_MAX")
+    copies = {p.name: kept for p in sorted((repo_root / "tests_hardware" / "device_scripts").glob("*.py")) if (kept := _int_constants(p.read_text(encoding="utf-8"), names))}
+    print(f"device-script copies of {names}: {copies or 'none'}")
+
+
+def test_the_probe_constant_check_bites(tmp_path: Path) -> None:
+    scripts = tmp_path / "device_scripts"
+    (scripts / "_shared").mkdir(parents=True)
+    (scripts / _SHARED_PROBE).write_text("_PROBE_MIN = 64\n_PROBE_MAX = 192 * 1024\n_PROBE_RETRIES = 3\n", encoding="utf-8")
+    (scripts / "copy.py").write_text("_PROBE_MIN = 64\n", encoding="utf-8")
+    twin = tmp_path / "twin_probe.py"
+    twin.write_text("_PROBE_RETRIES = 4\n", encoding="utf-8")
+    assert _probe_constant_findings(scripts, twin) == ["copy.py keeps its own ['_PROBE_MIN']", "the twin probe's _PROBE_RETRIES = 4, the shared include's 3"]

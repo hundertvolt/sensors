@@ -1,16 +1,21 @@
-"""Isolated-driver device script: the failure half of the crossover-jumper tier - one-sided silence
-recovers within the specified window, and a deliberately mismatched payload_size fails loudly
-rather than silently corrupting, which is the one configuration error the design cannot self-heal."""
-# The fault knobs sit behind a small injector object: the flash tier drives them through the
-# peripherals themselves, and a future external injector implements the same three methods, so these
-# bodies need no reshaping. Inline because `mpremote run` uploads exactly one file.
+"""Isolated-driver device script: the failure half of the crossover-jumper tier - one-sided silence and a baud desync
+each fail a transfer and recover within the protocol's resync bound (timed), and a mismatched payload_size fails
+loudly rather than silently corrupting, the one configuration error the design cannot self-heal."""
+# The UART fault catalog is mock-only (no injection hardware will be bought, owner, 2026-09-22); this injector
+# reaches the two faults the bench can make: silence and a baud mismatch.
 
 import asyncio
-
-import machine
+import time
 
 import asy_uart_driver
-from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ListenResult, ResponderCallbacks, TransferLimits, UARTComm
+from asy_crc_checks import CRC16
+from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+# @include _shared/settle.py
+# @include _shared/isl_error_log.py
 
 try:
     from typing import TYPE_CHECKING
@@ -19,54 +24,119 @@ except ImportError:  # typing has no runtime presence on MicroPython
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
 
-    T = TypeVar("T")
+    import machine
+    from _shared.facts import done, fact
+    from _shared.isl_error_log import log_record
+    from _shared.settle import settled
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts, BusFacts
 
-PAYLOAD_SIZE = 48
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+PAYLOAD_SIZE = 48  # the protocol's default frame, agreed out of band (J.6)
 TIMEOUT_MS = 1000
-BAUDRATE = 115200
-# @tunable dev.uart_poll_wait_ms = 2
-POLL_WAIT_MS = 2
-# Mirrors sensortask_dev.py's own pair: 2ms while a transaction is in flight, 50ms while the line
-# is idle. A bench run that used one rate would not be exercising the shipped configuration.
-# @tunable dev.uart_poll_idle_ms = 50
-POLL_IDLE_MS = 50
-# @tunable dev.uart_rxbuf = 512
-BUF_BYTES = 512
 _CMD_ECHO = 0x02
-# Every wait below is bounded and feeds as it goes: a link that never answers parks the listener in
-# uart_listen()'s one unbounded read, and waiting that out outlasts the watchdog, so an injected
-# fault resets the board instead of naming the failing check (measured on unjumpered pins).
-# @tunable l3.uart_crossover_exchange_join_step_ms = 100
-JOIN_STEP_MS = 100
-# @tunable l3.uart_crossover_exchange_join_budget_ms = 2000
-JOIN_BUDGET_MS = 2000
+_DESYNC_DIVISOR = 4  # the responder re-initialised at a quarter of the line's baud rate
+# The transfer the recovery is timed to: retried, fed, until it succeeds or the bound and one more timeout have passed.
+_RECOVERY_RETRY_MS = 100
 
 
 class PeripheralInjector:
-    # The flash-tier adapter: faults are produced with the real peripherals. silence() turns the
-    # responder's UART off, so its traffic genuinely stops arriving rather than being filtered in
-    # software; desync() re-inits it at a baud rate the other end does not share.
-    def __init__(self, driver: "asy_uart_driver.UART", port_id: int, tx: int, rx: int) -> None:
+    # Faults made with the real peripherals: silence() turns the responder's UART off, so its traffic stops arriving
+    # rather than being filtered in software; desync() re-inits it at a baud rate the other end does not share. The
+    # driver's init() re-applies the DMA receive set-up itself (RX interrupts masked, RXDMAE set, the ring re-armed).
+    def __init__(self, driver: "asy_uart_driver.UART", bus: "BusFacts") -> None:
         self._driver = driver
-        self._port_id = port_id
-        self._tx = tx
-        self._rx = rx
+        self._bus = bus
 
     def _reinit(self, baudrate: int) -> None:
-        self._driver.init(
-            self._port_id, self._tx, self._rx, baudrate=baudrate, rxbuf=BUF_BYTES, txbuf=BUF_BYTES,
-        )
+        bus = self._bus
+        self._driver.init(bus["id"], bus["tx_pin"], bus["rx_pin"], baudrate=baudrate, rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], rx_ring=bus["rx_ring"])
+
+    def desync(self) -> None:
+        self._reinit(self._bus["baudrate"] // _DESYNC_DIVISOR)
+
+    def restore(self) -> None:
+        self._reinit(self._bus["baudrate"])
 
     def silence(self) -> None:
         self._driver.deinit()
 
-    def desync(self) -> None:
-        self._reinit(BAUDRATE // 4)
 
-    def restore(self) -> None:
-        self._reinit(BAUDRATE)
+def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTComm, UARTComm]":
+    mode = BENCH.get("CRC_MODE", "none")
+    drivers = []
+    for label in ("uart_link_init", "uart_link_resp"):
+        bus = BENCH["bus"][BENCH["instances"][label]["bus"]]
+        drivers.append(asy_uart_driver.UART(
+            bus["id"], bus["tx_pin"], bus["rx_pin"], baudrate=bus["baudrate"], rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], rx_ring=bus["rx_ring"],
+            poll_wait_ms=bus["poll_wait_ms"], poll_idle_ms=bus["poll_idle_ms"], crc=CRC16() if mode == "crc16" else None,
+        ))
+    initiator = UARTComm(drivers[0], ROLE_INITIATOR, limits=TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes), name="UART_INIT")
+    responder = UARTComm(
+        drivers[1], ROLE_RESPONDER, limits=TransferLimits(payload_size_b, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes),
+        callbacks=ResponderCallbacks(get_callback, set_callback, None), name="UART_RESP",
+    )
+    return drivers[0], drivers[1], initiator, responder
+
+
+async def _faults(wdt: "machine.WDT") -> None:
+    uart0, uart1, initiator, responder = _build(PAYLOAD_SIZE)
+    try:
+        fact("setup", {"initiator": await initiator.setup(), "responder": await responder.setup()})
+        injector = PeripheralInjector(uart1, BENCH["bus"][BENCH["instances"]["uart_link_resp"]["bus"]])
+        injector.silence()
+        fact("silence_failed", await _transfer(wdt, responder, initiator.uart_set(_CMD_ECHO, b"lost")) is False)
+        fact("silence_recovery_ms", await _recovery_ms(wdt, initiator, responder, injector))
+        await initiator.reset_error_counter()
+        injector.desync()
+        fact("desync_failed", await _transfer(wdt, responder, initiator.uart_set(_CMD_ECHO, b"skew")) is False)
+        fact("desync_log", log_record(await initiator.get_error_counter(), initiator.name))
+        fact("desync_recovery_ms", await _recovery_ms(wdt, initiator, responder, injector))
+    finally:
+        uart0.deinit()
+        uart1.deinit()
+
+
+async def _mismatch(wdt: "machine.WDT") -> None:
+    # A payload_size is agreed out of band and never negotiated, so a mismatch is only diagnosed: it must fail, loudly,
+    # rather than deliver a wrong-length payload as if it were right.
+    uart0, uart1, initiator, responder = _build(PAYLOAD_SIZE + 8)
+    try:
+        fact("mismatch_setup", {"initiator": await initiator.setup(), "responder": await responder.setup()})
+        fact("mismatch_failed", await _transfer(wdt, responder, initiator.uart_set(_CMD_ECHO, b"mismatched")) is False)
+        fact("mismatch_log", log_record(await initiator.get_error_counter(), initiator.name))
+    finally:
+        uart0.deinit()
+        uart1.deinit()
+
+
+async def _recovery_ms(wdt: "machine.WDT", initiator: UARTComm, responder: UARTComm, injector: PeripheralInjector) -> "int | None":
+    # From restore() to the first transfer that succeeds, retried until the resync bound and one timeout have passed.
+    start = time.ticks_ms()
+    injector.restore()
+    await responder.clear()
+    while time.ticks_diff(time.ticks_ms(), start) < BENCH["resync_bound_ms"] + TIMEOUT_MS:
+        if await _transfer(wdt, responder, initiator.uart_set(_CMD_ECHO, b"back")):
+            return time.ticks_diff(time.ticks_ms(), start)
+        await asyncio.sleep_ms(_RECOVERY_RETRY_MS)
+    return None
+
+
+async def _transfer(wdt: "machine.WDT", responder: UARTComm, work: "Coroutine[object, object, bool]") -> bool:
+    # One transfer against a listener started for it; the listener is joined with clear() as the documented unstick
+    # for a read whose frame never came (SPECIFICATION.md Part J.5), then cancelled if even that fails.
+    listener = asyncio.create_task(responder.uart_listen())
+    task = asyncio.create_task(work)
+    while not task.done():
+        await settled(wdt, task)
+    if not await settled(wdt, listener):
+        await responder.clear()
+        if not await settled(wdt, listener):
+            listener.cancel()
+            await settled(wdt, listener)
+    return await task
 
 
 def get_callback(cmd_id: int) -> "tuple[bool, bytes | None]":
@@ -77,89 +147,16 @@ def set_callback(cmd_id: int) -> "tuple[bool, int | None]":
     return (cmd_id == _CMD_ECHO), None
 
 
-def _build(payload_size_b: int) -> "tuple[asy_uart_driver.UART, asy_uart_driver.UART, UARTComm, UARTComm]":
-    uart0 = asy_uart_driver.UART(0, 0, 1, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    uart1 = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=BUF_BYTES, txbuf=BUF_BYTES, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_IDLE_MS)
-    limits_a = TransferLimits(PAYLOAD_SIZE, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
-    limits_b = TransferLimits(payload_size_b, TIMEOUT_MS, DEFAULT_LIMITS.chunk_bytes, DEFAULT_LIMITS.max_transfer_bytes)
-    initiator = UARTComm(uart0, ROLE_INITIATOR, limits=limits_a, name="UART_INIT")
-    responder = UARTComm(
-        uart1,
-        ROLE_RESPONDER,
-        limits=limits_b,
-        callbacks=ResponderCallbacks(get_callback, set_callback, None),
-        name="UART_RESP",
-    )
-    return uart0, uart1, initiator, responder
-
-
-async def _settled(wdt: "machine.WDT", task: "asyncio.Task[ListenResult]") -> bool:
-    # Polls rather than asyncio.wait_for(): the watchdog has to be fed while waiting, and a bounded
-    # poll is the only shape that both waits and feeds.
-    for _ in range(JOIN_BUDGET_MS // JOIN_STEP_MS):
-        if task.done():
-            return True
-        wdt.feed()
-        await asyncio.sleep_ms(JOIN_STEP_MS)
-    return task.done()
-
-
-async def _exchange(wdt: "machine.WDT", responder: UARTComm, work: "Coroutine[Any, Any, T]") -> "T":
-    listener = asyncio.create_task(responder.uart_listen())
-    try:
-        return await work
-    finally:
-        wdt.feed()  # the transaction above has its own timeout/resync budget to spend first
-        # clear() is the module's own documented unstick for a listener parked in that unbounded
-        # read (SPECIFICATION.md Part J.5) - it cannot finish on its own once its frame never came.
-        if not await _settled(wdt, listener):
-            await responder.clear()
-            if not await _settled(wdt, listener):
-                listener.cancel()
-                await _settled(wdt, listener)
-
-
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    failures = []
-
-    uart0, uart1, initiator, responder = _build(PAYLOAD_SIZE)
-    await initiator.setup()
-    await responder.setup()
-    injector = PeripheralInjector(uart1, 1, 8, 9)
-
-    injector.silence()
-    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"lost")) is not False:
-        failures.append("a transfer into a silent peer reported success")
-    wdt.feed()
-
-    injector.restore()
-    await responder.clear()
-    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"back")) is not True:
-        failures.append("the link did not recover after the peer returned")
-    wdt.feed()
-    uart0.deinit()
-    uart1.deinit()
-
-    # A mismatched payload_size is agreed out of band and never negotiated, so it cannot be
-    # recovered from - only diagnosed. What must be true is that it fails, loudly, rather than
-    # delivering a wrong-length payload as if it were right.
-    uart0, uart1, initiator, responder = _build(PAYLOAD_SIZE + 8)
-    await initiator.setup()
-    await responder.setup()
-    if await _exchange(wdt, responder, initiator.uart_set(_CMD_ECHO, b"mismatched")) is not False:
-        failures.append("a payload_size mismatch was not detected")
-    counts = await initiator.get_error_counter()
-    if "UART_INIT" not in counts or not counts["UART_INIT"]["ErrCount"]:
-        failures.append("a payload_size mismatch produced no logged error at all")
-    uart0.deinit()
-    uart1.deinit()
-
-    if failures:
-        print("RESULT: FAIL " + "; ".join(failures))
-    else:
-        print("RESULT: PASS one-sided silence recovered; payload_size mismatch failed loudly")
+    wdt = arm()
+    raised: list[str] = []  # an exception a task ended with under the faults: none is the system's half of the result
+    asyncio.get_event_loop().set_exception_handler(lambda _loop, context: raised.append(repr(context.get("exception"))))
+    fact("crc_mode", BENCH.get("CRC_MODE", "none"))
+    fact("resync_bound_ms", BENCH["resync_bound_ms"])
+    await _faults(wdt)
+    await _mismatch(wdt)
+    fact("system_task_exceptions", raised)
+    done()
 
 
 asyncio.run(_main())

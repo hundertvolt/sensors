@@ -15,8 +15,9 @@ import network
 import run_generic_integration
 from _async_harness import cancel, run_timed
 from _boot_recorder import BootRecorder, expected_entries
-from _generated_module import boot_entry_watchdog, boot_generated, write_offline_ntp_config
+from _generated_module import boot_entry_watchdog, boot_generated
 from _generated_tree import require_fresh
+from _offline_ntp_config import write_offline_ntp_config  # _generated_module's import put its directory on the path
 from _port_bands import PortAllocator
 from _shared_rest_roundtrip import assert_named_modules_constructed
 from _tmp_scratch import TmpScratch
@@ -30,7 +31,20 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
-    from typing import Any
+    from typing import TypedDict, TypeVar, cast
+
+    from launch import _Plan
+
+    T = TypeVar("T")
+
+    class _ExpectedFacts(TypedDict):
+        # The part of buildgen's expected facts these scenarios read.
+        boot_sequence: dict[str, list[str]]
+
+else:
+
+    def cast(_typ: object, val: "T") -> "T":  # no typing module on MicroPython: the identity at run time
+        return val
 
 require_fresh()  # every scenario boots a generated module and reads its plan
 
@@ -65,10 +79,10 @@ def _constructed_names(module: "ModuleType") -> "set[str]":
     return {name for name in dir(module) if not name.startswith("_") and not isinstance(getattr(module, name), type) and hasattr(getattr(module, name), "setup") and hasattr(getattr(module, name), "get_loggers")}
 
 
-def _expected_facts(device: str) -> "dict[str, Any]":
+def _expected_facts(device: str) -> "_ExpectedFacts":
     # What buildgen alone derives for the device (its boot sequence among them), written beside the module.
     with open(f"build/generated_src/sensortask_{device}_expected.json") as f:
-        facts: dict[str, Any] = json.load(f)
+        facts: _ExpectedFacts = json.load(f)
     return facts
 
 
@@ -96,13 +110,16 @@ def _scenario_boot_sequence(device: str) -> None:
         await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
         recorder = BootRecorder(module)  # it names its classes from a built module
         module = _fresh_board(device)
-        module.webserver = None  # the global the runner's wait reads: this boot's, not the build's above
+        module.__dict__["webserver"] = None  # the global the runner's wait reads: this boot's, not the build's above
         watchdog = boot_entry_watchdog(module, device)
         main_task = asyncio.get_event_loop().create_task(module.main(watchdog=watchdog, cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port()))
         try:
             # The runner's own steps between build_system() and the setups: a UART link's bounded pollers, as on CI.
             await run_generic_integration._wait_until_built(module)
-            run_generic_integration._wire_uart_crossover(module, wiring_plan(device))
+            # The runner's _Plan and tests' TwinWiringPlan type the one wiring-plan JSON from each side (the twin
+            # cannot import the tests' type), so the plan crosses that boundary by a cast.
+            plan: _Plan = cast("_Plan", wiring_plan(device))
+            run_generic_integration._wire_uart_crossover(module, plan)
             await main_task
         except Exception as e:
             if not recorder.stopped_by(e):

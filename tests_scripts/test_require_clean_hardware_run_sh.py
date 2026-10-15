@@ -10,12 +10,14 @@ from pathlib import Path
 
 _GREEN: "dict[str, object]" = {"nodeid": "tests_hardware/bench/test_smoke.py::test_it", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}
 
-# Logs every call, writes the canned record where pytest was told to, and runs the real verdict.
+# Logs every call (raw, so a missing --no-sync shows), writes the canned record where pytest was told
+# to, and runs the real verdict. A call is matched with its --no-sync removed.
 _STUB_UV = """#!{python}
 import json, os, subprocess, sys
-args = sys.argv[1:]
+raw = sys.argv[1:]
+args = raw[:1] + raw[2:] if raw[1:2] == ["--no-sync"] else raw
 with open(os.environ["STUB_CALLS"], "a") as calls:
-    calls.write(json.dumps({{"argv": args, "pythonpath": os.environ.get("PYTHONPATH", "")}}) + "\\n")
+    calls.write(json.dumps({{"argv": args, "raw": raw, "pythonpath": os.environ.get("PYTHONPATH", ""), "evidence_dir": os.environ.get("EVIDENCE_DIR")}}) + "\\n")
 if args[:2] == ["run", "scripts/_archive_evidence.py"]:
     os.makedirs(os.environ["STUB_EVIDENCE"], exist_ok=True)
     print(os.environ["STUB_EVIDENCE"])
@@ -60,13 +62,20 @@ def _run(repo_root: Path, tmp_path: Path, *args: str, record: "dict[str, object]
     return result, logged
 
 
+def _raw_calls(tmp_path: Path) -> "list[tuple[list[str], list[str], str | None]]":
+    # (matched argv, argv as written, $EVIDENCE_DIR) per logged stub call: the raw form shows a missing --no-sync.
+    calls = tmp_path / "calls.jsonl"
+    entries = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+    return [(list(e["argv"]), list(e["raw"]), e["evidence_dir"]) for e in entries]
+
+
 def _pytest_call(calls: "list[tuple[list[str], str]]") -> "tuple[list[str], str]":
     found = [c for c in calls if c[0][:2] == ["run", "pytest"]]
     assert len(found) == 1, f"pytest must run exactly once, saw {calls}"
     return found[0]
 
 
-_ARGS = ("--runner", "run_flash_hardware_suite", "--levels", "L0 L1 L2 L3", "tests_hardware/flash", "-m", "not long_soak")
+_ARGS = ("--runner", "run_flash_hardware_suite", "--levels", "L0 L1 L2 L3", "tests_hardware/flash", "-m", "not soak_duration")
 
 
 def test_a_clean_run_exits_0_with_the_verdicts_block(repo_root: Path, tmp_path: Path) -> None:
@@ -78,13 +87,30 @@ def test_a_clean_run_exits_0_with_the_verdicts_block(repo_root: Path, tmp_path: 
 
 
 def test_pytest_runs_once_with_the_record_plugin_and_the_callers_arguments_before_v(repo_root: Path, tmp_path: Path) -> None:
-    _, calls = _run(repo_root, tmp_path, *_ARGS, "-q")
+    _, calls = _run(repo_root, tmp_path, *_ARGS, "--allow-persistence-write", "-q")
     argv, pythonpath = _pytest_call(calls)
     assert pythonpath == "scripts", "the plugin is found on PYTHONPATH=scripts"
     assert argv[2:4] == ["-p", "_pytest_run_record"], argv
     assert argv[4] == f"--run-record={tmp_path / 'archive' / 'run' / 'run_record.json'}", argv
-    assert argv[5:-1] == ["tests_hardware/flash", "-m", "not long_soak", "-q"], "the wrapper's own options must not reach pytest"
+    assert argv[5:-1] == ["tests_hardware/flash", "-m", "not soak_duration", "--allow-persistence-write", "-q"], "the wrapper's own options must not reach pytest"
     assert argv[-1] == "-v", "-v comes after the caller's arguments"
+
+
+def test_every_uv_call_runs_without_an_implicit_sync(repo_root: Path, tmp_path: Path) -> None:
+    # A plain `uv run` syncs the whole dev group first, so a third-party fetch would sit inside a
+    # hardware run and an outage would read as a hardware failure.
+    _run(repo_root, tmp_path, *_ARGS)
+    raw = [written for _argv, written, _dir in _raw_calls(tmp_path)]
+    assert len(raw) == 3, raw
+    unsynced = [argv for argv in raw if argv[:2] != ["run", "--no-sync"]]
+    assert not unsynced, f"these uv calls may sync: {unsynced}"
+
+
+def test_pytest_sees_the_evidence_directory_exported(repo_root: Path, tmp_path: Path) -> None:
+    # the evidence helper writes a run's saved files beside its log and record.
+    _run(repo_root, tmp_path, *_ARGS)
+    seen = [evidence for argv, _raw, evidence in _raw_calls(tmp_path) if argv[:2] == ["run", "pytest"]]
+    assert seen == [str(tmp_path / "archive" / "run")], seen
 
 
 def test_the_log_and_the_record_land_in_the_evidence_archive(repo_root: Path, tmp_path: Path) -> None:

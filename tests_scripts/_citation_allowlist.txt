@@ -88,12 +88,6 @@ tests/test_digital_twin_uart_link.py	WP3
 tests/test_setter_microdot_integration.py	WP5
 tests_hardware/README.md	DEV_HARDWARE_BASELINE_PLAN.md
 tests_hardware/README.md	tests_hardware/bus_topology.py
-tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	Topic 6
-tests_hardware/device_scripts/fram_capacity_after_full_system_build.py	WP4
-tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py	measure A
-tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py	measure A
-tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py	measure B
-tests_hardware/flash/test_fram_storage.py	Topic 6
 tests_scripts/conftest.py	devices/zz_test_*.toml
 tests_scripts/test_build_firmware.py	devices/no-such-device.toml
 tests_scripts/test_buildgen_validate.py	WP1

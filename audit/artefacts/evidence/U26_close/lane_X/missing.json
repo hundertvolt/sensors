@@ -1,0 +1,1318 @@
+{
+ "l0.fram_regions_boot_timeout_s": [
+  [
+   "tests_scripts/test_device_script_fram_regions.py",
+   30,
+   "120"
+  ]
+ ],
+ "l0.session_exit_guard_timeout_s": [
+  [
+   "tests_scripts/test_session_exit_guard.py",
+   31,
+   "60"
+  ]
+ ],
+ "l3.bmp3xx_alone_survives_a_general_call_broadcast_step_ms": [
+  [
+   "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py",
+   31,
+   "200"
+  ]
+ ],
+ "l3.bmp3xx_alone_survives_a_general_call_broadcasts": [
+  [
+   "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py",
+   29,
+   "10"
+  ]
+ ],
+ "l3.bmp3xx_alone_survives_a_general_call_run_bound_s": [
+  [
+   "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py",
+   33,
+   "60.0"
+  ]
+ ],
+ "l3.bmp3xx_conformance_probe_conversion_ms": [
+  [
+   "tests_hardware/device_scripts/bmp3xx_conformance_probe.py",
+   32,
+   "50"
+  ]
+ ],
+ "l3.bmp3xx_same_device_rw_concurrency_rung_margin_ms": [
+  [
+   "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py",
+   37,
+   "100"
+  ]
+ ],
+ "l3.bus_concurrency_command_boot_timeout_s": [
+  [
+   "tests_hardware/flash/test_bus_concurrency.py",
+   36,
+   "60.0"
+  ]
+ ],
+ "l3.bus_concurrency_cross_device_resume_s": [
+  [
+   "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py",
+   34,
+   "2.5"
+  ]
+ ],
+ "l3.bus_concurrency_cross_device_rung_traffic_ms": [
+  [
+   "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py",
+   38,
+   "1000"
+  ]
+ ],
+ "l3.bus_concurrency_cross_device_sibling_step_ms": [
+  [
+   "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py",
+   36,
+   "15"
+  ]
+ ],
+ "l3.bus_concurrency_scd30_write_vs_siblings_writer_delay_ms": [
+  [
+   "tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py",
+   37,
+   "1000"
+  ]
+ ],
+ "l3.bus_electrical_timing_arming_span_max_us": [
+  [
+   "tests_hardware/flash/test_bus_electrical_timing.py",
+   22,
+   "1500"
+  ]
+ ],
+ "l3.bus_electrical_timing_country_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_bus_electrical_timing.py",
+   25,
+   "120.0"
+  ]
+ ],
+ "l3.c_stack_budget_window_ms": [
+  [
+   "tests_hardware/device_scripts/c_stack_budget.py",
+   40,
+   "10000"
+  ]
+ ],
+ "l3.chip_conformance_argument_reaction_timeout_s": [
+  [
+   "tests_hardware/flash/test_chip_conformance.py",
+   26,
+   "240.0"
+  ]
+ ],
+ "l3.chip_conformance_isl29125_cycle_max_ms": [
+  [
+   "tests_hardware/flash/test_chip_conformance.py",
+   34,
+   "40"
+  ]
+ ],
+ "l3.chip_conformance_isl29125_cycle_min_ms": [
+  [
+   "tests_hardware/flash/test_chip_conformance.py",
+   32,
+   "3"
+  ]
+ ],
+ "l3.chip_conformance_probe_timeout_s": [
+  [
+   "tests_hardware/flash/test_chip_conformance.py",
+   23,
+   "120.0"
+  ]
+ ],
+ "l3.config_float_round_trip_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_config_float_round_trip.py",
+   15,
+   "60.0"
+  ]
+ ],
+ "l3.device_script_errors_kept": [
+  [
+   "tests_hardware/device_scripts/_shared/facts.py",
+   7,
+   "5"
+  ]
+ ],
+ "l3.device_script_feed_step_ms": [
+  [
+   "tests_hardware/device_scripts/_shared/watchdog.py",
+   12,
+   "2000"
+  ]
+ ],
+ "l3.flash_leave_serving_boot_timeout_s": [
+  [
+   "tests_hardware/flash/conftest.py",
+   26,
+   "30.0"
+  ]
+ ],
+ "l3.flash_leave_serving_present_timeout_s": [
+  [
+   "tests_hardware/flash/conftest.py",
+   24,
+   "15.0"
+  ]
+ ],
+ "l3.fram_command_hold_block_budget_us": [
+  [
+   "tests_hardware/device_scripts/fram_command_hold_timing.py",
+   29,
+   "25000"
+  ]
+ ],
+ "l3.heap_layout_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_heap_layout.py",
+   21,
+   "120.0"
+  ]
+ ],
+ "l3.heap_probe_max_kib": [
+  [
+   "tests_hardware/device_scripts/_shared/heap_probe.py",
+   21,
+   "192"
+  ]
+ ],
+ "l3.heap_probe_min": [
+  [
+   "tests_hardware/device_scripts/_shared/heap_probe.py",
+   19,
+   "64"
+  ]
+ ],
+ "l3.heap_probe_retries": [
+  [
+   "tests_hardware/device_scripts/_shared/heap_probe.py",
+   24,
+   "3"
+  ]
+ ],
+ "l3.isl29125_mechanism_envelope_settle_s": [
+  [
+   "tests_hardware/device_scripts/isl29125_mechanism_envelope.py",
+   37,
+   "4.5"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_conversion_settle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   34,
+   "700"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_cycle_poll_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   64,
+   "1"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_cycle_samples": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   60,
+   "9"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_cycle_window_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   62,
+   "1500"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_int_release_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   45,
+   "20"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_one_cycle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   43,
+   "400"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_reconfigure_settle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   37,
+   "1000"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_short_settle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   40,
+   "500"
+  ]
+ ],
+ "l3.isl29125_mock_conformance_probe_write_settle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py",
+   31,
+   "50"
+  ]
+ ],
+ "l3.isl29125_real_irq_edge_dark_settle_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_real_irq_edge.py",
+   47,
+   "300"
+  ]
+ ],
+ "l3.isl29125_same_device_rw_concurrency_writer_delay_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py",
+   36,
+   "120"
+  ]
+ ],
+ "l3.isl29125_same_device_rw_concurrency_writer_poll_ms": [
+  [
+   "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py",
+   38,
+   "10"
+  ]
+ ],
+ "l3.loop_lag_window_s": [
+  [
+   "tests_hardware/device_scripts/loop_lag_under_combined_load.py",
+   36,
+   "30"
+  ]
+ ],
+ "l3.memory_stress_c_stack_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_memory_stress.py",
+   40,
+   "60.0"
+  ]
+ ],
+ "l3.memory_stress_loop_lag_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_memory_stress.py",
+   37,
+   "90.0"
+  ]
+ ],
+ "l3.memory_stress_stretch_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_memory_stress.py",
+   34,
+   "60.0"
+  ]
+ ],
+ "l3.record_twin_flash_run_timeout_s": [
+  [
+   "scripts/record_twin_instrument_runs.py",
+   31,
+   "3600.0"
+  ]
+ ],
+ "l3.reflash_boot_timeout_s": [
+  [
+   "tests_hardware/harness.py",
+   155,
+   "60.0"
+  ]
+ ],
+ "l3.reflash_present_timeout_s": [
+  [
+   "tests_hardware/harness.py",
+   153,
+   "30.0"
+  ]
+ ],
+ "l3.scd30_argument_reaction_loop_step_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_argument_reaction.py",
+   43,
+   "500"
+  ]
+ ],
+ "l3.scd30_argument_reaction_loop_writes": [
+  [
+   "tests_hardware/device_scripts/scd30_argument_reaction.py",
+   41,
+   "20"
+  ]
+ ],
+ "l3.scd30_argument_reaction_period_slack_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_argument_reaction.py",
+   38,
+   "2000"
+  ]
+ ],
+ "l3.scd30_argument_reaction_read_delay_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_argument_reaction.py",
+   33,
+   "5"
+  ]
+ ],
+ "l3.scd30_argument_reaction_ready_poll_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_argument_reaction.py",
+   35,
+   "100"
+  ]
+ ],
+ "l3.scd30_conformance_probe_read_delay_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_conformance_probe.py",
+   29,
+   "5"
+  ]
+ ],
+ "l3.scd30_conformance_probe_ready_poll_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_conformance_probe.py",
+   31,
+   "200"
+  ]
+ ],
+ "l3.scd30_conformance_probe_ready_slack_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_conformance_probe.py",
+   34,
+   "2000"
+  ]
+ ],
+ "l3.scd30_conformance_probe_recovery_poll_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_conformance_probe.py",
+   38,
+   "20"
+  ]
+ ],
+ "l3.scd30_data_ready_poll_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_data_ready_wait.py",
+   25,
+   "1000"
+  ]
+ ],
+ "l3.scd30_data_ready_wait_margin_s": [
+  [
+   "tests_hardware/device_scripts/scd30_data_ready_wait.py",
+   27,
+   "2"
+  ]
+ ],
+ "l3.scd30_prerequisite_interval_read_timeout_s": [
+  [
+   "tests_hardware/scd30_prerequisite.py",
+   18,
+   "30.0"
+  ]
+ ],
+ "l3.scd30_prerequisite_wait_margin_s": [
+  [
+   "tests_hardware/scd30_prerequisite.py",
+   20,
+   "60"
+  ]
+ ],
+ "l3.scd30_same_device_rw_concurrency_writer_delay_s": [
+  [
+   "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py",
+   38,
+   "0.2"
+  ]
+ ],
+ "l3.scd30_same_device_rw_concurrency_writer_poll_ms": [
+  [
+   "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py",
+   40,
+   "10"
+  ]
+ ],
+ "l3.scheduler_saturation_drop_busy_step_us": [
+  [
+   "tests_hardware/device_scripts/scheduler_saturation_drop.py",
+   27,
+   "900"
+  ]
+ ],
+ "l3.sensor_accuracy_frc_sum_rel_max": [
+  [
+   "tests_hardware/flash/test_sensor_accuracy.py",
+   41,
+   "0.001"
+  ]
+ ],
+ "l3.settle_budget_ms": [
+  [
+   "tests_hardware/device_scripts/_shared/settle.py",
+   22,
+   "2000"
+  ]
+ ],
+ "l3.settle_step_ms": [
+  [
+   "tests_hardware/device_scripts/_shared/settle.py",
+   20,
+   "100"
+  ]
+ ],
+ "l3.sgp40_fram_backup_restore_backup_wait_s": [
+  [
+   "tests_hardware/device_scripts/sgp40_fram_backup_restore.py",
+   34,
+   "75.0"
+  ]
+ ],
+ "l3.sgp40_fram_backup_restore_restore_wait_s": [
+  [
+   "tests_hardware/device_scripts/sgp40_fram_backup_restore.py",
+   36,
+   "10.0"
+  ]
+ ],
+ "l3.sgp40_sample_cadence_timers_poll_ms": [
+  [
+   "tests_hardware/device_scripts/sgp40_sample_cadence.py",
+   39,
+   "100"
+  ]
+ ],
+ "l3.system_commands_boot_timeout_s": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   48,
+   "60.0"
+  ]
+ ],
+ "l3.system_commands_erase_feed_gap_max_ms": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   42,
+   "100"
+  ]
+ ],
+ "l3.system_commands_picotool_timeout_s": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   52,
+   "30.0"
+  ]
+ ],
+ "l3.system_commands_present_timeout_s": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   50,
+   "30.0"
+  ]
+ ],
+ "l3.system_commands_refusal_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   46,
+   "120.0"
+  ]
+ ],
+ "l3.system_commands_script_timeout_s": [
+  [
+   "tests_hardware/flash/test_system_commands.py",
+   44,
+   "90.0"
+  ]
+ ],
+ "l3.uart_comm_hazards_quiet_window_ms": [
+  [
+   "tests_hardware/device_scripts/uart_comm_hazards.py",
+   50,
+   "300"
+  ]
+ ],
+ "l3.uart_crossover_hazards_timeout_s": [
+  [
+   "tests_hardware/flash/test_uart_crossover.py",
+   42,
+   "120.0"
+  ]
+ ],
+ "l3.uart_dma_ring_interrupts_off_oe_bound_us": [
+  [
+   "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py",
+   63,
+   "20000"
+  ]
+ ],
+ "l3.uart_dma_ring_interrupts_off_quiet_ms": [
+  [
+   "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py",
+   60,
+   "50"
+  ]
+ ],
+ "l3.uart_dma_ring_interrupts_off_reset_stream_ms": [
+  [
+   "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py",
+   69,
+   "2000"
+  ]
+ ],
+ "l3.uart_dma_ring_interrupts_off_untouched_ms": [
+  [
+   "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py",
+   66,
+   "1000"
+  ]
+ ],
+ "l3.uart_driver_read_never_blocks_the_loop_drain_quiet_ms": [
+  [
+   "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py",
+   54,
+   "20"
+  ]
+ ],
+ "l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms": [
+  [
+   "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py",
+   48,
+   "50"
+  ]
+ ],
+ "l3.uart_idle_poll_rate_cancel_settle_ms": [
+  [
+   "tests_hardware/device_scripts/uart_idle_poll_rate.py",
+   39,
+   "400"
+  ]
+ ],
+ "l3.uart_idle_poll_rate_park_settle_ms": [
+  [
+   "tests_hardware/device_scripts/uart_idle_poll_rate.py",
+   37,
+   "500"
+  ]
+ ],
+ "l3.uart_link_echo_under_serving_load_load_wait_ms": [
+  [
+   "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py",
+   42,
+   "90000"
+  ]
+ ],
+ "l3.uart_link_echo_under_serving_load_poll_ms": [
+  [
+   "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py",
+   44,
+   "250"
+  ]
+ ],
+ "l3.uart_link_echo_under_serving_load_rounds": [
+  [
+   "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py",
+   38,
+   "20"
+  ]
+ ],
+ "l3.uart_link_echo_under_serving_load_window_ms": [
+  [
+   "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py",
+   40,
+   "30000"
+  ]
+ ],
+ "l3.wifi_radio_reinit_connect_budget_ms": [
+  [
+   "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py",
+   31,
+   "20000"
+  ]
+ ],
+ "l3.wifi_radio_reinit_poll_ms": [
+  [
+   "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py",
+   33,
+   "250"
+  ]
+ ],
+ "l4.bench_load_probe_timeout_s": [
+  [
+   "tests_hardware/bench/_load.py",
+   33,
+   "10.0"
+  ]
+ ],
+ "l4.board_image_system_timeout_s": [
+  [
+   "tests_hardware/bench/conftest.py",
+   17,
+   "10.0"
+  ]
+ ],
+ "l4.boot_order_console_read_timeout_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   32,
+   "0.2"
+  ]
+ ],
+ "l4.boot_order_console_reopen_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   34,
+   "0.2"
+  ]
+ ],
+ "l4.boot_order_join_timeout_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   41,
+   "10.0"
+  ]
+ ],
+ "l4.boot_order_probe_timeout_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   39,
+   "5.0"
+  ]
+ ],
+ "l4.boot_order_status_poll_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   28,
+   "0.5"
+  ]
+ ],
+ "l4.boot_order_trigger_stamp_tolerance_ms": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   37,
+   "20.0"
+  ]
+ ],
+ "l4.boot_order_window_s": [
+  [
+   "tests_hardware/bench/test_boot_order_and_triggers.py",
+   30,
+   "90.0"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_command_after_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   82,
+   "3"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_command_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   47,
+   "6"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_degraded_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   39,
+   "12"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_flap_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   43,
+   "6"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_ntp_block_margin_s": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   80,
+   "10.0"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_ntp_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   41,
+   "12"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_plain_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   37,
+   "24"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_scd30_offset_step_k": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   317,
+   "0.5"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_scd30_write_cycles": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   315,
+   "2"
+  ]
+ ],
+ "l4.bus_concurrency_under_api_load_write_min_answered": [
+  [
+   "tests_hardware/bench/test_bus_concurrency_under_api_load.py",
+   45,
+   "24"
+  ]
+ ],
+ "l4.cap_binding_answer_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   552,
+   "2.0"
+  ]
+ ],
+ "l4.cap_binding_close_margin_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   554,
+   "5.0"
+  ]
+ ],
+ "l4.conftest_dut_ip_exec_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   45,
+   "15.0"
+  ]
+ ],
+ "l4.conftest_end_boot_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   61,
+   "30.0"
+  ]
+ ],
+ "l4.conftest_end_present_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   59,
+   "15.0"
+  ]
+ ],
+ "l4.conftest_http_ready_poll_s": [
+  [
+   "tests_hardware/conftest.py",
+   49,
+   "2.0"
+  ]
+ ],
+ "l4.conftest_http_ready_probe_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   47,
+   "5.0"
+  ]
+ ],
+ "l4.conftest_ip_and_http_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   51,
+   "60.0"
+  ]
+ ],
+ "l4.conftest_provision_put_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   43,
+   "10.0"
+  ]
+ ],
+ "l4.conftest_sta_tail_step_s": [
+  [
+   "tests_hardware/conftest.py",
+   55,
+   "2.0"
+  ]
+ ],
+ "l4.conftest_vl805_read_timeout_s": [
+  [
+   "tests_hardware/conftest.py",
+   57,
+   "20.0"
+  ]
+ ],
+ "l4.console_starvation_load_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   848,
+   "60.0"
+  ]
+ ],
+ "l4.console_starvation_slowloris_clients": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   850,
+   "6"
+  ]
+ ],
+ "l4.dut_serving_after_sta_s": [
+  [
+   "tests_hardware/conftest.py",
+   53,
+   "30.0"
+  ]
+ ],
+ "l4.end_to_end_timing_reboot_loss_margin_s": [
+  [
+   "tests_hardware/bench/test_end_to_end_timing.py",
+   30,
+   "1.5"
+  ]
+ ],
+ "l4.flash_stall_poll_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   910,
+   "0.05"
+  ]
+ ],
+ "l4.flash_stall_window_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   912,
+   "5.0"
+  ]
+ ],
+ "l4.harness_usb_bind_settle_max_s": [
+  [
+   "tests_hardware/harness.py",
+   122,
+   "3.0"
+  ]
+ ],
+ "l4.harness_usb_unbind_settle_max_s": [
+  [
+   "tests_hardware/harness.py",
+   120,
+   "2.0"
+  ]
+ ],
+ "l4.hotspot_role_reversal_link_advance_timeout_s": [
+  [
+   "tests_hardware/bench/test_hotspot_role_reversal.py",
+   72,
+   "30.0"
+  ]
+ ],
+ "l4.hotspot_role_reversal_spoof_capture_s": [
+  [
+   "tests_hardware/bench/test_hotspot_role_reversal.py",
+   70,
+   "5.0"
+  ]
+ ],
+ "l4.lwip_slow_client_bytes_per_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   31,
+   "256"
+  ]
+ ],
+ "l4.lwip_spin_concurrent_request_max_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   34,
+   "3.0"
+  ]
+ ],
+ "l4.lwip_stall_drain_timeout_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   44,
+   "30.0"
+  ]
+ ],
+ "l4.lwip_stall_hold_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   36,
+   "10.0"
+  ]
+ ],
+ "l4.lwip_stall_join_timeout_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   48,
+   "30.0"
+  ]
+ ],
+ "l4.lwip_stall_raw_socket_timeout_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   42,
+   "10.0"
+  ]
+ ],
+ "l4.lwip_stall_serving_timeout_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   46,
+   "120.0"
+  ]
+ ],
+ "l4.lwip_stall_settle_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   29,
+   "2.0"
+  ]
+ ],
+ "l4.lwip_stall_status_poll_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   38,
+   "0.5"
+  ]
+ ],
+ "l4.lwip_stall_stopped_answering_s": [
+  [
+   "tests_hardware/bench/test_modlwip_send_stall.py",
+   40,
+   "5.0"
+  ]
+ ],
+ "l4.manual_persistence_script_timeout_s": [
+  [
+   "tests_hardware/manual/manual_persistence.py",
+   24,
+   "180.0"
+  ]
+ ],
+ "l4.manual_persistence_serving_timeout_s": [
+  [
+   "tests_hardware/manual/manual_persistence.py",
+   22,
+   "120.0"
+  ]
+ ],
+ "l4.manual_rest_timeout_s": [
+  [
+   "tests_hardware/manual/runner.py",
+   26,
+   "10.0"
+  ]
+ ],
+ "l4.memory_stress_bench_recovery_poll_s": [
+  [
+   "tests_hardware/bench/test_memory_stress_bench.py",
+   42,
+   "1.0"
+  ]
+ ],
+ "l4.memory_stress_bench_recovery_timeout_s": [
+  [
+   "tests_hardware/bench/test_memory_stress_bench.py",
+   40,
+   "30.0"
+  ]
+ ],
+ "l4.network_resilience_no_reconnect_tail_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   144,
+   "5.0"
+  ]
+ ],
+ "l4.network_resilience_ntp_block_margin_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   142,
+   "10.0"
+  ]
+ ],
+ "l4.observe_during_tail_after_s": [
+  [
+   "tests_hardware/harness.py",
+   143,
+   "5.0"
+  ]
+ ],
+ "l4.observe_during_tail_step_s": [
+  [
+   "tests_hardware/harness.py",
+   145,
+   "1.0"
+  ]
+ ],
+ "l4.openhab_poll_interval_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   801,
+   "5.0"
+  ]
+ ],
+ "l4.openhab_window_s": [
+  [
+   "tests_hardware/bench/test_network_resilience.py",
+   803,
+   "120.0"
+  ]
+ ],
+ "l4.reset_code_invalid_record_run_wait_s": [
+  [
+   "tests_hardware/device_scripts/reset_code_invalid_record.py",
+   28,
+   "60"
+  ]
+ ],
+ "l4.reset_reasons_loss_margin_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   40,
+   "2.0"
+  ]
+ ],
+ "l4.reset_reasons_picotool_timeout_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   42,
+   "30.0"
+  ]
+ ],
+ "l4.reset_reasons_script_timeout_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   32,
+   "120.0"
+  ]
+ ],
+ "l4.reset_reasons_serving_poll_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   36,
+   "2.0"
+  ]
+ ],
+ "l4.reset_reasons_serving_timeout_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   34,
+   "90.0"
+  ]
+ ],
+ "l4.reset_reasons_status_timeout_s": [
+  [
+   "tests_hardware/bench/test_reset_reasons.py",
+   38,
+   "10.0"
+  ]
+ ],
+ "l4.scd30_frc_baseline_probe_timeout_s": [
+  [
+   "tests_hardware/bench/test_scd30_frc_readiness_baseline.py",
+   25,
+   "5.0"
+  ]
+ ],
+ "l4.scd30_frc_baseline_window_max_s": [
+  [
+   "tests_hardware/bench/test_scd30_frc_readiness_baseline.py",
+   23,
+   "600.0"
+  ]
+ ],
+ "l4.scd30_frc_baseline_window_step_s": [
+  [
+   "tests_hardware/bench/test_scd30_frc_readiness_baseline.py",
+   21,
+   "20.0"
+  ]
+ ],
+ "l4.sensor_config_push_altitude_observe_intervals": [
+  [
+   "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py",
+   54,
+   "5"
+  ]
+ ],
+ "l4.sensor_config_push_altitude_settle_intervals": [
+  [
+   "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py",
+   52,
+   "3"
+  ]
+ ],
+ "l4.sensor_config_push_altitude_step_m": [
+  [
+   "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py",
+   50,
+   "1000"
+  ]
+ ],
+ "l4.soak_request_failure_rate": [
+  [
+   "tests_hardware/bench/test_memory_stress_bench.py",
+   38,
+   "0.001"
+  ]
+ ],
+ "l4.system_commands_hotspot_up_s": [
+  [
+   "tests_hardware/bench/test_system_commands_over_rest.py",
+   39,
+   "60.0"
+  ]
+ ],
+ "l4.system_commands_picotool_timeout_s": [
+  [
+   "tests_hardware/bench/test_system_commands_over_rest.py",
+   41,
+   "30.0"
+  ]
+ ],
+ "l4.system_commands_put_timeout_s": [
+  [
+   "tests_hardware/bench/test_system_commands_over_rest.py",
+   33,
+   "10.0"
+  ]
+ ],
+ "l4.system_commands_serving_poll_s": [
+  [
+   "tests_hardware/bench/test_system_commands_over_rest.py",
+   37,
+   "2.0"
+  ]
+ ],
+ "l4.system_commands_serving_timeout_s": [
+  [
+   "tests_hardware/bench/test_system_commands_over_rest.py",
+   35,
+   "120.0"
+  ]
+ ],
+ "l4.ticks_rollover_poll_interval_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   25,
+   "300.0"
+  ]
+ ],
+ "l4.ticks_rollover_probe_timeout_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   36,
+   "10.0"
+  ]
+ ],
+ "l4.ticks_rollover_retry_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   34,
+   "10.0"
+  ]
+ ],
+ "l4.ticks_rollover_run_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   28,
+   "7200.0"
+  ]
+ ],
+ "l4.ticks_rollover_serving_timeout_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   32,
+   "120.0"
+  ]
+ ],
+ "l4.ticks_rollover_sync_age_margin_s": [
+  [
+   "tests_hardware/bench/test_ticks_ms_rollover.py",
+   30,
+   "60.0"
+  ]
+ ],
+ "l4.uart_link_crc16_build_timeout_s": [
+  [
+   "tests_hardware/bench/test_uart_link_crc16.py",
+   29,
+   "1800.0"
+  ]
+ ],
+ "l4.uart_link_crc16_failure_poll_gap_s": [
+  [
+   "tests_hardware/bench/test_uart_link_crc16.py",
+   34,
+   "3.0"
+  ]
+ ],
+ "l4.uart_link_crc16_serving_timeout_s": [
+  [
+   "tests_hardware/bench/test_uart_link_crc16.py",
+   31,
+   "120.0"
+  ]
+ ],
+ "l4.uart_link_under_api_load_echo_iterations": [
+  [
+   "tests_hardware/bench/test_uart_link_under_api_load.py",
+   38,
+   "30"
+  ]
+ ],
+ "l4.uart_link_under_api_load_echo_min_answered": [
+  [
+   "tests_hardware/bench/test_uart_link_under_api_load.py",
+   34,
+   "30"
+  ]
+ ],
+ "l4.uart_link_under_api_load_echo_readers": [
+  [
+   "tests_hardware/bench/test_uart_link_under_api_load.py",
+   36,
+   "3"
+  ]
+ ],
+ "l4.uart_link_under_api_load_echo_script_timeout_s": [
+  [
+   "tests_hardware/bench/test_uart_link_under_api_load.py",
+   53,
+   "240.0"
+  ]
+ ],
+ "l4.wifi_networking_probe_timeout_s": [
+  [
+   "tests_hardware/bench/test_wifi_networking.py",
+   35,
+   "10.0"
+  ]
+ ],
+ "l4.wifi_radio_reinit_script_timeout_s": [
+  [
+   "tests_hardware/bench/test_wifi_radio_reinit.py",
+   16,
+   "120.0"
+  ]
+ ]
+}

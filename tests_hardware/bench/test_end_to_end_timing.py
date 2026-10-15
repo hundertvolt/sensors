@@ -6,10 +6,11 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import pytest
-from error_log_helpers import assert_module_error_log_empty, reset_all_error_logs
-from harness import Board, configured_max_connections, wait_until
+from error_log_helpers import assert_module_error_log_empty, assert_no_task_ended, reset_all_error_logs
+from harness import Board, configured_max_connections, kick_then_reset, recover_by_reset, wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
@@ -17,8 +18,8 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_integration", "poll_prewarm")
 
 # ---------------------------------------------------------------------------
-# Real SystemService._reboot() sequencing: _storage_pause()-then-wait genuinely completes before
-# the real reset fires, WDT isn't starved mid-sequence, on real timing.
+# A commanded reboot over REST runs the controlled shutdown and resets through the armed timer, never the watchdog, on
+# real timing.
 # ---------------------------------------------------------------------------
 
 
@@ -26,12 +27,10 @@ COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("webserver_concurrency", "sensortask_i
 _REBOOT_PHASE_TIMEOUT_S = 30.0
 # @tunable l4.end_to_end_timing_down_poll_s = 0.5
 _DOWN_POLL_S = 0.5
+# @tunable l4.end_to_end_timing_reboot_loss_margin_s = 1.5
+_REBOOT_LOSS_MARGIN_S = 1.5
 # @tunable l4.end_to_end_timing_poll_s = 1.0
 _POLL_S = 1.0
-# @tunable l4.end_to_end_timing_ready_probe_timeout_s = 5.0
-_READY_PROBE_TIMEOUT_S = 5.0
-# @tunable l4.end_to_end_timing_serving_poll_s = 2.0
-_SERVING_POLL_S = 2.0
 # @tunable l4.end_to_end_timing_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
 # @tunable l4.end_to_end_timing_join_timeout_s = 15.0
@@ -50,37 +49,31 @@ _BACKUP_ADVANCE_TIMEOUT_S = 90.0
 _BACKUP_POLL_S = 5.0
 # @tunable l4.end_to_end_timing_restore_recovery_timeout_s = 20.0
 _RESTORE_RECOVERY_TIMEOUT_S = 20.0
+_SYSTEM = "asy_system_service.py"
 
 
-def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
-    # is_reachable() soft-resets the board's heap on every poll (raw-REPL entry Ctrl-D's first),
-    # wiping the very Timer this test waits on. is_device_present() is the passive open()/close()
-    # that touches nothing; tests_hardware/README.md has the repro.
-    res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"})
-    assert res.status_code == 200, f"PUT /system SystemCmd=reboot failed: {res.status_code} {res.body!r}"
-    assert res.json()["result"]["SystemCmd"] == "Valid", f"reboot command was rejected: {res.json()!r}"
-    # kick_all_stations() before the real reboot fires - this is a genuine machine.reset() under the
-    # hood, subject to the same stale-AP-station-table finding as every other real reboot in this
-    # tier (see conftest.py's dut_ip docstring for the full account).
-    bench.kick_all_stations()
-
-    # The real _reset_timer fires after SystemService's own configured delay (not this test's to
-    # assume a specific value for) - poll for the board actually going unreachable, then coming
-    # back, rather than sleeping a guessed duration.
+def test_real_reboot_sequencing_via_rest_completes_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+    # Passive waits only (is_reachable() would stop the fresh main.py): the webserver serves within
+    # l4.dut_serving_after_sta_s of STA connect, the generated main() starting it before the first NTP sync.
+    task_check_s = _load.src_number(_SYSTEM, "_TASK_CHECK_TIME")
+    reset_delay_s = _load.src_number(_SYSTEM, "_RESET_DELAY")
+    watchdog_ms = _load.buildgen_number("validate.py", "_WDT_TIMEOUT_MS")
+    # The upper bound must exclude a watchdog reset, which records the same reset code.
+    assert watchdog_ms - (reset_delay_s + task_check_s) * 1000 > _REBOOT_LOSS_MARGIN_S * 1000, f"the {_REBOOT_LOSS_MARGIN_S}s margin reaches the {watchdog_ms} ms watchdog"
+    res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "reboot"}, timeout_s=_PROBE_TIMEOUT_S)
+    replied = time.monotonic()
+    assert _load.as_object(res.json().get("result"), "result").get("SystemCmd") == "Valid", f"reboot command was rejected: {res.status_code} {res.body!r}"
+    bench.kick_all_stations()  # a genuine machine.reset() follows: no stale AP-side station entry may outlive it
     wait_until(lambda: not board.is_device_present(), timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_DOWN_POLL_S, description="board to go unreachable (real reboot firing)")
-    wait_until(board.is_reachable, timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_POLL_S, description="board reachable again after the real reboot completes")
-    # is_reachable() only confirms raw-REPL reachability, not that the webserver is listening yet -
-    # it starts only after ntp_force_sync() (up to ~20s). Bounded recovery retry, same pattern as
-    # every other real-reboot wait in this tier (see tests_hardware/README.md).
-    def _webserver_up() -> bool:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
-
-    try:
-        wait_until(_webserver_up, timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_SERVING_POLL_S, description="webserver actually serving again after the real reboot completes")
-    except TimeoutError:
-        bench.kick_all_stations()
-        board.hard_reset()
-        wait_until(_webserver_up, timeout_s=_REBOOT_PHASE_TIMEOUT_S, poll_interval_s=_SERVING_POLL_S, description="webserver actually serving again (after one recovery hard_reset() retry)")
+    lost_s = time.monotonic() - replied
+    result_note(f"reply to USB loss {lost_s:.2f}s: the armed reset {reset_delay_s:g}s after a shutdown bounded by one {task_check_s:g}s task check")
+    assert reset_delay_s <= lost_s <= task_check_s + reset_delay_s + _REBOOT_LOSS_MARGIN_S, f"the reboot reset {lost_s:.2f}s after its reply, outside {reset_delay_s:g}..{task_check_s + reset_delay_s + _REBOOT_LOSS_MARGIN_S:g}s"
+    noted = _load.Noted(result_note)
+    recover_by_reset(board, bench, ready=lambda: board.is_device_present() and _load.serving(dut_ip), first_wait_s=_REBOOT_PHASE_TIMEOUT_S, retry_wait_s=_REBOOT_PHASE_TIMEOUT_S, skipped="the passive post-reboot wait", note=noted, description="REST reboot")
+    if not noted.recovered:  # a recovery reset records its own reason
+        reason = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("ResetReason")
+        assert reason == _load.src_number(_SYSTEM, "_RR_REBOOT"), f"the REST reboot reads ResetReason {reason!r}, not the reboot's own code (a watchdog reset reads 2)"
+    assert_no_task_ended(dut_ip, "a REST reboot")
 
 
 # ---------------------------------------------------------------------------
@@ -104,47 +97,35 @@ def test_real_concurrent_client_burst_does_not_crash_the_webserver(dut_ip: str, 
         except (OSError, http_client.HTTP_ERROR) as exc:
             results[i] = repr(exc)
 
-    threads = [threading.Thread(target=_client, args=(i,)) for i in range(n_clients)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=_JOIN_TIMEOUT_S)
+    threads: list[threading.Thread] = []
+    try:
+        for i in range(n_clients):
+            thread = threading.Thread(target=_client, args=(i,), name=f"burst-{i}")
+            threads.append(thread)
+            thread.start()
+    finally:
+        alive = _load.join(threads, _JOIN_TIMEOUT_S)
+    assert not alive, f"{alive} never finished within {_JOIN_TIMEOUT_S:g}s"
 
     successes = [r for r in results if r == 200]
     assert len(successes) >= _max_connections, f"only {len(successes)}/{n_clients} concurrent requests succeeded (expected at least the {_max_connections}-connection admission ceiling to be served): {results}"
-    # The webserver must still answer afterwards: a crash surfacing after the burst rather than
-    # during it slips through the per-request results above. is_device_present(), not
-    # is_reachable() - see that method's docstring on disturbing a live system.
-    assert board.is_device_present() or http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after the concurrent burst"
+    # A crash surfacing after the burst rather than during it slips through the per-request results above.
+    assert http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).status_code == 200, "webserver unresponsive after the concurrent burst"
 
 
 # ---------------------------------------------------------------------------
-# Cold-boot-to-first-response latency: real WiFi-connect + NTP + sensor-init timing budget.
-# Reported/sanity-bounded, not asserted against a tight SLA - no measured baseline exists yet.
+# Cold-boot-to-first-response latency: real WiFi-connect + NTP + sensor-init latency, reported.
+# Reported with a sanity ceiling, never asserted against a tight bound: boot latency is not a metric (CLAUDE.md), only
+# the watchdog feed margins are (SPECIFICATION.md Part F.3).
 # ---------------------------------------------------------------------------
 
 
-def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
-    # kick_all_stations() first - see conftest.py's dut_ip docstring for the full stale-AP-station-
-    # table finding this real hard_reset() would otherwise be exposed to.
-    bench.kick_all_stations()
-    board.hard_reset()
+def test_cold_boot_to_first_http_response_latency_is_sane(board: Board, bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+    kick_then_reset(board, bench)  # the stale AP-side station entry kicked first, then the one cold reset
     start = time.monotonic()
-    wait_until(
-        lambda: _try_fetch_ok(dut_ip),
-        timeout_s=_RECOVERY_SANITY_TIMEOUT_S,  # generous sanity ceiling, not a validated tight budget - see this test's own docstring
-        poll_interval_s=_POLL_S,
-        description="first successful HTTP response after a cold boot",
-    )  # raises TimeoutError with context on its own if never reached - nothing further to assert here
-    elapsed_s = time.monotonic() - start
-    print(f"cold-boot-to-first-response latency: {elapsed_s:.1f}s")  # reported for a human to eyeball against future runs - no asserted threshold yet
-
-
-def _try_fetch_ok(dut_ip: str) -> bool:
-    try:
-        return http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200
-    except OSError:
-        return False
+    # A sanity ceiling only - see the banner above.
+    wait_until(lambda: _load.serving(dut_ip), timeout_s=_RECOVERY_SANITY_TIMEOUT_S, poll_interval_s=_POLL_S, description="first successful HTTP response after a cold boot")
+    result_note(f"cold-boot-to-first-response latency: {time.monotonic() - start:.1f}s")  # reported, never asserted (boot latency is evidence, not a target)
 
 
 # ---------------------------------------------------------------------------
@@ -155,44 +136,23 @@ def _try_fetch_ok(dut_ip: str) -> bool:
 
 
 @pytest.mark.persistence_write
-def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: "BenchBridge", dut_ip: str) -> None:
-    reset_all_error_logs(dut_ip)
-    current = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S).json()
-    original_backup_period = current.get("SGP40", {}).get("BackupPeriod")
-    assert original_backup_period is not None, "could not read the current real BackupPeriod before changing it"
+def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(board: Board, bench: "BenchBridge", dut_ip: str, request: pytest.FixtureRequest, result_note: "_load.Note") -> None:
+    reset_all_error_logs(dut_ip, request.node.name)
+    sgp40 = _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get("SGP40"), "GET /sensors SGP40")
+    original_backup_period = sgp40.get("BackupPeriod")
+    assert isinstance(original_backup_period, int), f"could not read the current real BackupPeriod before changing it: {original_backup_period!r}"
 
     # BackupPeriod=1 (minute) is the schema's fastest active cadence (0 disables it entirely) -
     # restored to its original value in the finally block below.
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": 1}}, timeout_s=_PROBE_TIMEOUT_S)
-    assert put_res.status_code == 200 and put_res.json().get("result", {}).get("SGP40", {}).get("BackupPeriod") in ("Valid", "Unchanged"), (
-        f"failed to set BackupPeriod=1: {put_res.status_code} {put_res.body!r}"
-    )
+    word = _load.as_object(_load.as_object(put_res.json().get("result"), "result").get("SGP40"), "result.SGP40").get("BackupPeriod")
+    assert put_res.status_code == 200 and word in ("Valid", "Unchanged"), f"failed to set BackupPeriod=1: {put_res.status_code} {put_res.body!r}"
 
     try:
-        for _cycle in range(_RESET_CYCLES):
-            time.sleep(_RESET_SPACING_S)  # spread across the 60s backup cadence so each of the 3 resets lands
-            # at a genuinely different, uncontrolled point relative to it - can't be synchronized
-            # to the real SPI write itself from the host side.
-            bench.kick_all_stations()
-            board.hard_reset()
-            # Bounded recovery retry, same convention as every sibling "reachable after
-            # hard_reset()" test in this tier (see BACKLOG.md open question 9).
-            try:
-                wait_until(
-                    lambda: _try_fetch_ok(dut_ip),
-                    timeout_s=_RESET_RECOVERY_TIMEOUT_S,
-                    poll_interval_s=_POLL_S,
-                    description="DUT reachable again after a real hard_reset() during natural FRAM backup activity",
-                )
-            except TimeoutError:
-                bench.kick_all_stations()
-                board.hard_reset()
-                wait_until(
-                    lambda: _try_fetch_ok(dut_ip),
-                    timeout_s=_RESET_RECOVERY_TIMEOUT_S,
-                    poll_interval_s=_POLL_S,
-                    description="DUT reachable again (after one recovery hard_reset() retry - see this loop's own comment)",
-                )
+        for n in range(1, _RESET_CYCLES + 1):
+            time.sleep(_RESET_SPACING_S)  # spread across the 60s backup cadence: each reset lands at another point of it
+            kick_then_reset(board, bench)  # the fault itself: a reset the host cannot synchronise to the SPI write
+            recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RESET_RECOVERY_TIMEOUT_S, retry_wait_s=_RESET_RECOVERY_TIMEOUT_S, skipped="the passive reconnect after this reset", note=result_note, description=f"reset {n} during a natural backup")
 
         # Full health check, not just "reachable" - the FRAM subsystem specifically must still work.
         assert_module_error_log_empty(dut_ip, "SGP40")
@@ -200,46 +160,21 @@ def test_real_hard_resets_during_natural_fram_backup_activity_recover_cleanly(bo
 
         # One more real backup completing cleanly after all three resets proves the FRAM subsystem
         # itself is still genuinely functional, not merely "board reachable".
-        status_before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
-        backup_ts_before = status_before.get("sensors", {}).get("SGP40", {}).get("BackupTS")
-        wait_until(
-            lambda: _sgp_backup_ts_advanced(dut_ip, backup_ts_before),
-            timeout_s=_BACKUP_ADVANCE_TIMEOUT_S,
-            poll_interval_s=_BACKUP_POLL_S,
-            description="a fresh real SGP40 VOC backup completing after the reset sequence",
-        )
+        backup_ts_before = _backup_ts(dut_ip)
+        wait_until(lambda: _backup_ts(dut_ip) not in (None, backup_ts_before), timeout_s=_BACKUP_ADVANCE_TIMEOUT_S, poll_interval_s=_BACKUP_POLL_S, description="a fresh real SGP40 VOC backup completing after the reset sequence")
+        assert_no_task_ended(dut_ip, "hard resets during natural FRAM backup activity")
     finally:
-        try:
-            restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=_PROBE_TIMEOUT_S)
-        except OSError:
-            # The same rare transient reachability miss the recovery loop above accounts for - a
-            # brief reachability wait is tried first (no reset), escalating to kick+hard_reset only
-            # if that also fails, rather than assuming a full reboot is needed.
-            try:
-                wait_until(
-                    lambda: _try_fetch_ok(dut_ip),
-                    timeout_s=_RESTORE_RECOVERY_TIMEOUT_S,
-                    poll_interval_s=_SERVING_POLL_S,
-                    description="DUT reachable again before retrying the BackupPeriod restore",
-                )
-            except TimeoutError:
-                bench.kick_all_stations()
-                board.hard_reset()
-                wait_until(
-                    lambda: _try_fetch_ok(dut_ip),
-                    timeout_s=_RESET_RECOVERY_TIMEOUT_S,
-                    poll_interval_s=_POLL_S,
-                    description="DUT reachable again (after one recovery hard_reset() retry) before retrying the BackupPeriod restore",
-                )
-            restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=_PROBE_TIMEOUT_S)
-        assert restore_res.status_code == 200, f"failed to restore BackupPeriod to {original_backup_period}"
-        reset_all_error_logs(dut_ip)
+        recover_by_reset(board, bench, ready=lambda: _load.serving(dut_ip), first_wait_s=_RESTORE_RECOVERY_TIMEOUT_S, retry_wait_s=_RESET_RECOVERY_TIMEOUT_S, skipped="the passive reconnect before the BackupPeriod restore", note=result_note, description="reachability for the BackupPeriod restore")
+        restore_res = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"SGP40": {"BackupPeriod": original_backup_period}}, timeout_s=_PROBE_TIMEOUT_S)
+        word = _load.as_object(_load.as_object(restore_res.json().get("result"), "result").get("SGP40"), "result.SGP40").get("BackupPeriod")
+        assert word in ("Valid", "Unchanged"), f"failed to restore BackupPeriod to {original_backup_period}: {restore_res.status_code} {restore_res.body!r}"
+        reset_all_error_logs(dut_ip, request.node.name)
 
 
-def _sgp_backup_ts_advanced(dut_ip: str, before: int | None) -> bool:
+def _backup_ts(dut_ip: str) -> object:
+    # GET /status's SGP40 BackupTS, None while the board does not answer.
     try:
-        status = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S).json()
-    except OSError:
-        return False
-    after = status.get("sensors", {}).get("SGP40", {}).get("BackupTS")
-    return after is not None and after != before
+        sensors = _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("sensors"), "GET /status sensors")
+        return _load.as_object(sensors.get("SGP40"), "GET /status sensors.SGP40").get("BackupTS")
+    except (OSError, http_client.HTTP_ERROR, ValueError, TypeError, AssertionError):
+        return None

@@ -35,4 +35,4 @@ elif ! scripts/_run_lower_levels.sh L3; then
     exit 1
 fi
 
-scripts/_require_clean_hardware_run.sh --runner run_flash_hardware_suite "${levels[@]}" tests_hardware/flash -m "not long_soak and not multi_day_rollover" "${args[@]}"
+scripts/_require_clean_hardware_run.sh --runner run_flash_hardware_suite "${levels[@]}" tests_hardware/flash -m "not soak_duration and not multi_day_rollover" "${args[@]}"

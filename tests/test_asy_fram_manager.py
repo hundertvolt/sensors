@@ -356,6 +356,26 @@ def test_preallocated_buffer_write_into_read_into_round_trip() -> None:
     assert data == bytearray(b"data")
 
 
+def test_one_chunk_write_is_five_driver_transfers_in_seam_order() -> None:
+    # The flash tier's reset-race seed lands its reset right after transfer SEAM 1-5 of one block's write: a changed
+    # sequence fails here, before a hardware round. Each call's address, first byte and length, read at call time.
+    _manager, _chip, chunk = _make_written_chunk()
+    calls: list[tuple[int, int, int]] = []
+    original_sync = chunk.fram.set_values_sync
+
+    def recording(buf: bytes | bytearray | memoryview, addr_start: int) -> int:
+        calls.append((addr_start, buf[0], len(buf)))
+        return original_sync(buf, addr_start)
+
+    chunk.fram.set_values_sync = recording  # type: ignore[method-assign]
+    assert run(chunk.write(b"next")) is True
+    for block, base in enumerate(chunk._block_addr):
+        byte1 = base + chunk.size + chunk.crc.length()
+        seams = [(byte1, _STATUS_BUSY, 1), (byte1 + 1, _STATUS_BUSY, 1), (base, ord("n"), chunk.size + chunk.crc.length()), (byte1, _STATUS_IDLE, 1), (byte1 + 1, _STATUS_IDLE, 1)]
+        assert calls[5 * block : 5 * block + 5] == seams, f"block {block}: {calls[5 * block : 5 * block + 5]} is not {seams}"
+    assert len(calls) == 10, calls
+
+
 # ---------------------------------------------------------------------------
 # Dual-copy self-healing and torn-write detection - the actual data-loss-prevention machinery
 # ---------------------------------------------------------------------------

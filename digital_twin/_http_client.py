@@ -1,6 +1,6 @@
 """Minimal HTTP/1.1 client over asyncio.open_connection(): real HTTP over real sockets (owner, 2026-08-13), hand-rolled
-because the Unix-port build freezes no client library. A refusal (no response byte) is CeilingRefusedError, a response
-cut short IncompleteResponseError; see digital_twin/README.md's "What's here" section."""
+because the Unix-port build freezes no client library. tests_hardware/http_client.py keeps the same shape, pinned by
+tests_scripts/test_http_client_shape_parity.py."""
 
 import asyncio
 import errno
@@ -29,13 +29,13 @@ if TYPE_CHECKING:
 
 
 class HttpResponse:
-    def __init__(self, status_code: int, headers: "dict[str, str]", body: "bytes | bytearray") -> None:
+    def __init__(self, status_code: int, headers: "dict[str, str]", body: "bytes | bytearray", *, drained: bool = False) -> None:
         self.status_code = status_code
         self.headers = headers
-        # bytearray on the sized path (_read_exact()'s right-sized buffer, never re-copied),
-        # bytes on the unsized one, or b"" when read_body=False drained the response instead of
-        # materializing it - .json() must not be called on that. Nothing ever mutates it.
+        # bytearray on the sized path (_read_exact()'s right-sized buffer, never re-copied), bytes on the unsized one,
+        # or b"" with `drained` set when read_body=False drained the response unkept. Nothing ever mutates it.
         self.body = body
+        self.drained = drained
 
     # Every body this client decodes is a JSON object - the REST envelope or a flat settings dict.
     def json(self) -> "JsonDict":
@@ -44,6 +44,8 @@ class HttpResponse:
         # mod_json_loads() reads any buffer, v1.29.0 extmod/modjson.c).
         from _strict_json import check_strict_json  # here, not at the top: tests/ is absent from a standalone twin's path
 
+        if self.drained:
+            raise ValueError("json() on a drained response")
         check_strict_json(self.body)
         decoded: JsonDict = json.loads(self.body)  # type: ignore[type-var]
         return decoded
@@ -123,7 +125,7 @@ async def _exchange(reader: "_Stream", writer: "_Stream", host: str, method: str
         raise
     except OSError as e:  # the response began: any later failure leaves it incomplete
         raise IncompleteResponseError(e.errno, "connection failed inside the response")  # noqa: B904
-    return HttpResponse(status_code, headers, body)
+    return HttpResponse(status_code, headers, body, drained=not read_body)
 
 
 async def _read_exact(reader: "_Reader", n: int) -> bytearray:

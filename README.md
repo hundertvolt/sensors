@@ -331,8 +331,14 @@ uv run scripts/build_firmware.py wozi --toolchain-dir /path             # toolch
 
 `<device>` (positional, required) must match a `devices/<device>.toml` file (`dev` is the
 bench-only variant, never built for field deployment, but a real `src/`-assembled one all the
-same). This script only builds `build/firmware-<device>.uf2`; it never
-flashes or touches real hardware — see "Flashing a real board" below for that step. Under the hood
+same). This script only builds `build/firmware-<device>.uf2` and, beside it, its image record
+`build/firmware-<device>.json` (the device, `BuildDate`, the firmware and website versions, the
+commit and whether the tree was dirty, `maxConnections`, the lwIP ensemble, the build's overrides,
+the device TOML and the UART CRC mode; SPECIFICATION.md B.11), which the bench tier compares with
+the board's `GET /system` before it tests ("Verify the image" in `tests_hardware/README.md`).
+`--device-toml PATH` builds from a copy of the device TOML that changes only what the website does
+not show, e.g. a UART link's `crc`. It never flashes or touches real hardware — see "Flashing a
+real board" below for that step. Under the hood
 it also stages and freezes the real website for that one device, runnable on its own for just that
 step, for one device or for every device:
 
@@ -426,7 +432,7 @@ know (safety facts, known assumptions/findings); this section only covers how to
 |---|---|---|
 | flash | `env --tier flash` (real USB board, no network) | `scripts/run_flash_hardware_suite.sh` |
 | bench | `env --tier bench` (also a real WiFi bridge) | `scripts/run_bench_hardware_suite.sh` |
-| soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tests.sh --tier {short,mid,long}` |
+| soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tests.sh --duration {short,mid,long}` |
 | manual | Same as flash/bench, plus a human present | `scripts/run_manual_hardware_tests.sh` |
 
 ```sh
@@ -446,20 +452,25 @@ scripts/run_bench_hardware_suite.sh -v                              # more verbo
 MPREMOTE_DEVICE=/dev/ttyACM1 scripts/run_flash_hardware_suite.sh    # non-default serial device
 scripts/run_flash_hardware_suite.sh --device /dev/ttyACM1           # same, via pytest's own --device option
 
-# Add --allow-flash-cycle to also run the one deliberate re-provisioning-flash test (skipped by
-# default - see "Flashing a real board" above; SPECIFICATION.md Part E.6.3):
+# Add --allow-flash-cycle to also run the tests that reflash the board (skipped by default - see
+# "Flashing a real board" above; SPECIFICATION.md Part E.6.3); limited-endurance writes a test owns
+# need --allow-persistence-write, and the further SCD30 NVM writes --allow-scd30-extra-write on top
+# (tests_hardware/README.md's "Persistence-write gating" lists every gate and its budget):
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
+scripts/run_bench_hardware_suite.sh --allow-persistence-write
 
-# The one real, fixed ~12.4-day wait (time.ticks_ms()'s 2**30 rollover) - its own separate flag,
-# never bundled with any soak tier; run directly, on purpose, only when genuinely intending it:
-uv run pytest tests_hardware/flash --allow-multi-day-rollover-wait -k test_ticks_ms_real_2pow30_rollover
+# The tick rollover, on top of a clean bench run: reflashes the tick-offset test image (one flash
+# cycle) and polls it about two hours over REST; the next round flashes its own image:
+scripts/_require_clean_hardware_run.sh --runner rollover --levels "L4 (tick rollover)" \
+    tests_hardware/bench/test_ticks_ms_rollover.py --allow-multi-day-rollover --allow-flash-cycle \
+    --rollover-image <tick-offset uf2>
 
-# Soak tests (@pytest.mark.long_soak) are NEVER bundled into either suite above - always their own
-# deliberate, dedicated invocation, one of three named tiers (see tests_hardware/conftest.py's own
-# SOAK_TIER_SECONDS):
-scripts/run_bench_soak_tests.sh --tier short   # ~60s - quick mechanism/assertion check, CI-time
-scripts/run_bench_soak_tests.sh --tier mid     # ~10 minutes
-scripts/run_bench_soak_tests.sh --tier long    # ~6h - the real production soak duration
+# Soak durations (soak_duration marker) are NEVER bundled into either suite above - each is its own
+# invocation, liveness only, after a clean bench run (tests_hardware/soak_durations.py's
+# SOAK_DURATION_SECONDS):
+scripts/run_bench_soak_tests.sh --duration short   # 60 s
+scripts/run_bench_soak_tests.sh --duration mid     # 600 s
+scripts/run_bench_soak_tests.sh --duration long    # 6 h
 
 # Manual tests (interactive - prints instructions, waits for a human to confirm each step)
 scripts/run_manual_hardware_tests.sh --list          # see what's registered, run nothing
@@ -804,8 +815,9 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 
 - **`tests_hardware/README.md`** — the durable technical reference for the real-hardware tier:
   prerequisites, environment variables, how to run each tier, the safety facts (the
-  `--allow-flash-cycle`/`--allow-persistence-writes`/`--allow-neopixel-sweep`/long-soak opt-in
-  gates, the role reversal's stage-6 fallback, the FRAM-chunk overwrite trap), the dev
+  `--allow-flash-cycle`/`--allow-persistence-write`/`--allow-neopixel-sweep`/`--soak-duration`
+  opt-in gates and the write budget, the role reversal's stage-6 fallback, the FRAM-chunk overwrite
+  trap), the dev
   bench's wiring, chips, host-network recipe and dated state, the ISL29125 bench-rig facts and the
   numbered audit passes that found this tier's own gaps. CLAUDE.md's
   real-hardware hard rule points here for what a session with the owner's go-ahead needs to know;

@@ -1,62 +1,30 @@
-"""Flash-tier: every float config field's stored form is idempotent on the board's single-precision
-floats, and a repeat write after a reload from flash answers "Unchanged" (SPECIFICATION.md C.5). The
-float fields are rendered into the device script from the src/ schemas, never copied by hand."""
+"""Flash-tier: every float config field's stored form is idempotent on the board's single-precision floats, and a
+repeat write after a reload from flash answers "Unchanged" (SPECIFICATION.md C.5). The float fields reach the device
+script through the rendered bench facts, read from the src/ schemas, never copied by hand."""
 
-import re
-import sys
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from harness import DEVICE_SCRIPTS_DIR, parse_facts
 
 if TYPE_CHECKING:
     from harness import Board
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # the repo root, for buildgen
-
-from buildgen.schema_ast import extract_field_schemas
-from buildgen.signals import WARN_SIGNALS
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_2_reboot_settings_persistence",)
 
-DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
-_SCRIPT = DEVICE_SCRIPTS / "config_float_round_trip.py"
-_PLACEHOLDER = 'FLOAT_FIELDS: "tuple[tuple[str, float, float], ...]" = ()'
-# asy_scd30_driver.py's float field lives in the chip's own NVM, not in a config file.
-_CHIP_STORES = ("asy_scd30_driver.py",)
-RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
-
-
-def float_fields(repo_root: Path) -> list[tuple[str, float, float]]:
-    # Every file-stored float field with both bounds: the src/ schemas, plus the notification signals'
-    # float thresholds the generator emits from buildgen/signals.py's WARN_SIGNALS.
-    found: dict[str, tuple[float, float]] = {}
-    for path in sorted((repo_root / "src").glob("*.py")):
-        if path.name in _CHIP_STORES:
-            continue
-        for name, (kind, _default, lo, hi, _special) in extract_field_schemas(path).items():
-            if kind == "float" and isinstance(lo, float) and isinstance(hi, float):
-                found[name] = (lo, hi)
-    signals = [warn for warn in WARN_SIGNALS.values() if warn.field_type == "float"]
-    assert signals, "WARN_SIGNALS holds no float threshold - the signal half of this test would cover nothing"
-    for warn in signals:
-        found[warn.name] = (float(warn.min), float(warn.max))
-    return [(name, lo, hi) for name, (lo, hi) in sorted(found.items())]
-
-
-def rendered_script(repo_root: Path) -> str:
-    source = _SCRIPT.read_text(encoding="utf-8")
-    assert source.count(_PLACEHOLDER) == 1, f"{_SCRIPT.name} no longer carries its FLOAT_FIELDS placeholder line"
-    return source.replace(_PLACEHOLDER, f"FLOAT_FIELDS = {tuple(float_fields(repo_root))!r}")
+# @tunable l3.config_float_round_trip_script_timeout_s = 60.0
+_SCRIPT_TIMEOUT_S = 60.0
 
 
 @pytest.mark.persistence_write
-def test_config_floats_round_trip_unchanged(board: "Board", tmp_path: Path) -> None:
-    script = tmp_path / _SCRIPT.name
-    script.write_text(rendered_script(REPO_ROOT), encoding="utf-8")
-    output = board.run_isolated(script)
-    match = RESULT_RE.search(output)
-    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
-    assert match.group(1) == "PASS", f"{match.group(2).strip()}\nfull output:\n{output}"
+def test_config_floats_round_trip_unchanged(board: "Board") -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "config_float_round_trip.py", timeout_s=_SCRIPT_TIMEOUT_S))
+    fields = facts.get("fields")
+    assert isinstance(fields, int) and fields > 0, f"no float field reached the script: {facts}"
+    assert "leftover_remove_errno" not in facts and "remove_errno" not in facts, f"the scratch file could not be removed: {facts}"
+    bad = facts.get("non_idempotent")
+    assert isinstance(bad, dict) and bad.get("total") == 0, f"stored forms not idempotent on the board's floats: {bad}"
+    owned = facts.get("owned_write")
+    assert isinstance(owned, dict) and owned.get("ok") is True and owned.get("validity") == "Valid", f"the owned write was not accepted as Valid: {owned}"
+    assert facts.get("reloaded") is True, f"the manager rebuilt from the file did not set up: {facts}"
+    assert facts.get("repeat_validity") == "Unchanged", f"the repeat write after the reload answered {facts.get('repeat_validity')}, not Unchanged: {facts}"

@@ -157,7 +157,7 @@ _stage_passed
 # own mypy_path entry, has to be populated first, exactly as scripts/test.sh needs it too.
 stage="module generation"
 echo "== Generating buildgen device modules into build/generated_src/ (for import resolution)"
-uv run scripts/_generate_sensortask_modules.py
+uv run --no-sync scripts/_generate_sensortask_modules.py
 _stage_passed
 
 # The three passes always all run; each is recorded as its own check.
@@ -183,7 +183,7 @@ _record_pass "main pass" "$main_status" "pyproject.toml [tool.mypy]"
 # The twin is a fully-reviewed scope like src/ and tests/, so a finding here is real and fails the
 # script, in CI exactly as much as locally.
 twin_status=0
-mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_twin_*.py || twin_status=$?
+mypy --config-file digital_twin/typecheck.ini digital_twin tests/test_digital_twin_*.py tests/_digital_twin_*.py || twin_status=$?
 if [ "$twin_status" -ne 0 ]; then
     echo "error: digital_twin/typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi
@@ -194,6 +194,9 @@ _record_pass "twin pass" "$twin_status" "digital_twin/typecheck.ini"
 # every stdlib import there would read as missing. Always run; host_typecheck.ini's header has it.
 host_status=0
 mypy --config-file host_typecheck.ini || host_status=$?
+# With tests_hardware/bench on mypy_path, bench/conftest.py is a bare `conftest` like the tier's own, so the two never
+# share a run: the ini excludes it from the run above and this one names it (an explicit file ignores `exclude`).
+mypy --config-file host_typecheck.ini tests_hardware/bench/conftest.py || host_status=$?
 if [ "$host_status" -ne 0 ]; then
     echo "error: host_typecheck.ini's dedicated pass found real findings - this scope is expected to stay fully clean." >&2
 fi

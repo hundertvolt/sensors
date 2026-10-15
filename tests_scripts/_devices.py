@@ -1,6 +1,6 @@
 """The real device set, discovered from devices/*.toml rather than listed, and the queries the tests share over
-it: DEVICE_NAMES, device_toml() and devices_with(driver), so a seventh device joins every suite with no edit
-there, and a test needing a device with some property selects it from the TOMLs, never by name."""
+it: DEVICE_NAMES, device_toml(), devices_with(driver) and bench_device(), so a seventh device joins every suite with
+no edit there, and a test needing a device with some property selects it from the TOMLs, never by name."""
 
 from pathlib import Path
 
@@ -20,6 +20,19 @@ DEVICE_NAMES: "list[str]" = sorted(p.stem for p in DEVICES_DIR.glob("*.toml"))
 DEVICE_NAMES = [name for name in DEVICE_NAMES if not name.startswith("zz_test_")]
 
 assert DEVICE_NAMES, f"no device TOMLs found in {DEVICES_DIR} - every device-parametrized suite would silently collect nothing"
+
+
+def bench_device(devices_dir: Path = DEVICES_DIR) -> str:
+    # The one device whose TOML sets [device] bench = true, as tests_hardware/harness.py's bench_device() reads it;
+    # none or several fails naming the files. A leaked zz_test_* fixture never counts.
+    flagged = []
+    for path in sorted(devices_dir.glob("*.toml")):
+        table = tomllib.loads(path.read_text(encoding="utf-8")).get("device", {})
+        if not path.stem.startswith("zz_test_") and isinstance(table, dict) and table.get("bench") is True:
+            flagged.append(path.name)
+    if len(flagged) != 1:
+        raise AssertionError(f"[device] bench = true is set in {flagged or 'no device TOML'} under {devices_dir} - exactly one board is on the bench")
+    return flagged[0].removesuffix(".toml")
 
 
 def device_toml(device: str) -> Path:

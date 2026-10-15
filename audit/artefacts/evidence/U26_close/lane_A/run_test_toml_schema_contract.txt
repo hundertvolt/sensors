@@ -1,0 +1,18 @@
+F..                                                                      [100%]
+=================================== FAILURES ===================================
+________________ test_the_l3_key_table_equals_the_builds_tables ________________
+
+spec_text = '# SPECIFICATION\n\nCentral specification: architecture, build/toolchain mechanics, sensor-driver architecture,\n`src/...sh and pause | the budget constants, the SYSTEM entry write or the supervisor pass change |\n\n<!-- tunables:end -->\n'
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u26a')
+
+    def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:
+        documented, built = _spec_rows(spec_text), _build_rows(repo_root / "src")
+        missing, extra = sorted(built - documented), sorted(documented - built)
+>       assert not missing and not extra, f"SPECIFICATION.md L.3's key table lacks {missing} and states {extra} the build does not take"
+E       AssertionError: SPECIFICATION.md L.3's key table lacks [('[device]', 'bench', False)] and states [] the build does not take
+E       assert (not [('[device]', 'bench', False)])
+
+tests_scripts/test_toml_schema_contract.py:71: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_toml_schema_contract.py::test_the_l3_key_table_equals_the_builds_tables
+1 failed, 2 passed in 0.34s

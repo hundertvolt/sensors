@@ -5,13 +5,18 @@
 from machine import WDT
 
 from asy_base_classes import SetupFct, TaskStarter, TimerStarter
+from asy_fram_manager import FRAMManager
 from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
+from asy_webserver_service import WebserverService
 
-sysfunct: SystemService | None
+fram: FRAMManager | None
 sgp40: SGP40_Reader | None
+sysfunct: SystemService | None
+webserver: WebserverService | None
 
 async def build_system(*, watchdog: WDT, cfg_path: str = ..., debug: int | None = ..., web_host: str = ..., web_port: int = ...) -> None: ...
+async def main(*, watchdog: WDT, cfg_path: str = ..., debug: int | None = ..., web_host: str = ..., web_port: int = ...) -> None: ...
 def _collect_setups() -> list[SetupFct]: ...
 def _collect_task_starters() -> list[TaskStarter]: ...
 def _collect_timer_starters() -> list[TimerStarter]: ...

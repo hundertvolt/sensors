@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from _devices import DEVICE_NAMES
+from _repo_scan import python_files
 
 from buildgen.generate import generate_device
 
@@ -43,9 +44,7 @@ _COUNT_METHODS = frozenset({"count", "index"})
 
 # Seed scripts whose seeds still carry product numbers rather than the catalog's test band; each entry
 # leaves with its script's rewrite, and an entry the scan no longer flags fails the pending test.
-_SEED_NAMES_PENDING = frozenset({
-    ("tests_hardware/device_scripts/fram_error_log_roundtrip.py", "TEST_ERRNO"),
-})
+_SEED_NAMES_PENDING: "frozenset[tuple[str, str]]" = frozenset()
 
 
 @dataclass(frozen=True)
@@ -111,7 +110,7 @@ def _owners_of(catalog: "JsonDict", path: str) -> "set[str]":
 
 
 def _repo_modules(directory: str) -> "list[_Module]":
-    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in sorted((_REPO / directory).rglob("*.py"))]
+    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in python_files(_REPO, directory)]
 
 
 @cache
@@ -130,7 +129,7 @@ def _generated() -> "tuple[_Module, ...]":
 
 @cache
 def _test_side() -> "tuple[_Module, ...]":
-    return tuple(m for scope in _TEST_SCOPES for m in _repo_modules(scope) if "/_tmp/" not in m.path)
+    return tuple(m for scope in _TEST_SCOPES for m in _repo_modules(scope))
 
 
 def _functions(tree: ast.AST) -> "Iterator[ast.FunctionDef | ast.AsyncFunctionDef]":

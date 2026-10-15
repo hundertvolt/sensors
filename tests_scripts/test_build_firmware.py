@@ -6,20 +6,27 @@ CLI error paths) without the minutes-long ARM compile."""
 # test_real_firmware_build_produces_a_valid_uf2.
 
 import contextlib
+import json
 import os
+import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml, devices_with
 from _script_loader import load_script_module
 
 from buildgen.codegen import generate_boot_entry_source
 from buildgen.frozen_modules import compute_frozen_modules
 from buildgen.generate import generate_device
+from buildgen.validate import device_max_connections
+from buildgen.version import FIRMWARE_VERSION, WEBSITE_VERSION
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -47,16 +54,38 @@ def build_firmware(repo_root: Path) -> ModuleType:
     return load_script_module(repo_root / "scripts" / "build_firmware.py", "build_firmware")
 
 
-@pytest.fixture(scope="module", params=DEVICE_NAMES)
-def staged_device(request: pytest.FixtureRequest, build_firmware: ModuleType, tmp_path_factory: pytest.TempPathFactory) -> "tuple[str, Path]":
-    # One staging per device, shared by the read-only checks below. The build date is pinned so a
-    # reference generation embeds the identical timestamp rather than racing the wall clock (SPECIFICATION.md Part L.7).
-    device = str(request.param)
-    stage_dir = tmp_path_factory.mktemp(f"stage_{device}")
+# Website builds run at most this many at a time: the stagings' one slow step, each a separate process.
+_WEBSITE_BUILDS_AT_ONCE = 2
+
+
+@pytest.fixture(scope="module")
+def stagings(build_firmware: ModuleType, tmp_path_factory: pytest.TempPathFactory) -> "dict[str, Path]":
+    # One staging per device, shared by the read-only checks below. The build date is passed in, as
+    # main() does, so a reference generation embeds the identical timestamp (SPECIFICATION.md Part L.7).
+    # The Python half stages in turn; the website commands it issues are collected and run after.
+    website_builds: list[tuple[list[str], Path]] = []
+
+    def collect(argv: "list[str]", *, cwd: Path, check: bool) -> None:
+        assert check and Path(argv[0]).name == "build_website.sh", argv
+        website_builds.append((argv, cwd))
+
+    stages = {}
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("buildgen.generate.current_build_date", lambda: _BUILD_DATE)
-        build_firmware.build_stage_dir(stage_dir, device)
-    return device, stage_dir
+        patch.setattr(build_firmware.subprocess, "run", collect)
+        for device in DEVICE_NAMES:
+            stages[device] = tmp_path_factory.mktemp(f"stage_{device}")
+            build_firmware.build_stage_dir(stages[device], device, build_date=_BUILD_DATE)
+    assert len(website_builds) == len(DEVICE_NAMES), website_builds
+    with ThreadPoolExecutor(max_workers=_WEBSITE_BUILDS_AT_ONCE) as pool:
+        for done in pool.map(lambda job: subprocess.run(job[0], cwd=job[1], check=False, capture_output=True, text=True), website_builds):
+            assert done.returncode == 0, f"{done.args} failed:\n{done.stdout}{done.stderr}"
+    return stages
+
+
+@pytest.fixture(params=DEVICE_NAMES)
+def staged_device(request: pytest.FixtureRequest, stagings: "dict[str, Path]") -> "tuple[str, Path]":
+    device = str(request.param)
+    return device, stagings[device]
 
 
 def test_build_stage_dir_rejects_a_device_with_no_matching_toml(build_firmware: ModuleType, tmp_path: Path) -> None:
@@ -150,7 +179,7 @@ def test_build_stage_dir_stages_exactly_the_computed_frozen_modules(repo_root: P
     assert (repo_root / "ext" / "microdot.py").read_text() == (stage_dir / "microdot.py").read_text()
 
 
-def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_firmware: ModuleType, repo_root: Path, staged_device: "tuple[str, Path]", monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_firmware: ModuleType, repo_root: Path, staged_device: "tuple[str, Path]") -> None:
     # The generated device entry module and its boot entry: freshly generated text, never copied
     # from a retired boot_entry file, staged as "main.py" for the load-bearing reason
     # build_firmware.py's docstring gives.
@@ -159,8 +188,7 @@ def test_build_stage_dir_writes_the_generated_entry_module_and_boot_entry(build_
     # each device really stages its own boot module instead of falling back to another device's.
     # The reference generation takes the staging's pinned build date.
     device, stage_dir = staged_device
-    monkeypatch.setattr("buildgen.generate.current_build_date", lambda: _BUILD_DATE)
-    generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext")
+    generated = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext", build_date=_BUILD_DATE)
     # The generated module carries src/'s own TYPE_CHECKING form, so it is staged stripped like every src/ module.
     staged = (stage_dir / f"sensortask_{device}.py").read_text()
     assert "TYPE_CHECKING" in generated.module_source
@@ -257,7 +285,7 @@ def test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_
         seen["lock"] = toolchain_dir
         events.append(f"lock (mpy-cross build present: {stale_mpy_cross.exists()})")
         yield
-        events.append(f"unlock (image copied: {output.exists()})")
+        events.append(f"unlock (image copied: {output.exists()}, record written: {output.with_suffix('.json').exists()})")
 
     def fake_build_firmware(micropython_dir: Path, _board: str, _jobs: int, *_args: object, toolchain_dir: Path, **_kwargs: object) -> Path:
         seen["build"] = toolchain_dir
@@ -270,14 +298,238 @@ def test_a_relative_toolchain_dir_reaches_the_build_resolved_and_the_lock_spans_
     monkeypatch.setattr(build_firmware.st, "read_toolchain_record", lambda _d: {"pinned_ref": "v1.29.0", "built_ref": built_ref, "micropython_commit": "0123abcd"})
     monkeypatch.setattr(build_firmware.st, "build_mpy_cross", lambda *_a: events.append(f"build_mpy_cross (wiped: {not stale_mpy_cross.exists()})"))
     monkeypatch.setattr(build_firmware.st, "build_firmware", fake_build_firmware)
-    monkeypatch.setattr(build_firmware, "build_stage_dir", lambda *_a: events.append("stage"))
+    monkeypatch.setattr(build_firmware, "build_stage_dir", lambda *_a, **_k: events.append("stage"))
+    monkeypatch.setattr(build_firmware, "source_state", lambda _root: _SOURCE_STATE)
+    _fake_readers(build_firmware, monkeypatch)
     monkeypatch.setattr(sys, "argv", ["build_firmware.py", _A_DEVICE, "--output", str(output), "--toolchain-dir", "rel/toolchain"])
     assert build_firmware.main() == 0
     assert seen == {"lock": toolchain, "build": toolchain}, seen
-    assert events == ["lock (mpy-cross build present: True)", "stage", "build_mpy_cross (wiped: True)", "build_firmware", "unlock (image copied: True)"], events
+    assert events == ["lock (mpy-cross build present: True)", "stage", "build_mpy_cross (wiped: True)", "build_firmware", "unlock (image copied: True, record written: True)"], events
     toolchain_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("== Toolchain: "))
     assert printed in toolchain_line, toolchain_line
     assert "None" not in toolchain_line, toolchain_line
+
+
+# ---------------------------------------------------------------------------
+# The image record beside every .uf2 and --device-toml: a run can tell which build a board carries.
+# ---------------------------------------------------------------------------
+
+_LWIP_READ = {"TCP_MSS": 1460, "MEMP_NUM_TCP_PCB": 9}
+_SOURCE_STATE = ("0123456789abcdef0123456789abcdef01234567", True)  # source_state() itself: its own case below
+
+
+def _fake_readers(build_firmware: ModuleType, monkeypatch: pytest.MonkeyPatch, *, modlwip_ok: bool = True) -> "list[tuple[str, Path]]":
+    # The two post-build readers, faked: each logs the build dir it was given.
+    seen: list[tuple[str, Path]] = []
+
+    def read_lwip(build_dir: Path, macros: "dict[str, int]") -> "dict[str, int]":
+        assert macros == build_firmware.st.load_lwip_macros(), "the readback asks for the pinned options"
+        seen.append(("lwip", build_dir))
+        return dict(_LWIP_READ)
+
+    def verify_modlwip(build_dir: Path, _micropython_dir: Path, copy_path: Path) -> None:
+        seen.append(("modlwip", build_dir))
+        assert copy_path.parts[-2:] == (build_firmware.micropython_overrides.MODLWIP_OVERRIDE_DIR_NAME, build_firmware.micropython_overrides.MODLWIP_COPY_NAME), copy_path
+        if not modlwip_ok:
+            raise build_firmware.micropython_overrides.OverrideError("modlwip_eagain: the control image")
+
+    monkeypatch.setattr(build_firmware.micropython_overrides, "read_lwip_macros_from_build", read_lwip)
+    monkeypatch.setattr(build_firmware.micropython_overrides, "verify_modlwip_eagain_in_build", verify_modlwip)
+    return seen
+
+
+def _uart_crc(toml_path: Path) -> "dict[str, str]":
+    # Each UART bus's CRC mode as the device TOML declares it (absent: "none").
+    instances = tomllib.loads(toml_path.read_text(encoding="utf-8")).get("instance", [])
+    return {i["bus"]: i.get("crc", "none") for i in instances if i.get("driver") == "uart_link"}
+
+
+@dataclass
+class _Built:
+    # What main() did under _build_with_fakes(): its exit, what staging got, what the readers read.
+    exit: int
+    port_build: Path
+    readers: "list[tuple[str, Path]]"
+    staged: "dict[str, object]" = field(default_factory=dict)
+
+
+def _build_with_fakes(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *argv: str, modlwip_ok: bool = True) -> _Built:
+    # main() with the toolchain, staging and ARM build faked. The image lands in a fake port build
+    # dir, never beside the output, so the readers' build dir can be told apart from the copy.
+    toolchain = _fake_toolchain(tmp_path / "toolchain")
+    port_build = toolchain / "micropython" / "ports" / "rp2" / "build-FAKE"
+    built = _Built(exit=-1, port_build=port_build, readers=_fake_readers(build_firmware, monkeypatch, modlwip_ok=modlwip_ok))
+
+    def fake_stage(_stage_dir: Path, device: str, *, device_toml: Path, build_date: str) -> None:
+        built.staged.update(device=device, device_toml=device_toml, build_date=build_date)
+
+    def fake_build(*_args: object, **_kwargs: object) -> Path:
+        port_build.mkdir(parents=True, exist_ok=True)
+        (port_build / "firmware.uf2").write_bytes(b"UF2\nnew image")
+        return port_build / "firmware.uf2"
+
+    monkeypatch.setattr(build_firmware.st, "read_toolchain_record", lambda _d: {"pinned_ref": "v1.29.0", "built_ref": "v1.29.0", "micropython_commit": "0123abcd"})
+    monkeypatch.setattr(build_firmware, "source_state", lambda _root: _SOURCE_STATE)
+    monkeypatch.setattr(build_firmware.st, "build_mpy_cross", lambda *_a: None)
+    monkeypatch.setattr(build_firmware.st, "build_firmware", fake_build)
+    monkeypatch.setattr(build_firmware, "build_stage_dir", fake_stage)
+    monkeypatch.setattr(sys, "argv", ["build_firmware.py", *argv, "--toolchain-dir", str(toolchain)])
+    built.exit = build_firmware.main()
+    return built
+
+
+@pytest.mark.parametrize("modlwip_ok", [True, False], ids=["override-compiled", "control-image"])
+def test_main_writes_the_image_record_beside_the_image(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, modlwip_ok: bool) -> None:  # noqa: FBT001
+    output = tmp_path / "out" / f"firmware-{_A_DEVICE}.uf2"
+    built = _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output), modlwip_ok=modlwip_ok)
+    assert built.exit == 0
+    record = json.loads(output.with_suffix(".json").read_text())
+    toml = device_toml(_A_DEVICE)
+    commit, dirty = _SOURCE_STATE
+    assert record == {
+        "BuildDate": built.staged["build_date"],
+        "commit": commit,
+        "device": _A_DEVICE,
+        "deviceToml": f"devices/{_A_DEVICE}.toml",
+        "dirty": dirty,
+        "firmwareVersion": FIRMWARE_VERSION,
+        "lwip": _LWIP_READ,
+        "maxConnections": device_max_connections(toml, repo_root / "src"),
+        "overrides": ["modlwip_eagain"] if modlwip_ok else [],
+        "uartCrc": _uart_crc(toml),
+        "websiteVersion": WEBSITE_VERSION,
+    }
+    assert list(record) == sorted(record), "the record's keys are written sorted"
+    assert built.staged["device_toml"] == toml, "the default --device-toml is the device's own TOML"
+    assert sorted(what for what, _dir in built.readers) == ["lwip", "modlwip"]
+    assert {build_dir for _what, build_dir in built.readers} == {built.port_build}, "both readers read the port's build dir, never the copied output"
+
+
+def test_the_image_and_its_record_are_never_paired_wrongly(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The old record goes first, the image moves in whole, the record comes last: a kill anywhere
+    # leaves no record or a record beside the image it describes, never a truncated image.
+    output = tmp_path / "firmware.uf2"
+    output.write_bytes(b"UF2\nold image")
+    output.with_suffix(".json").write_text('{"stale": true}')
+    replaced: list[tuple[str, str, bool]] = []
+    real_replace = os.replace
+
+    def recording_replace(src: "str | os.PathLike[str]", dst: "str | os.PathLike[str]") -> None:
+        replaced.append((Path(src).name, Path(dst).name, output.with_suffix(".json").exists()))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(build_firmware.os, "replace", recording_replace)
+    _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output))
+    assert [(src.endswith(".tmp"), dst, had) for src, dst, had in replaced] == [(True, "firmware.uf2", False), (True, "firmware.json", False)], replaced
+    assert output.read_bytes() == b"UF2\nnew image"
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["firmware.json", "firmware.uf2"], "no .tmp file is left"
+
+
+def test_a_failed_image_move_leaves_no_record_and_the_old_image(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output = tmp_path / "firmware.uf2"
+    output.write_bytes(b"UF2\nold image")
+    output.with_suffix(".json").write_text('{"stale": true}')
+
+    def failing_replace(*_args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(build_firmware.os, "replace", failing_replace)
+    with pytest.raises(OSError, match="disk full"):
+        _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output))
+    assert output.read_bytes() == b"UF2\nold image"
+    assert not output.with_suffix(".json").exists(), "a record must never stand beside an image it does not describe"
+
+
+def test_source_state_names_the_commit_and_a_dirty_tree(build_firmware: ModuleType, tmp_path: Path) -> None:
+    git = shutil.which("git") or "git"
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    (tmp_path / "f.txt").write_text("a\n")
+    for argv in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"]):
+        subprocess.run([git, *argv], cwd=tmp_path, env=env, check=True)
+    head = subprocess.run([git, "rev-parse", "HEAD"], cwd=tmp_path, env=env, capture_output=True, text=True, check=True).stdout.strip()
+    assert build_firmware.source_state(tmp_path) == (head, False)
+    (tmp_path / "f.txt").write_text("b\n")
+    assert build_firmware.source_state(tmp_path) == (head, True)
+    assert build_firmware.source_state(tmp_path / "not-a-repo") == (None, None), "an unknown state is written as unknown, never as clean"
+
+
+def _toml_with_hotspot_password(tmp_path: Path, device: str, password: str) -> Path:
+    # A copy of a real device's TOML under its own stem with another hotspot password - a value that
+    # reaches the generated module (the hostname cannot vary: buildgen pins it to the name).
+    text = device_toml(device).read_text(encoding="utf-8")
+    current = tomllib.loads(text)["device"]["hotspot_password"]
+    copy = tmp_path / f"{device}.toml"
+    copy.write_text(text.replace(f'hotspot_password = "{current}"', f'hotspot_password = "{password}"', 1), encoding="utf-8")
+    return copy
+
+
+def test_build_stage_dir_builds_from_the_given_device_toml(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    toml = _toml_with_hotspot_password(tmp_path, _A_DEVICE, "fixture-pw")
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    real_run = subprocess.run
+    # The website build is not under test here, and it is the one slow step of a staging. Without a
+    # build_date the generator stamps its own "now" (the default path, kept for other callers).
+    monkeypatch.setattr(build_firmware.subprocess, "run", lambda argv, **kw: None if "build_website.sh" in str(argv[0]) else real_run(argv, **kw))
+    monkeypatch.setattr("buildgen.generate.current_build_date", lambda: "2026-01-02T03:04:05Z")
+    build_firmware.build_stage_dir(stage, _A_DEVICE, device_toml=toml)
+    staged = (stage / f"sensortask_{_A_DEVICE}.py").read_text()
+    assert "'fixture-pw'" in staged, "the staged module comes from the given TOML"
+    assert "_BUILD_DATE = const('2026-01-02T03:04:05Z')" in staged
+
+
+def _main_refusal(build_firmware: ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *argv: str) -> str:
+    # main() on argv with staging and the toolchain record forbidden: the refusal must come first.
+    def never(*_a: object, **_k: object) -> None:
+        raise AssertionError("refused too late: staging or the toolchain was reached")
+
+    monkeypatch.setattr(build_firmware, "build_stage_dir", never)
+    monkeypatch.setattr(build_firmware.st, "read_toolchain_record", never)
+    monkeypatch.setattr(sys, "argv", ["build_firmware.py", *argv])
+    assert build_firmware.main() == 1
+    return capsys.readouterr().err
+
+
+def test_a_missing_device_toml_path_fails_before_staging(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    missing = tmp_path / f"{_A_DEVICE}.toml"
+    err = _main_refusal(build_firmware, monkeypatch, capsys, _A_DEVICE, "--device-toml", str(missing), "--output", str(tmp_path / "out.uf2"))
+    assert str(missing) in err
+    assert not (tmp_path / "out.uf2").exists()
+
+
+def test_a_device_toml_of_another_device_is_refused(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # buildgen names the image's modules after the TOML's file name, so a mismatch would ship an
+    # image whose name and record claim one device and whose code is another.
+    other = next(d for d in DEVICE_NAMES if d != _A_DEVICE)
+    err = _main_refusal(build_firmware, monkeypatch, capsys, _A_DEVICE, "--device-toml", str(device_toml(other)), "--output", str(tmp_path / "out.uf2"))
+    assert f"builds device {other!r}, not {_A_DEVICE!r}" in err
+
+
+def test_a_device_toml_changing_the_website_is_refused(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # The website is built from the repo's own TOML, so a copy that changes what it shows would put
+    # a page on the board that does not match its image.
+    device = next(d for d in DEVICE_NAMES if "notification" in {i.get("driver") for i in tomllib.loads(device_toml(d).read_text(encoding="utf-8"))["instance"]})
+    text = device_toml(device).read_text(encoding="utf-8")
+    copy = tmp_path / f"{device}.toml"
+    copy.write_text(text[: text.index('[[instance]]\ndriver = "notification"')], encoding="utf-8")  # from the notification instance on: its warning thresholds leave the website
+    err = _main_refusal(build_firmware, monkeypatch, capsys, device, "--device-toml", str(copy), "--output", str(tmp_path / "out.uf2"))
+    assert "changes what the website shows" in err
+
+
+def test_a_crc16_copy_of_the_link_device_builds_and_its_record_says_so(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The second CRC mode's bench image: the same device, its links switched to crc16 in a copy.
+    linked = devices_with("uart_link")
+    assert linked, "no device declares a uart_link - the CRC16 image has nothing to build"
+    text = device_toml(linked[0]).read_text(encoding="utf-8")
+    copy = tmp_path / "toml" / f"{linked[0]}.toml"
+    copy.parent.mkdir()
+    copy.write_text(text.replace('driver = "uart_link"\n', 'driver = "uart_link"\ncrc = "crc16"\n'), encoding="utf-8")
+    built = _build_with_fakes(build_firmware, tmp_path, monkeypatch, linked[0], "--device-toml", str(copy), "--output", str(tmp_path / "crc16.uf2"))
+    assert built.exit == 0
+    record = json.loads((tmp_path / "crc16.json").read_text())
+    assert record["uartCrc"] and set(record["uartCrc"].values()) == {"crc16"}, record["uartCrc"]
+    assert record["deviceToml"] == str(copy.resolve())
+    assert built.staged["device_toml"] == copy.resolve()
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

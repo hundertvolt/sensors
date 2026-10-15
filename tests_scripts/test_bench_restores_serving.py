@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 BENCH = Path(__file__).resolve().parent.parent / "tests_hardware" / "bench"
+FLASH_CONFTEST = BENCH.parent / "flash" / "conftest.py"
 _RUNS = "run_isolated"
 _RESTORES = "restore_board_to_serving"
 
@@ -119,3 +120,33 @@ def test_a_fixture_yielding_inside_a_restoring_try_covers_its_tests() -> None:
         "def test_x(isolated):\n    isolated.run_isolated('s.py')\n"
     )
     assert _problems(source) == []
+
+
+def _resets_after_yield(fn: ast.FunctionDef) -> bool:
+    # A fixture whose teardown - the statements after its yield - calls hard_reset().
+    yields = [i for i, stmt in enumerate(fn.body) if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Yield)]
+    return bool(yields) and any("hard_reset" in _called_names(stmt) for stmt in fn.body[yields[0] + 1 :])
+
+
+def _autouse_session(fn: ast.FunctionDef) -> bool:
+    for dec in fn.decorator_list:
+        if isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute) and dec.func.attr == "fixture":
+            kwargs = {kw.arg: kw.value for kw in dec.keywords}
+            scope, autouse = kwargs.get("scope"), kwargs.get("autouse")
+            return isinstance(scope, ast.Constant) and scope.value == "session" and isinstance(autouse, ast.Constant) and autouse.value is True
+    return False
+
+
+def _flash_serving_fixtures(source: str) -> list[str]:
+    return [fn.name for fn in ast.walk(ast.parse(source)) if isinstance(fn, ast.FunctionDef) and _autouse_session(fn) and _resets_after_yield(fn)]
+
+
+def test_the_flash_tier_leaves_the_board_serving() -> None:
+    # Every flash test that runs a device script leaves main.py stopped; one autouse session fixture restarts it at
+    # the run's end, so a flash run never hands the next round a parked board.
+    assert _flash_serving_fixtures(FLASH_CONFTEST.read_text(encoding="utf-8")), f"{FLASH_CONFTEST} defines no autouse session fixture that hard-resets the board in its teardown"
+
+
+def test_a_flash_fixture_resetting_before_its_yield_does_not_count() -> None:
+    source = "import pytest\n@pytest.fixture(scope='session', autouse=True)\ndef serving(board):\n    board.hard_reset()\n    yield\n"
+    assert _flash_serving_fixtures(source) == []

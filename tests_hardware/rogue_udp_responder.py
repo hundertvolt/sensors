@@ -1,6 +1,6 @@
-"""Shared background UDP responder for network-fault-injection tests: binds a local UDP socket and
-replies to every datagram with a fixed garbage payload until stopped, used by the NTP/DNS
-garbage-response tests via bench_control.BenchBridge's UDP-port-redirect helpers."""
+"""Shared background UDP responder for network-fault-injection tests: answers every datagram with a
+fixed garbage payload until stopped, on the port the OS picks unless one is given, and counts each
+source it answered so a test can prove the injection reached the DUT (bench_control's redirects)."""
 
 import socket
 import threading
@@ -12,13 +12,19 @@ _JOIN_TIMEOUT_S = 5.0
 
 
 class RogueUdpResponder:
-    def __init__(self, local_port: int, garbage_payload: bytes) -> None:
+    def __init__(self, garbage_payload: bytes, local_port: int = 0) -> None:
         self._garbage_payload = garbage_payload
+        self.answered_from: dict[str, int] = {}
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._sock.settimeout(_RECV_TIMEOUT_S)  # bounds each recvfrom() so stop() can interrupt the loop promptly
-        self._sock.bind(("0.0.0.0", local_port))
+        self._sock.bind(("0.0.0.0", local_port))  # binds the bench host's responder on the bench LAN
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+
+    @property
+    def port(self) -> int:
+        # The bound port: the one a redirect must point at when the OS picked it.
+        return int(self._sock.getsockname()[1])
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -31,7 +37,8 @@ class RogueUdpResponder:
             try:
                 self._sock.sendto(self._garbage_payload, addr)
             except OSError:
-                pass  # best-effort - a send failure here is not this responder's own test to report
+                continue  # not counted: answered_from holds only what really went out
+            self.answered_from[addr[0]] = self.answered_from.get(addr[0], 0) + 1
 
     def start(self) -> None:
         self._thread.start()

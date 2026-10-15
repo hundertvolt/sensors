@@ -1,125 +1,116 @@
-"""Isolated-driver device script: the real SGP40 VOC-state FRAM backup/restore pathway against the
-real chip. reader1 runs until its backup schedule fires; a second reader simulates a fresh boot at
-the same FRAM address and must restore it. See tests_hardware/README.md's cfgmgr-priming note."""
+"""Isolated-driver device script: the real SGP40 VOC-state FRAM backup/restore pathway on the real parts. reader1 runs
+until its backup schedule fires; a second reader simulates a fresh boot at the same FRAM address and restores it
+(tests_hardware/README.md's cfgmgr-priming note). The VOC-state chunk is cleared first and on the way out."""
 
 import asyncio
-from collections import namedtuple
-
-import machine
 
 import asy_i2c_driver
 import asy_spi_driver
-from asy_base_classes import ValueRef
+from asy_base_classes import ValueRef, set_utc_valid
 from asy_fram_manager import FRAMManager
 from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_sgp40_driver import SGP40_Reader, SgpBackup
 
-BACKUP_WAIT_S = 75.0  # 60s to the first natural BackupPeriod=1min trigger, plus margin
-RESTORE_WAIT_S = 10.0
-# @tunable l3.sgp40_fram_backup_restore_wdt_feed_interval_s = 2.0
-_WDT_FEED_INTERVAL_S = 2.0  # comfortably under the 8.388s hardware ceiling
+# @include _shared/facts.py
+# @include _shared/fixed_source.py
+# @include _shared/watchdog.py
 
-_FixedValue = namedtuple("_FixedValue", ("value",))
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
 
+if TYPE_CHECKING:
+    import machine
+    from _shared.facts import done, fact
+    from _shared.fixed_source import FixedSource
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
 
-class _FixedSource:
-    # Local temperature_source/humidity_source stand-in (SPECIFICATION.md Part L.6.3): a fixed,
-    # not sensor-derived, datasheet Table 10 compensation default - same get_data() ->
-    # object-with-.value contract asy_sgp40_driver.py's own _Default* providers use.
+    from asy_spi_driver import SPI
 
-    def __init__(self, value: float) -> None:
-        self._data = _FixedValue(value)
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
-    async def get_data(self) -> "_FixedValue":
-        return self._data
+# @tunable l3.sgp40_fram_backup_restore_backup_wait_s = 75.0
+_BACKUP_WAIT_S = 75.0  # 60 s to the first natural BackupPeriod=1min trigger, plus margin
+# @tunable l3.sgp40_fram_backup_restore_restore_wait_s = 10.0
+_RESTORE_WAIT_S = 10.0
+_POLL_MS = 1000  # one read cycle of the reader's own 1 s trigger
 
 
 async def _always_synced() -> bool:
     return True  # stands in for the real ntp.ntp_issynced - no NTP subsystem in this isolated script
 
 
-async def _run_until_cancelled(reader: SGP40_Reader, duration_s: float, wdt: machine.WDT) -> None:
-    task = reader.start_asy_read()
-    remaining = duration_s
-    while remaining > 0:
-        await asyncio.sleep(min(_WDT_FEED_INTERVAL_S, remaining))
-        wdt.feed()
-        remaining -= _WDT_FEED_INTERVAL_S
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass  # the cancel above; a read task that died on its own re-raises here and fails the run
-
-
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000)
-    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-
-    fram_a = FRAMManager(spi0, 5, max_size=0x40000)
-    if not await fram_a.setup():
-        print("RESULT: FAIL fram_a.setup() failed - real FRAM chip not responding on spi0/cs5")
-        return
-
-    reader1 = SGP40_Reader(
-        i2c1,
-        ValueRef(_FixedSource(25.0), "value"),
-        ValueRef(_FixedSource(50.0), "value"),
-        backup=SgpBackup(fram_a, _always_synced),
-        max_module_error=999,
-        log=LogConfig(fram_a, DEFAULT_LOG.history_length, None),
-    )
+    wdt = arm()
+    # The NTP client's other half: the clock it sets is marked valid, so a dated backup is written (utc_now() stays None
+    # until then, and a backup waiting for NTP never lands); the RTC keeps whatever time it holds.
+    set_utc_valid()
+    sensor = next(instance for instance in BENCH["instances"].values() if instance["driver"] == "sgp40")
+    i2c_bus = BENCH["bus"][sensor["bus"]]
+    i2c = asy_i2c_driver.I2C(i2c_bus["id"], i2c_bus["scl_pin"], i2c_bus["sda_pin"], frequency=i2c_bus["frequency"], timeout=i2c_bus.get("timeout"))
+    chip = next(instance for instance in BENCH["instances"].values() if instance["driver"] == "fram")
+    spi_bus = BENCH["bus"][chip["bus"]]
+    spi: SPI = asy_spi_driver.SPI(spi_bus["id"], sck_pin=spi_bus["sck_pin"], mosi_pin=spi_bus["mosi_pin"], miso_pin=spi_bus["miso_pin"])
+    fram_a = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
+    fact("setup", await fram_a.setup())
+    reader1 = _reader(i2c, fram_a)
+    fact("allocated", reader1._ts_storage is not None)
     if reader1._ts_storage is None:
-        print("RESULT: FAIL reader1._ts_storage allocation failed - no FRAM chunk to back up into")
+        done()
         return
-    # Prime config directly rather than reader1.cfgmgr.setup() - no real flash file I/O. Derived from
-    # the driver's own schema; its BackupPeriod default of 1 min is what BACKUP_WAIT_S is sized around.
-    reader1.cfgmgr.valid = True
-    reader1.cfgmgr._cache = {field[0]: field[2] for field in reader1.get_cfg_schema() if field[2] is not None}
-    reader1.start_timer()
-    await _run_until_cancelled(reader1, BACKUP_WAIT_S, wdt)
-    reader1.stop_timer()
+    fact("cleared_first", await reader1._ts_storage.clear())
+    # A fresh boot: a new FRAMManager over the same part allocates its chunks at the addresses reader1's took. Its
+    # loggers are never set up, so they write nothing; the VOC-state chunk is the one this run writes.
+    fram_b = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
+    fact("rebooted_setup", await fram_b.setup())
+    reader2 = _reader(i2c, fram_b)
+    try:
+        last_backup = await _run_until(reader1, wdt, _BACKUP_WAIT_S, 0)
+        fact("backup_written", last_backup is not None)
+        if last_backup is not None:
+            restored_from = await _run_until(reader2, wdt, _RESTORE_WAIT_S, 1)
+            fact("restored_from", restored_from)
+            fact("restored_state_matches", restored_from == last_backup)
+    finally:
+        fact("cleared_last", reader2._ts_storage is not None and await reader2._ts_storage.clear())
+    done()
 
-    last_backup, _ = await reader1.get_mem_status()
-    if last_backup is None:
-        print("RESULT: FAIL reader1 never completed a backup within the wait window - no real write to FRAM observed")
-        return
 
-    # Simulate a fresh boot: a brand new FRAMManager Python object against the same real spi0
-    # bus/chip, allocating its own chunk 0 at the same physical address reader1's did - see this
-    # script's own module docstring for why this is a faithful reboot simulation.
-    fram_b = FRAMManager(spi0, 5, max_size=0x40000)
-    if not await fram_b.setup():
-        print("RESULT: FAIL fram_b.setup() failed - real FRAM chip not responding on second probe")
-        return
-
-    reader2 = SGP40_Reader(
-        i2c1,
-        ValueRef(_FixedSource(25.0), "value"),
-        ValueRef(_FixedSource(50.0), "value"),
-        backup=SgpBackup(fram_b, _always_synced),
+def _reader(i2c: "asy_i2c_driver.I2C", fram: FRAMManager) -> SGP40_Reader:
+    reader = SGP40_Reader(
+        i2c,
+        ValueRef(FixedSource(25.0), "value"),
+        ValueRef(FixedSource(50.0), "value"),
+        backup=SgpBackup(fram, _always_synced),
         max_module_error=999,
-        log=LogConfig(fram_b, DEFAULT_LOG.history_length, None),
+        log=LogConfig(fram, DEFAULT_LOG.history_length, None),
     )
-    if reader2._ts_storage is None:
-        print("RESULT: FAIL reader2._ts_storage allocation failed - no FRAM chunk to restore from")
-        return
-    # Same priming as reader1 above - _init_sgp() (which sets _voc_init, the real restore trigger)
-    # reads this same config too, so without it reader2 would never even attempt a restore.
-    reader2.cfgmgr.valid = True
-    reader2.cfgmgr._cache = {field[0]: field[2] for field in reader2.get_cfg_schema() if field[2] is not None}
-    reader2.start_timer()
-    await _run_until_cancelled(reader2, RESTORE_WAIT_S, wdt)
-    reader2.stop_timer()
+    # Primed in RAM from the driver's own schema rather than cfgmgr.setup(): no flash file I/O. Its BackupPeriod default
+    # of 1 min is what _BACKUP_WAIT_S is sized around, and _init_sgp() reads it to start a restore.
+    reader.cfgmgr.valid = True
+    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
+    return reader
 
-    _, restored_from = await reader2.get_mem_status()
-    if restored_from is None:
-        print(f"RESULT: FAIL reader2 (simulated fresh boot) never reported a restored backup - real FRAM restore did not succeed (reader1's last_backup={last_backup})")
-        return
 
-    print(f"RESULT: PASS reader1 last_backup={last_backup} reader2 restored_from={restored_from}")
+async def _run_until(reader: SGP40_Reader, wdt: "machine.WDT", deadline_s: float, slot: int) -> "int | None":
+    # Runs the read task until get_mem_status()[slot] is set or the deadline passes, fed in steps; the task is cancelled.
+    task = reader.start_asy_read()
+    reader.start_timer()
+    waited_ms = 0
+    try:
+        while (await reader.get_mem_status())[slot] is None and waited_ms < deadline_s * 1000:
+            await fed_sleep_ms(wdt, _POLL_MS)
+            waited_ms += _POLL_MS
+    finally:
+        reader.stop_timer()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass  # the cancel above; a read task that died on its own re-raises here and fails the run
+    return (await reader.get_mem_status())[slot]
 
 
 asyncio.run(_main())

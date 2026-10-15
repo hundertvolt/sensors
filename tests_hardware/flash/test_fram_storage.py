@@ -1,21 +1,19 @@
-"""Flash-tier automated tests: real MB85RS64V SPI FRAM chip coverage (FRAMManager/
-asy_fram_driver) - a structurally different mechanism from test_reboot_persistence.py's
-littlefs-backed config storage."""
+"""Flash-tier tests of the real SPI FRAM chip (FRAMManager/asy_fram_driver): a mechanism separate from
+test_reboot_persistence.py's flash-filesystem config storage. Each device script reports facts; the verdict is here."""
 
-import re
-from pathlib import Path
+import secrets
 from typing import TYPE_CHECKING
 
-from harness import wait_until
+import pytest
+from error_log_helpers import code
+from harness import DEVICE_SCRIPTS_DIR, fram_backed_logger_names, parse_facts, wait_until
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log")
-
-DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
-RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
-
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("fram", "construction", "fram_crash_points", "ci_suite._run_5b_error_log_restore_is_all_or_nothing", "ci_suite._run_5c_storage_paused_shutdown_never_loses_the_error_log")
 
 # @tunable l3.fram_storage_short_script_timeout_s = 30.0
 _SHORT_SCRIPT_TIMEOUT_S = 30.0
@@ -31,13 +29,26 @@ _SCRIPT_TIMEOUT_S = 60.0
 _PAUSE_SCRIPT_TIMEOUT_S = 90.0
 # @tunable l3.fram_storage_lockout_script_timeout_s = 45.0
 _LOCKOUT_SCRIPT_TIMEOUT_S = 45.0
+_TEST_BAND = (code("E", "TEST_SEED_A"), code("E", "TEST_SEED_B"), code("E", "TEST_SEED_C"))  # every seed script's codes
+_SEQUENCES = 3 ** 3  # the reset-race nonce picks one of the test band's three-code sequences
+_AFTER_RACE = code("E", "TEST_SEED_C")  # the verify phase's post-recovery entry
 
 
-def _run_and_assert_pass(board: "Board", script_name: str, timeout_s: float, label: str) -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / script_name, timeout_s=timeout_s)
-    match = RESULT_RE.search(output)
-    assert match is not None, f"device script printed no RESULT line - full output:\n{output}"
-    assert match.group(1) == "PASS", f"{label} failed: {match.group(2).strip()}\nfull output:\n{output}"
+def _cleared(entry: object) -> bool:
+    return isinstance(entry, dict) and entry.get("ErrCount") == 0 and all(t == "N" for t in entry.get("ErrType", ["?"]))
+
+
+def _kept(codes: "list[int]") -> "list[int]":
+    # The history the newest-entry rule leaves (SPECIFICATION.md Part C.7.1): a repeat of the newest code takes no slot.
+    kept: list[int] = []
+    for num in codes:
+        if not kept or kept[-1] != num:
+            kept.append(num)
+    return kept
+
+
+def _run(board: "Board", script: str, timeout_s: float) -> "dict[str, object]":
+    return parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / script, timeout_s=timeout_s))
 
 
 # ---------------------------------------------------------------------------
@@ -45,8 +56,11 @@ def _run_and_assert_pass(board: "Board", script_name: str, timeout_s: float, lab
 # ---------------------------------------------------------------------------
 
 
-def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_manager_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM chunk manager roundtrip")
+def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: "Board", result_note: "Callable[[str], None]") -> None:
+    facts = _run(board, "fram_manager_roundtrip.py", _SHORT_SCRIPT_TIMEOUT_S)
+    result_note(f"FRAM part RDID {facts.get('rdid')}")
+    for key in ("setup", "allocated", "cleared_first", "written", "read_ok", "matches", "cleared_last"):
+        assert facts.get(key) is True, f"chunk round trip: {key} is {facts.get(key)!r}; facts {facts}"
 
 
 # ---------------------------------------------------------------------------
@@ -55,9 +69,12 @@ def test_fram_chunk_write_read_roundtrips_against_the_real_chip(board: "Board") 
 
 
 def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: "Board") -> None:
-    # ~90s real runtime (60s to the first natural BackupPeriod trigger, plus restore-cycle margin)
-    # - see the device script's own docstring; timeout is generous relative to that.
-    _run_and_assert_pass(board, "sgp40_fram_backup_restore.py", timeout_s=_BACKUP_SCRIPT_TIMEOUT_S, label="SGP40 FRAM backup/restore")
+    # Up to ~85 s on the board (the first 1 min BackupPeriod trigger, then the restore), fed in steps.
+    facts = _run(board, "sgp40_fram_backup_restore.py", _BACKUP_SCRIPT_TIMEOUT_S)
+    assert facts.get("backup_written") is True, f"reader1 never completed a backup within the wait: {facts}"
+    assert facts.get("restored_from") is not None, f"the fresh reader restored no backup: {facts}"
+    assert facts.get("restored_state_matches") is True, f"the restored backup is not the one reader1 wrote: {facts}"
+    assert facts.get("cleared_last") is True, f"the VOC-state chunk was not cleared after the run: {facts}"
 
 
 # ---------------------------------------------------------------------------
@@ -66,16 +83,38 @@ def test_sgp40_voc_state_backs_up_to_and_restores_from_the_real_chip(board: "Boa
 
 
 def test_error_log_history_persists_in_the_real_chip_across_a_simulated_reboot(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_error_log_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM error log roundtrip")
+    facts = _run(board, "fram_error_log_roundtrip.py", _SHORT_SCRIPT_TIMEOUT_S)
+    assert facts.get("restored") is True, f"the fresh logger did not initialise from the chip: {facts}"
+    nums, types = facts.get("err_num"), facts.get("err_type")
+    assert facts.get("err_count") == 1, f"restored ErrCount is not 1: {facts}"
+    assert isinstance(nums, list) and isinstance(types, list) and [(n, t) for n, t in zip(nums, types, strict=True) if t != "N"] == [(facts.get("seed"), "E")], f"the history holds not exactly the seeded entry: {facts}"
+    assert facts.get("seed") in _TEST_BAND, f"the seed is no test-band code: {facts}"
+    assert facts.get("cleared_last") is True, f"the seeded entry survived the run: {facts}"
 
 
-def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: "Board") -> None:
-    # The other half of the claim above, which simulates a fresh boot in the SAME process and so
-    # only ever shows the happy path. Losing the whole history to a reset landing mid-write is
-    # accepted (owner, 2026-09-11; Part C.3.1); a PARTIAL restore never is, and is what this asserts.
-    board.run_isolated_expect_reset(DEVICE_SCRIPTS / "fram_error_log_reset_race_seed_and_race.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S)
+@pytest.mark.parametrize("seam", [1, 2, 3, 4, 5])
+def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(board: "Board", result_note: "Callable[[str], None]", seam: int) -> None:
+    # The reset lands right after transfer `seam` of the chunk write's five: status byte 1 and 2 BUSY, payload+CRC,
+    # status byte 1 and 2 IDLE (tests/test_asy_fram_manager.py pins the sequence).
+    nonce = secrets.randbelow(_SEQUENCES)
+    seed = [_TEST_BAND[0] + (nonce // 3**i) % 3 for i in range(3)]
+    raced = _TEST_BAND[0] + nonce % 3
+    out = board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "fram_error_log_reset_race_seed_and_race.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, SEAM=seam, NONCE=nonce)
+    seeded = parse_facts(out, allow_missing_done=True).get("seeded")
+    assert "SEEDED" in out and f"LANDED seam={seam}" in out, f"the reset did not land on seam {seam}:\n{out}"
+    assert isinstance(seeded, dict) and seeded.get("ErrCount") == 3, f"the seed phase did not seed three entries before racing: {seeded!r}"
     wait_until(board.is_reachable, timeout_s=_REACHABLE_TIMEOUT_S, poll_interval_s=_REACHABLE_POLL_S, description="board reachable again after the reset-raced error-log write")
-    _run_and_assert_pass(board, "fram_error_log_reset_race_verify.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM error-log reset-race all-or-nothing check")
+    facts = _run(board, "fram_error_log_reset_race_verify.py", _SCRIPT_TIMEOUT_S)
+    # The only three outcomes a reset mid-write may leave: losing the whole history is accepted (owner, 2026-09-11; Part
+    # C.3.1), a partial or garbled restore never is.
+    accepted = {"empty": ([], 0), "seeded": (_kept(seed), 3), "raced": (_kept([*seed, raced]), 4)}
+    reached = next((name for name, (history, count) in accepted.items() if facts.get("recovered") == history and facts.get("err_count") == count), None)
+    result_note(f"seam {seam}, nonce {nonce}: {reached} ({facts.get('recovered')})")
+    assert reached is not None, f"seam {seam}: the restored history is neither intact nor cleanly empty (accepted {accepted}): {facts}"
+    assert facts.get("warnings") == 0, f"seam {seam}: the restored history grew warning entries: {facts}"
+    recovered = facts.get("recovered")
+    assert isinstance(recovered, list) and facts.get("tail") == _kept([*recovered, _AFTER_RACE]), f"seam {seam}: the chunk did not take a fresh entry after the reset: {facts}"
+    assert facts.get("cleared_last") is True, f"seam {seam}: the chunk was not cleared after the verify: {facts}"
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +125,12 @@ def test_error_log_history_is_all_or_nothing_across_a_reset_raced_chunk_write(bo
 
 
 def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_error_log_reset_during_boot_window.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM error-log boot-window reset check")
+    facts = _run(board, "fram_error_log_reset_during_boot_window.py", _SCRIPT_TIMEOUT_S)
+    assert facts.get("seeded_count") == 3, f"could not seed a three-entry history to reset against: {facts}"
+    assert facts.get("reset_persisted") is True, f"the reset write never reached the chip: {facts}"
+    assert _cleared(facts.get("after")), f"setup() restored the pre-reset history over a persisted reset: {facts}"
+    assert _cleared(facts.get("persisted")), f"the chip still holds the pre-reset history: {facts}"
+    assert facts.get("cleared_last") is True, f"the chunk was not cleared after the run: {facts}"
 
 
 # ---------------------------------------------------------------------------
@@ -100,21 +144,30 @@ def test_error_log_reset_during_the_boot_window_is_persisted_and_not_undone(boar
 
 
 def test_write_protection_actually_gates_a_real_write_and_a_real_read(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_write_protect_roundtrip.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM write-protect roundtrip")
+    facts = _run(board, "fram_write_protect_roundtrip.py", _SHORT_SCRIPT_TIMEOUT_S)
+    assert facts.get("failure") is None, f"write protection: {facts.get('failure')}; facts {facts}"
+    for key in ("blocked_write", "blocked_read", "data_survived", "cleared_last"):
+        assert facts.get(key) is True, f"write protection: {key} is {facts.get(key)!r}; facts {facts}"
+    assert facts.get("left_protected") is False, f"the chip was left write-protected: {facts}"
 
 
 # ---------------------------------------------------------------------------
-# The storage-pause gate (pause_permanent_storage()/FRAMManager.set_pause()). The mock tier
-# covers the clamp/re-arm/abort logic but fakes machine.Timer, so two claims are hardware-only:
-# the ONE_SHOT auto-unpause really fires on an rp2 alarm pool, and a pause really stops the write.
+# The storage-pause gate (pause_permanent_storage()/FRAMManager.set_pause()). The mock tier covers the
+# clamp/re-arm/abort logic but fakes machine.Timer, so two claims are hardware-only: the auto-unpause
+# deadline is met on the real uptime tick, and a pause really stops the write.
 # ---------------------------------------------------------------------------
 
 
-def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires(board: "Board") -> None:
-    # ~20s of real waiting inside the script (the 2s/2s/6s auto-unpause windows plus margins, and
-    # the exhausted-alarm-pool step's own window), so the timeout is generous relative to that
-    # rather than to the script's negligible compute.
-    _run_and_assert_pass(board, "fram_pause_unpause_and_gating.py", timeout_s=_PAUSE_SCRIPT_TIMEOUT_S, label="FRAM pause/unpause gating")
+def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires(board: "Board", result_note: "Callable[[str], None]") -> None:
+    # ~20 s of real waiting inside the script (the 2/2/6 s windows plus margins and the exhausted-pool step's own).
+    facts = _run(board, "fram_pause_unpause_and_gating.py", _PAUSE_SCRIPT_TIMEOUT_S)
+    skipped = facts.get("skipped")
+    if isinstance(skipped, dict) and skipped.get("total"):
+        result_note(f"pause gating: checks skipped for a premise that did not hold: {skipped}")
+    for key in ("failures", "hog_deinit_failures"):
+        record = facts.get(key)
+        assert isinstance(record, dict) and record.get("total") == 0, f"pause gating: {key} {record}; facts {facts}"
+    assert facts.get("cleared_last") is True and facts.get("ts_cleared_last") is True, f"a chunk was not cleared after the run: {facts}"
 
 
 # ---------------------------------------------------------------------------
@@ -123,27 +176,45 @@ def test_storage_pause_gates_the_real_chip_and_the_real_auto_unpause_timer_fires
 # ---------------------------------------------------------------------------
 
 
-def test_fram_command_hold_stays_under_the_uart_poll_floor(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_command_hold_timing.py", timeout_s=_SHORT_SCRIPT_TIMEOUT_S, label="FRAM command hold timing")
+def test_fram_command_hold_stays_under_the_uart_poll_floor(board: "Board", result_note: "Callable[[str], None]") -> None:
+    facts = _run(board, "fram_command_hold_timing.py", _SHORT_SCRIPT_TIMEOUT_S)
+    write_us, read_us, hold_us = facts.get("write_us"), facts.get("read_us"), facts.get("hold_us")
+    floor_us, budget_us = facts.get("uart_floor_us"), facts.get("block_hold_budget_us")
+    assert facts.get("command_ok") is True and facts.get("block_ok") is True, f"a timed command reported a failure status: {facts}"
+    assert isinstance(write_us, int) and isinstance(read_us, int) and isinstance(floor_us, int), f"the timings are missing: {facts}"
+    result_note(f"FRAM hold: write {write_us} us, read {read_us} us, block {hold_us} us (floor {floor_us} us, budget {budget_us} us)")
+    assert max(write_us, read_us) <= floor_us, f"the longest non-yielding stretch {max(write_us, read_us)} us passes the UART poll floor {floor_us} us: {facts}"
+    assert isinstance(hold_us, int) and isinstance(budget_us, int) and hold_us <= budget_us, f"the block hold {hold_us} us passes its budget {budget_us} us: {facts}"
 
 
 # ---------------------------------------------------------------------------
-# The busy-status lockout: the real-hardware half of BACKLOG's SPI RX-overrun coverage. The
-# overrun is a DMA timing condition no Python knob can induce on target, so this tests its
-# consequence, which is inducible and is what actually protects a destructive-readout part.
+# The busy-status lockout: the real-hardware half of the SPI RX-overrun coverage. The overrun is a
+# DMA timing condition no Python knob can induce on target, so this tests its consequence, which is
+# inducible and is what actually protects a destructive-readout part.
 # ---------------------------------------------------------------------------
 
 
 def test_both_blocks_left_busy_lock_the_real_chunk_until_it_is_rewritten(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_busy_status_lockout.py", timeout_s=_LOCKOUT_SCRIPT_TIMEOUT_S, label="FRAM busy-status lockout")
+    facts = _run(board, "fram_busy_status_lockout.py", _LOCKOUT_SCRIPT_TIMEOUT_S)
+    for key in ("baseline_ok", "forced_busy", "locked_read_none", "error_logged", "recovered", "cleared_last"):
+        assert facts.get(key) is True, f"busy-status lockout: {key} is {facts.get(key)!r}; facts {facts}"
 
 
 # ---------------------------------------------------------------------------
-# WP4/Topic 6: a shipped firmware asking for more FRAM than its own chip has must be caught before
-# flash, not discovered as a silent boot-time console print nobody's watching. mpremote-only by
-# design (owner, 2026-09-16) - no new /status field, this is a one-time build-validity fact.
+# A firmware asking for more FRAM than its chip has is caught before flash, never as a boot-time console line nobody
+# watches; mpremote-only by design, a one-time build-validity fact (owner, 2026-09-16).
 # ---------------------------------------------------------------------------
 
 
-def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: "Board") -> None:
-    _run_and_assert_pass(board, "fram_capacity_after_full_system_build.py", timeout_s=_SCRIPT_TIMEOUT_S, label="FRAM capacity check")
+def test_every_fram_wired_module_gets_a_real_chunk_after_a_full_system_build(board: "Board", result_note: "Callable[[str], None]") -> None:
+    facts = _run(board, "fram_capacity_after_full_system_build.py", _SCRIPT_TIMEOUT_S)
+    expected = fram_backed_logger_names()
+    found, ram_only = facts.get("found_fram_loggers"), facts.get("ram_only")
+    assert facts.get("fram_present") is True, f"the build constructed no FRAM manager: {facts}"
+    assert isinstance(found, list) and isinstance(ram_only, list), f"the logger facts are missing: {facts}"
+    missing, extra = sorted(set(expected) - set(found)), sorted(set(found) - set(expected))
+    assert not missing and not extra, f"FRAM-backed loggers differ from buildgen's set: missing {missing}, extra {extra}; facts {facts}"
+    # A logger buildgen leaves out of its set is RAM-only in the build itself, no degraded fallback.
+    degraded = [name for name in ram_only if str(name).split(".")[-1] in expected]
+    assert not degraded, f"loggers buildgen backs with FRAM fell back to RAM: {degraded}; facts {facts}"
+    result_note(f"FRAM allocated {facts.get('allocated_size')} of {facts.get('size')} B; RAM-only by design: {ram_only}")

@@ -32,11 +32,6 @@ def _b():
 """
 
 
-def _run(repo_root: Path, body: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess[str]:
-    script = _DRIVER.format(manual_dir=str(repo_root / "tests_hardware" / "manual"), body=body, argv=list(argv))
-    return subprocess.run([sys.executable, "-c", script], input=stdin, capture_output=True, text=True, check=False, cwd=repo_root, timeout=60)
-
-
 def _block(stdout: str) -> str:
     start = stdout.rfind("== Summary: ")
     assert start != -1, f"no summary block printed:\n{stdout}"
@@ -45,6 +40,11 @@ def _block(stdout: str) -> str:
 
 def _line(block: str, prefix: str) -> str:
     return next((ln for ln in block.splitlines() if ln.startswith(prefix)), "")
+
+
+def _run(repo_root: Path, body: str, *argv: str, stdin: str = "") -> subprocess.CompletedProcess[str]:
+    script = _DRIVER.format(manual_dir=str(repo_root / "tests_hardware" / "manual"), body=body, argv=list(argv))
+    return subprocess.run([sys.executable, "-c", script], input=stdin, capture_output=True, text=True, check=False, cwd=repo_root, timeout=60)
 
 
 def test_one_pass_and_one_fail_print_the_block_and_exit_1(repo_root: Path) -> None:
@@ -65,6 +65,42 @@ def test_every_step_passing_exits_0_with_a_pass_block(repo_root: Path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     assert "passed 2" in _line(block, "Counts (manual steps):"), block
     assert _line(block, "Result:") == "Result: PASS", block
+
+
+def test_a_step_returning_with_no_judgment_fails(repo_root: Path) -> None:
+    # Enter alone is no verdict: a step that only confirms fails; one that reached a scripted assertion passes.
+    body = """
+@runner.register("step_without_judgment", "only confirms", "[USB][MANUAL]")
+def _a():
+    runner.confirm()
+
+@runner.register("step_ending_on_an_assert", "a scripted check", "[USB][MANUAL]")
+def _b():
+    runner.record_assertion()
+"""
+    result = _run(repo_root, body, stdin="\n")
+    block = _block(result.stdout)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "L3 step_without_judgment: no pass/fail judgment recorded" in block, block
+    assert "passed 1" in _line(block, "Counts (manual steps):"), block
+    assert "step_ending_on_an_assert: PASS (operator judged)" in result.stdout, result.stdout
+
+
+def test_an_observation_is_a_verdict_only_with_text(repo_root: Path) -> None:
+    body = """
+@runner.register("observed_with_text", "an exploratory item", "[USB+WiFi][MANUAL]")
+def _a():
+    runner.observe("What happened?")
+
+@runner.register("observed_with_enter", "the same item, Enter alone", "[USB+WiFi][MANUAL]")
+def _b():
+    runner.observe("What happened?")
+"""
+    result = _run(repo_root, body, stdin="a popup appeared\n\n")
+    block = _block(result.stdout)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "passed 1" in _line(block, "Counts (manual steps):"), block
+    assert "L4 observed_with_enter: no pass/fail judgment recorded" in block, block
 
 
 def test_ctrl_c_fails_the_current_step_lists_the_rest_as_not_run_and_exits_130(repo_root: Path) -> None:

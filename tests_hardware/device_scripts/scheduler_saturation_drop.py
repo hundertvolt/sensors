@@ -1,60 +1,66 @@
-"""Isolated-driver device script: provokes enough concurrent real Timer IRQs to exceed
-MicroPython's fixed-depth scheduler queue (MICROPY_SCHEDULER_DEPTH=8 on rp2, SPECIFICATION.md Part
-F.1) and confirms a periodic timer self-heals rather than permanently stopping. Widen BUSY_WAIT_MS if `dropped` comes back 0."""
+"""Isolated-driver device script: forces a soft-Timer callback drop - twelve 1 ms periodic timers armed back to back,
+then three straight-line 900 us busy-waits the VM drains nothing through, so more callbacks fall due than the
+scheduler queue holds (SPECIFICATION.md Part F.1) - counts the drop, then checks every timer fires again."""
 
 import time
 
 import machine
 
+# @include _shared/facts.py
+
 try:
     from typing import TYPE_CHECKING
-except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-N_TIMERS = 10
-# @tunable l3.scheduler_saturation_drop_timer_period_ms = 2
-TIMER_PERIOD_MS = 2
-# @tunable l3.scheduler_saturation_drop_busy_wait_ms = 100
-BUSY_WAIT_MS = 100
-# @tunable l3.scheduler_saturation_drop_heal_window_ms = 500
-HEAL_WINDOW_MS = 500
+    from _shared.facts import done, fact
+    from bench_facts import BenchFacts
 
-fire_counts = [0] * N_TIMERS
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+_N_TIMERS = 12  # more than the scheduler's depth (BENCH["depth"]), so a drop is forced, never hoped for
+# @tunable l3.scheduler_saturation_drop_timer_period_ms = 1
+_TIMER_PERIOD_MS = 1
+# @tunable l3.scheduler_saturation_drop_busy_step_us = 900
+_BUSY_STEP_US = 900
+# @tunable l3.scheduler_saturation_drop_heal_window_ms = 500
+_HEAL_WINDOW_MS = 500
+
+_fire_counts = [0] * _N_TIMERS
 
 
 def _make_cb(i: int) -> "Callable[[machine.Timer], None]":
     def _cb(_t: "machine.Timer") -> None:
-        fire_counts[i] += 1
+        _fire_counts[i] += 1
 
     return _cb
 
 
-timers = [machine.Timer() for _ in range(N_TIMERS)]
-for i, t in enumerate(timers):
-    t.init(period=TIMER_PERIOD_MS, callback=_make_cb(i))
-
-# Busy-wait with no yield point the scheduler can drain through - starves the queue on purpose.
-start = time.ticks_ms()
-while time.ticks_diff(time.ticks_ms(), start) < BUSY_WAIT_MS:
-    pass
-
-counts_after_busy_wait = list(fire_counts)
-naive_expected_min = BUSY_WAIT_MS // TIMER_PERIOD_MS  # a lower bound if nothing were ever dropped
-dropped = any(c < naive_expected_min for c in counts_after_busy_wait)
-
-# Self-heal window: let the timers run normally (main loop free to drain the scheduler again) and
-# confirm every one of them fires at least once more - proves none permanently stopped.
-time.sleep_ms(HEAL_WINDOW_MS)
-counts_after_heal = fire_counts
-all_self_healed = all(counts_after_heal[i] > counts_after_busy_wait[i] for i in range(N_TIMERS))
-
-for t in timers:
-    t.deinit()
-
-if all_self_healed:
-    print(f"RESULT: PASS dropped={dropped} all_self_healed={all_self_healed} counts_busy={counts_after_busy_wait} counts_heal={counts_after_heal}")
-else:
-    print(f"RESULT: FAIL a timer never fired again after the busy-wait - not self-healing. counts_busy={counts_after_busy_wait} counts_heal={counts_after_heal}")
+_timers = [machine.Timer() for _ in range(_N_TIMERS)]
+try:
+    start = time.ticks_us()
+    for i, t in enumerate(_timers):
+        t.init(period=_TIMER_PERIOD_MS, callback=_make_cb(i))
+    arming_span_us = time.ticks_diff(time.ticks_us(), start)
+    # Straight-line, no branch between them: the VM runs no scheduled callback inside sleep_us().
+    time.sleep_us(_BUSY_STEP_US)
+    time.sleep_us(_BUSY_STEP_US)
+    time.sleep_us(_BUSY_STEP_US)
+    counts_busy = list(_fire_counts)
+    # The heal window: the loop free to drain the queue again, every timer must fire at least once more.
+    time.sleep_ms(_HEAL_WINDOW_MS)
+    counts_heal = list(_fire_counts)
+finally:
+    for t in _timers:
+        t.deinit()
+fact("n_timers", _N_TIMERS)
+fact("depth", BENCH["depth"])
+fact("arming_span_us", arming_span_us)
+fact("counts_busy", counts_busy)
+fact("counts_heal", counts_heal)
+fact("dropped", sum(1 for c in counts_busy if c == 0))
+fact("all_self_healed", all(counts_heal[i] > counts_busy[i] for i in range(_N_TIMERS)))
+done()

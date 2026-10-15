@@ -1,147 +1,82 @@
-"""Flash-tier automated tests: real bus/electrical timing that no simulation (mock or digital twin)
-can reproduce, via isolated-driver `mpremote run` scripts. The clock-stretch check needs
-`--soak-tier`; the ticks_ms rollover check needs `--allow-multi-day-rollover-wait` (~12.4-day wait)."""
+"""Flash-tier tests of real bus/electrical timing no simulation reproduces, through isolated-driver scripts. The
+clock-stretch soak needs --soak-duration."""
 
-import re
-import time
-from pathlib import Path
-from typing import TYPE_CHECKING
+import errno
+from typing import Protocol
 
 import pytest
-from soak_tiers import SOAK_TIER_SECONDS
+from harness import DEVICE_SCRIPTS_DIR, Board, crash_lines, parse_facts
+from soak_durations import SOAK_DURATION_SECONDS
 
-if TYPE_CHECKING:
-    from harness import Board
+
+class _ResultNote(Protocol):
+    # The root conftest's result_note fixture.
+    def __call__(self, text: str, *, recovery: bool = False) -> None: ...
+
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("scd30",)
 
-DEVICE_SCRIPTS = Path(__file__).resolve().parent.parent / "device_scripts"
-RESULT_RE = re.compile(r"^RESULT: (PASS|FAIL)(.*)$", re.MULTILINE)
-
-
 # @tunable l3.bus_electrical_timing_irq_script_timeout_s = 30.0
 _IRQ_SCRIPT_TIMEOUT_S = 30.0
+# Twelve timers armed back to back: past this the arming itself, not the scheduler, would be what is measured.
+# @tunable l3.bus_electrical_timing_arming_span_max_us = 1500
+_ARMING_SPAN_MAX_US = 1500
+# Three scans and two radio re-inits per value, three values.
+# @tunable l3.bus_electrical_timing_country_script_timeout_s = 120.0
+_COUNTRY_SCRIPT_TIMEOUT_S = 120.0
 
 
-def _parse_result(output: str) -> tuple[bool, str]:
-    match = RESULT_RE.search(output)
-    if match is None:
-        raise AssertionError(f"device script printed no RESULT line - full output:\n{output}")
-    return match.group(1) == "PASS", match.group(2).strip()
+# The soft-Timer callback drop under a forced scheduler saturation.
+def test_soft_timer_callback_drop_self_heals_under_scheduler_saturation(board: Board) -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "scheduler_saturation_drop.py"))
+    n_timers, depth, span = facts["n_timers"], facts["depth"], facts["arming_span_us"]
+    assert isinstance(n_timers, int) and isinstance(depth, int) and isinstance(span, int), facts
+    assert span <= _ARMING_SPAN_MAX_US, f"arming the timers took {span} us, bound {_ARMING_SPAN_MAX_US} us"
+    dropped = facts["dropped"]
+    assert isinstance(dropped, int) and dropped >= n_timers - depth, f"{dropped} of {n_timers} timers dropped with a scheduler depth of {depth}: the drop was not forced"
+    assert facts["all_self_healed"] is True, f"a timer never fired again after the drop: busy {facts['counts_busy']}, heal {facts['counts_heal']}"
 
 
-# ---------------------------------------------------------------------------
-# Item 2 - soft Timer callback drop under real scheduler saturation.
-# ---------------------------------------------------------------------------
+# Timer.init()'s OSError(ENOMEM) once the hardware alarm pool is exhausted.
+def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: Board, result_note: _ResultNote) -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "timer_alarm_pool_exhaustion.py"))
+    result_note(f"constructed={facts['constructed']}: the alarms free beside the image's other pool users")
+    assert facts["raised"] is True, f"no OSError after constructing {facts['constructed']} Timers"
+    assert facts["errno"] == errno.ENOMEM, f"Timer.init() raised errno {facts['errno']}, expected ENOMEM ({errno.ENOMEM})"
 
 
-def test_soft_timer_callback_drop_self_heals_under_scheduler_saturation(board: "Board") -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "scheduler_saturation_drop.py")
-    ok, detail = _parse_result(output)
-    assert ok, f"scheduler saturation probe failed: {detail}\nfull output:\n{output}"
+# The SCD30 RDY edge driving a real read (a scope on the pin is the only certain check, E.6.6 row scd30-rdy-irq-vs-fallback).
+def test_scd30_real_irq_edge_drives_a_real_read(board: Board, scd30_measuring: str) -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "scd30_real_irq_edge.py", timeout_s=_IRQ_SCRIPT_TIMEOUT_S))
+    assert facts["died"] == [], f"a reader task died: {facts['died']}"
+    elapsed, deadline = facts["elapsed_ms"], facts["deadline_ms"]
+    assert facts["co2"] is not None and isinstance(elapsed, int) and isinstance(deadline, int), f"no reading within the deadline (fallback {facts['trigger_s']} s): {facts}"
+    assert elapsed <= deadline, f"the reading took {elapsed} ms, deadline {deadline} ms"
 
 
-# ---------------------------------------------------------------------------
-# Item 3 - Timer.init() OSError(ENOMEM) under real hardware alarm-pool exhaustion.
-# ---------------------------------------------------------------------------
+# The single-precision float boundary at 2**24, which only the real firmware's 24-bit mantissa shows.
+def test_single_precision_float_boundary_at_2pow24(board: Board) -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "float_boundary_2pow24.py"))
+    assert facts["below_exact"] is True, f"2**24 - 1 did not round-trip: {facts}"
+    assert facts["above_value"] == 2**24, f"2**24 + 1 came back as {facts['above_value']}, expected 2**24 (round to even on a 24-bit mantissa)"
 
 
-def test_timer_init_raises_enomem_when_real_alarm_pool_is_exhausted(board: "Board") -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "timer_alarm_pool_exhaustion.py")
-    ok, detail = _parse_result(output)
-    assert ok, f"alarm-pool exhaustion probe failed: {detail}\nfull output:\n{output}"
+# The radio's reaction to malformed country codes: recorded, never judged; the script restores what it found.
+def test_a_malformed_country_code_reaction_is_recorded(board: Board, result_note: _ResultNote) -> None:
+    facts = parse_facts(board.run_isolated(DEVICE_SCRIPTS_DIR / "wifi_country_code_reaction.py", timeout_s=_COUNTRY_SCRIPT_TIMEOUT_S))
+    steps = [facts.get(f"value_{i}") for i in range(3)]
+    assert all(isinstance(step, dict) and {"set", "radio_on", "readback"} <= set(step) for step in steps), f"a value's steps were not all reported: {steps}"
+    result_note(f"country_before={facts['country_before']} reactions={steps}")
+    assert facts["restored"] == "ok", f"the country and the radio were not restored: {facts['restored']}"
 
 
-# ---------------------------------------------------------------------------
-# Item 4 - SCD30 real IRQ-pin edge. SCD30_Reader wires a real GPIO to IRQ_RISING plus a software
-# self-healing fallback poll; can't fully disambiguate a genuine hardware edge from the fallback
-# purely in software (a scope on the pin would be the only certain check).
-# ---------------------------------------------------------------------------
-
-
-def test_scd30_real_irq_edge_drives_a_real_read(board: "Board") -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "scd30_real_irq_edge.py", timeout_s=_IRQ_SCRIPT_TIMEOUT_S)
-    ok, detail = _parse_result(output)
-    assert ok, f"SCD30 real IRQ-edge probe failed: {detail}\nfull output:\n{output}"
-
-
-# ---------------------------------------------------------------------------
-# Item 5 - single-precision float boundary (2**24), real hardware only.
-# ---------------------------------------------------------------------------
-
-
-def test_single_precision_float_boundary_at_2pow24(board: "Board") -> None:
-    output = board.run_isolated(DEVICE_SCRIPTS / "float_boundary_2pow24.py")
-    ok, detail = _parse_result(output)
-    assert ok, f"float boundary probe failed: {detail}\nfull output:\n{output}"
-
-
-# ---------------------------------------------------------------------------
-# Item 1 - SCD30 real clock-stretch timing under genuine bus load, opportunistic by nature: the
-# ~150ms stretch happens roughly once a day for internal calibration (Interface Description p.2,
-# cited in tests/_sensortask_scenarios.py too), so it can only be watched for, never forced.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.long_soak
-def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: "Board", request: pytest.FixtureRequest) -> None:
-    tier = request.config.getoption("--soak-tier")
-    if tier is None:
-        pytest.skip("real SCD30 clock-stretch events are opportunistic (~once/day) - run via scripts/run_bench_soak_tests.sh --tier {short,mid,long} to actually watch for one")
-    # Tails the live system's log (harness.Board.tail_log(), doesn't interrupt it) for an unexpected
-    # OSError/ETIMEDOUT on SCD30's I2C bus - a "never observed to fail" soak, not "confirmed
-    # exercised" (only the "long" tier runs long enough to likely observe the ~once/day event).
-    duration_s = SOAK_TIER_SECONDS[tier]
-    lines = board.tail_log(duration_s=duration_s)
-    suspicious = [ln for ln in lines if "ETIMEDOUT" in ln or ("SCD30" in ln and "OSError" in ln)]
-    assert not suspicious, "observed a suspicious SCD30/I2C error during the soak window:\n" + "\n".join(suspicious)
-
-
-# ---------------------------------------------------------------------------
-# Item 6 - time.ticks_ms() real 2**30 rollover (~12.4 days).
-#
-# BACKLOG item 12 answered the soft_reset() question this design was built around - the counter is
-# free-running - but moved the hazard rather than clearing it: every `mpremote exec` starves the
-# watchdog into a hard reset that DOES zero it, so a dropping read is a reboot, not a 2**30 wrap.
-# ---------------------------------------------------------------------------
-
-# So a wrap only counts when the PREVIOUS read was already near 2**30; a drop from anywhere else
-# is the reboot above. Two hours of headroom, wider than the poll interval below, so a real wrap
-# straddling one poll is still recognised - and the ambiguity fails honestly instead of passing.
-# @tunable l3.bus_electrical_timing_wrap_headroom_h = 2
-_WRAP_FLOOR_MS = (2**30) - 2 * 60 * 60 * 1000
-# @tunable l3.bus_electrical_timing_rollover_headroom_s = 60
-_ROLLOVER_HEADROOM_S = 60
-# @tunable l3.bus_electrical_timing_rollover_poll_interval_s = 3600.0
-_ROLLOVER_POLL_INTERVAL_S = 3600.0
-
-
-@pytest.mark.multi_day_rollover
-def test_ticks_ms_real_2pow30_rollover(board: "Board", request: pytest.FixtureRequest) -> None:
-    # Deliberately its own separate marker/flag, never bundled with the long_soak/--soak-tier system
-    # above - this wait is fixed by the real hardware counter's own current value (~12.4 days from
-    # whenever it happens to run), not something any duration tier could meaningfully shorten.
-    if not request.config.getoption("--allow-multi-day-rollover-wait"):
-        pytest.skip("real ~12.4-day wait for the actual 2**30 rollover - pass --allow-multi-day-rollover-wait to actually run this (never bundled with --soak-tier)")
-    before_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
-    before = int(before_output.strip().split("=")[-1])
-    target_wait_s = ((2**30) - before) / 1000.0 + _ROLLOVER_HEADROOM_S  # headroom past the exact boundary
-    deadline = time.monotonic() + target_wait_s
-    wrapped = False
-    poll_interval_s = _ROLLOVER_POLL_INTERVAL_S  # coarse polling - this is a multi-day wait, not a tight loop
-    while time.monotonic() < deadline:
-        time.sleep(min(poll_interval_s, max(deadline - time.monotonic(), 0)))
-        check_output = board.exec("import time; print('RESULT: PASS ticks_ms=' + str(time.ticks_ms()))")
-        now = int(check_output.strip().split("=")[-1])
-        if now < before and before >= _WRAP_FLOOR_MS:
-            wrapped = True
-            break
-        before = now
-    assert wrapped, (
-        f"time.ticks_ms() never wrapped within {target_wait_s:.0f}s. Expect this to be the outcome "
-        f"as long as this test polls with board.exec(): each poll starves the watchdog and reboots "
-        f"the board ~8s later, zeroing the counter, so it can never climb toward 2**30 between "
-        f"polls (BACKLOG.md item 12). A real method has to leave the board running - feed or "
-        f"disable the watchdog from inside the polled code, or observe passively via tail_log() - "
-        f"and that redesign is tracked in BACKLOG.md (G6), not worked around here."
-    )
+# The SCD30's real clock stretch under bus load: about once a day (Interface Description p.2), only watched for.
+@pytest.mark.soak_duration
+def test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout(board: Board, request: pytest.FixtureRequest) -> None:
+    duration = request.config.getoption("--soak-duration")
+    if duration is None:
+        pytest.skip("real SCD30 clock stretches come about once a day - run scripts/run_bench_soak_tests.sh --duration {short,mid,long} to watch for one")
+    # Proves only the absence of a failure over the window, never that a stretch happened inside it.
+    lines = board.tail_log(duration_s=SOAK_DURATION_SECONDS[duration])
+    suspicious = crash_lines(lines) + [line for line in lines if "ETIMEDOUT" in line or ("SCD30" in line and "OSError" in line)]
+    assert not suspicious, "a crash or an SCD30/I2C error during the soak window:\n" + "\n".join(suspicious)

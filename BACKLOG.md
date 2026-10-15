@@ -176,13 +176,11 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     performs on raw-REPL entry (two reads 3s apart: 25769 then 29136 ms). **The real hazard is the
     watchdog.** An `mpremote exec` stops `main.py`, so nothing feeds the WDT and the board takes a
     genuine *hard* reset ~8s later, which does zero the counter (measured: 1368364 then 5323 ms,
-    12s apart). Acted on 2026-09-18 - `test_ticks_ms_real_2pow30_rollover` would have passed
-    **vacuously within about two hours**, because the reboot alone satisfies `now < before`; a drop
-    now only counts as a wrap when the previous read was already within two hours of 2**30
-    (`_WRAP_FLOOR_MS`), so the ambiguity fails honestly instead. Kept as a stub because
-    `tests_hardware/flash/test_bus_electrical_timing.py` cites this number. **Do not re-investigate
-    the soft-reset semantics**; what remains is designing a measurement method that leaves the board
-    running, which is G6 under "Real-hardware work still owed", not this item.
+    12s apart). So a rollover check that attaches over the serial console sees a reboot, not a
+    wrap: the rollover is observed over REST only, on the tick-offset test image, where a reboot
+    fails the run (`tests_hardware/bench/test_ticks_ms_rollover.py`, G6 under "Real-hardware work
+    still owed"). Kept as a stub because this file cites this number. **Do not re-investigate the
+    soft-reset semantics.**
 29. **The spurious `WLAN_AUTH_FAILED` (`W36`, "WLAN wrong password") on a correct password -
     answered from source (2026-09-24).** Kept as a stub because `SPECIFICATION.md` C.7.1 and
     `tests/test_asy_wifi_service.py` cite this number. cyw43-driver reports BADAUTH, which
@@ -268,7 +266,7 @@ gates, traps).
   CLAUDE.md's WoZi hard rule; confirming it at each sitting, and the order below, are the run sheet
   (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
   confirm `/system`'s `build.BuildDate`, flash tier, bench tier, then the gated run
-  (`scripts/run_bench_hardware_suite.sh --allow-persistence-writes -s`), reading each verdict's
+  (`scripts/run_bench_hardware_suite.sh --allow-persistence-write -s`), reading each verdict's
   deselected count, not only "clean". **Board state at the fold**: `dev` image
   built 2026-09-25T12:54:13Z (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
   runs were two clean default bench tiers and one clean gated run (2026-09-25).
@@ -315,8 +313,10 @@ gates, traps).
   held the same way, a `machine.reset()` and a watchdog reset: whether the bus comes back and
   whether the next boot's clear frees it (constructing `machine.I2C` clocks nothing itself). Zero
   wear; it confirms the twin's bus-recovery case
-  (`tests/test_digital_twin_bus_hazard_concurrency.py`). Needs a device script that holds SDA, which
-  the flash tier does not have.
+  (`tests/test_digital_twin_bus_hazard_concurrency.py`). The held SDA itself is made by
+  `i2c_held_sda_recovery.py` (`flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers`),
+  which checks SDA high and every device answering after both clears; the line levels need a scope,
+  and the two resets with SDA held a script of their own.
 - **The free alarm count on silicon** —
   `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py` on `dev`: record its
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
@@ -329,19 +329,21 @@ gates, traps).
   `udp.poll_idle_ms`'s Basis (SPECIFICATION.md F.5.9). Zero wear; twin row: none yet, the twin
   measurement is owed with it.
 - **The SGP40's lost samples over ten minutes** — `flash/test_sensor_accuracy.py::
-  test_sgp40_sample_cadence` on `dev` (`scripts/run_bench_soak_tests.sh --tier short`): one `CADENCE`
-  line, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
+  test_sgp40_sample_cadence` on `dev` (`scripts/run_bench_soak_tests.sh --duration short`): its
+  cadence facts, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
   dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
   are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
 - **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, one `AmbPres`
-  PUT (one SCD30 NVM write, `--allow-persistence-writes`), a power cycle, then 0x0010 read back:
+  PUT (one SCD30 NVM write, `--allow-persistence-write`), a power cycle, then 0x0010 read back:
   the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
   measurement status as persisted). Twin row: the fidelity table's SCD30 pressure-persistence
   assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
   `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
   pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
-  worktree, never committed). Hold the connection ceiling open with clients that stop reading
+  worktree, never committed); `bench/test_modlwip_send_stall.py::test_send_stall_on_the_unpatched_image`
+  runs it with `--lwip-control-image <uf2>` and `--allow-flash-cycle`, flashing the control image
+  and back. Hold the connection ceiling open with clients that stop reading
   mid-`app.js` (sockets kept open without `recv()`), then request one more page: record whether the
   board freezes for up to 10 s and whether a watchdog reset follows (`/status`'s `ResetReason`).
   (2) Flash the normal build and repeat that load, plus dead-client and slow-client page loads on
@@ -371,45 +373,74 @@ gates, traps).
   `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot`, about 3-4 min: a well-formed wrong
   password over the DUT's hotspot reopens the hotspot once more, with one more `WLAN_TO_HOTSPOT` and
   no `WLAN_SILENT` in WIFI's history. (b)
-  `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, about 20 min: the reopened
+  `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, two `hotspot_time_min`
+  windows (16 min on `dev`) plus its streaks: the reopened
   hotspot's window ends with no client, the second streak goes silent (one `WLAN_SILENT`, no
   `WLAN_GIVE_UP`) and a later attempt links once the bench AP is back, with no reset. (b) runs on the
   real-credentials test's write, so both run as the whole module in one invocation with
-  `--soak-tier` and `--allow-persistence-writes` (`tests_hardware/README.md`'s "What a failed stage-6
-  credential does" names a candidate invocation). Wear: (a) one owned flash write, restored by the
+  `--soak-duration long` and `--allow-persistence-write` (`tests_hardware/README.md`'s "The hotspot
+  role reversal" names a candidate invocation). Wear: (a) one owned flash write, restored by the
   real-credentials test; (b) none. Twin row: `tests/test_digital_twin_wifi_modes.py`.
 - **Whether the chips other than the SGP40 ACK or NAK a general call** — on `dev`, a device script
   sending the general-call reset (address 0x00, 0x06) on each I2C bus and recording ACK or NAK per bus
   and which chips answer afterwards; no datasheet states it. Wear: none (no NVM write). Twin row: the
   fidelity table's general-call assumption (`digital_twin/README.md`). Needs that device script.
-- **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`, a device
-  script sending 0x4600 once with a wrong CRC and once each with 1 s and 1801 s, reading the interval
-  back after each; the datasheet states no reaction, the twin ignores each. Wear: up to three SCD30
-  NVM writes if the chip takes them (`--allow-persistence-writes`). Twin row: the fidelity table's
-  SCD30 argument assumption. Needs that device script.
+- **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`,
+  `flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded`
+  (`scd30_argument_reaction.py`): 0x4600 once with a wrong argument CRC and once with 0 and a correct
+  CRC, each read back and the period then in effect timed, the original put back; recorded, not
+  judged, since the datasheet states no reaction and the twin ignores each. The out-of-range values
+  1 s and 1801 s are not sent. Wear: up to three SCD30 NVM writes (`--allow-persistence-write` and
+  `--allow-scd30-extra-write`). Twin row: the fidelity table's SCD30 argument assumption.
 - **Whether a CONFIG1 write restarts an in-flight ISL29125 conversion** — on `dev`, a device script
   writing CONFIG1 unchanged part-way through a 100 ms 16-bit conversion and timing the next
   conversion-done flag against the previous one; FN8424 Table 7 says only "ADC start at I2C write
   0x01", the twin restarts it. Wear: none (volatile registers). Twin row: the fidelity table's
-  ISL29125 CONFIG1 assumption, which no test is tuned to. Needs that device script.
+  ISL29125 CONFIG1 assumption, which no test is tuned to. The register probe measures it
+  (`isl29125_mock_conformance_probe.py`'s `G01`/`G02` keys,
+  `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`).
 - **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
   16-bit command and then a measure command, recording whether the measure answers normally; the
   datasheet states no reaction, the twin ignores it. Wear: none. Twin row: the fidelity table's SGP40
   unknown-command assumption. Needs that device script.
 - **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
   (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
-  synthetic block can be checked against a real one. Wear: none (a read). Twin row: the fidelity
-  table's BMP3XX calibration row, synthetic until then.
+  synthetic block can be checked against a real one. The probe reads it
+  (`bmp3xx_conformance_probe.py`'s `A02_calibration`,
+  `flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake`). Wear: none (a read). Twin
+  row: the fidelity table's BMP3XX calibration row, synthetic until then.
 - **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
   the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL, then
   both read: whether the registers survive and which cause rp2 reports is not in the pinned
   MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
-  watchdog reset. Wear: none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`).
-  Twin row: the fidelity table's bootloader assumption.
+  watchdog reset. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the
+  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Wear: none (no flash write; leaving
+  BOOTSEL needs the owner or `picotool reboot`). Twin row: the fidelity table's bootloader
+  assumption.
+- **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
+  session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
+  record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,
+  an invalid record, an incomplete command, a hang in each boot phase, a C-stack exhaustion and a
+  console interrupt, each read back as `GET /status`'s `ResetReason`; `tests_hardware/README.md`'s
+  "Reset codes proven on the bench" fills from the run. Wear: no owned write (the tests carry no
+  wear marker). Twin row: each script's twin run.
+- **The UART receive ring sized for the bench's interrupts-off window** — on `dev`, the receiving
+  link's `rx_ring` is the driver-default 512 B (SPECIFICATION.md J.6 and I.2; agent, 2026-10-08),
+  while a continuous sender puts 4,608 B into the 400 ms flash window at 115200 baud, so
+  `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off` fails up front
+  naming the size until `devices/dev.toml` sizes it. Then the run measures the ring's heap cost
+  (the test reports it) and expects every frame intact with the overrun bit clear within the ring's
+  bound, an overrun reported past it. Wear: none (`uart_dma_ring_interrupts_off.py` holds
+  interrupts off with a busy-wait, no flash write). Twin row: none.
+- **Whether a changed `Altitude` applies at once while `AmbPres` is 0** — on `dev`,
+  `bench/test_sensor_config_push_over_real_hardware.py::test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`:
+  `AmbPres` 0, a stepped `Altitude`, both restored; the answer goes into SPECIFICATION.md M.2.
+  Wear: 4 SCD30 NVM writes (`--allow-persistence-write` and `--allow-scd30-extra-write`). Twin row:
+  none (a silicon question).
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
-  segfault fix" below); G6, a rollover method that leaves the board running (item 12, adapt now,
-  measure later by decision); H1, the owner's two-chroot run (the chroot entry below); F17, item
+  segfault fix" below); G6, the tick rollover on the tick-offset test image (`bench/test_ticks_ms_rollover.py`:
+  one flash cycle, about two hours of polling over REST, owner, 2026-10-01; item 12); H1, the owner's two-chroot run (the chroot entry below); F17, item
   44's anomalies.
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
   the two unbought bench-rig capabilities (item 8).
@@ -750,6 +781,22 @@ gates, traps).
   installer leg is owed**: `toolchain/setup_toolchain.py`'s `run()` holds SIGINT, SIGTERM and SIGHUP
   while a command starts and takes them once it can stop the command. The chroot legs lint and
   type-check it; only the installer leg (`uv run toolchain/setup_toolchain.py`) runs it.
+  **2026-10-14, the hardware tier's runners, the image record, and lint and type config, no
+  dependency or installer change**: `pyproject.toml`'s pytest `addopts = ["--strict-markers"]`
+  makes an unregistered marker a collection error (`tests_hardware/markers.py` holds the table);
+  ruff's `allowed-unused-imports` gains the five manual step modules, `max-statements` drops 75 →
+  73, three bench tests' `S112`/`S105` per-file ignores go and `tests_hardware/device_scripts/**`
+  gains `TC004`; the main mypy pass excludes `digital_twin/run_device_script.py`; `host_typecheck.ini`
+  excludes `tests_hardware/bench/conftest.py`, which `scripts/typecheck.sh` checks in a pass of its
+  own, and drops seven explicit-`Any` baseline entries, and the twin pass also checks
+  `tests/_digital_twin_*.py`. `scripts/build_firmware.py` writes the image record beside the `.uf2`
+  (`<output>.json`) and takes `--device-toml PATH`; the new `scripts/record_twin_instrument_runs.py`
+  writes the twin record (twin_record.json in `tests_hardware/`) and builds nothing; `scripts/run_bench_soak_tests.sh`
+  takes `--duration {short,mid,long}`, and the hardware runners, `_require_clean_hardware_run.sh`,
+  `mpremote_connect.sh` and `run_manual_hardware_tests.sh` call `uv run --no-sync`. The chroot
+  legs' lint and typecheck runs cover the config and the scripts, and `scripts/test.sh`'s pytest
+  tier the build script's logic; no leg runs a hardware runner, and `env --tier generic` installs
+  nothing new.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -904,8 +951,8 @@ gates, traps).
     `digital_twin/unix_port_poll_prewarm.py` — see `digital_twin/README.md`'s "What's here" for the
     fix), but as standing on-target validation of the wider stress scenario itself.
   - The **memory-leak soak test** equivalent is
-    `tests_hardware/bench/test_memory_stress_bench.py::test_real_hardware_memory_does_not_leak_under_real_http_soak_traffic`
-    — real, committed, `@pytest.mark.long_soak`, and **still not yet actually completed cleanly**
+    `tests_hardware/bench/test_memory_stress_bench.py::test_http_soak_stays_live` (a liveness check:
+    no crash line, no boot line, no task end, no allocation marker; it claims no leak bound) — real, committed, `@pytest.mark.soak_duration`, and **still not yet actually completed cleanly**
     as of 2026-09-04 (the one real attempt that day was aborted by an unrelated cascading DUT-
     unreachable failure elsewhere in the same run - see open question 9's `BENCH_AP_PASSWORD` -
     before this test itself ever got a genuine clean pass/fail). Deliberately does **not** use the
@@ -918,12 +965,14 @@ gates, traps).
     Not because the "no confirmed leak on the Unix port" conclusion is in doubt (four independent,
     properly-powered replication experiments found no reproducible decline, on either idle or
     HTTP-soak traffic), but because the Unix port's allocator/heap behavior isn't guaranteed
-    identical to rp2040's real one. **`--tier mid` (10 minutes) run for real (2026-09-08, bench
+    identical to rp2040's real one. **The 10-minute duration (then `--tier mid`, now `--duration
+    mid`) run for real (2026-09-08, bench
     Pi4, project owner's go-ahead given in-session): clean pass** - `test_real_hardware_memory_
-    does_not_leak_under_real_http_soak_traffic` plus its two long_soak siblings
+    does_not_leak_under_real_http_soak_traffic` (now `test_http_soak_stays_live`) plus its two soak
+    siblings
     (`test_single_core_timing_headroom_holds_under_normal_full_task_load`,
     `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`) all PASSED, 3/3, zero
-    `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--tier long`
+    `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--duration long`
     (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
     a substitute for the full 6h window this item was always about
     (S4).
@@ -1029,3 +1078,37 @@ question.
    `TIMER` once and retries at its next pass, as the uptime and NTP timers already do: on every device those sensors stay
    silent (no measurements) until an alarm frees while the web API, Wi-Fi and the logs run on, and no reboot follows; the
    watchdog still covers a stuck loop. Until answered: (a), the current behaviour.
+
+3. **Cap the SCD30 NVM writes the extra-write flag admits?** (entered 2026-10-15, agent) The SCD30 keeps its settings in an
+   on-chip NVM for which Sensirion publishes no endurance figure. Hardware tests write it only behind `--allow-persistence-write`,
+   and a test spending more than the one write that flag admits needs `--allow-scd30-extra-write` on top. The documented rule
+   caps a session at one SCD30 write, the extra flag being for one test firing it "a second time"; the tests now carry more.
+   (a) keep what the tests carry: with both flags, one flash-and-bench session on `dev` spends up to 13 owned writes to its
+   SCD30 on `i2c1` (1 under the global flag; under the extra flag 2 and up to 3 on the flash tier, up to 3 and 4 on the bench
+   tier), plus at most one start command the session itself may send; a default run spends 0, at most 1; the manual power-cut
+   steps state theirs (up to 22 and 2) before each confirmation. (b) one further write per session: the extra flag admits a
+   single further owned write, so its five tests run one per session, chosen by name, and covering all five takes five sessions
+   on `dev`. Either way the SCD30s of `arzi`, `grkizi`, `klkizi`, `schlafzi` and `wozi` (each on `i2c0`) are never written by a
+   test: only `dev` is flashed. Until answered: (a), what the tests carry.
+
+4. **Keep the SCD30 soft reset at every start?** (entered 2026-10-15, agent) Every boot, every restart of the SCD30's read
+   task and the second consecutive failed read send the SCD30 its soft reset, which puts the sensor into the state it has after
+   powering up (Interface Description 1.4.10). A power loss within the first 7 days after automatic self-calibration (ASC) is
+   switched on aborts its search for calibration parameters (1.4.6); whether a soft reset does the same is not stated, and the
+   sensor reports no ASC progress, so the bench cannot measure it. (a) keep it: on every device a boot or a read-task restart
+   soft-resets the SCD30 (`i2c0` on `arzi`, `grkizi`, `klkizi`, `schlafzi` and `wozi`, `i2c1` on `dev`) and waits 2.5 s; if the
+   reset counts as a power loss, a device rebooted within 7 days of switching ASC on restarts its search, and a sensor left
+   mid-command by the previous run always starts clean. (b) reset only on the failed-read rung: boots and task restarts no
+   longer reset the sensor, so ASC's search survives a reboot whatever the reset does, and the first read after a boot takes the
+   sensor as the previous run left it, a confused sensor recovering at its second failed read instead. Until answered: (a), the
+   current behaviour.
+
+5. **Leave the UART hazards under API load untested?** (entered 2026-10-15, agent) `dev`'s two UART links (`uart0` initiator,
+   `uart1` responder, joined by the bench's crossover jumper) have their comm hazards (two initiations at once, both ends
+   transmitting, boundary values, a stalled transmit) and the field sweep tested on the board with the firmware stopped, and in
+   the digital twin. Under the bench's real API load only the link's normal multi-chunk echo runs, because the hazard script
+   needs the raw UART pair while a serving firmware owns it. (a) leave it so: on `dev` the hazards are proven with the firmware
+   stopped and the link's normal traffic under load, but no hazard with the web API busy beside it; no other device has a UART
+   link. (b) add a hazard mode to the firmware's own UART exerciser, driven from the bench test while readers hammer the API:
+   a firmware change for `dev`'s build only (the exerciser is wired on `dev` alone), and one more bench test of about the
+   hazard script's length. Until answered: (a).

@@ -229,7 +229,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Chips | the FRAM's address wraps at its end | the same | MB85RS datasheets | L2 | fixed: `D fram::a_write_across_the_last_address_wraps_to_address_zero` |
 | Chips | a chip's value ranges | inside its datasheet's ranges; each walk step says "not datasheet-derived" | each fake's constants | L2 | fixed: `D scd30::default_ranges_stay_inside_the_datasheets_own_documented_ranges`, `D sgp40::measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_range` |
 | Chips | a chip re-plugged mid-run powers up | `I2C.unplug()`/`plug()` and each chip's `power_cycle()` | — | L2 only (L4 manual step owed, F.2) | fixed: `D hot_replug::every_bus_attached_driver_recovers_from_a_replug_without_a_reboot`, `D machine::an_unplugged_chip_answers_nothing_until_plugged_back_powered_up` |
-| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop, no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial |
+| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop, no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
 | Runtime | rp2's 16-alarm pool, `OSError(ENOMEM)` past it; a raising soft callback keeps its alarm, a hard one stops it | the same | pico-sdk `pico/time.h:352-362`, `py/scheduler.c:115`, `machine_timer.c:50-60` | L2 | fixed: `D machine::the_seventeenth_alarm_raises_enomem_until_one_is_freed`, `D machine::a_soft_callback_failure_is_printed_and_the_schedule_goes_on`, `D machine::a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm` |
 | Runtime | the finaliser disarms an unreferenced armed Timer | not modelled: the twin's task keeps the Timer referenced | `machine_timer.c:115-116, 161-163` | L1, L3 | accepted (agent, 2026-10-14): L1 fake-clock tests and L3 `timer_alarm_pool_exhaustion.py` |
 | Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
@@ -571,6 +571,21 @@ short-period/generous-timeout smoke test in `tests/test_digital_twin_machine.py`
 (`test_timer_fires_for_real_on_a_short_period`) that proves the real-time scheduling mechanism itself
 works at all, not a precise-cadence assertion. The tiers that boot a device's real graph run on real
 time and wait for each state by a bounded poll (`tests/_twin_readiness.py`), every bound a Part N row.
+
+## Running device scripts in the twin
+
+`digital_twin/run_device_script.py <plan.json> <script.py> [--gc-threshold N] [--state-dir DIR]` runs
+one `tests_hardware/device_scripts/` script unchanged, as `Board.run_isolated()` runs it on silicon:
+the device's wiring plan, the one armed watchdog, the requested GC stage, after the poll prewarm and
+the UDP shim; a plan naming a UART pair (`dev`) gets the bench's crossover jumper first. It exits 0,
+1 (raised), 2 (usage), 3 (reset), 4 (bootloader) or 6 (watchdog starved). `tests_hardware/twin_board.py`'s
+`TwinBoard` launches it behind `Board`'s API (`pytest tests_hardware/flash --twin`), each board's
+FRAM, SCD30 and `mem_backup()` state and its filesystem (each run's working directory) in one
+directory kept across its runs, so nothing a script writes lands in the checkout.
+`scripts/record_twin_instrument_runs.py` writes the twin record (twin_record.json in
+`tests_hardware/`); `tests_scripts/test_twin_record.py` fails when a script, the runner or the `src/`
+API a script imports changed since its entry. A script that cannot run here is an `exception` entry
+with its reason in the record, never listed in this file.
 
 ## Automated CI suite
 

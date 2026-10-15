@@ -1,16 +1,27 @@
-"""Isolated-driver device script: one real BMP3xx reading, checked against datasheet-sourced sane
-bounds (300-1250 hPa, -40 to 85 degC - datasheets/bmp3xx/ Table 2). Primes reader.cfgmgr directly
-(no real flash I/O) - see tests_hardware/README.md's device-script cfgmgr-priming note."""
+"""Isolated-driver device script: one real BMP3xx reading through BMP3XX_Reader, reported for the host to check
+against plausibility_bounds.py. Primes reader.cfgmgr from the driver's own schema (no flash I/O) - see
+tests_hardware/README.md's device-script cfgmgr-priming note."""
 
 import asyncio
-
-import machine
 
 import asy_i2c_driver
 from asy_bmp3xx_driver import BMP3XX_Reader
 
-PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
-TEMP_MIN_C, TEMP_MAX_C = -40.0, 85.0
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
 # @tunable l3.bmp3xx_plausibility_read_poll_s = 0.5
 _POLL_S = 0.5
 # @tunable l3.bmp3xx_plausibility_read_poll_tries = 30
@@ -18,57 +29,38 @@ _POLL_TRIES = 30
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)  # matches src/asy_system_service.py's own production value
-    i2c0 = asy_i2c_driver.I2C(0, 13, 12, frequency=50000)
-    reader = BMP3XX_Reader(i2c0, max_module_error=999)
-    # Prime config directly rather than reader.cfgmgr.setup() - no real flash file I/O. Derived from
-    # the driver's own schema, so a new field can't leave this reading a default that no longer exists.
+    wdt = arm()
+    bus = BENCH["bus"][BENCH["instances"]["bmp3xx"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    reader = BMP3XX_Reader(i2c, BENCH["addresses"]["bmp3xx"], max_module_error=999)
+    # Primed in RAM, never reader.cfgmgr.setup(): no flash file I/O, and a schema field added later cannot leave a stale default.
     reader.cfgmgr.valid = True
     reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
-    reader.start_timer()  # wires the real 1s hardware timer driving _trigger_loop()
-    trigger_task = reader.start_asy_trigger()
-    read_task = reader.start_asy_read()
-
-    data = None
-    # ~15s worst case exceeds the 8.388s hardware WDT ceiling; soft-reset doesn't reset that timer,
-    # so this script feeds it manually rather than relying on anything outside itself.
-    for _ in range(_POLL_TRIES):  # ~15s at 0.5s polling - generous relative to a forced-mode conversion's own <=~130ms
+    reader.start_timer()  # the 1 s base tick the shared divider (_trigger_loop(), Part C.9) turns into read events
+    tasks = (reader.start_asy_trigger(), reader.start_asy_read())
+    data = await reader.get_data()
+    polls = 0
+    while data.Pres is None and polls < _POLL_TRIES:  # a forced-mode conversion takes ~130 ms at most
+        await fed_sleep_ms(wdt, int(_POLL_S * 1000))
         data = await reader.get_data()
-        if data.Pres is not None:
-            break
-        wdt.feed()
-        await asyncio.sleep(_POLL_S)
-
-    died: list[str] = []
-    for task in (trigger_task, read_task):
+        polls += 1
+    died = []
+    for task in tasks:
         task.cancel()
         try:
             await task
         except asyncio.CancelledError:
             pass
-        except Exception as e:  # a task that died on its own fails the run, never passes it
+        except Exception as e:  # a task that died on its own is a fact the host fails on
             died.append(repr(e))
-    if died:
-        print(f"RESULT: FAIL a background task died: {'; '.join(died)}")
-        return
-
-    if data is None or data.Pres is None:
-        print("RESULT: FAIL no pressure reading obtained within the wait window - sensor not responding or not wired to i2c0")
-        return
-
-    failures = []
-    if not (PRESSURE_MIN_HPA <= data.Pres <= PRESSURE_MAX_HPA):
-        failures.append(f"Pres={data.Pres!r} outside [{PRESSURE_MIN_HPA}, {PRESSURE_MAX_HPA}] hPa")
-    if data.Temp is not None and not (TEMP_MIN_C <= data.Temp <= TEMP_MAX_C):
-        failures.append(f"Temp={data.Temp!r} outside [{TEMP_MIN_C}, {TEMP_MAX_C}] degC")
-    if data.SLPres is not None and not (PRESSURE_MIN_HPA <= data.SLPres <= PRESSURE_MAX_HPA):
-        failures.append(f"SLPres={data.SLPres!r} outside [{PRESSURE_MIN_HPA}, {PRESSURE_MAX_HPA}] hPa")
-
-    if failures:
-        print(f"RESULT: FAIL {'; '.join(failures)}")
-    else:
-        print(f"RESULT: PASS Pres={data.Pres} Temp={data.Temp} SLPres={data.SLPres}")
+        await asyncio.sleep(0)
+    reader.stop_timer()
+    fact("pressure", data.Pres)
+    fact("temperature", data.Temp)
+    fact("sea_level_pressure", data.SLPres)
+    fact("polls", polls)
+    fact("died", died)
+    done()
 
 
 asyncio.run(_main())

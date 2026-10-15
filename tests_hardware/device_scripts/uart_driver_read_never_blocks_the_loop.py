@@ -1,36 +1,41 @@
-"""Isolated-driver device script: the shipped asy_uart_driver read path must never hold the asyncio
-loop for a frame still arriving (SPECIFICATION.md Part F.5.8). Asserts on the driver's own synchronous
-UART calls - F.5.8's honest measure - against an unclamped read of the same frame as the control."""
+"""Isolated-driver device script: the shipped asy_uart_driver read path must never hold the asyncio loop for a frame
+still arriving (SPECIFICATION.md Part F.5.8). Times the driver's own synchronous ring copies against an unclamped
+machine.UART read of the same frame (the control), and reports the facts; the host test judges."""
 
 import asyncio
 import gc
 import select
 import time
 
-import machine
 from machine import UART, Pin
 
 import asy_uart_driver
+from asy_print_log import DEFAULT_LOG, make_logger
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
 
 try:
     from typing import TYPE_CHECKING
 except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
+
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Callable
 
-    _Reader = Callable[[asy_uart_driver.UART, bytearray], Awaitable[int | None]]
+    import machine
+    from _mpy_shed.time_mp import _TicksMs
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts, BusFacts
 
-BAUDRATE = 115200
-FRAME = 53  # one whole framed frame at the bench's payload_size=48, as uart_read_never_blocks_the_loop.py
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+FRAME = 53  # one whole framed frame at the protocol's default payload_size of 48 (J.6)
 # @tunable l3.uart_driver_read_never_blocks_the_loop_trials = 5
-TRIALS = 5
-# @tunable dev.uart_poll_wait_ms = 2
-POLL_WAIT_MS = 2  # mirrors sensortask_dev.py's own transaction rate
-_WIRE_US = FRAME * 10 * 1000000 // BAUDRATE
+_TRIALS = 5
 # @tunable l3.uart_read_never_blocks_the_loop_span_fraction = 3
-_SPAN_FRACTION = 3
-_SPAN_MAX_US = _WIRE_US // _SPAN_FRACTION  # one synchronous call: the raw-UART script's own bound
+_SPAN_FRACTION = 3  # one synchronous call may take a third of the frame's wire time
 # @tunable l3.uart_driver_read_never_blocks_the_loop_start_timeout_ms = 500
 _START_TIMEOUT_MS = 500
 # @tunable l3.uart_driver_read_never_blocks_the_loop_read_timeout_ms = 200
@@ -39,38 +44,32 @@ _READ_TIMEOUT_MS = 200
 _RAW_DEADLINE_MS = 500
 # @tunable l3.uart_driver_read_never_blocks_the_loop_idle_window_ms = 20
 _IDLE_WINDOW_MS = 20
-_raw: "list[UART]" = []  # the driver's real UART, kept for draining and the unclamped control
-_control_span = [0]
+# The ticker is running before the first byte leaves: a deadline on its first recorded turn, not a fixed sleep.
+# @tunable l3.uart_driver_read_never_blocks_the_loop_ticker_start_ms = 50
+_TICKER_START_MS = 50
+_CHAR_TIMEOUT_MS = 1  # machine.UART's timeout_char as the driver constructs it: a raw read waits per missing byte
+_LINE_CHUNK_BYTES = 16  # the readline leg's piece size: several pieces per line
+_LF = 0x0A
+# A quiet line for this long ends a drain: whatever an earlier arm left on the wire has arrived and gone.
+# @tunable l3.uart_driver_read_never_blocks_the_loop_drain_quiet_ms = 20
+_DRAIN_QUIET_MS = 20
 
 
-class _TimedUart:
-    # Stands in for the driver's machine.UART, so the calls its own clamp makes are the ones timed.
-    def __init__(self, inner: "UART") -> None:
+class _CopyTimer:
+    # Stands in for the driver's ring copy, the one synchronous stretch a read makes, and keeps the longest call.
+    def __init__(self, inner: "Callable[[bytearray | memoryview | None, int, int], int]") -> None:
         self._inner = inner
         self.worst_us = 0
 
-    def _timed(self, fn: "Callable[..., object]", *args: object) -> object:
+    def __call__(self, dest: "bytearray | memoryview | None", start: int, n: int) -> int:
         t0 = time.ticks_us()
-        result = fn(*args)
+        got = self._inner(dest, start, n)
         self.worst_us = max(self.worst_us, time.ticks_diff(time.ticks_us(), t0))
-        return result
-
-    def any(self) -> object:
-        return self._timed(self._inner.any)
-
-    def readinto(self, *args: object) -> object:
-        return self._timed(self._inner.readinto, *args)
-
-    def read(self, *args: object) -> object:
-        return self._timed(self._inner.read, *args)
-
-    def deinit(self) -> None:
-        self._inner.deinit()
+        return got
 
 
 class Ticker:
-    # The loop's own view, printed only: a gap is one reader stretch plus two scheduler passes, and
-    # scheduler noise (the IDLE line) makes it too unsteady to assert on - F.5.8 says the same.
+    # The loop's own view: a gap is one reader stretch plus two scheduler passes, reported, not asserted (F.5.8).
     def __init__(self) -> None:
         self.worst_us = 0
         self.turns = 0
@@ -85,97 +84,140 @@ class Ticker:
             self.turns += 1
             last = now
 
-
-async def _driver_read(drv: "asy_uart_driver.UART", buf: bytearray) -> int | None:
-    async with drv:  # every read method refuses outside the lock (_active_uart())
-        return await drv.readinto_until_complete(buf, FRAME, start_timeout_ms=_START_TIMEOUT_MS, timeout_ms=_READ_TIMEOUT_MS)
-
-
-async def _unclamped_read(drv: "asy_uart_driver.UART", buf: bytearray) -> int | None:
-    # The pre-fix shape on the same peripheral, read the moment the first byte lands (as the raw
-    # script does): a yield first would let part of the frame arrive and shrink the control's stall.
-    async with drv:
-        poller = select.poll()
-        poller.register(_raw[0], select.POLLIN)
-        deadline = time.ticks_add(time.ticks_ms(), _RAW_DEADLINE_MS)
-        while not any(ev & select.POLLIN for _, ev in poller.ipoll(0)):
-            if time.ticks_diff(deadline, time.ticks_ms()) < 0:
-                return None
-        t0 = time.ticks_us()
-        got = _raw[0].readinto(buf, FRAME)
-        _control_span[0] = max(_control_span[0], time.ticks_diff(time.ticks_us(), t0))
-        return got
+    async def started(self) -> bool:
+        deadline = time.ticks_add(time.ticks_ms(), _TICKER_START_MS)
+        while not self.turns and time.ticks_diff(deadline, time.ticks_ms()) > 0:
+            await asyncio.sleep_ms(0)
+        self.worst_us = 0
+        return self.turns > 0
 
 
-async def _trial(wdt: "machine.WDT", writer: "UART", drv: "asy_uart_driver.UART", reader: "_Reader", frame: bytes) -> "tuple[int, int, bool]":
+async def _control(wdt: "machine.WDT", writer: UART, bus: "BusFacts", frame: bytes) -> None:
+    # The pre-fix shape on the receiving UART before the driver takes it over: read the moment the first byte lands,
+    # for the whole frame, so the call waits out the rest of its wire time.
     wdt.feed()
-    while _raw[0].any():
-        _raw[0].read()
-    gc.collect()  # no collection may land inside the measured window
+    raw = _uart(bus)
+    poller = select.poll()
+    poller.register(raw, select.POLLIN)
     buf = bytearray(FRAME)
     ticker = Ticker()
-    tick_task = asyncio.create_task(ticker.run())
-    await asyncio.sleep_ms(5)  # the ticker is running before the first byte leaves
-    writer.write(frame)  # the copy into txbuf costs ~1.3 ms itself, so it stays outside the window
-    await asyncio.sleep_ms(0)
-    ticker.worst_us = 0
-    got = await reader(drv, buf)
+    task = asyncio.create_task(ticker.run())
+    await ticker.started()
+    writer.write(frame)
+    span = None
+    if _first_byte(poller, time.ticks_add(time.ticks_ms(), _RAW_DEADLINE_MS)):
+        t0 = time.ticks_us()
+        raw.readinto(buf, FRAME)
+        span = time.ticks_diff(time.ticks_us(), t0)
     ticker.running = False
-    await tick_task
-    return ticker.worst_us, ticker.turns, got == FRAME and bytes(buf) == frame
+    await task
+    poller.unregister(raw)
+    fact("control_span_us", span)
+    fact("control_gap_us", ticker.worst_us)
+
+
+async def _drain(drv: "asy_uart_driver.UART") -> None:
+    # Everything still arriving from an earlier arm is read off before the next frame is sent.
+    async with drv:
+        while await drv.read(None, timeout_ms=_DRAIN_QUIET_MS) is not None:
+            await asyncio.sleep_ms(0)
+
+
+def _first_byte(poller: "select.poll", deadline: "_TicksMs") -> bool:
+    # A busy wait on purpose, never a yield: a yield would let more of the frame arrive and shrink the control's stall.
+    while time.ticks_diff(deadline, time.ticks_ms()) > 0:
+        if any(ev & select.POLLIN for _, ev in poller.ipoll(0)):
+            return True
+    return False
 
 
 async def _idle_gap() -> int:
     ticker = Ticker()
-    tick_task = asyncio.create_task(ticker.run())
+    task = asyncio.create_task(ticker.run())
     await asyncio.sleep_ms(_IDLE_WINDOW_MS)
     ticker.running = False
-    await tick_task
+    await task
     return ticker.worst_us
 
 
+async def _readline_leg(wdt: "machine.WDT", writer: UART, drv: "asy_uart_driver.UART", timer: _CopyTimer) -> None:
+    # One newline-terminated frame through readline_until_complete(), its pieces copied by the same timed ring copy.
+    wdt.feed()
+    await _drain(drv)
+    line = bytes(0x20 + (i % 0x5E) for i in range(FRAME - 1)) + bytes([_LF])
+    timer.worst_us = 0
+    writer.write(line)
+    async with drv:
+        got = await drv.readline_until_complete(FRAME, _LINE_CHUNK_BYTES, make_logger(DEFAULT_LOG, "UART_LINE"), start_timeout_ms=_START_TIMEOUT_MS, timeout_ms=_READ_TIMEOUT_MS)
+    intact = got is not None and len(got) == FRAME
+    offset = 0
+    for piece in got.pieces() if got is not None else ():
+        intact = intact and bytes(piece) == line[offset : offset + len(piece)]
+        offset += len(piece)
+    fact("readline_span_us", timer.worst_us)
+    fact("readline_intact", intact)
+
+
+async def _trial(wdt: "machine.WDT", writer: UART, drv: "asy_uart_driver.UART", frame: bytes) -> "tuple[int, int, int, bool]":
+    # One frame through the driver: the ring's fill level at its first readiness, the read itself, the loop's gap.
+    wdt.feed()
+    await _drain(drv)
+    gc.collect()  # before the window: no collection lands inside it
+    buf = bytearray(FRAME)
+    ticker = Ticker()
+    task = asyncio.create_task(ticker.run())
+    await ticker.started()
+    t0 = time.ticks_us()
+    writer.write(frame)
+    txcopy = time.ticks_diff(time.ticks_us(), t0)
+    async with drv:
+        level = drv._rx_level() if await drv.ready(select.POLLIN, timeout_ms=_START_TIMEOUT_MS) else -1
+        got = await drv.readinto_until_complete(buf, FRAME, start_timeout_ms=_START_TIMEOUT_MS, timeout_ms=_READ_TIMEOUT_MS)
+    ticker.running = False
+    await task
+    return level, txcopy, ticker.worst_us, got == FRAME and bytes(buf) == frame
+
+
+def _uart(bus: "BusFacts") -> UART:
+    return UART(bus["id"], baudrate=bus["baudrate"], tx=Pin(bus["tx_pin"]), rx=Pin(bus["rx_pin"]), rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], timeout=0, timeout_char=_CHAR_TIMEOUT_MS)
+
+
 async def main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    writer = UART(0, baudrate=BAUDRATE, tx=Pin(0), rx=Pin(1), rxbuf=512, txbuf=512, timeout=0, timeout_char=1)
-    drv = asy_uart_driver.UART(1, 8, 9, baudrate=BAUDRATE, rxbuf=512, txbuf=512, poll_wait_ms=POLL_WAIT_MS)
+    wdt = arm()
+    sender = BENCH["bus"][BENCH["instances"]["uart_link_init"]["bus"]]
+    receiver = BENCH["bus"][BENCH["instances"]["uart_link_resp"]["bus"]]
+    wire_us = FRAME * 10 * 1000000 // receiver["baudrate"]
+    fact("frame", FRAME)
+    fact("wire_us", wire_us)
+    fact("span_max_us", wire_us // _SPAN_FRACTION)
+    writer = _uart(sender)
     frame = bytes(range(FRAME))
-    if drv._uart is None:
-        print("RESULT: FAIL the driver has no UART")
-        return
-    _raw.append(drv._uart)
-    timed = _TimedUart(drv._uart)
-    drv._uart = timed  # type: ignore[assignment]
     gc.collect()
-    print(f"IDLE ticker worst gap {await _idle_gap()}us with nothing on the wire")
-    driver_worst = 0
-    control_worst = 0
-    span_worst = 0
-    failures = []
-    for i in range(TRIALS):
-        timed.worst_us = 0
-        worst, turns, ok = await _trial(wdt, writer, drv, _driver_read, frame)
-        driver_worst = max(driver_worst, worst)
-        span_worst = max(span_worst, timed.worst_us)
-        if not ok:
-            failures.append(f"trial {i}: the driver did not deliver the frame intact")
-        worst, _, _ = await _trial(wdt, writer, drv, _unclamped_read, frame)
-        control_worst = max(control_worst, worst)
-        print(f"TRIAL {i} driver_worst_span={span_worst}us driver_worst_gap={driver_worst}us driver_turns={turns} control_worst_gap={control_worst}us")
+    fact("idle_gap_us", await _idle_gap())
+    await _control(wdt, writer, receiver, frame)
+    drv = asy_uart_driver.UART(
+        receiver["id"], receiver["tx_pin"], receiver["rx_pin"], baudrate=receiver["baudrate"], rxbuf=receiver["rxbuf"], txbuf=receiver["txbuf"],
+        rx_ring=receiver["rx_ring"], poll_wait_ms=receiver["poll_wait_ms"], poll_idle_ms=receiver["poll_idle_ms"],
+    )
+    fact("ring_setup", drv.setup_rx_ring())
+    timer = _CopyTimer(drv._rx_copy)
+    drv._rx_copy = timer  # type: ignore[method-assign]
+    levels, copies, gaps, intact = [], [], [], []
+    for _ in range(_TRIALS):
+        level, txcopy, gap, ok = await _trial(wdt, writer, drv, frame)
+        levels.append(level)
+        copies.append(txcopy)
+        gaps.append(gap)
+        intact.append(ok)
+    fact("driver_span_us", timer.worst_us)
+    fact("first_ready_bytes", max(levels))
+    fact("txcopy_us", max(copies))
+    fact("driver_gap_us", max(gaps))
+    fact("intact", intact)
+    await _readline_leg(wdt, writer, drv, timer)
     drv.deinit()
     writer.deinit()
-
-    if _control_span[0] < _SPAN_MAX_US:
-        failures.append(f"the unclamped control read took only {_control_span[0]}us - the measurement is not exercising the stall")
-    if span_worst > _SPAN_MAX_US:
-        failures.append(f"one of the driver's own UART calls took {span_worst}us, over the {_SPAN_MAX_US}us bound")
-    if failures:
-        print("RESULT: FAIL " + "; ".join(failures))
-    else:
-        print(
-            f"RESULT: PASS shipped driver's longest UART call {span_worst}us vs unclamped {_control_span[0]}us (bound {_SPAN_MAX_US}us, "
-            f"wire time {_WIRE_US}us); loop gaps, not asserted: driver {driver_worst}us, unclamped {control_worst}us",
-        )
+    done()
 
 
 asyncio.run(main())

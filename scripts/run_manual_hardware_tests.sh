@@ -16,4 +16,5 @@ USAGE
     exit 0
 fi
 
-uv run python tests_hardware/manual/__main__.py "$@"
+# --no-sync: the environment the bench prepared is used as is, never synced inside a run.
+uv run --no-sync python tests_hardware/manual/__main__.py "$@"

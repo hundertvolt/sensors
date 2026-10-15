@@ -4,7 +4,8 @@ imported-dependency approach)."""
 
 import struct
 
-_NTP_EPOCH_DELTA = 2208988800  # 1900 -> 1970, matches src/asy_ntp_client.py's own const of the same name
+# source: src/asy_ntp_client.py _NTP_EPOCH_DELTA
+_NTP_EPOCH_DELTA = 2208988800  # 1900 -> 1970
 
 
 def build_reply(unix_time: int) -> bytes:

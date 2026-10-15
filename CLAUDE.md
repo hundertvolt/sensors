@@ -288,14 +288,15 @@ information):
   target's flash/NVM** (project owner's explicit, standing direction, 2026-09-17). FRAM writes are
   not wear (owner, 2026-09-26: 'FRAM writes do not count as wear.'). On the *target* this is already
   institutionalized and stays that way: every operation that spends a limited-endurance write cycle
-  is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle` ("counts
-  against the 'no extra flash cycles' constraint"), `persistence_write`
-  (`--allow-persistence-writes`) for any real write to a limited-endurance store — the SCD30's own
+  is a default-off, explicitly-opted-into marker with a tracked budget — `flash_cycle`
+  (`--allow-flash-cycle`, "reflashes the board (flash wear)"), `persistence_write`
+  (`--allow-persistence-write`) for any real write to a limited-endurance store — the SCD30's own
   on-chip NVM **and** the RP2040's flash filesystem, which every accepted config-persisting `PUT`
   writes through `asy_config_manager.py`'s `json.dump()`; a *dispatch-only* PUT persists nothing and is
   deliberately outside the gate, and FRAM is out of scope (effectively unbounded endurance here) —
-  `scd30_extra_write` AND-gated on top for a *second* SCD30 NVM write beyond the routine
-  per-session one, plus `long_soak`/`multi_day_rollover` (`tests_hardware/conftest.py`,
+  `scd30_extra_write` (`--allow-scd30-extra-write`) AND-gated on top for the further SCD30 NVM
+  writes beyond those `persistence_write` admits, plus `soak_duration` (`--soak-duration`)/`multi_day_rollover`
+  (`--allow-multi-day-rollover`) (`tests_hardware/conftest.py`,
   `tests_hardware/README.md`). Because that gate DESELECTS rather than skips, the hardware verdict
   (`scripts/_hardware_verdict.py`, reading the run record) lists every deselected test with the gate
   flag that deselected it: "clean" there means "everything that ran, passed", not "everything
@@ -305,7 +306,9 @@ information):
   many tests then exercise, a recovery path — stays unmarked and allowed, since gating it would
   deselect the very tests it exists to enable. A boot on a fresh filesystem writes each config
   file once with its defaults; a test that boots one reaches those writes as a prerequisite, never
-  as the write under test, so they stay unmarked (owner, 2026-10-01). The choice the flag offers is
+  as the write under test, so they stay unmarked (owner, 2026-10-01). The console-starvation bench
+  test spends two flash writes it owns and runs only behind the persistence-write flag (owner,
+  2026-10-02, paraphrase). The choice the flag offers is
   therefore "test everything and accept the higher wear" versus "test everything that matters and
   keep wear as low as it can go", never "spend zero";
   `tests_scripts/test_persistence_write_marker_completeness.py`

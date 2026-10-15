@@ -5,6 +5,7 @@ allow-list reader/writer behind each check's --regenerate mode."""
 import ast
 import fnmatch
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -69,6 +70,25 @@ def repo_files() -> list[str]:
         msg = f"git ls-files in {REPO_ROOT} lists no SPECIFICATION.md - not this repository's own checkout"
         raise RuntimeError(msg)
     return files
+
+
+# Scratch the MicroPython tier and the twins create and delete while tests_scripts runs beside them.
+CONCURRENT_SCRATCH = frozenset({"tests/_tmp", "digital_twin/config"})
+
+
+def _raise(error: OSError) -> None:
+    raise error
+
+
+def python_files(root: Path, scope: str) -> list[Path]:
+    # Every .py file under root/scope, sorted, never entering concurrent scratch: a directory deleted mid-walk
+    # would raise from the walk itself, so a filter applied to its results comes too late.
+    found: list[Path] = []
+    for here, subdirs, names in os.walk(root / scope, onerror=_raise) if (root / scope).is_dir() else ():
+        rel = Path(here).relative_to(root).as_posix()
+        subdirs[:] = [d for d in subdirs if f"{rel}/{d}" not in CONCURRENT_SCRATCH]
+        found += [Path(here) / n for n in names if n.endswith(".py")]
+    return sorted(found)
 
 
 def is_shared_excluded(path: str) -> bool:

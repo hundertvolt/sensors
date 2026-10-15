@@ -1,98 +1,93 @@
-"""Isolated-driver device script: the ONE script allowed to issue a real NVM-persisted write to the
-SCD30 (set_ambient_pressure(), doubling as "trigger continuous measurement"). Also serves the
-same-device concurrency proof every device gets (owner, 2026-09-03; Part C.8) - see flash/conftest.py."""
+"""Isolated-driver device script: the SCD30 same-device concurrency proof every device gets (owner, 2026-09-03;
+SPECIFICATION.md Part C.8): a reader against a concurrent ambient-pressure write that re-sends the value the chip
+reports, so its one NVM write leaves the setting unchanged. Reports facts; the host gives the verdict."""
 
 import asyncio
-
-import machine
 
 import asy_i2c_driver
 from asy_scd30_driver import SCD30_I2C
 
-CO2_MIN_PPM, CO2_MAX_PPM = 200, 10_000
-HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
-TEMP_MIN_C, TEMP_MAX_C = -40.0, 70.0
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/bus_reader_loops.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.bus_reader_loops import Record, Stop, read_loop, report_errors, scd30_reading_problem
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # @tunable l3.scd30_same_device_rw_concurrency_read_iterations = 40
-READ_ITERATIONS = 40
-# The SCD30's measurement interval is NVM-persisted, so it resumes measuring after setup()'s soft
-# reset and raises data-ready while the registers still hold that first unsettled conversion -
-# which read back as a stuck CO2=141.99 on every iteration. A few intervals are enough to clear it.
+_READ_ITERATIONS = 40
+# The measurement interval survives setup()'s soft reset, so data-ready rises while the registers still hold the
+# first unsettled conversion (a stuck CO2 on every early read); a few intervals of consumed reads clear it.
 # @tunable l3.scd30_same_device_rw_concurrency_settle_s = 12.0
 _SETTLE_S = 12.0
 # @tunable l3.scd30_same_device_rw_concurrency_settle_step_s = 0.5
 _SETTLE_STEP_S = 0.5
 # @tunable l3.scd30_same_device_rw_concurrency_run_bound_s = 60.0
 _RUN_BOUND_S = 60.0
-# @tunable l3.scd30_same_device_rw_concurrency_wdt_feed_every = 10
-_WDT_FEED_EVERY = 10
+# The write waits until the reader completed its first read, at most this long (a deadline, never a head start).
+# @tunable l3.scd30_same_device_rw_concurrency_writer_delay_s = 0.2
+_WRITER_DELAY_S = 0.2
+# @tunable l3.scd30_same_device_rw_concurrency_writer_poll_ms = 10
+_WRITER_POLL_MS = 10
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    scd = SCD30_I2C(i2c1)
-    await scd.setup()  # a real soft reset - RAM/operating-state only, not an NVM write, safe every run
+    wdt = arm()
+    bus = BENCH["bus"][BENCH["instances"]["scd30"]["bus"]]
+    i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+    scd = SCD30_I2C(i2c)
+    await scd.setup()  # a soft reset: operating state only, no NVM write
 
-    # Deliberately discarded - see _SETTLE_S. read_measurement() is called rather than just slept
-    # through, because data-ready clears the instant it is read: consuming the stale conversion is
-    # what actually clears it, so sleeping alone would leave it waiting in the registers.
-    for _ in range(int(_SETTLE_S / _SETTLE_STEP_S)):
+    async def consume() -> "str | None":
         await scd.read_measurement()
-        wdt.feed()
-        await asyncio.sleep(_SETTLE_STEP_S)
+        return None
 
-    read_errors = []
-    read_completed = 0
-    write_error = None
-    write_done = False
+    # Discarded on purpose (see _SETTLE_S): a read, not a sleep, because only a read clears data-ready.
+    settle = Record("scd30_settle")
+    await read_loop(consume, int(_SETTLE_S / _SETTLE_STEP_S), int(_SETTLE_STEP_S * 1000), wdt, settle, Stop())
+    fact("settle_failures", settle.total)
 
-    async def reader() -> None:
-        nonlocal read_completed
-        for i in range(READ_ITERATIONS):
-            try:
-                await scd.read_measurement()
-                co2 = await scd.get_CO2()
-                if co2 is not None and not (CO2_MIN_PPM <= co2 <= CO2_MAX_PPM):
-                    read_errors.append(f"iter {i}: CO2={co2!r} outside plausible bounds")
-                hum = await scd.get_relative_humidity()
-                if hum is not None and not (HUMIDITY_MIN_RH <= hum <= HUMIDITY_MAX_RH):
-                    read_errors.append(f"iter {i}: Hum={hum!r} outside plausible bounds")
-                temp = await scd.get_temperature()
-                if temp is not None and not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
-                    read_errors.append(f"iter {i}: Temp={temp!r} outside plausible bounds")
-            except Exception as e:
-                read_errors.append(f"iter {i}: {type(e).__name__}: {e}")
-            read_completed += 1
-            if i % _WDT_FEED_EVERY == 0:
-                wdt.feed()
+    async def read() -> "str | None":
+        return await scd30_reading_problem(scd, BENCH["bounds"])
+
+    reader_rec = Record("scd30_reader")
 
     async def writer() -> None:
-        nonlocal write_error, write_done
-        await asyncio.sleep(0.2)  # let the reader get partway into its first few cycles first
+        waited_ms = 0
+        while reader_rec.reads + reader_rec.total == 0 and waited_ms < _WRITER_DELAY_S * 1000:
+            await fed_sleep_ms(wdt, _WRITER_POLL_MS)
+            waited_ms += _WRITER_POLL_MS
+        _kind, _default, low, high, special = BENCH["scd30_schema"]["AmbPres"]
         try:
-            # THE one NVM write for this whole test group - see this script's own module docstring.
-            await scd.set_ambient_pressure(1013)
-        except Exception as e:
-            write_error = f"{type(e).__name__}: {e}"
-        write_done = True
+            prior = await scd.get_ambient_pressure()
+        except (OSError, RuntimeError) as e:  # the bus or a CRC: nothing is sent without the value to re-send
+            fact("write_skipped", repr(e))
+            return
+        if prior != special and not (isinstance(low, int) and isinstance(high, int) and low <= prior <= high):
+            fact("write_skipped", prior)
+            return
+        try:
+            await scd.set_ambient_pressure(prior)  # the owned NVM write: the value the chip already holds
+            fact("ambient_sent", prior)
+        except (OSError, RuntimeError, ValueError) as e:
+            fact("write_error", repr(e))
+        fact("write_done", True)
 
-    await asyncio.wait_for(asyncio.gather(reader(), writer()), _RUN_BOUND_S)
-
-    failures = []
-    if read_completed != READ_ITERATIONS:
-        failures.append(f"reader only completed {read_completed}/{READ_ITERATIONS} iterations")
-    if not write_done:
-        failures.append("the concurrent set_ambient_pressure() write never completed")
-    if write_error is not None:
-        failures.append(f"set_ambient_pressure() failed: {write_error}")
-    failures.extend(read_errors)
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:10])}")
-    else:
-        print(f"RESULT: PASS reader={read_completed}/{READ_ITERATIONS} concurrent write clean - continuous measurement now triggered for the rest of this session")
+    await asyncio.wait_for(asyncio.gather(read_loop(read, _READ_ITERATIONS, 0, wdt, reader_rec, Stop()), writer()), _RUN_BOUND_S)
+    fact("read_completed", reader_rec.reads + reader_rec.total)
+    fact("reads_planned", _READ_ITERATIONS)
+    report_errors([reader_rec])
+    done()
 
 
 asyncio.run(_main())

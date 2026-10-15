@@ -1,0 +1,93 @@
+F.........F.                                                             [100%]
+=================================== FAILURES ===================================
+_______ test_no_script_carries_a_board_literal_or_another_device_module ________
+
+    def test_no_script_carries_a_board_literal_or_another_device_module() -> None:
+        found = [line for path in _scripts() for line in _literal_findings(path)]
+>       assert not found, "board facts belong in BENCH, the device module in the one rendered import:\n  " + "\n  ".join(found)
+E       AssertionError: board facts belong in BENCH, the device module in the one rendered import:
+E           allocation_need_per_source.py:11 imports sensortask_dev
+E           bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus literal
+E           bmp3xx_same_device_rw_concurrency.py:31 I2C() takes a pin or bus literal
+E           bus_concurrency_cross_device_scd30_sgp40.py:25 I2C() takes a pin or bus literal
+E           bus_concurrency_isl29125_write_vs_siblings.py:35 I2C() takes a pin or bus literal
+E           bus_concurrency_same_device_scd30.py:38 I2C() takes a pin or bus literal
+E           bus_concurrency_scd30_write_vs_siblings.py:29 I2C() takes a pin or bus literal
+E           fram_busy_status_lockout.py:39 SPI() takes a pin or bus literal
+E           fram_capacity_after_full_system_build.py:8 imports sensortask_dev
+E           fram_command_hold_timing.py:18 SPI() takes a pin or bus literal
+E           fram_cs_hijack_fault_injection_and_recovery.py:89 SPI() takes a pin or bus literal
+E           fram_error_log_reset_during_boot_window.py:21 SPI() takes a pin or bus literal
+E           fram_error_log_reset_race_seed_and_race.py:27 SPI() takes a pin or bus literal
+E           fram_error_log_reset_race_verify.py:26 SPI() takes a pin or bus literal
+E           fram_error_log_roundtrip.py:17 SPI() takes a pin or bus literal
+E           fram_manager_roundtrip.py:16 SPI() takes a pin or bus literal
+E           fram_pause_unpause_and_gating.py:175 SPI() takes a pin or bus literal
+E           fram_reset_race_during_write_seed_and_race.py:30 SPI() takes a pin or bus literal
+E           fram_reset_race_during_write_verify_recovery.py:27 SPI() takes a pin or bus literal
+E           fram_same_device_rw_concurrency.py:29 SPI() takes a pin or bus literal
+E           fram_write_protect_roundtrip.py:80 SPI() takes a pin or bus literal
+E           heap_headroom_after_full_system_build.py:10 imports sensortask_dev
+E           heap_layout_after_full_boot_sequence.py:11 imports sensortask_dev
+E           heap_under_connection_ceiling.py:12 imports sensortask_dev
+E           isl29125_cross_device_concurrency.py:52 I2C() takes a pin or bus literal
+E           isl29125_lighting_scenarios.py:322 I2C() takes a pin or bus literal
+E           isl29125_lighting_scenarios.py:323 NeoPixel() takes a pin or bus literal
+E           isl29125_mechanism_envelope.py:215 I2C() takes a pin or bus literal
+E           isl29125_mechanism_envelope.py:216 NeopixelDriver() takes a pin or bus literal
+E           isl29125_mock_conformance_probe.py:17 binds ADDR to a literal
+E           isl29125_mock_conformance_probe.py:76 I2C() takes a pin or bus literal
+E           isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+E           isl29125_mock_conformance_probe.py:76 Pin() takes a pin or bus literal
+E           isl29125_plausibility_read.py:32 NeoPixel() takes a pin or bus literal
+E           isl29125_plausibility_read.py:36 I2C() takes a pin or bus literal
+E           isl29125_plausibility_read.py:32 Pin() takes a pin or bus literal
+E           isl29125_real_irq_edge.py:83 NeoPixel() takes a pin or bus literal
+E           isl29125_real_irq_edge.py:87 I2C() takes a pin or bus literal
+E           isl29125_real_irq_edge.py:92 Pin() takes a pin or bus literal
+E           isl29125_real_irq_edge.py:83 Pin() takes a pin or bus literal
+E           isl29125_same_device_rw_concurrency.py:30 I2C() takes a pin or bus literal
+E           scd30_plausibility_read.py:26 I2C() takes a pin or bus literal
+E           scd30_real_irq_edge.py:20 I2C() takes a pin or bus literal
+E           scd30_same_device_rw_concurrency.py:34 I2C() takes a pin or bus literal
+E           serving_at_default_gc.py:12 imports sensortask_dev
+E           sgp40_fram_backup_restore.py:58 I2C() takes a pin or bus literal
+E           sgp40_fram_backup_restore.py:59 SPI() takes a pin or bus literal
+E           sgp40_general_call_reset_hazard.py:52 I2C() takes a pin or bus literal
+E           sgp40_same_device_concurrent_sessions.py:23 I2C() takes a pin or bus literal
+E           sgp40_voc_algorithm_quality.py:52 I2C() takes a pin or bus literal
+E           uart_crossover_exchange.py:90 UART() takes a pin or bus literal
+E           uart_crossover_exchange.py:91 UART() takes a pin or bus literal
+E           uart_crossover_recovery.py:81 UART() takes a pin or bus literal
+E           uart_crossover_recovery.py:82 UART() takes a pin or bus literal
+E           uart_driver_read_never_blocks_the_loop.py:140 UART() takes a pin or bus literal
+E           uart_driver_read_never_blocks_the_loop.py:141 UART() takes a pin or bus literal
+E           uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+E           uart_driver_read_never_blocks_the_loop.py:140 Pin() takes a pin or bus literal
+E           uart_idle_poll_rate.py:65 UART() takes a pin or bus literal
+E           uart_link_under_concurrent_system_load.py:154 UART() takes a pin or bus literal
+E           uart_link_under_concurrent_system_load.py:155 UART() takes a pin or bus literal
+E           uart_link_under_concurrent_system_load.py:163 I2C() takes a pin or bus literal
+E           uart_link_under_concurrent_system_load.py:164 SPI() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:28 UART() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:29 UART() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:28 Pin() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+E           uart_read_never_blocks_the_loop.py:29 Pin() takes a pin or bus literal
+E       assert not ['allocation_need_per_source.py:11 imports sensortask_dev', 'bmp3xx_plausibility_read.py:23 I2C() takes a pin or bus l...:35 I2C() takes a pin or bus literal', 'bus_concurrency_same_device_scd30.py:38 I2C() takes a pin or bus literal', ...]
+
+tests_scripts/test_device_script_bench_facts.py:73: AssertionError
+________ test_the_bench_facts_table_dates_and_sources_every_filled_row _________
+
+    def test_the_bench_facts_table_dates_and_sources_every_filled_row() -> None:
+        rows = _bench_facts_rows(_README.read_text(encoding="utf-8"))
+>       assert rows is not None, 'tests_hardware/README.md has no "### Bench facts" table'
+E       AssertionError: tests_hardware/README.md has no "### Bench facts" table
+E       assert None is not None
+
+tests_scripts/test_device_script_bench_facts.py:152: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_device_script_bench_facts.py::test_no_script_carries_a_board_literal_or_another_device_module
+FAILED tests_scripts/test_device_script_bench_facts.py::test_the_bench_facts_table_dates_and_sources_every_filled_row
+2 failed, 10 passed in 1.26s

@@ -1,0 +1,13 @@
+U26 API lead: the config lines and list shrinks lane A's surface relayed
+
+- pyproject.toml: device scripts are exempt from TC004, since a rendered include's names exist on the board at run
+  time; the main mypy pass excludes digital_twin/run_device_script.py, which needs the twin's own machine API.
+- host_typecheck.ini: harness and error_log_helpers leave the explicit-Any baseline (a cold host pass finds
+  nothing in either).
+- Shrink only: two decision-vocabulary rows and three pending import-placement rows that the harness rewrite
+  made stale.
+- test_setup_toolchain_env.py drops the case comparing the harness's own board glob with the installer's. The
+  harness now calls resolve_board_serial() and holds no glob, and test_resolve_board_device.py pins that.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

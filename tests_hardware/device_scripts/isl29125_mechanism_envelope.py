@@ -1,15 +1,21 @@
-"""Proves the ISL29125 module's MECHANISMS across the whole illumination envelope the board's own
-NeoPixel can produce - ambient, both ranges, the switch point, cross-range continuity, and hard
-saturation. Every assertion is structural or relative; none depends on absolute lux being right."""
+"""The ISL29125 module's mechanisms across the whole illumination envelope the board's own NeoPixel can produce -
+ambient, both ranges, the switch point, cross-range continuity, saturation, fixed range, both resolutions and the
+calibration trigger - over a scratch config file. Reports every sample and setting result; the host gives the verdict."""
 
 import asyncio
+import errno
+import os
 import time
 
-import machine
-
+import asy_base_classes
 import asy_i2c_driver
+from asy_config_manager import UNCHANGED, VALID
 from asy_isl29125_driver import ISL29125, ISL29125_Reader
 from asy_neopixel_driver import NeopixelDriver
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+# @include _shared/isl_error_log.py
 
 try:
     from typing import TYPE_CHECKING
@@ -17,21 +23,28 @@ except ImportError:  # typing has no runtime presence on MicroPython
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from asy_print_log import ErrorLog
+    import machine
+    from _shared.facts import done, fact
+    from _shared.isl_error_log import log_record
+    from _shared.watchdog import arm, fed_sleep_ms
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 # Steady levels, ascending: ambient only, then up through the range switch into hard saturation.
-LEVELS = (0, 2, 4, 8, 16, 40, 100, 255)
-SETTLE_S = 4.5  # SampleInterval=1 + the fixed 2-cycle settle + slack for a switch to land
+_LEVELS = (0, 2, 4, 8, 16, 40, 100, 255)
+# SampleInterval 1 s, the fixed 2-cycle settle and slack for a switch to land; then a sample stored after it.
+# @tunable l3.isl29125_mechanism_envelope_settle_s = 4.5
+_SETTLE_S = 4.5
 # @tunable l3.isl29125_mechanism_envelope_max_wait_s = 12.0
-MAX_WAIT_S = 12.0
+_MAX_WAIT_S = 12.0
+# One up and one down is ideal; chatter would be dozens.
 # @tunable l3.isl29125_mechanism_envelope_max_switches = 4
-MAX_SWITCHES = 4  # one up and one down is ideal; chatter would be dozens
-OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40% of the low range's full scale, so BOTH ranges can represent it
-# A relative bound on the gain step, not a calibration claim: the applied ratio's band is 20-34
-# around a nominal 26.67, so the worst a working driver can be off by is ~25%. Past that is a
-# missing or inverted correction. The accuracy question itself lives in Part M.1.6.
+_MAX_SWITCHES = 4
+_OVERLAP_LEVEL = 4  # ~150 lx on this rig: ~40 % of the low range's full scale, so both ranges can represent it
+# A relative bound on the gain step, not a calibration claim: the ratio band 20-34 around 26.67 leaves ~25 % at worst.
 # @tunable l3.isl29125_mechanism_envelope_max_range_step = 0.25
-MAX_RANGE_STEP = 0.25
+_MAX_RANGE_STEP = 0.25
 # @tunable l3.isl29125_mechanism_envelope_poll_ms = 200
 _POLL_MS = 200
 # @tunable l3.isl29125_mechanism_envelope_min_step_ratio = 0.75
@@ -41,229 +54,136 @@ _MIN_SPAN_RATIO = 10.0
 # @tunable l3.isl29125_mechanism_envelope_bit_depth_rel_max = 0.5
 _BIT_DEPTH_REL_MAX = 0.5
 W_ISL_PERIODIC_ONLY = 32  # buildgen/error_catalog.json: five range decisions by the periodic path only
-
-failures: "list[str]" = []
-notes: "list[str]" = []
-
-
-def check(condition: object, message: str) -> None:
-    # `condition: object`, not `bool`: this takes any truthy expression, and a bool-typed
-    # positional parameter is exactly what the project's own lint rules reject.
-    if not condition:
-        failures.append(message)
+# A scratch file: _set_dict_cfg() persists through write_config(), which would stamp the seeded cache over the
+# production config_ISL29125.cfg; removed first (an aborted run's leftover) and on every way out.
+_SCRATCH_FILE = "config_HWTEST_ISL29125.cfg"
 
 
-async def _fresh_sample(reader: ISL29125_Reader, wdt: machine.WDT) -> "ISL29125 | None":
-    # Waits for a stored sample; _hold()'s settle wait before it is what makes that sample fresh. Never
-    # on TS: it stays None until NTP has set the clock, which this isolated script never does (agent, 2026-10-07).
-    start = time.ticks_ms()
-    while time.ticks_diff(time.ticks_ms(), start) < int(MAX_WAIT_S * 1000):
-        data = await reader.get_data()
-        if data.Lux is not None:
-            return data
-        wdt.feed()
-        await asyncio.sleep_ms(_POLL_MS)
-    return None
+async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: "machine.WDT") -> None:
+    # Fixed range pinned at both ends; 12- and 16-bit on one scene (the 12->16 bit shift applied); one stationary
+    # light read on each range in turn (the honest gain-step measurement); the calibration trigger.
+    fixed: dict[str, object] = {"pinned": await _push(reader, {"RangeAuto": False, "Range": 10000})}
+    fixed["ambient"] = _sample(0, await _hold(pixel, reader, wdt, 0))
+    fixed["bright"] = _sample(255, await _hold(pixel, reader, wdt, 255))
+    fixed["restored"] = await _push(reader, {"RangeAuto": True})
+    fact("fixed_range", fixed)
+    depth: dict[str, object] = {"pushed_12": await _push(reader, {"Resolution": 12})}
+    depth["at_12"] = _sample(16, await _hold(pixel, reader, wdt, 16))
+    depth["pushed_16"] = await _push(reader, {"Resolution": 16})
+    depth["at_16"] = _sample(16, await _hold(pixel, reader, wdt, 16))
+    fact("bit_depth", depth)
+    continuity: dict[str, object] = {"pinned_low": await _push(reader, {"RangeAuto": False, "Range": 375})}
+    continuity["low"] = _sample(_OVERLAP_LEVEL, await _hold(pixel, reader, wdt, _OVERLAP_LEVEL))
+    continuity["pinned_high"] = await _push(reader, {"Range": 10000})
+    continuity["high"] = _sample(_OVERLAP_LEVEL, await _hold(pixel, reader, wdt, _OVERLAP_LEVEL))
+    continuity["restored"] = await _push(reader, {"RangeAuto": True})
+    fact("continuity", continuity)
+    applied_before = reader._gain_ratio
+    pushed = await _push(reader, {"Calibrate": True})
+    fact("calibrate", {"pushed": pushed, "calibrating": reader._calibrating, "measured_ratio": reader._measured_ratio(), "applied_before": applied_before, "applied_after": reader._gain_ratio})
 
 
-def _check_sample_coherent(data: ISL29125, label: str) -> None:
-    for name, value in (("Lux", data.Lux), ("Red", data.Red), ("Green", data.Green),
-                        ("Blue", data.Blue), ("Sat", data.Sat), ("Bri", data.Bri)):
-        check(value is not None, f"{label}: {name} is None - the read chain produced nothing")
-    if data.Red is None or data.Green is None or data.Blue is None or data.Bri is None or data.Lux is None:
-        return
-    for name, value in (("Red", data.Red), ("Green", data.Green), ("Blue", data.Blue), ("Bri", data.Bri)):
-        check(0.0 <= value <= 1.0, f"{label}: {name}={value!r} outside the normalised 0-1 domain")
-    check(data.Sat is not None and 0.0 <= data.Sat <= 1.0, f"{label}: Sat={data.Sat!r} outside 0-1")
-    check(data.Hue is not None and 0.0 <= data.Hue < 360.0, f"{label}: Hue={data.Hue!r} outside [0, 360)")
-    peak = max(data.Red, data.Green, data.Blue)
-    check(abs(data.Bri - peak) <= 1e-6, f"{label}: Bri={data.Bri!r} != max(R,G,B)={peak!r} - HSB inconsistent with RGB")
-    check(data.RangeAct in (375, 10000), f"{label}: RangeAct={data.RangeAct!r} is neither real range")
-    check(data.Lux >= 0.0, f"{label}: Lux={data.Lux!r} is negative")
+async def _envelope(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: "machine.WDT") -> None:
+    pixel.off()
+    await fed_sleep_ms(wdt, _POLL_MS)
+    fact("reset_error_counter", await reader.reset_error_counter())  # the envelope's own log, apart from setup noise
+    fact("up", await _sweep(pixel, reader, wdt, _LEVELS))
+    # Overrange is a live measurement field; ISL_PERIODIC_ONLY stays a log check, which one leg cannot reach (a guard).
+    fact("overrange_at_full", (await reader.get_data()).Overrange)
+    fact("ascending_log", log_record(await reader.get_error_counter(), reader.name))
+    fact("down", await _sweep(pixel, reader, wdt, tuple(reversed(_LEVELS))))
+    await _config_mechanisms(pixel, reader, wdt)
+    fact("full_log", log_record(await reader.get_error_counter(), reader.name))
 
 
-async def _hold(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machine.WDT, level: int, label: str) -> "ISL29125 | None":
-    # Parks the pixel at one STEADY level (the overlay path, never a ramp) and samples once settled.
+async def _hold(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: "machine.WDT", level: int) -> "ISL29125 | None":
+    # One steady level (the overlay path, never a ramp), the settle, then the first sample stored after it: a new TS
+    # (the clock is set valid below), so no sample converted before the level changed is ever taken.
     pixel._overlay_bri = level
     if level:
         pixel.on()
     else:
         pixel.off()
+    await fed_sleep_ms(wdt, int(_SETTLE_S * 1000))
+    stale = (await reader.get_data()).TS
     start = time.ticks_ms()
-    while time.ticks_diff(time.ticks_ms(), start) < int(SETTLE_S * 1000):
-        wdt.feed()
-        await asyncio.sleep_ms(_POLL_MS)
-    data = await _fresh_sample(reader, wdt)
-    check(data is not None, f"{label}: no sample at all within {MAX_WAIT_S}s - the read loop is dead")
-    if data is not None:
-        _check_sample_coherent(data, label)
-    return data
+    while time.ticks_diff(time.ticks_ms(), start) < int(_MAX_WAIT_S * 1000):
+        data = await reader.get_data()
+        if data.Lux is not None and stale != data.TS:
+            return data
+        await fed_sleep_ms(wdt, _POLL_MS)
+    return None
 
 
-def _log_entries(counters: "ErrorLog") -> "tuple[list[tuple[str, int]], int]":
-    # (type, num) pairs out of the ErrorLog shape - the history is capped, ErrCount is not.
-    entry = counters.get("ISL29125")
-    if entry is None:
-        return [], 0
-    types, nums = entry["ErrType"], entry["ErrNum"]
-    pairs = [(types[i], nums[i]) for i in range(min(len(types), len(nums)))]  # no zip(strict=) on MicroPython
-    return pairs, entry["ErrCount"]
+async def _push(reader: ISL29125_Reader, values: "dict[str, object]") -> bool:
+    # A config push through the reader, every field answered VALID or UNCHANGED: its result is checked, never dropped.
+    results = await reader._set_dict_cfg(values, reader.get_cfg_schema())  # type: ignore[arg-type]
+    return all(results.get(key) in (VALID, UNCHANGED) for key in values)
 
 
-def _make_reader(i2c1: "asy_i2c_driver.I2C") -> ISL29125_Reader:
-    reader = ISL29125_Reader(i2c1, 6, max_module_error=999)
-    # Scratch filename: this script calls _set_dict_cfg, whose persist leg is a real write_config()
-    # that would otherwise stamp the seeded cache over the PRODUCTION config_ISL29125.cfg. Same
-    # convention as reboot_persist_write.py's config_HWTEST_REBOOT.cfg.
-    reader.cfgmgr._config_file = "config_HWTEST_ISL29125.cfg"
-    reader.cfgmgr.valid = True
-    # Seeded from the driver's own schema, never a hand-copied list - a key added there
-    # (GainRatio, f05f82d) otherwise leaves this one short of _N_FLOAT_CFG and _init_isl() never
-    # starts the read chain. Command-only entries have no default and are skipped.
-    reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
-    reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression: the sweep drives the range loop on purpose
-    return reader
+def _sample(level: int, data: "ISL29125 | None") -> "dict[str, object] | None":
+    if data is None:
+        return None
+    return {"level": level, "lux": data.Lux, "range": data.RangeAct, "rgb": [data.Red, data.Green, data.Blue], "hsb": [data.Hue, data.Sat, data.Bri]}
 
 
-async def _ascending(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machine.WDT) -> "list[tuple[int, float, int]]":
-    up: list[tuple[int, float, int]] = []
-    for level in LEVELS:
-        data = await _hold(pixel, reader, wdt, level, f"up/level={level}")
-        if data is not None and data.Lux is not None and data.RangeAct is not None:
-            up.append((level, data.Lux, data.RangeAct))
-            notes.append(f"up level={level:3d} lux={data.Lux:.2f} range={data.RangeAct} hue={data.Hue:.1f} sat={data.Sat:.3f}")
-    # Responsiveness, NOT calibration: brighter light must never report dimmer, and the envelope
-    # must span a real dynamic range rather than a rig that barely moved the sensor.
-    for i in range(1, len(up)):
-        prev_level, prev_lux, _ = up[i - 1]
-        level, lux, _ = up[i]
-        check(lux > prev_lux * _MIN_STEP_RATIO, f"level {prev_level}->{level}: reported lux DROPPED {prev_lux:.2f}->{lux:.2f} as the light rose")
-    if len(up) >= 2:
-        check(up[-1][1] > up[0][1] * _MIN_SPAN_RATIO, f"envelope only spanned {up[0][1]:.2f}->{up[-1][1]:.2f} lux - the LED never really moved the sensor")
-    ranges = [entry[2] for entry in up]
-    check(375 in ranges, "the low (375 lx) range was never used across the whole ascending envelope")
-    check(10000 in ranges, "the high (10000 lx) range was never used - the LED never crossed the switch point")
-    check(up and up[-1][2] == 10000, "at full white the driver did not end up on the high range - saturation was not escaped")
-    return up
-
-
-async def _descending(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machine.WDT) -> "list[tuple[int, float, int]]":
-    down: list[tuple[int, float, int]] = []
-    for level in reversed(LEVELS):
-        data = await _hold(pixel, reader, wdt, level, f"down/level={level}")
-        if data is not None and data.Lux is not None and data.RangeAct is not None:
-            down.append((level, data.Lux, data.RangeAct))
-            notes.append(f"dn level={level:3d} lux={data.Lux:.2f} range={data.RangeAct}")
-    check(down and down[-1][2] == 375, "back at ambient the driver never returned to the low range")
-    return down
-
-
-async def _config_mechanisms(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: machine.WDT) -> None:
-    # Fixed-range mode must really pin the range, at both ends of the envelope.
-    check(await reader._set_dict_cfg({"RangeAuto": False, "Range": 10000}, reader.get_cfg_schema()), "pushing RangeAuto=False/Range=10000 was rejected")
-    pinned = await _hold(pixel, reader, wdt, 0, "fixed/ambient")
-    check(pinned is not None and pinned.RangeAct == 10000, "fixed range ignored at ambient - auto-range still switched")
-    bright = await _hold(pixel, reader, wdt, 255, "fixed/bright")
-    check(bright is not None and bright.RangeAct == 10000, "fixed range ignored when bright")
-    await reader._set_dict_cfg({"RangeAuto": True}, reader.get_cfg_schema())
-
-    # 12-bit must work through the whole reader, and agree with 16-bit on ONE static scene - that
-    # agreement is what proves the 12->16 bit normalisation shift is applied, not that either is right.
-    check(await reader._set_dict_cfg({"Resolution": 12}, reader.get_cfg_schema()), "pushing Resolution=12 was rejected")
-    twelve = await _hold(pixel, reader, wdt, 16, "12bit/mid")
-    check(twelve is not None, "no sample at all at 12-bit resolution")
-    await reader._set_dict_cfg({"Resolution": 16}, reader.get_cfg_schema())
-    sixteen = await _hold(pixel, reader, wdt, 16, "16bit/mid")
-    check(sixteen is not None, "no sample after switching back to 16-bit")
-    if twelve is not None and sixteen is not None and twelve.Lux is not None and sixteen.Lux:
-        rel = abs(twelve.Lux - sixteen.Lux) / sixteen.Lux
-        notes.append(f"12bit vs 16bit on one static scene: {twelve.Lux:.2f} vs {sixteen.Lux:.2f} ({rel * 100:.1f}%)")
-        check(rel < _BIT_DEPTH_REL_MAX, f"12-bit and 16-bit disagree by {rel * 100:.1f}% on one scene - the <<4 normalisation looks wrong")
-
-    # Cross-range CONTINUITY: one stationary light, read on each range in turn - the only honest
-    # way to measure the gain step. The retired ramp sweep tried it on a moving ramp, where the
-    # light's own ~22%/s rise swamps the step. Two settled holds have no such confound.
-    check(await reader._set_dict_cfg({"RangeAuto": False, "Range": 375}, reader.get_cfg_schema()), "pinning the low range was rejected")
-    on_low = await _hold(pixel, reader, wdt, OVERLAP_LEVEL, "continuity/low")
-    check(await reader._set_dict_cfg({"Range": 10000}, reader.get_cfg_schema()), "pinning the high range was rejected")
-    on_high = await _hold(pixel, reader, wdt, OVERLAP_LEVEL, "continuity/high")
-    await reader._set_dict_cfg({"RangeAuto": True}, reader.get_cfg_schema())
-    check(on_low is not None and on_low.RangeAct == 375, "the low range did not take at the overlap level")
-    check(on_high is not None and on_high.RangeAct == 10000, "the high range did not take at the overlap level")
-    if on_low is not None and on_high is not None and on_low.Lux is not None and on_high.Lux is not None:
-        # `on_low.Lux` as a plain truth test here would silently SKIP the whole continuity check
-        # on a zero reading instead of failing - and a zero at the overlap level is a fault in its
-        # own right, besides being the divisor below.
-        check(on_low.Lux > 0.0, f"the low range read {on_low.Lux:.2f} lx at level {OVERLAP_LEVEL} - no light reached the sensor, so continuity cannot be measured")
-        if on_low.Lux > 0.0:
-            step = abs(on_high.Lux - on_low.Lux) / on_low.Lux
-            notes.append(f"cross-range continuity at level {OVERLAP_LEVEL}: {on_low.Lux:.2f} lx on 375 vs {on_high.Lux:.2f} lx on 10000 ({step * 100:.1f}% step)")
-            check(step < MAX_RANGE_STEP, f"the same light reads {on_low.Lux:.2f} lx on the low range and {on_high.Lux:.2f} lx on the high one ({step * 100:.1f}%) - the range gain correction is not being applied")
-
-    # The applied ratio is config now and only a user PUT changes it, so this asserts the trigger
-    # is accepted and reports whatever candidate the light allowed - the overlap band is a property
-    # of the light, not the driver. Each run is one more data point for Part M.1.6.
-    check(await reader._set_dict_cfg({"Calibrate": True}, reader.get_cfg_schema()), "Calibrate was rejected")
-    check(reader._calibrating is True, "the calibration run did not start")
-    notes.append(f"measured gain ratio during this run: {reader._measured_ratio()} (nominal {10000 / 375})")
-    check(reader._gain_ratio == 10000 / 375, "a calibration run must never change the applied ratio")
+async def _sweep(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: "machine.WDT", levels: "tuple[int, ...]") -> "list[dict[str, object] | None]":
+    samples = []
+    for level in levels:
+        samples.append(_sample(level, await _hold(pixel, reader, wdt, level)))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+    return samples
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    i2c1 = asy_i2c_driver.I2C(1, 15, 14, frequency=50000, timeout=200000)
-    pixel = NeopixelDriver(18)
-    reader = _make_reader(i2c1)
-    reader.start_timer()
-    tasks = [pixel.start_asy_overlay(), pixel.start_asy_signal(),
-             reader.start_asy_trigger(), reader.start_asy_read()]
+    wdt = arm()
     try:
-        pixel.off()
-        await asyncio.sleep_ms(500)
-        wdt.feed()
-        await reader.reset_error_counter()  # isolate the envelope's own log from setup noise
-
-        up = await _ascending(pixel, reader, wdt)
-
-        # Overrange must be set at full white - this rig really does exceed 10000 lx at ~20mm -
-        # and it is a live measurement field now, not a log entry, so the reader's own data is
-        # what to read. ISL_PERIODIC_ONLY stays a log check, and one leg cannot reach it: a guard, not a proof.
-        entries, count = _log_entries(await reader.get_error_counter())
-        notes.append(f"ascending-leg log: count={count} entries={entries}")
-        check((await reader.get_data()).Overrange is True, "Overrange is not True after driving the part into hard saturation at full white - the saturation detector never fired")
-        check(("W", W_ISL_PERIODIC_ONLY) not in entries, "ISL_PERIODIC_ONLY logged: the range was decided by the PERIODIC path only - the interrupt is not carrying the decisions")
-        check(not any(kind == "E" for kind, _ in entries), f"the ascending envelope logged real ERRORS, not just warnings: {entries}")
-
-        down = await _descending(pixel, reader, wdt)
-        ranges = [entry[2] for entry in up] + [entry[2] for entry in down]
-        switches = sum(1 for i in range(len(ranges) - 1) if ranges[i] != ranges[i + 1])
-        check(switches <= MAX_SWITCHES, f"{switches} range switches across one up-and-down envelope - the hysteresis window is chattering")
-        notes.append(f"range switches across the full envelope: {switches}")
-
-        await _config_mechanisms(pixel, reader, wdt)
-
-        entries, count = _log_entries(await reader.get_error_counter())
-        notes.append(f"full-run log: count={count} entries={entries}")
-        check(not any(kind == "E" for kind, _ in entries), f"the run logged real ERRORS: {entries}")
+        os.remove(_SCRATCH_FILE)
+    except OSError as e:
+        if e.errno != errno.ENOENT:
+            fact("leftover_errno", e.errno)
+    chip = BENCH["instances"]["isl29125"]
+    bus = BENCH["bus"][chip["bus"]]
+    reader = None
+    pixel = NeopixelDriver(BENCH["instances"]["neopixel"]["pin"])
+    try:
+        i2c = asy_i2c_driver.I2C(bus["id"], bus["scl_pin"], bus["sda_pin"], frequency=bus["frequency"], timeout=bus.get("timeout"))
+        reader = ISL29125_Reader(i2c, chip["irq_pin"], max_module_error=999)
+        reader.cfgmgr._config_file = _SCRATCH_FILE
+        reader.cfgmgr.valid = True
+        # Seeded from the driver's own schema (command-only fields have no default), never a hand-copied list.
+        reader.cfgmgr._cache = {field[0]: field[2] for field in reader.get_cfg_schema() if field[2] is not None}
+        reader.cfgmgr._cache["AutoRangeDwell"] = 0.0  # no switch-down suppression: the sweep drives the range loop on purpose
+        # TS tells a new sample from a re-read one only once the clock is valid (Part G.2); no NTP runs here.
+        asy_base_classes.set_utc_valid()
+        reader.start_timer()
+        tasks = [pixel.start_asy_overlay(), pixel.start_asy_signal(), reader.start_asy_trigger(), reader.start_asy_read()]
+        try:
+            await _envelope(pixel, reader, wdt)
+        finally:
+            died = []
+            for task in tasks:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:  # a task that died on its own is a fact the host fails on
+                    died.append(repr(e))
+                await asyncio.sleep(0)
+            reader.stop_timer()
+            fact("died", died)
+            fact("bounds", {"min_step_ratio": _MIN_STEP_RATIO, "min_span_ratio": _MIN_SPAN_RATIO, "max_switches": _MAX_SWITCHES, "max_range_step": _MAX_RANGE_STEP, "bit_depth_rel_max": _BIT_DEPTH_REL_MAX, "periodic_only": W_ISL_PERIODIC_ONLY})
     finally:
         pixel.off()
-        await asyncio.sleep_ms(200)
-        for task in tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:  # a task that died on its own fails the run, never passes it
-                failures.append(f"background task died: {e!r}")
-
-    for note in notes:
-        print("  " + note)
-    if failures:
-        print(f"RESULT: FAIL {'; '.join(failures)}")
-    else:
-        print(f"RESULT: PASS the whole illumination envelope, both ranges, both resolutions, fixed-range pinning, saturation detection and Calibrate all behaved ({len(notes)} observations)")
+        asy_base_classes.set_utc_valid(valid=False)  # the clock state this script set is its own
+        if reader is not None:
+            await reader.cfgmgr.flush_pending()
+        try:
+            os.remove(_SCRATCH_FILE)
+        except OSError as e:  # no push ever reached flash: nothing to remove
+            if e.errno != errno.ENOENT:
+                fact("scratch_remove_errno", e.errno)
+    done()
 
 
 asyncio.run(_main())

@@ -163,7 +163,7 @@ def _errcount_parity_failures(definitions: "JsonDict", status_body: object) -> l
 
 # The allocation-failure markers every gate shares, from the hardware tier's harness
 # (tests_scripts/test_memory_error_gate_agreement.py keeps the gates agreeing).
-_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(_REPO_ROOT / "tests_hardware" / "harness.py", "harness").MEMORY_ERROR_MARKERS)
+_MEMORY_ERROR_MARKERS: tuple[str, ...] = tuple(load_script_module(_REPO_ROOT / "tests_hardware" / "harness.py", "harness_for_generated_boot").MEMORY_ERROR_MARKERS)
 
 
 def _free_port() -> int:

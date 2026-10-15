@@ -371,6 +371,19 @@ def test_the_budget_sits_between_the_observed_worst_case_and_the_servers_own_cap
     assert ci_suite._RESET_ERRORS_BUDGET_S < ci_suite._RESET_ERRORS_TIMEOUT_S, "the budget must trip before the client timeout, or it is unreachable"
 
 
+def test_the_commanded_reset_deadline_follows_both_src_constants(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The deadline a reboot/bootloader/resetconfig run allows is _RESET_DELAY + _TASK_CHECK_TIME +
+    # a margin, read from src. A copy with both changed must move the deadline by exactly their sum.
+    src = tmp_path / "src"
+    src.mkdir()
+    original = (Path(ci_suite.SRC_DIR) / "asy_system_service.py").read_text()
+    modified = original.replace("_RESET_DELAY = const(4)", "_RESET_DELAY = const(9)").replace("_TASK_CHECK_TIME = const(2)", "_TASK_CHECK_TIME = const(5)")
+    assert modified != original, "the src constants are no longer in the pinned form - update this case with them"
+    (src / "asy_system_service.py").write_text(modified)
+    monkeypatch.setattr(ci_suite, "SRC_DIR", src)
+    assert ci_suite._commanded_reset_deadline_s() == 9 + 5 + ci_suite._COMMANDED_RESET_MARGIN_S, "the deadline must follow both constants and its margin"
+
+
 def test_every_reset_errors_call_in_the_suite_goes_through_the_timed_helper(ci_suite: ModuleType) -> None:
     # A budget helper that some call site bypasses measures nothing on that path. Checked against the
     # real source: a second raw _http("PUT", "/status", {"ResetErrors": ...}) is exactly how the gap

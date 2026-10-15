@@ -1,6 +1,6 @@
-"""Isolated-driver device script: with the alarm pool exhausted, SystemService._reboot() cannot arm its
-reset timer and must fall back to starving the real watchdog. Feeds only through feed_watchdog(), as
-the supervisor does; never returns - the reset kills the connection, observed host-side."""
+"""Isolated-driver device script: with the alarm pool exhausted, SystemService._reboot() cannot arm its reset timer and
+must fall back to starving the real watchdog. Feeds only through feed_watchdog(), as the supervisor does; never returns
+on success - the reset ends the run and the host reads the banner lines before it."""
 
 import asyncio
 import errno
@@ -10,8 +10,18 @@ import machine
 
 from asy_system_service import SystemService
 
+# @include _shared/facts.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+
 # @tunable l3.starvation_wdt_ms = 1500
-WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run
+_WATCHDOG_TIMEOUT_MS = 1500  # short, as watchdog_starvation_reset.py: the host bounds the whole run
 # @tunable l3.reboot_fallback_starves_the_watchdog_feed_attempt_ms = 250
 _FEED_ATTEMPT_MS = 250
 # asy_system_service.py's _RR_REBOOT: a const() whose name starts with "_" is no module global on
@@ -23,10 +33,19 @@ async def _never_synced() -> bool:
     return False
 
 
+def _release(timers: "list[machine.Timer]", failure: str) -> None:
+    # An early failure: the pool released so the board survives to report it, the reason as a fact, then DONE.
+    for t in timers:
+        t.deinit()
+    fact("failure", failure)
+    done()
+
+
 def main() -> None:
-    wdt = machine.WDT(timeout=WATCHDOG_TIMEOUT_MS)
+    wdt = machine.WDT(timeout=_WATCHDOG_TIMEOUT_MS)
+    fact("armed_ms", _WATCHDOG_TIMEOUT_MS)
     svc = SystemService(_never_synced, watchdog=wdt)
-    timers = []
+    timers: list[machine.Timer] = []
     try:
         for _ in range(64):  # the real pool is small and fixed (timer_alarm_pool_exhaustion.py)
             wdt.feed()
@@ -35,18 +54,16 @@ def main() -> None:
             timers.append(t)
     except OSError as exc:
         if not exc.args or exc.args[0] != errno.ENOMEM:
-            print(f"RESULT: FAIL exhausting the alarm pool raised {exc!r}, not ENOMEM")
+            _release(timers, f"exhausting the alarm pool raised {exc!r}, not ENOMEM")
             return
     else:
-        print("RESULT: FAIL the alarm pool never ran out - _reboot()'s fallback is unreachable this way")
+        _release(timers, "the alarm pool never ran out - _reboot()'s fallback is unreachable this way")
         return
-    print(f"POOL exhausted after {len(timers)} timers")
+    fact("pool_timers", len(timers))
     fired = []
     asyncio.run(svc._reboot(_RR_REBOOT, "reboot requested with the alarm pool exhausted", lambda: fired.append(True)))
     if not svc._force_watchdog_starve:
-        for t in timers:  # release the pool so the board survives to report the failure
-            t.deinit()
-        print("RESULT: FAIL _reboot() did not set _force_watchdog_starve")
+        _release(timers, "_reboot() did not set _force_watchdog_starve")
         return
     print("STARVE flag set, feeding only through feed_watchdog() now")
     t0 = time.ticks_ms()

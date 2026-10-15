@@ -1,27 +1,19 @@
 """Bench-tier automated tests: the real website and a real multi-sensor value-sanity check over
-the *normal* STA/bridge network path (see tests_hardware/README.md). Bounds mirror the flash-tier
-isolated-driver plausibility scripts' own datasheet-sourced bounds - loose plausibility, not exact-reference calibration."""
+the *normal* STA/bridge network path (see tests_hardware/README.md). Every sensor the bench TOML declares is held to its
+driver's sourced plausibility bounds (plausibility_bounds.py) - loose plausibility, not exact-reference calibration."""
 
 from typing import TYPE_CHECKING
 
+import _load
 import http_client
 import pytest
 import website_identity
-from harness import wait_until
 
 if TYPE_CHECKING:
     from bench_control import BenchBridge
     from harness import Board
 
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("real_website_integration", "sensortask_integration", "ci_suite._run_1_baseline")
-
-CO2_MIN_PPM, CO2_MAX_PPM = 400, 10_000
-HUMIDITY_MIN_RH, HUMIDITY_MAX_RH = 0.0, 100.0
-SCD30_TEMP_MIN_C, SCD30_TEMP_MAX_C = -40.0, 70.0
-PRESSURE_MIN_HPA, PRESSURE_MAX_HPA = 300.0, 1250.0
-BMP_TEMP_MIN_C, BMP_TEMP_MAX_C = -40.0, 85.0
-VOC_MIN, VOC_MAX = 0, 500
-RAW_MIN, RAW_MAX = 0, 65535
 
 # ---------------------------------------------------------------------------
 # The website, over the normal STA/bridge network path (not hotspot mode).
@@ -30,64 +22,29 @@ RAW_MIN, RAW_MAX = 0, 65535
 
 # @tunable l4.rest_endpoints_over_sta_probe_timeout_s = 10.0
 _PROBE_TIMEOUT_S = 10.0
-# @tunable l4.rest_endpoints_over_sta_ready_probe_timeout_s = 5.0
-_READY_PROBE_TIMEOUT_S = 5.0
 # @tunable l4.rest_endpoints_over_sta_reboot_ready_timeout_s = 120.0
 _REBOOT_READY_TIMEOUT_S = 120.0
-# @tunable l4.rest_endpoints_over_sta_reboot_ready_poll_s = 3.0
-_REBOOT_READY_POLL_S = 3.0
+_GAIN_RATIO_PROBES = (24.5, 27.25)  # inside the driver's [20, 34] band, exactly representable as floats
 
 
-def test_real_static_website_content_serves_over_the_normal_bridge_network(board: "Board", dut_ip: str) -> None:
+def test_real_static_website_content_serves_over_the_normal_bridge_network(board: "Board", dut_ip: str, bench_device_name: str) -> None:
     res = http_client.fetch(dut_ip, 80, "GET", "/", timeout_s=_PROBE_TIMEOUT_S)
     assert res.status_code == 200, f"GET / over the normal bridge network failed: {res.status_code} {res.body!r}"
     # 200-and-non-empty passes for another device's build too, so the body is checked against this
-    # device's own generated definitions (queue row G9).
-    website_identity.assert_page_is_this_devices_build(res, "the normal bridge network")
+    # device's own generated definitions.
+    website_identity.assert_page_is_this_devices_build(res, "the normal bridge network", device=bench_device_name)
 
 
 # ---------------------------------------------------------------------------
-# Top-level API delivering sensible values, across all three real sensors together, over REST -
+# Top-level API delivering sensible values for every real sensor together, over REST -
 # not just HTTP status/shape (test_end_to_end_timing.py's concurrent-burst test only checks status).
 # ---------------------------------------------------------------------------
 
 
-def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(board: "Board", dut_ip: str) -> None:
-    res = http_client.fetch(dut_ip, 80, "GET", "/measurements", timeout_s=_PROBE_TIMEOUT_S)
-    assert res.status_code == 200, f"GET /measurements failed: {res.status_code} {res.body!r}"
-    body = res.json()
-
-    for name in ("SCD30", "BMP3XX", "SGP40"):
-        assert name in body, f"GET /measurements is missing the {name!r} key entirely: {body!r}"
-
-    failures: list[str] = []
-
-    scd30 = body["SCD30"]
-    co2, hum, temp = scd30.get("CO2"), scd30.get("Hum"), scd30.get("Temp")
-    if co2 is None or not (CO2_MIN_PPM <= co2 <= CO2_MAX_PPM):
-        failures.append(f"SCD30.CO2={co2!r} not within [{CO2_MIN_PPM}, {CO2_MAX_PPM}] ppm")
-    if hum is None or not (HUMIDITY_MIN_RH <= hum <= HUMIDITY_MAX_RH):
-        failures.append(f"SCD30.Hum={hum!r} not within [{HUMIDITY_MIN_RH}, {HUMIDITY_MAX_RH}] %RH")
-    if temp is None or not (SCD30_TEMP_MIN_C <= temp <= SCD30_TEMP_MAX_C):
-        failures.append(f"SCD30.Temp={temp!r} not within [{SCD30_TEMP_MIN_C}, {SCD30_TEMP_MAX_C}] degC")
-
-    bmp3xx = body["BMP3XX"]
-    pres, bmp_temp, slpres = bmp3xx.get("Pres"), bmp3xx.get("Temp"), bmp3xx.get("SLPres")
-    if pres is None or not (PRESSURE_MIN_HPA <= pres <= PRESSURE_MAX_HPA):
-        failures.append(f"BMP3XX.Pres={pres!r} not within [{PRESSURE_MIN_HPA}, {PRESSURE_MAX_HPA}] hPa")
-    if bmp_temp is None or not (BMP_TEMP_MIN_C <= bmp_temp <= BMP_TEMP_MAX_C):
-        failures.append(f"BMP3XX.Temp={bmp_temp!r} not within [{BMP_TEMP_MIN_C}, {BMP_TEMP_MAX_C}] degC")
-    if slpres is None or not (PRESSURE_MIN_HPA <= slpres <= PRESSURE_MAX_HPA):
-        failures.append(f"BMP3XX.SLPres={slpres!r} not within [{PRESSURE_MIN_HPA}, {PRESSURE_MAX_HPA}] hPa")
-
-    sgp40 = body["SGP40"]
-    voc, raw = sgp40.get("VOC"), sgp40.get("Raw")
-    if voc is None or not (VOC_MIN <= voc <= VOC_MAX):
-        failures.append(f"SGP40.VOC={voc!r} not within [{VOC_MIN}, {VOC_MAX}]")
-    if raw is None or not (RAW_MIN <= raw <= RAW_MAX):
-        failures.append(f"SGP40.Raw={raw!r} not within [{RAW_MIN}, {RAW_MAX}]")
-
-    assert not failures, "implausible/missing real sensor values via GET /measurements: " + "; ".join(failures) + f"\nfull body: {body!r}"
+def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(board: "Board", dut_ip: str, bench_device_name: str) -> None:
+    body = _load.get_object(dut_ip, "/measurements", _PROBE_TIMEOUT_S)
+    findings = _load.measurement_findings(body, bench_device_name)
+    assert not findings, "implausible/missing real sensor values via GET /measurements: " + "; ".join(findings) + f"\nfull body: {body!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -98,30 +55,15 @@ def test_measurements_endpoint_returns_plausible_values_for_every_real_sensor(bo
 
 
 def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
-    before = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
-    assert before.status_code == 200, f"GET /status failed: {before.status_code} {before.body!r}"
-    assert before.json()["system"]["MemPaused"] is False, "storage was already paused before this test ran - a previous test left the bench in a paused state"
-
+    assert _mem_paused(dut_ip) is False, "storage was already paused before this test ran - a previous test left the bench in a paused state"
     put_res = http_client.fetch(dut_ip, 80, "PUT", "/system", {"SystemCmd": "mempause"}, timeout_s=_PROBE_TIMEOUT_S)
-    assert put_res.status_code == 200, f"PUT /system mempause failed: {put_res.status_code} {put_res.body!r}"
-
-    paused = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
-    assert paused.status_code == 200, f"GET /status after mempause failed: {paused.status_code} {paused.body!r}"
-    assert paused.json()["system"]["MemPaused"] is True, f"MemPaused did not become True after a real PUT /system mempause: {paused.json()['system']!r}"
-
+    assert _load.as_object(put_res.json().get("result"), "result").get("SystemCmd") == "Valid", f"PUT /system mempause failed: {put_res.status_code} {put_res.body!r}"
+    assert _mem_paused(dut_ip) is True, "MemPaused did not become True after a real PUT /system mempause"
     # Recovery is a reboot, not a second REST call: the window is a fixed 300s and the duration
     # is never client-suppliable, so no REST unpause exists. That is also the assertion - the
     # pause is RAM-only, so a reset must clear it, which also leaves the bench usable.
-    bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
-    board.hard_reset()
-    wait_until(
-        lambda: http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200,
-        timeout_s=_REBOOT_READY_TIMEOUT_S,
-        poll_interval_s=_REBOOT_READY_POLL_S,
-        description="DUT serving /status again after the recovery reboot",
-    )
-    after = http_client.fetch(dut_ip, 80, "GET", "/status", timeout_s=_PROBE_TIMEOUT_S)
-    assert after.json()["system"]["MemPaused"] is False, f"storage was still paused after a real reboot - the pause is supposed to be RAM-only: {after.json()['system']!r}"
+    _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)
+    assert _mem_paused(dut_ip) is False, "storage was still paused after a real reboot - the pause is supposed to be RAM-only"
 
 
 # ---------------------------------------------------------------------------
@@ -134,37 +76,29 @@ def test_mempause_over_real_rest_pauses_storage_and_does_not_survive_a_reboot(bo
 @pytest.mark.persistence_write
 def test_isl29125_gain_ratio_survives_a_real_reboot_as_an_ordinary_config_value(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
     # Marked: this test OWNS its persisting writes (the probe PUT and the restore PUT), unlike the
-    # dispatch-only Calibrate push, which stores nothing. CLAUDE.md's wear rule, and the reason
-    # tests_scripts/test_persistence_write_marker_completeness.py would fail without the marker.
-    before = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S)
-    assert before.status_code == 200, f"GET /sensors failed: {before.status_code} {before.body!r}"
-    original = before.json()["ISL29125"]["GainRatio"]
-    assert original is not None, "GainRatio is a schema field with a default - it can never be absent"
-
-    # Distinguishable from the nominal default, so the reboot leg proves persistence rather than
-    # re-defaulting. Inside the driver's own [20, 34] band and exactly representable as a float.
-    probe = 24.5 if abs(original - 24.5) > 0.01 else 27.25
+    # dispatch-only Calibrate push, which stores nothing (CLAUDE.md's wear rule).
+    original = _gain_ratio(dut_ip)
+    assert isinstance(original, (int, float)), f"GainRatio is a schema field with a default - it can never be absent: {original!r}"
+    # Distinguishable from the board's value, so the reboot leg proves persistence rather than re-defaulting.
+    probe = _GAIN_RATIO_PROBES[1] if abs(original - _GAIN_RATIO_PROBES[0]) <= 0.01 else _GAIN_RATIO_PROBES[0]
     put = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": probe}}, timeout_s=_PROBE_TIMEOUT_S)
-    assert put.status_code == 200, f"PUT /sensors GainRatio={probe} failed: {put.status_code} {put.body!r}"
-    assert put.json()["result"]["ISL29125"].get("GainRatio") == "Valid", f"could not set GainRatio={probe}: {put.json()['result']['ISL29125']!r}"
-
+    word = _load.as_object(_load.as_object(put.json().get("result"), "result").get("ISL29125"), "result.ISL29125").get("GainRatio")
+    assert put.status_code == 200 and word == "Valid", f"could not set GainRatio={probe}: {put.status_code} {put.body!r}"
     try:
-        bench.kick_all_stations()  # see conftest.py's dut_ip docstring for why this precedes every reconnect-expecting reset
-        board.hard_reset()
-        wait_until(
-            lambda: http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_READY_PROBE_TIMEOUT_S).status_code == 200,
-            timeout_s=_REBOOT_READY_TIMEOUT_S,
-            poll_interval_s=_REBOOT_READY_POLL_S,
-            description="DUT serving /sensors again after the reboot this persistence check needs",
-        )
-        after = http_client.fetch(dut_ip, 80, "GET", "/sensors", timeout_s=_PROBE_TIMEOUT_S).json()["ISL29125"]["GainRatio"]
+        _load.reset_and_wait(board, bench, dut_ip, timeout_s=_REBOOT_READY_TIMEOUT_S)  # the reboot the persistence check needs
+        after = _gain_ratio(dut_ip)
         assert after == probe, f"GainRatio did not survive a real reboot: set {probe!r}, read back {after!r}"
     finally:
-        # Restore regardless of outcome - this mutates the real, persisted config of a shared rig,
-        # and the applied ratio scales every later reading across a range change.
+        # Restored on every path: the applied ratio scales every later reading across a range change.
         restore = http_client.fetch(dut_ip, 80, "PUT", "/sensors", {"ISL29125": {"GainRatio": original}}, timeout_s=_PROBE_TIMEOUT_S)
-        assert restore.status_code == 200, f"failed to restore GainRatio={original!r}: {restore.status_code} {restore.body!r}"
-        verdict = restore.json()["result"]["ISL29125"].get("GainRatio")
-        # "Unchanged" counts as restored: if the probe PUT never landed, the board still holds the
-        # original and this is a legitimate no-op - rejecting it would mask the real failure.
-        assert verdict in ("Valid", "Unchanged"), f"restoring GainRatio={original!r} was rejected: {verdict!r}"
+        verdict = _load.as_object(_load.as_object(restore.json().get("result"), "result").get("ISL29125"), "result.ISL29125").get("GainRatio")
+        # "Unchanged" counts as restored: if the probe PUT never landed, the board still holds the original.
+        assert verdict in ("Valid", "Unchanged"), f"restoring GainRatio={original!r} was rejected: {restore.status_code} {restore.body!r}"
+
+
+def _gain_ratio(dut_ip: str) -> object:
+    return _load.as_object(_load.get_object(dut_ip, "/sensors", _PROBE_TIMEOUT_S).get("ISL29125"), "GET /sensors ISL29125").get("GainRatio")
+
+
+def _mem_paused(dut_ip: str) -> object:
+    return _load.as_object(_load.get_object(dut_ip, "/status", _PROBE_TIMEOUT_S).get("system"), "GET /status system").get("MemPaused")

@@ -117,7 +117,7 @@ def test_a_gate_skip_is_accepted_only_while_its_option_is_unset(repo_root: Path,
     skipped = _skipped(f"tests_hardware/flash/test_x.py::test_{marker}", marker)
     unset = _judge(repo_root, tmp_path, _record(_GREEN, skipped, options={dest: None}))
     assert unset.returncode == 0, f"a {marker} skip must be accepted when {dest} is unset:\n{unset.stdout}"
-    given = _judge(repo_root, tmp_path, _record(_GREEN, skipped, options={dest: "short" if dest == "soak_tier" else True}))
+    given = _judge(repo_root, tmp_path, _record(_GREEN, skipped, options={dest: "short" if dest == "soak_duration" else True}))
     assert given.returncode == 1, f"a {marker} test skipping although {dest} was given means the hardware went away"
     assert "skipped although" in _block(given.stdout)
 
@@ -137,7 +137,7 @@ def test_a_session_recovery_note_is_not_a_pass(repo_root: Path, tmp_path: Path) 
 
 
 def test_runner_selection_is_reported_apart_from_the_wear_gate_with_no_flag_advice(repo_root: Path, tmp_path: Path) -> None:
-    record = _record(_GREEN, deselected=[{"nodeid": "tests_hardware/flash/test_x.py::test_soak", "by": "runner selection", "markers": ["long_soak"]}])
+    record = _record(_GREEN, deselected=[{"nodeid": "tests_hardware/flash/test_x.py::test_soak", "by": "runner selection", "markers": ["soak_duration"]}])
     result = _judge(repo_root, tmp_path, record)
     assert result.returncode == 0, result.stdout
     assert "test_soak: by runner selection (-m), not covered by this run" in _block(result.stdout)
@@ -145,12 +145,12 @@ def test_runner_selection_is_reported_apart_from_the_wear_gate_with_no_flag_advi
 
 
 def test_wear_gate_deselections_name_their_flag_and_the_advice_names_only_those(repo_root: Path, tmp_path: Path) -> None:
-    record = _record(_GREEN, deselected=[{"nodeid": "tests_hardware/flash/test_x.py::test_write", "by": "--allow-persistence-writes", "markers": ["persistence_write"]}])
+    record = _record(_GREEN, deselected=[{"nodeid": "tests_hardware/flash/test_x.py::test_write", "by": "--allow-persistence-write", "markers": ["persistence_write"]}])
     result = _judge(repo_root, tmp_path, record)
     assert result.returncode == 0, result.stdout
-    assert "test_write: by wear gate --allow-persistence-writes, not covered by this run" in _block(result.stdout)
+    assert "test_write: by wear gate --allow-persistence-write, not covered by this run" in _block(result.stdout)
     advice = result.stdout[: result.stdout.rfind("== Summary:")]
-    assert "--allow-persistence-writes" in advice
+    assert "--allow-persistence-write" in advice
     assert "--allow-scd30-extra-write" not in advice
 
 
@@ -202,7 +202,7 @@ _STUB_CONFTEST = """
 import pytest
 
 def pytest_addoption(parser):
-    parser.addoption("--soak-tier", default=None)
+    parser.addoption("--soak-duration", default=None)
 """
 _STUB_TEST = """
 import pytest
@@ -210,13 +210,13 @@ import pytest
 def test_green():
     pass
 
-@pytest.mark.long_soak
+@pytest.mark.soak_duration
 def test_soak():
     pytest.skip("the board went away")
 """
 
 
-@pytest.mark.parametrize("spelling", [["--soak-tier=short"], ["--soak-tier", "short"]])
+@pytest.mark.parametrize("spelling", [["--soak-duration=short"], ["--soak-duration", "short"]])
 def test_both_spellings_of_an_option_read_alike(repo_root: Path, tmp_path: Path, spelling: "list[str]") -> None:
     suite = tmp_path / "suite"
     suite.mkdir()
@@ -227,8 +227,8 @@ def test_both_spellings_of_an_option_read_alike(repo_root: Path, tmp_path: Path,
     ran = subprocess.run([sys.executable, "-m", "pytest", "-p", "_pytest_run_record", f"--run-record={record}", "-p", "no:cacheprovider", "-W", "ignore::pytest.PytestUnknownMarkWarning", str(suite), *spelling], capture_output=True, text=True, check=False, cwd=tmp_path, env=env)
     assert record.is_file(), ran.stdout + ran.stderr
     result = subprocess.run([sys.executable, str(repo_root / "scripts" / "_hardware_verdict.py"), "--run-record", str(record), "--pytest-exit", str(ran.returncode), "--runner", "run_flash_hardware_suite", "--levels", "L3"], capture_output=True, text=True, check=False)
-    assert result.returncode == 1, f"{spelling}: a long_soak skip with --soak-tier given must fail:\n{result.stdout}"
-    assert "skipped although --soak-tier was given" in _block(result.stdout)
+    assert result.returncode == 1, f"{spelling}: a soak_duration skip with --soak-duration given must fail:\n{result.stdout}"
+    assert "skipped although --soak-duration was given" in _block(result.stdout)
 
 
 # ---------------------------------------------------------------------------
@@ -264,13 +264,23 @@ def test_every_gate_is_an_option_tests_hardware_registers(repo_root: Path, verdi
     assert not missing, f"gates whose option tests_hardware/conftest.py does not register: {missing}"
 
 
+def _marker_table(repo_root: Path) -> "dict[str, str]":
+    # tests_hardware/markers.py's one table, name -> help text, read without importing it.
+    tree = ast.parse((repo_root / "tests_hardware" / "markers.py").read_text())
+    value = next(n.value for n in tree.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "MARKERS")
+    assert value is not None, "tests_hardware/markers.py no longer assigns MARKERS"
+    return dict(ast.literal_eval(value))
+
+
 def test_every_skip_gated_marker_is_in_the_gate_map(repo_root: Path, verdict: ModuleType) -> None:
     # A marker registered as "skipped unless <flag>" but absent from the map would make every
     # default run fail on that test's skip, for a reason nothing explains.
-    text = (repo_root / "tests_hardware" / "conftest.py").read_text()
-    skip_gated = set(re.findall(r'"markers", "(\w+): [^"]*skipped unless', text))
-    assert skip_gated, "no skip-gated marker found in tests_hardware/conftest.py - the scan has stopped seeing them"
-    assert skip_gated == set(verdict.GATE_OPTIONS), f"conftest's skip-gated markers {sorted(skip_gated)} differ from the verdict's gate map {sorted(verdict.GATE_OPTIONS)}"
+    skip_gated = {name: re.search(r"skipped unless (--[\w-]+)", text) for name, text in _marker_table(repo_root).items()}
+    gates = {name: match.group(1) for name, match in skip_gated.items() if match}
+    assert gates, "no skip-gated marker found in tests_hardware/markers.py - the scan has stopped seeing them"
+    assert set(gates) == set(verdict.GATE_OPTIONS), f"the skip-gated markers {sorted(gates)} differ from the verdict's gate map {sorted(verdict.GATE_OPTIONS)}"
+    wrong = {name: (flag, verdict.GATE_OPTIONS[name]) for name, flag in gates.items() if flag.lstrip("-").replace("-", "_") != verdict.GATE_OPTIONS[name]}
+    assert not wrong, f"gate map entries naming another option than their marker's text: {wrong}"
 
 
 def test_every_skip_gated_test_really_checks_its_own_flag(repo_root: Path, verdict: ModuleType) -> None:

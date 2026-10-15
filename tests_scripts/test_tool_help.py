@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from _repo_scan import CONCURRENT_SCRATCH
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,7 +43,7 @@ _SAFE_COMMANDS = ("bash", "sh", "env", "dirname", "basename", "cat", "sed", "gre
 
 # Written by the suites that may run beside this one (scripts/test.sh's concurrent MicroPython tier,
 # its twins' config) and by any interpreter's bytecode cache: never a tool's --help side effect.
-_CONCURRENT_SCRATCH = {Path(".git"), Path("node_modules"), Path(".venv"), Path("tests/_tmp"), Path("digital_twin/config")}
+_CONCURRENT_SCRATCH = {Path(".git"), Path("node_modules"), Path(".venv"), *map(Path, CONCURRENT_SCRATCH)}
 _CACHE_DIRS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
 
 _TIMEOUT_S = 60

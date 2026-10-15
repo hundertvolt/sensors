@@ -1,12 +1,27 @@
-"""Isolated-driver device script: the real-hardware half of the SPI RX-overrun story. The overrun
-is a DMA timing condition Python cannot induce; its consequence is - both blocks left _STATUS_BUSY
-lock the chunk unreadable until rewritten, intended on a destructive-readout part (Part A.4)."""
+"""Isolated-driver device script: the real-hardware half of the SPI RX-overrun story. The overrun is a DMA timing
+condition Python cannot induce; its consequence is - both blocks left _STATUS_BUSY lock the chunk unreadable until
+rewritten, intended on a destructive-readout part (Part A.4). The chunk is rewritten with zeros on the way out."""
 
 import asyncio
 
 import asy_spi_driver
 from asy_crc_checks import CRC8
 from asy_fram_manager import FRAMManager
+
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, errors, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 CHUNK_SIZE = 32
 PATTERN_A = bytes((i * 7 + 3) % 256 for i in range(CHUNK_SIZE))
@@ -16,11 +31,6 @@ PATTERN_B = bytes((i * 11 + 29) % 256 for i in range(CHUNK_SIZE))
 _STATUS_BUSY = 0x02
 _STATUS_LEN = 2
 failures: list[str] = []
-
-
-def check(msg: str, *, condition: bool) -> None:
-    if not condition:
-        failures.append(msg)
 
 
 async def _force_both_blocks_busy(fram: FRAMManager, chunk_size: int, crc_len: int, block_addr: "tuple[int, int]") -> bool:
@@ -36,38 +46,40 @@ async def _force_both_blocks_busy(fram: FRAMManager, chunk_size: int, crc_len: i
 
 
 async def _main() -> None:
-    spi0 = asy_spi_driver.SPI(0, 2, 3, 4)
-    fram = FRAMManager(spi0, 5, max_size=0x40000)
-    if not await fram.setup():
-        print("RESULT: FAIL fram.setup() failed - real FRAM chip not responding on spi0/cs5")
-        return
-
+    arm()
+    chip = next(instance for instance in BENCH["instances"].values() if instance["driver"] == "fram")
+    bus = BENCH["bus"][chip["bus"]]
+    spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
+    fram = FRAMManager(spi, chip["cs_pin"], BENCH["fram_max_size"])
+    fact("setup", await fram.setup())
     crc = CRC8()
     chunk = fram.get_chunk(CHUNK_SIZE, crc=crc, owner="fram_busy_status_lockout")
+    fact("allocated", chunk is not None)
     if chunk is None:
-        print("RESULT: FAIL get_chunk() returned None")
+        done()
         return
+    try:
+        fact("cleared_first", await chunk.clear())
+        fact("baseline_ok", check("baseline write or read did not round-trip", condition=await chunk.write(PATTERN_A) is True and bytes(await chunk.read() or b"") == PATTERN_A))
+        forced = await _force_both_blocks_busy(fram, CHUNK_SIZE, crc.length(), chunk._block_addr)
+        fact("forced_busy", check("could not write the BUSY status bytes through the real driver", condition=forced))
+        if forced:
+            # Both copies busy: the read must refuse rather than hand back bytes it cannot vouch for.
+            fact("locked_read_none", check("a chunk with both blocks BUSY still returned data", condition=await chunk.read() is None))
+            fact("error_logged", check("the refused read logged no error", condition="E" in (await fram.get_error_counter())["FRAM"]["ErrType"]))
+            # A write is what clears it: the lockout is recoverable, not a permanently dead chunk.
+            recovered = await chunk.write(PATTERN_B) is True and bytes(await chunk.read() or b"") == PATTERN_B
+            fact("recovered", check("a rewrite did not clear the stuck BUSY status", condition=recovered))
+    finally:
+        fact("cleared_last", await chunk.write(bytes(CHUNK_SIZE)))
+    errors("failures", len(failures), failures)
+    done()
 
-    check("baseline write failed", condition=await chunk.write(PATTERN_A) is True)
-    check("baseline read did not return the written pattern", condition=bytes(await chunk.read() or b"") == PATTERN_A)
 
-    if not await _force_both_blocks_busy(fram, CHUNK_SIZE, crc.length(), chunk._block_addr):
-        print("RESULT: FAIL could not write the BUSY status bytes through the real driver")
-        return
-
-    # Both copies busy: the read must refuse rather than hand back bytes it cannot vouch for.
-    check("a chunk with both blocks left BUSY still returned data - the lockout did not engage", condition=await chunk.read() is None)
-    errs = await fram.get_error_counter()
-    check("the refused read logged no error at all", condition="E" in errs["FRAM"]["ErrType"])
-
-    # A write is what clears it - proving the lockout is recoverable, not a permanently dead chunk.
-    check("a write did not clear the stuck BUSY status", condition=await chunk.write(PATTERN_B) is True)
-    check("the chunk did not read back correctly after the recovering write", condition=bytes(await chunk.read() or b"") == PATTERN_B)
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures[:6])}")
-    else:
-        print("RESULT: PASS both-blocks-BUSY locks the real chunk unreadable and a rewrite recovers it")
+def check(msg: str, *, condition: bool) -> bool:
+    if not condition:
+        failures.append(msg)
+    return condition
 
 
 asyncio.run(_main())

@@ -1,42 +1,28 @@
-"""Isolated-driver device script: RP2040's real firmware is MICROPY_FLOAT_IMPL_FLOAT (24-bit mantissa,
-SPECIFICATION.md Part F.1); the Unix-port rig uses doubles and can't reproduce this. Targets
-checked_float()'s int->float path: it always takes the value, so the real check is lost precision."""
+"""Isolated-driver device script: the RP2040's firmware is MICROPY_FLOAT_IMPL_FLOAT (24-bit mantissa, SPECIFICATION.md
+Part F.1), which the double-precision Unix-port rig cannot reproduce. Takes ints either side of 2**24 through the
+config layer's float coercion and reports what came back; the host decides."""
 
-import sys
+from asy_config_manager import _coerce_float
 
-sys.path.insert(0, "/")  # frozen src/ modules are already importable without this on real firmware;
-# kept only for parity with how isolated-driver scripts are documented to work
+# @include _shared/facts.py
 
-import asy_config_manager as cm
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
 
-_FIELD: "cm.FieldSchema" = ("Probe", "float", 0.0, None, None, None)  # unbounded: only the coercion is under test
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
 
-failures = []
+# Below the boundary every int round-trips exactly on any build.
+_BELOW = 2**24 - 1
+# The smallest int a 24-bit mantissa cannot hold: it rounds to 2**24 (round to even). Compared with int(),
+# never with float(above): that is recomputed on the same single-precision hardware and would always match.
+_ABOVE = 2**24 + 1
 
-# Below the boundary: every int up to 2**24 must round-trip exactly through float() on any build.
-below = 2**24 - 1
-coerced = cm.checked_float(below, _FIELD)
-if coerced is None or coerced != float(below):
-    failures.append(f"2**24-1 did not round-trip: coerced={coerced!r} != {float(below)!r}")
-
-# At/above the boundary: 2**24+1 is the smallest int a real 24-bit-mantissa float can't represent
-# exactly (rounds to 2**24 or 2**24+2). checked_float() always takes it, as documented; the real
-# assertion is whether the stored value silently lost precision.
-above = 2**24 + 1
-coerced = cm.checked_float(above, _FIELD)
-if coerced is None:
-    failures.append("checked_float() refused an int->float coercion it should always accept per its own documented behavior")
-elif int(coerced) == above:
-    # Deliberately not `coerced == float(above)` - float(above) is recomputed on this same
-    # single-precision hardware, so it would always match regardless of lost precision.
-    failures.append(
-        f"2**24+1 unexpectedly round-tripped exactly ({coerced!r}) - either this build isn't really "
-        "single-precision float, or MicroPython's own int->float conversion is more precise than assumed here",
-    )
-elif coerced != float(2**24):
-    failures.append(f"2**24+1 coerced to an unexpected value {coerced!r}, expected {float(2**24)!r} (round-to-even)")
-
-if failures:
-    print(f"RESULT: FAIL {'; '.join(failures)}")
-else:
-    print("RESULT: PASS single-precision float boundary at 2**24 confirmed on real hardware")
+below = _coerce_float(_BELOW)
+above = _coerce_float(_ABOVE)
+fact("below_exact", below is not None and below == float(_BELOW) and int(below) == _BELOW)
+fact("above_value", None if above is None else int(above))
+fact("above_rounded_to_2pow24", above is not None and int(above) == 2**24)
+done()

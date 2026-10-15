@@ -10,9 +10,10 @@ from typing import TYPE_CHECKING
 
 import heap_map
 import pytest
-from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, restore_board_to_serving, wait_for_script_server
+from harness import MEMORY_ERROR_MARKERS, configured_max_connections, discover_max_connections, parse_facts, restore_board_to_serving, wait_for_script_server
 
 if TYPE_CHECKING:
+    import _load
     from bench_control import BenchBridge
     from harness import Board
 
@@ -62,6 +63,99 @@ _STAGGER_MARGIN_S = 2.0
 _SAMPLE_STEP_S = 0.25
 
 
+def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "_load.Note") -> None:
+    ceiling = configured_max_connections()
+    held_out: list[int] = []
+    stop = threading.Event()
+    hammer = threading.Thread(target=_hold_ceiling_open, args=(dut_ip, ceiling, _HOLD_S, held_out, stop), name="ceiling-holder")
+    try:
+        hammer.start()
+        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=_SCRIPT_TIMEOUT_S)
+    finally:
+        stop.set()  # never leave the load generator running past this test
+        hammer.join(timeout=_HAMMER_JOIN_S)
+        holder_alive = hammer.is_alive()
+        restore_board_to_serving(board, bench, dut_ip)
+    assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"
+    facts = parse_facts(output)
+    stage = facts.get("gc_threshold")
+    assert isinstance(stage, int), f"the script reported no gc_threshold fact: {facts}"
+    at = f"at GC_THRESHOLD={stage}"
+
+    assert not any(marker in output for marker in MEMORY_ERROR_MARKERS), f"{at}: the board logged an allocation failure while serving a full ceiling: {output[-2000:]}"
+    # (min, max, samples at the ceiling, samples total), 4x a second. Recycling means one worker is
+    # briefly between connections, so what makes this a peak reading is the FRACTION at the ceiling.
+    assert len(held_out) == 4, f"{at}: the holder did not report a distribution ({held_out}) - the script's own server never answered, so no connection was held"
+    low, high, at_ceiling, total = held_out
+    assert high >= ceiling, f"{at}: the count never reached the ceiling ({high} of {ceiling}) - the board did not admit a full set"
+    assert total and at_ceiling / total >= _MIN_FRACTION_AT_CEILING, (
+        f"{at}: the count was at the full ceiling for only {at_ceiling}/{total} samples (min {low}, max {high}) - "
+        f"below the {_MIN_FRACTION_AT_CEILING:.0%} bar, so the heap dumps below are not a peak reading"
+    )
+    maps = heap_map.parse_labelled(output)
+    assert len(maps) >= 3, f"{at}: expected an after_boot dump plus samples, got {sorted(maps)}"
+
+    boot = maps["after_boot"]
+    samples = [m for label, m in sorted(maps.items()) if label.startswith("t")]
+    worst_run = min(m.largest_free_run for m in samples)
+    worst_slots = min(m.placeable(PER_CONNECTION_ALLOCATION) for m in samples)
+    result_note(
+        f"{at}: ceiling={ceiling} held={low}-{high}, at ceiling {at_ceiling}/{total} | after boot: free={boot.free_bytes} "
+        f"largest_free_run={boot.largest_free_run} placeable{PER_CONNECTION_ALLOCATION}B={boot.placeable(PER_CONNECTION_ALLOCATION)} "
+        f"| at peak (worst of {len(samples)} samples): largest_free_run={worst_run} slots={worst_slots}",
+    )
+    # The one property worth asserting rather than reporting: the simultaneous demand must still be
+    # placeable. A floor on the absolute bytes would be a guess; this is the actual requirement.
+    assert worst_slots >= ceiling, (
+        f"{at}: at peak the heap had room for only {worst_slots} more {PER_CONNECTION_ALLOCATION} B blocks "
+        f"while holding {ceiling} connections - the simultaneous demand cannot be placed"
+    )
+
+
+@pytest.mark.over_provisioned_image
+def test_report_the_boards_own_connection_wall(dut_ip: str, result_note: "_load.Note") -> None:
+    # Row 5 of the decision table, and the reason §5 needs only two images: this walks connections
+    # upward at RUNTIME, so ONE deliberately over-provisioned build reports the board's real
+    # capacity - whatever binds first, the PCB pool, the pbuf supply or the GC heap.
+    configured = configured_max_connections()
+    discovered = discover_max_connections(dut_ip)
+    result_note(f"board admitted {discovered} simultaneous connections against a configured ceiling of {configured}")
+    assert discovered >= 1, "the board admitted nothing at all"
+    if discovered < configured:
+        pytest.fail(
+            f"THE WALL: the board admitted {discovered} of the {configured} its config allows - record this, "
+            f"then use §6's LWIP_STATS image to see which pool ran out rather than inferring it",
+        )
+
+
+def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list[int], stop: threading.Event) -> None:
+    # Sustains `ceiling` real connections parked mid-request for the whole window and records the
+    # count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
+    # so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early.
+    deadline = time.monotonic() + seconds
+    if not wait_for_script_server(dut_ip, stop, timeout_s=seconds):  # the script's own boot, not main.py's
+        return  # nothing reported: the test's own "did not report" assert names it
+    live = [0]
+    lock = threading.Lock()
+    workers = [threading.Thread(target=_park_one_connection, args=(dut_ip, live, lock, stop, i * _RECYCLE_S / ceiling), name=f"holder-{i}") for i in range(ceiling)]
+    observed: list[int] = []
+    try:
+        for worker in workers:
+            worker.start()
+        stop.wait(_RECYCLE_S + _STAGGER_MARGIN_S)  # one full stagger cycle before the count is evidence
+        while time.monotonic() < deadline and not stop.wait(_SAMPLE_STEP_S):
+            with lock:
+                observed.append(live[0])
+    finally:
+        # Unconditional, and joined: a worker that outlives its test hammers the board for the rest
+        # of the pytest session, which took down 37 unrelated tests once.
+        stop.set()
+        for worker in workers:
+            worker.join(timeout=_WORKER_JOIN_S)
+    at_ceiling = sum(1 for count in observed if count >= ceiling)
+    held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
+
+
 def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, stop: threading.Event, offset_s: float, port: int = 80) -> None:
     # Holds one connection parked mid-request and recycles it before the firmware reclaims it, so
     # the ceiling stays full. `stop` is what guarantees the worker cannot outlive its own test.
@@ -103,92 +197,3 @@ def _park_one_connection(dut_ip: str, live: list[int], lock: threading.Lock, sto
                 with lock:
                     live[0] -= 1
             sock.close()
-
-
-def _hold_ceiling_open(dut_ip: str, ceiling: int, seconds: float, held_out: list[int], stop: threading.Event) -> None:
-    # Sustains `ceiling` real connections parked mid-request for the whole window and records the
-    # count's own distribution, so the heap samples are provably taken at peak (5B rule 1). Host-driven,
-    # so nothing here shares the DUT's heap (Part E.9); `stop` is its test's way to end it early.
-    deadline = time.monotonic() + seconds
-    if not wait_for_script_server(dut_ip, stop, timeout_s=seconds):  # the script's own boot, not main.py's
-        return  # nothing reported: the test's own "did not report" assert names it
-    live = [0]
-    lock = threading.Lock()
-    workers = [threading.Thread(target=_park_one_connection, args=(dut_ip, live, lock, stop, i * _RECYCLE_S / ceiling), daemon=True) for i in range(ceiling)]
-    observed: list[int] = []
-    try:
-        for worker in workers:
-            worker.start()
-        stop.wait(_RECYCLE_S + _STAGGER_MARGIN_S)  # one full stagger cycle before the count is evidence
-        while time.monotonic() < deadline and not stop.wait(_SAMPLE_STEP_S):
-            with lock:
-                observed.append(live[0])
-    finally:
-        # Unconditional, and joined: a worker that outlives its test hammers the board for the rest
-        # of the pytest session, which took down 37 unrelated tests once.
-        stop.set()
-        for worker in workers:
-            worker.join(timeout=_WORKER_JOIN_S)
-    at_ceiling = sum(1 for count in observed if count >= ceiling)
-    held_out.extend((min(observed, default=0), max(observed, default=0), at_ceiling, len(observed)))
-
-
-def test_heap_at_peak_while_a_full_ceiling_is_held(board: "Board", bench: "BenchBridge", dut_ip: str) -> None:
-    ceiling = configured_max_connections()
-    held_out: list[int] = []
-    stop = threading.Event()
-    hammer = threading.Thread(target=_hold_ceiling_open, args=(dut_ip, ceiling, _HOLD_S, held_out, stop), daemon=True)
-    hammer.start()
-    try:
-        output = board.run_isolated(DEVICE_SCRIPTS / "heap_under_connection_ceiling.py", timeout_s=_SCRIPT_TIMEOUT_S)
-    finally:
-        stop.set()  # never leave the load generator running past this test
-        hammer.join(timeout=_HAMMER_JOIN_S)
-        holder_alive = hammer.is_alive()
-        restore_board_to_serving(board, bench, dut_ip)
-    assert not holder_alive, "the connection holder is still running after its own test - it will hammer the board through every test that follows"
-
-    assert not any(marker in output for marker in MEMORY_ERROR_MARKERS), f"the board logged an allocation failure while serving a full ceiling: {output[-2000:]}"
-    # (min, max, samples at the ceiling, samples total), 4x a second. Recycling means one worker is
-    # briefly between connections, so what makes this a peak reading is the FRACTION at the ceiling.
-    assert len(held_out) == 4, f"the holder did not report a distribution ({held_out}) - the script's own server never answered, so no connection was held"
-    low, high, at_ceiling, total = held_out
-    assert high >= ceiling, f"the count never reached the ceiling ({high} of {ceiling}) - the board did not admit a full set"
-    assert total and at_ceiling / total >= _MIN_FRACTION_AT_CEILING, (
-        f"the count was at the full ceiling for only {at_ceiling}/{total} samples (min {low}, max {high}) - "
-        f"below the {_MIN_FRACTION_AT_CEILING:.0%} bar, so the heap dumps below are not a peak reading"
-    )
-    maps = heap_map.parse_labelled(output)
-    assert len(maps) >= 3, f"expected an after_boot dump plus samples, got {sorted(maps)}"
-
-    boot = maps["after_boot"]
-    samples = [m for label, m in sorted(maps.items()) if label.startswith("t")]
-    worst_run = min(m.largest_free_run for m in samples)
-    worst_slots = min(m.placeable(PER_CONNECTION_ALLOCATION) for m in samples)
-    print(
-        f"[HW] ceiling={ceiling} held={low}-{high}, at ceiling {at_ceiling}/{total} | after boot: free={boot.free_bytes} "
-        f"largest_free_run={boot.largest_free_run} placeable{PER_CONNECTION_ALLOCATION}B={boot.placeable(PER_CONNECTION_ALLOCATION)} "
-        f"| at peak (worst of {len(samples)} samples): largest_free_run={worst_run} slots={worst_slots}",
-    )
-    # The one property worth asserting rather than reporting: the simultaneous demand must still be
-    # placeable. A floor on the absolute bytes would be a guess; this is the actual requirement.
-    assert worst_slots >= ceiling, (
-        f"at peak the heap had room for only {worst_slots} more {PER_CONNECTION_ALLOCATION} B blocks "
-        f"while holding {ceiling} connections - the simultaneous demand cannot be placed"
-    )
-
-
-@pytest.mark.over_provisioned_image
-def test_report_the_boards_own_connection_wall(dut_ip: str) -> None:
-    # Row 5 of the decision table, and the reason §5 needs only two images: this walks connections
-    # upward at RUNTIME, so ONE deliberately over-provisioned build reports the board's real
-    # capacity - whatever binds first, the PCB pool, the pbuf supply or the GC heap.
-    configured = configured_max_connections()
-    discovered = discover_max_connections(dut_ip)
-    print(f"[HW] board admitted {discovered} simultaneous connections against a configured ceiling of {configured}")
-    assert discovered >= 1, "the board admitted nothing at all"
-    if discovered < configured:
-        pytest.fail(
-            f"THE WALL: the board admitted {discovered} of the {configured} its config allows - record this, "
-            f"then use §6's LWIP_STATS image to see which pool ran out rather than inferring it",
-        )

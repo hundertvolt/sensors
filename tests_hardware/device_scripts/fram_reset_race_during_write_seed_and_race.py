@@ -1,6 +1,6 @@
-"""Isolated-driver device script, phase 1 of 2 (see verify_recovery.py for phase 2). Fires a real
-machine.reset() from inside an in-flight FRAM write, same transfer-seam technique as the CS-hijack script.
-Run via `board.run_isolated_expect_reset()`, never run_isolated() - see tests_hardware/README.md's FRAM reset-race finding."""
+"""Isolated-driver device script, phase 1 of 2 (fram_reset_race_during_write_verify_recovery.py is phase 2): seeds a
+target between two guards, then fires a real machine.reset() inside the payload transfer of a write to the target, at
+the driver's synchronous seam. Run through run_isolated_expect_reset(); its facts and banner come before the reset."""
 
 import asyncio
 
@@ -10,70 +10,83 @@ import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_print_log import PrintLogHistory
 
-# Scratch addresses, disjoint from every other device script's own regions (CS-hijack uses
-# 0x9000-0x93ff).
-_GUARD_BEFORE_ADDR = 0xA000
-_TARGET_ADDR = 0xA010
-_GUARD_AFTER_ADDR = 0xA020
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# One region for both phases of the one host test; the guards around the target are never touched by the race.
+_SCRATCH_REGIONS = ((0xA000, 0x40),)
+_GUARD_BEFORE_ADDR = _SCRATCH_REGIONS[0][0]
+_TARGET_ADDR = _GUARD_BEFORE_ADDR + 0x10
+_GUARD_AFTER_ADDR = _GUARD_BEFORE_ADDR + 0x20
 
 _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
-_NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the interrupted write attempts, must never land
+_NEW_TARGET_PATTERN = bytes((0xCC,) * 16)  # what the reset-raced write attempts
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
 # @tunable l3.fram_reset_race_during_write_seed_and_race_victim_bound_s = 30.0
 _VICTIM_BOUND_S = 30.0
+# The line the host waits for: printed right before the raced write, so a run without it never reached the race.
+_BANNER = "RESET_RACE_ARMED"
 
 
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=0x40000)
+    wdt = arm()
+    raised_in_tasks: list[str] = []
+    asyncio.get_event_loop().set_exception_handler(lambda _loop, context: raised_in_tasks.append(repr(context.get("exception"))))
+    chip = BENCH["instances"]["fram"]
+    bus = BENCH["bus"][chip["bus"]]
+    spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
+    fram = FRAM_SPI(spi, chip["cs_pin"], logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=BENCH["fram_max_size"])
     await fram.setup()
+    fact("initialized", fram.initialized)
     if not fram.initialized:
-        print("RESULT: FAIL fram.setup() did not reach initialized=True - device not found?")
+        done()
+        return
+    seeded = []
+    for addr, pattern in ((_GUARD_BEFORE_ADDR, _GUARD_BEFORE_PATTERN), (_TARGET_ADDR, _ORIGINAL_TARGET_PATTERN), (_GUARD_AFTER_ADDR, _GUARD_AFTER_PATTERN)):
+        async with fram:
+            seeded.append(await fram.set_values(pattern, addr_start=addr))
+    fact("seeded", seeded)
+    fact("system_task_exceptions", raised_in_tasks)
+    wdt.feed()
+    if not all(seeded):
+        done()
         return
 
-    async with fram:
-        ok = await fram.set_values(_GUARD_BEFORE_PATTERN, addr_start=_GUARD_BEFORE_ADDR)
-    if not ok:
-        print("RESULT: FAIL could not seed the guard-before region")
-        return
-    async with fram:
-        ok = await fram.set_values(_ORIGINAL_TARGET_PATTERN, addr_start=_TARGET_ADDR)
-    if not ok:
-        print("RESULT: FAIL could not seed the target region's original content")
-        return
-    async with fram:
-        ok = await fram.set_values(_GUARD_AFTER_PATTERN, addr_start=_GUARD_AFTER_ADDR)
-    if not ok:
-        print("RESULT: FAIL could not seed the guard-after region")
-        return
-    wdt.feed()
+    # The reset lands inside the victim's own payload transfer: the CS window does not yield, so this is the one seam.
+    spidev = fram._spidev
+    original_write_sync = spidev.write_sync
+
+    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
+        if len(buf) == len(_NEW_TARGET_PATTERN):  # the command buffers around the payload are 1 or 5 bytes
+            machine.reset()  # never returns: a real RP2040 reset with CS still asserted
+        return original_write_sync(buf)
 
     async def victim_writer() -> None:
         async with fram:
             await fram.set_values(_NEW_TARGET_PATTERN, addr_start=_TARGET_ADDR)
 
-    # Reset from inside the victim's own payload transfer, at the driver's synchronous seam. The
-    # earlier form raced an `await asyncio.sleep(0)` task into the CS window; measure A made that
-    # window non-yielding, so the race could no longer land (HEAP_FRAGMENTATION_MEASUREMENTS archive §7D.5).
-    spidev = fram._spidev
-    original_write_sync = spidev.write_sync
-
-    def resetting_write_sync(buf: "bytes | bytearray | memoryview") -> bool:
-        # The command buffers around the payload are 1 or 5 bytes, never its length.
-        if len(buf) == len(_NEW_TARGET_PATTERN):
-            machine.reset()  # never returns - real RP2040 hardware reset, immediate, CS still asserted
-        return original_write_sync(buf)
-
+    print(_BANNER)
     spidev.write_sync = resetting_write_sync  # type: ignore[method-assign]
-    await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
-    spidev.write_sync = original_write_sync  # type: ignore[method-assign]
-    # Unreachable in the successful case (machine.reset() halts the runtime first). If this DOES
-    # print, the payload transfer never happened - the phase-2 verify script's guard-region check
-    # catches that too.
-    print("RESULT: FAIL the reset never fired - no payload transfer of the expected length reached the seam, nothing was tested")
+    try:
+        await asyncio.wait_for(victim_writer(), _VICTIM_BOUND_S)
+    finally:
+        spidev.write_sync = original_write_sync  # type: ignore[method-assign]
+    # Reached only when no payload transfer of the expected length came through the seam: nothing was tested.
+    fact("reset_fired", False)
+    done()
 
 
 asyncio.run(_main())

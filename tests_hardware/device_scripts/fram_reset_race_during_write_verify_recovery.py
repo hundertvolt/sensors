@@ -1,81 +1,86 @@
-"""Isolated-driver device script, phase 2 of 2 - runs after the board comes back from the real
-hardware reset seed_and_race.py's reset_yanker() triggered mid-write. Proves the raced write never
-landed, neither guard region was disturbed, and the driver fully recovers afterward."""
+"""Isolated-driver device script, phase 2 of 2: after the real reset phase 1 fired inside a write, the target holds its
+original bytes or a prefix of the new ones (MB85RS2MTA p.9: each byte is written as it is clocked in), both guards are
+untouched and the driver recovers. Restores the seed state in a finally; reports facts, the host gives the verdict."""
 
 import asyncio
-
-import machine
 
 import asy_spi_driver
 from asy_fram_driver import FRAM_SPI
 from asy_print_log import PrintLogHistory
 
-_GUARD_BEFORE_ADDR = 0xA000
-_TARGET_ADDR = 0xA010
-_GUARD_AFTER_ADDR = 0xA020
-_POST_RECOVERY_ADDR = 0xA030
+# @include _shared/facts.py
+# @include _shared/watchdog.py
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from _shared.facts import done, fact
+    from _shared.watchdog import arm
+    from bench_facts import BenchFacts
+
+BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
+
+# Phase 1's region (one host test runs both phases).
+_SCRATCH_REGIONS = ((0xA000, 0x40),)
+_GUARD_BEFORE_ADDR = _SCRATCH_REGIONS[0][0]
+_TARGET_ADDR = _GUARD_BEFORE_ADDR + 0x10
+_GUARD_AFTER_ADDR = _GUARD_BEFORE_ADDR + 0x20
+_POST_RECOVERY_ADDR = _GUARD_BEFORE_ADDR + 0x30
 
 _GUARD_BEFORE_PATTERN = bytes(range(0x10, 0x20))
 _ORIGINAL_TARGET_PATTERN = bytes(range(0x70, 0x80))
+_NEW_TARGET_PATTERN = bytes((0xCC,) * 16)
 _GUARD_AFTER_PATTERN = bytes(range(0x30, 0x40))
 _POST_RECOVERY_PATTERN = bytes(range(0x50, 0x60))
 
 
+async def _read(fram: FRAM_SPI, addr: int) -> "bytes | None":
+    buf = bytearray(16)
+    async with fram:
+        ok = await fram.get_values(buf, addr_start=addr)
+    return bytes(buf) if ok else None
+
+
+def _target_state(target: bytes) -> str:
+    # "original", "prefix:<n>" (the first n new bytes, then the original rest), or "other".
+    for n in range(len(target) + 1):
+        if target == _NEW_TARGET_PATTERN[:n] + _ORIGINAL_TARGET_PATTERN[n:]:
+            return "original" if n == 0 else f"prefix:{n}"
+    return "other"
+
+
 async def _main() -> None:
-    # @tunable wdt.timeout_ms = 8000
-    wdt = machine.WDT(timeout=8000)
-    spi0 = asy_spi_driver.SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4)
-    fram = FRAM_SPI(spi0, 5, logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=0x40000)
+    wdt = arm()
+    chip = BENCH["instances"]["fram"]
+    bus = BENCH["bus"][chip["bus"]]
+    spi = asy_spi_driver.SPI(bus["id"], sck_pin=bus["sck_pin"], mosi_pin=bus["mosi_pin"], miso_pin=bus["miso_pin"])
+    fram = FRAM_SPI(spi, chip["cs_pin"], logger=PrintLogHistory(name="FRAMRESETRACE"), max_size=BENCH["fram_max_size"])
     await fram.setup()
+    fact("initialized", fram.initialized)
     if not fram.initialized:
-        print("RESULT: FAIL fram.setup() did not reach initialized=True after the reset - device not found?")
+        done()
         return
-
-    failures = []
-
-    async with fram:
-        guard_before = bytearray(16)
-        ok = await fram.get_values(guard_before, addr_start=_GUARD_BEFORE_ADDR)
-    if not ok or bytes(guard_before) != _GUARD_BEFORE_PATTERN:
-        failures.append(f"guard-before region disturbed: expected {_GUARD_BEFORE_PATTERN.hex()}, got {bytes(guard_before).hex()} (ok={ok})")
-    wdt.feed()
-
-    async with fram:
-        target = bytearray(16)
-        ok = await fram.get_values(target, addr_start=_TARGET_ADDR)
-    # Hard requirement: the raced write must never have reached the chip.
-    if not ok or bytes(target) != _ORIGINAL_TARGET_PATTERN:
-        failures.append(f"target region was NOT left at its original content: expected {_ORIGINAL_TARGET_PATTERN.hex()}, got {bytes(target).hex()} (ok={ok}) - the reset-raced write may have partially or fully landed")
-    wdt.feed()
-
-    async with fram:
-        guard_after = bytearray(16)
-        ok = await fram.get_values(guard_after, addr_start=_GUARD_AFTER_ADDR)
-    if not ok or bytes(guard_after) != _GUARD_AFTER_PATTERN:
-        failures.append(f"guard-after region disturbed: expected {_GUARD_AFTER_PATTERN.hex()}, got {bytes(guard_after).hex()} (ok={ok})")
-    wdt.feed()
-
-    # verify_present() is not lock-wrapped - it self-acquires internally (asyncio.Lock isn't
-    # reentrant); a fresh write+read at a separate address confirms full recovery.
-    recovered = await fram.verify_present()
-    wdt.feed()
-    if not recovered:
-        failures.append("verify_present() failed after the reset race - chip/driver did not recover")
-
-    async with fram:
-        clean_write_ok = await fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_POST_RECOVERY_ADDR)
-    async with fram:
-        clean_readback = bytearray(len(_POST_RECOVERY_PATTERN))
-        clean_read_ok = await fram.get_values(clean_readback, addr_start=_POST_RECOVERY_ADDR)
-    if not clean_write_ok:
-        failures.append("post-recovery set_values() failed outright")
-    if not clean_read_ok or bytes(clean_readback) != _POST_RECOVERY_PATTERN:
-        failures.append(f"post-recovery get_values() returned {bytes(clean_readback).hex()}, expected {_POST_RECOVERY_PATTERN.hex()}")
-
-    if failures:
-        print(f"RESULT: FAIL {len(failures)} issue(s): {'; '.join(failures)}")
-    else:
-        print("RESULT: PASS the reset-raced write never landed, both guard regions were untouched, and the driver fully recovered")
+    try:
+        fact("guard_before_ok", await _read(fram, _GUARD_BEFORE_ADDR) == _GUARD_BEFORE_PATTERN)
+        target = await _read(fram, _TARGET_ADDR)
+        fact("target_state", None if target is None else _target_state(target))
+        fact("guard_after_ok", await _read(fram, _GUARD_AFTER_ADDR) == _GUARD_AFTER_PATTERN)
+        wdt.feed()
+        present = await fram.verify_present()  # takes the outer lock itself (asyncio.Lock is not reentrant)
+        async with fram:
+            wrote = await fram.set_values(_POST_RECOVERY_PATTERN, addr_start=_POST_RECOVERY_ADDR)
+        fact("recovered", present and wrote and await _read(fram, _POST_RECOVERY_ADDR) == _POST_RECOVERY_PATTERN)
+    finally:
+        # Scratch, but the next run's assertion must not meet stale torn bytes: the seed state goes back.
+        restored = []
+        for addr, pattern in ((_GUARD_BEFORE_ADDR, _GUARD_BEFORE_PATTERN), (_TARGET_ADDR, _ORIGINAL_TARGET_PATTERN), (_GUARD_AFTER_ADDR, _GUARD_AFTER_PATTERN)):
+            async with fram:
+                restored.append(await fram.set_values(pattern, addr_start=addr))
+        fact("seed_restored", all(restored))
+    done()
 
 
 asyncio.run(_main())

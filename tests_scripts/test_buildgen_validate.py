@@ -611,6 +611,26 @@ def test_device_hardware_family_is_accepted_and_emitted_nowhere(tmp_path: Path, 
         assert "hardware_family" not in text
 
 
+def test_device_bench_flag_is_accepted_and_emitted_nowhere(tmp_path: Path, src_dir: Path) -> None:
+    # Which board the hardware tiers drive is a build fact only: the build takes it, no generated output carries it.
+    doc = base_doc()
+    table_at(doc, "device")["bench"] = True
+    path = write_doc(tmp_path, "fixture", doc)
+    result = generate_device(path, src_dir)
+    assert _at(result.model.doc, "device", "bench") is True
+    for text in (result.module_source, result.boot_entry_source, json.dumps(definitions_for_toml(path, src_dir))):
+        assert "bench" not in text.lower()
+
+
+@pytest.mark.parametrize("flag", ["yes", 1, 0, ["true"]])
+def test_a_bench_flag_that_is_no_bool_is_rejected(tmp_path: Path, src_dir: Path, flag: "TomlValue") -> None:
+    doc = base_doc()
+    table_at(doc, "device")["bench"] = flag
+    with pytest.raises(BuildError, match=r"\[device\]\.bench must be true or false") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field) == ("device.field-type", "bench")
+
+
 def test_bus_unknown_field_rejected(tmp_path: Path, src_dir: Path) -> None:
     doc = base_doc()
     table_at(doc, "bus", "i2c0")["baud_rate"] = 100000  # not a real asy_i2c_driver.I2C parameter
