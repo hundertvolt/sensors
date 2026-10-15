@@ -2730,16 +2730,18 @@ def test_integration_full_task_stays_not_synced_when_nobody_answers() -> None:
     client = _make_integration_client()
 
     async def scenario() -> bool:
-        task = asyncio.create_task(client._sync_loop())
-        client._ntp_sync_trigger_event.set()
-        await asyncio.sleep(_NO_ANSWER_WAIT_S)  # longer than one failed attempt against a closed loopback port
-        synced = await client.ntp_issynced()
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        return synced
+        # A port of this file's band that nothing binds: a twin booted beside this run holds the real port 123.
+        with redirect_udp_port(ntpmod, 123, _PORTS.next()):
+            task = asyncio.create_task(client._sync_loop())
+            client._ntp_sync_trigger_event.set()
+            await asyncio.sleep(_NO_ANSWER_WAIT_S)  # longer than one failed attempt against a closed loopback port
+            synced = await client.ntp_issynced()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            return synced
 
     assert run(scenario()) is False
 
