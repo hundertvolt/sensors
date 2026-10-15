@@ -1,3 +1,6 @@
+"""The VOC Index port: the fixed-point helpers and the whole algorithm against Sensirion's C, and its persisted state and
+restore."""
+
 import struct
 
 from _async_harness import run

@@ -31,7 +31,7 @@ from _async_harness import cancel_all, run  # noqa: E402
 from _digital_twin_construction_scenarios import load_device  # noqa: E402
 from _error_codes import code  # noqa: E402
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402
-from _src_const import src_const  # noqa: E402
+from _src_const import src_bytes  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from _twin_devices import device_with, wiring_plan  # noqa: E402
 from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402
@@ -77,7 +77,7 @@ assert _BUSES is not None, f"{_DEVICE}'s plan wires no uart pair"
 _ends: "dict[str, UARTLinkDriver]" = {}
 # Each end's (port, tx, rx, bus, role, limits), read once off the latest build for the CRC16 pairs.
 _specs: "list[tuple[int, int, int, asy_uart_driver.UART, str, TransferLimits]]" = []
-_BANNER: bytes = src_const("src/asy_uart_link_driver.py", "_BANNER")  # type: ignore[assignment]  # src_const() answers object
+_BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
 
 # @tunable l2.uart_link_run_limit_s = 30
 _RUN_LIMIT_S = 30

@@ -1,0 +1,18 @@
+.F.............                                                          [100%]
+=================================== FAILURES ===================================
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 6'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{t}" for p, t in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           scripts/run_digital_twin_ci.sh	src/sensortask_*.py
+E           scripts/run_unix_port_integration.sh	src/sensortask_*.py
+E       assert not [('scripts/run_digital_twin_ci.sh', 'src/sensortask_*.py'), ('scripts/run_unix_port_integration.sh', 'src/sensortask_*.py')]
+
+tests_scripts/test_citations.py:256: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_citations.py::test_the_allowlist_only_shrinks - Ass...
+1 failed, 14 passed in 11.68s

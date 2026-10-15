@@ -1,6 +1,6 @@
 """Reads a src/ module's folded const() values at test time: const() names do not survive compilation (py/parse.c:857,
-v1.29.0), so tests take them from the source text instead of copying them; py_value() reads a host file's plain literal
-the generator emits (buildgen/). NTP_EPOCH_DELTA is RFC 5905's, an independent fact."""
+v1.29.0), so tests take them from the source text instead of copying them; the typed readers raise on a value of another
+type. py_value() reads a host file's plain literal the generator emits (buildgen/). NTP_EPOCH_DELTA is RFC 5905's."""
 
 NTP_EPOCH_DELTA = 2208988800  # RFC 5905 section 6, 1900 -> 1970
 
@@ -37,6 +37,10 @@ def _call_end(line: str, start: int) -> int:
     raise ValueError("unclosed const( in: " + line)
 
 
+def _wrong_type(path: str, name: str, value: object, kind: str) -> TypeError:
+    return TypeError(f"{name} in {path} is {value!r}, not {kind}")
+
+
 def py_value(path: str, name: str) -> object:
     # The literal of a module-level `NAME = <literal>` line of a host file, e.g. the watchdog timeout buildgen emits.
     with open(path) as f:
@@ -45,6 +49,13 @@ def py_value(path: str, name: str) -> object:
             if mark and head == name:
                 return eval(rest, {})  # noqa: S307 - one literal of a repository file; eval() skips its comment
     raise KeyError(f"{name} is not a module-level binding in {path}")
+
+
+def src_bytes(path: str, name: str) -> bytes:
+    value = src_const(path, name)
+    if not isinstance(value, bytes):
+        raise _wrong_type(path, name, value, "bytes")
+    return value
 
 
 def src_const(path: str, name: str) -> object:
@@ -67,3 +78,25 @@ def src_consts(path: str) -> "dict[str, object]":
                     values[name] = eval(expr, dict(values))  # noqa: S307 - the expression of a src/ const() line
         _cache[path] = values
     return values
+
+
+def src_float(path: str, name: str) -> float:
+    # An int is a float's value too (a const(5) timeout read as seconds); a bool is neither.
+    value = src_const(path, name)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _wrong_type(path, name, value, "a float")
+    return value
+
+
+def src_int(path: str, name: str) -> int:
+    value = src_const(path, name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _wrong_type(path, name, value, "an int")
+    return value
+
+
+def src_strs(path: str, name: str) -> "tuple[str, ...]":
+    value = src_const(path, name)
+    if not isinstance(value, tuple) or not all(isinstance(item, str) for item in value):
+        raise _wrong_type(path, name, value, "a tuple of str")
+    return value

@@ -212,7 +212,7 @@ def test_a_missing_verdict_counts_as_failed(emitter: ModuleType, tmp_path: Path)
 def test_a_missing_run_record_counts_as_failed(emitter: ModuleType, tmp_path: Path) -> None:
     summary = emitter.from_run_record(tmp_path / "absent.json")
     assert summary.failed == [(str(tmp_path / "absent.json"), "no verdict (run record missing or unreadable)")]
-    (tmp_path / "garbled.json").write_text("{not json")
+    (tmp_path / "garbled.json").write_text("{not json", encoding="utf-8")
     assert emitter.from_run_record(tmp_path / "garbled.json").failed[0][1] == "no verdict (run record missing or unreadable)"
 
 
@@ -253,13 +253,13 @@ def test_the_commit_line_names_the_commit_and_uncommitted_changes(emitter: Modul
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
-    (repo / "f").write_text("x\n")
+    (repo / "f").write_text("x\n", encoding="utf-8")
     _git(repo, "add", "f")
     _git(repo, "commit", "-q", "-m", "c")
     sha = _git(repo, "rev-parse", "--short", "HEAD")
     for out in (_bash_render(repo, "r", 0, []), _py_render(emitter, repo, "r", 0, [])):
         assert f"\nCommit: {sha}\n" in out
-    (repo / "g").write_text("y\n")
+    (repo / "g").write_text("y\n", encoding="utf-8")
     for out in (_bash_render(repo, "r", 0, []), _py_render(emitter, repo, "r", 0, [])):
         assert f"\nCommit: {sha} (uncommitted changes)\n" in out
 
@@ -300,7 +300,7 @@ def test_the_python_cli_prints_counts_and_lists_from_a_run_record(tmp_path: Path
         "exitstatus": 1,
     }
     path = tmp_path / "r.json"
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     counts = subprocess.run([sys.executable, str(_PY), "--from-run-record", str(path), "--counts-only"], capture_output=True, text=True, check=True)
     assert counts.stdout == "1 1 2 1\n"
     skipped = subprocess.run([sys.executable, str(_PY), "--from-run-record", str(path), "--list", "skipped"], capture_output=True, text=True, check=True)
@@ -310,14 +310,14 @@ def test_the_python_cli_prints_counts_and_lists_from_a_run_record(tmp_path: Path
 @pytest.mark.parametrize(("exitstatus", "kind"), [(2, "failed"), (3, "failed"), (4, "failed"), (5, "vacuous")])
 def test_an_aborted_or_empty_pytest_session_is_never_read_as_clean(emitter: ModuleType, tmp_path: Path, exitstatus: int, kind: str) -> None:
     path = tmp_path / "r.json"
-    path.write_text(json.dumps({"tests": [], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}))
+    path.write_text(json.dumps({"tests": [], "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}), encoding="utf-8")
     assert getattr(emitter.from_run_record(path), kind), f"exit status {exitstatus} left no {kind} item"
 
 
 def test_a_nonzero_exit_with_no_failed_test_recorded_is_a_failure(emitter: ModuleType, tmp_path: Path) -> None:
     path = tmp_path / "r.json"
     tests = [{"nodeid": "t.py::a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": []}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": 1}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": 1}), encoding="utf-8")
     assert emitter.from_run_record(path).failed
 
 
@@ -325,7 +325,7 @@ def test_recovery_notes_count_apart_from_passes(emitter: ModuleType, tmp_path: P
     path = tmp_path / "r.json"
     tests = [{"nodeid": "t.py::a", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": [["recovery", "hard reset fallback"]]}]
     notes = [{"text": "restored SSID", "recovery": True, "source": "joined_hotspot"}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 0}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 0}), encoding="utf-8")
     summary = emitter.from_run_record(path)
     assert summary.passed == []
     assert summary.recovered == [("t.py::a", "hard reset fallback"), ("joined_hotspot", "restored SSID")]
@@ -349,7 +349,7 @@ def test_every_result_note_and_plain_session_note_reaches_the_notes_list(emitter
         {"nodeid": "t.py::c", "outcome": "passed", "when": "call", "reason": "", "markers": [], "user_properties": [["recovery", "hard reset"], ["recovery", "second reset"], ["result_note", "after the reset"]]},
     ]
     notes = [{"text": "restored SSID", "recovery": True, "source": "joined_hotspot"}, {"text": "bench idle", "recovery": False, "source": "bench"}, {"text": "unsourced", "recovery": False, "source": ""}]
-    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 1}))
+    path.write_text(json.dumps({"tests": tests, "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": notes, "exitstatus": 1}), encoding="utf-8")
     summary = emitter.from_run_record(path)
     assert summary.notes == [("t.py::a", "3 answered"), ("t.py::a", "1 refused"), ("t.py::b", "recovery: reset once"), ("t.py::b", "graceful wait 9.0s"), ("t.py::c", "after the reset"), ("session (bench)", "bench idle"), ("session", "unsourced")]
     # A recovery note is never dropped: a second one joins the pass's item, a failed test's becomes a note.
@@ -359,4 +359,4 @@ def test_every_result_note_and_plain_session_note_reaches_the_notes_list(emitter
 
 def test_no_emitter_writes_the_github_step_summary() -> None:
     for path in (_SH, _PY):
-        assert "GITHUB_STEP_SUMMARY" not in path.read_text(), path
+        assert "GITHUB_STEP_SUMMARY" not in path.read_text(encoding="utf-8"), path

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Protocol
 
-    from asy_base_classes import AsyncCallback, JsonMapping, JsonValue, SensorReaderConfig
+    from asy_base_classes import AsyncCallback, JsonMapping, SensorReaderConfig
     from asy_config_manager import ConfigSchema, WriteValidity
 
     ResponseEnvelope = dict[str, "str | int | JsonMapping"]
@@ -24,9 +24,9 @@ if TYPE_CHECKING:
     class _Holder(Protocol):
         def hold(self, closable: object) -> None: ...
 
-    class _RequestLike(Protocol):
+    class _RequestLike(Protocol):  # noqa: PYI046  # asy_webserver_service.py imports it for its routes
         # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
-        # which leaves get/put/route unannotated (v2.7.0); shared with asy_webserver_service.py.
+        # which leaves get/put/route unannotated (v2.7.0).
         @property
         def json(self) -> object: ...
 
@@ -41,8 +41,6 @@ _ERR_CALLBACK = const(14)
 _STANDARD_CODES: dict[int, str] = {
     0: "Command executed",
     1: "Invalid JSON request",
-    2: "Command specifier missing",
-    3: "Invalid command",
     400: "Bad request",
     404: "Not found",
     405: "Method not allowed",
@@ -87,20 +85,3 @@ def make_response(code: int, descr: str | None = None, result: "JsonMapping | No
         "result": {} if result is None else result,
     }
 
-
-def parse_cmd_request(request: "_RequestLike", keys: list[str]) -> "tuple[dict[str, JsonValue] | None, ResponseEnvelope | None]":
-    # Parse the request body, then validate a "cmd" field against the caller's own allowed-command
-    # list. A syntactically valid but non-dict JSON body (e.g. a bare list or string) is treated as
-    # a genuinely invalid request (code 1), not "cmd specifier missing" (code 2).
-    try:
-        req_json = request.json
-    except Exception:  # request.json has no internal guarding (see CLAUDE.md) - a malformed body
-        # or bad encoding raises straight out of the property access.
-        req_json = None
-    if not isinstance(req_json, dict):
-        return None, make_response(1)
-    if "cmd" not in req_json:
-        return None, make_response(2)
-    if req_json["cmd"] not in keys:
-        return None, make_response(3)
-    return req_json, None

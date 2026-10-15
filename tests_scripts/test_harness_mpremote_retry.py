@@ -131,7 +131,7 @@ def test_the_rebind_checks_each_sudo_tee_and_polls_the_state_it_waits_for(monkey
     tty.mkdir(parents=True)
     (tty / "device").symlink_to(interface)
     node = tmp_path / "ttyACM0"
-    node.write_text("")
+    node.write_text("", encoding="utf-8")
     sleeps: list[float] = []
     actions: list[str] = []
 
@@ -141,7 +141,7 @@ def test_the_rebind_checks_each_sudo_tee_and_polls_the_state_it_waits_for(monkey
             (usb / "driver").rmdir()
             node.unlink()
         else:
-            node.write_text("")
+            node.write_text("", encoding="utf-8")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(harness, "_SYS_CLASS_TTY", tmp_path / "class_tty")

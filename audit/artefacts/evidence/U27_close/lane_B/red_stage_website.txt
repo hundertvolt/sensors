@@ -1,0 +1,6 @@
+FAILED tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15]
+FAILED tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15T08:30:00]
+FAILED tests_scripts/test_stage_website.py::test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged[2026-10-15T08:30:00Z"><script>]
+3 failed, 33 deselected in 0.38s
+FAILED tests_scripts/test_stage_website.py::test_a_firmware_build_s_date_is_stamped_into_the_page_and_a_plain_build_carries_none
+1 failed, 35 deselected in 0.40s

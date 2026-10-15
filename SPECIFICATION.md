@@ -66,9 +66,10 @@ buildgen/                Host-CPython device-TOML-to-firmware-module generator (
                           Part C.14) - AST-parses src/ driver files, never imports them (real
                           MicroPython-only names aren't available under plain CPython here).
 build/                   Gitignored, build-time-only output tree (scripts/build_firmware.py's
-                          default --output location) - generation is never committed
-                          (SPECIFICATION.md Part L.2); `rm -rf build/` is the
-                          full cleanup.
+                          default --output location, the build work dirs under firmware/,
+                          website/ and frozen_html/, the evidence archive under archive/) -
+                          generation is never committed (SPECIFICATION.md Part L.2);
+                          `rm -rf build/` is the full cleanup.
 digital_twin/            Hardware simulator for I2C/SPI/WiFi under the MicroPython Unix-port
                           interpreter (A.10, digital_twin/README.md, Part C.11 point 9)
 frozen_modules/          Gitignored build artifact (build_frozen_html.sh's gzip+freezefs output) -
@@ -80,11 +81,14 @@ tests_hardware/          Real-hardware tiers (flash, bench) and device scripts -
                           (CLAUDE.md, tests_hardware/README.md), and the dev bench's wiring and
                           state
 toolchain/               MicroPython/pico-sdk/picotool build-environment installer
-  versions.toml             single source of truth for the target MicroPython version (Part B)
+  versions.toml             single source of truth for the target MicroPython version and its stub pins (Part B)
   setup_toolchain.py        setup/test/env/board - builds RP2040 firmware and the three Unix-port builds
   micropython_overrides.py  build overrides applied without editing the checkout (B.14)
 pyproject.toml           dev-tooling config (ruff/mypy/pytest/uv)
-scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run_unix_port_integration.sh
+scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scripts, and their shared
+                          helpers: _unix_port.sh (the one Unix-port probe), micropypath.toml (the two
+                          MICROPYPATH layouts), _devices.sh, _require_python.sh, _require_venv.sh,
+                          _port_lock.sh/_port_lock.py (B.4, E.1, E.3)
 .github/workflows/       CI: one job per tool and test tier, on every push/PR (CLAUDE.md)
 ```
 
@@ -105,7 +109,7 @@ scripts/                 lint.sh/typecheck.sh/test.sh, build_frozen_html.sh, run
 - **REST API pipeline** — deployed `api_helpers.py` chains `cmd_pre_check → init_json_from_cfg →
   update_valid_json → set_sensor_value → cmd_post_check` per PUT. `src/asy_api_response.py` replaces it:
   `asy_base_classes.py`'s `_set_dict_cfg()` gives every `SensorReaderConfig` a generic schema-driven
-  setter; `asy_api_response.py`'s `make_response()`/`parse_cmd_request()`/`handle_set_cmd()` replace the
+  setter; `asy_api_response.py`'s `make_response()`/`handle_set_cmd()` replace the
   per-endpoint glue with one response envelope (C.5.3).
 - **FRAM storage** (every real device — confirmed against all 6 `devices/*.toml`, each declaring a
   `driver = "fram"` instance) — a bump allocator handing out chunks as two redundant copies, so
@@ -1002,8 +1006,9 @@ settings.
 - **Real production bug, fixed**: `_get_measurements()`/`_get_sensors()` must build results with
   `.update()`, never `result[name] = await module.get_dict_data()` — every driver's own return is
   already `{name: {...}}`, so indexing doubled it into `{"SCD30": {"SCD30": {...}}}`.
-- **PUT shapes** — sparse JSON, no `cmd` envelope: present fields apply, omitted stay untouched, an
-  unknown field (or unknown sensor) answers `"Invalid"`; the server answers every submitted key.
+- **PUT shapes** — sparse JSON on the product route, no `cmd` envelope: present fields apply,
+  omitted stay untouched, an unknown field (or unknown sensor) answers `"Invalid"`; the server
+  answers every submitted key. A body that is not a JSON object answers code `1` (C.5.3).
   `/measurements` — no PUT. `/sensors` — per-sensor field subsets, an unknown sensor or a sensor
   entry that is not an object answering `"Invalid"` in place of its field map; SCD30
   compares against a fresh chip snapshot and writes only what changed (compare-before-write, G.2),
@@ -1137,14 +1142,18 @@ Implementation: `WebserverService`/`_TimeoutStreamProxy` and `tests/test_asy_web
 
 ## A.9 The frozen-HTML pipeline
 
-`scripts/build_frozen_html.sh` gzips a temp copy of the source dir(s) `HTML_SRC_DIRS` names
-(required; `scripts/build_website.sh` stages the real website and sets it), then runs `python -m freezefs
-<tmp> frozen_modules/frozen_html.py --on-import mount --target /html --overwrite always` (never
-`--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
+`scripts/build_frozen_html.sh` gzips a copy of the source dir(s) `HTML_SRC_DIRS` names
+(required; `scripts/build_website.sh` stages the real website and sets it) into its work directory,
+`build/frozen_html/<output name>/` (or `$FROZEN_HTML_WORK_DIR`; `build_website.sh` passes its own
+`build/website/<device>/gzipped`), wiped at the start and kept after. It then runs the vendored
+freezefs archiver, through a `python3 -c` wrapper that pins its clock to the epoch and sorts its walk
+without editing `ext/`, as `freezefs <work dir> frozen_modules/frozen_html.py --on-import mount
+--target /html --overwrite always` (never `--compress`: this project pre-gzips by hand, served via Microdot's `send_file(...,
 compressed=True)` over a stream `_StaticRoutes.serve()` opens itself and its connection closes at
 the end, in 256 B reads, with `Content-Length` and `Cache-Control: no-cache`, so a browser revalidates
 before reusing a page and a reflashed site is never served stale (agent, 2026-09-30; owner-reviewed,
-2026-10-02) — Part I.3, "Static files"). Output goes to `frozen_modules/` (gitignored), not
+2026-10-02) — Part I.3, "Static files"). With `gzip -n` that makes the archive byte-reproducible, the
+build time living only in `buildgen/version.py`'s stamp. Output goes to `frozen_modules/` (gitignored), not
 `.frozen/`: `.frozen/` is a hardcoded MicroPython import-machinery sentinel
 (`MP_FROZEN_PATH_PREFIX`) — any path starting with that string routes to the compiled-in frozen
 table, so a real on-disk file there is silently unimportable. **The merge of several source dirs is
@@ -1157,8 +1166,8 @@ generated
 effect; `WebserverService(..., static=StaticSite(mount="/html", ...))` registers the static route pair.
 
 There is no placeholder site: `scripts/test.sh` and the twin runners build the real website
-(`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py` - wozi's for the unit
-tier, the booted device's for the twin runners - and `npm test`'s `pretest` hook builds every
+(`scripts/build_website.sh`, Part H) into `frozen_modules/frozen_html.py` - the first derived
+device's for the unit tier, rebuilt every run, the booted device's for the twin runners - and `npm test`'s `pretest` hook builds every
 device's into `build/generated_html/<device>/frozen_html.py` for the web tier. The retired
 `html_stub/` (removed 2026-09-24, owner's rule that the real site is the most biting test) left one
 case the real site has no file for, the binary `application/octet-stream` fallback, which Section G
@@ -1187,7 +1196,8 @@ piece exists (flagged per CLAUDE.md).
 
 **Automated CI suite** (`scripts/run_digital_twin_ci.sh <device>`, `digital-twin-e2e` job — a
 `strategy.matrix` over every device of `devices/*.toml`, each GC stage and each part, the suite or
-the host-side scenario harness (E.9)): builds the Unix port and the real production website for that
+the host-side scenario harness (E.9)): archives the device's previous logs (E.1's evidence
+archive), then builds the Unix port and the real production website for that
 device (`scripts/build_website.sh <device>`); `scripts/_digital_twin_ci_suite.py` drives
 `run_generic_integration.py` through its runs, once per gc threshold, archiving each pass's state
 before every fresh start (`digital_twin/README.md` has the runs and the per-device subprocess
@@ -1251,9 +1261,8 @@ generator resume, callback or not, inflating every allocation figure 4-5x relati
 — E.5.2 has the measurements and HEAP_FRAGMENTATION_MEASUREMENTS.md archive §1.2 item 7 the
 per-node table. The plain suite's figures are therefore the firmware's own scale, and the heavy
 files run faster for the same reason (measured at the split of the two builds:
-`test_sensortask_wozi.py` 24.6s → 9.3s). Because a build directory's name no longer tells you
-which variant is in it, `scripts/test.sh` verifies the binary rather than the path (E.5.2's first
-consequence).
+`test_sensortask_wozi.py` 24.6s → 9.3s). A build directory's name does not tell you which build
+flavour it holds, so every runner asks the binary through `scripts/_unix_port.sh` (E.5.2).
 
 **Prerequisites**: `sudo`; outbound network to GitHub/apt; `uv`; Ubuntu's `universe` component
 (default on real Ubuntu images — `gcc-arm-none-eabi` lives there).
@@ -1283,8 +1292,12 @@ consequence).
 
 `versions.toml` is read as a typed table — `[micropython] ref` (a non-empty string), `[toolchain]
 board` (a non-empty string) and `apt_packages` (a list of strings), `[lwip]` (a table, whose values
-B.14.2's checks take at the build that applies them) — and an unreadable file, or a missing or
-mistyped key, fails naming the file, table and key before anything is built.
+B.14.2's checks take at the build that applies them), `[stubs]` `board` and `stdlib` (non-empty
+strings: the exact type-stub post-releases `scripts/typecheck.sh` installs, which also refuses a
+pin whose X.Y.Z is not the ref's, B.15) — and an unreadable file, or a missing or mistyped key,
+fails naming the file, table and key before anything is built. A user error — `SetupError`, and the
+overrides' `OverrideError`, both plain `Exception` subclasses — is caught in `main()` and printed as
+one line with exit 1, no traceback (L.5).
 
 The whole `setup`, `test` or `env` command runs under the toolchain directory's lock (B.5). The
 record is deleted when a `setup` or `test` starts and written last, after the verification summary,
@@ -1355,12 +1368,26 @@ the remedy: let sudo keep the proxy variables (`env_keep`), or install the packa
 `--skip-apt`.
 `npx playwright install-deps` runs sudo itself with the caller's environment (B.12).
 
+**Shell script conventions** (agent, 2026-09-30), checked over every `scripts/*.sh` by
+`tests_scripts/test_shell_conventions.py`: `#!/usr/bin/env bash`; the first command after the header
+is `set -euo pipefail`, or a `set` line carrying its reason on the same line; a helper whose header
+starts `# Sourced` sets options only on its own command path (inside an
+`if [ "${BASH_SOURCE[0]}" = "$0" ]` block) and arms no `EXIT` trap, since an option would change its
+caller's; at most one `trap … EXIT`, armed before any `mktemp`; no loop over an unquoted expansion;
+`-h`/`--help` exits 0 with a `Usage:` line on stdout and runs no tool, and an unknown option exits 2
+naming it, except where the usage line forwards further arguments. A runner taking a device
+validates it through `scripts/_devices.sh`'s `require_device` before any work (an unknown or reserved
+`zz_test_` name exits 2 naming the valid devices), and a flag without its value is a usage error
+(exit 2, E.10). Every bare `python3` in `scripts/` comes after `scripts/_require_python.sh`'s
+`require_python311`, which fails naming the interpreter found and the fix when it is older than 3.11
+(`tests_scripts/test_require_python.py`).
+
 ## B.5 Directory layout
 
 ```
 <toolchain-dir>/          default: $PICO_TOOLCHAIN_DIR or ~/pico-toolchain
   toolchain-record.json    what was built from what (refs, commits, picotool, compilers, input hashes)
-  .toolchain.lock          held by the one setup, test or firmware build allowed per directory
+  .toolchain.lock          held exclusive by the one setup, test or firmware build allowed per directory, shared by test runs
   micropython/             full clone at the pinned ref
     ports/rp2/build-<board>/    transient - removed after verification
     ports/unix/build-standard/  host-side interpreter build - the standing test-rig artifact
@@ -1380,9 +1407,16 @@ and `scripts/build_firmware.py` take an exclusive, non-blocking `flock` on `.too
 creating the directory first, and write their pid into it; a second run fails at once with
 "another setup or firmware build (pid N) is using <dir> - wait for it to finish, or use another
 --toolchain-dir", never waiting, and the OS drops the lock with a dying holder, so it never goes
-stale. An interrupted `setup` or `test` is detected by the missing record (B.3), on which
-`scripts/test.sh` rebuilds (E.3) and `scripts/build_firmware.py` refuses (B.11).
-`setup_toolchain.py board` takes no lock.
+stale. A test run holds the same lock shared, non-blocking, while it uses the Unix-port binaries
+(`scripts/_unix_port.sh`'s `check`/`ensure` for the calling shell's life,
+`tests_scripts/conftest.py`'s `micropython_bin` for the pytest session); it writes no pid, so a
+setup it refuses says "a test run is using the Unix ports of <dir> (it holds the toolchain lock
+shared) - wait for it to finish, or use another --toolchain-dir", and a run a setup or build
+refuses says "error: the toolchain at <dir> is in use by a setup or firmware build (pid <p>,
+holding <lock>) - wait for it to finish, or use another PICO_TOOLCHAIN_DIR". An interrupted `setup`
+or `test` is detected by the missing record (B.3), on which `scripts/_unix_port.sh`'s `ensure`
+rebuilds (E.3) and `scripts/build_firmware.py` refuses (B.11); `ensure` also rebuilds when an input
+hash the record names differs from this tree's file. `setup_toolchain.py board` takes no lock.
 
 **picotool** is rebuilt and installed only when the previous record names another tag or
 `/usr/local/bin/picotool version` no longer reports `picotool v<tag>`; otherwise no `cmake` and
@@ -1536,9 +1570,11 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   Firefox/geckodriver come from conda-forge via micromamba (~106 MB, no version file to key on),
   cached under a fixed key whose suffix is bumped to force a refresh; WebKit and Edge reinstall
   every run. `needs: web-unit-tests`, fail-fast.
-- **`lint-and-typecheck`** names every ruff scope explicitly; for mypy it names only the main
-  pass's paths, since `scripts/typecheck.sh` always runs the twin and host passes (B.15). Explicit
-  paths narrow only that CI invocation; a local run stays full-scope. **`shellcheck`**,
+- **`lint-and-typecheck`** names every ruff scope explicitly, `build/generated_src` included after
+  a generation step, so the generated modules are linted with `src/`'s rules; for mypy it names
+  exactly the main pass's `files`, checked by `tests_scripts/test_lint_type_scopes.py` (B.15), since
+  `scripts/typecheck.sh` always runs the twin and host passes. A local run may narrow the main pass
+  with arguments; CI's equals the full scope. **`shellcheck`**,
   **`actionlint`** (the workflow, the composite action and, through shellcheck, every `run:` block)
   and **`zizmor`** (`--offline`, skipping the two API audits so it behaves the same everywhere) are
   each their own stage so each tool has its own check run. shellcheck covers `scripts/` only: the
@@ -1546,8 +1582,8 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 - **`unit-tests`** keeps `needs: lint-and-typecheck` purely for sequencing, the standing hang
   backstop, with `if: !cancelled()` so a red lint never skips the tests (CLAUDE.md). The per-file
   timeout in `scripts/test.sh` is the real hang defence; `timeout-minutes: 45` is for many files
-  hanging at once: a ~17-minute warm run plus one file's full 9-minute retry budget (180 s x 3),
-  after a tighter cap cancelled a healthy run (`34755468619`). Cold-cache runs measured 16m58s and
+  hanging at once: a ~17-minute warm run plus one file's full 12-minute retry budget (240 s x 3,
+  `PER_FILE_TIMEOUT_S`), after a tighter cap cancelled a healthy run (`34755468619`). Cold-cache runs measured 16m58s and
   16m42s including the toolchain build. The minutes are `ci.unit_tests_timeout_min` (Part N), every
   job's `timeout-minutes` a `ci.*` row there. Its own retried `uv sync` is B.10's.
 - **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same suite at the boot entry's
@@ -1575,14 +1611,16 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 
 **Bumping the MicroPython version**: change `versions.toml`'s `[micropython] ref` — the only place —
 then run the platform re-check (CLAUDE.md "Platform target"; Part F's opening checklist).
-Everything else derives automatically: matching pico-sdk/picotool (B.3), the mypy type stubs
-(`scripts/typecheck.sh`, failing clearly if no matching stub release exists yet), the Unix ports.
+Everything else derives automatically: matching pico-sdk/picotool (B.3) and the Unix ports. The
+stub post-releases pinned in `[stubs]` move with it: `scripts/typecheck.sh` fails while their X.Y.Z
+differs from the ref (B.15; owner, 2026-10-02, paraphrase: the stub version moves with every
+MicroPython bump, enforced by a check).
 
 The legacy build (`legacy/firmware/build-<device>.sh`) is described in `legacy/README.md`;
 reference-only.
 
 **The `src/`-based build (parallel pipeline)**: `scripts/build_firmware.py <device> [--output PATH]
-[--device-toml PATH]` assembles a real `firmware.uf2` from the generated device module, its boot entry, `src/` +
+[--device-toml PATH] [--no-autostart] [--tick-offset-test]` assembles a real `firmware.uf2` from the generated device module, its boot entry, `src/` +
 `ext/microdot.py` + the device's website (H) — build-only. Every device needs its own
 `devices/<device>.toml` (Part L); `buildgen.codegen.generate_boot_entry_source()` emits the boot
 entry `sensortask_<device>_main.py`, frozen as `main.py`, and its no-autostart variant
@@ -1590,16 +1628,31 @@ entry `sensortask_<device>_main.py`, frozen as `main.py`, and its no-autostart v
 start line (A.7); `scripts/_generate_sensortask_modules.py` writes both beside the device module
 into `build/generated_src/`, every output to a `<name>.tmp` beside it, renamed into place with
 `os.replace()` once all are written, so a killed run never leaves a half-written file under its real
-name. One build at a time per toolchain directory: `scripts/build_firmware.py` holds the directory's
-lock (B.5) from before it stages the modules until the image is copied out, so a second build or
-setup fails at once naming the first; it refuses a toolchain directory without
-`toolchain-record.json` (incomplete, or older than the record) and prints the record's built ref and
-commit before building. Each build writes an image record beside its `.uf2` (`<output>.json`, sorted
+name. `--no-autostart` freezes the no-autostart entry as `main.py` instead (default output
+`build/firmware-<device>-noautostart.uf2`): the board's filesystem must hold no `boot.py`/`main.py`,
+since a frozen entry that returns lets them run. `--tick-offset-test` builds the rollover round's
+test image (`build/firmware-<device>-tickoffset.uf2`, B.14.5), never a release image.
+`stage_python_modules()` stages every Python file the image freezes: the stripped `src/` and `ext/`
+modules, the generated device module through the same strip, and the boot entry as `main.py`. The
+intermediates stay for inspection in the work directory `build/firmware/<device>[-noautostart][-tickoffset]/`
+(the staged modules in `stage/`, the rendered `manifest.py` beside it, so `freeze()`'s walk of
+`stage/` cannot pick up the manifest), wiped at the next build of the same image and kept after a
+failed build, whose one-line error names it. One build at a time per toolchain directory:
+`scripts/build_firmware.py` holds the directory's lock (B.5) from before it stages the modules until
+the image record is written, so a second build or setup fails at once naming the first; it refuses a
+toolchain directory without `toolchain-record.json` (incomplete, or older than the record) and prints
+the record's built ref and commit before building. One UTC build date per build is handed to the
+generator (the build information, L.7) and to `scripts/build_website.sh --build-date`, so a board's
+`/system` and its page name one build. Each build prints the image size against the filesystem
+boundary, `== Image: <used> B of <fs_base> B before the filesystem (<pct> %), <free> B free`, read
+from `firmware.elf`'s link symbols (the link already refuses an overlap; the report gives the
+headroom). Each build writes an image record beside its `.uf2` (`<output>.json`, sorted
 keys: `device`, `BuildDate`, `firmwareVersion`, `websiteVersion`, `commit` and `dirty` from the tree,
 `maxConnections`, the `lwip` macros read back out of the built firmware, the `overrides` it carries,
-`deviceToml` and `uartCrc`): the old record is removed first, the image is written under a temporary
-name and renamed into place, and the record is written last, so a killed build never leaves a new
-image beside an old record, nor a truncated image under the image's name. The bench tier checks the
+`deviceToml`, `uartCrc`, `imageUsedBytes`, `filesystemBaseBytes`, `imageFreeBytes` and `autostart`):
+the old record is removed first, the image is written under a temporary name and renamed into place,
+and the record is written last, so a killed build never leaves a new image beside an old record, nor
+a truncated image under the image's name. The bench tier checks the
 board against it before any bench test (`tests_hardware/README.md`, "Verify the image").
 `--device-toml` builds from a copy of `devices/<device>.toml` of the same name, refused when it
 changes what the website shows (the generated definitions), e.g. a UART link's `crc` for the CRC16
@@ -1618,23 +1671,44 @@ for `dev`; not yet re-confirmed for `wozi` (never physically flashed).
 
 Every staged `src/`/`ext/` module and the generated device module (it carries `src/`'s own
 `TYPE_CHECKING` form) pass through `scripts/_strip_type_checking.py`'s
-`strip_type_checking_blocks()` — an AST transform dropping each bare `if TYPE_CHECKING:` block (an
-`elif`/`else` branch, the runtime one, stays in its place) plus its `try/except ImportError` header,
-then `ast.unparse()`. `mpy-cross` doesn't dead-code-eliminate `if TYPE_CHECKING:` the way it does
+`strip_type_checking_blocks()`, which edits the staged copy line for line, without `ast.unparse()`:
+each bare `if TYPE_CHECKING:` block (no `elif`/`else`; with one, the runtime branch stays in its
+place) and the `try: from typing import TYPE_CHECKING / except ImportError: TYPE_CHECKING = False`
+guard are blanked, a suite left empty gets a `pass`, and every other read of `TYPE_CHECKING` becomes
+`False`. `mpy-cross` doesn't dead-code-eliminate `if TYPE_CHECKING:` the way it does
 `if micropython.const(0):`, so guarded imports would otherwise survive into the `.mpy` bytecode as
 dead weight (~3.6KB measured). Only the *bare* form is matched; a handler doing real work outside
-`TYPE_CHECKING` keeps its guard. Only the staged temp copy is rewritten; the boot entry and the
-website module are staged as generated. Side effect: strips **every** comment from the file (not
-just the targeted blocks — `ast.unparse()` never carries comments) — harmless for frozen firmware,
-but an on-device traceback's line numbers won't match checked-in `src/`; re-derive via the same
-strip.
+`TYPE_CHECKING` keeps its guard. Only the staged copy is rewritten; the boot entry and the website
+module are staged as generated. Every line keeps its number and every comment elsewhere survives, so
+an on-device traceback's line numbers equal checked-in `src/`'s, and the result depends only on the
+text, never on the host CPython. A source that does not parse, a stripped copy that does not, or one
+still reading `TYPE_CHECKING` raises `StripError` naming `<path>:<line>`, a one-line build error.
 
 `tests_scripts/` (CPython/pytest) covers the build tooling fast and offline;
 `test_real_firmware_build_produces_a_valid_uf2` does the real end-to-end build (parametrized over
-`wozi`/`dev`), gated behind `RUN_SLOW_FIRMWARE_BUILD=1`, run in CI's `firmware-build-verify` job on
+every device), gated behind `RUN_SLOW_FIRMWARE_BUILD=1`, run in CI's `firmware-build-verify` job on
 every push/PR — this pipeline's CI firmware-build stage.
 
-**Production-readiness scope**: proves the build assembles and (via the scenario harness's
+**The frozen inputs are reproducible.** The rendered manifest freezes the staged files by name, in
+sorted order, and patches `os.walk` inside itself to sort every directory walk the board's own
+manifests make (`freeze()` of a directory follows the host filesystem's order,
+`tools/manifestfile.py:317`, v1.29.0), so the image's frozen-module order is the same on every host
+with no `ext/` or upstream edit (owner, 2026-10-05: 'Apart from that, everything shall be
+byte-identical.'). The build date is a build input: a real build stamps its UTC build time
+(owner, 2026-10-05: 'They must differ for being genuine.'), and
+`tests_scripts/test_frozen_inputs_reproducible.py` stages every device twice under one fixed date and
+two hash seeds and compares every byte, proves that another date changes only the generated
+module's date line, and that the frozen order does not follow the host's directory walk;
+`scripts/build_frozen_html.sh` gzips with `-n`, so no timestamp or name enters the frozen site.
+
+**The shipped form boots under the twin.** `tests_scripts/test_stripped_image_boots.py` stages every
+device as `stage_python_modules()` does, compiles every staged module with the toolchain's own
+`mpy-cross` (the device module stays stripped source, since the twin runner reads its construction
+lines through its `__file__`), puts nothing of `src/` or `ext/` on the path, boots each under the
+twin and asserts what the source boot (`tests_scripts/test_digital_twin_generated_boot.py`) asserts.
+
+**Production-readiness scope**: proves the build assembles, that the stripped, compiled image set
+boots under the twin, and (via the scenario harness's
 real-website scenarios, `scripts/_digital_twin_scenarios.py`, H.7) that the booted twin serves the
 real website — still build-only, not an on-device functional check.
 `tests_hardware/flash/test_toolchain_flash_boot.py` (`--allow-flash-cycle`-gated) exercises real
@@ -1680,7 +1754,9 @@ tier then probes passwordless sudo, `sudo -k -n <absolute path> <version argumen
 command it runs unattended (`_BENCH_SUDO_COMMANDS`: `nmcli`, `iw`, `iptables`, `tc`, `tee`,
 `picotool`, `timeout`, `systemd-run`, `systemctl`), so a cached credential cannot pass it; it writes
 no sudoers file and names every refused command (`tests_hardware/README.md`, Prerequisites); root
-passes. `ensure_br_netfilter()` persists its two settings with `sudo tee` from stdin, no temporary
+passes. It also probes the off-subnet spoof's own call, `sudo -k -n <venv python>
+tests_hardware/spoof_udp.py --help` (an argument that only prints usage), and fails naming that
+command when it is refused. `ensure_br_netfilter()` persists its two settings with `sudo tee` from stdin, no temporary
 file.
 
 **Local-test scope**: `generic` verified fully end-to-end in a cloud sandbox; USB/network
@@ -2293,9 +2369,12 @@ MICROPY_SENSORS_TICK_OFFSET_TEST_APPLIED 1` prepended and that one body's return
 includes `<mphalport.h>` in angle brackets and no `ports/rp2`, `extmod` or `shared` file includes it
 with quotes, so the copy reaches every translation unit. The test image builds in its own directory,
 `build-<board>-tickoffset`, so a release build never reuses one of its objects and two boards never
-share one CMake cache. No command line requests it at this stage: only a direct
-`build_firmware(..., tick_offset_test=True)` call builds it, since the rollover runner that will is
-not written yet (agent, 2026-10-08).
+share one CMake cache. `scripts/build_firmware.py <device> --tick-offset-test` requests it (default
+output `build/firmware-<device>-tickoffset.uf2`, work directory `build/firmware/<device>-tickoffset/`,
+B.11), and `scripts/run_bench_rollover_test.sh` builds the bench device's image that way before the
+rollover round (E.6.3). The build information names it: the generated module's `build_info`, which
+`GET /system`'s `build` entry serves, gains `"TestOverrides": ["tick_offset_test"]` in a test image
+only (L.7), and the image record's `overrides` lists it (B.11).
 
 **Release refusal.** After every rp2 build, `verify_tick_offset_in_build()` preprocesses
 `py/mphal.h` with the build's own recorded flags and reads the sentinel back: a release build that
@@ -2316,10 +2395,11 @@ anchor is re-verified with every MicroPython version bump (Part F's opening chec
 **One constraint drives the split: mypy resolves a bare module name to exactly one file per run.**
 MicroPython-target code needs `time`/`machine`/`network` to mean the board's; the digital twin needs
 `machine`/`network`/`neopixel` to mean its own richer fakes; host tooling needs CPython's real
-stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality tooling"), all strict.
+stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality tooling"), all strict,
+then three single-file checks (below), each recorded as its own check in its summary block.
 
 **Main pass — `pyproject.toml` `[tool.mypy]` (`src`, `tests`, `digital_twin`,
-`tests_hardware/device_scripts`).**
+`tests_hardware/device_scripts`, `build/generated_src`).**
 - `platform = linux`, `follow_imports = silent` and `mypy_path`/`custom_typeshed_dir = typings` are
   the micropython-stubs project's documented setup: typings/stdlib replaces mypy's typeshed so
   MicroPython's own signatures win, and `mypy_path` adds the board modules (`machine`, `network`,
@@ -2327,44 +2407,47 @@ stdlib. So `scripts/typecheck.sh` runs three passes (CLAUDE.md "Code quality too
   `follow_imports_for_stubs` extends that to the (upstream-Beta) stub package itself. `ext/typings`
   holds Microdot's upstream stub, vendored unmodified at `ext/typings/microdot/` (same policy as
   `ext/microdot.py`).
-- `scripts/typecheck.sh` records the installed stub release in `typings/.stub-spec`: line 1 the
-  spec it asked for (`micropython-rp2-rpi_pico_w-stubs==<X.Y.Z>.*`, X.Y.Z from the MicroPython
-  ref), line 2 the version uv resolved, read from the board package's one `.dist-info` directory
-  (none or several fail the run). It prints `== MicroPython stubs: <version> (for firmware
-  <X.Y.Z>)`, wipes `typings/` first when the recorded spec differs or is missing, and drops the
-  record before each install and writes it after the check, so a failed or killed install leaves
-  none.
+- `scripts/typecheck.sh` records the installed stub releases in `typings/.stub-spec`: line 1 the
+  spec it asked for (`micropython-rp2-rpi_pico_w-stubs==<board> micropython-stdlib-stubs==<stdlib>`,
+  the `[stubs]` pins below), line 2 the versions installed, each read from its package's one
+  `.dist-info` directory and required to equal its pin (none, several or another fail the run). It
+  prints `== MicroPython stubs: board <version>, stdlib <version> (for firmware <X.Y.Z>)`, wipes
+  `typings/` first when the recorded spec differs or is missing, and drops the record before each
+  install and writes it after the check, so a failed or killed install leaves none.
 - `no_site_packages`: otherwise the venv's own packages are discovered and checked against a
   typeshed holding only the MicroPython stdlib subset.
 - `files` names directories, never globs: a glob is pre-expanded into a file list that `exclude`
   can no longer prune.
-- `build/generated_src` is on `mypy_path` for the one static `import sensortask_dev`
-  (`heap_headroom_after_full_system_build.py`); `typecheck.sh` generates it first. Nothing there
-  collides with `src/`.
+- `build/generated_src` is both a `files` entry — the generated device modules and boot entries
+  are checked as sources, with `src/`'s lint rules, and a finding there is fixed in `buildgen/`,
+  never suppressed in the output — and on `mypy_path` for the one static `import sensortask_dev`
+  (`heap_headroom_after_full_system_build.py`) and the twin pass's imports; `typecheck.sh` and
+  `lint.sh` generate it first. Nothing there collides with `src/`.
 - `digital_twin/unixport` is on `mypy_path` for the Unix-port UDP shim the NET unit tests import
   (`_unix_port_udp_addr_shim`); it holds no hardware fake, so no twin module shadows a board stub.
-- **Excluded, and why.** `tests/network.py`: a bare `network.py` in a scanned root wins resolution
-  over the real stub project-wide, silently turning `WLAN` types in `src/` into `Any`; the exclusion
-  is mypy-only, and the interpreter still finds it through `MICROPYPATH`. `digital_twin/machine.py`,
-  `network.py`, `neopixel.py`, `rp2.py`: a hard "Duplicate module named" error against the
-  same-named fake in `tests/` (`tests/machine.py`, `tests/rp2.py`).
-  `digital_twin/launch.py`, `run_generic_integration.py`, every
+- **Excluded, and why — every excluded file is checked by another run.** `tests/network.py`: a bare
+  `network.py` in a scanned root wins resolution over the real stub project-wide, silently turning
+  `WLAN` types in `src/` into `Any`; the exclusion is mypy-only, the interpreter still finds it
+  through `MICROPYPATH`, and `typecheck.sh` checks it alone under this config.
+  `digital_twin/machine.py`, `network.py`, `neopixel.py`, `rp2.py`: a hard "Duplicate module named"
+  error against the same-named fake in `tests/` (`tests/machine.py`, `tests/rp2.py`).
+  `digital_twin/launch.py`, `run_generic_integration.py`, `run_device_script.py`, every
   `tests/test_digital_twin_*.py` and the shared construction scenario library
   (`_digital_twin_construction_scenarios.py`): they use the
   twin's own API (`WDT.would_have_triggered_count`, `WLAN.script_connect_outcomes()`,
   `configure_fram_state_path()`, ...), which here could only resolve to the real stub - attr-defined
-  noise, never a finding. Their apparent cleanliness in this pass was accidental: a real
-  `no-any-return` in `test_digital_twin_bmp3xx.py` appeared only once `digital_twin` was in scope.
+  noise, never a finding. The twin pass checks all of these (its `files` below).
 - `strict = true`, spelled that way so a mypy bump surfaces new strict checks as findings;
-  `no_implicit_optional` and `warn_unreachable` on top. **Explicit `Any`**: all three passes set
+  `no_implicit_optional` and `warn_unreachable` on top, and the `ignore-without-code` error code in
+  all three passes, so a bare `# type: ignore` is itself an error. **Explicit `Any`**: all three passes set
   `disallow_any_explicit = true`; each keeps a per-module baseline of exempted modules (a
   `disallow_any_explicit = false` override), which only shrinks and which
   `tests_scripts/test_mypy_any_baseline.py` pins. `disable_error_code = assignment` is
-  deliberately not set. The one exemption, `no_implicit_reexport = false`, and the
-  `disallow_untyped_decorators` override for `test_setter_microdot_integration` (upstream's stub
-  leaves `route`/`get`/`put` unannotated, v2.7.0): CLAUDE.md.
+  deliberately not set. The one exemption, `no_implicit_reexport = false`: CLAUDE.md.
 
-**Twin pass — `digital_twin/typecheck.ini`.** `mypy_path =
+**Twin pass — `digital_twin/typecheck.ini`**, its `files` (`digital_twin`, every
+`tests/test_digital_twin_*.py` and `tests/_digital_twin_construction_scenarios.py`) the run's whole
+scope: `typecheck.sh` passes it no paths. `mypy_path =
 digital_twin:digital_twin/unixport:src:build/generated_src:typings:tests`, `digital_twin` first so
 `machine`/`network`/`neopixel` resolve to the twin, its `unixport/` subdirectory for the UDP shim,
 the NTP responder and the offline-NTP writer; `build/generated_src` for the runner's device import
@@ -2372,18 +2455,20 @@ the NTP responder and the offline-NTP writer; `build/generated_src` for the runn
 the twin from the main pass alone did not fix its attribute resolution (confirmed), which is why
 this pass exists.
 Full `--strict` including `no_implicit_reexport`, since this scope mocks nothing by reassignment;
-its strictness is kept in sync with the main pass by hand (INI has no include directive).
+its strictness matches the main pass's, checked by `tests_scripts/test_lint_type_scopes.py` (INI has
+no include directive).
 
 **Host pass — `host_typecheck.ini`** (`buildgen`, `scripts`, `toolchain`, `tests_scripts`,
 `tests_hardware`). Ordinary CPython 3.11 programs (`ast`, `tomllib`, `subprocess`, ...), which the
 MicroPython typeshed would report as missing, so they get mypy's real typeshed.
 - `tests_hardware/device_scripts/` is excluded here (MicroPython code: 121 errors, 99 artifacts)
   and checked in the main pass instead.
-- `tests_scripts/conftest.py` is excluded: with `tests_hardware` and `tests_scripts` both on
-  `mypy_path`, both conftests become bare `conftest`, a duplicate module no per-file setting can
-  resolve. `tests_hardware/conftest.py` keeps the slot (every `import harness` needs its path); the
-  excluded file holds two trivial fixtures, its real logic moved to `_script_loader.py` - an accepted
-  gap against re-laying out either tier.
+- `tests_scripts/conftest.py` is excluded and checked alone: with `tests_hardware` and
+  `tests_scripts` both on `mypy_path`, both conftests become bare `conftest`, a duplicate module no
+  per-file setting can resolve, so `typecheck.sh` checks it in a run of its own under this config.
+  `tests_hardware/conftest.py` keeps the slot (every `import harness` needs its path).
+  `tests_hardware/bench/conftest.py` meets `tests_hardware/conftest.py` the same way (`bench/` is on
+  `mypy_path`) and is checked alone the same way.
 - `explicit_package_bases` plus `.` on `mypy_path` give `tests_hardware/conftest.py` and
   `tests_hardware/flash/conftest.py` distinct dotted names.
 - The other `mypy_path` entries mirror the `sys.path` pytest builds at runtime: `tests_hardware`
@@ -2391,6 +2476,48 @@ MicroPython typeshed would report as missing, so they get mypy's real typeshed.
   (`runner`), `tests_scripts` (`_toml_fixtures`, `_script_loader`) and `toolchain`
   (`setup_toolchain.py`'s `import micropython_overrides`). Without them the whole harness API types
   as `Any`; adding them changed no finding in `scripts`/`toolchain`/`tests_scripts` (diffed).
+  `scripts` is not on it: the host scopes import `scripts.<module>` dotted from `.`, and a second,
+  bare name for the same file stops the pass ("Source file found twice under different module
+  names"), so `build_firmware.py` imports `scripts._strip_type_checking`.
+
+**The single-file checks.** After the three passes `typecheck.sh` runs `tests_hardware/bench/conftest.py`
+and `tests_scripts/conftest.py` alone under `host_typecheck.ini` and `tests/network.py` alone under
+the main config: each is a second file of a module name another file of its pass holds, so it is
+checked where nothing else of that name is in the run.
+
+**CI and local runs agree.** CI passes exactly the main pass's `files`; a local run may narrow the
+main pass with arguments. `tests_scripts/test_lint_type_scopes.py` pins the three configs against
+each other and every lint scope: the same strictness in all three passes, ruff and CI naming the
+eight scopes plus the generated tree, every Python file checked by some mypy run, and a file two runs
+check only with its named reason.
+
+**Stubs.** `typecheck.sh` installs the exact post-releases `toolchain/versions.toml`'s `[stubs]` pins
+(`board`, `stdlib`), whose X.Y.Z must equal `[micropython] ref`'s, so the stubs move with every
+MicroPython bump and the check fails until they do (owner, 2026-10-02, paraphrase: the stub version
+moves with every MicroPython bump, enforced by a check); it prints and records them in
+`typings/.stub-spec`, then repairs the package's verified defects, each guarded on the defect still
+being present and failing when the file it targets moved (F.5.5).
+
+**Stub workarounds and their removal triggers** (each workaround's code site points here, "Removal
+trigger: SPECIFICATION.md B.15"; the repairs' account is F.5.5):
+- The two F.5.5 repairs (`asyncio.Future`, `NotImplemented`): removed once upstream re-ships the
+  fix, when each turns into a no-op.
+- Bare `Timer()` (the drivers' trigger timers in `src/asy_bmp3xx_driver.py` and
+  `src/asy_isl29125_driver.py` say so at their sites): valid on rp2, where only the soft timer, id
+  -1, exists (`ports/rp2/machine_timer.c:120-121`, v1.29.0), while every `Timer.__init__` overload of
+  the board stub requires `id` (`machine.pyi:1363`, 1.29.0.post1); `tests/machine.py`'s `Timer`
+  models the real signature. Removed when the stub declares a zero-argument overload.
+- A `const()` tuple indexed is `Any`: the stub constrains `Const_T` to the bare `Tuple`
+  (`micropython.pyi:22, :254`), and the `int`/`tuple[int, ...]` annotation narrows it
+  (`BMP3XX_I2C._get_osr_setting()`, `ISL29125`'s `persist_for_interval()`). Removed when `Const_T`
+  keeps element types.
+- `_mpy_shed.time_mp._TicksMs`, the stub's only name for a `ticks_ms()` value, private
+  (`src/asy_notification_service.py`): replaced when the stub exports a public alias; a release that
+  drops it fails the main pass with `import-not-found`.
+- `deflate.DeflateIO` without `with` and with a `no-any-return` ignore
+  (`tests/test_website_build_integration.py`'s `_decompress()`): the stub declares neither
+  `__enter__`/`__exit__` nor a typed `read()` (`deflate.pyi:43-88`); `warn_unused_ignores` flags
+  the ignore the day `read()` is typed, and `with` returns in that change.
 
 # Part C — Sensor Driver Architecture Specification
 
@@ -2880,8 +3007,6 @@ code catalog** (`_STANDARD_CODES`), every code with a producer:
 |---|---|---|
 | `0` | Command executed | every request the server processed, a per-field failure included |
 | `1` | Invalid JSON request | a PUT whose body does not parse or is not a JSON object |
-| `2` | Command specifier missing | `parse_cmd_request()`, kept while it exists |
-| `3` | Invalid command | `parse_cmd_request()`, kept while it exists |
 | `400` | Bad request | the shaped HTTP errors (`_ERROR_STATUSES`, A.5) |
 | `404` | Not found | as `400` |
 | `405` | Method not allowed | as `400` |
@@ -2891,9 +3016,9 @@ code catalog** (`_STANDARD_CODES`), every code with a producer:
 A shaped HTTP error uses its status as its code. A producer may give its own `descr` (the busy
 `LightCmdLED` refusal's "LED busy - retry later", A.8); an uncatalogued code reads "Unknown error",
 so `make_response()` stays total and never raises. `tests/test_asy_api_response.py` checks that
-every catalogued code has a producer in `src/` and every produced code is catalogued.
-`parse_cmd_request(request, keys)` — body parsing + `"cmd"` validation, decoupled from
-`microdot.Request`'s type via a local `Protocol`.
+every catalogued code has a producer in `src/` and every produced code is catalogued. Every PUT
+body is sparse JSON on a product route, with no `cmd` envelope (A.8); a body that is not a JSON
+object answers code `1` (`asy_webserver_service.py`'s `_body_as_dict()`, then `make_response(1)`).
 `handle_set_cmd(reader, data, cfg_vals, post_fct=None, post_asy_fct=None)` — orchestrates
 `_set_dict_cfg()` plus one optional post-write hook (fires once per call, only if a field actually
 changed — one hook per endpoint, not one per field, as legacy's `post_fct`/`post_asy_fct` (agent,
@@ -4258,7 +4383,9 @@ per `tests/test_*.py`, and checks its exit code. `pytest` covers the host-only s
 the build tooling (`scripts/build_firmware.py`, `build_frozen_html.sh`, `build_website.sh`),
 `buildgen/` and `toolchain/`, `devices/*.toml`'s own shape, the pure helpers of host-side scripts
 like `scripts/_digital_twin_ci_suite.py`, `tests_hardware/`'s pytest-level marker gating, the
-error catalog against every logging call, and cross-file invariants that can only be checked by
+error catalog against every logging call, the boot of the stripped, compiled image set under the twin
+(the shipped form, B.11, `tests_scripts/test_stripped_image_boots.py`, running `mpy-cross` from the
+toolchain directory), and cross-file invariants that can only be checked by
 reading real source text (`scripts/test.sh`'s own step ordering; the `outer_cap_s` ceiling's
 mirrors, Part H.4). A host test whose build or toolchain input is missing fails, never skips.
 
@@ -4270,20 +4397,29 @@ counts against the same `TEST_PARALLELISM` budget as any test file — a monoton
 it, falling back to the slow-host value when the probe cannot run, and a `--coverage` run takes one
 file per usable core, the settrace binary making the suite CPU-bound — and carries its own `timeout`
 for the standing "hanging tests are never allowed" rule). One toolchain build at a time per
-toolchain directory: a `scripts/test.sh` that must build runs `setup`, which takes that directory's
-lock (B.5) and waits on no one — it fails at once naming the run holding it. One ordering constraint
-follows from that concurrency and is load-bearing: every step that globs `devices/*.toml` must run
-**before** the background launch, because one `tests_scripts/` test necessarily writes a throwaway
-`devices/zz_test_*.toml` into the live tree.
+toolchain directory: a setup or firmware build holds that directory's lock exclusive (B.5), and every
+run holds it shared while it uses the Unix-port binaries (`scripts/_unix_port.sh`, and
+`tests_scripts/conftest.py`'s `micropython_bin` for the whole pytest session), so either refuses the
+other at once, naming the holder, and waits on no one. A `scripts/test.sh` that must build runs
+`setup` through the probe's `ensure`, which drops its shared hold for the build and takes it again
+after. One ordering constraint follows
+from the concurrency and is load-bearing: every step that globs `devices/*.toml` must run **before**
+the background launch, because two `tests_scripts/` tests still write a throwaway
+`devices/zz_test_*.toml` into the live tree: `tests_scripts/test_test_sh.py`'s nested-run sentinel
+and `tests_scripts/test_build_device_websites_sh.py`'s skip case.
 
 **`devices/zz_test_*.toml` is a reserved namespace** — for live-tree test fixtures only; a real
-device may never be named that way. `tests_scripts/test_build_website_sh.py`'s malformed-TOML case
-removes its own file in `finally`, which a SIGKILL (the pytest job is `timeout`-wrapped) defeats,
-so `scripts/test.sh` also sweeps the pattern up front. A leaked one is not merely untidy:
-`scripts/_generate_sensortask_modules.py` globs `devices/*.toml` and exits 1 on the first
-`BuildError`, so under `set -e` it aborts that script, `scripts/typecheck.sh` and both twin runners
-outright, naming a device nobody added. Both halves of the reservation, and the sweep's placement
-ahead of the generation step, are asserted by `tests_scripts/test_test_sh.py`.
+device may never be named that way. A fixture's own `finally` is defeated by a SIGKILL (the pytest
+job is `timeout`-wrapped), so `scripts/test.sh` also sweeps the pattern up front and
+`tests_scripts/conftest.py` reclaims any it finds at session start. The generator skips the
+reserved names (`scripts/_generate_sensortask_modules.py`), as do `scripts/_devices.sh`,
+`tests_scripts/_devices.py`, `scripts/build_device_websites.sh`, `scripts/cross_browser_smoke.mjs`
+and `scripts/_check_gc_collect_sites.py`, so a leaked fixture no longer aborts generation;
+`scripts/_devices.sh`'s `require_device` refuses one as a device argument. The test that needs a
+malformed TOML (`tests_scripts/test_build_website_sh.py`) builds in a sandbox copy of the repo whose
+`devices/` links the real TOMLs plus the fixture under a non-reserved name. The sweep's placement
+ahead of the generation step, and the reserved prefix on every live `devices/` write in every
+`tests_scripts/` file, are asserted by `tests_scripts/test_test_sh.py`.
 
 **Two per-file resources must stay disjoint across the suite, because the loop is concurrent**:
 each file's `TmpScratch` key (`tests/_tmp_scratch.py`; the per-device split gives each generated
@@ -4309,9 +4445,12 @@ never a neighbour's, never inside the ephemeral range.
 are held by one runner at a time through a per-port lock, `scripts/_port_lock.sh` (and
 `tests_js/_port_lock.js` with the same directory, files, message and owner chain):
 `scripts/test.sh` and `scripts/run_unix_port_integration.sh` take 53, and
-`scripts/run_digital_twin_ci.sh` 53 and 18080, right after validating their arguments; every
-live-tier twin takes 53, re-entrantly with a count, released after the twin exits and at process
-exit, and the restart check holds it across both boots (H.7). A lock is the directory
+`scripts/run_digital_twin_ci.sh` 53 and 18080, right after validating their arguments; the CI suite
+run alone takes 53 and 18080 itself, and the scenario harness and the cross-browser smoke 53
+(`scripts/_port_lock.py` is the Python form of the same lock, re-entrant in one process, passed by
+a bash or CPython ancestor holding the port); every live-tier twin takes 53, re-entrantly with a
+count, released after the twin exits and at process exit, and the restart check holds it across
+both boots (H.7). A lock is the directory
 `${XDG_RUNTIME_DIR:-/tmp}/sensors-port-<port>.lock/` holding `pid` and `runner`. The holder's
 descendants pass through the owner chain (`SENSORS_PORT_LOCK_OWNER`, `SENSORS_PORT_LOCKS_HELD`), a
 dead holder's lock is taken over, and an unrelated second suite fails at once with `port <port> is
@@ -4337,10 +4476,12 @@ runs none of them, since they exercise C code line coverage cannot see (E.10). A
 file's basename, so `tests_scripts/test_test_sh.py` checks that the set is non-empty and that no
 basename repeats a `tests/test_*.py` one.
 
-**Evidence archive**: every runner — `scripts/test.sh`, the hardware runners — moves its logs and
-reports under `build/archive/<runner>/<UTC>/` (`scripts/_archive_evidence.py`) and keeps the last
-three per runner; a failed run's logs are archived before the run deletes its scratch, and the run
-prints the archive's path.
+**Evidence archive**: every runner — `scripts/test.sh`, `scripts/run_digital_twin_ci.sh` (per
+device, `build/archive/digital_twin_ci_<device>/`, the previous run's `digital_twin_ci_logs/<device>/`
+moved there before any build), the hardware runners — moves its logs and reports under
+`build/archive/<runner>/<UTC>/` (`scripts/_archive_evidence.py`) and keeps the last three per
+runner; a failed run's logs are archived before the run deletes its scratch, and the run prints the
+archive's path.
 
 ## E.2 Test framework
 
@@ -4456,15 +4597,22 @@ scripts/test.sh
 ```
 
 Builds the Unix ports on first run (via `setup`, Part B, cached under `$PICO_TOOLCHAIN_DIR`), and
-again whenever the binary the run needs is missing or not its variant, `toolchain-record.json` is
-missing (an interrupted or older setup; B.5), or, on a plain run, `build-lwip` is missing or not
-the plain variant (E.5.2); each condition is checked again after `setup`, and one still unmet fails
-the run naming it. `SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To run one file
-directly:
+again whenever a binary of a build flavour the run needs is missing or reports another flavour,
+`toolchain-record.json` is missing (an interrupted or older setup; B.5), or an input hash it records
+differs from this tree's file — all through the one probe, `scripts/_unix_port.sh`'s `ensure`, with
+one setup for every flavour the run needs (`standard` and `lwip` on a plain run, `standard` and
+`settrace` under `--coverage`; E.5.2); each condition is checked again after `setup`, and one still
+unmet fails the run naming it. `SKIP_APT=1 scripts/test.sh` skips the first-run apt-get install. To
+run one file directly:
 
 ```
-MICROPYPATH="src:tests:frozen_modules:.frozen" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
+MICROPYPATH="$(scripts/_unix_port.sh micropypath unit)" ~/pico-toolchain/micropython/ports/unix/build-standard/micropython tests/test_math_helpers.py
 ```
+
+The unit and twin layouts are defined once, in `scripts/micropypath.toml`; every launcher reads
+them there (`scripts/_unix_port.sh`'s `micropypath`, `tomllib`, `tests_js/_micropypath.js`), and
+`tests_scripts/test_twin_never_needs_tests_on_its_path.py` fails a twin launch whose path is spelled
+out instead or reaches `tests/`.
 
 `.frozen` is required in `MICROPYPATH` because it replaces the interpreter's default `sys.path`
 rather than extending it, and the default path is what makes frozen-in modules (`asyncio` included)
@@ -4570,8 +4718,10 @@ Every attempt's output stays in the file's log, so the memory gate reads a timed
 is not a tty.
 
 The 240s default came from 180s when the real-socket webserver-concurrency scenarios grew ~35s past
-comfort. **Per-file overrides exist but the table is empty**: the per-device jobs (one process per
-device) brought the two former monolithic files (447s/268s single-process) down to ~90s
+comfort. **Per-file overrides hold one row, the scenario harness**: each `scenarios[<device>]` job
+boots a twin per scenario (E.9), so it takes `runner.scenarios_timeout_s`, 5x the 396 s a standalone
+`dev` harness run took at -1 (2026-10-15, nothing beside it), a hang backstop. No test file has one:
+the per-device jobs (one process per device) brought the two former monolithic files (447s/268s single-process) down to ~90s
 (`sensortask`) and ~45s (the webserver-concurrency scenarios, since moved host-side, E.9) standalone;
 measured again on 2026-10-13, the slowest job alone, `tests/test_sensortask.py`'s `dev` job (then a
 file of its own), takes 56s at -1 and 82s at 32768, a webserver-concurrency file 43-44s at 32768.
@@ -4593,7 +4743,7 @@ own body executes, and propagates its exit code unchanged — so the (f) stage f
 where the plain run would. It never passes an incomplete file: one that ends without microtest's
 exit (`runner: <file> ended without microtest's exit - no trailer, or it never ran`), exits with a
 message or raises fails, and `tests/_coverage_runner.py` applies the same rules (E.5). The value is
-validated once in `scripts/test.sh` rather than 85 times inside the runner: a non-integer, or
+validated once in `scripts/test.sh` rather than once per test file: a non-integer, or
 anything outside the rp2040's own 32-bit machine word, is rejected before the run touches the live
 tree (exit 2). `--coverage` has its own runner and says so out loud when both are given, rather than
 silently ignoring the threshold.
@@ -4762,16 +4912,19 @@ does the third Unix build, `build-lwip` (B.14.4).
 
 Consequences worth keeping in mind:
 
-- **The build directory's path no longer identifies its variant.** A `~/pico-toolchain` predating
+- **A build directory's name does not identify its build flavour.** A `~/pico-toolchain` predating
   the split has a `build-standard` that still carries the flag, and it is executable — so an
   existence check is satisfied while the suite silently measures on the inflated binary. CI is
   covered because the toolchain cache key hashes `setup_toolchain.py` and
-  `micropython_overrides.py` (B.10); locally, `scripts/test.sh` asks the binary itself
-  (`hasattr(sys, "settrace")`) and rebuilds when the answer is wrong, and asks `build-lwip` the same
-  on a plain run, which must answer `plain`. The
-  same probe imports `asyncio`: a `setup` interrupted between its frozen-verification build and
-  the vanilla rebuild leaves an executable binary with no frozen `asyncio`, on which every test
-  file dies with `ImportError` — that too reads as unusable and triggers the rebuild.
+  `micropython_overrides.py` (B.10); locally, every runner asks the binary itself through the one
+  probe, `scripts/_unix_port.sh`: it runs `hasattr(sys, "settrace")` and `import lwip`, and the
+  binary reports `standard`, `settrace` or `lwip` (`unusable` when the probe fails, with the probe's
+  last line). `check <flavour>` fails naming the flavour found and builds nothing; `ensure
+  <flavour>` reruns setup once on a mismatch, a missing record or a changed input hash, then checks
+  again. The same probe imports `asyncio`: a `setup` interrupted between its frozen-verification
+  build and the vanilla rebuild leaves an executable binary with no frozen `asyncio`, on which every
+  test file dies with `ImportError` — that too reads as unusable and triggers the rebuild. The probe
+  has no time bound of its own: a binary that hangs at start hangs every caller.
 - **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
   is in HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive §1.2 item 7 and §3A).
@@ -4901,7 +5054,22 @@ about *flashing* only). **One load-bearing exception**: a trailing soft reset on
 (e.g. the already-running `main.py`'s own WiFi task); only a genuine `hard_reset()` reliably
 resumes the live system.
 
-A hardware run's verdict reads its run record (E.10), never a grep of its output.
+A hardware run's verdict reads its run record (E.10), never a grep of its output. Each runner
+passes its own marker floor (`scripts/_require_clean_hardware_run.sh --marker-floor`): L3 and L4
+`not soak_duration and not multi_day_rollover`, the soak runner `soak_duration`, the rollover runner
+`multi_day_rollover`. A `-m` the caller passes narrows the runner's own selection, never replaces it:
+pytest gets exactly one `-m "(FLOOR) and (EXPR)"` for the caller's last `-m EXPR`, printed before
+the run and into the archived pytest log.
+
+**The tick rollover on silicon** is one round on the tick-offset test image (B.14.5), whose tick and
+32-bit millisecond counts wrap about 15 minutes after boot: `scripts/run_bench_rollover_test.sh`
+builds the bench device's image (`build_firmware.py --tick-offset-test`; a failed build exits 1 with
+nothing reaching the board), then runs only the `multi_day_rollover` tests of `tests_hardware/bench/`
+with `--allow-multi-day-rollover --allow-flash-cycle --rollover-image <image>`: the test flashes it —
+one flash cycle, counted in the round's budget — and polls for about two hours with the standard
+health verdicts; the next round flashes its own image. It runs no lower level itself, on top of a
+clean bench run, and the driven-clock proofs at L1 and L2 stay the per-commit proof (owner,
+2026-10-01: 'Test build with a starting offset').
 
 ### E.6.4 Hotspot role-reversal (L4, single-radio)
 
@@ -5170,9 +5338,16 @@ its family, the drivers it needs (skipped on a device without them) and whether 
 boot: the shared ones run first on one twin per group, with an idle check between two of them (the
 twin alive, every connection slot drained, the kernel's accept queue empty, the error counts after
 the drain, the memory gate), and a failure names its scenario and sends the next to a fresh boot.
-`scripts/run_digital_twin_ci.sh` runs it for its device at each GC stage, holding port 53, so the
-scenarios that need an exclusive port 53 run; without that lock they are deselected and listed. A
-device script emits facts; its host test gives the verdict (`tests_scripts/test_device_script_facts.py`).
+Both runners drive it: `scripts/run_digital_twin_ci.sh` runs it for its device at each GC stage,
+holding port 53 (`--exclusive-port-53`), so the scenarios that need an exclusive port 53 run;
+`scripts/test.sh` runs one `scenarios[<device>]` job per derived device at the run's GC stage on a
+shared port 53 (`--shared-port-53`), those scenarios deselected and listed, and counts each job's run
+record into its summary block (none under `--coverage`). Run alone, the harness takes port 53 itself
+through `scripts/_port_lock.py`; a live holder fails the run naming it, with no twin booted. Every
+scenario's shutdown line is checked for a feed gap above `l2.feed_gap_share_max` of the armed
+watchdog timeout, as every suite run's is, except a scenario that starves the watchdog on purpose
+(the hung-step scenario, which ends on its `HUNG S1` or `WATCHDOG_WOULD_TRIGGER` line). A device
+script emits facts; its host test gives the verdict (`tests_scripts/test_device_script_facts.py`).
 
 A fix under this rule must come out **strictly more capable of catching the real test case**, never
 merely lighter on the DUT — E.7/E.8 already show what a test that stops looking at the right thing
@@ -5195,7 +5370,9 @@ leak's own decline can't inflate the very tolerance meant to catch it — instea
 constant extrapolated through a scaling law real sampling never matched. `_run_11_soak()` makes one boot
 and decides on its trend check: a retry or a longer timeout never counts as a race fix (owner,
 2026-09-26), so a trend past tolerance fails the run, and an HTTP, watchdog or shutdown failure ends
-it at once.
+it at once. Its warm-up ends at the plateau — no new `MEM_SAMPLE` floor for `l2.soak_plateau_cycles`
+cycles, at most `l2.soak_warmup_cycles` — and every cycle walks every `GET` route of the device's
+API reference.
 
 ## E.10 The runner summary block
 
@@ -5544,10 +5721,9 @@ disabled — MicroPython's own real default); called with an argument, sets it a
 `None` (save the previous value yourself first). A negative argument re-disables rather than
 raising.
 
-**`scripts/build_firmware.py`'s type-checking strip removes every comment from a file**, a side
-effect of reconstructing via `ast.unparse()` (which never carries comments) — harmless for frozen
-firmware, but an on-device traceback's line numbers won't match checked-in `src/`; re-derive via
-the same strip.
+**`scripts/build_firmware.py`'s type-checking strip keeps every line's number**: it blanks the
+`TYPE_CHECKING` blocks in place rather than reconstructing the file, so an on-device traceback's
+line numbers match checked-in `src/` (B.11).
 
 **`asyncio.run()`'s `KeyboardInterrupt` handling has a real gap while every task is parked in the
 scheduler's poll wait** — a real SIGINT propagates straight out without resuming/unwinding the
@@ -6003,10 +6179,15 @@ read: the boot entry's `WDT()` has overwritten it.
 ### F.5.5 Two defects in the 1.29 stub package, repaired at install time
 
 `micropython-rp2-rpi_pico_w-stubs` 1.29.0.post1 (pulling `micropython-stdlib-stubs`
-1.29.0.post1/.post2) ships two defects that together accounted for **every one of the 26 findings**
-the version bump surfaced across both mypy passes. `scripts/typecheck.sh` repairs both right after
-installing into `typings/`, each guarded on the defect still being present so it no-ops once
-upstream re-ships:
+1.29.0.post1/.post2; the releases installed are the `[stubs]` pins of `toolchain/versions.toml`,
+board 1.29.0.post1 and stdlib 1.29.0.post2, B.15) ships two defects that together accounted for
+**every one of the 26 findings** the version bump surfaced across both mypy passes.
+`scripts/typecheck.sh` repairs both right after installing into `typings/`, each guarded on the
+defect still being present so it no-ops once upstream re-ships, and failing when the file it targets
+moved: a missing `typings/stdlib/asyncio/`, `typings/stdlib/_asyncio.pyi` (or its `class _Future`)
+or `typings/stdlib/builtins.pyi` (or both its commented and its live `NotImplemented` line) stops the
+run with "the installed stub tree moved (<path> missing) - re-verify the <name> repair against the
+new layout":
 
 - **An incomplete rename.** `stdlib/_asyncio.pyi` privatised `Future` to `_Future` and
   `stdlib/asyncio/futures.pyi` — which re-exported it under the public name — was dropped from the
@@ -6370,7 +6551,7 @@ otherwise; rows 15-22 come from a diff of the effective `MICROPY_*`/`MP_*` setti
 | 14 | SIGINT delivery and the test heap | pointers only: F.6, E.3.1; `MICROPY_ASYNC_KBD_INTR` is 0 in rp2 and every Unix build, the latter through B.14.1's override, which `build-lwip`'s variant header carries too | — | — | — | — |
 | 15 | exception message detail | DETAILED error reporting: messages name objects and types (`ports/unix/variants/mpconfigvariant_common.h:86-87`) | NORMAL (the ROM-level default, `py/mpconfig.h:925-941`): a `TypeError`/`ValueError`/`AttributeError` text can name less | — | L3 for any log text a check reads | none |
 | 16 | `machine`, `rp2`, `neopixel` and `network` | the Unix `machine` has none of `I2C`, `SPI`, `UART`, `Pin`, `Timer`, `WDT`, `RTC`, `reset_cause()` or `mem_backup()`, its `mem32` maps `/dev/mem`, and there is no `rp2`, `neopixel` or `network`: L1/L2 run the same-named fakes in `tests/` and `digital_twin/`, found first on the search path | the real peripherals, the DMA engine, the NeoPixel bitstream and `network.WLAN` | the fakes | L3/L4 | none |
-| 17 | soft-callback queue | depth 4 (`py/mpconfig.h:1232-1234`) | depth 8 (`ports/rp2/mpconfigport.h:131`); every soft Timer and Pin IRQ callback is queued there and dropped when it is full (`shared/runtime/mpirq.c:103-106`, `py/scheduler.c:162-180`; F.1) | the unit fake's `Timer.drop()` stands in for a drop | L3/L4 | none |
+| 17 | soft-callback queue | depth 4 (`py/mpconfig.h:1232-1234`) | depth 8 (`ports/rp2/mpconfigport.h:131`); every soft Timer and Pin IRQ callback is queued there and dropped when it is full (`shared/runtime/mpirq.c:103-106`, `py/scheduler.c:162-180`; F.1) | the unit fake's `Timer.drop()` and the digital twin's test-only `Timer.drop_next_soft_callbacks` (`digital_twin/machine.py`, off by default, cleared by `reset_test_state()`) stand in for a drop | L3/L4 | none |
 | 18 | module loading | `src/`, `ext/` and the generated modules are imported as `.py` source through `MICROPYPATH` (`scripts/test.sh`) | the same code runs frozen, compiled by `mpy-cross` from a comment-stripped copy (F.1): the parser is the same, but an on-board traceback's line numbers do not match the checked-in source | — | the firmware build, L3 | none |
 | 19 | filesystem | host files through the POSIX VFS, 4,096-byte paths (`ports/unix/mpconfigport.h:159`) | a littlefs2 partition of 868,352 B (`ports/rp2/boards/RPI_PICO_W/mpconfigboard.cmake:16-17`, `ports/rp2/mpconfigport.h:216`) with 128-byte paths (`ports/rp2/mpconfigport.h:103`), whose writes hold interrupts off (F.2) | — | L3, the persistence-write runs | none |
 | 20 | `random`'s boot seed | the host's randomness (`ports/unix/mpconfigport.h:190-196`) | `get_rand_32()` (`ports/rp2/mpconfigport.h:163`), used by the boot signature's `random.getrandbits(32)` | — | — | none |
@@ -7798,11 +7979,13 @@ logged without crashing anything is not a passing result at this stage — a cau
 allocation failure is exactly the signal this stage exists to catch, and "it didn't crash" is not
 the same claim as "it didn't happen."
 **Both tiers now assert that themselves rather than leaving it to a reader**: the twin's
-`scripts/_digital_twin_ci_suite.py` checks every run's log, and `scripts/test.sh` (added
-2026-09-22, having been the gap) searches each test file's own captured output and fails the run,
-naming the file and the offending lines. The gate is checked on a passing file too, since a file
-that degraded gracefully and went green is the whole silent case. In the unit tier a missing or
-unreadable per-file log fails the gate ("no verdict") rather than reading as clean.
+`scripts/_digital_twin_ci_suite.py` and the scenario harness check every run's log, and
+`scripts/test.sh` (added 2026-09-22, having been the gap) searches each test file's own captured
+output — every attempt's, and for a scenario-harness job every twin log of every attempt — and fails
+the run, naming the file and the offending lines. The gate is checked on a passing file too, since a
+file that degraded gracefully and went green is the whole silent case. A missing, unreadable or
+empty log fails the gate ("no verdict") rather than reading as clean, in the unit and the twin tier
+alike.
 
 **Every memory gate matches two spellings, and the second one is the load-bearing half.** `src/`'s
 degrade handlers log the exception, not its class — `self.pr.err("Could not start timer:", e)` reaches
@@ -7911,14 +8094,18 @@ but modest gain, well below the headline. At the shipped `gc.threshold(32768)` i
 measurable (archive §7A.6), which is the honest reading: this earns its place at the (e) stage, not
 as (f) margin.
 
-Confined mechanically, not by convention: `tests_scripts/test_gc_collect_sites.py` walks `src/`
-with `ast` and asserts the only `gc.collect()` call sites are `asy_system_service.py`'s
-`run_setups()` and `start_tasks()`, attributing every call to its enclosing function — so a new call
-anywhere, including at module level, and a rename of an allowed site both fail it — plus a textual
-assertion that no `buildgen/` file contains one. The test carries its own self-tests, so the guard
-is checked rather than assumed. `scripts/lint.sh` carries the same rule as a fast path, so a
-widening fails the lint gate before the suite runs: `gc.collect(` under `src/` only in
-`asy_system_service.py`, under `buildgen/` nowhere. Both were verified to bite on an injected call.
+Confined mechanically, not by convention: one AST checker, `scripts/_check_gc_collect_sites.py`,
+which `scripts/lint.sh` runs and `tests_scripts/test_gc_collect_sites.py` pins. It walks every
+`src/` file (subdirectories included) and reports each `gc.collect()` call through a name bound to
+`gc` or to `gc.collect`, aliases and plain assignments included, with its qualified enclosing
+function (`<module>` at import time); its allowance table holds two rows, `asy_system_service.py`'s
+`SystemService.run_setups` and `SystemService.start_tasks`, and an allowed row with no call left is
+reported too, so a new call anywhere and a rename of an allowed site both fail it. It checks every
+derived device's generated module and both boot entries in memory, as the generator would write
+them, and `buildgen/`'s text for an emitted `gc.collect(`. It names `tests/`, `digital_twin/` and
+`tests_hardware/` as not checked yet in every run (their measurement rows are not in the table).
+Exit 0 clean, 1 naming each site outside the table, 2 when it cannot look: a file that does not
+parse, a device that does not generate, or a root with no `src/*.py` — never a skip.
 
 Those two guard the *sites*; `tests_scripts/test_digital_twin_boot_contiguity.py` guards the
 *effect*. It boots all six real generated devices under the Unix port and asserts that each list's
@@ -9451,6 +9638,12 @@ is no separate `boot_entry/` directory: the boot entries are generated too. Gene
 deterministic across hash seeds: with one fixed build date, two generations under different
 `PYTHONHASHSEED`s are byte-identical for every device and both fixtures
 (`tests_scripts/test_buildgen_reproducible.py`); the build date is the one input that varies (L.7).
+`scripts/_generate_sensortask_modules.py` writes the whole tree all or nothing — every output to a
+`<name>.tmp`, renamed into place once all are written — and then removes every finished file of the
+tree it did not write (a removed device's outputs among them), printing `Pruned N stale output(s):
+<relpaths>` (E.3). Every bare `python3` a
+build script runs is version-checked first (`scripts/_require_python.sh`, B.4): the host tooling
+needs CPython 3.11 (`tomllib`, `datetime.UTC`).
 
 - **`driver` → class**: `buildgen.driver_registry.resolve_driver()` AST-parses (never imports)
   `asy_<name>_driver.py` for a `SensorReader`/`SensorReaderConfig` subclass. An `_OVERRIDES` table
@@ -9664,7 +9857,15 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   directory is a `BuildError` too. `tests_scripts/test_buildgen_error_contract.py` drives one
   malformed input per rule id through the CLI and asserts the one line, its place and its
   ` - fix: `, with no traceback; its AST scan of `buildgen/` fails on a `rule=` id the table lacks,
-  a row whose id no raise carries, and a `rule=` that is not a literal.
+  a row whose id no raise carries, and a `rule=` that is not a literal. Every host tool family has
+  one user-error class, all plain `Exception` subclasses: `BuildError` (buildgen), `SetupError`
+  (`toolchain/setup_toolchain.py`), `OverrideError` (`toolchain/micropython_overrides.py`),
+  `StripError` (`scripts/_strip_type_checking.py`) and `StageError` (`scripts/_stage_website.py`);
+  each CLI's `main()` turns its own into one stderr line and exit 1, and every host CLI ends
+  `raise SystemExit(main())` (owner, 2026-09-25, paraphrase: user errors show the message without a
+  Python traceback, tracebacks only for internal bugs). `tests_scripts/test_host_cli_exit_idiom.py`
+  pins every `__main__` block in the host scopes, the classes' base and one malformed-input run per
+  user-facing CLI.
   `tests_scripts/test_buildgen_fuzz.py` runs 2,000 mutations of the real device TOMLs and the base
   fixture from a fixed seed (a key deleted, a value retyped, two pins swapped, an instance
   duplicated, a wiring value pointed at a random label) through validation, ordering and code
@@ -9735,7 +9936,9 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   exactly one time" CI principle applied to error-handling paths specifically: a generator
   function's abort conditions are themselves testable units.
 - Newly-built generator/validator modules join `pyproject.toml`'s ruff/mypy scope alongside
-  `src/`/`tests/`/`digital_twin/` from day one, and every boot entry they generate is executed at
+  `src/`/`tests/`/`digital_twin/` from day one, and so does their generated output
+  (`build/generated_src/`, linted with `src/`'s rules; a finding there is fixed in the generator,
+  never suppressed in the output, B.15), and every boot entry they generate is executed at
   L1: `tests/test_generated_boot_entry.py` runs each device's `sensortask_<device>_main.py` and its
   no-autostart variant with the device module and the reset record stubbed.
 - Host code evaluates annotations natively (no `from __future__ import annotations`); a
@@ -9919,7 +10122,9 @@ website-only fix can bump one without forcing an unrelated firmware rebuild. `GE
 one nested, never-flattened `"build"` sub-entry — `{"FirmwareVersion", "WebsiteVersion",
 "BuildDate"}` — supplied through `WebserverService.__init__`'s
 `build_info: dict[str, Any] | None = None` parameter and merged into `_get_system()`'s result after
-`_get_settings_flat()` runs, never through `SettingsGroup`, which would flatten it. The website
+`_get_settings_flat()` runs, never through `SettingsGroup`, which would flatten it. A test image
+built with a test-only firmware override (B.14.5) adds `"TestOverrides"`, the sorted override names;
+a release image keeps exactly the three keys. The website
 version also appears independently as a top-level `websiteVersion` key in `definitions.json`: build
 provenance for the bundle currently rendering, as distinct from the device's own last-built
 firmware. Never conflate the two.
@@ -9930,7 +10135,15 @@ version and build date (owner, 2026-09-26).
 **Single source of truth: `buildgen/version.py`** (`FIRMWARE_VERSION`, `WEBSITE_VERSION`,
 `current_build_date()`) — deliberately not a device TOML field (a per-build fact, not a per-device
 one), not `toolchain/versions.toml` (which pins external dependency versions, a different kind of
-"version"), and not a `pyproject.toml` field (the shipped product is never `pip`-versioned). No
+"version"), and not a `pyproject.toml` field (the shipped product is never `pip`-versioned). The
+build date is a build input (owner, 2026-10-05: 'They must differ for being genuine.'):
+`scripts/build_firmware.py` takes one UTC date per build and hands it to the generator (the module's
+`_BUILD_DATE`) and to `scripts/build_website.sh --build-date`, so the image and its page name one
+build; the reproducibility check stages twice with one fixed date and compares everything else byte
+for byte, and a second check proves that changing only the date changes only that line (B.11).
+Generated string literals are double-quoted,
+taken from `repr()` (`buildgen/codegen.py`'s `_lit()`), so a non-BMP character stays one code point.
+No
 bump mechanism exists: one clear, documented place to change the two constants, no automation,
 matching `toolchain/versions.toml`'s own precedent.
 
@@ -10661,6 +10874,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.poll_manager_poll_ms` | 20 ms | `tests_js/poll-manager.test.js` — `20` | — | estimated (agent, `999aada`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.fram_regions_boot_timeout_s` | 120 s | `tests_scripts/test_device_script_fram_regions.py` — `120` | the twin boot that reads the build's FRAM allocation before the scratch regions are checked | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.session_exit_guard_timeout_s` | 60 s | `tests_scripts/test_session_exit_guard.py` — `60` | the two-test probe run of the session exit guard | estimated (agent, 2026-10-14) — measurement owed: elapsed of the test on the slowest host that runs it, L0 | ~60× the ~1 s two-test probe run | the code under test or the host class changes |
+| `l0.run_digital_twin_ci_sh_timeout_s` | 60 s | `tests_scripts/test_run_digital_twin_ci_sh.py` — `60` | one call of a twin runner in its sandbox, every tool it starts stubbed | estimated (agent, 2026-10-15) — measurement owed: one stubbed runner call's elapsed on the slowest host that runs it, L0 | the whole file took 6.9 s alone (2026-10-15, single observation), every call inside it | the runner or its stubs change, or the host class changes |
 
 **L1 (unit tier)**
 
@@ -10862,24 +11076,27 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l2.reset_errors_budget_ratio` | 0.8 | `scripts/_digital_twin_ci_suite.py` — `0.8` | `_RESET_ERRORS_BUDGET_S` = `web.outer_cap_s` × it | estimated (agent, `d370413`) — measurement owed: the ResetErrors sweep's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.ceiling_rounds` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | back-to-back ceiling rounds expose a leaked slot | estimated (agent, `d02ccc9`) — measurement owed: the rounds a leaked slot needs to show on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.slot_release_wait_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | a fixed wait kept: a readiness probe would occupy a `max_connections` slot, the property under test | estimated (agent, `dfb8975`) — measurement owed: the slot release time after a ceiling round on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
-| `l2.ntp_unreachable_watch_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | past the former NTP give-up (~60 s) | estimated (agent, `c20f80b`) — measurement owed: Run 9's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.ntp_unreachable_watch_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | Run 9's bound: the watch ends on the `l2.ntp_unreachable_failures`-th NTP failure, then one supervisor pass; past the former NTP give-up (~60 s) | estimated (agent, `c20f80b`) — measurement owed: Run 9's elapsed on the twin, L2 | the third failure came at about 62.4 s of serving on `dev` (2026-10-15, single observation) | the code under test or the host class changes |
+| `l2.ntp_unreachable_failures` | 3 failures | `scripts/_digital_twin_ci_suite.py` — `3` | the count Run 9's watch ends on, inside `l2.ntp_unreachable_watch_s` | measured 2026-10-15, the Unix-port twin, `dev`, single observation: failures at about 4, 22.5 and 62.4 s of serving and none more by 92 s, the NTP backoff (10 s, doubling) putting the fourth near 142 s | the third failure at ~62 s inside the 90 s bound; a fourth is unreachable inside it | the NTP backoff, its fetch timeout or `l2.ntp_unreachable_watch_s` changes |
 | `l2.bus_fault_error_count` | 500 | `scripts/_digital_twin_ci_suite.py` — `500` | Run 3's sustained-fault volume | estimated (agent, `c691cb3`) — measurement owed: Run 3's elapsed and logged-error count on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.bounded_fault_count` | 3 | `scripts/_digital_twin_ci_suite.py` — `3` | Runs 5 and 5c: the bounded fault's injected failures | estimated (agent, `dec60b7`) — measurement owed: Run 5's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.wifi_scripted_failures` | 5 | `scripts/_digital_twin_ci_suite.py` — `5` | mirrors the `conn_fail_to_hotspot = 5` config value of every `devices/*.toml` | estimated (agent, `dec60b7`) — measurement owed: none: it follows the config value | equal to the config value | a device's `conn_fail_to_hotspot` changes |
-| `l2.soak_warmup_cycles` | 100 | `scripts/_digital_twin_ci_suite.py` — `100` | Run 11's warm-up | estimated (agent, `dde4b31`) — measurement owed: Run 11's elapsed and memory trend on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.soak_warmup_cycles` | 100 | `scripts/_digital_twin_ci_suite.py` — `100` | Run 11's warm-up bound: it ends earlier at the plateau `l2.soak_plateau_cycles` sets | estimated (agent, `dde4b31`) — measurement owed: Run 11's elapsed and memory trend on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.soak_plateau_cycles` | 20 cycles | `scripts/_digital_twin_ci_suite.py` — `20` | Run 11's warm-up ends once no cycle has set a new MEM_SAMPLE floor for this many cycles, at most `l2.soak_warmup_cycles`; a cycle with no sample counts toward neither | estimated (agent, 2026-10-15) — measurement owed: the cycle of each device's last new MEM_SAMPLE floor across healthy Run 11s at both GC stages, L2 | Run 11 ran 84 and 63 cycles in all on `dev` (2026-10-15, one run per GC stage) against the former fixed 120 | the code under test, a device's instance count or the host class changes |
 | `l2.soak_cycles` | 20 | `scripts/_digital_twin_ci_suite.py` — `20` | Run 11's measured cycles | estimated (agent, `dde4b31`) — measurement owed: Run 11's elapsed and memory trend on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.mem_sample_interval_ms` | 25 ms | `scripts/_digital_twin_ci_suite.py` — `25` | Run 11's sampler (`digital_twin/README.md`'s calibrated numbers) | estimated (agent, `dde4b31`) — measurement owed: whether a sparser interval gives Run 11 the same verdict, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.mem_trend_tolerance_sd_multiplier` | 3.0 | `scripts/_digital_twin_ci_suite.py` — `3.0` | Run 11's trend verdict | estimated (agent, `846c78b`) — measurement owed: Run 11's sample spread across healthy runs, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.error_count_wait_s` | 30.0 s | `scripts/_digital_twin_ci_suite.py` — `30.0` | the error-count waits of Runs 3, 5 and 5c | estimated (agent, `dfb8975`) — measurement owed: the error-count waits' elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.first_fault_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | the first-fault waits of Runs 3 and 5c (a faulted driver's first "E" entry after its boot) | estimated (agent, `399c027`) — measurement owed: a faulted driver's first error entry after boot on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.long_wait_s` | 90.0 s | `scripts/_digital_twin_ci_suite.py` — `90.0` | Run 5c's bounded-fault settle; Run 7's hotspot fallback and its captive-DNS answer | estimated (agent, `6a91514`) — measurement owed: Run 7's fallback-to-answer elapsed on the CI runner, L2; widened 30 → 90 s after two CI failures, no elapsed recorded | against that measurement, once taken | the code under test or the host class changes |
-| `l2.hang_run_exit_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | Run 10's `--duration 15` run, its 12 s hung bus call included | estimated (agent, `90a3810`) — measurement owed: Run 10's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.hang_run_exit_wait_s` | 45.0 s | `scripts/_digital_twin_ci_suite.py` — `45.0` | bounds each Run 10 run, which ends on its `WATCHDOG_WOULD_TRIGGER` line; the `--duration 15` run's 12 s hung bus call included | estimated (agent, `90a3810`) — measurement owed: Run 10's elapsed on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.failed_run_exit_wait_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | Run 10's exit wait after a failed check | estimated (agent, `dfb8975`) — measurement owed: Run 10's exit time after a failed check on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.errcount_poll_s` | 1.0 s | `scripts/_digital_twin_ci_suite.py` — `1.0` | the poll step of every errcount wait (`_wait_for_failure_events()`, `_wait_for_errcount_above()`, `_wait_for_error_type_count()`) | estimated (agent, `dfb8975`) — measurement owed: the errcount waits' rounds per run, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.serving_poll_s` | 0.25 s | `scripts/_twin_process.py` — `0.25` | `wait_until_serving()`'s poll step, for the suite and the scenario harness | estimated (agent, `00eb44d`) — measurement owed: the readiness wait's rounds per boot, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.serving_probe_timeout_s` | 1.0 s | `scripts/_twin_process.py` — `1.0` | `wait_until_serving()`'s per-probe `GET /` timeout | estimated (agent, `00eb44d`) — measurement owed: a booted twin's `GET /` latency, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.dns_poll_s` | 0.5 s | `scripts/_digital_twin_ci_suite.py` — `0.5` | `_wait_for_dns_answer()`'s poll step | estimated (agent, `6a91514`) — measurement owed: the captive-DNS wait's rounds in Run 7, L2; tightened 1.0 → 0.5 s with the widened `l2.long_wait_s` | against that measurement, once taken | the code under test or the host class changes |
 | `l2.kill_reap_timeout_s` | 5.0 s | `scripts/_twin_process.py` — `5.0` | the reap wait after a SIGKILL in `shutdown()` and `wait_exit()` | estimated (agent, `00eb44d`) — measurement owed: a SIGKILLed twin's reap time, L2 | against that measurement, once taken | the code under test or the host class changes |
+| `l2.feed_gap_share_max` | 0.75 | `scripts/_twin_process.py` — `0.75` | every suite and harness shutdown line's `largest_feed_gap_ms` against its `wdt_timeout_ms`: above this share is a near reset and fails the run, except the runs that starve the watchdog on purpose (Run 10, the hung-step scenario) | estimated (agent, 2026-10-15): a gap past three quarters of the armed timeout leaves a supervisor pass no room before a reset — measurement owed: the largest feed gap of every healthy suite and harness run per device at both GC stages, L2 | 2,000 ms of `wdt.timeout_ms`'s 8,000 ms left at the bound | `wdt.timeout_ms`, `system.task_check_s` or the supervisor pass changes |
 | `l2.concurrent_get_join_margin_s` | 5.0 s | `scripts/_digital_twin_ci_suite.py` — `5.0` | the concurrent-GET threads' join past their own timeout | estimated (agent, `d02ccc9`) — measurement owed: the threads' join time on the twin, L2 | against that measurement, once taken | the code under test or the host class changes |
 | `l2.escalation_wait_s` | 120.0 s | `scripts/_digital_twin_ci_suite.py` — `120.0` | Run 3: a sustained fault spending the supervisor's restart budget, then the reset | estimated (agent, 2026-10-14): measured under 60 s — measurement owed: the fault-to-reset elapsed per device at both GC stages, L2 | about 2× the observed | the restart budget, `system.task_check_s` or a device's driver set changes |
 | `l2.ntp_first_sync_wait_s` | 60.0 s | `scripts/_digital_twin_ci_suite.py` — `60.0` | Runs 5 and 8: a station link's first NTP sync against the twin's local responder | estimated (agent, 2026-10-14) — measurement owed: the first sync's latency after STA and GOT_IP on the twin, L2 | against that measurement, once taken | the NTP client's check interval or the WiFi connect path changes |
@@ -11238,6 +11455,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l4.manual_bus_electrical_recovery_watch_s` | 30.0 s | `tests_hardware/manual/manual_bus_electrical.py` — `30.0` | — | estimated (agent, `c6c2565`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.manual_bus_electrical_reboot_watch_s` | 30.0 s | `tests_hardware/manual/manual_bus_electrical.py` — `30.0` | — | estimated (agent, `c6c2565`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l4.manual_bus_electrical_lead_window_s` | 20 s | `tests_hardware/manual/manual_bus_electrical.py` — `20` | the operator instruction states it | estimated (agent, `c6c2565`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
+| `l4.manual_bus_electrical_fram_detect_watch_s` | 120.0 s | `tests_hardware/manual/manual_bus_electrical.py` — `120.0` | the cap on the FRAM pull's poll (one `GET /status` a second) for its first FRAM log entry; past it the step records "none within 120 s"; the leads stay off for at least `l4.manual_bus_electrical_lead_window_s` | estimated (agent, 2026-10-15) — measurement owed: the recorded pull-to-entry latency (`fram-pull-latency.txt`) on the dev bench, the manual round, L4 | against that measurement, once taken | the FRAM driver's error path or the step's poll changes |
 | `l4.manual_sensor_accuracy_isl29125_repeatability_pct` | 10.0 % | `tests_hardware/manual/manual_sensor_accuracy.py` — `10.0` | — | estimated (agent, `ab81b79`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L4 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.system_service_restarts_a_real_dead_task_watch_step_s` | 0.9 s | `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `0.9` | — | estimated (agent, `278cf60`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
 | `l3.system_service_restarts_a_real_dead_task_wait_rounds` | 4 | `tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py` — `4` | real observation rounds sized between two restarts and the reboot threshold | estimated (agent, `278cf60`) — measurement owed: the value's own observable on the dev bench (elapsed, count or reading) with date and run count, L3 | against that measurement, once taken | the code under test or the host class changes |
@@ -11588,7 +11806,8 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 |---|---|---|---|---|---|---|
 | `runner.per_file_timeout_s` | 240 s | `scripts/test.sh` — `240` | × `runner.per_file_attempts` is one file's retry budget, inside `ci.unit_tests_timeout_min` | measured: 180 → 240 s when the real-socket webserver-concurrency scenarios grew ~35 s (E.3.1) | about 2.9× the slowest job alone (`tests/test_sensortask.py`'s `dev` job: 56 s at -1, 82 s at 32768, 2026-10-13) | a file's elapsed approaches it |
 | `runner.per_file_attempts` | 3 | `scripts/test.sh` — `3` | a pass after a retry reports `RETRIED-PASS` | owner decision (owner, 2026-09-26: the per-file timeout with two retries is a standing backstop) | two transient timeouts absorbed | the backstop rule changes |
-| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | unknown until measured | the pytest tier grows |
+| `runner.scenarios_timeout_s` | 1980 s | `scripts/test.sh` — `1980` | each `scenarios[<device>]` job's per-attempt bound in place of `runner.per_file_timeout_s`, one job per derived device; × `runner.per_file_attempts` (5,940 s) passes `ci.unit_tests_timeout_min`'s 45 min, so a hung job would have CI cancel `unit-tests` before the summary block prints | measured 2026-10-15, the Unix-port twin, single observation: a standalone `dev` scenario-harness run took 396 s at gc -1, one device, nothing beside it | 5× that run, a hang backstop | a scenario or a device is added, a scenario's boot changes, or the host class changes |
+| `runner.tests_scripts_timeout_s` | 1200 s | `scripts/test.sh` — `1200` | the backgrounded pytest tier's whole-suite bound, never retried | estimated (agent, `a092800`); the tier measured 698 s at either GC stage beside the MicroPython tier (2026-10-15) and 424 s on CI's `unit-tests` at `c11ca0a` (2026-10-08) — measurement owed: the pytest tier's wall clock on the bench Pi4, L0 | 1.7× the 698 s tier, a hang backstop | the pytest tier grows |
 | `runner.kill_after_s` | 10 s | `scripts/test.sh` — `10` | every `timeout` in the runner, the per-file one sending SIGINT first (microtest's `ABORT` line, E.3.1); the EXIT trap's stop of the background jobs sends SIGKILL to what is left after twice it | estimated (agent, `1b37826`) — measurement owed: a timed-out interpreter's exit time after the timeout's first signal (SIGINT for a test file, SIGTERM for the pytest tier) | unknown until measured | the interpreter's signal handling changes |
 | `runner.probe_iterations` | 500000 | `scripts/test.sh` — `500000` | the speed bands' calibration | estimated (agent, `d370413`) — measurement owed: the probe's elapsed on the bench Pi4 (calibration owed) | unknown until measured | the interpreter build changes |
 | `runner.band_fast_ms` | 250 ms | `scripts/test.sh` — `250` | picks `runner.mult_fast` | measured 131-141 ms on the project's x86 sandbox, single observation; calibration on the Pi4 owed (estimated (agent, `d370413`) — measurement owed: the probe on the bench Pi4, L0) | unknown until calibrated | the host class or the interpreter build changes |

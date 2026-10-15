@@ -116,7 +116,7 @@ def _owner_problems(name: str, source: str) -> "list[str]":
 @cache
 def _owner_seed_fn() -> "Callable[[str, _StandInCrc], object]":
     # _owner_seed() run as written, under CPython: its source read from the manager, never imported.
-    tree = ast.parse((_REPO_ROOT / "src" / "asy_fram_manager.py").read_text())
+    tree = ast.parse((_REPO_ROOT / "src" / "asy_fram_manager.py").read_text(encoding="utf-8"))
     (func,) = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_owner_seed"]
     namespace: dict[str, object] = {}
     exec(compile(ast.Module(body=[func], type_ignores=[]), "asy_fram_manager.py", "exec"), {"CRCBase": object}, namespace)  # noqa: S102
@@ -148,7 +148,7 @@ def _seed_problems(owners: "list[str]") -> "list[str]":
 
 
 def _src() -> "list[tuple[str, str]]":
-    return [(p.name, p.read_text()) for p in sorted((_REPO_ROOT / "src").glob("*.py"))]
+    return [(p.name, p.read_text(encoding="utf-8")) for p in sorted((_REPO_ROOT / "src").glob("*.py"))]
 
 
 def test_src_builds_chunks_and_loggers_only_in_constructors() -> None:

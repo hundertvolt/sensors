@@ -287,8 +287,8 @@ def _plant_plan(tree: Path, device: str, instances: "list[str]", buses: "dict[st
 def test_the_generated_devices_are_the_plan_stems_sorted(twin_devices: types.ModuleType, tmp_path: Path) -> None:
     for device in ("fixture-device-b", "fixture-device-a"):
         _plant_plan(tmp_path, device, ["fram"], {})
-    (tmp_path / "sensortask_fixture-device-c.py").write_text("")
-    (tmp_path / "sensortask_fixture-device-d_wiring_plan.json.tmp").write_text("")
+    (tmp_path / "sensortask_fixture-device-c.py").write_text("", encoding="utf-8")
+    (tmp_path / "sensortask_fixture-device-d_wiring_plan.json.tmp").write_text("", encoding="utf-8")
     assert twin_devices.generated_devices() == ["fixture-device-a", "fixture-device-b"]
     assert twin_devices.wiring_plan("fixture-device-b")["device"] == "fixture-device-b"
 
@@ -330,6 +330,6 @@ def test_the_runner_and_the_boot_entry_call_the_generated_main_as_declared(devic
     accepted = {a.arg for a in main.args.kwonlyargs}
     required = {a.arg for a, default in zip(main.args.kwonlyargs, main.args.kw_defaults, strict=True) if default is None}
     assert not main.args.args and accepted == {"watchdog", "cfg_path", "debug", "web_host", "web_port"}
-    for caller, source in (("digital_twin/run_generic_integration.py", (_REPO / "digital_twin" / "run_generic_integration.py").read_text()), ("the boot entry", generated.boot_entry_source)):
+    for caller, source in (("digital_twin/run_generic_integration.py", (_REPO / "digital_twin" / "run_generic_integration.py").read_text(encoding="utf-8")), ("the boot entry", generated.boot_entry_source)):
         passed = _main_keywords_passed(ast.parse(source))
         assert required <= passed <= accepted, (caller, sorted(passed))

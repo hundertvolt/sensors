@@ -1,0 +1,71 @@
+............FF..........FF                                               [100%]
+=================================== FAILURES ===================================
+_ test_every_bare_python3_comes_after_the_version_check[scripts/build_frozen_html.sh] _
+
+script = 'scripts/build_frozen_html.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/build_frozen_html.sh runs a bare python3 at line(s) [44] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [44]
+
+tests_scripts/test_require_python.py:127: AssertionError
+_ test_every_bare_python3_comes_after_the_version_check[scripts/build_website.sh] _
+
+script = 'scripts/build_website.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/build_website.sh runs a bare python3 at line(s) [45, 48, 52] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [45, 48, 52]
+
+tests_scripts/test_require_python.py:127: AssertionError
+_ test_every_bare_python3_comes_after_the_version_check[scripts/typecheck.sh] __
+
+script = 'scripts/typecheck.sh'
+
+    @pytest.mark.parametrize("script", sorted(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("*.sh") if p != _LIB))
+    def test_every_bare_python3_comes_after_the_version_check(script: str) -> None:
+        text = (REPO_ROOT / script).read_text(encoding="utf-8")
+        checks = _check_lines(text)
+        unchecked = [line for line in _bare_python3_lines(text) if not any(check < line for check in checks)]
+>       assert not unchecked, f"{script} runs a bare python3 at line(s) {unchecked} before any require_python311 (source scripts/_require_python.sh)"
+E       AssertionError: scripts/typecheck.sh runs a bare python3 at line(s) [41] before any require_python311 (source scripts/_require_python.sh)
+E       assert not [41]
+
+tests_scripts/test_require_python.py:127: AssertionError
+____ test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything ____
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9839/test_build_frozen_html_stops_o0')
+
+    def test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything(tmp_path: Path) -> None:
+        root = tmp_path / "repo"
+        shutil.copytree(REPO_ROOT / "scripts", root / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
+        source = tmp_path / "site"
+        source.mkdir()
+        (source / "index.html").write_text("<!doctype html>\n", encoding="utf-8")
+        out = tmp_path / "out" / "frozen_html.py"
+        bin_dir, calls = _stub_bin(tmp_path)
+        env = {"PATH": str(bin_dir), "HOME": str(tmp_path), "HTML_SRC_DIRS": str(source)}
+        done = subprocess.run([str(bin_dir / "bash"), str(root / "scripts" / "build_frozen_html.sh"), str(out)], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+>       assert done.returncode == 1, done
+E       AssertionError: CompletedProcess(args=['/tmp/pytest-of-root/pytest-9839/test_build_frozen_html_stops_o0/stub_bin/bash', '/tmp/pytest-o...oot/pytest-9839/test_build_frozen_html_stops_o0/repo/scripts/build_frozen_html.sh: line 36: find: command not found
+E         ')
+E       assert 127 == 1
+E        +  where 127 = CompletedProcess(args=['/tmp/pytest-of-root/pytest-9839/test_build_frozen_html_stops_o0/stub_bin/bash', '/tmp/pytest-o...oot/pytest-9839/test_build_frozen_html_stops_o0/repo/scripts/build_frozen_html.sh: line 36: find: command not found\n').returncode
+
+tests_scripts/test_require_python.py:140: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_frozen_html.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/build_website.sh]
+FAILED tests_scripts/test_require_python.py::test_every_bare_python3_comes_after_the_version_check[scripts/typecheck.sh]
+FAILED tests_scripts/test_require_python.py::test_build_frozen_html_stops_on_a_3_10_python3_before_writing_anything
+4 failed, 22 passed in 0.21s

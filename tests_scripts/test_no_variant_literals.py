@@ -20,23 +20,13 @@ _TC_VERBS = ("replace", "del", "add", "change")
 
 # The content change that removes each kind of literal, named by what it does.
 _REASON_CI = "CI takes its device matrix and site builds from devices/*.toml"
-_REASON_COMMENT = "the comment or docstring names the per-device pattern, not one device"
-_REASON_RUNNER = "the runner takes its device from devices/*.toml or a required argument"
 _REASON_UNIT_TEST = "the unit test takes its device from the generated build, selecting by TOML property"
-_REASON_PYTEST = "the test iterates DEVICE_NAMES, selects by TOML property or uses the synthetic fixture device"
-_REASON_BENCH = "the bench tier names its device through the bench = true TOML key"
-_REASON_DEVICE_SCRIPT = "the device script is handed the bench device's generated module, not one name"
 _REASON_ALLOWLIST = "shrinks as the quoted sentences naming a device are rewritten"
 _REASON_FIXTURE_COMMENT = "the fixture's comments name the property each block copies, not a device TOML"
 
 # File -> the content change that removes its literal. Only shrinks: an entry whose file is clean fails.
 _NOT_YET_CLEANED: "dict[str, str]" = {
     ".github/workflows/ci.yml": _REASON_CI,
-    "pyproject.toml": _REASON_COMMENT,
-    "scripts/_digital_twin_ci_suite.py": _REASON_RUNNER,
-    "scripts/build_firmware.py": _REASON_RUNNER,
-    "scripts/test.sh": _REASON_RUNNER,
-    "scripts/typecheck.sh": _REASON_RUNNER,
     "tests/test_digital_twin_bus_hazard_concurrency.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_machine.py": _REASON_UNIT_TEST,
     "tests/test_digital_twin_run_generic_integration.py": _REASON_UNIT_TEST,

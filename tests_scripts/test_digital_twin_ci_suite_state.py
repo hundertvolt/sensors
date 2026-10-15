@@ -12,7 +12,7 @@ _CAP_XATTR = "security.capability"
 
 
 def _ctx(ci_suite: ModuleType, logs_dir: Path) -> object:
-    return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1)
+    return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=logs_dir / "plan.json", instances=(), gc_threshold=-1, routes=("/status",))
 
 
 def _fake_xattr(value: "bytes | None") -> object:
@@ -37,9 +37,9 @@ def test_a_pass_keeps_its_state_under_its_own_logs_directory(ci_suite: ModuleTyp
 def test_archiving_moves_the_state_and_recreates_it_empty(ci_suite: ModuleType, tmp_path: Path) -> None:
     ctx = _ctx(ci_suite, tmp_path)
     ctx.state_dir.mkdir(parents=True)  # type: ignore[attr-defined]
-    (ctx.state_dir / "fram_state.json").write_text("{}")  # type: ignore[attr-defined]
+    (ctx.state_dir / "fram_state.json").write_text("{}", encoding="utf-8")  # type: ignore[attr-defined]
     ci_suite._archive_state(ctx, "run5")
-    assert (tmp_path / "state_archive" / "01_before_run5" / "fram_state.json").read_text() == "{}"
+    assert (tmp_path / "state_archive" / "01_before_run5" / "fram_state.json").read_text(encoding="utf-8") == "{}"
     assert ctx.state_dir.is_dir() and not any(ctx.state_dir.iterdir())  # type: ignore[attr-defined]
 
 
@@ -47,11 +47,11 @@ def test_archives_are_numbered_in_order_and_never_overwrite_each_other(ci_suite:
     ctx = _ctx(ci_suite, tmp_path)
     for label in ("pass start", "run10 sgp40"):
         ctx.state_dir.mkdir(parents=True, exist_ok=True)  # type: ignore[attr-defined]
-        (ctx.state_dir / "scd30_state.json").write_text(label)  # type: ignore[attr-defined]
+        (ctx.state_dir / "scd30_state.json").write_text(label, encoding="utf-8")  # type: ignore[attr-defined]
         ci_suite._archive_state(ctx, label)
     archived = sorted(p.name for p in (tmp_path / "state_archive").iterdir())
     assert archived == ["01_before_pass_start", "02_before_run10_sgp40"]
-    assert (tmp_path / "state_archive" / "01_before_pass_start" / "scd30_state.json").read_text() == "pass start"
+    assert (tmp_path / "state_archive" / "01_before_pass_start" / "scd30_state.json").read_text(encoding="utf-8") == "pass start"
 
 
 def test_an_empty_state_directory_is_not_archived(ci_suite: ModuleType, tmp_path: Path) -> None:

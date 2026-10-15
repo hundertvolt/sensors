@@ -125,7 +125,7 @@ def _mutate(rng: random.Random, doc: "TomlDoc") -> str:
 def test_a_mutated_device_builds_or_fails_with_a_build_error(tmp_path: Path, repo_root: Path) -> None:
     # Every case rewrites the one fixture file (no per-case file or directory): about 2,000 small rewrites of one inode.
     src_dir = repo_root / "src"
-    bases: list[TomlDoc] = [base_doc(), *(tomllib.loads(device_toml(d).read_text()) for d in DEVICE_NAMES)]
+    bases: list[TomlDoc] = [base_doc(), *(tomllib.loads(device_toml(d).read_text(encoding="utf-8")) for d in DEVICE_NAMES)]
     rng = random.Random(_SEED)  # noqa: S311 - a seeded case generator, no secret
     built = refused = 0
     for case in range(_CASES):

@@ -17,7 +17,7 @@ import machine
 import microtest
 import rp2
 from _async_harness import run
-from _src_const import src_const
+from _src_const import src_int
 from _tmp_scratch import TmpScratch
 from _twin_common import COUNTER_CAP
 from machine import UART, LinkPoller, Pin, UARTLink
@@ -344,7 +344,7 @@ def _value_error(call: "object") -> str:
 def test_the_largest_config_flush_at_the_maxima_is_the_hold_the_ring_floor_assumes() -> None:
     # 5 erases and 7 + 36 page programs at tSE 400 ms, tPP 3 ms: asy_uart_comm's _FLASH_HOLD_MAX_MS exactly.
     _flash_stall.use_max = True
-    assert _flash_stall.flush_us(1700) == src_const("src/asy_uart_comm.py", "_FLASH_HOLD_MAX_MS") * 1000  # type: ignore[operator]
+    assert _flash_stall.flush_us(1700) == src_int("src/asy_uart_comm.py", "_FLASH_HOLD_MAX_MS") * 1000
 
 
 def test_a_config_flush_through_the_installed_open_stalls_once_for_its_pages() -> None:

@@ -1,0 +1,44 @@
+........................................................................ [ 43%]
+........................................................................ [ 87%]
+........F............                                                    [100%]
+=================================== FAILURES ===================================
+_ test_a_scenario_job_is_counted_from_its_run_record_under_l2_and_names_what_it_did_not_run _
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27t')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-9864/test_a_scenario_job_is_counted0')
+
+    def test_a_scenario_job_is_counted_from_its_run_record_under_l2_and_names_what_it_did_not_run(repo_root: Path, tmp_path: Path) -> None:
+        tag = "scenarios[fixture-device-a]"
+        record = _scenario_record(("boots", "passed", ""), ("restarts", "passed", ""), ("uart", "skipped", "device wires no uart_link"), ("dns", "deselected", "needs exclusive port 53 - run_digital_twin_ci.sh runs it"))
+        jobs: dict[str, tuple[str | None, str | None, str | None]] = {tag: ("PASS\n", _scenario_log(tag), None), "tests/test_ok.py": _passing("test_ok")}
+        code, out, _ = _run_tail(repo_root, tmp_path, jobs, extra={"scenarios_fixture-device-a.json": record})
+        block = _block(out)
+        assert code == 0, out
+        assert "\nCounts (tests): passed 5 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0\n" in block, block
+        assert "Skipped:\n  - scenarios[fixture-device-a]::uart: device wires no uart_link\n" in block, block
+>       assert "Deselected:\n  - scenarios[fixture-device-a]::dns: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it\n" in block, block
+E       AssertionError: == Summary: scripts/test.sh ==
+E         Commit: unknown
+E         Levels: L0 PASS · L1 PASS · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)
+E         GC stage: -1 (reactive default)
+E         Counts (files): passed 2 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests_scripts tests): passed 1 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+E         Counts (tests): passed 5 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0
+E         Failed: none
+E         Skipped:
+E           - scenarios[fixture-device-a]::uart: device wires no uart_link
+E         Deselected:
+E           - scenarios[fixture-device-a]::dns: by by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it
+E         Passed only on retry: none
+E         Recovery passes: none
+E         Notes: none
+E         Checked nothing: none
+E         Result: PASS
+E         Exit code: 0
+E         
+E       assert 'Deselected:\n  - scenarios[fixture-device-a]::dns: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it\n' in '== Summary: scripts/test.sh ==\nCommit: unknown\nLevels: L0 PASS · L1 PASS · L2 PASS (tests/test_digital_twin_*.py an...t\nPassed only on retry: none\nRecovery passes: none\nNotes: none\nChecked nothing: none\nResult: PASS\nExit code: 0\n'
+
+tests_scripts/test_test_sh.py:1914: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_a_scenario_job_is_counted_from_its_run_record_under_l2_and_names_what_it_did_not_run
+1 failed, 164 passed in 51.69s

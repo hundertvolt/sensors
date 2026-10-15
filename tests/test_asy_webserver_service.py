@@ -21,7 +21,8 @@ from _error_codes import code
 from _fast_sleep import FastAsyncSleep
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import drain_json_response_body
-from _src_const import src_const
+from _src_const import src_int
+from _src_schema import src_schema
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -124,10 +125,10 @@ def _obj(value: object) -> "dict[str, object]":
     return value
 
 
-# The shipped serving defaults and the longest NTPHost, read from source (tests/_src_const.py); src_const() answers object.
-_DEFAULT_MAX_CONTENT_LENGTH: int = src_const("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")  # type: ignore[assignment]
-_DEFAULT_CHUNK_BYTES: int = src_const("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")  # type: ignore[assignment]
-_VAL_NTP_HOST: "cm.ConfigSchema" = src_const("src/asy_ntp_client.py", "_VAL_NTP_HOST")  # type: ignore[assignment]
+# The shipped serving defaults and the longest NTPHost, read from source (tests/_src_const.py).
+_DEFAULT_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
+_DEFAULT_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
+_VAL_NTP_HOST: "cm.ConfigSchema" = src_schema("src/asy_ntp_client.py", "_VAL_NTP_HOST")
 
 # run_timed()'s default bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
@@ -882,10 +883,7 @@ _SEQUENCE_YIELDS = 500  # a limit, not a timing claim: every shutdown step here 
 
 
 def _system_const(name: str) -> int:
-    # A private const() of asy_system_service, read from its source (tests/_src_const.py).
-    value = src_const("src/asy_system_service.py", name)
-    assert isinstance(value, int), name
-    return value
+    return src_int("src/asy_system_service.py", name)  # a private const() of asy_system_service (tests/_src_const.py)
 
 
 async def _never_synced() -> bool:

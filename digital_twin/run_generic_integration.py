@@ -9,9 +9,12 @@ import json
 import os
 import random
 import select
+import struct
 import sys
 import time
 from collections import namedtuple
+
+import micropython
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -48,15 +51,30 @@ if TYPE_CHECKING:
         @property
         def feed_times(self) -> Iterable[_TicksMs | int]: ...
         @property
+        def timeout(self) -> int: ...
+        @property
         def would_have_triggered_count(self) -> int: ...
 
     class _Clearable(Protocol):
         def clear(self) -> None: ...
 
+    class _OverCapComm(Protocol):
+        # The instance's UARTComm as the over-cap offer reaches it: its cap and its stream SET.
+        @property
+        def _max_transfer_bytes(self) -> int: ...
+        async def uart_set_stream(self, set_id: int, total_size: int, pull: "Callable[[int, memoryview], object]") -> bool: ...
+
     class _LinkCounts(Protocol):
         # A uart_link instance's own counters (asy_uart_link_driver.UARTLinkDriver), read at shutdown.
         _transfers: int
         _failures: int
+
+    class _ExercisedLink(_LinkCounts, Protocol):
+        # The same instance as the over-cap offer reaches it: the role its TOML names and its UARTComm.
+        @property
+        def _comm(self) -> _OverCapComm: ...
+        @property
+        def _role(self) -> str: ...
 
     class _RxCounts(Protocol):
         rx_overruns: int  # the receive path's laps and errors (asy_uart_driver.UART)
@@ -116,7 +134,7 @@ _EXIT_SIMULATED_POWER_LOSS = 5
 _watchdog: "machine.WDT | None" = None  # the WDT main() builds and passes to the booted module's main(),
 # read by _print_shutdown_line()'s two call sites: the generated module keeps no watchdog global.
 _shutdown_printed = False
-_uart_counts: "list[tuple[str, _LinkCounts, _RxCounts]]" = []  # each wired uart_link's counters, for the shutdown line
+_uart_counts: "list[tuple[str, _ExercisedLink, _RxCounts]]" = []  # each wired uart_link's counters, for the shutdown line
 
 # The same value and one-time placement the real firmware boot entry uses, so a twin run models
 # production's memory-safety configuration and not just its allocation code. --gc-threshold
@@ -130,6 +148,9 @@ _GC_THRESHOLD_DEFAULT = 32768
 _WDT_TIMEOUT_MS = 8000
 
 _SHUTDOWN_HANG_STEPS = ("S1", "S2", "S3", "S4", "S5reset", "S5erase", "S6")
+# MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
+_GC_BLOCK_BYTES = 4 * struct.calcsize("P")
+_TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
 
 
 if TYPE_CHECKING:
@@ -149,6 +170,8 @@ if TYPE_CHECKING:
         conn_status_interval_ms: int | None
         fault_status_interval_ms: int | None
         shutdown_hang: str | None
+        flash_stall_max: bool
+        uart_over_cap: bool
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags.
@@ -158,11 +181,11 @@ if TYPE_CHECKING:
 
 else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
-    TestFlags = namedtuple("TestFlags", ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang"))
+    TestFlags = namedtuple("TestFlags", ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap"))
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -203,7 +226,8 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --mem-sample-interval-ms N  print a MEM_SAMPLE line every N ms (default: off)
   test-only instrumentation, each off by default:
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
-  --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6
+  --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
+  --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap)
   -h, --help               print this and exit 0"""
 
 
@@ -320,7 +344,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -333,9 +357,13 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         hang = _pop_value(remaining, arg)
         if hang not in _SHUTDOWN_HANG_STEPS:
             raise ValueError(f"--test-shutdown-hang {hang!r} not recognized - expected one of {_SHUTDOWN_HANG_STEPS}")
+    elif arg == "--test-flash-stall-max":
+        stall_max = True
+    elif arg == "--test-uart-over-cap":
+        over_cap = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap)
 
 
 def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
@@ -344,11 +372,13 @@ def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
 
 
 def _print_shutdown_line(config: RunConfig) -> None:
-    # Called from main()'s finally and from the __main__ handlers: an interrupt landing while
-    # main() is suspended never enters that finally (F.6). Printed once per process.
+    # From main()'s finally and the __main__ handlers (an interrupt while main() is suspended skips that finally, F.6),
+    # once per process, after the GC summary whose max free sz it is read with; collected first, as an allocation would.
     global _shutdown_printed
     if _watchdog is not None and not _shutdown_printed:
         _shutdown_printed = True
+        gc.collect()
+        micropython.mem_info()  # the largest free block's only reader (py/gc.c gc_info(), v1.29.0)
         print(_shutdown_line(config.device, _watchdog, _feed_gaps, _uart_counts))
 
 
@@ -385,15 +415,29 @@ def _shutdown_line(device: str, watchdog: "_Watchdog", gaps: _FeedGaps, links: "
     uarts = "".join(f" uart={key}:transfers={link._transfers},failures={link._failures},overruns={bus.rx_overruns}" for key, link, bus in links)
     return (
         f"{_LINE_PREFIX} [{device}] shutdown: would_have_triggered_count={watchdog.would_have_triggered_count} "
-        f"feed_count={watchdog.feed_count} largest_feed_gap_ms={gaps.largest_ms} mem_backup: r0={r0} "
+        f"feed_count={watchdog.feed_count} largest_feed_gap_ms={gaps.largest_ms} wdt_timeout_ms={watchdog.timeout} mem_backup: r0={r0} "
         f"public_destinations_refused={_unix_port_udp_addr_shim.public_destinations_refused} "
-        f"flash_stall_longest_ms={_flash_stall.longest_ms}{uarts}"
+        f"flash_stall_longest_ms={_flash_stall.longest_ms} gc_block_bytes={_GC_BLOCK_BYTES}{uarts}"
     )
 
 
 # Test-only instrumentation (owner, 2026-09-30, paraphrase): the runner, never src/ or the image, may rebind a booted
 # object from outside or print internal state when a named --test-* flag asks; tests_scripts/test_twin_runner_test_flags.py
 # keeps every one off by default and out of the production entry path.
+
+
+async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> None:
+    # The steps' targets exist once the supervisor has started every task (start_tasks()); armed earlier, a step finds
+    # no task or config store, or holds a lock setup needs. Owns the runner tasks the step started: its cancel ends them.
+    sysfunct = module.sysfunct
+    while not sysfunct._tasks or any(task is None for task in sysfunct._tasks):
+        await asyncio.sleep_ms(_READY_POLL_MS)
+    started = _test_shutdown_hang(module, chips, step)
+    try:
+        await asyncio.Event().wait()
+    finally:
+        for task in started:
+            task.cancel()
 
 
 async def _test_conn_line(module: "ModuleType") -> str:
@@ -426,6 +470,10 @@ async def _test_fault_status(chips: "dict[str, object]", interval_ms: int) -> No
         await asyncio.sleep_ms(interval_ms)
 
 
+def _test_flash_stall_max() -> None:
+    _flash_stall.use_max = True  # every flush from here on stalls the loop for its datasheet maximum
+
+
 async def _test_hang_forever(*_args: object) -> None:
     await asyncio.Event().wait()
 
@@ -455,13 +503,31 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
     return release
 
 
+def _test_never_pulled(_chunk: int, _buf: "memoryview") -> int:
+    return 0  # the over-cap train is refused before its first frame, so nothing is ever pulled
+
+
+def _test_report_then_hang(line: str, say: "Callable[[str], None]" = print) -> "Callable[[object, int], Coroutine[object, object, None]]":
+    # A rebound report that says `line` the first time it is entered, then never returns: the host's wait ends there.
+    entered = False
+
+    async def report(_task: object, _n: int) -> None:
+        nonlocal entered
+        if not entered:
+            entered = True
+            say(line)
+        await asyncio.Event().wait()
+
+    return report
+
+
 def _test_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> "list[asyncio.Task[None]]":
     # Each step rebinds, from outside, the one product object that step of the controlled shutdown waits on, so the host
     # proves the watchdog ends a hung step; returns the runner tasks it started. HANG <step> once armed.
     sysfunct, loop, started = module.sysfunct, asyncio.get_event_loop(), []
     if step == "S1":
         # the supervisor's dead-task report never returns and one supervised task ends: the pass never parks
-        sysfunct._log_dead_task = _test_hang_forever
+        sysfunct._log_dead_task = _test_report_then_hang(f"HUNG {step}")
         next(task for task in sysfunct._tasks if task is not None).cancel()
     elif step == "S2":
         sysfunct._config_stores[0].flush_pending = _test_hang_forever  # the store step's flush never returns
@@ -508,7 +574,7 @@ def _test_stall_loop(stall_ms: int) -> "Callable[[], None]":
     return stall
 
 
-def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]") -> "list[asyncio.Task[None]]":
+def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, object]", links: "list[tuple[str, _ExercisedLink, _RxCounts]]") -> "list[asyncio.Task[None]]":
     # Each named flag's instrumentation, and only under its own flag; the runner tasks it started.
     loop, tasks, triggers = asyncio.get_event_loop(), [], {}
     if flags.hold_closing_slot:
@@ -523,21 +589,11 @@ def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, obje
         tasks.append(loop.create_task(_test_fault_status(chips, flags.fault_status_interval_ms)))
     if flags.shutdown_hang:
         tasks.append(loop.create_task(_test_arm_shutdown_hang(module, chips, flags.shutdown_hang)))
+    if flags.flash_stall_max:
+        _test_flash_stall_max()
+    if flags.uart_over_cap:
+        tasks.append(loop.create_task(_test_uart_over_cap(links)))
     return tasks
-
-
-async def _test_arm_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: str) -> None:
-    # The steps' targets exist once the supervisor has started every task (start_tasks()); armed earlier, a step finds
-    # no task or config store, or holds a lock setup needs. Owns the runner tasks the step started: its cancel ends them.
-    sysfunct = module.sysfunct
-    while not sysfunct._tasks or any(task is None for task in sysfunct._tasks):
-        await asyncio.sleep_ms(_READY_POLL_MS)
-    started = _test_shutdown_hang(module, chips, step)
-    try:
-        await asyncio.Event().wait()
-    finally:
-        for task in started:
-            task.cancel()
 
 
 async def _test_stdin_lines(triggers: "dict[str, Callable[[], None]]") -> None:
@@ -563,6 +619,19 @@ async def _test_swallow_cancel() -> None:
             await asyncio.sleep(3600)
         except asyncio.CancelledError:
             continue
+
+
+async def _test_uart_over_cap(links: "list[tuple[str, _ExercisedLink, _RxCounts]]", say: "Callable[[str], None]" = print) -> None:
+    # One train one byte past each initiating link's cap, right after its next exercise transfer, so none is in flight:
+    # the protocol refuses it before its first frame and logs it (J.8); UART_OVER_CAP names the outcome per link.
+    for key, link, _bus in links:
+        if link._role != "initiator":  # the role a uart_link instance's TOML names
+            continue
+        seen = link._transfers + link._failures
+        while link._transfers + link._failures == seen:
+            await asyncio.sleep_ms(_READY_POLL_MS)
+        sent = await link._comm.uart_set_stream(_TEST_TRAIN_CMD_ID, link._comm._max_transfer_bytes + 1, _test_never_pulled)
+        say(f"UART_OVER_CAP {key} {'sent' if sent else 'refused'}")
 
 
 class _TestInertTimer:
@@ -703,7 +772,7 @@ async def main(config: RunConfig) -> None:
             _apply_hang(hang, chips, source=_SOURCE)
         if injections.wifi_outcomes:
             wlan.script_connect_outcomes(injections.wifi_outcomes)
-        tasks.extend(_test_start(config.instrumentation, booted, chips))
+        tasks.extend(_test_start(config.instrumentation, booted, chips, _uart_counts))
 
         if run.duration is None:
             print(f"Serving forever at http://{config.host}:{config.port}/ - Ctrl+C to stop")

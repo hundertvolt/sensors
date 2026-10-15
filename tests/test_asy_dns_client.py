@@ -1,3 +1,6 @@
+"""The DNS client: query building, reply parsing and its refusals, and IPv4 resolution against fake servers over a real
+UDP socket on loopback."""
+
 import asyncio
 import errno
 import select

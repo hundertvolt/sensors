@@ -797,6 +797,55 @@ gates, traps).
   legs' lint and typecheck runs cover the config and the scripts, and `scripts/test.sh`'s pytest
   tier the build script's logic; no leg runs a hardware runner, and `env --tier generic` installs
   nothing new.
+  **2026-10-15, the script tooling: shell, host Python and config, no dependency change**
+  (`toolchain/versions.toml` gains the `[stubs]` pins), one line per change:
+  - one Unix-port probe for every runner, `scripts/_unix_port.sh`; build flavours
+    `standard`/`settrace`/`lwip`; it holds the toolchain lock with `flock` (util-linux);
+  - the two MICROPYPATH layouts live in `scripts/micropypath.toml`;
+  - scripts share `scripts/_devices.sh`; device arguments validated up front;
+  - every bare `python3` in `scripts/` is version-checked first (`scripts/_require_python.sh`);
+  - runs hold the toolchain lock shared;
+  - `scripts/test.sh` builds the first derived device's site;
+  - `scripts/test.sh` runs the scenario harness, one job per derived device;
+  - the hardware runners pass `--marker-floor`; new runner `scripts/run_bench_rollover_test.sh`,
+    shellcheck-linted, no environment change;
+  - `scripts/mpremote_connect.sh` resolves the board through `setup_toolchain.py board`;
+  - `scripts/typecheck.sh` installs the exact stub post-releases of `versions.toml`'s `[stubs]`; a
+    moved stub tree fails the repair;
+  - the `TYPE_CHECKING` stripper no longer uses `ast.unparse`;
+  - the pytest tier runs `mpy-cross` from the toolchain directory
+    (`tests_scripts/test_stripped_image_boots.py`);
+  - `scripts/build_frozen_html.sh` gzips with `-n`;
+  - `scripts/lint.sh` generates `build/generated_src` before ruff; mypy's main pass checks it;
+  - the generator writes atomically and prunes stale device outputs;
+  - `scripts/lint.sh`'s grep guard fails on grep exit 2;
+  - `scripts/lint.sh` runs a Python `gc.collect()` site checker, `scripts/_check_gc_collect_sites.py`;
+  - all three mypy configs enable `ignore-without-code`;
+  - `scripts/typecheck.sh` runs three single-file mypy checks after the three passes
+    (`tests/network.py`, `tests_scripts/conftest.py`, `tests_hardware/bench/conftest.py`);
+  - `scripts/lint.sh`/`scripts/typecheck.sh` check the venv (`uv sync --locked --check`, through
+    `scripts/_require_venv.sh`), so a chroot leg runs them inside the activated venv the recipe syncs;
+  - `scripts/build_firmware.py` imports the stripper as `scripts._strip_type_checking`;
+    `host_typecheck.ini`'s `mypy_path` is unchanged;
+  - firmware and website builds keep their work dirs under `build/`;
+  - `env --tier bench` probes the spoof's sudo rule;
+  - `scripts/run_digital_twin_ci.sh` archives `digital_twin_ci_logs/<device>` under `build/archive/`
+    (last three kept) before any build; each twin runner takes its device first and the port-53
+    lock before any build; the JS live tier and the smoke ask `scripts/_unix_port.sh check standard`
+    once and start nothing through `uv run`;
+  - `pyproject.toml`: pytest `pythonpath = ["."]`; mypy `files` gains `build/generated_src`, with
+    per-file ruff ignores for the generated boot entries; the setter test's mypy override is gone;
+    `digital_twin/typecheck.ini` names its own `files`; `host_typecheck.ini` loses its
+    `[mypy-scripts._digital_twin_ci_suite]` section.
+  - every host text read or write in `scripts/`, `toolchain/` and `tests_scripts/` names
+    `encoding="utf-8"` (`tests_scripts/test_host_text_encoding.py`), so a chroot without a UTF-8 locale
+    reads and writes the same bytes;
+  - `scripts/_render_coverage.py`'s PEP 723 header pins `coverage==7.16.2`, the dev group's pin, and every
+    script block follows `pyproject.toml` (`tests_scripts/test_script_metadata_pins.py`), so a `--coverage` run
+    renders from a warm uv cache offline;
+  The chroot legs' lint, typecheck and `scripts/test.sh` runs cover all of it except the
+  installer-only lines (`[stubs]` read by every tier, the spoof probe), which only the installer
+  leg runs.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -1112,3 +1161,11 @@ question.
    link. (b) add a hazard mode to the firmware's own UART exerciser, driven from the bench test while readers hammer the API:
    a firmware change for `dev`'s build only (the exerciser is wired on `dev` alone), and one more bench test of about the
    hazard script's length. Until answered: (a).
+
+6. **Count a long comment line as several?** (entered 2026-10-15, agent) CLAUDE.md caps every comment block at 3 prose
+   lines, and the check that measures it (`tests_scripts/test_comment_block_cap.py`) counts each comment line once, so a
+   paragraph packed onto one long line passes the cap. (a) keep it so: nothing changes, and a long one-line comment stays
+   within the cap. (b) count a line as its length over 110 characters, rounded up: 761 comment blocks in 437 files go over
+   (measured 2026-10-15) and are rewrapped or shortened before the switch is turned on. (c) the same at 120 characters: 126
+   blocks in 116 files. Either way no device's firmware, wiring or bus changes: the check reads source text only, and the
+   switch is one constant in that file. Until answered: (a), the current behaviour.

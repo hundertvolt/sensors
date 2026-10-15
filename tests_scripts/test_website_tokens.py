@@ -49,7 +49,7 @@ def _luminance(colour: str) -> float:
 
 
 def _stylesheet() -> str:
-    return re.sub(r"/\*.*?\*/", "", _CSS.read_text(), flags=re.DOTALL)
+    return re.sub(r"/\*.*?\*/", "", _CSS.read_text(encoding="utf-8"), flags=re.DOTALL)
 
 
 def _themes() -> dict[str, dict[str, str]]:

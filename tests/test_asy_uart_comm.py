@@ -12,7 +12,7 @@ from _async_harness import run
 from _error_codes import code
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _uart_comm_harness import (
     PAYLOAD_SIZE,
@@ -148,9 +148,9 @@ def _make_comm(**kwargs: "Any") -> UARTComm:
     return UARTComm(bus, role, **params)
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Module foundation
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # C2 - constructor, parameter validation, readiness gate
 
 
@@ -298,10 +298,7 @@ def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
 
 
 def _const(name: str, path: str = _SRC) -> int:
-    # An int const() of the source (tests/_src_const.py), typed: src_const() answers object.
-    value = src_const(path, name)
-    assert isinstance(value, int), name
-    return value
+    return src_int(path, name)  # an int const() of the source (tests/_src_const.py)
 
 
 class _SleepRecorder:
@@ -500,7 +497,7 @@ def test_reset_clears_the_history_and_the_streak_state() -> None:
     assert comm._blind_resyncs == 0
 
 
-_DIAG_RESYNC_STREAK: int = src_const("src/asy_uart_comm.py", "_DIAG_RESYNC_STREAK")  # type: ignore[assignment]  # src_const() answers object
+_DIAG_RESYNC_STREAK: int = src_int("src/asy_uart_comm.py", "_DIAG_RESYNC_STREAK")
 
 
 def _noisy_resyncs(pair: Pair) -> None:
@@ -792,9 +789,9 @@ def test_the_listen_loop_survives_a_raising_callback() -> None:
     assert run(scenario(), _STEP_BOUND_S) is True
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Frame layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
@@ -1101,9 +1098,9 @@ def test_an_ack_is_sent_even_while_the_write_hold_off_is_active() -> None:
     assert len(pair.wire_from_responder()) == _FRAME
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Exchange layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
@@ -1561,9 +1558,9 @@ def test_only_a_rise_in_the_drivers_unacked_count_is_reported() -> None:
     assert persisted(pair.initiator) == [_w("UART_CANCEL_UNACKED")]
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Transaction layer
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 @_on_poll_rounds
@@ -2330,9 +2327,9 @@ def test_a_responder_without_a_message_callback_is_still_constructible() -> None
     assert pair.responder.initialized is True
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Receive limits - pieces of at most chunk_bytes, and the transfer cap
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def _largest_piece(pb: "PieceBuffer") -> int:
@@ -2641,9 +2638,9 @@ async def _listen_forever(pair: Pair) -> None:
         await pair.responder.uart_listen()
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Coverage close-out - the sentinel paths a healthy exchange never reaches
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def returns(value: "Any") -> "Any":
@@ -3021,9 +3018,9 @@ def test_a_pull_callback_failing_mid_train_quiesces_like_any_other_fault() -> No
         assert persisted(pair.initiator) == [errno], (kind, persisted(pair.initiator))
         assert pair.initiator._holdoff_active is True, kind
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Conformance with the legacy BSEC use case (legacy/dev_drivers/asy_bsec_driver.py)
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # A demonstration, deliberately not a constraint - the module is standalone and this use case
 # constrains nothing about its design (SPECIFICATION.md Part J.1). Sizes and command ids are the
 # ones legacy/dev_drivers/sensortask-dev.py actually deployed.

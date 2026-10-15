@@ -1,3 +1,6 @@
+"""NeopixelDriver: the signal ramp and its queue, the overlay task, refused and clamped values, restarts under the
+supervisor and its FRAM-backed log."""
+
 import asyncio
 import sys
 
@@ -9,7 +12,7 @@ from _async_harness import cancel_all, run
 from _error_codes import code
 from _fake_time import DrivenTime
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_int
 
 import asy_neopixel_driver
 import asy_webserver_service
@@ -33,8 +36,8 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
-_OVERLAY_REFRESH_MS: int = src_const("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")  # type: ignore[assignment]  # src_const() answers object
-_SIGNAL_WAIT_MS: int = src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")  # type: ignore[assignment]
+_OVERLAY_REFRESH_MS: int = src_int("src/asy_neopixel_driver.py", "_OVERLAY_REFRESH_MS")
+_SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
 
 def _colours(driver: NeopixelDriver) -> "list[tuple[int, ...]]":
@@ -140,8 +143,7 @@ def test_init_bakes_name_into_the_logger() -> None:
 
 def test_the_frame_rate_and_overlay_brightness_are_fixed_values_no_caller_passes() -> None:
     driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
-    freq = src_const("src/asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")
-    assert isinstance(freq, int)
+    freq = src_int("src/asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")
     assert (driver.neopixel_freq, driver.neopixel_dt, driver._overlay_bri) == (freq, 1.0 / freq, src_const("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"))
     refused = []
     for keyword in ("neopixel_freq", "led_overl_bri"):

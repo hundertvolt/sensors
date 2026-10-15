@@ -43,7 +43,7 @@ def _skipped(nodeid: str, *markers: str, reason: str = "opt-in") -> "dict[str, o
 def _judge(repo_root: Path, tmp_path: Path, record: "dict[str, object] | None", *extra: str, pytest_exit: int = 0) -> "subprocess.CompletedProcess[str]":
     path = tmp_path / "run_record.json"
     if record is not None:
-        path.write_text(json.dumps(record))
+        path.write_text(json.dumps(record), encoding="utf-8")
     argv = ["--run-record", str(path), "--pytest-exit", str(pytest_exit), "--runner", "run_flash_hardware_suite", "--levels", "L3", *extra]
     return subprocess.run([sys.executable, str(repo_root / "scripts" / "_hardware_verdict.py"), *argv], capture_output=True, text=True, check=False, cwd=repo_root)
 
@@ -220,8 +220,8 @@ def test_soak():
 def test_both_spellings_of_an_option_read_alike(repo_root: Path, tmp_path: Path, spelling: "list[str]") -> None:
     suite = tmp_path / "suite"
     suite.mkdir()
-    (suite / "conftest.py").write_text(_STUB_CONFTEST)
-    (suite / "test_stub.py").write_text(_STUB_TEST)
+    (suite / "conftest.py").write_text(_STUB_CONFTEST, encoding="utf-8")
+    (suite / "test_stub.py").write_text(_STUB_TEST, encoding="utf-8")
     record = tmp_path / "run_record.json"
     env = dict(os.environ, PYTHONPATH=str(repo_root / "scripts"))
     ran = subprocess.run([sys.executable, "-m", "pytest", "-p", "_pytest_run_record", f"--run-record={record}", "-p", "no:cacheprovider", "-W", "ignore::pytest.PytestUnknownMarkWarning", str(suite), *spelling], capture_output=True, text=True, check=False, cwd=tmp_path, env=env)
@@ -239,7 +239,7 @@ def test_both_spellings_of_an_option_read_alike(repo_root: Path, tmp_path: Path,
 
 def _conftest_option_dests(repo_root: Path) -> "dict[str, str]":
     # flag -> argparse dest, for every option tests_hardware/conftest.py registers.
-    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text(encoding="utf-8"))
     flags = [node.args[0].value for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "addoption" and node.args and isinstance(node.args[0], ast.Constant)]
     return {str(flag): str(flag).lstrip("-").replace("-", "_") for flag in flags}
 
@@ -248,7 +248,7 @@ def _marked_tests(repo_root: Path, markers: "set[str]") -> "dict[str, list[tuple
     # marker -> [(test name, its source)] for every tests_hardware test carrying it.
     found: dict[str, list[tuple[str, str]]] = {m: [] for m in markers}
     for path in sorted((repo_root / "tests_hardware").rglob("test_*.py")):
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 for dec in node.decorator_list:
@@ -266,7 +266,7 @@ def test_every_gate_is_an_option_tests_hardware_registers(repo_root: Path, verdi
 
 def _marker_table(repo_root: Path) -> "dict[str, str]":
     # tests_hardware/markers.py's one table, name -> help text, read without importing it.
-    tree = ast.parse((repo_root / "tests_hardware" / "markers.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / "markers.py").read_text(encoding="utf-8"))
     value = next(n.value for n in tree.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name) and n.target.id == "MARKERS")
     assert value is not None, "tests_hardware/markers.py no longer assigns MARKERS"
     return dict(ast.literal_eval(value))
@@ -294,5 +294,5 @@ def test_every_skip_gated_test_really_checks_its_own_flag(repo_root: Path, verdi
 def test_the_permanent_skip_names_a_test_that_exists(repo_root: Path, verdict: ModuleType) -> None:
     for nodeid in verdict.PERMANENT_SKIPS:
         path, name = nodeid.split("::")
-        names = {n.name for n in ast.walk(ast.parse((repo_root / path).read_text())) if isinstance(n, ast.FunctionDef)}
+        names = {n.name for n in ast.walk(ast.parse((repo_root / path).read_text(encoding="utf-8"))) if isinstance(n, ast.FunctionDef)}
         assert name in names, f"{nodeid} no longer exists - its permanent skip would silently stop applying"

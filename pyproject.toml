@@ -5,9 +5,9 @@
 name = "sensors-tooling"
 version = "0.1.0"
 description = "Dev-tooling config for the sensors firmware repo (ruff/mypy/pytest/uv), not an installable package."
-# >=3.11: scripts/typecheck.sh needs tomllib. At 3.10, `uv sync` once built a venv without it,
-# surfacing as a raw traceback (typecheck.sh now also checks explicitly; setup_toolchain.py pins the
-# same).
+# >=3.11: host tooling needs tomllib and datetime.UTC; at 3.10 `uv sync` once built a venv
+# without them, surfacing as a raw traceback. scripts/_require_python.sh checks every bare python3;
+# setup_toolchain.py's PEP 723 header pins the same.
 requires-python = ">=3.11"
 
 [tool.uv]
@@ -33,8 +33,8 @@ dev = [
     # zizmor audits the workflows themselves (token scope, credential persistence, pinning); policy
     # in .github/zizmor.yml, pinned like the rest.
     "zizmor==1.30.1",
-    # The host-side coverage run of scripts/test.sh --coverage; the version scripts/_render_coverage.py
-    # resolves today, pinned like the rest.
+    # The host-side coverage run of scripts/test.sh --coverage, pinned like the rest; scripts/_render_coverage.py's
+    # PEP 723 header pins the same (tests_scripts/test_script_metadata_pins.py).
     "coverage==7.16.2",
 ]
 
@@ -42,9 +42,9 @@ dev = [
 # typeshed, which would break type-checking of this venv's own tools, so scripts/typecheck.sh
 # installs them into typings/ (CLAUDE.md).
 
-# Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists; the legacy tree
-# (legacy/) is never in scope. tests_hardware/device_scripts/ joined after a driver
-# signature change broke two unchecked scripts for a day.
+# Lint/type scope is the eight directories CLAUDE.md's "Code quality tooling" lists, plus the generated
+# build/generated_src/; the legacy tree (legacy/) is never in scope. tests_hardware/device_scripts/
+# joined after a driver signature change broke two unchecked scripts for a day.
 
 [tool.ruff]
 # py310, not the venv's 3.11: the syntax floor of the CHECKED code (MicroPython; PEP 604 unions),
@@ -331,6 +331,11 @@ max-returns = 10
 # TC004: a script names its rendered includes under `if TYPE_CHECKING:` for mypy alone; the render
 # inlines their definitions, so on the board the names exist at run time.
 "tests_hardware/device_scripts/**" = ["RUF007", "TC004"]
+# The generated boot entries arm the watchdog, put .frozen first and reserve the emergency buffer before
+# their imports, an order the boot depends on; the no-autostart one prints its start line and imports
+# asyncio and main for the REPL that line is typed into.
+"build/generated_src/sensortask_*_main.py" = ["E402"]
+"build/generated_src/sensortask_*_main_noautostart.py" = ["E402", "F401", "T20"]
 
 [tool.mypy]
 # The micropython-stubs project's documented setup: typings/ replaces mypy's typeshed so
@@ -343,8 +348,8 @@ follow_imports = "silent"
 # not reported.
 follow_imports_for_stubs = true
 # typings/ is the board stub tree, ext/typings/ the vendored upstream Microdot stub, digital_twin/unixport/
-# the Unix-port shims (no hardware fake there); build/generated_src for device_scripts' one static
-# `import sensortask_dev`, which typecheck.sh generates first (B.15).
+# the Unix-port shims (no hardware fake there); build/generated_src holds the generated device modules
+# (checked as sources) and the twin pass's imports - typecheck.sh generates it first.
 mypy_path = ["typings", "ext/typings", "src", "digital_twin/unixport", "build/generated_src"]
 custom_typeshed_dir = "typings"
 # Keeps the venv's own packages out: they need the real stdlib, not typings/' MicroPython subset.
@@ -352,10 +357,10 @@ no_site_packages = true
 # A bare glob in `files` (e.g. "src/*.py") gets pre-expanded to an explicit file list, which
 # `exclude` can't then prune - passing the directory itself is what makes `exclude` actually take
 # effect during mypy's own directory walk.
-files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts"]
+files = ["src", "tests", "digital_twin", "tests_hardware/device_scripts", "build/generated_src"]
 # Excluded, each for a reason B.15 states: tests/network.py would hijack the real `network` stub
-# project-wide; the twin's fakes collide with tests/machine.py and tests/rp2.py; the rest need the
-# twin's own API, so digital_twin/typecheck.ini checks them.
+# project-wide, so typecheck.sh checks it alone; the twin's fakes collide with tests/machine.py and
+# tests/rp2.py; the rest need the twin's own API, so digital_twin/typecheck.ini checks them.
 exclude = [
     "tests/network\\.py$",
     "digital_twin/machine\\.py$",
@@ -378,6 +383,8 @@ pretty = true
 # Full --strict, spelled `strict` so a mypy bump surfaces new strict checks; `assignment` is
 # deliberately not disabled. The one exemption follows (B.15, CLAUDE.md).
 strict = true
+# a bare `# type: ignore` is itself an error, so no suppression hides its code
+enable_error_code = ["ignore-without-code"]
 disallow_any_explicit = true
 # Not part of --strict; kept from the pre-strict config because both remain useful here.
 no_implicit_optional = true
@@ -386,12 +393,6 @@ warn_unreachable = true
 # unittest.mock on MicroPython), which would need 175 inline ignores. The other two passes enforce
 # it (CLAUDE.md).
 no_implicit_reexport = false
-
-[[tool.mypy.overrides]]
-# Upstream's stub leaves route/get/put unannotated (v2.7.0): every handler they decorate is untyped
-# under --strict; this is the one file registering real routes.
-module = "test_setter_microdot_integration"
-disallow_untyped_decorators = false
 
 [[tool.mypy.overrides]]
 # frozen_html is the frozen website the generated modules import only to mount it; it exists on
@@ -425,5 +426,8 @@ disallow_any_explicit = false
 # pytest runs tests_scripts/ only, the host build chain's CPython suite; tests/ runs under the real
 # MicroPython interpreter via scripts/test.sh (Part E.1).
 testpaths = ["tests_scripts"]
+# The repo root on sys.path for every pytest run, so `import buildgen` and `scripts.<module>` resolve: the
+# rootless import mode puts only each test file's own directory there.
+pythonpath = ["."]
 # A marker no conftest registers is a collection error, not a silent no-op: tests_hardware/markers.py holds the table.
 addopts = ["--strict-markers"]

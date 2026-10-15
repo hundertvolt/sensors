@@ -2,6 +2,7 @@
 hazard is closed by ordering, and devices/zz_test_*.toml is a reserved live-tree fixture namespace.
 Both are ordering/naming contracts, so they are asserted against the script's own source."""
 
+import json
 import os
 import re
 import shlex
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
 
 _RESERVED_FIXTURE_PREFIX = "zz_test_"
 _SWEEP_LINE = "rm -f devices/zz_test_*.toml"
+_LIVE_DEVICE_PATH = re.compile(r'(\w+) = (?:repo_root|REPO_ROOT) / "devices" / (f?"[^"]*")')
 _GENERATE_LINE = "uv run scripts/_generate_sensortask_modules.py"
 # The `(` opening the subshell that backgrounds the pytest job - matched on the pytest invocation
 # itself rather than the bare paren, which appears all over a shell script.
@@ -36,17 +38,13 @@ _MARKER_VAR = "SENSORS_TEST_SH_PLANTED_RUN"
 
 
 def _test_sh_text(repo_root: Path) -> str:
-    return (repo_root / "scripts" / "test.sh").read_text()
+    return (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8")
 
 
 def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_root: Path) -> None:
-    # The race this ordering closes: the generator globs devices/*.toml, while the malformed-TOML
-    # test writes a throwaway one into the live tree for the length of one test - it cannot use a
-    # tmp_path tree, build_website.sh resolving from the repo root.
-
-    # Generated first, that file's brief existence is never seen; backgrounded first, a glob
-    # landing in that window exits 1 and aborts the run under `set -e`, naming a device nobody
-    # added.
+    # The race this ordering closes: the generator globs devices/*.toml while the tier's live-tree fixtures (a nested
+    # test.sh run's sentinel, the device-websites skip case) exist for the length of one test; generated first, the
+    # generator never meets one.
     text = _test_sh_text(repo_root)
     generate_at = text.find(_GENERATE_LINE)
     pytest_at = text.find(_PYTEST_LINE)
@@ -56,37 +54,51 @@ def test_buildgen_generation_runs_before_the_pytest_job_is_backgrounded(repo_roo
 
 
 def test_stale_live_tree_fixtures_are_swept_before_anything_globs_devices(repo_root: Path) -> None:
-    # The sweep covers the leak the ordering cannot: the fixture removes its file in `finally`,
-    # which a SIGKILL defeats, and a leaked file then breaks every later test.sh, typecheck.sh
-    # and twin run at the generation step - so the sweep must run ahead of that step.
+    # The sweep covers the leak the ordering cannot: a fixture removes its file in `finally`, which a SIGKILL defeats,
+    # so a later run reclaims it before its generation step globs devices/*.toml.
     text = _test_sh_text(repo_root)
     sweep_at = text.find(_SWEEP_LINE)
     assert sweep_at != -1, f"scripts/test.sh must sweep stale live-tree fixtures via {_SWEEP_LINE!r}"
     assert sweep_at < text.find(_GENERATE_LINE), "the devices/zz_test_*.toml sweep must run before the buildgen generation step that globs devices/*.toml"
 
 
-def test_the_live_tree_fixture_test_uses_the_reserved_prefix(repo_root: Path) -> None:
-    # The sweep above is only sound if every test that writes into the real devices/ directory names
-    # its file inside the reserved namespace. Checked against the real source rather than trusting a
-    # comment: a second such fixture added under some other name would be swept by nothing.
-    text = (repo_root / "tests_scripts" / "test_build_website_sh.py").read_text()
-    # Only paths that are actually WRITTEN count - the same `repo_root / "devices" / f"{device}.toml"`
-    # expression is read-only all over tests_scripts/, and flagging those would make this guard fire
-    # on a perfectly safe addition instead of on a real one.
-    written = [(path_var, name_var) for path_var, name_var in re.findall(r'(\w+) = repo_root / "devices" / f"\{(\w+)\}\.toml"', text) if f"{path_var}.write_text(" in text]
-    assert written, "test_build_website_sh.py no longer writes a devices/<device>.toml - update this test, or drop the sweep in scripts/test.sh if nothing writes there any more"
-    for path_var, name_var in written:
-        assigned = re.findall(rf'^\s*{name_var} = "([^"]+)"', text, re.MULTILINE)
-        assert assigned, f"couldn't resolve the device name behind the written path {path_var!r}"
-        for name in assigned:
-            assert name.startswith(_RESERVED_FIXTURE_PREFIX), f"a fixture written into the live devices/ tree must be named {_RESERVED_FIXTURE_PREFIX}* so scripts/test.sh's sweep can reclaim it after a kill, got {name!r}"
+def _live_device_fixtures(text: str) -> "list[tuple[str, str]]":
+    # (path variable, file name) of each file under the live repo's devices/ the text writes; a name built from one
+    # variable, f"{name}.toml", resolves through that variable's string assignments (unresolved: the expression itself).
+    found: list[tuple[str, str]] = []
+    if '/ "devices" / ' not in text:  # the pattern's own literal: a file without it is never matched, so never scanned
+        return found
+    for path_var, expr in _LIVE_DEVICE_PATH.findall(text):
+        if f"{path_var}.write_text(" not in text:
+            continue
+        name_var = re.fullmatch(r'f"\{(\w+)\}\.toml"', expr)
+        names = re.findall(rf'^\s*{name_var.group(1)} = "([^"]+)"', text, re.MULTILINE) if name_var else [expr.removeprefix("f").strip('"')]
+        found += [(path_var, name) for name in names] or [(path_var, expr)]
+    return found
+
+
+def test_every_live_tree_device_fixture_uses_the_reserved_prefix(repo_root: Path) -> None:
+    # The sweep above is only sound if every test writing into the real devices/ names its file inside the reserved
+    # namespace: read from every tests_scripts file's source, since a fixture under another name is swept by nothing.
+    written = [(path.name, *pair) for path in sorted((repo_root / "tests_scripts").glob("test_*.py")) for pair in _live_device_fixtures(path.read_text(encoding="utf-8"))]
+    assert written, "no tests_scripts file writes a devices/ fixture any more - update this test, or drop the sweep in scripts/test.sh"
+    outside = [f"{file}: {path_var} -> {name}" for file, path_var, name in written if not name.startswith(_RESERVED_FIXTURE_PREFIX)]
+    assert outside == [], f"a fixture written into the live devices/ tree must be named {_RESERVED_FIXTURE_PREFIX}* so scripts/test.sh's sweep can reclaim it after a kill: {outside}"
+
+
+@pytest.mark.parametrize(("name_line", "expected"), [('"x.toml"', "x.toml"), ('f"{device}.toml"\ndevice = "zz_test_y"', "zz_test_y"), ('f"zz_test_{key}.toml"', "zz_test_{key}.toml")], ids=["literal", "resolved", "f-string"])
+def test_the_fixture_scan_names_what_a_planted_write_creates(name_line: str, expected: str) -> None:
+    # Built from parts so this file's own source never holds a planted write the scan above would read.
+    planted = "toml" + ' = repo_root / "devices" / ' + name_line + "\n" + "toml" + '.write_text("")\n'
+    assert _live_device_fixtures(planted) == [("toml", expected)]
+    assert _live_device_fixtures(planted.replace(".write_text(", ".read_text(")) == [], "a read-only binding counted as a write"
 
 
 def test_a_leaked_fixture_is_reclaimed_at_session_start_too(repo_root: Path) -> None:
     # test.sh's sweep only helps runs that go through test.sh, so conftest.py reclaims the same
     # namespace at pytest session start - covering a direct run, and unable to race the fixture
     # that legitimately creates one, since nothing has at session start.
-    conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
+    conftest = (repo_root / "tests_scripts" / "conftest.py").read_text(encoding="utf-8")
     assert "_reclaim_leaked_device_fixtures" in conftest, "conftest.py must reclaim leaked live-tree device fixtures at session start"
     assert 'glob("zz_test_*.toml")' in conftest, "the session-start reclamation must target the reserved namespace"
     assert "autouse=True" in conftest, "the reclamation fixture must be autouse - nothing requests it by name"
@@ -104,10 +116,10 @@ def _run_detector(repo_root: Path, tmp_path: Path, probe_sleep_s: float) -> tupl
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _detect_parallelism() - update this test with it"
     stub = tmp_path / "stub_interpreter"
-    stub.write_text(f"#!/bin/sh\nsleep {probe_sleep_s}\n")
+    stub.write_text(f"#!/bin/sh\nsleep {probe_sleep_s}\n", encoding="utf-8")
     stub.chmod(0o755)
     script = tmp_path / "probe.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{body.group(0)}\n_detect_parallelism\n', encoding="utf-8")
     out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split()
     jobs, cores, multiplier, probe_ms = (int(v) for v in out)
     return jobs, cores, multiplier, probe_ms
@@ -124,10 +136,10 @@ def _run_detector_with_uptime(repo_root: Path, tmp_path: Path, elapsed_ms: int, 
     uptime = case_dir / "uptime"
     start_cs = 100_000
     if uptime_readable:
-        uptime.write_text(f"{start_cs // 100}.{start_cs % 100:02d} 4000.00\n")
+        uptime.write_text(f"{start_cs // 100}.{start_cs % 100:02d} 4000.00\n", encoding="utf-8")
     end_cs = start_cs + elapsed_ms // 10
     stub = case_dir / "stub_interpreter"
-    stub.write_text(f'#!/bin/sh\n[ -f "{uptime}" ] && echo "{end_cs // 100}.{end_cs % 100:02d} 4000.10" >"{uptime}"\nexit 0\n')
+    stub.write_text(f'#!/bin/sh\n[ -f "{uptime}" ] && echo "{end_cs // 100}.{end_cs % 100:02d} 4000.10" >"{uptime}"\nexit 0\n', encoding="utf-8")
     stub.chmod(0o755)
     # Asserted rather than assumed: a no-op replacement would time the host's real uptime instead.
     redirected = body.group(0).replace("/proc/uptime", str(uptime))
@@ -137,11 +149,11 @@ def _run_detector_with_uptime(repo_root: Path, tmp_path: Path, elapsed_ms: int, 
         # A realtime clock stepped by an hour between any two reads, as an NTP correction would.
         bin_dir = case_dir / "bin"
         bin_dir.mkdir()
-        (bin_dir / "date").write_text('#!/bin/sh\nc="$0.calls"\nn=$(cat "$c" 2>/dev/null || echo 0)\nn=$((n + 1)); echo "$n" > "$c"\necho $((n * 3600000000000))\n')
+        (bin_dir / "date").write_text('#!/bin/sh\nc="$0.calls"\nn=$(cat "$c" 2>/dev/null || echo 0)\nn=$((n + 1)); echo "$n" > "$c"\necho $((n * 3600000000000))\n', encoding="utf-8")
         (bin_dir / "date").chmod(0o755)
         path = f"{bin_dir}:{path}"
     script = case_dir / "probe.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n', encoding="utf-8")
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=dict(os.environ, PATH=path), check=True)
     jobs, cores, multiplier, probe_ms = (int(v) for v in done.stdout.split())
     return (jobs, cores, multiplier, probe_ms), done.stderr
@@ -186,7 +198,7 @@ def _run_coverage_cap(repo_root: Path, tmp_path: Path, jobs: int, cores: int, mu
     body = re.search(r"^_coverage_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None, "scripts/test.sh no longer defines _coverage_parallelism() - update this test with it"
     script = tmp_path / "cap.sh"
-    script.write_text(f"#!/usr/bin/env bash\nset -uo pipefail\n{body.group(0)}\n_coverage_parallelism {jobs} {cores} {multiplier}\n")
+    script.write_text(f"#!/usr/bin/env bash\nset -uo pipefail\n{body.group(0)}\n_coverage_parallelism {jobs} {cores} {multiplier}\n", encoding="utf-8")
     capped_jobs, capped_multiplier = (int(v) for v in subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split())
     return capped_jobs, capped_multiplier
 
@@ -219,16 +231,16 @@ def _run_detector_with_cgroup(repo_root: Path, tmp_path: Path, cpu_max: str) -> 
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None
     cpu_file = tmp_path / "cpu.max"
-    cpu_file.write_text(cpu_max)
+    cpu_file.write_text(cpu_max, encoding="utf-8")
     stub = tmp_path / "fast_interpreter"
-    stub.write_text("#!/bin/sh\nexit 0\n")
+    stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     stub.chmod(0o755)
     # Asserted rather than assumed: a silent no-op replacement would leave the probe reading the real
     # /sys/fs/cgroup/cpu.max of whatever this run sits in, and every case below would test the host.
     redirected = body.group(0).replace("/sys/fs/cgroup/cpu.max", str(cpu_file))
     assert redirected != body.group(0), "scripts/test.sh no longer reads /sys/fs/cgroup/cpu.max - update this redirection with it"
     script = tmp_path / "probe_cgroup.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{stub}"\n{redirected}\n_detect_parallelism\n', encoding="utf-8")
     jobs, cores, multiplier, probe_ms = (int(v) for v in subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.split())
     return jobs, cores, multiplier, probe_ms
 
@@ -263,7 +275,7 @@ def _resolved_parallelism(repo_root: Path, tmp_path: Path, env_value: str | None
     cap = re.search(r"^_coverage_parallelism\(\) \{.*?^\}", text, re.DOTALL | re.MULTILINE)
     assert cap is not None, "scripts/test.sh no longer defines _coverage_parallelism() - update this test with it"
     script = tmp_path / "resolve.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\ncoverage={int(coverage)}\n_detect_parallelism() {{ echo "8 4 2 300"; }}\n{cap.group(0)}\n' + text[start:end] + 'echo "RESOLVED=$max_parallel"\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\ncoverage={int(coverage)}\n_detect_parallelism() {{ echo "8 4 2 300"; }}\n{cap.group(0)}\n' + text[start:end] + 'echo "RESOLVED=$max_parallel"\n', encoding="utf-8")
     env = {"PATH": "/usr/bin:/bin"} | ({} if env_value is None else {"TEST_PARALLELISM": env_value})
     out = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, env=env).stdout
     return int(out.rsplit("RESOLVED=", 1)[1].strip())
@@ -294,7 +306,7 @@ def test_a_broken_probe_runs_at_one_times_and_says_so(repo_root: Path, tmp_path:
     body = re.search(r"^_detect_parallelism\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
     assert body is not None
     script = tmp_path / "probe_broken.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{tmp_path}/does_not_exist"\n{body.group(0)}\n_detect_parallelism\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -uo pipefail\nmicropython_bin="{tmp_path}/does_not_exist"\n{body.group(0)}\n_detect_parallelism\n', encoding="utf-8")
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True)
     assert int(done.stdout.split()[2]) == 1, f"a broken probe must fall to 1x, got {done.stdout.split()}"
     assert "== speed probe failed - running at 1x" in done.stderr
@@ -362,11 +374,11 @@ def _run_cleanup_probe(repo_root: Path, tmp_path: Path, *, arm_trap: bool) -> bo
         f'( sleep 120 & inner=$!; echo "$inner" >"{observed}"; echo "$inner" >"$tests_scripts_inner_pidfile"; wait $inner ) >/dev/null 2>&1 &\n'
         "tests_scripts_pid=$!\n"
         'until [ -s "$tests_scripts_inner_pidfile" ]; do sleep 0.05; done\n'
-        "false  # the abort under test: `set -e` takes the parent down mid-run\n",
+        "false  # the abort under test: `set -e` takes the parent down mid-run\n", encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
     assert done.returncode != 0, "the probe parent must actually abort - otherwise neither arm proves anything"
-    inner = observed.read_text().strip()
+    inner = observed.read_text(encoding="utf-8").strip()
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         if subprocess.run(["/bin/kill", "-0", inner], capture_output=True, check=False).returncode != 0:
@@ -402,6 +414,19 @@ def test_the_reaped_pid_is_cleared_so_the_trap_cannot_signal_a_recycled_one(repo
     assert 'tests_scripts_pid=""' in text[wait_at:wait_at + 300], "the pid must be cleared right after it is reaped"
 
 
+def test_the_one_exit_trap_is_armed_before_the_port_lock_and_any_temporary_file(repo_root: Path) -> None:
+    # bash replaces an EXIT handler rather than stacking, so a second trap would drop the first's cleanup, and a
+    # temporary file made before the trap leaks on an abort in between.
+    code = [line for line in _without_comments(_test_sh_text(repo_root)).splitlines() if not line.startswith(("    ", "\t"))]
+    traps = [n for n, line in enumerate(code) if re.match(r"trap\s+(?!-\s)\S.*\bEXIT\b", line)]
+    assert [code[n] for n in traps] == ["trap _cleanup EXIT"], [code[n] for n in traps]
+    lock = next(n for n, line in enumerate(code) if line.startswith("port_lock_take 53 "))
+    made = [n for n, line in enumerate(code) if "mktemp" in line]
+    assert traps[0] < lock, "port 53 is taken before the trap that releases it is armed"
+    assert made and all(traps[0] < n for n in made), "a temporary file is made before the EXIT trap that removes it"
+    assert 'tests_scripts_status_file="$results_dir/tests_scripts.status"' in code and 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"' in code
+
+
 def test_the_exit_trap_releases_the_port_lock_on_an_aborted_run(repo_root: Path, tmp_path: Path) -> None:
     # The one EXIT trap also gives port 53 back: a run aborted under `set -e` must not keep it held.
     runtime = tmp_path / "runtime"
@@ -411,7 +436,7 @@ def test_the_exit_trap_releases_the_port_lock_on_an_aborted_run(repo_root: Path,
         f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\nport_lock_take 53 scripts/test.sh\n"
         f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\n'
         f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
-        f'{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\ntest -d "$XDG_RUNTIME_DIR/sensors-port-53.lock"\nfalse\n',
+        f'{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\ntest -d "$XDG_RUNTIME_DIR/sensors-port-53.lock"\nfalse\n', encoding="utf-8",
     )
     env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK")}
     done = subprocess.run(["/bin/bash", str(script)], env={**env, "XDG_RUNTIME_DIR": str(runtime)}, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
@@ -428,12 +453,13 @@ def test_the_exit_trap_releases_the_port_lock_on_an_aborted_run(repo_root: Path,
 def _launched_tier(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
     # Runs scripts/test.sh's own launch block with uv stubbed to record its arguments, one per line.
     text = _test_sh_text(repo_root)
-    start = text.index('results_dir="$(mktemp -d)"\n') + len('results_dir="$(mktemp -d)"\n')
+    marker = 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"\n'
+    start = text.index(marker) + len(marker)
     end = text.index("tests_scripts_pid=$!\n", start) + len("tests_scripts_pid=$!\n")
     record = tmp_path / "uv.args"
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "PYTHONPATH=$PYTHONPATH" "$@" >"{record}"\n')
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "PYTHONPATH=$PYTHONPATH" "$@" >"{record}"\n', encoding="utf-8")
     (stub_bin / "uv").chmod(0o755)
     script = tmp_path / "launch.sh"
     script.write_text(
@@ -441,12 +467,12 @@ def _launched_tier(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[s
         f'coverage={int(coverage)}\nresults_dir="{tmp_path}"\ntests_scripts_timeout_s=30\n'
         f'tests_scripts_status_file="{tmp_path}/status"\ntests_scripts_inner_pidfile="{tmp_path}/pid"\n'
         + text[start:end]
-        + 'wait "$tests_scripts_pid"\n',
+        + 'wait "$tests_scripts_pid"\n', encoding="utf-8",
     )
     env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
     subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    assert (tmp_path / "status").read_text() == "PASS\n"
-    return record.read_text().splitlines()
+    assert (tmp_path / "status").read_text(encoding="utf-8") == "PASS\n"
+    return record.read_text(encoding="utf-8").splitlines()
 
 
 def test_a_plain_run_launches_the_pytest_tier_untraced(repo_root: Path, tmp_path: Path) -> None:
@@ -476,15 +502,15 @@ def _granted(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
     for name, body in (("setcap", f'printf "%s\\n" "$2" >>"{record}"'), ("sudo", '"$@"')):
-        (stub_bin / name).write_text(f"#!/usr/bin/env bash\n{body}\n")
+        (stub_bin / name).write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
         (stub_bin / name).chmod(0o755)
-    unix_dir = tmp_path / "unix"
+    unix_dir = tmp_path / "toolchain" / "micropython" / "ports" / "unix"
     binary = unix_dir / ("build-settrace" if coverage else "build-standard") / "micropython"
     script = tmp_path / "grant.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nunix_dir="{unix_dir}"\nmicropython_bin="{binary}"\n' + text[start:end])
-    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_unix_port.sh\nmicropython_bin="{binary}"\n' + text[start:end], encoding="utf-8")
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}", "PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain")}
     subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    return [str(Path(line).relative_to(unix_dir)) for line in record.read_text().splitlines()]
+    return [str(Path(line).relative_to(unix_dir)) for line in record.read_text(encoding="utf-8").splitlines()]
 
 
 @pytest.mark.parametrize(("coverage", "expected"), [(False, ["build-standard/micropython"]), (True, ["build-standard/micropython", "build-settrace/micropython"])])
@@ -517,7 +543,7 @@ def test_the_session_start_reclamation_deletes_only_the_reserved_namespace(repo_
     real = devices / "fixture_device.toml"
     lookalike = devices / "zz_tests_not_ours.toml"
     for path in (leaked, real, lookalike):
-        path.write_text("# fixture\n")
+        path.write_text("# fixture\n", encoding="utf-8")
 
     conftest = load_script_module(repo_root / "tests_scripts" / "conftest.py", "_tests_scripts_conftest_under_test")
     monkeypatch.setattr(conftest, "REPO_ROOT", tmp_path)
@@ -545,87 +571,87 @@ def test_the_session_start_reclamation_is_a_no_op_on_a_clean_tree(repo_root: Pat
 
 
 # ---------------------------------------------------------------------------
-# The Unix-port variant check. Once build-standard stopped being the settrace build (Part E.5.2),
-# the path no longer identifies the binary - and a ~/pico-toolchain predating the split holds an
-# executable build-standard that still carries the flag, which an existence check accepts.
+# The build flavours. Once build-standard stopped being the settrace build (Part E.5.2), the path no longer
+# identifies the binary, so every binary is asked which build flavour it is, through scripts/_unix_port.sh.
 # ---------------------------------------------------------------------------
 
 
-def _variant_of(repo_root: Path, tmp_path: Path, binary: Path) -> str:
-    # Runs scripts/test.sh's own unix_port_variant() against one binary, whatever it is.
-    body = re.search(r"^unix_port_variant\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
-    assert body is not None, "scripts/test.sh no longer defines unix_port_variant() - update this test with it"
-    script = tmp_path / "variant.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\n{body.group(0)}\nunix_port_variant "{binary}"\n')
-    return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True).stdout.strip()
+def _flavour_of(repo_root: Path, binary: Path) -> str:
+    # scripts/_unix_port.sh's own unix_port_flavour against one binary, whatever it is.
+    probe = f"set -euo pipefail\nsource {shlex.quote(str(repo_root / 'scripts' / '_unix_port.sh'))}\nunix_port_flavour {shlex.quote(str(binary))}\n"
+    return subprocess.run(["/bin/bash", "-c", probe], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S).stdout.strip()
 
 
-def test_the_test_rig_binary_reports_itself_as_the_settrace_free_variant(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
-    # The real artifact, not a stub: this is the one assertion that would catch build-standard
-    # silently going back to carrying the flag, which is what the 4-5x inflation rides on.
-    assert _variant_of(repo_root, tmp_path, micropython_bin) == "plain"
+def _built(repo_root: Path, flavour: str) -> Path:
+    # The real toolchain's binary of one flavour, by the probe's own path; a missing build fails, never skips.
+    done = subprocess.run(["/bin/bash", str(repo_root / "scripts" / "_unix_port.sh"), "unix_port_bin", flavour], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    binary = Path(done.stdout.strip())
+    if not binary.is_file():
+        pytest.fail(f"the {flavour} build flavour is not built at {binary} - setup_toolchain.py setup builds all three")
+    return binary
 
 
-def test_the_coverage_binary_reports_itself_as_the_settrace_variant(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
-    settrace_bin = micropython_bin.parent.parent / "build-settrace" / "micropython"
-    if not settrace_bin.is_file():
-        pytest.fail(f"the --coverage variant is not built at {settrace_bin} - setup_toolchain.py setup builds both")
-    assert _variant_of(repo_root, tmp_path, settrace_bin) == "settrace"
+@pytest.mark.parametrize("flavour", ["standard", "settrace", "lwip"])
+def test_each_real_binary_reports_its_own_build_flavour(repo_root: Path, flavour: str) -> None:
+    # The real artifacts, not stubs: this is the one assertion that would catch build-standard silently going back to
+    # carrying the settrace flag, which is what the 4-5x inflation rides on, or the lwIP build losing its lwip module.
+    assert _flavour_of(repo_root, _built(repo_root, flavour)) == flavour
 
 
-def test_an_unusable_binary_is_reported_as_such_rather_than_as_the_plain_variant(repo_root: Path, tmp_path: Path) -> None:
-    # The failure mode that matters: "plain" here would make a broken binary look like the right
-    # one, and the run would go on to fail 85 files with no word about why.
+def test_an_unusable_binary_is_reported_as_such_rather_than_as_the_standard_flavour(repo_root: Path, tmp_path: Path) -> None:
+    # The failure mode that matters: "standard" here would make a broken binary look like the right
+    # one, and the run would go on to fail every test file with no word about why.
     broken = tmp_path / "micropython"
-    broken.write_text("#!/bin/sh\nexit 1\n")
+    broken.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     broken.chmod(0o755)
-    assert _variant_of(repo_root, tmp_path, broken) == "unusable"
-    assert _variant_of(repo_root, tmp_path, tmp_path / "does_not_exist") == "unusable"
+    assert _flavour_of(repo_root, broken) == "unusable"
+    assert _flavour_of(repo_root, tmp_path / "does_not_exist") == "unusable"
 
 
-def test_a_binary_whose_frozen_asyncio_is_missing_is_unusable_not_plain(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
+def test_a_binary_whose_frozen_asyncio_is_missing_is_unusable_not_standard(repo_root: Path, tmp_path: Path) -> None:
     # An interrupted two-pass build leaves a runnable binary without frozen asyncio, which every test
     # file then dies on. Stood in for by the real binary with sys.path cleared: frozen modules
     # resolve through its ".frozen" entry, while the builtin sys still imports.
     no_asyncio = tmp_path / "micropython"
-    no_asyncio.write_text(f'#!/usr/bin/env bash\nexec "{micropython_bin}" -c "import sys; sys.path.clear()\n$2"\n')
+    no_asyncio.write_text(f'#!/usr/bin/env bash\nexec "{_built(repo_root, "standard")}" -c "import sys; sys.path.clear()\n$2"\n', encoding="utf-8")
     no_asyncio.chmod(0o755)
-    assert _variant_of(repo_root, tmp_path, no_asyncio) == "unusable"
+    assert _flavour_of(repo_root, no_asyncio) == "unusable"
 
 
-def test_a_wrong_variant_triggers_a_rebuild_rather_than_running_on_it(repo_root: Path) -> None:
-    text = _test_sh_text(repo_root)
-    # Structural, because the real branch shells out to a multi-minute toolchain build: what has to
-    # hold is that a variant mismatch reaches setup at all, and that the run dies if it still fails.
-    assert re.search(r'elif \[ "\$\(unix_port_variant "\$micropython_bin"\)" != "\$want_variant" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), (
-        "a build-standard that is the wrong variant must trigger the same setup rebuild a missing one does"
-    )
-    assert re.search(r'got_variant="\$\(unix_port_variant "\$micropython_bin"\)"\nif \[ "\$got_variant" != "\$want_variant" \]; then\n(?:.*\n)*?\s*exit 1', text), (
-        "after the rebuild the variant must be re-checked and the run must exit, never fall through onto the wrong binary"
-    )
-    # The same holds for the toolchain record and the lwIP host build (driven for real below).
-    assert re.search(r'elif \[ ! -f "\$toolchain_record" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), "a missing toolchain record must reach setup"
-    assert re.search(r'elif \[ "\$coverage" = "0" \] && \[ "\$\(unix_port_variant "\$lwip_bin"\)" != "plain" \]; then\n(?:.*\n)*?\s*uv run toolchain/setup_toolchain\.py setup', text), "a missing or wrong lwIP host build must reach setup on a plain run"
+def test_the_runner_takes_every_binary_and_its_path_from_the_shared_probe(repo_root: Path) -> None:
+    # Structural: the probe's own behaviour is tests_scripts/test_unix_port_sh.py's; what has to hold here is that the
+    # runner asks it for each binary it boots, one setup for them all, and keeps no probe or path of its own.
+    code = _without_comments(_test_sh_text(repo_root))
+    assert "source scripts/_unix_port.sh" in code
+    assert re.search(r'if \[ "\$coverage" = "1" \]; then\n\s*unix_port_ensure standard settrace\b.*\n\s*micropython_bin="\$\(unix_port_bin settrace\)"', code), code
+    assert re.search(r'\n\s*unix_port_ensure standard lwip\n\s*micropython_bin="\$\(unix_port_bin standard\)"\n\s*lwip_bin="\$\(unix_port_bin lwip\)"', code), code
+    assert 'unit_micropypath="$(micropypath unit)"' in code
+    for gone in ("import sys, asyncio", "${PICO_TOOLCHAIN_DIR", "$PICO_TOOLCHAIN_DIR", "unix_port_variant", "toolchain-record.json", "build/generated_src:src:tests"):
+        assert gone not in code, f"scripts/test.sh still holds its own {gone!r} - the probe and the layout file are the one source"
 
 
 _COMPLETE = ("record", "build-standard", "build-settrace", "build-lwip")
 
 
-# The probe on stub binaries and a stub `uv` that records each setup and, unless told not to, builds
-# what was missing: what has to hold is which state reaches setup and which leaves the run dead after it.
+# The runner's own toolchain block on stub binaries and a stub `uv` that records each setup and, unless told not to,
+# builds what was missing: what has to hold is which state reaches setup and which leaves the run dead after it.
 def _run_probe(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", *, coverage: bool = False, setup_repairs: "tuple[str, ...]" = _COMPLETE) -> tuple["subprocess.CompletedProcess[str]", list[str]]:
     text = _test_sh_text(repo_root)
-    start = text.index('toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"')
+    start = text.index("# Every binary comes from the one Unix-port probe")
     end = text.index("# TEST_PARALLELISM: how many", start)
     toolchain = tmp_path / "toolchain"
     # Each maker creates one part; "build-lwip-settrace" is a build-lwip binary of the wrong flavour.
-    binaries = {"build-standard": ("build-standard", "plain"), "build-settrace": ("build-settrace", "settrace"), "build-lwip": ("build-lwip", "plain"), "build-lwip-settrace": ("build-lwip", "settrace")}
+    binaries = {"build-standard": ("build-standard", "standard"), "build-settrace": ("build-settrace", "settrace"), "build-lwip": ("build-lwip", "lwip"), "build-lwip-settrace": ("build-lwip", "settrace")}
     makers = tmp_path / "makers"
     makers.mkdir()
-    (makers / "record").write_text(f': >"{toolchain}/toolchain-record.json"\n')
+    good_record = tmp_path / "good-record.json"
+    setup_toolchain = load_script_module(repo_root / "toolchain" / "setup_toolchain.py", "setup_toolchain")
+    inputs = {name: setup_toolchain._sha256(repo_root / "toolchain" / name) for name in ("versions.toml", "setup_toolchain.py", "micropython_overrides.py")}
+    setup_toolchain._write_json(good_record, {"input_sha256": inputs})
+    (makers / "record").write_text(f'cp "{good_record}" "{toolchain}/toolchain-record.json"\n', encoding="utf-8")
     for name, (build_dir, flavour) in binaries.items():
         target = toolchain / "micropython" / "ports" / "unix" / build_dir
-        (makers / name).write_text(f'mkdir -p "{target}"\nprintf \'#!/bin/sh\\necho {flavour}\\n\' >"{target}/micropython"\nchmod +x "{target}/micropython"\n')
+        (makers / name).write_text(f'mkdir -p "{target}"\nprintf \'#!/bin/sh\\necho {flavour}\\n\' >"{target}/micropython"\nchmod +x "{target}/micropython"\n', encoding="utf-8")
     toolchain.mkdir()
     for name in present:
         subprocess.run(["/bin/bash", str(makers / name)], check=True)
@@ -633,13 +659,13 @@ def _run_probe(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", *, c
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
     repair = "".join(f'bash "{makers / name}"\n' for name in setup_repairs)
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "$*" >>"{calls}"\n{repair}')
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "$*" >>"{calls}"\n{repair}', encoding="utf-8")
     (stub_bin / "uv").chmod(0o755)
     script = tmp_path / "probe.sh"
-    script.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ncoverage={int(coverage)}\n{text[start:end]}echo PROBED\n")
+    script.write_text(f"#!/usr/bin/env bash\nset -euo pipefail\ncoverage={int(coverage)}\nsource scripts/_unix_port.sh\n{text[start:end]}echo PROBED\n", encoding="utf-8")
     env = {"PATH": f"{stub_bin}:/usr/bin:/bin", "PICO_TOOLCHAIN_DIR": str(toolchain), "HOME": str(tmp_path)}
-    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=_SNIPPET_TIMEOUT_S)
-    return done, calls.read_text().splitlines() if calls.exists() else []
+    done = subprocess.run(["/bin/bash", str(script)], cwd=repo_root, capture_output=True, text=True, env=env, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    return done, calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
 
 
 @pytest.mark.parametrize("coverage", [False, True])
@@ -655,11 +681,11 @@ def test_a_complete_toolchain_runs_no_setup(repo_root: Path, tmp_path: Path, *, 
     [
         (("build-standard", "build-settrace", "build-lwip"), False, "no toolchain record"),
         (("build-standard", "build-settrace", "build-lwip"), True, "no toolchain record"),
-        (("record", "build-standard", "build-settrace"), False, "the lwIP host build"),
-        (("record", "build-standard", "build-settrace", "build-lwip-settrace"), False, "the lwIP host build"),
+        (("record", "build-standard", "build-settrace"), False, "build-lwip/micropython"),
+        (("record", "build-standard", "build-settrace", "build-lwip-settrace"), False, "build-lwip/micropython reports itself as the 'settrace' build flavour, not 'lwip'"),
     ],
 )
-def test_a_missing_record_or_lwip_build_runs_setup(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", reason: str, *, coverage: bool) -> None:
+def test_a_missing_record_or_lwip_build_runs_setup_once(repo_root: Path, tmp_path: Path, present: "tuple[str, ...]", reason: str, *, coverage: bool) -> None:
     # setup deletes the record first and writes it last, so a missing one is an interrupted or older
     # toolchain - the same as a missing binary; the lwIP host build is needed by a plain run only.
     done, calls = _run_probe(repo_root, tmp_path, present, coverage=coverage)
@@ -678,7 +704,7 @@ def test_a_coverage_run_does_not_need_the_lwip_host_build(repo_root: Path, tmp_p
 
 @pytest.mark.parametrize(
     ("left_out", "message"),
-    [("record", "error: setup left no toolchain record at"), ("build-lwip", "the lwIP host build")],
+    [("record", "error: setup left no toolchain record at"), ("build-lwip", "build-lwip/micropython is still missing after setup")],
 )
 def test_a_setup_that_leaves_the_record_or_the_lwip_build_missing_ends_the_run(repo_root: Path, tmp_path: Path, left_out: str, message: str) -> None:
     repairs = tuple(name for name in _COMPLETE if name != left_out)
@@ -733,7 +759,7 @@ def _gc_threshold_check(repo_root: Path, tmp_path: Path, value: str) -> "subproc
     assert start is not None, "scripts/test.sh no longer validates GC_THRESHOLD - update this test with it"
     end = next(i for i in range(start, len(lines)) if lines[i] == "fi")
     script = tmp_path / "check.sh"
-    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n")
+    script.write_text("#!/usr/bin/env bash\nset -euo pipefail\ncoverage=0\n" + "\n".join(lines[start : end + 1]) + "\n", encoding="utf-8")
     return subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", "GC_THRESHOLD": value}, check=False)
 
 
@@ -782,9 +808,9 @@ def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str],
     scratch = repo_root / "tests" / "_tmp" / f"zz_test_sh_{key}_sentinel"
     scratch.mkdir(parents=True, exist_ok=True)
     sentinel = scratch / "in_use.txt"
-    sentinel.write_text("held by a concurrently running test file\n")
+    sentinel.write_text("held by a concurrently running test file\n", encoding="utf-8")
     fixture = repo_root / "devices" / f"zz_test_{key}_sentinel.toml"
-    fixture.write_text("# swept by scripts/test.sh's reserved-namespace sweep\n")
+    fixture.write_text("# swept by scripts/test.sh's reserved-namespace sweep\n", encoding="utf-8")
     try:
         completed = subprocess.run(
             ["/bin/bash", str(repo_root / "scripts" / "test.sh"), *args],
@@ -857,13 +883,13 @@ def _flag_markers(repo_root: Path, tmp_path: Path, output: str | None, path_pref
     results.mkdir(exist_ok=True)
     log = tmp_path / "case.log"
     if output is not None:
-        log.write_text(output)
+        log.write_text(output, encoding="utf-8")
     script = tmp_path / "flag.sh"
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n')
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nresults_dir="{results}"\n{body.group(0)}\n_flag_memory_errors case "{log}"\n', encoding="utf-8")
     path = f"{path_prefix}:{os.environ['PATH']}" if path_prefix else os.environ["PATH"]
     subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, env={**os.environ, "PATH": path})
     memerr, noverdict = results / "case.memerr", results / "case.noverdict"
-    return (memerr.read_text() if memerr.exists() else "", noverdict.read_text() if noverdict.exists() else "")
+    return (memerr.read_text(encoding="utf-8") if memerr.exists() else "", noverdict.read_text(encoding="utf-8") if noverdict.exists() else "")
 
 
 def _flag(repo_root: Path, tmp_path: Path, output: str) -> str:
@@ -883,7 +909,7 @@ def test_a_grep_error_is_no_verdict_rather_than_clean(repo_root: Path, tmp_path:
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
     grep = stub_bin / "grep"
-    grep.write_text("#!/bin/sh\nexit 2\n")
+    grep.write_text("#!/bin/sh\nexit 2\n", encoding="utf-8")
     grep.chmod(0o755)
     memerr, noverdict = _flag_markers(repo_root, tmp_path, "[test_x] 3/3 passed, 0 failed, 0 skipped\n", stub_bin)
     assert memerr == ""
@@ -959,15 +985,15 @@ def _run_annotation_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
-        f'{_annotation_detail_line(repo_root)}\necho "::error title=tests/test_x.py::$annotation_detail"\n',
+        f'{_annotation_detail_line(repo_root)}\necho "::error title=tests/test_x.py::$annotation_detail"\n', encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
     return done.returncode, done.stdout
 
 
 def test_a_failing_file_s_own_output_survives_into_one_annotation(repo_root: Path, tmp_path: Path) -> None:
-    (tmp_path / "test_x.memerr").write_text("")
-    (tmp_path / "test_x.log").write_text("[test_x] 50% done\n[test_x] AssertionError: boom\n")
+    (tmp_path / "test_x.memerr").write_text("", encoding="utf-8")
+    (tmp_path / "test_x.log").write_text("[test_x] 50% done\n[test_x] AssertionError: boom\n", encoding="utf-8")
     code, out = _run_annotation_detail(repo_root, tmp_path)
     assert code == 0, out
     line = out.strip()
@@ -1008,14 +1034,14 @@ def _run_memerr_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'results_dir="{tmp_path}"\nannotation_tag="test_x"\n'
-        f'{_memerr_detail_line(repo_root)}\nprintf "%s" "$annotation_detail"\n',
+        f'{_memerr_detail_line(repo_root)}\nprintf "%s" "$annotation_detail"\n', encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
     return done.returncode, done.stdout
 
 
 def test_an_allocation_failure_marker_survives_into_one_escaped_annotation(repo_root: Path, tmp_path: Path) -> None:
-    (tmp_path / "test_x.memerr").write_text("a 50% b\nc\n")
+    (tmp_path / "test_x.memerr").write_text("a 50% b\nc\n", encoding="utf-8")
     code, out = _run_memerr_detail(repo_root, tmp_path)
     assert code == 0, out
     assert out == "a 50%25 b%0Ac%0A", out
@@ -1038,15 +1064,15 @@ def _run_annotation_block(repo_root: Path, tmp_path: Path, failed: int, memory: 
     failed_files = [f"tests/test_f{i}.py" for i in range(failed)]
     memory_files = [f"tests/test_m{i}.py" for i in range(memory)]
     for name in failed_files + memory_files:
-        tag = Path(name).stem
-        (tmp_path / f"{tag}.log").write_text(f"[{tag}] boom\n")
-        (tmp_path / f"{tag}.memerr").write_text(f"[{tag}] memory allocation failed\n")
+        tag = _tag(name)
+        (tmp_path / f"{tag}.log").write_text(f"[{tag}] boom\n", encoding="utf-8")
+        (tmp_path / f"{tag}.memerr").write_text(f"[{tag}] memory allocation failed\n", encoding="utf-8")
     script = tmp_path / "block.sh"
     script.write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\nGITHUB_ACTIONS=true\n"
+        "#!/usr/bin/env bash\nset -euo pipefail\nGITHUB_ACTIONS=true\n" + _job_tag_body(repo_root) + "\n"
         f'results_dir="{tmp_path}"\ntests_scripts_result="{"FAIL" if pytest_failed else "PASS"}"\n'
         f"failed_files=({' '.join(failed_files)})\nmemory_error_files=({' '.join(memory_files)})\n"
-        f"{_annotation_block(repo_root)}\n",
+        f"{_annotation_block(repo_root)}\n", encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
     return [line for line in done.stdout.splitlines() if line.startswith("::error")]
@@ -1066,6 +1092,20 @@ def test_a_run_under_the_cap_gets_every_annotation_and_no_overflow_line(repo_roo
     lines = _run_annotation_block(repo_root, tmp_path, failed=2, memory=1, pytest_failed=False)
     assert [line.split("::")[1] for line in lines] == ["error title=tests/test_f0.py", "error title=tests/test_f1.py", "error title=tests/test_m0.py (allocation failure)"], lines
     assert "[test_m0] memory allocation failed%0A" in lines[2], lines
+
+
+def test_a_per_device_jobs_annotation_carries_that_jobs_own_log(repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Its log is named by its tag, brackets and all; the file's name alone would find no log and post an empty body.
+    script = tmp_path / "block.sh"
+    tag = "test_p[fixture-device-a]"
+    (tmp_path / f"{tag}.log").write_text(f"[{tag}] AssertionError: boom\n", encoding="utf-8")
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nGITHUB_ACTIONS=true\n" + _job_tag_body(repo_root) + "\n"
+        f'results_dir="{tmp_path}"\ntests_scripts_result=PASS\nfailed_files=("tests/test_p.py[fixture-device-a]")\nmemory_error_files=()\n{_annotation_block(repo_root)}\n', encoding="utf-8",
+    )
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    assert done.stdout.strip() == f"::error title=tests/test_p.py[fixture-device-a]::[{tag}] AssertionError: boom%0A", done.stdout
 
 
 def test_an_all_green_run_under_actions_prints_no_annotation_at_all(repo_root: Path, tmp_path: Path) -> None:
@@ -1096,9 +1136,9 @@ _GREEN_RECORD = '{"tests": [{"nodeid": "tests_scripts/test_a.py::test_a", "outco
 
 
 def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None, str | None, str | None]], *, pytest_status: str = "PASS", record: str | None = _GREEN_RECORD, coverage: int = 0, render_fails: bool | str = False, extra: dict[str, str] | None = None) -> tuple[int, str, Path]:
-    # Runs the verdict tail over a fixture results dir: jobs maps a test file to its (status, log,
-    # memerr) contents, None meaning that file is absent; extra plants further result files. An lwIP
-    # host file is discovered as the script does, and dispatched unless coverage is set.
+    # Runs the verdict tail over a fixture results dir: jobs maps a test file or scenarios[<device>] to its (status,
+    # log, memerr) contents, None meaning that file is absent; extra plants further result files. lwIP host files and
+    # scenario jobs are found as the script finds them (their devices the derived ones), dispatched unless coverage is set.
     root = _fake_repo(repo_root, tmp_path)
     results = tmp_path / "results"
     results.mkdir()
@@ -1106,31 +1146,35 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
         tag = _tag(test_file)
         for suffix, content in (("status", status), ("log", log), ("memerr", memerr)):
             if content is not None:
-                (results / f"{tag}.{suffix}").write_text(content)
+                (results / f"{tag}.{suffix}").write_text(content, encoding="utf-8")
     for name, content in (extra or {}).items():
-        (results / name).write_text(content)
+        (results / name).write_text(content, encoding="utf-8")
     status_file = tmp_path / "pytest.status"
-    status_file.write_text(pytest_status + "\n")
+    status_file.write_text(pytest_status + "\n", encoding="utf-8")
     if record is not None:
-        (results / "tests_scripts.json").write_text(record)
+        (results / "tests_scripts.json").write_text(record, encoding="utf-8")
     stub_bin = tmp_path / "stub_bin"
     stub_bin.mkdir()
-    # The report renders are the only `uv run`s the tail makes that the fixture stands in for: each is
-    # logged to tmp_path/renders, and fails when render_fails is True or a substring of its arguments.
+    # The report renders are the only `uv run`s the fixture stands in for: each is logged to tmp_path/renders, and fails
+    # when render_fails is True or a substring of its arguments. The tail's helpers still run, on the interpreter itself
+    # with -S (no site-packages, as in uv's script env), skipping uv's environment lookup at every start.
     fail = "" if render_fails is False else f'    [[ "$*" != *"{"" if render_fails is True else render_fails}"* ]] || exit 1\n'
     (stub_bin / "uv").write_text(
         '#!/usr/bin/env bash\nif [ "$2" = "scripts/_render_coverage.py" ] || [ "$2" = "coverage" ]; then\n'
-        f'    echo "$*" >>"{tmp_path}/renders"\n{fail}    exit 0\nfi\nexec {shutil.which("uv")} "$@"\n',
+        f'    echo "$*" >>"{tmp_path}/renders"\n{fail}    exit 0\nfi\n'
+        'if [ "$1" = run ] && [[ "$2" == python || "$2" == scripts/*.py ]]; then\n    shift\n    [ "$1" != python ] || shift\n'
+        f'    exec {sys.executable} -S "$@"\nfi\nexec {shutil.which("uv")} "$@"\n', encoding="utf-8",
     )
     (stub_bin / "uv").chmod(0o755)
     lwip_host_files = [name for name in jobs if name.startswith("tests/lwip_host/")]
-    files = " ".join(shlex.quote(name) for name in jobs if not (coverage and name in lwip_host_files))
+    devices = sorted(name.removeprefix("scenarios[").removesuffix("]") for name in jobs if name.startswith("scenarios["))
+    files = " ".join(shlex.quote(name) for name in jobs if not (coverage and (name in lwip_host_files or name.startswith("scenarios["))))
     script = tmp_path / "tail.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n" + _job_tag_body(repo_root) + "\n"
-        f'job_list=({files})\nlwip_host_files=({" ".join(lwip_host_files)})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
+        f'job_list=({files})\nlwip_host_files=({" ".join(lwip_host_files)})\ndevices=({" ".join(devices)})\nresults_dir="{results}"\nraw_dir="{tmp_path}/raw"\ncoverage={coverage}\n'
         f'tests_scripts_status_file="{status_file}"\nevidence_archived=0\n'
-        f"{_verdict_tail(repo_root)}\n",
+        f"{_verdict_tail(repo_root)}\n", encoding="utf-8",
     )
     env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}", "GIT_CEILING_DIRECTORIES": str(tmp_path)}
     for name in ("GITHUB_ACTIONS", "GC_THRESHOLD"):
@@ -1176,14 +1220,14 @@ def test_a_retried_a_crashed_and_an_allocation_flagged_file_render_the_block(rep
     assert "  - tests/test_crashed.py: failed; no test count (crashed or killed)\n" in block
     assert "  - tests/test_digital_twin_mem.py: MemoryError seen\n" in block
     assert "Passed only on retry:\n  - tests/test_retried.py (attempt 2/3)\n" in block
-    assert "Levels: L0 PASS · L1 FAIL · L2 FAIL (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)\n" in block
+    assert "Levels: L0 PASS · L1 FAIL · L2 FAIL (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)\n" in block
     assert "GC stage: -1 (reactive default)\n" in block
     assert "root-cause item: test_retried needed attempt 2/3 - record it as a root-cause item" in out[: out.index(block)]
     runs = list((root / "build" / "archive" / "test_sh").iterdir())
     assert len(runs) == 1
     archived = sorted(p.name for p in runs[0].iterdir())
     assert archived == ["summary.txt", "test_crashed.log", "test_digital_twin_mem.log", "test_digital_twin_mem.memerr", "test_retried.log"], archived
-    assert (runs[0] / "summary.txt").read_text() == block
+    assert (runs[0] / "summary.txt").read_text(encoding="utf-8") == block
 
 
 def test_a_green_run_passes_and_archives_the_block_only(repo_root: Path, tmp_path: Path) -> None:
@@ -1345,16 +1389,16 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     # runs `first_attempt` and every later one `later_attempts` (bash); returns results_dir, its stderr in tmp_path/stderr.
     # With own_binary the stub is passed as the job's binary and $micropython_bin is one that fails; device names the job's.
     text = _test_sh_text(repo_root).replace("--kill-after=10 ", f"--kill-after={limits.kill_after_s} ")
-    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_job_tag", "_flag_memory_errors", "run_test_file")]
-    assert all(bodies), "scripts/test.sh no longer defines _job_tag(), _flag_memory_errors() and run_test_file()"
+    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in ("_job_tag", "_flag_memory_errors", "_run_with_retries", "_no_twin_logs", "run_test_file")]
+    assert all(bodies), "scripts/test.sh no longer defines _job_tag(), _flag_memory_errors(), _run_with_retries(), _no_twin_logs() and run_test_file()"
     calls = tmp_path / "calls"
     stub = tmp_path / "micropython"
-    stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n')
+    stub.write_text(f'#!/usr/bin/env bash\necho x >>"{calls}"\nif [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt}\nelse\n{later_attempts}\nfi\n', encoding="utf-8")
     stub.chmod(0o755)
     default_bin = stub
     if own_binary:
         default_bin = tmp_path / "default_micropython"
-        default_bin.write_text('#!/usr/bin/env bash\necho "the default binary ran"\nexit 3\n')
+        default_bin.write_text('#!/usr/bin/env bash\necho "the default binary ran"\nexit 3\n', encoding="utf-8")
         default_bin.chmod(0o755)
     results = tmp_path / "results"
     results.mkdir()
@@ -1362,12 +1406,12 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
         f'results_dir="{results}"\ncoverage=0\nmicropython_bin="{default_bin}"\nper_file_timeout_s={limits.timeout_s}\nmax_attempts={limits.attempts}\n'
-        "declare -A per_file_timeout_overrides_s=()\n"
+        'unit_micropypath="build/generated_src:src:tests:.frozen"\ndeclare -A per_file_timeout_overrides_s=()\n'
         + "\n".join(b.group(0) for b in bodies if b)
-        + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{device}]" if device else "tests/test_x.py")}.status" "{device}"' + (f' "{stub}"' if own_binary else "") + "\n",
+        + f'\nrun_test_file tests/test_x.py "{results}/{_tag(f"tests/test_x.py[{device}]" if device else "tests/test_x.py")}.status" "{device}"' + (f' "{stub}"' if own_binary else "") + "\n", encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=120)
-    (tmp_path / "stderr").write_text(done.stderr)
+    (tmp_path / "stderr").write_text(done.stderr, encoding="utf-8")
     assert done.returncode == 0, done.stderr
     return results
 
@@ -1375,7 +1419,7 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
 def _job_files(results: Path) -> tuple[str | None, str | None, str | None]:
     # The (status, log, memerr) a run_test_file() job left, in _run_tail()'s jobs form.
     return tuple(  # type: ignore[return-value]
-        (results / f"test_x.{suffix}").read_text() if (results / f"test_x.{suffix}").exists() else None for suffix in ("status", "log", "memerr")
+        (results / f"test_x.{suffix}").read_text(encoding="utf-8") if (results / f"test_x.{suffix}").exists() else None for suffix in ("status", "log", "memerr")
     )
 
 
@@ -1383,7 +1427,7 @@ def test_a_pass_after_a_timeout_is_retried_pass_not_pass(repo_root: Path, tmp_pa
     # A stub interpreter that hangs on its first call and passes on its second: the retry backstop
     # stays, and the file is reported as RETRIED-PASS 2/3 - a root-cause item, never a plain PASS.
     results = _run_file_job(repo_root, tmp_path, "sleep 30", 'echo "1/1 passed, 0 failed, 0 skipped"')
-    assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/3\n"
+    assert (results / "test_x.status").read_text(encoding="utf-8") == "RETRIED-PASS 2/3\n"
 
 
 def _processes_carrying(token: str) -> "list[int]":
@@ -1419,7 +1463,7 @@ _HUNG_FILE = (
 def test_the_per_file_timeout_interrupts_first_so_a_hung_file_names_its_test_and_ends(repo_root: Path, tmp_path: Path, micropython_bin: Path) -> None:
     # SIGINT, which microtest turns into its ABORT line and the summary names; the job leaves nothing running.
     planted = tmp_path / "test_hung.py"
-    planted.write_text(_HUNG_FILE)
+    planted.write_text(_HUNG_FILE, encoding="utf-8")
     attempt = f'exec env MICROPYPATH="{repo_root / "tests"}:.frozen" "{micropython_bin}" "{planted}"'
     token = uuid.uuid4().hex
     results = _run_file_job(repo_root, tmp_path, attempt, attempt, limits=_JobLimits(timeout_s=2, attempts=1), env={**os.environ, _MARKER_VAR: token})
@@ -1448,28 +1492,28 @@ def test_the_timeout_interrupts_the_files_process_once(repo_root: Path, tmp_path
     # timeout signals its child and then its group; a second SIGINT while the first is pending makes the Unix port
     # exit(1) at once with no ABORT line, so exactly one may reach the interpreter (one wakeup byte per delivery here).
     counter = tmp_path / "counter.py"
-    counter.write_text(_SIGNAL_COUNTER)
+    counter.write_text(_SIGNAL_COUNTER, encoding="utf-8")
     count = tmp_path / "count"
     attempt = f'exec env COUNT_FILE="{count}" {sys.executable} -I "{counter}"'
     results = _run_file_job(repo_root, tmp_path, attempt, attempt, limits=_JobLimits(attempts=1, kill_after_s=1))
-    assert (results / "test_x.status").read_text() == "FAIL\n"
-    assert count.read_text() == "1", f"the interpreter got {count.read_text()} SIGINTs"
+    assert (results / "test_x.status").read_text(encoding="utf-8") == "FAIL\n"
+    assert count.read_text(encoding="utf-8") == "1", f"the interpreter got {count.read_text(encoding='utf-8')} SIGINTs"
 
 
 def test_a_file_that_ignores_the_interrupt_is_killed_and_the_run_says_why(repo_root: Path, tmp_path: Path) -> None:
     # A test catching the interrupt runs on into --kill-after's SIGKILL (137, not 124): its failure must still name the timeout.
     ignores = "trap '' INT\nwhile :; do sleep 0.1; done"
     results = _run_file_job(repo_root, tmp_path, ignores, ignores, limits=_JobLimits(attempts=1, kill_after_s=1))
-    assert (results / "test_x.status").read_text() == "FAIL\n"
-    assert "== tests/test_x.py did not end on the timeout's interrupt - killed by --kill-after on attempt 1/1\n" in (tmp_path / "stderr").read_text()
+    assert (results / "test_x.status").read_text(encoding="utf-8") == "FAIL\n"
+    assert "== tests/test_x.py did not end on the timeout's interrupt - killed by --kill-after on attempt 1/1\n" in (tmp_path / "stderr").read_text(encoding="utf-8")
 
 
 def test_a_file_killed_at_the_hard_stop_is_retried_like_a_timeout(repo_root: Path, tmp_path: Path) -> None:
     # 137 past the timeout is a timeout that ignored the interrupt: the standing retry applies to it as to 124.
     ignores = "trap '' INT\nwhile :; do sleep 0.1; done"
     results = _run_file_job(repo_root, tmp_path, ignores, "exit 0", limits=_JobLimits(attempts=2, kill_after_s=1))
-    assert (results / "test_x.status").read_text() == "RETRIED-PASS 2/2\n"
-    assert "== tests/test_x.py exceeded 1s on attempt 1/2 - retrying in case of transient runner contention\n" in (tmp_path / "stderr").read_text()
+    assert (results / "test_x.status").read_text(encoding="utf-8") == "RETRIED-PASS 2/2\n"
+    assert "== tests/test_x.py exceeded 1s on attempt 1/2 - retrying in case of transient runner contention\n" in (tmp_path / "stderr").read_text(encoding="utf-8")
 
 
 def test_a_job_that_ignores_the_stop_is_killed_after_twice_the_hard_stop_and_named(repo_root: Path, tmp_path: Path) -> None:
@@ -1482,16 +1526,16 @@ def test_a_job_that_ignores_the_stop_is_killed_after_twice_the_hard_stop_and_nam
         f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\ntests_scripts_pid=""\n'
         f'tests_scripts_inner_pidfile="{tmp_path}/inner.pid"\nevidence_archived=1\n{body}\ntrap _cleanup EXIT\n'
         f"( trap '' TERM; echo \"$BASHPID\" >\"{pidfile}\"; while :; do sleep 0.1; done ) >/dev/null 2>&1 &\n"
-        f'until [ -s "{pidfile}" ]; do sleep 0.05; done\nfalse\n',
+        f'until [ -s "{pidfile}" ]; do sleep 0.05; done\nfalse\n', encoding="utf-8",
     )
-    with (tmp_path / "out").open("w") as out:
+    with (tmp_path / "out").open("w", encoding="utf-8") as out:
         done = subprocess.run(["/bin/bash", str(script)], stdout=subprocess.DEVNULL, stderr=out, check=False, timeout=_SNIPPET_TIMEOUT_S)
-    job = int(pidfile.read_text())
+    job = int(pidfile.read_text(encoding="utf-8"))
     alive = subprocess.run(["/bin/kill", "-0", str(job)], capture_output=True, check=False).returncode == 0
     _kill_all([job] if alive else [])
     assert done.returncode == 1
     assert not alive, "the job that ignored the stop outlived the run"
-    assert f"== background jobs still running 2s after the stop: {job} - killing them\n" in (tmp_path / "out").read_text()
+    assert f"== background jobs still running 2s after the stop: {job} - killing them\n" in (tmp_path / "out").read_text(encoding="utf-8")
 
 
 def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list[str], list[str], str]":
@@ -1502,14 +1546,12 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
     for directory in (tree / "tests", ready, ended, runtime):
         directory.mkdir(parents=True)
     for name in ("test_a", "test_b"):
-        (tree / "tests" / f"{name}.py").write_text("")
-    (tree / "build" / "generated_src").mkdir(parents=True)
-    (tree / "build" / "generated_src" / "sensortask_fixture-device_wiring_plan.json").write_text("{}")
+        (tree / "tests" / f"{name}.py").write_text("", encoding="utf-8")
     stub = tmp_path / "micropython"
     stub.write_text(
         '#!/usr/bin/env bash\nname="$(basename "${@: -1}" .py)"\n'
         f"trap 'sleep 0.5; if [ -d \"{runtime}/sensors-port-53.lock\" ]; then echo held; else echo released; fi >\"{ended}/$name\"; exit 1' TERM\n"
-        f'echo "$$" >"{ready}/$name"\nwhile :; do sleep 0.1; done\n',
+        f'echo "$$" >"{ready}/$name"\nwhile :; do sleep 0.1; done\n', encoding="utf-8",
     )
     stub.chmod(0o755)
     text = _test_sh_text(repo_root)
@@ -1521,9 +1563,10 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
         f'raw_dir=""\nresults_dir=""\ntests_scripts_status_file="{tmp_path}/status"\ntests_scripts_pid=""\n'
         f'tests_scripts_inner_pidfile="{tmp_path}/inner.pid"\nevidence_archived=1\ncoverage=0\nmicropython_bin="{stub}"\n'
         f'lwip_bin="{stub}"\nper_file_timeout_s=60\nmax_attempts=3\nmax_parallel=4\ndeclare -A per_file_timeout_overrides_s=()\n'
+        'devices=()\nunit_micropypath="build/generated_src:src:tests:.frozen"\n'
         + "\n".join(functions)
         + f'\ntrap _cleanup EXIT\nresults_dir="{tmp_path}/results"\nmkdir "$results_dir"\n{dispatch}\n'
-        + f'until [ -s "{ready}/test_a" ] && [ -s "{ready}/test_b" ]; do sleep 0.05; done\nfalse  # the abort under test, mid-loop\n',
+        + f'until [ -s "{ready}/test_a" ] && [ -s "{ready}/test_b" ]; do sleep 0.05; done\nfalse  # the abort under test, mid-loop\n', encoding="utf-8",
     )
     token = uuid.uuid4().hex
     # A plain run whatever mode the outer run is in: GC_THRESHOLD would route each file through the threshold runner,
@@ -1531,12 +1574,12 @@ def _planted_run(repo_root: Path, tmp_path: Path) -> "tuple[int, list[int], list
     modes = ("GC_THRESHOLD", "TEST_PARALLELISM", "PER_FILE_TIMEOUT_S", "TESTS_SCRIPTS_TIMEOUT_S")
     env = {name: value for name, value in os.environ.items() if not name.startswith("SENSORS_PORT_LOCK") and name not in modes}
     env.update({"XDG_RUNTIME_DIR": str(runtime), _MARKER_VAR: token})
-    with (tmp_path / "out").open("w") as out:  # a file, not a pipe: a leftover holding a pipe would hold this call
+    with (tmp_path / "out").open("w", encoding="utf-8") as out:  # a file, not a pipe: a leftover holding a pipe would hold this call
         done = subprocess.run(["/bin/bash", str(script)], cwd=tree, env=env, stdout=out, stderr=subprocess.STDOUT, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
     left = _processes_carrying(token)
     _kill_all(left)
-    reports = sorted(path.read_text() for path in ended.iterdir())
-    return done.returncode, left, reports, sorted(path.name for path in runtime.iterdir()), (tmp_path / "out").read_text()
+    reports = sorted(path.read_text(encoding="utf-8") for path in ended.iterdir())
+    return done.returncode, left, reports, sorted(path.name for path in runtime.iterdir()), (tmp_path / "out").read_text(encoding="utf-8")
 
 
 def test_an_aborted_run_ends_every_file_job_before_it_releases_the_port_lock(repo_root: Path, tmp_path: Path) -> None:
@@ -1554,7 +1597,7 @@ def test_an_allocation_failure_in_a_timed_out_attempt_fails_the_file_its_retry_p
     # too: its caught allocation failure fails the file instead of vanishing into RETRIED-PASS.
     first = 'echo "BMP3XX Could not start timer: memory allocation failed, allocating 2048 bytes"\nsleep 30'
     results = _run_file_job(repo_root, tmp_path, first, 'echo "1/1 passed, 0 failed, 0 skipped"')
-    assert "memory allocation failed" in (results / "test_x.memerr").read_text()
+    assert "memory allocation failed" in (results / "test_x.memerr").read_text(encoding="utf-8")
     code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_x.py": _job_files(results)})
     block = _block(out)
     assert code == 1, out
@@ -1578,19 +1621,19 @@ def test_an_aborted_run_archives_its_logs_before_the_trap_removes_scratch(repo_r
     root = _fake_repo(repo_root, tmp_path)
     results = tmp_path / "results"
     results.mkdir()
-    (results / "test_x.log").write_text("[test_x] boom\n")
+    (results / "test_x.log").write_text("[test_x] boom\n", encoding="utf-8")
     script = tmp_path / "abort.sh"
     script.write_text(
         f"#!/usr/bin/env bash\nset -euo pipefail\nsource {repo_root}/scripts/_port_lock.sh\n"
         f'raw_dir=""\nresults_dir="{results}"\ntests_scripts_status_file="{tmp_path}/status"\n'
         f'tests_scripts_pid=""\ntests_scripts_inner_pidfile="{tmp_path}/pid"\nevidence_archived=0\n'
-        f"{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\nfalse\n",
+        f"{_cleanup_body(repo_root)}\ntrap _cleanup EXIT\nfalse\n", encoding="utf-8",
     )
     done = subprocess.run(["/bin/bash", str(script)], cwd=root, capture_output=True, text=True, check=False, timeout=120)
     assert done.returncode != 0
     assert not results.exists(), "scratch must still be removed"
     (run,) = (root / "build" / "archive" / "test_sh").iterdir()
-    assert (run / "results" / "test_x.log").read_text() == "[test_x] boom\n"
+    assert (run / "results" / "test_x.log").read_text(encoding="utf-8") == "[test_x] boom\n"
 
 
 def test_every_report_render_tolerates_its_own_failure(repo_root: Path) -> None:
@@ -1609,7 +1652,7 @@ def test_a_coverage_run_renders_the_four_reports(repo_root: Path, tmp_path: Path
     code, out, root = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1)
     assert code == 0, out
     raw, data = f"--raw-dir {tmp_path}/raw", f"--data-file={tmp_path}/results/host.coverage"
-    assert (tmp_path / "renders").read_text().splitlines() == [
+    assert (tmp_path / "renders").read_text(encoding="utf-8").splitlines() == [
         f"run scripts/_render_coverage.py {raw} --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md",
         f"run scripts/_render_coverage.py {raw} --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md",
         f"run scripts/_render_coverage.py {raw} --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md",
@@ -1624,13 +1667,13 @@ def test_a_failed_new_render_alone_exits_three(repo_root: Path, tmp_path: Path, 
     code, out, _ = _run_tail(repo_root, tmp_path, {"tests/test_ok.py": _passing("test_ok")}, coverage=1, render_fails=failing)
     assert code == 3, out
     assert _block(out).endswith("Result: PASS (coverage report not rendered)\nExit code: 3\n")
-    assert len((tmp_path / "renders").read_text().splitlines()) == 5, "one failed render must not skip the ones after it"
+    assert len((tmp_path / "renders").read_text(encoding="utf-8").splitlines()) == 5, "one failed render must not skip the ones after it"
 
 
 def test_ci_gates_the_coverage_reruns_test_result_but_not_its_report(repo_root: Path) -> None:
     # Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier has a step
     # called "Run unit tests with coverage" too, and that one is advisory by design.
-    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     rest = workflow[workflow.index("\n  unit-tests-coverage:") + 1 :]
     next_job = re.search(r"\n  [a-z][\w-]*:\n", rest)
     job = rest[: next_job.start()] if next_job else rest
@@ -1688,7 +1731,7 @@ def test_a_heavy_list_naming_a_missing_file_stops_the_run(repo_root: Path, tmp_p
 
 def test_the_heavy_files_and_every_job_of_theirs_go_first(repo_root: Path, tmp_path: Path) -> None:
     files = {"tests/test_p.py": "PER_DEVICE = True\n"}
-    assert _dispatch(repo_root, tmp_path, coverage=False, files=files, heavy=("tests/test_p.py", "tests/test_b.py"))[:4] == [
+    assert _dispatch(repo_root, tmp_path, coverage=True, files=files, heavy=("tests/test_p.py", "tests/test_b.py"))[:4] == [
         "tests/test_p.py[fixture-device-a] /std test_p[fixture-device-a].status",
         "tests/test_p.py[fixture-device-b] /std test_p[fixture-device-b].status",
         "tests/test_b.py /std test_b.status",
@@ -1697,27 +1740,39 @@ def test_the_heavy_files_and_every_job_of_theirs_go_first(repo_root: Path, tmp_p
 
 
 def _dispatch(repo_root: Path, tmp_path: Path, *, coverage: bool, files: "dict[str, str] | None" = None, devices: "tuple[str, ...]" = _PER_DEVICE_DEVICES, heavy: "tuple[str, ...]" = ()) -> list[str]:
-    # Runs scripts/test.sh's own job list and dispatch loop in a fixture tree (its generated plans for `devices`),
-    # run_test_file stubbed to record "<file>[<device>] <binary> <status file>"; one job at a time, so in dispatch order.
+    # Runs scripts/test.sh's own job list and dispatch loop in a fixture tree with `devices` as its derived devices,
+    # run_test_file and run_scenarios_job stubbed to record "<job> <binary> <status file>"; one job at a time, in order.
     text = _test_sh_text(repo_root)
     planted = {"tests/test_a.py": "", "tests/test_b.py": "", "tests/lwip_host/test_l.py": "", "tests/lwip_host/helper.py": "", **(files or {})}
-    planted.update({f"build/generated_src/sensortask_{d}_wiring_plan.json": "{}" for d in devices})
     for name, content in planted.items():
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / name).write_text(content)
+        (tmp_path / name).write_text(content, encoding="utf-8")
     record = tmp_path / "dispatched"
     script = tmp_path / "dispatch.sh"
     script.write_text(
         "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'coverage={int(coverage)}\nmax_parallel=1\nresults_dir="{tmp_path}"\nmicropython_bin=/std\nlwip_bin=/lwip\n'
-        f'run_test_file() {{ echo "$1${{3:+[$3]}} ${{4:-unset}} ${{2#"$results_dir/"}}" >>"{record}"; }}\n' + _job_tag_body(repo_root) + "\n" + _dispatch_section(text, heavy) + "\nwait || true\n",
+        f'coverage={int(coverage)}\nmax_parallel=1\nresults_dir="{tmp_path}"\nmicropython_bin=/std\nlwip_bin=/lwip\ndevices=({" ".join(sorted(devices))})\n'
+        f'run_test_file() {{ echo "$1${{3:+[$3]}} ${{4:-unset}} ${{2#"$results_dir/"}}" >>"{record}"; }}\n'
+        f'run_scenarios_job() {{ echo "scenarios[$1] harness ${{2#"$results_dir/"}}" >>"{record}"; }}\n' + _job_tag_body(repo_root) + "\n" + _dispatch_section(text, heavy) + "\nwait || true\n", encoding="utf-8",
     )
     subprocess.run(["/bin/bash", str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    return [" ".join(line.split(" ")[:2]) for line in record.read_text().splitlines()] if files is None else record.read_text().splitlines()
+    return [" ".join(line.split(" ")[:2]) for line in record.read_text(encoding="utf-8").splitlines()] if files is None else record.read_text(encoding="utf-8").splitlines()
 
 
 def test_the_lwip_host_files_are_dispatched_last_on_the_lwip_binary(repo_root: Path, tmp_path: Path) -> None:
-    assert _dispatch(repo_root, tmp_path, coverage=False) == ["tests/test_a.py /std", "tests/test_b.py /std", "tests/lwip_host/test_l.py /lwip"]
+    assert _dispatch(repo_root, tmp_path, coverage=False)[-3:] == ["tests/test_a.py /std", "tests/test_b.py /std", "tests/lwip_host/test_l.py /lwip"]
+
+
+def test_one_scenario_harness_job_per_derived_device_goes_first_and_none_under_coverage(repo_root: Path, tmp_path: Path) -> None:
+    # Each is the longest job of the run, so each takes a slot at once; --coverage runs no harness.
+    assert _dispatch(repo_root, tmp_path / "plain", coverage=False, files={}) == [
+        "scenarios[fixture-device-a] harness scenarios[fixture-device-a].status",
+        "scenarios[fixture-device-b] harness scenarios[fixture-device-b].status",
+        "tests/test_a.py /std test_a.status",
+        "tests/test_b.py /std test_b.status",
+        "tests/lwip_host/test_l.py /lwip test_l.status",
+    ]
+    assert [line for line in _dispatch(repo_root, tmp_path / "coverage", coverage=True, files={}) if line.startswith("scenarios[")] == []
 
 
 def test_a_coverage_run_dispatches_no_lwip_host_file(repo_root: Path, tmp_path: Path) -> None:
@@ -1725,10 +1780,10 @@ def test_a_coverage_run_dispatches_no_lwip_host_file(repo_root: Path, tmp_path: 
     assert _dispatch(repo_root, tmp_path, coverage=True) == ["tests/test_a.py /std", "tests/test_b.py /std"]
 
 
-def test_a_per_device_file_runs_once_per_generated_device_and_any_other_file_once(repo_root: Path, tmp_path: Path) -> None:
+def test_a_per_device_file_runs_once_per_derived_device_and_any_other_file_once(repo_root: Path, tmp_path: Path) -> None:
     # The marker is a whole line of its own; mentioning it anywhere else leaves a file a single job.
     files = {"tests/test_p.py": '"""per device"""\n\nPER_DEVICE = True\n', "tests/test_q.py": "# PER_DEVICE = True\nX = 'PER_DEVICE = True'\n"}
-    assert _dispatch(repo_root, tmp_path, coverage=False, files=files) == [
+    assert _dispatch(repo_root, tmp_path, coverage=False, files=files)[2:] == [
         "tests/test_a.py /std test_a.status",
         "tests/test_b.py /std test_b.status",
         "tests/test_p.py[fixture-device-a] /std test_p[fixture-device-a].status",
@@ -1738,11 +1793,56 @@ def test_a_per_device_file_runs_once_per_generated_device_and_any_other_file_onc
     ]
 
 
-def test_a_tree_with_no_generated_device_stops_before_dispatching(repo_root: Path, tmp_path: Path) -> None:
-    with pytest.raises(subprocess.CalledProcessError) as caught:
-        _dispatch(repo_root, tmp_path, coverage=False, files={"tests/test_p.py": "PER_DEVICE = True\n"}, devices=())
-    assert "no build/generated_src/sensortask_<device>_wiring_plan.json" in caught.value.stderr, caught.value.stderr
-    assert not (tmp_path / "dispatched").exists()
+def _device_step(repo_root: Path, tmp_path: Path, stems: "tuple[str, ...]") -> "subprocess.CompletedProcess[str]":
+    # scripts/test.sh's own device step in a fixture tree beside scripts/_devices.sh, printing the list and the site.
+    text = _test_sh_text(repo_root)
+    start = text.index('devices_text="$(derived_devices)"')
+    end = text.index("\n", text.index('site_device="${devices[0]}"', start)) + 1
+    (tmp_path / "scripts").mkdir()
+    shutil.copy2(repo_root / "scripts" / "_devices.sh", tmp_path / "scripts" / "_devices.sh")
+    (tmp_path / "devices").mkdir()
+    for stem in stems:
+        (tmp_path / "devices" / f"{stem}.toml").write_text("# fixture\n", encoding="utf-8")
+    script = f'set -euo pipefail\nsource scripts/_devices.sh\n{text[start:end]}echo "${{devices[*]}} | $site_device"\n'
+    return subprocess.run(["/bin/bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, check=False, timeout=_SNIPPET_TIMEOUT_S)
+
+
+def test_the_device_list_is_the_derived_set_and_the_site_is_its_first_device(repo_root: Path, tmp_path: Path) -> None:
+    done = _device_step(repo_root, tmp_path, ("fixture_b", "fixture_a", "zz_test_x"))
+    assert (done.returncode, done.stdout) == (0, "fixture_a fixture_b | fixture_a\n"), done
+
+
+def test_a_tree_with_no_device_stops_before_anything_is_generated(repo_root: Path, tmp_path: Path) -> None:
+    done = _device_step(repo_root, tmp_path, ("zz_test_only",))
+    assert (done.returncode, done.stdout, done.stderr.strip()) == (1, "", "error: no devices/*.toml found"), done
+
+
+def test_the_device_list_is_read_once_before_generation_and_before_the_tier(repo_root: Path) -> None:
+    # The tier plants zz_test_ device fixtures while it runs; the list every later step takes is read before it.
+    code = _without_comments(_test_sh_text(repo_root))
+    read_at, generate_at, tier_at = code.find('devices_text="$(derived_devices)"'), code.find(_GENERATE_LINE), code.find(_PYTEST_LINE)
+    assert -1 < read_at < generate_at < tier_at, (read_at, generate_at, tier_at)
+    assert code.count("derived_devices") == 1, "the device list is read more than once"
+    assert "wiring_plan.json" not in code, "the jobs take the derived devices, not a glob of the generated tree"
+
+
+def _sites(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
+    # scripts/test.sh's own _build_sites() with both site builders stubbed to record their arguments.
+    body = re.search(r"^_build_sites\(\) \{.*?^\}", _test_sh_text(repo_root), re.DOTALL | re.MULTILINE)
+    assert body is not None, "scripts/test.sh no longer defines _build_sites()"
+    (tmp_path / "scripts").mkdir()
+    for name in ("build_website.sh", "build_device_websites.sh"):
+        (tmp_path / "scripts" / name).write_text(f'#!/usr/bin/env bash\necho "{name} $*" >>"{tmp_path}/built"\n', encoding="utf-8")
+        (tmp_path / "scripts" / name).chmod(0o755)
+    script = f"set -euo pipefail\ncoverage={int(coverage)}\nsite_device=fixture_a\n{body.group(0)}\n_build_sites\n"
+    subprocess.run(["/bin/bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return (tmp_path / "built").read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.parametrize(("coverage", "built"), [(False, ["build_website.sh fixture_a", "build_device_websites.sh "]), (True, ["build_website.sh fixture_a"])])
+def test_the_site_is_the_first_derived_devices_and_a_plain_run_builds_every_devices_too(repo_root: Path, tmp_path: Path, *, coverage: bool, built: "list[str]") -> None:
+    # The unit tier needs one site on its path, any device's; the scenario harness boots each device on its own.
+    assert _sites(repo_root, tmp_path, coverage=coverage) == built
 
 
 def test_a_file_whose_marker_cannot_be_read_stops_the_dispatch(repo_root: Path, tmp_path: Path) -> None:
@@ -1786,13 +1886,13 @@ _ENV_PROBE = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 fai
 def test_a_device_job_runs_with_its_device_and_its_own_tag(repo_root: Path, tmp_path: Path) -> None:
     results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", device="fixture-device-a")
     tag = "test_x[fixture-device-a]"
-    assert (results / f"{tag}.status").read_text() == "PASS\n"
-    assert f"[{tag}] TEST_DEVICE=fixture-device-a\n" in (results / f"{tag}.log").read_text()
+    assert (results / f"{tag}.status").read_text(encoding="utf-8") == "PASS\n"
+    assert f"[{tag}] TEST_DEVICE=fixture-device-a\n" in (results / f"{tag}.log").read_text(encoding="utf-8")
 
 
 def test_a_plain_job_runs_without_a_device_even_when_the_caller_has_one(repo_root: Path, tmp_path: Path) -> None:
     results = _run_file_job(repo_root, tmp_path, _ENV_PROBE, "exit 1", env={**os.environ, "TEST_DEVICE": "fixture-device-a"})
-    assert "[test_x] TEST_DEVICE=<unset>\n" in (results / "test_x.log").read_text()
+    assert "[test_x] TEST_DEVICE=<unset>\n" in (results / "test_x.log").read_text(encoding="utf-8")
 
 
 def test_a_device_job_is_reported_under_its_file_and_device(repo_root: Path, tmp_path: Path) -> None:
@@ -1805,6 +1905,125 @@ def test_a_device_job_is_reported_under_its_file_and_device(repo_root: Path, tmp
     assert "  - tests/test_p.py[fixture-device-a]: 1 of 3 tests failed (FAIL test_one: AssertionError: boom)\n" in block, block
     assert "  - tests/test_p.py[fixture-device-a]::test_two: no bmp3xx\n" in block, block
     assert "Levels: L0 PASS · L1 FAIL · L2 PASS" in block, block
+
+
+def _scenario_record(*outcomes: "tuple[str, str, str]") -> str:
+    # A scenario harness run record as scripts/_digital_twin_scenarios.py writes it: one {name, outcome, reason} each.
+    return json.dumps([{"name": name, "outcome": outcome, "reason": reason} for name, outcome, reason in outcomes], indent=2)
+
+
+def _scenario_log(tag: str) -> str:
+    return f"[{tag}] == attempt 1/3\n[{tag}] == Summary: scripts/_digital_twin_scenarios.py ==\n"
+
+
+def test_a_scenario_job_is_counted_from_its_run_record_under_l2_and_names_what_it_did_not_run(repo_root: Path, tmp_path: Path) -> None:
+    tag = "scenarios[fixture-device-a]"
+    record = _scenario_record(("boots", "passed", ""), ("restarts", "passed", ""), ("uart", "skipped", "device wires no uart_link"), ("dns", "deselected", "needs exclusive port 53 - run_digital_twin_ci.sh runs it"))
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {tag: ("PASS\n", _scenario_log(tag), None), "tests/test_ok.py": _passing("test_ok")}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs, extra={"scenarios_fixture-device-a.json": record})
+    block = _block(out)
+    assert code == 0, out
+    assert "\nCounts (tests): passed 5 · failed 0 · skipped 1 · deselected 1 · retried 0 · recovered 0 · vacuous 0\n" in block, block
+    assert "Skipped:\n  - scenarios[fixture-device-a]::uart: device wires no uart_link\n" in block, block
+    assert "Deselected:\n  - scenarios[fixture-device-a]::dns: by runner selection: needs exclusive port 53 - run_digital_twin_ci.sh runs it\n" in block, block
+    assert "Levels: L0 PASS · L1 PASS · L2 PASS (tests/test_digital_twin_*.py and the scenario harness; run_digital_twin_ci.sh not run)\n" in block, block
+
+
+def test_a_failed_scenario_job_names_its_failing_scenarios_and_fails_l2(repo_root: Path, tmp_path: Path) -> None:
+    tag = "scenarios[fixture-device-a]"
+    record = _scenario_record(("boots", "passed", ""), ("restarts", "failed", "no reset followed"))
+    code, out, _ = _run_tail(repo_root, tmp_path, {tag: ("FAIL\n", _scenario_log(tag), None)}, extra={"scenarios_fixture-device-a.json": record})
+    block = _block(out)
+    assert code == 1, out
+    assert "  - scenarios[fixture-device-a]: 1 of 2 scenarios failed (FAIL restarts: no reset followed)\n" in block, block
+    assert "Levels: L0 PASS · L1 PASS · L2 FAIL" in block, block
+
+
+@pytest.mark.parametrize("record", [None, "not json"], ids=["missing", "unreadable"])
+def test_a_scenario_job_without_a_readable_run_record_is_no_verdict(repo_root: Path, tmp_path: Path, record: str | None) -> None:
+    tag = "scenarios[fixture-device-a]"
+    extra = {} if record is None else {"scenarios_fixture-device-a.json": record}
+    code, out, _ = _run_tail(repo_root, tmp_path, {tag: ("PASS\n", _scenario_log(tag), None)}, extra=extra)
+    assert code == 1, out
+    assert "  - scenarios[fixture-device-a]: no verdict (run record missing or unreadable)\n" in _block(out), out
+
+
+def test_a_coverage_run_names_each_scenario_harness_job_as_skipped(repo_root: Path, tmp_path: Path) -> None:
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_ok.py": _passing("test_ok"), "scenarios[fixture-device-a]": (None, None, None), "scenarios[fixture-device-b]": (None, None, None)}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs, coverage=1)
+    block = _block(out)
+    assert code == 0, out
+    assert "  - scenarios[fixture-device-a]: not run under --coverage (the plain pass runs them)\n  - scenarios[fixture-device-b]: not run under --coverage (the plain pass runs them)\n" in block, block
+    assert "(tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)" in block, block
+
+
+def test_a_per_device_jobs_allocation_failure_is_listed_and_the_block_still_follows(repo_root: Path, tmp_path: Path) -> None:
+    # A job's files are named by its tag, brackets and all: a name built from the file alone reads a log that is not
+    # there, and under `set -e` the run would end before its summary block.
+    tag = "test_p[fixture-device-a]"
+    jobs: dict[str, tuple[str | None, str | None, str | None]] = {"tests/test_p.py[fixture-device-a]": ("PASS\n", f"[{tag}] 1/1 passed, 0 failed, 0 skipped\n", f"[{tag}] memory allocation failed\n")}
+    code, out, _ = _run_tail(repo_root, tmp_path, jobs)
+    assert code == 1, out
+    assert f"  - tests/test_p.py[fixture-device-a]\n      [{tag}] memory allocation failed\n" in out, out
+    assert "  - tests/test_p.py[fixture-device-a]: MemoryError seen\n" in _block(out), out
+
+
+def _run_scenarios_job(repo_root: Path, tmp_path: Path, *, gc_threshold: str | None = None, twin_log: str = "booted\n", exit_code: int = 0) -> tuple[Path, list[str]]:
+    # scripts/test.sh's own run_scenarios_job() for one fixture device, uv stubbed to record its arguments and to write
+    # one twin log under the logs directory it is given; returns results_dir and the stub's argv.
+    text = _test_sh_text(repo_root)
+    names = ("_job_tag", "_flag_memory_errors", "_run_with_retries", "_append_twin_logs", "run_scenarios_job")
+    bodies = [re.search(rf"^{name}\(\) \{{.*?^\}}", text, re.DOTALL | re.MULTILINE) for name in names]
+    assert all(bodies), f"scripts/test.sh no longer defines {names}"
+    results, stub_bin = tmp_path / "results", tmp_path / "stub_bin"
+    results.mkdir()
+    stub_bin.mkdir()
+    (stub_bin / "uv").write_text(
+        '#!/usr/bin/env bash\nprintf "%s\\n" "$@" >"' + str(tmp_path / "argv") + '"\n'
+        'logs="$(sed -n "/^--logs-dir$/{n;p}" "' + str(tmp_path / "argv") + '")"\nmkdir -p "$logs/one"\n'
+        f"printf '%s' {shlex.quote(twin_log)} >\"$logs/one/twin_01.log\"\necho 'PASSED: one - 1.0s'\nexit {exit_code}\n", encoding="utf-8",
+    )
+    (stub_bin / "uv").chmod(0o755)
+    script = tmp_path / "run.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'results_dir="{results}"\nmicropython_bin=/std\nmax_attempts=1\ndeclare -A per_file_timeout_overrides_s=([scenarios]=30)\n'
+        + "\n".join(b.group(0) for b in bodies if b)
+        + f'\nrun_scenarios_job fixture-device-a "{results}/scenarios[fixture-device-a].status"\n', encoding="utf-8",
+    )
+    env = {**{k: v for k, v in os.environ.items() if k != "GC_THRESHOLD"}, "PATH": f"{stub_bin}:{os.environ['PATH']}", **({"GC_THRESHOLD": gc_threshold} if gc_threshold else {})}
+    done = subprocess.run(["/bin/bash", str(script)], capture_output=True, text=True, env=env, check=False, timeout=_SNIPPET_TIMEOUT_S)
+    assert done.returncode == 0, done.stderr
+    return results, (tmp_path / "argv").read_text(encoding="utf-8").splitlines()
+
+
+@pytest.mark.parametrize(("gc_threshold", "stage"), [(None, "-1"), ("32768", "32768")])
+def test_the_scenario_job_runs_the_harness_at_the_runs_gc_stage_on_shared_port_53(repo_root: Path, tmp_path: Path, gc_threshold: str | None, stage: str) -> None:
+    results, argv = _run_scenarios_job(repo_root, tmp_path, gc_threshold=gc_threshold)
+    assert argv == [
+        "run", "scripts/_digital_twin_scenarios.py", "--device", "fixture-device-a", "--micropython-bin", "/std",
+        "--logs-dir", f"{results}/scenarios_fixture-device-a", "--gc-threshold", stage, "--shared-port-53", "--run-record", f"{results}/scenarios_fixture-device-a.json",
+    ]
+    assert (results / "scenarios[fixture-device-a].status").read_text(encoding="utf-8") == "PASS\n"
+
+
+def test_the_scenario_jobs_twin_logs_reach_its_log_and_its_memory_gate(repo_root: Path, tmp_path: Path) -> None:
+    # The twins' own output is where a caught allocation failure prints: the gate reads it through the job's log.
+    results, _ = _run_scenarios_job(repo_root, tmp_path, twin_log="ERR timer: memory allocation failed, allocating 64 bytes\n")
+    log = (results / "scenarios[fixture-device-a].log").read_text(encoding="utf-8")
+    assert "[scenarios[fixture-device-a]] == twin log one/twin_01.log (attempt 1)\n[scenarios[fixture-device-a]] ERR timer: memory allocation failed" in log, log
+    assert "memory allocation failed" in (results / "scenarios[fixture-device-a].memerr").read_text(encoding="utf-8")
+    assert (results / "scenarios_fixture-device-a.attempt1" / "one" / "twin_01.log").is_file(), "the attempt's twin logs were not kept"
+
+
+def test_the_runner_never_writes_the_github_step_summary(repo_root: Path) -> None:
+    # Its verdict reaches GitHub as ::error annotations and the summary block on stdout, never the step summary: no
+    # file it sources or runs as a helper for its summary names it either, the list read from its own lines.
+    text = _test_sh_text(repo_root)
+    helpers = sorted(set(re.findall(r"^\s*(?:source|\.)\s+(scripts/[\w.]+)", text, re.MULTILINE) + re.findall(r"\buv run (?:--no-sync )?(scripts/[\w.]+)", text)))
+    assert {"scripts/_summary_block.sh", "scripts/_summary_block.py", "scripts/_archive_evidence.py"} <= set(helpers), helpers
+    for path in ["scripts/test.sh", *helpers]:
+        assert "GITHUB_STEP_SUMMARY" not in (repo_root / path).read_text(encoding="utf-8"), f"{path} writes the GitHub step summary"
 
 
 def test_a_coverage_run_names_each_lwip_host_file_as_skipped(repo_root: Path, tmp_path: Path) -> None:

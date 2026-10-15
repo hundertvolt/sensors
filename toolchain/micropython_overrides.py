@@ -12,10 +12,10 @@ import tempfile
 from pathlib import Path
 
 
-class OverrideError(RuntimeError):
+class OverrideError(Exception):
     # A pinned MicroPython source no longer matches what an override expects, so the override was
-    # NOT applied. Re-verify against the new source and update the override's anchor/generated
-    # content (SPECIFICATION.md Part B.14) - never silence this by removing the check.
+    # NOT applied. Re-verify against the new source and update the anchor/generated content
+    # (SPECIFICATION.md B.14) - never silence this by removing the check.
     pass
 
 
@@ -26,7 +26,7 @@ def _read_anchor_source(path: Path, override_name: str) -> str:
             "layout has changed. Re-verify this override against the current pinned source and "
             "update it (SPECIFICATION.md Part B.14) before retrying.",
         )
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 # What a generated make, CMake, C or manifest line cannot carry unquoted: whitespace and these.
@@ -139,16 +139,16 @@ def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> 
     verify_unix_kbd_intr_anchor(micropython_dir)
     real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
     override_dir = _fresh_dir(overrides_dir / UNIX_KBD_INTR_DIR_NAME)
-    (override_dir / "mpconfigvariant.h").write_text(_unix_kbd_intr_header(real_variant_dir))
+    (override_dir / "mpconfigvariant.h").write_text(_unix_kbd_intr_header(real_variant_dir), encoding="utf-8")
     # mpconfigvariant.mk/manifest.py both relay to the real files rather than copying their
     # content, so neither can silently drift out of sync with a future pinned-version change -
     # `include()` is the freeze-manifest DSL's own primitive for exactly this (tools/manifestfile.py).
     (override_dir / "mpconfigvariant.mk").write_text(  # GNU make's include takes no quotes; _embeddable() guards it
-        f'include {real_variant_dir / "mpconfigvariant.mk"}\n{_UNIX_MBEDTLS_ARRAY_BOUNDS}',
+        f'include {real_variant_dir / "mpconfigvariant.mk"}\n{_UNIX_MBEDTLS_ARRAY_BOUNDS}', encoding="utf-8",
     )
     real_manifest = real_variant_dir / "manifest.py"
     if real_manifest.exists():
-        (override_dir / "manifest.py").write_text(f"include({str(real_manifest)!r})\n")
+        (override_dir / "manifest.py").write_text(f"include({str(real_manifest)!r})\n", encoding="utf-8")
     return {"VARIANT": "standard", "VARIANT_DIR": str(override_dir)}
 
 
@@ -399,7 +399,7 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
         "// Found ahead of ports/rp2/lwip_inc/lwipopts.h, so these win over both MicroPython's own\n"
         "// plain #defines and lwIP's opt.h defaults; every option is set, never a subset.\n"
         f'#include "{rp2_dir / "lwip_inc" / "lwipopts.h"}"\n'
-        f"{_lwip_redefines(macros)}",
+        f"{_lwip_redefines(macros)}", encoding="utf-8",
     )
     # include_directories(BEFORE) at the port's own directory scope, which every target there
     # inherits ahead of its own target-level dirs - the only ordering that beats `lwip_inc`.
@@ -410,13 +410,13 @@ def apply_lwip_connection_counts_override(micropython_dir: Path, overrides_dir: 
         f'set(MICROPY_BOARD_PINS "{real_board_dir / "pins.csv"}")\n'
         f'include("{real_board_dir / "mpconfigboard.cmake"}")\n'
         f'include_directories(BEFORE "{include_dir}")\n'
-        f"{extra_lines}{_RP2_MBEDTLS_ARRAY_BOUNDS}",
+        f"{extra_lines}{_RP2_MBEDTLS_ARRAY_BOUNDS}", encoding="utf-8",
     )
     # Relays, never copies, for the same reason B.14.1's manifest is an include(): neither can
     # drift from a future pinned-version change. The real board cmake points the frozen manifest at
     # ${MICROPY_BOARD_DIR}, which is now this directory, so manifest.py has to be relayed too.
-    (override_dir / "mpconfigboard.h").write_text(f'#include "{real_board_dir / "mpconfigboard.h"}"\n')
-    (override_dir / "manifest.py").write_text(f"include({str(real_board_dir / 'manifest.py')!r})\n")
+    (override_dir / "mpconfigboard.h").write_text(f'#include "{real_board_dir / "mpconfigboard.h"}"\n', encoding="utf-8")
+    (override_dir / "manifest.py").write_text(f"include({str(real_board_dir / 'manifest.py')!r})\n", encoding="utf-8")
     return {"BOARD": board, "BOARD_DIR": str(override_dir)}
 
 
@@ -525,7 +525,7 @@ def verify_modlwip_eagain_anchor(micropython_dir: Path) -> None:
     for relative, anchors in _MODLWIP_RP2_WIRING:
         _require_in_order(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME, relative, anchors, _MODLWIP_REVERIFY)
     extmod_cmake = micropython_dir / "extmod" / "extmod.cmake"
-    text = extmod_cmake.read_text()
+    text = extmod_cmake.read_text(encoding="utf-8")
     block_start = text.index(_EXTMOD_SOURCE_SET)
     block_end = text.find("\n)", block_start)
     if text.find(_EXTMOD_MODLWIP_LINE, block_start) > block_end >= 0:
@@ -542,7 +542,7 @@ def apply_modlwip_eagain_override(micropython_dir: Path, overrides_dir: Path) ->
     copy_text = _modlwip_eagain_source(micropython_dir, MODLWIP_OVERRIDE_DIR_NAME)
     override_dir = _fresh_dir(overrides_dir / MODLWIP_OVERRIDE_DIR_NAME)
     copy_path = override_dir / MODLWIP_COPY_NAME
-    copy_path.write_text(copy_text)
+    copy_path.write_text(copy_text, encoding="utf-8")
     (override_dir / "micropython.cmake").write_text(
         "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md B.14.\n"
         'list(FIND MICROPY_SOURCE_EXTMOD "${MICROPY_EXTMOD_DIR}/modlwip.c" _sensors_modlwip_index)\n'
@@ -550,7 +550,7 @@ def apply_modlwip_eagain_override(micropython_dir: Path, overrides_dir: Path) ->
         '    message(FATAL_ERROR "modlwip_eagain: extmod/modlwip.c is not in MICROPY_SOURCE_EXTMOD - re-verify toolchain/micropython_overrides.py (SPECIFICATION.md B.14)")\n'
         "endif()\n"
         "list(REMOVE_AT MICROPY_SOURCE_EXTMOD ${_sensors_modlwip_index})\n"
-        f'list(APPEND MICROPY_SOURCE_EXTMOD "{copy_path}")\n',
+        f'list(APPEND MICROPY_SOURCE_EXTMOD "{copy_path}")\n', encoding="utf-8",
     )
     return {"USER_C_MODULES": str(override_dir)}
 
@@ -674,7 +674,7 @@ def apply_unix_lwip_host_override(micropython_dir: Path, overrides_dir: Path, lw
     _fresh_dir(variant_dir)
     for relative, text in files.items():
         (variant_dir / relative).parent.mkdir(parents=True, exist_ok=True)
-        (variant_dir / relative).write_text(text)
+        (variant_dir / relative).write_text(text, encoding="utf-8")
     return {
         "VARIANT": "standard",
         "VARIANT_DIR": str(variant_dir),
@@ -725,7 +725,7 @@ def apply_tick_offset_override(micropython_dir: Path, overrides_dir: Path, *, bo
         "// TEST-ONLY: ticks_ms() wraps about 15 minutes after boot. Never in a release image.\n"
         f"#define MICROPY_SENSORS_TICK_OFFSET_MS ({TICK_OFFSET_MS}u)\n"
         f"#define {TICK_OFFSET_SENTINEL} 1\n"
-        + header.read_text().replace(_TICK_OFFSET_ANCHOR, _TICK_OFFSET_REPLACEMENT, 1),
+        + header.read_text(encoding="utf-8").replace(_TICK_OFFSET_ANCHOR, _TICK_OFFSET_REPLACEMENT, 1), encoding="utf-8",
     )
     return {"BUILD": f"build-{board}{TICK_OFFSET_BUILD_SUFFIX}"}
 
@@ -801,7 +801,7 @@ def _recorded_c_compiler(build_dir: Path, flags_text: str) -> str:
         return match.group(1).strip()
     cache = build_dir / "CMakeCache.txt"
     if cache.is_file():
-        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(), re.MULTILINE)
+        match = re.search(r"^CMAKE_C_COMPILER:[A-Z]+=(\S.*)$", cache.read_text(encoding="utf-8"), re.MULTILINE)
         if match is not None:
             return match.group(1).strip()
     return _DEFAULT_COMPILER
@@ -813,7 +813,7 @@ def _preprocess_with_build_flags(build_dir: Path, probe_body: str, name: str, wh
     flags_make = build_dir / "CMakeFiles" / "firmware.dir" / "flags.make"
     if not flags_make.is_file():
         raise OverrideError(f"{name}: no compile flags at {flags_make} - the firmware build did not get as far as configuring, so nothing can be verified.")
-    text = flags_make.read_text()
+    text = flags_make.read_text(encoding="utf-8")
     if compiler is None:
         compiler = _recorded_c_compiler(build_dir, text)
     args: list[str] = []
@@ -824,7 +824,7 @@ def _preprocess_with_build_flags(build_dir: Path, probe_body: str, name: str, wh
         args.extend(shlex.split(match.group(1)))
     with tempfile.TemporaryDirectory() as tmp:
         probe = Path(tmp) / "build_flags_probe.c"
-        probe.write_text(probe_body)
+        probe.write_text(probe_body, encoding="utf-8")
         # -E only: this never links or runs anything, it just asks the preprocessor what the real
         # build's own macros resolved to. -P drops the line markers that would confuse the scan.
         try:
@@ -916,7 +916,7 @@ def verify_unix_kbd_intr_in_build(unix_dir: Path, make_vars: dict[str, str], bui
             raise OverrideError(f"unix_kbd_intr: cannot run {make!r} to preprocess unix_mphal.c ({exc})") from exc
         if result.returncode != 0 or not pp_path.is_file():
             raise OverrideError(f"unix_kbd_intr: `{' '.join(argv)}` did not produce {pp_path} (exit {result.returncode}):\n{(result.stdout + result.stderr).strip()[-2000:]}")
-        _check_unix_kbd_intr_pp(pp_path.read_text(errors="replace"), pp_path)
+        _check_unix_kbd_intr_pp(pp_path.read_text(errors="replace", encoding="utf-8"), pp_path)
     finally:
         pp_path.unlink(missing_ok=True)
 
@@ -928,7 +928,7 @@ def verify_modlwip_eagain_in_build(build_dir: Path, micropython_dir: Path, copy_
     build_make = target_dir / "build.make"
     if not build_make.is_file():
         raise OverrideError(f"modlwip_eagain: no {build_make} - CMake's generated layout changed - re-verify the post-build proof (SPECIFICATION.md B.14)")
-    text = build_make.read_text()
+    text = build_make.read_text(encoding="utf-8")
     copy_object = f"CMakeFiles/firmware.dir{copy_path}{_FIRMWARE_OBJECT_SUFFIX}"
     if f"{copy_object}: {copy_path}\n" not in text:
         raise OverrideError(f"modlwip_eagain: {build_make} has no rule `{copy_object}: {copy_path}` - it does not compile the patched copy, or CMake's generated layout changed. {_MODLWIP_REVERIFY}")
@@ -951,12 +951,12 @@ def verify_unix_lwip_host_in_build(build_dir: Path, micropython_dir: Path, binar
     if not dep_file.is_file():
         raise OverrideError(f"unix_lwip_host: no {dep_file} - extmod/modlwip.c was not compiled into this build, or py/mkrules.mk's dependency files moved; {_LWIP_HOST_REVERIFY}")
     unix_dir = build_dir.parent
-    entries = [entry for entry in dep_file.read_text().partition(":")[2].split() if entry != "\\"]
+    entries = [entry for entry in dep_file.read_text(encoding="utf-8").partition(":")[2].split() if entry != "\\"]
     sources = [(unix_dir / entry.rstrip(":")).resolve() for entry in entries]
     original = (micropython_dir / "extmod" / "modlwip.c").resolve()
     if not sources or original in sources:
         raise OverrideError(f"unix_lwip_host: {dep_file} names the original {original} or no source at all - the vpath swap did not happen; {_LWIP_HOST_REVERIFY}")
-    if sources[0].parts[-4:] != (UNIX_LWIP_HOST_DIR_NAME, "src", "extmod", MODLWIP_COPY_NAME) or _MODLWIP_EAGAIN_BLOCK not in sources[0].read_text():
+    if sources[0].parts[-4:] != (UNIX_LWIP_HOST_DIR_NAME, "src", "extmod", MODLWIP_COPY_NAME) or _MODLWIP_EAGAIN_BLOCK not in sources[0].read_text(encoding="utf-8"):
         raise OverrideError(f"unix_lwip_host: {dep_file} compiles {sources[0]}, not the patched copy; {_LWIP_HOST_REVERIFY}")
     try:
         result = subprocess.run([str(binary), "-c", _LWIP_HOST_PROBE], env=env, capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)

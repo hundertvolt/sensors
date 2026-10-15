@@ -12,7 +12,7 @@ and where it is not, is the "Fidelity table" below.
 
 **Not `tests/machine.py`, and does not import it.** Kept off the default unit-test path, so nothing
 here can accidentally affect the deterministic unit-test suite `scripts/test.sh` runs by default
-(`MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen"`): a test that needs a twin
+(`MICROPYPATH` set to the unit layout of `scripts/micropypath.toml`): a test that needs a twin
 module puts its directory on `sys.path` itself — `digital_twin/` for the `tests/test_digital_twin_*.py`
 files and their scenario libraries, `digital_twin/unixport/` (no fake there) for a test needing only
 the UDP shim or the NTP responder (see "Running the twin's own tests" below).
@@ -229,7 +229,8 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Chips | the FRAM's address wraps at its end | the same | MB85RS datasheets | L2 | fixed: `D fram::a_write_across_the_last_address_wraps_to_address_zero` |
 | Chips | a chip's value ranges | inside its datasheet's ranges; each walk step says "not datasheet-derived" | each fake's constants | L2 | fixed: `D scd30::default_ranges_stay_inside_the_datasheets_own_documented_ranges`, `D sgp40::measure_raw_default_range_stays_inside_the_sgp40_datasheets_own_tick_range` |
 | Chips | a chip re-plugged mid-run powers up | `I2C.unplug()`/`plug()` and each chip's `power_cycle()` | — | L2 only (L4 manual step owed, F.2) | fixed: `D hot_replug::every_bus_attached_driver_recovers_from_a_replug_without_a_reboot`, `D machine::an_unplugged_chip_answers_nothing_until_plugged_back_powered_up` |
-| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop, no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
+| Runtime | a soft `Timer` callback runs from rp2's scheduler queue, dropped when its 8 entries are full; a hard callback runs in the IRQ | an asyncio task on a wall-clock schedule: no pre-emption, no queue, no drop of its own (the row below), no exact period while the loop is blocked | `ports/rp2/mpconfigport.h:131`, `shared/runtime/mpirq.c:105` | L3, L4 | accepted (agent, 2026-10-14) while every product Timer callback stays trivial; `scheduler_saturation_drop.py` (L3, `flash/test_bus_electrical_timing.py`) is a silicon-only exception in the twin record, since a synchronous script gives the twin's Timer tasks no turn |
+| Runtime | a soft `Timer` callback is dropped while the depth-8 scheduler queue is full: `mp_sched_schedule()`'s refusal is ignored, a PERIODIC alarm re-arms, a ONE_SHOT is lost | dropped only when a test sets `Timer.drop_next_soft_callbacks`: the next N soft callbacks of any Timer, a hard one never | `shared/runtime/mpirq.c:105`, `ports/rp2/machine_timer.c:50-60`, `py/scheduler.c:163-181`, `ports/rp2/mpconfigport.h:131` (v1.29.0) | L2 | fixed: `D machine::a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped`, `D machine::a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callback_is_never_dropped` |
 | Runtime | rp2's 16-alarm pool, `OSError(ENOMEM)` past it; a raising soft callback keeps its alarm, a hard one stops it | the same | pico-sdk `pico/time.h:352-362`, `py/scheduler.c:115`, `machine_timer.c:50-60` | L2 | fixed: `D machine::the_seventeenth_alarm_raises_enomem_until_one_is_freed`, `D machine::a_soft_callback_failure_is_printed_and_the_schedule_goes_on`, `D machine::a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm` |
 | Runtime | the finaliser disarms an unreferenced armed Timer | not modelled: the twin's task keeps the Timer referenced | `machine_timer.c:115-116, 161-163` | L1, L3 | accepted (agent, 2026-10-14): L1 fake-clock tests and L3 `timer_alarm_pool_exhaustion.py` |
 | Runtime | a Pin IRQ runs from the interrupt | synchronously in the caller | — | L3 | accepted (agent, 2026-10-14) |
@@ -243,6 +244,7 @@ acceptance carrying its reason and its actor's tag, or `assumption` with its BAC
 | Runtime | `ticks_ms()` wraps at 2**30 ms | never reached (the Unix port's period is 2**62) | — | L1 | accepted (agent, 2026-10-14): the wrap proofs are L1 fake-clock tests |
 | Runtime | `time.time()` an int, the RTC TZ-free | a float, `TZ=UTC` | SPECIFICATION.md F.7 | — | accepted (agent, 2026-10-14) |
 | Runtime | a 32-bit heap of frozen code | a 64-bit heap of source-loaded code | — | L3, L4 | accepted (agent, 2026-10-14): a heap figure here is a tripwire only |
+| Runtime | the largest free block after the built graph | not the silicon's: the Unix port keeps every module's bytecode and the fakes' state in its GC heap (about 1.2 MB live after the `dev` load, against the board's 88 KB built graph), in 32-byte blocks | the shutdown line's GC summary and `gc_block_bytes` | L3 | accepted (agent, 2026-10-15): the twin's figure is a tripwire only; the board's is `tests_hardware/device_scripts/heap_headroom_after_full_system_build.py` |
 | Runtime | every rp2 constant the twin models | pinned to its cited source line | v1.29.0 | L2 | fixed: `tests/test_digital_twin_rp2_constants.py` |
 | Network | the radio and lwIP carry the traffic: TCP PCBs, the pbuf pool, `MEM_SIZE`, TIME_WAIT, the backlog, the `ERR_MEM` send path (B.14) | the host's Linux stack carries it; `WLAN` fakes connection state only, the Pico W the only modelled board (owner, 2026-09-26) | — | L4 | accepted (agent, 2026-10-14): every connection-ceiling, hotspot and load verdict is L4's |
 | Network | CYW43 `isconnected()` false positives, spontaneous link loss, DHCP, config validation | not modelled | — | L4 | accepted (agent, 2026-10-14) |
@@ -289,7 +291,9 @@ deployed unit serves — then runs
 `digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan
 build/generated_src/sensortask_<device>_wiring_plan.json --device <device>` — the real orchestrator,
 not the generated boot entry (`sensortask_<device>_main.py`) directly, since it also needs to drive
-the fault-injection/`--duration`-forever logic around `<module>.main()`, not just block on it):
+the fault-injection/`--duration`-forever logic around `<module>.main()`, not just block on it), on
+the twin layout of `scripts/micropypath.toml` (`micropypath twin` of `scripts/_unix_port.sh` prints
+it; the runner puts `digital_twin/unixport` on its own path):
 
 ```bash
 MICROPYPATH="build/generated_src:src:digital_twin:ext:frozen_modules:.frozen" <micropython-unix-port-binary> digital_twin/run_generic_integration.py --module sensortask_<device> --wiring-plan build/generated_src/sensortask_<device>_wiring_plan.json --device <device> [flags]
@@ -306,7 +310,7 @@ ever runs. `digital_twin` sits between `src` and `frozen_modules`/`.frozen` — 
 plain `tests` on the same `MICROPYPATH` (that would let `tests/machine.py`/`tests/network.py`/
 `tests/neopixel.py` shadow this package's own same-named modules, or vice versa, depending on
 ordering — the two are meant to never be on the same path at once). This is a **separate**
-invocation from `scripts/test.sh`'s own `"build/generated_src:src:tests:frozen_modules:.frozen"` —
+invocation from `scripts/test.sh`'s own unit layout (the same file's `unit` entry) —
 `scripts/run_unix_port_integration.sh` is not part of `scripts/test.sh`'s own default
 `tests/test_*.py` glob loop (it can run forever in `--duration`-omitted/manual mode, which would
 hang that loop if it were discovered there instead).
@@ -451,12 +455,17 @@ host-side harness reads:
 | `--test-stall-loop-ms N` | `STALL` | a `STALL_TRIGGER` line on stdin stops the whole loop for N ms |
 | `--test-conn-status-interval-ms N` | `CONN_SLOTS open=<n> backlog=<n>` | the connection gauge every N ms |
 | `--test-fault-status-interval-ms N` | `FAULT_PENDING ...` | each chip's queued faults every N ms |
-| `--test-shutdown-hang STEP` | `HANG <step>` | the controlled shutdown's step S1, S2, S3, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it |
+| `--test-shutdown-hang STEP` | `HANG <step>`; for S1 also `HUNG S1` | the controlled shutdown's step S1, S2, S3, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it; `HUNG S1` comes when the rebound dead-task report is first entered |
+| `--test-flash-stall-max` | — | every flash stall at its datasheet maximum |
+| `--test-uart-over-cap` | `UART_OVER_CAP <key> sent\|refused` | per initiating `uart_link`, right after its next transfer, one stream of the link's cap plus one byte, which the protocol refuses before its first frame and logs |
 
 The runner prints `WATCHDOG_WOULD_TRIGGER count=<n>` whenever its WDT would have reset silicon, and
-one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`, the kept
-scratch registers, `public_destinations_refused`, `flash_stall_longest_ms` and, per UART link, its
-transfers, failures and overruns (laps and receive errors counted together). Exit codes: 0 a clean
+one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`,
+`wdt_timeout_ms`, the kept scratch registers, `public_destinations_refused`, `flash_stall_longest_ms`,
+`gc_block_bytes` and, per UART link, its transfers, failures and overruns (laps and receive errors
+counted together). The line comes after a `gc.collect()` and `micropython.mem_info()`'s GC summary,
+whose last line ends `max free sz: <blocks>`; `scripts/_twin_process.py`'s `ShutdownLine` refuses a
+line without that summary above it and reads the largest free block from it. Exit codes: 0 a clean
 end, 1 an error, 3 a simulated reset, 4 a bootloader entry, 5 a simulated power loss.
 
 ### FRAM persistence
@@ -551,8 +560,8 @@ exact same default invocation as every other test file:
 
 ```bash
 scripts/test.sh   # discovers and runs them like any other tests/test_*.py - MICROPYPATH is set
-                   # internally per test file ("build/generated_src:src:tests:frozen_modules:.frozen"),
-                   # not read from the calling shell's environment
+                   # internally per test file to the unit layout of scripts/micropypath.toml, not
+                   # read from the calling shell's environment
 ```
 
 A file that boots a device prewarms the poll set, then applies the UDP shim, at module level
@@ -564,7 +573,13 @@ the offline NTP config. It registers `machine.reset_test_state` and `network.res
 A file marked `PER_DEVICE = True` runs once per generated device, named by `TEST_DEVICE`
 (`scripts/test.sh`); its driver-specific tests run on the device `tests/_twin_devices.py` picks.
 HTTP-driving scenarios run host-side, by `scripts/_digital_twin_scenarios.py` against a runner
-subprocess (SPECIFICATION.md E.9).
+subprocess (SPECIFICATION.md E.9). A runner or harness started from a test or a script reads the
+twin layout of `scripts/micropypath.toml`, never `tests/` (`tests_scripts/test_twin_never_needs_tests_on_its_path.py`).
+
+`machine.Timer.drop_next_soft_callbacks` (a class attribute, 0 by default, in `Timer.TEST_API`) is
+reached only by a test: the next N soft callbacks of any Timer are dropped as rp2's full depth-8
+scheduler queue drops them. A PERIODIC alarm re-arms, a ONE_SHOT is lost and frees its alarm, a
+hard callback is never dropped, and `machine.reset_test_state()` clears it.
 
 The chip-fake and fake-module tests are deterministic — no wall-clock waiting, except one
 short-period/generous-timeout smoke test in `tests/test_digital_twin_machine.py`
@@ -603,14 +618,20 @@ scripts/run_digital_twin_ci.sh <device> --gc-threshold -1 --part suite   # one s
 uv run scripts/_digital_twin_ci_suite.py --micropython-bin <path> --device <device> --only 5,5b --repeat 3   # diagnosis
 ```
 
-A missing or unknown device prints the usage and the valid devices and exits 2.
+A missing or unknown device prints the usage and the valid devices and exits 2. The runner then
+takes ports 53 and 18080 (a port another suite holds fails the run at once, naming that suite), and
+before any build moves the device's previous logs and state, `digital_twin_ci_logs/<device>/`, into
+`build/archive/digital_twin_ci_<device>/<UTC>/`, keeping the newest three. The suite run alone takes
+the same two ports itself, the harness run alone port 53.
 
-**State**: each pass keeps its state under `digital_twin_ci_logs/<pass>/state/`, never
+**State**: each pass keeps its state under `digital_twin_ci_logs/<device>/<pass>/state/`, never
 `digital_twin/`'s manual defaults, and archives it to `state_archive/NN_before_<label>/` before every
-fresh start — nothing is deleted, so the FRAM image and logs of every earlier run stay readable.
+fresh start — nothing inside a run is deleted, so the FRAM image and logs of every earlier run of it
+stay readable.
 
-**Build**: builds the MicroPython Unix port (if not already cached at `$PICO_TOOLCHAIN_DIR`, same
-convention as `scripts/test.sh`/`scripts/run_unix_port_integration.sh`), generates every real
+**Build**: asks `scripts/_unix_port.sh ensure standard` for the MicroPython Unix port (built when
+missing, of another flavour or stale against the toolchain record, cached at `$PICO_TOOLCHAIN_DIR`,
+as for `scripts/test.sh`/`scripts/run_unix_port_integration.sh`), generates every real
 device's own `sensortask_<device>.py` + wiring-plan JSON into `build/generated_src/`
 (`scripts/_generate_sensortask_modules.py`), and the real website for the chosen device into
 `frozen_modules/frozen_html.py` (`scripts/build_website.sh <device>`). Must succeed before any
@@ -624,18 +645,23 @@ process), through a sequence of real subprocess runs on a fixed port (`18080`, d
 the manual entry point's `8080` default, so both can run side by side without colliding). **The
 whole sequence runs twice, not just once** — once at `--gc-threshold -1` (MicroPython's own real
 reactive-only default) and once at `32768` (the project's chosen value, matching every real firmware
-boot), each pass writing its own subdirectory under `digital_twin_ci_logs/` (`gc_threshold_neg1/`,
-`gc_threshold_32768/`); `--gc-threshold` runs one. This is CLAUDE.md's/
+boot), each pass writing its own subdirectory under `digital_twin_ci_logs/<device>/`
+(`gc_threshold_neg1/`, `gc_threshold_32768/`); `--gc-threshold` runs one. This is CLAUDE.md's/
 SPECIFICATION.md Part I.4(e)'s standing rule applied to the *entire* suite, not just the soak
 check (run 11, below) — every run's log is checked for zero `MemoryError`/`memory allocation
-failed` (caught-and-logged included) and for `public_destinations_refused=0` on its shutdown line.
-A device wiring a `uart_link` pair runs Run 3 again on a TOML derived with `crc = "crc16"` on both
-ends (`--device-toml`, under `digital_twin_ci_logs/crc16/`), so the link runs in both CRC modes. The
+failed` (caught-and-logged included; a missing, unreadable or empty log fails the gate) and for
+`public_destinations_refused=0` on its shutdown line, and every suite and harness shutdown line for a
+feed gap above 75 % of the armed watchdog timeout (`l2.feed_gap_share_max`), except the runs that
+starve the watchdog on purpose (run 10, the hung-step scenario). The routes a run walks come from the
+device's API reference, `build/generated_src/api/sensortask_<device>.json`, whose absence fails the
+pass naming it. A device wiring a `uart_link` pair runs Run 3 again on a TOML derived with
+`crc = "crc16"` on both ends (`--device-toml`, under `digital_twin_ci_logs/<device>/crc16/`), so the
+link runs in both CRC modes. The
 fault matrix in runs 3/4/5c/10 is derived from that device's own real wiring plan and instances,
 never a hardcoded driver list, and every fault it leaves out is printed with its reason (`_LEFT_OUT`):
 
-1. **Baseline boot** — walk every `GET` endpoint (`/measurements`, `/sensors`, `/networking`,
-   `/system`, `/notification`, `/status`, `/`); with no station link the clock has never synced, so
+1. **Baseline boot** — walk every `GET` route of the device's API reference and `/`; with no
+   station link the clock has never synced, so
    `UTCTime` and `LocalTime` read null. Then `PUT` a setting on each of
    `/system` (`DebugLevel=5`), `/notification` (`WarnCO2=1800`), `/sensors`
    (`SCD30.MeasInterval=4`), `/networking` (`Hostname`), and `/status` (`ResetErrors`) — every route
@@ -721,7 +747,9 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
    Confirms the webserver stays fully healthy past NTP's own 5s fetch timeout, not just eventually,
    that NTP logs `NTP_NO_REPLY` where the host has a route for the request and `NTP_NOT_SENT`
    where it has none (a network namespace holding only `lo`), never both, and that no task ended and
-   was restarted meanwhile.
+   was restarted meanwhile. The watch ends on the third NTP failure event, then one supervisor pass
+   (`l2.ntp_unreachable_failures`, inside the 90 s `l2.ntp_unreachable_watch_s` bound): the 10 s
+   doubling backoff puts the failures at about 4, 22 and 62 s of serving (`dev`, 2026-10-15).
 10. **The dedicated watchdog-backstop case** — one bounded real, *blocking* (`time.sleep()`, not
     `asyncio.sleep()`) hang per bus-attached instance the device wires (`--hang <instance>:<op>:12`,
     `writeto` for a sensor, `readinto` for the FRAM), each in its own process with `--duration 15`,
@@ -733,13 +761,15 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     Confirms the process survives and exits cleanly, and — the one thing sustained-but-bounded
     errors (run 3) cannot demonstrate — that the watchdog backstop itself actually engages
     (`would_have_triggered_count >= 1`), matching CLAUDE.md's recovery-ladder rule: a transfer that
-    never returns is the watchdog's.
+    never returns is the watchdog's. Each run ends on its `WATCHDOG_WOULD_TRIGGER` line, inside the
+    45 s `l2.hang_run_exit_wait_s` bound.
 11. **Clean soak run — host-driven, not a twin-side `--soak` flag.** A fresh clean-boot twin
     subprocess is armed with `--mem-sample-interval-ms` only; the *host* (this script's own
-    `_run_11_soak()`, plain CPython) drives 100 warmup cycles then 20 measured cycles of the same
-    `/measurements`/`/sensors`/`/networking`/`/system`/`/notification`/`/status`/`/` endpoint sweep
-    directly over HTTP (see "Run 11's two calibrated numbers" below for the 100), checks zero HTTP
-    failures and `would_have_triggered_count == 0`, then parses
+    `_run_11_soak()`, plain CPython) drives warm-up cycles until no cycle has set a new `MEM_SAMPLE`
+    floor for 20 cycles (`l2.soak_plateau_cycles`; at most 100, `l2.soak_warmup_cycles`), then 20
+    measured cycles, each walking every `GET` route of the device's API reference and `/` directly
+    over HTTP (see "Run 11's two calibrated numbers" below), checks zero HTTP failures and
+    `would_have_triggered_count == 0`, then parses
     the twin's own captured `MEM_SAMPLE <time.time()> <gc.mem_free()>` log lines (`gc.mem_free()`
     has no REST route and no other way out of the process — SPECIFICATION.md's "Driver/DUT process
     separation" Part) and computes the early-quarter-vs-late-quarter memory-trend check
@@ -756,8 +786,8 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     **Run 11b — the full connection ceiling under real simultaneous load** (`_run_11b_full_ceiling_
     concurrency()`). A fresh twin; the host reads the device's own ceiling through buildgen's
     `device_max_connections()` (`devices/<device>.toml`, else `src/`'s default) and fires exactly
-    that many simultaneous GETs cycling over `/sensors`, `/status`, `/measurements`, `/networking` and
-    `/system`, three rounds, from CPython threads on
+    that many simultaneous GETs cycling over every `GET` route of the device's API reference, three
+    rounds, from CPython threads on
     a barrier with one real socket each — every one must be served `200` with a body that parses as
     a JSON object, the twin must still serve afterwards and shut down
     cleanly, and the suite's own no-`MemoryError` log check applies at both thresholds. A 1 s settle
@@ -789,12 +819,17 @@ device without them skips it) and whether it may share a boot. The sharing ones 
 per group, with an idle check between two of them — the twin alive, every slot drained, the kernel's
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
 scenario and sends the next to a fresh boot. The hung-step scenario ends on the runner's
-`WATCHDOG_WOULD_TRIGGER` line; the UART-load scenario drives both links of a device that wires a
-pair through a webserver hammer at the ceiling, FRAM log writes and config flushes, each flush
-stalling the loop as rp2's flash write does.
+`WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
+(`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
+webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as
+rp2's flash write does, in a typical then a maximum stall round (`--test-flash-stall-max`): no
+overrun, one over-cap refusal logged once per initiator (`--test-uart-over-cap`), and the largest
+free block asserted at the threshold stage only (at -1 it is printed). Run alone, the harness takes
+port 53 itself; a held one fails the run naming its holder, no twin booted.
 
-Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/<pass>/run<N>_*.log`, the
-harness's under `digital_twin_ci_logs/scenarios/` (gitignored; uploaded as the CI build artifact
+Each run's subprocess stdout/stderr is captured to `digital_twin_ci_logs/<device>/<pass>/run<N>_*.log`,
+the harness's under `digital_twin_ci_logs/<device>/scenarios/gc_threshold_<stage>/` (gitignored; the
+previous run's under `build/archive/digital_twin_ci_<device>/`; uploaded as the CI build artifact
 `digital-twin-ci-logs-<device>-gc<stage>-<part>` via the `digital-twin-e2e` job's own `if: always()`
 upload step, so a failure's full boot log is inspectable from the Actions run itself, not just the
 pass/fail summary). The suite ends with the summary block (SPECIFICATION.md E.10) and exits non-zero
@@ -834,7 +869,10 @@ scale, not an unbounded leak. Confirmed 2026-09-14: `gc.mem_free()` plateaus for
 enough idle wall clock, wozi's curve flattening well inside 40 cycles' worth and dev's needing
 roughly 2.5x that, reproduced with the UART tasks fully disabled — so it is settling proportional
 to module count, not UART traffic. 100 gives every device room to finish before the measured
-window starts.
+window starts. It is now the warm-up's bound, not its length: the warm-up ends once no cycle has set
+a new `MEM_SAMPLE` floor for 20 cycles (`_SOAK_PLATEAU_CYCLES`), so a device settles for as long as
+it needs and no longer; `dev` ran 84 and 63 cycles in all at the two GC stages (2026-10-15), against
+the fixed 120 before.
 
 **The memory-trend tolerance is self-calibrating, and a scaling law is why.** The original
 calibration — five 100-cycle soaks, 25-sample quarters, trend deltas of +2623, +796, -410, +1729,
@@ -1090,7 +1128,7 @@ CS `Pin` is asserted low, the way `machine.I2C` routes by address (fidelity tabl
 ## Code quality tooling
 
 `digital_twin/` is in the ruff scope; mypy checks it in its own pass (`digital_twin/typecheck.ini`,
-which `scripts/typecheck.sh` always runs, and whose module list names the twin tests too), because
+which `scripts/typecheck.sh` always runs with no paths, its `files` naming the twin tests too), because
 each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICATION.md B.15).
 
 ## Harness pitfalls

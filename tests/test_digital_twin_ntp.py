@@ -34,7 +34,7 @@ from _generated_module import boot_entry_watchdog  # noqa: E402
 from _ntp_responder import NtpResponder  # noqa: E402
 from _offline_ntp_config import write_responder_ntp_config  # noqa: E402
 from _port_bands import PortAllocator  # noqa: E402
-from _src_const import src_const  # noqa: E402
+from _src_const import src_const, src_int  # noqa: E402
 from _tmp_scratch import TmpScratch  # noqa: E402
 from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402
 from _udp_port_redirect import redirect_udp_port  # noqa: E402
@@ -276,7 +276,7 @@ def test_a_send_to_a_refused_address_fails_on_the_products_own_path() -> None:
 _SYNC_WAIT_TIMEOUT_S = 20.0  # the network up, one product fetch timeout (5 s), a check tick (10 s) if it came up late
 _SYNC_POLL_MS = 50
 _TICKS_TO_RETRY = 4  # check ticks fired by hand toward the next attempt: the backoff steps reached here, 20 s and 40 s
-_CHECK_S: int = src_const("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")  # type: ignore[assignment]
+_CHECK_S: int = src_int("src/asy_ntp_client.py", "_NTP_CHECK_INTERV")
 _SSID = "TestNet"
 _scratch = TmpScratch("digital_twin_ntp")
 

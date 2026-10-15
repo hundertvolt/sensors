@@ -3,6 +3,7 @@ test-side mirror of it: one number per meaning, passed by keyword through a name
 or mock history holding a code the catalog does not give (SPECIFICATION.md C.7.1). Each check bites a plant."""
 
 import ast
+import gc
 import json
 import re
 from collections import Counter
@@ -19,7 +20,7 @@ from _repo_scan import python_files
 from buildgen.generate import generate_device
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from buildgen.jsontypes import JsonDict, JsonValue
 
@@ -91,7 +92,7 @@ def _bands(spec: "JsonValue", kind: str) -> "list[tuple[int, int]]":
 
 @cache
 def _catalog() -> "JsonDict":
-    return _obj(json.loads(_CATALOG_PATH.read_text()), "buildgen/error_catalog.json")
+    return _obj(json.loads(_CATALOG_PATH.read_text(encoding="utf-8")), "buildgen/error_catalog.json")
 
 
 def _rows(catalog: "JsonDict", kind: str) -> "dict[int, JsonDict]":
@@ -109,8 +110,8 @@ def _owners_of(catalog: "JsonDict", path: str) -> "set[str]":
     }
 
 
-def _repo_modules(directory: str) -> "list[_Module]":
-    return [_module(p.relative_to(_REPO).as_posix(), p.read_text()) for p in python_files(_REPO, directory)]
+def _repo_modules(directory: str) -> "Iterator[_Module]":
+    return (_module(p.relative_to(_REPO).as_posix(), p.read_text(encoding="utf-8")) for p in python_files(_REPO, directory))
 
 
 @cache
@@ -125,11 +126,6 @@ def _generated() -> "tuple[_Module, ...]":
         result = generate_device(_REPO / "devices" / f"{device}.toml", _REPO / "src", _REPO / "ext")
         modules.append(_module(f"build/generated_src/sensortask_{device}.py", result.module_source))
     return tuple(modules)
-
-
-@cache
-def _test_side() -> "tuple[_Module, ...]":
-    return tuple(m for scope in _TEST_SCOPES for m in _repo_modules(scope))
 
 
 def _functions(tree: ast.AST) -> "Iterator[ast.FunctionDef | ast.AsyncFunctionDef]":
@@ -522,8 +518,8 @@ def _seed_only(tree: ast.AST, name: str) -> bool:
     return bool(loads) and all(id(n) in seed_values for n in loads)
 
 
-def _copy_bindings(m: _Module) -> "Iterator[tuple[str, int]]":
-    for node in ast.walk(m.tree):
+def _copy_bindings(m: _Module, nodes: "Iterable[ast.AST]") -> "Iterator[tuple[str, int]]":
+    for node in nodes:
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             target, value = _binding(node)
             if isinstance(target, ast.Name) and _COPY_NAME.search(target.id) and _int_value(value) is not None and not _seed_only(m.tree, target.id):
@@ -565,8 +561,8 @@ def _seeded(fn: ast.AST) -> "set[int]":
     return seeds
 
 
-def _assert_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
-    for node in ast.walk(fn):
+def _assert_literals(nodes: "Iterable[ast.AST]") -> "Iterator[tuple[int, set[int]]]":
+    for node in nodes:
         if not isinstance(node, ast.Assert):
             continue
         for cmp in (n for n in ast.walk(node.test) if isinstance(n, ast.Compare)):
@@ -581,8 +577,8 @@ def _assert_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
                 yield node.lineno, set().union(*(_literal_codes(a) for a in call.args))
 
 
-def _call_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
-    for node in ast.walk(fn):
+def _call_literals(nodes: "Iterable[ast.AST]") -> "Iterator[tuple[int, set[int]]]":
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
@@ -595,24 +591,52 @@ def _call_literals(fn: ast.AST) -> "Iterator[tuple[int, set[int]]]":
                 yield node.lineno, _literal_codes(value)
 
 
+def _copy_scan(m: _Module) -> "tuple[list[tuple[str, int]], list[str]]":
+    # A module's flagged bindings and the problems they and its compared literals make, from one walk of its tree.
+    nodes = list(ast.walk(m.tree))
+    bindings = list(_copy_bindings(m, nodes))
+    problems = [f"{m.path}:{line} binds {name} to an int - read it with code() from tests/_error_codes.py" for name, line in bindings if (m.path, name) not in _SEED_NAMES_PENDING]
+    # A function's literals are among its module's, so a module holding none needs no per-function pass.
+    if next(_assert_literals(nodes), None) is None and next(_call_literals(nodes), None) is None:
+        return bindings, problems
+    for fn in _functions(m.tree):
+        found = (*_assert_literals(ast.walk(fn)), *_call_literals(ast.walk(fn)))
+        seeded = _seeded(fn) if found else set()
+        problems += [f"{m.path}:{line} {fn.name}() compares a logged code with the literal(s) {sorted(codes - seeded)} - use code()" for line, codes in found if codes - seeded]
+    return bindings, problems
+
+
 def _copy_problems(modules: "tuple[_Module, ...]") -> "list[str]":
-    problems = [f"{m.path}:{line} binds {name} to an int - read it with code() from tests/_error_codes.py" for m in modules for name, line in _copy_bindings(m) if (m.path, name) not in _SEED_NAMES_PENDING]
-    for m in modules:
-        for fn in _functions(m.tree):
-            seeded = _seeded(fn)
-            for line, codes in (*_assert_literals(fn), *_call_literals(fn)):
-                if codes - seeded:
-                    problems.append(f"{m.path}:{line} {fn.name}() compares a logged code with the literal(s) {sorted(codes - seeded)} - use code()")
-    return sorted(set(problems))
+    return sorted({problem for m in modules for problem in _copy_scan(m)[1]})
+
+
+@cache
+def _test_side_copies() -> "tuple[tuple[str, ...], frozenset[tuple[str, str]]]":
+    # One parse of the test scopes, each tree dropped once scanned (kept together, their millions of nodes slow every
+    # garbage collection): the copy problems, and every (path, name) binding the scan flags.
+    problems: set[str] = set()
+    flagged: set[tuple[str, str]] = set()
+    collecting = gc.isenabled()
+    gc.disable()  # parsing makes millions of acyclic nodes, and each collection it set off re-walked every cached tree
+    try:
+        for scope in _TEST_SCOPES:
+            for m in _repo_modules(scope):
+                bindings, module_problems = _copy_scan(m)
+                problems.update(module_problems)
+                flagged.update((m.path, name) for name, _line in bindings)
+    finally:
+        if collecting:
+            gc.enable()
+    return tuple(sorted(problems)), frozenset(flagged)
 
 
 def test_no_test_tier_keeps_its_own_copy_of_a_code() -> None:
-    problems = _copy_problems(_test_side())
+    problems, _flagged = _test_side_copies()
     assert not problems, "\n".join(problems)
 
 
 def test_every_pending_seed_name_is_still_flagged() -> None:
-    flagged = {(m.path, name) for m in _test_side() for name, _line in _copy_bindings(m)}
+    _problems, flagged = _test_side_copies()
     assert flagged >= _SEED_NAMES_PENDING, f"no longer a pending seed copy, drop from _SEED_NAMES_PENDING: {sorted(_SEED_NAMES_PENDING - flagged)}"
 
 
@@ -664,7 +688,7 @@ def _history_problems(catalog: "JsonDict", source: str, errcount: "JsonDict") ->
 
 def test_mock_histories_hold_only_their_loggers_catalog_codes() -> None:
     # The one driver-keyed sample table every device's mock data is composed from (js/mock-server.js).
-    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text())["errcount"]
+    errcount = json.loads((_REPO / _MOCK_SAMPLES).read_text(encoding="utf-8"))["errcount"]
     assert errcount, f"{_MOCK_SAMPLES} carries no errcount samples - the check would hold nothing"
     problems = _history_problems(_catalog(), _MOCK_SAMPLES, errcount)
     assert not problems, "\n".join(problems)

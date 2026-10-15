@@ -371,11 +371,11 @@ def test_a_listing_without_specification_md_raises(tmp_path: Path, monkeypatch: 
     subprocess.run([git, "init", "-q", str(tmp_path)], check=True)
     copy = tmp_path / "copy"
     copy.mkdir()
-    (copy / "SPECIFICATION.md").write_text("# an untracked copy nested in another repository\n")
+    (copy / "SPECIFICATION.md").write_text("# an untracked copy nested in another repository\n", encoding="utf-8")
     monkeypatch.setattr(_repo_scan, "REPO_ROOT", copy)
     with pytest.raises(RuntimeError, match=r"SPECIFICATION\.md"):
         repo_files()
-    (copy / "other.txt").write_text("tracked by the outer repository\n")
+    (copy / "other.txt").write_text("tracked by the outer repository\n", encoding="utf-8")
     subprocess.run([git, "-C", str(tmp_path), "add", "copy/other.txt"], check=True)
     with pytest.raises(RuntimeError, match=r"SPECIFICATION\.md"):
         repo_files()

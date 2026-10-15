@@ -33,9 +33,9 @@ _RUN_TIMEOUT_S = 60
 
 
 def _pytest(tmp_path: Path, repo_root: Path, *plugin: str) -> "subprocess.CompletedProcess[str]":
-    (tmp_path / "test_probe.py").write_text(_PROBE)
-    (tmp_path / "guard_plugin.py").write_text(_PLUGIN)
-    (tmp_path / "none.ini").write_text("[pytest]\n")
+    (tmp_path / "test_probe.py").write_text(_PROBE, encoding="utf-8")
+    (tmp_path / "guard_plugin.py").write_text(_PLUGIN, encoding="utf-8")
+    (tmp_path / "none.ini").write_text("[pytest]\n", encoding="utf-8")
     env = {"PYTHONPATH": os.pathsep.join((str(tmp_path), str(repo_root / "tests_scripts"))), "GUARD_CONFTEST": str(repo_root / "tests_scripts" / "conftest.py"), "PATH": os.environ["PATH"]}
     argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(tmp_path), "-c", str(tmp_path / "none.ini"), *plugin, str(tmp_path / "test_probe.py")]
     return subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=_RUN_TIMEOUT_S, check=False)

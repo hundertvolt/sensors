@@ -1,12 +1,13 @@
-// The launch frame the live command modules share (SPECIFICATION.md Part H.7): the interpreter check, one device's twin
-// on a given port with its own site, readiness, shutdown, the captive-DNS port lock each twin holds while it runs, and
-// the verdict read from a stopped twin's output.
+// The launch frame the live command modules and the smoke share (SPECIFICATION.md Part H.7): the Unix-port probe, the
+// twin layout, one device's twin on a given port with its own site, readiness, shutdown, the captive-DNS port lock each
+// twin holds while it runs, and the verdict read from a stopped twin's output.
 
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { LAYOUT_FILE, twinLayout, withSite } from "./_micropypath.js";
 import { acquirePortLock } from "./_port_lock.js";
 import { twinStartFailure } from "./_twin_start_failure.js";
 
@@ -16,9 +17,11 @@ export const READY_TIMEOUT_MS = 20000;
 // @tunable l0.live_twin_shutdown_timeout_ms = 15000
 export const SHUTDOWN_TIMEOUT_MS = 15000;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
-const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
-const MISSING_INTERPRETER = `MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)`;
+// The twin layout of the one MICROPYPATH definition, read once.
+export const MICROPYPATH = twinLayout(readFileSync(path.join(REPO_ROOT, LAYOUT_FILE), "utf8"), LAYOUT_FILE);
+const MISSING_INTERPRETER = "MicroPython Unix port not built - run 'uv run toolchain/setup_toolchain.py setup' first (CI's web-unit-tests job does this automatically)";
+/** @type {string | undefined} the standard binary the probe named, once asked */
+let interpreter;
 // Every twin's captive DNS binds this product-fixed port, so a twin runs only while its runner holds the port's lock.
 const DNS_PORT = 53;
 const LOCK_RUNNER = "the vitest live tier";
@@ -89,12 +92,20 @@ export function holdTwinPorts() {
 }
 
 /**
- * Throws when the Unix-port interpreter is not built: the live tier needs it, and a run without it fails, never skips.
+ * The standard Unix-port binary, as scripts/_unix_port.sh's check names it (asked once, building nothing), or an error
+ * carrying the probe's own words: the live tier needs the binary, and a run without it fails, never skips.
+ * @returns {string}
  */
 export function requireInterpreter() {
-    if (!existsSync(MICROPYTHON_BIN)) {
-        throw new Error(MISSING_INTERPRETER);
+    if (interpreter === undefined) {
+        try {
+            interpreter = execFileSync("bash", ["scripts/_unix_port.sh", "check", "standard"], { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+        } catch (err) {
+            const said = /** @type {{stderr?: unknown}} */ (err).stderr;
+            throw new Error(`${MISSING_INTERPRETER} (the probe said: ${typeof said === "string" ? said.trim() : String(err)})`, { cause: err });
+        }
     }
+    return interpreter;
 }
 
 /**
@@ -133,10 +144,12 @@ export function sleep(ms) {
  * @returns {import("node:child_process").ChildProcess}
  */
 export function spawnTwin({ device, port, configDir }) {
+    const bin = requireInterpreter();
     const release = acquirePortLock(DNS_PORT, LOCK_RUNNER);
-    const micropypath = `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
+    // The device's own built site in place of the unit tier's shared copy, so a twin never serves another device's site.
+    const micropypath = withSite(MICROPYPATH, `build/generated_html/${device}`);
     const proc = spawnOrRelease(release, () => spawn(
-        MICROPYTHON_BIN,
+        bin,
         [
             "digital_twin/run_generic_integration.py",
             "--module",

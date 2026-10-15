@@ -1,7 +1,8 @@
-"""Tests scripts/_digital_twin_ci_suite.py's Run 11 (soak): the pure helpers _parse_mem_samples()
-and _mem_trend(), and _run_11_soak()'s one-boot verdict over a stubbed twin. The real twin runs it
-end to end in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
+"""Tests scripts/_digital_twin_ci_suite.py's Run 11 (soak) and main(): _parse_mem_samples(), _mem_trend(), the warm-up that
+ends once the sampled floor holds, _run_11_soak()'s one-boot verdict over a stubbed twin, a missing API reference, a held
+port and the log default. The real twin runs it in scripts/run_digital_twin_ci.sh (SPECIFICATION.md Part E.9)."""
 
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -11,6 +12,11 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+# A fixture device's GET routes: each soak cycle walks them and the static site.
+_ROUTES = ("/measurements", "/status")
+_PER_CYCLE = len(_ROUTES) + 1
+_SETTLED_AT = 30  # the cycle from which the settling fixture's floor holds
 
 # ---------------------------------------------------------------------------
 # _parse_mem_samples(): the log-scraping half of the "gc.mem_free() has no other source"
@@ -119,6 +125,11 @@ def test_mem_trend_tolerance_scales_with_each_attempts_own_observed_noise(ci_sui
 # ---------------------------------------------------------------------------
 
 
+def _flat(i: int) -> int:
+    return 1_000_000 + 10 * (i % 2)
+
+
+@pytest.mark.usefixtures("own_lock_root")
 def test_a_missing_wiring_plan_prints_the_block_and_fails(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _fresh_summary(ci_suite, monkeypatch)  # main() replaces it; registered so it is restored
     monkeypatch.setattr(ci_suite, "GENERATED_SRC_DIR", tmp_path)
@@ -131,17 +142,42 @@ def test_a_missing_wiring_plan_prints_the_block_and_fails(ci_suite: ModuleType, 
     assert block.endswith("Result: FAIL\nExit code: 1\n")
 
 
-def _flat(i: int) -> int:
-    return 1_000_000 + 10 * (i % 2)
+@pytest.mark.usefixtures("own_lock_root")
+def test_a_missing_api_reference_prints_the_block_and_fails(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # The route sets come from the device's API reference: without it no run knows what to drive.
+    _fresh_summary(ci_suite, monkeypatch)
+    monkeypatch.setattr(ci_suite, "GENERATED_SRC_DIR", tmp_path)
+    (tmp_path / "sensortask_fixture_device_wiring_plan.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["_digital_twin_ci_suite.py", "--micropython-bin", "mp", "--device", "fixture_device", "--logs-dir", str(tmp_path / "logs")])
+    assert ci_suite.main() == 1
+    out = capsys.readouterr().out
+    assert f"API reference {tmp_path / 'api' / 'fixture_device.json'} missing" in out, out
 
 
-def test_each_check_is_recorded_under_its_pass_label(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
-    summary = _fresh_summary(ci_suite, monkeypatch)
-    monkeypatch.setattr(ci_suite, "_CURRENT_PASS_LABEL", "[gc.threshold=-1] ")
-    ci_suite._check(condition=True, msg="Run 1: served")
-    ci_suite._check(condition=False, msg="Run 2: persisted")
-    assert summary.passed == [("[gc.threshold=-1] Run 1: served", "")]  # type: ignore[attr-defined]
-    assert summary.failed == [("[gc.threshold=-1] Run 2: persisted", "")]  # type: ignore[attr-defined]
+def test_the_logs_default_to_the_devices_own_directory(ci_suite: ModuleType) -> None:
+    args = ci_suite._build_parser().parse_args(["--micropython-bin", "mp", "--device", "fixture_device"])
+    assert ci_suite._logs_dir(args) == ci_suite.REPO_ROOT / "digital_twin_ci_logs" / "fixture_device"
+    given = ci_suite._build_parser().parse_args(["--micropython-bin", "mp", "--device", "fixture_device", "--logs-dir", "elsewhere"])
+    assert ci_suite._logs_dir(given) == Path("elsewhere")
+
+
+def test_a_held_product_port_fails_the_suite_at_once_naming_it(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], own_lock_root: Path) -> None:
+    _fresh_summary(ci_suite, monkeypatch)
+    passes: list[object] = []
+    monkeypatch.setattr(ci_suite, "_run_both_passes", passes.append)
+    holder = subprocess.Popen(["sleep", "60"])  # noqa: S607 - coreutils sleep, the stand-in holder's process
+    lock = own_lock_root / "sensors-port-53.lock"
+    lock.mkdir()
+    (lock / "runner").write_text("another suite\n", encoding="utf-8")
+    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["_digital_twin_ci_suite.py", "--micropython-bin", "mp", "--device", "fixture_device"])
+    try:
+        assert ci_suite.main() == 1
+    finally:
+        holder.kill()
+        holder.wait()
+    captured = capsys.readouterr()
+    assert passes == [] and "port 53 is held by another suite" in captured.err, captured
 
 
 def _fresh_summary(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> object:
@@ -154,10 +190,19 @@ def _fresh_summary(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> obj
     return summary
 
 
+def test_each_check_is_recorded_under_its_pass_label(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    summary = _fresh_summary(ci_suite, monkeypatch)
+    monkeypatch.setattr(ci_suite, "_CURRENT_PASS_LABEL", "[gc.threshold=-1] ")
+    ci_suite._check(condition=True, msg="Run 1: served")
+    ci_suite._check(condition=False, msg="Run 2: persisted")
+    assert summary.passed == [("[gc.threshold=-1] Run 1: served", "")]  # type: ignore[attr-defined]
+    assert summary.failed == [("[gc.threshold=-1] Run 2: persisted", "")]  # type: ignore[attr-defined]
+
+
 def test_a_pass_that_recorded_no_check_checked_nothing(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     summary = _fresh_summary(ci_suite, monkeypatch)
     _stub_runs(ci_suite, monkeypatch, lambda *_args: {})
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1, routes=_ROUTES)
     ci_suite.run_suite(ctx)
     assert summary.vacuous == [("pass [gc.threshold=-1]", "")]  # type: ignore[attr-defined]
 
@@ -169,7 +214,7 @@ def test_an_aborted_pass_is_recorded_and_the_error_still_raised(ci_suite: Module
         raise RuntimeError("twin never started")
 
     _stub_runs(ci_suite, monkeypatch, boom)
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=32768)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=32768, routes=_ROUTES)
     with pytest.raises(RuntimeError, match="twin never started"):
         ci_suite.run_suite(ctx)
     assert summary.failed == [("[gc.threshold=32768] suite aborted: RuntimeError: twin never started", "")]  # type: ignore[attr-defined]
@@ -181,10 +226,12 @@ def test_an_aborted_pass_is_recorded_and_the_error_still_raised(ci_suite: Module
 # ---------------------------------------------------------------------------
 
 
-# The runner's own shutdown line, every field it prints (digital_twin/run_generic_integration.py).
+# The runner's own shutdown line, every field it prints, after the GC summary it prints first (digital_twin/run_generic_integration.py).
 _SHUTDOWN_LINE = (
+    " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730\n"
     "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
-    "mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0"
+    "wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 "
+    "gc_block_bytes=32"
 )
 
 
@@ -192,31 +239,35 @@ def _leaking(i: int) -> int:
     return 1_000_000 - 1_000 * i
 
 
-def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]") -> "tuple[object, list[Path]]":
-    # Runs _run_11_soak() over stubbed boots: boot k's cycle sample i reads boots[k](i) free bytes.
+def _settling(i: int) -> int:
+    # Free bytes falling one step a request until cycle _SETTLED_AT, then flat: a heap that reaches its plateau.
+    return 1_000_000 - 1_000 * min(i, _SETTLED_AT * _PER_CYCLE)
+
+
+def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boots: "list[Callable[[int], int]]", *, warmup_cycles: int = 1) -> "tuple[object, list[Path], int]":
+    # Runs _run_11_soak() over stubbed boots: boot k's request i, warm-up included, prints a MEM_SAMPLE of boots[k](i)
+    # free bytes, as the twin's sampler does; returns the summary, the boots and the requests sent.
     summary = _fresh_summary(ci_suite, monkeypatch)
-    monkeypatch.setattr(ci_suite, "_SOAK_WARMUP_CYCLES", 1)
+    monkeypatch.setattr(ci_suite, "_SOAK_WARMUP_CYCLES", warmup_cycles)
     monkeypatch.setattr(ci_suite, "_SOAK_CYCLES", 8)
     spawned: list[Path] = []
-    warmup = len(ci_suite._SOAK_ENDPOINTS)
     calls = {"n": 0}
 
     def spawn(_ctx: object, _args: object, log_path: Path) -> object:
         spawned.append(log_path)
-        log_path.write_text("")
+        log_path.write_text("", encoding="utf-8")
         calls["n"] = 0
         return object()
 
     def http(_method: str, _path: str) -> "tuple[int, dict[str, object]]":
         calls["n"] += 1
-        if calls["n"] > warmup:  # a MEM_SAMPLE inside the cycles window, as the twin's sampler prints one
-            free = boots[min(len(spawned), len(boots)) - 1](calls["n"] - warmup)
-            with spawned[-1].open("a") as log:
-                log.write(f"MEM_SAMPLE {ci_suite.time.time()} {free}\n")
+        free = boots[min(len(spawned), len(boots)) - 1](calls["n"])
+        with spawned[-1].open("a", encoding="utf-8") as log:
+            log.write(f"MEM_SAMPLE {ci_suite.time.time()} {free}\n")
         return ci_suite._HTTP_OK, {}
 
     def shutdown(_proc: object, _label: str) -> int:
-        with spawned[-1].open("a") as log:
+        with spawned[-1].open("a", encoding="utf-8") as log:
             log.write(f"{_SHUTDOWN_LINE}\n")
         return 0
 
@@ -225,9 +276,9 @@ def _soak_with_boots(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(ci_suite, "_wait_until_serving", lambda _proc: None)
     monkeypatch.setattr(ci_suite, "_http", http)
     monkeypatch.setattr(ci_suite, "_shutdown", shutdown)
-    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1)
+    ctx = ci_suite.RunContext(micropython_bin="mp", logs_dir=tmp_path, device="fixture_device", module="m", wiring_plan_path=tmp_path / "p.json", instances=(), gc_threshold=-1, routes=_ROUTES)
     ci_suite._run_11_soak(ctx)
-    return summary, spawned
+    return summary, spawned, calls["n"]
 
 
 def _stub_runs(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, body: "Callable[[object], object]") -> None:
@@ -235,8 +286,19 @@ def _stub_runs(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, body: "Cal
         monkeypatch.setattr(ci_suite, name, body)
 
 
+@pytest.fixture
+def own_lock_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # main() takes the product's fixed ports: a lock root of the test's own and no inherited chain.
+    for name in ("SENSORS_PORT_LOCKS_HELD", "SENSORS_PORT_LOCK_OWNER"):
+        monkeypatch.delenv(name, raising=False)
+    root = tmp_path / "runtime"
+    root.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(root))
+    return root
+
+
 def test_a_failing_trend_fails_the_suite_with_no_second_boot(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    summary, spawned = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_leaking, _flat])
+    summary, spawned, _sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_leaking, _flat])
     assert spawned == [tmp_path / "run11_soak.log"], "Run 11 boots exactly once"
     failed = [name for name, _ in summary.failed]  # type: ignore[attr-defined]
     assert len(failed) == 1, failed
@@ -246,7 +308,20 @@ def test_a_failing_trend_fails_the_suite_with_no_second_boot(ci_suite: ModuleTyp
 
 
 def test_a_trend_within_tolerance_passes_on_its_one_boot(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    summary, spawned = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_flat])
+    summary, spawned, _sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_flat])
     assert spawned == [tmp_path / "run11_soak.log"]
     assert summary.failed == []  # type: ignore[attr-defined]
     assert any("trend" in name for name, _ in summary.passed), summary.passed  # type: ignore[attr-defined]
+
+
+def test_the_warm_up_ends_once_the_sampled_floor_holds_for_its_window(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The floor is new on every cycle until _SETTLED_AT, then holds: the warm-up ends a window later, far inside its bound.
+    summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_settling], warmup_cycles=100)
+    warmed = sent // _PER_CYCLE - ci_suite._SOAK_CYCLES
+    assert warmed == _SETTLED_AT + ci_suite._SOAK_PLATEAU_CYCLES, warmed
+    assert summary.failed == []  # type: ignore[attr-defined]
+
+
+def test_a_floor_that_never_holds_warms_up_to_the_bound(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _summary, _spawned, sent = _soak_with_boots(ci_suite, tmp_path, monkeypatch, [_leaking], warmup_cycles=40)
+    assert sent // _PER_CYCLE - ci_suite._SOAK_CYCLES == 40

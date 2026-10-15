@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from functools import cache
 from pathlib import Path
 
 _TARGET = "tests_hardware/flash/test_bus_concurrency.py"
@@ -36,8 +37,14 @@ def _collect(repo_root: Path, *extra_args: str, target: str = _TARGET, env: "dic
     return result.stdout
 
 
+@cache
+def _collected(repo_root: Path, *extra_args: str, target: str = _TARGET) -> str:
+    # One collect-only run per command line, whichever cases read it: the bench tier's default one serves two.
+    return _collect(repo_root, *extra_args, target=target)
+
+
 def test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest(repo_root: Path) -> None:
-    output = _collect(repo_root)
+    output = _collected(repo_root)
     assert _OWNED_TEST not in output, "the SCD30 read-while-write test ran without --allow-persistence-write"
     assert _EXTRA_TEST not in output, "extra-write SCD30 test ran without either flag"
     assert _NON_SCD30_TEST in output, "a test with no SCD30 write dependency was wrongly deselected"
@@ -47,7 +54,7 @@ def test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest
 
 
 def test_global_flag_alone_runs_the_routine_group_but_not_the_extra_test(repo_root: Path) -> None:
-    output = _collect(repo_root, "--allow-persistence-write")
+    output = _collected(repo_root, "--allow-persistence-write")
     assert _OWNED_TEST in output, "--allow-persistence-write must let the owned SCD30 write run"
     assert _EXTRA_TEST not in output, "the extra-write test must still deselect without --allow-scd30-extra-write"
     assert "1 deselected" in output, f"expected exactly 1 deselected (only the extra-write test):\n{output}"
@@ -55,14 +62,14 @@ def test_global_flag_alone_runs_the_routine_group_but_not_the_extra_test(repo_ro
 
 def test_extra_flag_alone_without_the_global_flag_still_deselects_everything(repo_root: Path) -> None:
     # The AND-gate itself: --allow-scd30-extra-write must never substitute for --allow-persistence-write.
-    output = _collect(repo_root, "--allow-scd30-extra-write")
+    output = _collected(repo_root, "--allow-scd30-extra-write")
     assert _OWNED_TEST not in output, "--allow-scd30-extra-write alone must not grant the global write permission"
     assert _EXTRA_TEST not in output, "the extra-write test must not run without --allow-persistence-write too"
     assert "2 deselected" in output, f"expected the same 2 deselected as the no-flags case:\n{output}"
 
 
 def test_both_flags_runs_every_real_persistence_write_test(repo_root: Path) -> None:
-    output = _collect(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write")
+    output = _collected(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write")
     assert _OWNED_TEST in output
     assert _EXTRA_TEST in output
     assert "deselected" not in output, f"expected zero deselections with both flags passed:\n{output}"
@@ -82,13 +89,13 @@ def _nodeids(output: str) -> "set[str]":
 
 
 def test_the_bench_tier_deselects_exactly_its_persistence_writers_by_default(repo_root: Path) -> None:
-    gated = _collect(repo_root, target=_BENCH)
-    both = _collect(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write", target=_BENCH)
+    gated = _collected(repo_root, target=_BENCH)
+    both = _collected(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write", target=_BENCH)
     assert "deselected" in gated, f"the bench tier deselected nothing by default:\n{gated}"
     assert "deselected" not in both, f"both flags must leave the bench tier fully selected:\n{both}"
     # The global flag alone leaves out exactly the bench's SCD30 extra-write tests: the AND-gate, read by marker.
-    still_gated = _nodeids(both) - _nodeids(_collect(repo_root, "--allow-persistence-write", target=_BENCH))
-    extra = _nodeids(_collect(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write", "-m", "scd30_extra_write", target=_BENCH))
+    still_gated = _nodeids(both) - _nodeids(_collected(repo_root, "--allow-persistence-write", target=_BENCH))
+    extra = _nodeids(_collected(repo_root, "--allow-persistence-write", "--allow-scd30-extra-write", "-m", "scd30_extra_write", target=_BENCH))
     assert still_gated and still_gated == extra, f"--allow-persistence-write alone left out {sorted(still_gated)}, the scd30_extra_write tests are {sorted(extra)}"
 
 
@@ -96,7 +103,7 @@ def test_the_dispatch_only_fields_are_not_treated_as_persistence_writes(repo_roo
     # ResetVOC/Calibrate carry `dispatch=true` in their own @web schema tag and are never in
     # ConfigManager's cache, so a test whose only PUT is one of those spends no flash cycle and must
     # stay selected by default. test_memory_stress_bench.py is exactly that case.
-    gated = _collect(repo_root, target=_BENCH)
+    gated = _collected(repo_root, target=_BENCH)
     assert "test_real_hardware_survives_max_speed_hammer_load_without_memoryerror_or_reboot" in gated, "a ResetVOC-only test must not be gated - it persists nothing"
 
 
@@ -107,8 +114,8 @@ def test_the_flash_tier_gates_its_config_writing_reboot_tests_too(repo_root: Pat
     # The counted assertions above target ONE file and cannot see a marker elsewhere in the tier. The hard-reset test
     # writes real config from its device script, a flash cycle, nothing to do with SCD30; the boot check writes nothing
     # (its script only reads), so it runs by default. Named rather than counted, a count breaking on every addition.
-    gated = _collect(repo_root, target=_FLASH)
-    ungated = _collect(repo_root, "--allow-persistence-write", target=_FLASH)
+    gated = _collected(repo_root, target=_FLASH)
+    ungated = _collected(repo_root, "--allow-persistence-write", target=_FLASH)
     name = "test_config_value_survives_a_genuine_hard_reset"
     assert name not in gated, f"{name} writes real config to flash and must be deselected without --allow-persistence-write"
     assert name in ungated, f"{name} must run once --allow-persistence-write is passed"
@@ -127,7 +134,7 @@ def pytest_deselected(items):
 
 
 def _deselected_by(repo_root: Path, tmp_path: Path, *extra_args: str) -> "dict[str, list[str]]":
-    (tmp_path / "_deselection_probe.py").write_text(_DESELECTION_PROBE)
+    (tmp_path / "_deselection_probe.py").write_text(_DESELECTION_PROBE, encoding="utf-8")
     env = dict(os.environ, PYTHONPATH=f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}")
     output = _collect(repo_root, "-p", "_deselection_probe", "-s", *extra_args, target=_TARGET, env=env)
     found: dict[str, list[str]] = {}

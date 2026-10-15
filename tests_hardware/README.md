@@ -40,8 +40,9 @@ fallback in "The hotspot role reversal", `BENCH_AP_PASSWORD` handling in "Enviro
    anything as root, so this line grants as much as `NOPASSWD: ALL`. A refused USB rebind fails the
    run as `HardwareNotAvailableError` naming sudo, never as the stale `mpremote` error it was
    recovering from. The off-subnet spoof test also runs `sudo -n <python> tests_hardware/spoof_udp.py`
-   with the venv's interpreter (a raw socket needs root); `env --tier bench` probes the commands
-   above but not that one, so its rule is added by hand.
+   with the venv's interpreter (a raw socket needs root); its rule is added by hand, and
+   `env --tier bench` probes it too (`sudo -k -n <python> tests_hardware/spoof_udp.py --help`, which
+   only prints usage), failing with the command it needs.
 3. The board named by `[device] bench = true` (`harness.bench_device()`, "Environment variables"
    below) runs its own image (SPECIFICATION.md Part E.6.3's "one allowed flash" -
    `uv run scripts/build_firmware.py <bench device>` + `picotool load -x -v`, or the manual
@@ -281,8 +282,9 @@ One driver, or a partial closure, at a time, against the `dev` image already on 
   outright, and a pinned path is never re-resolved. The installer's own resolver
   (`setup_toolchain.py board`, `env --tier flash|bench`) also requires the MicroPython by-id name
   (SPECIFICATION.md Part B.12), so a debug probe sharing vendor `2e8a` is a candidate here but not
-  there. `scripts/mpremote_connect.sh` still defaults to `/dev/ttyACM0`, making it the one entry
-  point a re-enumeration can still strand - pass `MPREMOTE_DEVICE` there if the node has moved.
+  there. `scripts/mpremote_connect.sh` resolves its board through `setup_toolchain.py board`,
+  `MPREMOTE_DEVICE` overriding it; the resolver's own error line ends its run before any `mpremote`
+  call.
 - `BENCH_DEVICE` (or `--bench-device NAME`) - the board on the bench. The default is the one
   `devices/*.toml` whose `[device]` sets `bench = true`; none or several flagged is an error naming
   the files, and a name with no TOML of that name in `devices/` is a usage error. The option is exported as the
@@ -313,17 +315,17 @@ scripts/run_bench_hardware_suite.sh
 
 # Soak durations (soak_duration marker) are never bundled into either suite runner: each is its own
 # invocation on top of a clean bench run, liveness only (tests_hardware/soak_durations.py's
-# SOAK_DURATION_SECONDS; SPECIFICATION.md Part N l4.soak_duration_short_s / _mid_s / _long_h):
+# SOAK_DURATION_SECONDS; SPECIFICATION.md Part N l4.soak_duration_short_s / _mid_s / _long_h); a
+# missing or unknown duration exits 2 naming the valid ones, before anything runs:
 scripts/run_bench_soak_tests.sh --duration short   # 60 s
 scripts/run_bench_soak_tests.sh --duration mid     # 600 s
 scripts/run_bench_soak_tests.sh --duration long    # 6 h
 
-# The tick rollover, on top of a clean bench run: bench/test_ticks_ms_rollover.py reflashes the
-# tick-offset test image (one flash cycle; its record beside it names tick_offset_test) and polls it
-# about two hours over REST. It never flashes back: the next round flashes its own image.
-scripts/_require_clean_hardware_run.sh --runner rollover --levels "L4 (tick rollover)" \
-    tests_hardware/bench/test_ticks_ms_rollover.py --allow-multi-day-rollover --allow-flash-cycle \
-    --rollover-image <tick-offset uf2>
+# The tick rollover, on top of a clean bench run: the runner builds the bench device's tick-offset
+# test image (build_firmware.py --tick-offset-test; its record beside it names tick_offset_test), then
+# bench/test_ticks_ms_rollover.py reflashes it (one flash cycle) and polls it about two hours over
+# REST - start it detached. It never flashes back: the next round flashes its own image.
+scripts/run_bench_rollover_test.sh
 
 # --allow-flash-cycle runs the tests that reflash the board (flash wear; "Persistence-write gating"
 # lists them, SPECIFICATION.md Part E.6.3):
@@ -351,8 +353,8 @@ scripts/run_manual_hardware_tests.sh                 # run all of them, in seque
 Both automated runners first run L0-L2 (`scripts/_run_lower_levels.sh`: `scripts/test.sh` at both
 GC stages, `npm test`, and `scripts/run_digital_twin_ci.sh` for every device), stopping at the first
 failure before the board is touched; `--skip-lower-levels` is for debugging only and is never
-reported clean (`NOT CLEAN`, exit 4). The soak runner runs no lower level: it sits on top of a clean
-bench run. Otherwise they are pytest wrappers - any pytest flag works (`-k <substring>`,
+reported clean (`NOT CLEAN`, exit 4). The soak and rollover runners run no lower level: each sits on
+top of a clean bench run. Otherwise they are pytest wrappers - any pytest flag works (`-k <substring>`,
 `-m role_reversal`, `-v`, `--tb=short`, ...). Nothing inside a hardware run syncs the environment:
 every `uv run` of the runners and the harness is `uv run --no-sync`, so a run uses the venv as
 `uv sync` left it and a third-party outage never reads as a hardware failure. `--collect-only` works
@@ -384,11 +386,13 @@ needed a recovery) and a session-scoped fixture through `record_session_note()`
 (`tests_hardware/conftest.py`): both reach the run record and the summary block, which pytest's
 captured output of a passing test never would.
 
-`scripts/run_flash_hardware_suite.sh` passes `-m "not soak_duration and not multi_day_rollover"`,
-so those tests are deselected as runner selection rather than reaching the verdict as skips; the
-bench runner's floor still names the retired `long_soak` marker, so there a soak test reaches the
-verdict as its own gate's skip. Under `scripts/run_bench_soak_tests.sh`'s own `-m soak_duration`
-selection `--soak-duration` *is* set, making those tests "must pass" rather than "may skip".
+Each runner passes its own `--marker-floor` to `scripts/_require_clean_hardware_run.sh`: the flash
+and bench runners `not soak_duration and not multi_day_rollover`, so those tests are deselected as
+runner selection rather than reaching the verdict as skips, the soak runner `soak_duration` and the
+rollover runner `multi_day_rollover`. A `-m` you pass narrows the selection, never replaces it:
+pytest gets exactly one `-m "(FLOOR) and (EXPR)"` for your last `-m EXPR`, printed as
+`== Marker selection: -m "<expr>"` before the run and into the archived pytest log. Under the soak
+runner `--soak-duration` *is* set, making those tests "must pass" rather than "may skip".
 
 **The SCD30 prerequisite.** Every SCD30-reading flash test takes the session fixture
 `scd30_measuring` (`tests_hardware/scd30_prerequisite.py`): it reads the measurement interval, waits
@@ -850,7 +854,8 @@ needs a driver-level trigger is not reachable at L4 except by hand.
 | boot bus clear | SDA held at construction | L3 | `test_a_held_sda_line_is_cleared_and_every_device_answers` (its boot-clear case) | SDA high, the controller constructs, every device answers |
 | WiFi radio re-init | `_recover_device()` on a connected link | L4 | `bench/test_wifi_radio_reinit.py` (`wifi_radio_reinit_recovery.py`) | the link back within the connect budget |
 | task restart | a starter that dies at once; a chip unplugged live | L3; manual L4 | `flash/test_task_supervisor.py`; `manual/manual_bus_electrical.py::test_hot_unplug_replug_i2c_recovery`, `::test_fram_unplug_replug_recovery` | the starter called again, SYSTEM's log holding one `TASK_RETURNED` end per restart; by hand the log entries while unplugged and the readings back with no reboot |
-| FRAM chip lost | CS held inactive across two writes; the chip unplugged | L3; manual L4 | `test_fram_cs_pin_hijack_fault_injection_and_recovery`; `::test_fram_unplug_replug_recovery` | the chip-lost entry, then recovery |
+| FRAM chip lost | CS held inactive across two writes; the chip unplugged | L3; manual L4 | `test_fram_cs_pin_hijack_fault_injection_and_recovery`; `::test_fram_unplug_replug_recovery` | the chip-lost entry, then recovery; by hand the seconds from the pull to the first FRAM log entry (`fram-pull-latency.txt`, "none within 120 s" when none) |
+| UART link lost | the crossover jumper pulled mid-transfer | manual L4 | `manual/manual_bus_electrical.py::test_uart_crossover_pull_recovery` | the link's `Failures` rise and every code logged meanwhile (`uart-crossover-pull.txt`, the verbatim errcount beside it), its `Transfers` advancing within 30 s of the replug, no reboot |
 | supervisor reboot | a task dying until the restart budget is spent | L4 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` | `ResetReason` 5 and SYSTEM's escalation entry |
 | hardware watchdog | the watchdog starved | L3, L4 | `flash/test_watchdog_starvation.py`; `bench/test_reset_reasons.py` (codes 2 and 6) | the reset, then the code |
 
@@ -1218,6 +1223,9 @@ a live question:
   - the FRAM breakout's MISO idle level - `fram_conformance_probe.py`'s `A01_miso_idle_byte`;
   - the FRAM CS level at power-off - `manual/manual_bus_electrical.py::test_fram_cs_at_power_off`, with
     an oscilloscope only;
+  - the seconds from a FRAM pull to its first FRAM log entry, and a pulled crossover jumper's first
+    failed transfer, codes and recovery - `manual/manual_bus_electrical.py::test_fram_unplug_replug_recovery`
+    and `::test_uart_crossover_pull_recovery`;
   - whether the SCD30's soft reset at every boot restarts its automatic self-calibration's
     first-week search, which no reading of the sensor's interface shows (no ASC progress readout).
 

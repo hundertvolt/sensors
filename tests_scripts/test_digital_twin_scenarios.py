@@ -1,6 +1,6 @@
 """Tests scripts/_digital_twin_scenarios.py's frame without booting a twin: the registry (a goal per scenario, known
-driver filters, nothing from tests/), the selection's named skips and deselections, which scenarios share a boot and in
-what order, the idle check between them, the port band, the command line's refusals, the run record and each boot's end."""
+driver filters, nothing from tests/), the selection's named skips and deselections, which scenarios share a boot and in what
+order, the idle check between them, the port band, a held port 53, the refusals, the run record and each boot's end."""
 
 import ast
 import inspect
@@ -21,10 +21,10 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _HARNESS = _REPO_ROOT / "scripts" / "_digital_twin_scenarios.py"
 
 
-def _boot_once(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, log: str, exited: "int | None", shutdown_code: int = 0, claim: bool = False) -> "list[str]":
+def _boot_once(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, log: str, exited: "int | None", shutdown_code: int = 0, claim: bool = False, starves: bool = False) -> "list[str]":
     # One Context.boot() over a stub twin: `exited` is its exit code if it ended on its own, else it runs until shut down.
     log_path = tmp_path / "twin.log"
-    log_path.write_text(log)
+    log_path.write_text(log, encoding="utf-8")
     run = SimpleNamespace(proc=SimpleNamespace(poll=lambda: exited, returncode=exited), log_path=log_path, killed=False, state_dir=tmp_path)
     monkeypatch.setattr(harness, "spawn", lambda _launch, **_kw: run)
     monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
@@ -33,6 +33,7 @@ def _boot_once(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPa
     ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
     with ctx.boot() as twin:
         twin.exit_claimed = claim
+        twin.starves_watchdog = starves
     return [str(failure) for failure in ctx.failures]
 
 
@@ -44,12 +45,22 @@ def _item(harness: ModuleType, name: str, *, shared: bool = True, moves: "tuple[
     return harness.Scenario(name, lambda _ctx: None, "A goal.", "fixture", (), False, False, shared, moves)
 
 
+def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
+    # Another runner's live lock on `port`, as scripts/_port_lock.sh leaves it: its pid alive, outside this chain.
+    holder = subprocess.Popen(["sleep", "60"])  # noqa: S607 - coreutils sleep, the stand-in holder's process
+    lock = runtime / f"sensors-port-{port}.lock"
+    lock.mkdir(parents=True)
+    (lock / "runner").write_text("another suite\n", encoding="utf-8")
+    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+    return holder
+
+
 def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counters: "list[dict[str, int]]") -> "list[object]":
     # Stub twins for a SharedBoot, each spawn recorded in the list returned: every slot reads free, and each GET /status
     # read takes the next of `counters`, each source's history one warning.
     spawned: list[object] = []
     log_path = tmp_path / "twin.log"
-    log_path.write_text(_SHUTDOWN_LINE + "\n")
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
 
     def spawn(_launch: object, **_kw: object) -> object:
         run = SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=tmp_path)
@@ -90,7 +101,7 @@ def test_a_name_registered_twice_is_refused(harness: ModuleType) -> None:
 
 
 def test_the_harness_imports_nothing_from_tests() -> None:
-    tree = ast.parse(_HARNESS.read_text())
+    tree = ast.parse(_HARNESS.read_text(encoding="utf-8"))
     imported = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module] + [a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names]
     assert not [m for m in imported if m == "tests" or m.startswith("tests.")], imported
 
@@ -132,6 +143,7 @@ def test_each_device_draws_from_its_own_block_of_the_harness_band(harness: Modul
     assert harness._band(device) == port_bands.band_for_device("_digital_twin_scenarios", device)
 
 
+@pytest.mark.usefixtures("own_lock_root")
 def test_the_run_record_names_each_scenarios_outcome(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def ok(_ctx: object) -> None:
         """Passes."""
@@ -145,12 +157,13 @@ def test_the_run_record_names_each_scenarios_outcome(harness: ModuleType, tmp_pa
     device = next(d for d in DEVICE_NAMES if "isl29125" not in {driver for _k, driver, _e in harness._instances(d)})
     record = tmp_path / "record.json"
     assert harness.main(["--device", device, "--logs-dir", str(tmp_path / "logs"), "--run-record", str(record)]) == 1
-    outcomes = {row["name"]: (row["outcome"], row["reason"]) for row in json.loads(record.read_text())}
+    outcomes = {row["name"]: (row["outcome"], row["reason"]) for row in json.loads(record.read_text(encoding="utf-8"))}
     assert outcomes["ok"][0] == "passed"
     assert outcomes["broken"][0] == "failed" and "planted" in outcomes["broken"][1]
     assert outcomes["needs_isl"] == ("skipped", "device wires no isl29125")
 
 
+@pytest.mark.usefixtures("own_lock_root")
 def test_a_run_that_passed_nothing_is_no_pass(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def ok(_ctx: object) -> None:
         """Passes."""
@@ -161,8 +174,10 @@ def test_a_run_that_passed_nothing_is_no_pass(harness: ModuleType, tmp_path: Pat
 
 
 _SHUTDOWN_LINE = (
+    " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730\n"
     "digital_twin/run_generic_integration.py [fixture_device] shutdown: would_have_triggered_count=0 feed_count=1 largest_feed_gap_ms=1 "
-    "mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0"
+    "wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 "
+    "gc_block_bytes=32"
 )
 
 
@@ -185,6 +200,43 @@ def harness() -> ModuleType:
 def test_every_boot_ends_cleanly_or_by_a_claimed_exit(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, log: str, exited: "int | None", shutdown_code: int, claim: bool, expected: "str | None") -> None:
     failures = _boot_once(harness, tmp_path, monkeypatch, log=log, exited=exited, shutdown_code=shutdown_code, claim=claim)
     assert (failures == []) if expected is None else (len(failures) == 1 and expected in failures[0]), failures
+
+
+@pytest.mark.parametrize("starves", [False, True])
+def test_a_boot_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, starves: bool) -> None:
+    near = _SHUTDOWN_LINE.replace("largest_feed_gap_ms=1 ", "largest_feed_gap_ms=6300 ")
+    failures = _boot_once(harness, tmp_path, monkeypatch, log=near, exited=None, starves=starves)
+    assert failures == [] if starves else (len(failures) == 1 and "6300 ms" in failures[0] and "8000 ms" in failures[0]), failures
+
+
+@pytest.fixture
+def own_lock_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # main() takes port 53's lock: a lock root of the test's own and no inherited chain, so no other suite's lock counts.
+    for name in ("SENSORS_PORT_LOCKS_HELD", "SENSORS_PORT_LOCK_OWNER"):
+        monkeypatch.delenv(name, raising=False)
+    root = tmp_path / "runtime"
+    root.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(root))
+    return root
+
+
+def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], own_lock_root: Path) -> None:
+    ran: list[str] = []
+
+    def body(_ctx: object) -> None:
+        """Records that it ran."""
+        ran.append("ran")
+
+    monkeypatch.setattr(harness, "SCENARIOS", {"records": harness.Scenario("records", body, "Records that it ran.", "fixture")})
+    holder = _plant_held_lock(own_lock_root, 53)
+    try:
+        code = harness.main(["--device", DEVICE_NAMES[0], "--logs-dir", str(tmp_path / "logs")])
+    finally:
+        holder.kill()
+        holder.wait()
+    err = capsys.readouterr().err
+    assert (code, ran) == (1, []), (code, ran, err)
+    assert "port 53 is held by another suite" in err, err
 
 
 def test_the_routes_come_from_the_service_table(harness: ModuleType) -> None:
@@ -291,7 +343,7 @@ def test_a_sharing_scenario_asking_for_its_own_arguments_is_refused(harness: Mod
 def test_the_accept_queue_is_read_from_the_listening_row(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     table = tmp_path / "tcp"
     header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
-    table.write_text(header + "   0: 0100007F:4E20 00000000:0000 0A 00000000:00000003 00:00000000 00000000     0        0 1\n   1: 0100007F:4E20 0100007F:9C40 01 00000000:00000000 00:00000000 00000000     0        0 2\n")
+    table.write_text(header + "   0: 0100007F:4E20 00000000:0000 0A 00000000:00000003 00:00000000 00000000     0        0 1\n   1: 0100007F:4E20 0100007F:9C40 01 00000000:00000000 00:00000000 00000000     0        0 2\n", encoding="utf-8")
     monkeypatch.setattr(harness, "Path", lambda name: table if name == "/proc/net/tcp" else tmp_path / "absent")
     assert harness._accept_queue(0x4E20) == 3
     assert harness._accept_queue(0x4E21) is None
@@ -299,7 +351,7 @@ def test_the_accept_queue_is_read_from_the_listening_row(harness: ModuleType, tm
 
 def test_every_scenario_names_its_family_as_a_literal() -> None:
     # The level-containment check reads each decorator's family= keyword by AST, so it is a string literal everywhere.
-    tree = ast.parse(_HARNESS.read_text())
+    tree = ast.parse(_HARNESS.read_text(encoding="utf-8"))
     decorators = [d for n in tree.body if isinstance(n, ast.FunctionDef) for d in n.decorator_list if isinstance(d, ast.Call) and isinstance(d.func, ast.Name) and d.func.id == "scenario"]
     families = [next((k.value for k in d.keywords if k.arg == "family"), None) for d in decorators]
     assert decorators and all(isinstance(f, ast.Constant) and isinstance(f.value, str) and f.value.isidentifier() for f in families), [ast.unparse(d) for d, f in zip(decorators, families, strict=True) if not isinstance(f, ast.Constant)]
@@ -312,34 +364,3 @@ def test_a_scenario_without_a_family_is_refused_at_registration(harness: ModuleT
     with pytest.raises(ValueError, match="names no family"):
         harness.scenario("zz_no_family", family="")(body)
     assert "zz_no_family" not in harness.SCENARIOS
-
-
-def _runner_builds(tmp_path: Path, *args: str) -> "list[str]":
-    # scripts/run_digital_twin_ci.sh run in a throwaway tree whose website build, uv and setcap only log their calls;
-    # returns the build_website.sh argument lists, one line each.
-    root, stub_bin, calls = tmp_path / "repo", tmp_path / "stub_bin", tmp_path / "calls"
-    for rel in ("scripts/run_digital_twin_ci.sh", "scripts/_port_lock.sh"):
-        (root / rel).parent.mkdir(parents=True, exist_ok=True)
-        (root / rel).write_bytes((_REPO_ROOT / rel).read_bytes())
-    (root / "devices").mkdir()
-    (root / "devices" / "fixture-device.toml").write_text("# fixture\n", encoding="utf-8")
-    binary = tmp_path / "toolchain" / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
-    stubs = {root / "scripts" / "build_website.sh": f'echo "$*" >> {calls}', binary: "", **{stub_bin / name: "" for name in ("uv", "setcap")}, stub_bin / "sudo": '"$@"'}
-    for path, body in stubs.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
-        path.chmod(0o755)
-    (tmp_path / "runtime").mkdir()
-    env = {k: v for k, v in os.environ.items() if not k.startswith("SENSORS_PORT_LOCK")}
-    env |= {"PATH": f"{stub_bin}:{os.environ['PATH']}", "PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain"), "XDG_RUNTIME_DIR": str(tmp_path / "runtime")}
-    done = subprocess.run(["/bin/bash", str(root / "scripts" / "run_digital_twin_ci.sh"), "fixture-device", *args], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=60)
-    assert done.returncode == 0, done.stderr
-    return calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
-
-
-@pytest.mark.parametrize(("args", "parts"), [((), ("suite", "harness")), (("--part", "suite"), ("suite",)), (("--part", "harness"), ("harness",))])
-def test_the_ci_runner_builds_the_site_each_part_boots_from(harness: ModuleType, tmp_path: Path, args: "tuple[str, ...]", parts: "tuple[str, ...]") -> None:
-    # The suite boots frozen_modules/, the harness the device's own site under SITES_DIR: each part builds its own.
-    site = (harness.SITES_DIR / "fixture-device" / "frozen_html.py").relative_to(_REPO_ROOT)
-    want = {"suite": "fixture-device", "harness": f"fixture-device {site}"}
-    assert _runner_builds(tmp_path, *args) == [want[part] for part in parts]

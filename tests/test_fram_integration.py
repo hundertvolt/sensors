@@ -9,7 +9,7 @@ from collections import namedtuple
 from _async_harness import run
 from _error_codes import code
 from _fram_builders import make_fram_manager
-from _src_const import src_const
+from _src_const import src_int
 
 from asy_base_classes import SensorReader
 from asy_crc_checks import CRC32, CRCPass
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 Meas = namedtuple("Meas", ["temp", "hum"])
 
 # The chunk's busy status value, read from source.
-_STATUS_BUSY: int = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")  # type: ignore[assignment]  # src_const() answers object
+_STATUS_BUSY: int = src_int("src/asy_fram_manager.py", "_STATUS_BUSY")
 
 
 async def _synced() -> bool:

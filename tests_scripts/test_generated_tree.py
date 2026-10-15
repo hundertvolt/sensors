@@ -23,7 +23,7 @@ _CHECK = "import _generated_tree\ntry:\n    _generated_tree.require_fresh()\nexc
 def _edit_keeping_mtime(path: Path) -> None:
     # A second write within the same second as the generation: the content changes, the whole-second mtime does not.
     stat = path.stat()
-    with path.open("a") as f:
+    with path.open("a", encoding="utf-8") as f:
         f.write("# edited after the generation\n")
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 
@@ -48,7 +48,7 @@ def test_a_fresh_generation_passes(generator: ModuleType, micropython_bin: Path,
 
 def test_a_toml_edited_after_the_generation_is_refused_until_regenerated(generator: ModuleType, micropython_bin: Path, tmp_path: Path) -> None:
     assert generator.main() == 0
-    with (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").open("a") as f:
+    with (tmp_path / "devices" / f"{DEVICE_NAMES[0]}.toml").open("a", encoding="utf-8") as f:
         f.write("# edited after the generation\n")
     assert _require_fresh(micropython_bin, tmp_path) == _STALE
     assert generator.main() == 0
@@ -91,7 +91,7 @@ def test_a_file_no_current_device_produces_is_refused_until_regenerated(generato
     # A file a removed device left behind: a consumer globbing the tree would take it for a device, so the tree is stale.
     assert generator.main() == 0
     planted = tmp_path / "build" / "generated_src" / orphan.format(d=DEVICE_NAMES[0])
-    planted.write_text("# a removed device's output\n")
+    planted.write_text("# a removed device's output\n", encoding="utf-8")
     assert _require_fresh(micropython_bin, tmp_path) == _STALE
     assert generator.main() == 0
     assert not planted.exists()
@@ -108,14 +108,14 @@ def test_a_stamp_listing_no_output_is_refused(generator: ModuleType, micropython
     # An empty list would compare against nothing: the tree's top level is always read.
     assert generator.main() == 0
     stamp = tmp_path / "build" / "generated_src" / ".inputs_stamp.json"
-    stamp.write_text(json.dumps({**json.loads(stamp.read_text()), "outputs": []}))
+    stamp.write_text(json.dumps({**json.loads(stamp.read_text(encoding="utf-8")), "outputs": []}), encoding="utf-8")
     assert _require_fresh(micropython_bin, tmp_path) == _STALE
 
 
 def test_a_file_mid_rename_is_no_output(generator: ModuleType, micropython_bin: Path, tmp_path: Path) -> None:
     # A .tmp beside its final name is another run's write in progress, never a module a test imports.
     assert generator.main() == 0
-    (tmp_path / "build" / "generated_src" / f"sensortask_{DEVICE_NAMES[0]}.py.tmp").write_text("# mid-rename\n")
+    (tmp_path / "build" / "generated_src" / f"sensortask_{DEVICE_NAMES[0]}.py.tmp").write_text("# mid-rename\n", encoding="utf-8")
     assert _require_fresh(micropython_bin, tmp_path) == "FRESH"
 
 

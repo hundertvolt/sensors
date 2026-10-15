@@ -18,7 +18,7 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[LimitField, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return parse_limits(path, "fixture", "x")
 
 
@@ -226,7 +226,7 @@ def test_parse_limits_real_scd30_driver(src_dir: Path) -> None:
 
 def _known_fram_sizes(driver: Path) -> "frozenset[int]":
     # _KNOWN_PRODUCT_IDS' keys, read without importing the MicroPython-only driver.
-    for node in ast.walk(ast.parse(driver.read_text())):
+    for node in ast.walk(ast.parse(driver.read_text(encoding="utf-8"))):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "_KNOWN_PRODUCT_IDS":
             assert isinstance(node.value, ast.Dict)
             return frozenset(ast.literal_eval(key) for key in node.value.keys if key is not None)

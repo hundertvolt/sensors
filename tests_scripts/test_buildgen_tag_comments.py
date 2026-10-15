@@ -39,7 +39,7 @@ def _assert_silent_but_live(tokens: "list[CommentToken]", exact: "set[tuple[int,
 
 def test_iter_comment_tokens_finds_a_real_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("# a real comment\nx = 1\n")
+    path.write_text("# a real comment\nx = 1\n", encoding="utf-8")
     tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0] == CommentToken(1, 0, "# a real comment", False)
@@ -49,20 +49,20 @@ def test_iter_comment_tokens_ignores_hash_inside_string_literal(tmp_path: Path) 
     # A naive per-line regex would mistake this for a comment - tokenize-based scanning knows it's
     # inside a string literal and correctly finds zero real comments.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text('x = "value # @requires bus.timeout>=200000"\n')
+    path.write_text('x = "value # @requires bus.timeout>=200000"\n', encoding="utf-8")
     assert iter_comment_tokens(path, "fixture", "x") == []
 
 
 def test_iter_comment_tokens_ignores_hash_inside_docstring(tmp_path: Path) -> None:
     # The multi-line sibling of the case above - this module's own docstring quotes tag grammar.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n')
+    path.write_text('"""Doc.\n# @requires bus.timeout>=200000\n"""\nx = 1\n', encoding="utf-8")
     assert iter_comment_tokens(path, "fixture", "x") == []
 
 
 def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n")
+    path.write_text("class Foo:\n    def bar(self):\n        # indented comment\n        pass\n", encoding="utf-8")
     tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0].inside_block is True
@@ -71,7 +71,7 @@ def test_iter_comment_tokens_marks_indented_comment(tmp_path: Path) -> None:
 def test_iter_comment_tokens_marks_tab_indented_comment(tmp_path: Path) -> None:
     # Indentation is "the line has leading whitespace", not "the line starts with spaces".
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n\t# tab-indented comment\n\tpass\n")
+    path.write_text("def f():\n\t# tab-indented comment\n\tpass\n", encoding="utf-8")
     assert iter_comment_tokens(path, "fixture", "x")[0].inside_block is True
 
 
@@ -80,7 +80,7 @@ def test_iter_comment_tokens_trailing_inline_comment_on_module_level_statement_i
     # statement itself is unindented - so inside_block must not be the token's column, or a
     # legitimate trailing tag placement would be rejected as sitting inside a body.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_WIRING = ()  # trailing comment\n")
+    path.write_text("_WIRING = ()  # trailing comment\n", encoding="utf-8")
     tokens = iter_comment_tokens(path, "fixture", "x")
     assert len(tokens) == 1
     assert tokens[0].col > 0
@@ -91,7 +91,7 @@ def test_iter_comment_tokens_bracketed_continuation_line_at_module_level_is_not_
     # Inside a module-level statement's brackets the comment's own line is indented by style, but
     # the statement it belongs to is not - so physical indentation is the wrong question to ask.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n")
+    path.write_text("_WIRING = (\n    # @requires bus.timeout>=200000\n)\n", encoding="utf-8")
     (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (2, False)
 
@@ -99,7 +99,7 @@ def test_iter_comment_tokens_bracketed_continuation_line_at_module_level_is_not_
 def test_iter_comment_tokens_bracketed_continuation_line_inside_a_body_is_inside_a_block(tmp_path: Path) -> None:
     # The mirror image: same bracketed shape, but the enclosing statement is itself in a body.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n")
+    path.write_text("def f():\n    x = (\n        # @requires bus.timeout>=200000\n    )\n", encoding="utf-8")
     (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (3, True)
 
@@ -108,7 +108,7 @@ def test_iter_comment_tokens_module_level_comment_after_an_indented_block_is_not
     # Guards the reason block depth can't simply be counted from INDENT/DEDENT: the tokenizer emits
     # no DEDENT for a comment line, so this comment is still "inside" the function by that measure.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n")
+    path.write_text("def f():\n    pass\n# @requires bus.timeout>=200000\nx = 1\n", encoding="utf-8")
     (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.lineno, tok.inside_block) == (3, False)
 
@@ -117,14 +117,14 @@ def test_iter_comment_tokens_statement_indentation_resets_after_brackets_close(t
     # The bracket-depth bookkeeping must unwind cleanly, or every comment after the first bracketed
     # module-level statement would inherit a stale answer.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n")
+    path.write_text("_A = (\n    1,\n)\ndef f():\n    # inner\n    pass\n# outer\n", encoding="utf-8")
     tokens = iter_comment_tokens(path, "fixture", "x")
     assert [(t.text, t.inside_block) for t in tokens] == [("# inner", True), ("# outer", False)]
 
 
 def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n")
+    path.write_text("#!/usr/bin/env python3\nx = 1  # first\n\n# second\ndef f():\n    # third\n    pass\n", encoding="utf-8")
     tokens = iter_comment_tokens(path, "fixture", "x")
     assert [(t.lineno, t.text, t.inside_block) for t in tokens] == [
         (1, "#!/usr/bin/env python3", False),
@@ -136,13 +136,13 @@ def test_iter_comment_tokens_reports_every_comment_in_source_order(tmp_path: Pat
 
 def test_iter_comment_tokens_last_line_without_trailing_newline(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("x = 1\n# @requires bus.timeout>=200000")
+    path.write_text("x = 1\n# @requires bus.timeout>=200000", encoding="utf-8")
     assert iter_comment_tokens(path, "fixture", "x")[0].lineno == 2
 
 
 def test_iter_comment_tokens_empty_file(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("")
+    path.write_text("", encoding="utf-8")
     assert iter_comment_tokens(path, "fixture", "x") == []
 
 
@@ -192,7 +192,7 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
 def test_iter_comment_tokens_column_0_comment_takes_the_level_of_the_next_statement(tmp_path: Path, source: str, *, expected: bool) -> None:
     # A column-0 comment says nothing by its own indentation: the next statement decides.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     (tok,) = iter_comment_tokens(path, "fixture", "x")
     assert (tok.col, tok.inside_block) == (0, expected)
 
@@ -200,7 +200,7 @@ def test_iter_comment_tokens_column_0_comment_takes_the_level_of_the_next_statem
 @pytest.mark.parametrize("source", ["x = ('unterminated\n", "x = (1,\n"])
 def test_iter_comment_tokens_syntax_error_raises_build_error_not_raw_traceback(tmp_path: Path, source: str) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     with pytest.raises(BuildError, match="syntax error") as raised:
         iter_comment_tokens(path, "fixture", "x")
     assert raised.value.rule == "source.syntax-error"
@@ -228,15 +228,15 @@ def test_one_content_is_tokenized_once_whatever_its_path(tmp_path: Path) -> None
 def test_a_changed_file_is_tokenized_again(tmp_path: Path) -> None:
     # A test that plants a tag in a copied tree rewrites a file in place: its new bytes must be read.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("# @requires bus.timeout>=200000\n")
+    path.write_text("# @requires bus.timeout>=200000\n", encoding="utf-8")
     assert [t.text for t in iter_comment_tokens(path, "fixture", "x")] == ["# @requires bus.timeout>=200000"]
-    path.write_text("X = 1\n# @requires bus.freq>=400000\n")
+    path.write_text("X = 1\n# @requires bus.freq>=400000\n", encoding="utf-8")
     assert [(t.lineno, t.text) for t in iter_comment_tokens(path, "fixture", "x")] == [(2, "# @requires bus.freq>=400000")]
 
 
 def test_each_caller_gets_its_own_token_list(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("# one\n# two\n")
+    path.write_text("# one\n# two\n", encoding="utf-8")
     mine = iter_comment_tokens(path, "fixture", "x")
     mine.clear()
     assert [t.text for t in iter_comment_tokens(path, "fixture", "x")] == ["# one", "# two"]
@@ -245,7 +245,7 @@ def test_each_caller_gets_its_own_token_list(tmp_path: Path) -> None:
 def test_a_broken_file_raises_for_each_caller_with_its_own_device_and_instance(tmp_path: Path) -> None:
     # An error is never cached: the second reader of one broken file gets its own BuildError, not the first's.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("x = (1,\n")
+    path.write_text("x = (1,\n", encoding="utf-8")
     for device, label in (("fixture", "x"), ("other_fixture", "y")):
         with pytest.raises(BuildError, match="syntax error") as raised:
             iter_comment_tokens(path, device, label)
@@ -497,7 +497,7 @@ def test_every_family_module_polices_its_own_registered_spec(repo_root: Path) ->
     # default), and each registered family is fetched by exactly one module.
     fetched: dict[str, list[str]] = {}
     for path in sorted((repo_root / "buildgen").glob("*.py")):
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         specs = _module_specs(tree)
         for name, family in specs.items():
             fetched.setdefault(family, []).append(f"{path.name}:{name}")
@@ -512,12 +512,12 @@ def test_every_family_module_polices_its_own_registered_spec(repo_root: Path) ->
 def test_the_near_miss_verdict_follows_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:
     # The verdict is cached by the tokens, not by the path: a fixed or a newly broken file is read again.
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("# @require bus.timeout>=200000\n")
+    path.write_text("# @require bus.timeout>=200000\n", encoding="utf-8")
     with pytest.raises(BuildError, match="misspelled @requires tag"):
         check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", set(), specs_for("requires"))
-    path.write_text("# @requires bus.timeout>=200000\n")
+    path.write_text("# @requires bus.timeout>=200000\n", encoding="utf-8")
     check_for_near_miss_tags(iter_comment_tokens(path, "fixture", "x"), path, "fixture", "x", {(1, 0)}, specs_for("requires"))
-    path.write_text("# @require bus.timeout>=200000\n")
+    path.write_text("# @require bus.timeout>=200000\n", encoding="utf-8")
     with pytest.raises(BuildError, match="misspelled @requires tag") as raised:
         check_for_near_miss_tags(iter_comment_tokens(path, "dev2", "y"), path, "dev2", "y", set(), specs_for("requires"))
     assert (raised.value.device, raised.value.instance) == ("dev2", "y")  # a repeated verdict names its own caller

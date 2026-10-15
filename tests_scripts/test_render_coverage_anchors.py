@@ -14,7 +14,7 @@ def test_a_file_in_a_subdirectory_is_anchored(repo_root: Path, tmp_path: Path) -
     render = load_script_module(repo_root / "scripts" / "_render_coverage.py", "_render_coverage_under_test")
     for rel in ("pkg/top.py", "pkg/sub/nested.py", "pkg/sub/notes.txt"):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
-        (tmp_path / rel).write_text("x = 1\n")
+        (tmp_path / rel).write_text("x = 1\n", encoding="utf-8")
     assert render.anchor_files(str(tmp_path), "pkg") == [str(tmp_path / "pkg" / "sub" / "nested.py"), str(tmp_path / "pkg" / "top.py")]
 
 

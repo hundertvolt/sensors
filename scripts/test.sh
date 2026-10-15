@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
-# Runs the tests/ suite under a real MicroPython Unix-port interpreter, not CPython/pytest
-# (SPECIFICATION.md Part E.1's "Why not pytest"; Part E.3 for the runner), plus the backgrounded
-# tests_scripts/ pytest tier. Builds the toolchain on first run and reuses the cache after.
+# Runs tests/ under the real MicroPython Unix port (one process per test file, per derived device for PER_DEVICE files),
+# the lwIP host files, the host-side twin scenario harness per derived device, and the backgrounded tests_scripts/
+# pytest tier; ends with the SPECIFICATION.md E.10 summary block.
 #
-# PICO_TOOLCHAIN_DIR relocates that cache; SKIP_APT=1 skips the system-package step. The build is
-# `setup_toolchain.py setup`, which builds and verifies every artifact together - there is no lighter
-# Unix-port-only entry point (SPECIFICATION.md Part B).
+# --coverage runs the same files under build-settrace, the only build flavour compiled with MICROPY_PY_SYS_SETTRACE,
+# and renders src/, digital_twin/, the generated modules and the host build chain (E.5, E.5.2).
 #
-# --coverage runs the same tests under build-settrace (the only variant with MICROPY_PY_SYS_SETTRACE),
-# renders src/, digital_twin/ and the generated modules from one raw dump, and traces tests_scripts/
-# for the host build chain's report. Pipeline and binary: SPECIFICATION.md Parts E.5 and E.5.2.
-#
-# Also rebuilds frozen_modules/frozen_html.py before every run - the real wozi website every
-# generated sensortask_<device>.py imports at module level. Why frozen_modules/ rather than
-# .frozen/, which is a hardcoded MicroPython import sentinel: SPECIFICATION.md Part A.9.
+# Rebuilds frozen_modules/frozen_html.py from the first derived device every run (A.9 for why not .frozen/).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -46,8 +39,8 @@ EOF
 }
 
 # Ahead of every sweep below, not after them: these checks are pure argument validation, and
-# a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a
-# nested test.sh to prove the rejection, concurrently with 85 files holding tests/_tmp scratch.
+# a rejected invocation must leave the live tree exactly as it found it. tests_scripts/ runs a nested
+# test.sh to prove the rejection, concurrently with every test file holding tests/_tmp scratch.
 coverage=0
 for arg in "$@"; do
     case "$arg" in
@@ -67,7 +60,7 @@ done
 # gc.threshold() set, which is CLAUDE.md's (f) stage. Unset (the default) is the (e) stage: the
 # interpreter's own reactive -1, where the design has to stand up on its own first.
 if [ -n "${GC_THRESHOLD:-}" ]; then
-    # Validated once here rather than 85 times inside the runner: an unparseable value would
+    # Validated once here rather than once per test file inside the runner: an unparseable value would
     # otherwise surface as one ValueError traceback per test file, each retried twice, with the
     # actual mistake nowhere in the rolled-up summary.
     if [[ ! "$GC_THRESHOLD" =~ ^-?[0-9]+$ ]]; then
@@ -108,11 +101,78 @@ if [ -n "${TEST_PARALLELISM:-}" ] && [[ ! "$TEST_PARALLELISM" =~ ^[1-9][0-9]*$ ]
     exit 2
 fi
 
-# Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
-# here, before anything is swept or built (CLAUDE.md); _cleanup's EXIT trap below releases it too.
 # shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
 source scripts/_port_lock.sh
-trap port_lock_release_all EXIT
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_devices.sh
+# shellcheck source=/dev/null  # linted on its own, as one of scripts/*.sh
+source scripts/_unix_port.sh
+
+# The one EXIT trap, armed before anything it removes exists: bash does not kill background jobs when the parent
+# exits, and any later step can abort under `set -e`, leaving an orphaned pytest to re-open Part E.1's zz_test_ glob
+# hazard. Every name it reads is declared here, empty until its step runs (`rm -rf ""` is a no-op).
+raw_dir=""
+results_dir=""
+tests_scripts_status_file=""
+tests_scripts_inner_pidfile=""
+tests_scripts_pid=""
+evidence_archived=0
+# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
+_cleanup() {
+    # Every background job still running (`jobs -rp`, so never a reaped, recycled pid) and the timeout each runs, by
+    # its recorded pid and group (timeout leads one): a killed subshell's timeout child would be reparented and run
+    # out its budget. No pkill/procps either, which a --variant=minbase chroot lacks.
+    local pid running groups="" left signalled=" " sig=TERM pids=()
+    # @tunable runner.kill_after_s = 10
+    local kill_after_s=10
+    local deadline=$((SECONDS + 2 * kill_after_s))
+    running=" $(jobs -rp | tr '\n' ' ')"
+    if [ -n "$tests_scripts_pid" ] && [[ "$running" == *" $tests_scripts_pid "* ]]; then
+        groups="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
+    fi
+    # Waited for until none is left (a zombie awaiting its reaper counts as gone), so port 53 below is never released
+    # under a test still holding it; timeout's own --kill-after is the hard stop, this loop's SIGKILL the backstop.
+    while :; do
+        left=""
+        # One pid per line from each source, read into an array; a line that is not a pid (an empty one) is passed over.
+        mapfile -t pids <<<"$(jobs -rp; printf '%s\n' "$groups"; [ -z "$results_dir" ] || cat "$results_dir"/*.attempt_pid 2>/dev/null || true)"
+        for pid in "${pids[@]}"; do
+            if [[ ! "$pid" =~ ^[1-9][0-9]*$ ]] || [ ! -r "/proc/$pid/stat" ] || [[ "$(cat "/proc/$pid/stat" 2>/dev/null || true)" == *") Z "* ]]; then
+                continue
+            fi
+            left+=" $pid"
+            if [[ "$signalled" != *" $pid "* ]] || [ "$sig" = KILL ]; then
+                kill -s "$sig" -- "$pid" "-$pid" 2>/dev/null || true
+                signalled+="$pid "
+            fi
+        done
+        if [ -z "$left" ]; then
+            break
+        fi
+        if [ "$SECONDS" -ge "$deadline" ] && [ "$sig" = TERM ]; then
+            echo "== background jobs still running $((2 * kill_after_s))s after the stop:$left - killing them" >&2
+            sig=KILL
+        fi
+        sleep 0.1
+    done
+    wait 2>/dev/null || true
+    # A run that ended before its own archive step (an abort under `set -e`) moves every log it has
+    # into build/archive/test_sh/ first; if even that fails, the results dir is kept and named.
+    if [ -n "$results_dir" ] && [ -d "$results_dir" ] && [ "${evidence_archived:-0}" = "0" ]; then
+        if uv run scripts/_archive_evidence.py --runner test_sh "$results_dir" >&2; then
+            evidence_archived=1
+        else
+            echo "== the per-file logs could not be archived - kept in $results_dir" >&2
+            results_dir=""
+        fi
+    fi
+    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
+    port_lock_release_all
+}
+trap _cleanup EXIT
+
+# Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
+# here, before anything is swept or built (CLAUDE.md); the EXIT trap above releases it.
 port_lock_take 53 scripts/test.sh
 
 # The previous coverage reports are evidence too: moved into build/archive/test_sh_coverage/ (the
@@ -126,80 +186,25 @@ fi
 # MicroPython listdir loop.
 rm -rf tests/_tmp
 
-# Same reasoning, for the one test fixture that has to live in the real tree. What the reserved
-# devices/zz_test_*.toml namespace is, what a leaked one breaks, and why this sweep must precede the
-# generation step: SPECIFICATION.md Part E.1.
+# Same reasoning for the test fixtures that live in the real tree (a nested run's sentinel, the device-websites skip
+# case). What the reserved devices/zz_test_*.toml namespace is and why this sweep precedes the generation step:
+# SPECIFICATION.md Part E.1.
 rm -f devices/zz_test_*.toml
 
-toolchain_dir="${PICO_TOOLCHAIN_DIR:-$HOME/pico-toolchain}"
-# Two variants, built together by setup_toolchain.py. The plain run takes the settrace-FREE one:
-# compiling MICROPY_PY_SYS_SETTRACE in allocates a frame and a code object per call and per
-# generator resume, inflating every allocation figure 4-5x (SPECIFICATION.md Part E.5.2).
-unix_dir="$toolchain_dir/micropython/ports/unix"
+# Every binary comes from the one Unix-port probe (scripts/_unix_port.sh), by the build flavour it reports: a missing or
+# wrong one, or a stale toolchain record, runs one setup (its exclusive lock fails a concurrent build fast), then this
+# run holds the lock shared. tests_scripts/' twins boot build-standard, the settrace-free rig, in both modes (E.5.2).
 if [ "$coverage" = "1" ]; then
-    micropython_bin="$unix_dir/build-settrace/micropython"   # --coverage needs sys.settrace itself
-    want_variant="settrace"
+    unix_port_ensure standard settrace  # --coverage needs sys.settrace itself
+    micropython_bin="$(unix_port_bin settrace)"
+    lwip_bin=""
 else
-    micropython_bin="$unix_dir/build-standard/micropython"
-    want_variant="plain"
+    # The lwIP host files run on the third build, the standard flavour over loopback lwIP (SPECIFICATION.md B.14).
+    unix_port_ensure standard lwip
+    micropython_bin="$(unix_port_bin standard)"
+    lwip_bin="$(unix_port_bin lwip)"
 fi
-# The third build, the plain variant over loopback lwIP with the patched modlwip, runs the lwIP host
-# files on a plain run only (SPECIFICATION.md Part B.14). setup writes the record last, after every build.
-lwip_bin="$unix_dir/build-lwip/micropython"
-toolchain_record="$toolchain_dir/toolchain-record.json"
-
-skip_apt_flag=()
-if [ "${SKIP_APT:-0}" = "1" ]; then
-    skip_apt_flag=(--skip-apt)
-fi
-
-# Asks the binary which variant it is instead of trusting its path, and whether its frozen asyncio
-# imports: a build interrupted between its two passes lacks it (Part E.5.2). Always exits 0,
-# reporting an unusable binary as such, so `set -e` never fires inside the substitution below.
-unix_port_variant() {
-    local probe=""
-    probe="$("$1" -c 'import sys, asyncio; print("settrace" if hasattr(sys, "settrace") else "plain")' 2>/dev/null)" || true
-    case "$probe" in
-        settrace | plain) echo "$probe" ;;
-        *) echo "unusable" ;;
-    esac
-}
-
-if [ ! -x "$micropython_bin" ]; then
-    echo "MicroPython Unix port not found at $micropython_bin - building it now" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-elif [ "$(unix_port_variant "$micropython_bin")" != "$want_variant" ]; then
-    # The path stopped identifying the variant when the two builds split: a toolchain dir predating
-    # that has a build-standard still carrying settrace, and it is executable - so an existence
-    # check passes and the plain suite would silently measure on the 4-5x inflated binary.
-    echo "== $micropython_bin is not the '$want_variant' variant - rebuilding the Unix ports" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-elif [ ! -f "$toolchain_record" ]; then
-    # setup deletes the record first and writes it last: none means an interrupted or older setup.
-    echo "== no toolchain record at $toolchain_record - rebuilding the Unix ports" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-elif [ "$coverage" = "0" ] && [ "$(unix_port_variant "$lwip_bin")" != "plain" ]; then
-    echo "== the lwIP host build $lwip_bin is missing or not the 'plain' variant - rebuilding the Unix ports" >&2
-    uv run toolchain/setup_toolchain.py setup --toolchain-dir "$toolchain_dir" "${skip_apt_flag[@]}"
-fi
-
-if [ ! -x "$micropython_bin" ]; then
-    echo "error: $micropython_bin is still missing after setup - rebuild with --clean" >&2
-    exit 1
-fi
-got_variant="$(unix_port_variant "$micropython_bin")"
-if [ "$got_variant" != "$want_variant" ]; then
-    echo "error: $micropython_bin reports itself as '$got_variant', not the '$want_variant' variant this run needs - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
-    exit 1
-fi
-if [ ! -f "$toolchain_record" ]; then
-    echo "error: setup left no toolchain record at $toolchain_record - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
-    exit 1
-fi
-if [ "$coverage" = "0" ] && [ "$(unix_port_variant "$lwip_bin")" != "plain" ]; then
-    echo "error: the lwIP host build $lwip_bin is still missing or not the 'plain' variant after setup - rebuild with: uv run toolchain/setup_toolchain.py setup --clean" >&2
-    exit 1
-fi
+unit_micropypath="$(micropypath unit)"
 
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is its own Unix-port process
 # with its own heap and its own fake-hardware state, so concurrency changes wall clock only - as
@@ -295,19 +300,22 @@ if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     max_parallel=1
 fi
 
-# No static src/sensortask_<device>.py exists any more (SPECIFICATION.md Part L.2): each is
-# generated fresh here into gitignored build/generated_src/, which MICROPYPATH below puts first so
-# every static and dynamic import of one resolves to the fresh module.
-#
-# Runs BEFORE tests_scripts/ is backgrounded, not after - Part E.1 has the devices/*.toml race that
-# ordering closes.
+# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
+# the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
+devices_text="$(derived_devices)"
+mapfile -t devices <<<"$devices_text"
+site_device="${devices[0]}"
+
+# Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts first.
+# It runs before tests_scripts/ is backgrounded: that tier creates and deletes zz_test_ device fixtures, and the
+# generator globs devices/*.toml, so generating first keeps every fixture out of the generated tree.
 echo "== Generating buildgen device modules into build/generated_src/"
 uv run scripts/_generate_sensortask_modules.py
 
 # Every twin boot binds privileged ports (its NTP responder's 123, a hotspot's DNS 53), the tests_scripts/ tier's twins
 # too, so the grant comes before that tier, for the build it boots (build-standard) and this run's own interpreter; fresh
 # every invocation, for the reason run_digital_twin_ci.sh's identical grant gives (xattrs).
-cap_bins=("$unix_dir/build-standard/micropython")
+cap_bins=("$(unix_port_bin standard)")
 [ "$micropython_bin" = "${cap_bins[0]}" ] || cap_bins+=("$micropython_bin")
 for cap_bin in "${cap_bins[@]}"; do
     echo "== Granting CAP_NET_BIND_SERVICE to $cap_bin (the twins' NTP responder and DNS server bind ports 123 and 53)"
@@ -326,92 +334,26 @@ done
 # script rather than serializing in front of it (SPECIFICATION.md Part E.1). It counts against
 # max_parallel like any other job, not as an extra process on top of that budget.
 #
-# timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold
-# the final `wait` open forever and nothing else here would time it out. 1200s sits well above its
-# measured time (Part N, runner.tests_scripts_timeout_s), so it fires only on a real hang; CI's timeout-minutes stays the outer backstop, not this.
+# timeout-wrapped for the standing "hanging tests are never allowed" rule: a hung pytest would hold the final `wait`
+# open forever. Its 1200 s is a hang backstop over the tier's measured 698 s (2026-10-15, either GC stage, beside the
+# MicroPython tier; CI's figure: Part N, runner.tests_scripts_timeout_s); CI's timeout-minutes stays the outer one.
 #
 # No retry, unlike the per-file loop - that one absorbs transient contention on a single file's
 # budget, whereas a whole-suite pytest timeout is a real failure worth reporting as one.
 #
 # MUST stay behind the generation step above, which globs devices/*.toml - Part E.1's reserved
-# zz_test_ namespace has the race. build_website.sh resolves devices/<device>.toml from the repo
-# root, so that one test cannot be handed a tmp_path tree instead.
+# zz_test_ namespace has the race: the tier writes its live-tree fixtures there for the length of one test.
 #
-# Nothing else in the foreground re-globs devices/ once generation is done: the test loop reads the
-# generated wiring plans, and build_website.sh below names one device explicitly.
+# Nothing else in the foreground re-globs devices/ once generation is done but build_device_websites.sh below, which
+# drops the zz_test_ fixtures, the only TOMLs the tier writes; every other step takes the device list read above.
 
 echo "== Running tests_scripts/ (CPython-side build-tooling tests)"
-tests_scripts_status_file="$(mktemp)"
-# Pre-declared empty and the trap armed HERE, before the background job exists: bash does not kill
-# background jobs when the parent exits, and every step between here and the mktemp calls below can
-# abort under `set -e`, leaving an orphaned pytest to re-open Part E.1's zz_test_ glob hazard.
-#
-# `rm -rf ""` is a harmless no-op for either dir before its mktemp has run, and tests_scripts_pid is
-# cleared once the job is reaped, so this can never signal a recycled PID.
-raw_dir=""
-results_dir=""
-tests_scripts_pid=""
-evidence_archived=0
-tests_scripts_inner_pidfile="$(mktemp)"
-# shellcheck disable=SC2329  # invoked indirectly, by the `trap _cleanup EXIT` below
-_cleanup() {
-    # Every background job still running (`jobs -rp`, so never a reaped, recycled pid) and the timeout each runs, by
-    # its recorded pid and group (timeout leads one): a killed subshell's timeout child would be reparented and run
-    # out its budget. No pkill/procps either, which a --variant=minbase chroot lacks.
-    local pid running groups="" attempts left signalled=" " sig=TERM
-    # @tunable runner.kill_after_s = 10
-    local kill_after_s=10
-    local deadline=$((SECONDS + 2 * kill_after_s))
-    running=" $(jobs -rp | tr '\n' ' ')"
-    if [ -n "$tests_scripts_pid" ] && [[ "$running" == *" $tests_scripts_pid "* ]]; then
-        groups="$(cat "$tests_scripts_inner_pidfile" 2>/dev/null || true)"
-    fi
-    # Waited for until none is left (a zombie awaiting its reaper counts as gone), so port 53 below is never released
-    # under a test still holding it; timeout's own --kill-after is the hard stop, this loop's SIGKILL the backstop.
-    while :; do
-        left=""
-        attempts=""
-        if [ -n "$results_dir" ]; then
-            attempts="$(cat "$results_dir"/*.attempt_pid 2>/dev/null || true)"
-        fi
-        for pid in $(jobs -rp) $groups $attempts; do
-            if [ ! -r "/proc/$pid/stat" ] || [[ "$(cat "/proc/$pid/stat" 2>/dev/null || true)" == *") Z "* ]]; then
-                continue
-            fi
-            left+=" $pid"
-            if [[ "$signalled" != *" $pid "* ]] || [ "$sig" = KILL ]; then
-                kill -s "$sig" -- "$pid" "-$pid" 2>/dev/null || true
-                signalled+="$pid "
-            fi
-        done
-        if [ -z "$left" ]; then
-            break
-        fi
-        if [ "$SECONDS" -ge "$deadline" ] && [ "$sig" = TERM ]; then
-            echo "== background jobs still running $((2 * kill_after_s))s after the stop:$left - killing them" >&2
-            sig=KILL
-        fi
-        sleep 0.1
-    done
-    wait 2>/dev/null || true
-    # A run that ended before its own archive step (an abort under `set -e`) moves every log it has
-    # into build/archive/test_sh/ first; if even that fails, the results dir is kept and named.
-    if [ -n "$results_dir" ] && [ -d "$results_dir" ] && [ "${evidence_archived:-0}" = "0" ]; then
-        if uv run scripts/_archive_evidence.py --runner test_sh "$results_dir" >&2; then
-            evidence_archived=1
-        else
-            echo "== the per-file logs could not be archived - kept in $results_dir" >&2
-            results_dir=""
-        fi
-    fi
-    rm -rf "$raw_dir" "$results_dir" "$tests_scripts_status_file" "$tests_scripts_inner_pidfile"
-    port_lock_release_all
-}
-trap _cleanup EXIT
-# Created before the pytest job, which writes its run record into it. One shared results_dir
+# Created before the pytest job, which writes its run record, status and pid into it. One shared results_dir
 # regardless of --coverage: each parallel job writes its own status here, since a background subshell
 # cannot mutate a bash array the parent would see.
 results_dir="$(mktemp -d)"
+tests_scripts_status_file="$results_dir/tests_scripts.status"
+tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 (
     # --coverage runs this same tier under coverage.py over the host build chain, report-only: its data
     # stays in results_dir for the render step at the end, and the test result is the tier's own.
@@ -436,30 +378,38 @@ results_dir="$(mktemp -d)"
 ) &
 tests_scripts_pid=$!
 
-# The real wozi website, a gitignored artifact rebuilt every run - sub-second, no toolchain (Part
-# A.9). Every generated device module does a module-level `import frozen_html`, so it has to exist
-# on MICROPYPATH before the loop below, not only for the webserver-specific files.
-echo "== Building frozen_modules/frozen_html.py (the real wozi website)"
-scripts/build_website.sh wozi
+# _build_sites: every generated sensortask_<device>.py imports frozen_html at module level, so the unit tier needs one
+# site on its path; any derived device serves, so the first is built and no device is named here (Part A.9). The
+# scenario harness boots each device on its own site, build/generated_html/<device>/, so a plain run builds those too.
+_build_sites() {
+    echo "== Building frozen_modules/frozen_html.py (the $site_device website, the first derived device)"
+    scripts/build_website.sh "$site_device"
+    if [ "$coverage" = "0" ]; then
+        echo "== Building every derived device's website into build/generated_html/ (the scenario harness boots each)"
+        scripts/build_device_websites.sh
+    fi
+}
+_build_sites
 
-# tests_scripts/ is already running in the background, launched right after the toolchain check -
-# nothing to do here. RUN_SLOW_FIRMWARE_BUILD stays unset for it, keeping the one real ARM firmware
-# compile opt-in for local iteration; ci.yml's firmware-build-verify job is what sets it.
+# tests_scripts/ was backgrounded after the generation step above; RUN_SLOW_FIRMWARE_BUILD stays unset for it,
+# keeping the one real ARM firmware compile opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
 
 if [ "$coverage" = "1" ]; then
     raw_dir="$(mktemp -d)"
 fi
-# Both dirs are cleaned by the single EXIT trap armed with the pytest job above - bash replaces an
-# EXIT handler rather than stacking, so every cleanup has to live in that one trap.
+# Both dirs are cleaned by the one EXIT trap armed before the port lock - bash replaces an EXIT handler
+# rather than stacking, so every cleanup has to live in that one trap.
 
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a
 # measured floor, never raised as a fix (SPECIFICATION.md E.3.1). The timeout is validated above.
 #
-# Per-file overrides for anything that outgrows the default - deliberately empty since the
-# per-device splits, and deliberately not solved by raising everyone's default, which would make a
-# genuine future hang 2-3x slower to detect. Measured figures: Part E.3.1.
+# Per-file overrides for anything that outgrows the default - no test file has one since the per-device splits, and
+# none is solved by raising everyone's default, which would make a genuine future hang 2-3x slower to detect. The
+# scenario harness has its own: one job boots a twin per scenario (measured figures: Part E.3.1 and Part N).
 declare -A per_file_timeout_overrides_s=()
+# @tunable runner.scenarios_timeout_s = 1980
+per_file_timeout_overrides_s[scenarios]=1980
 # @tunable runner.per_file_attempts = 3
 max_attempts=3
 
@@ -492,60 +442,38 @@ _job_tag() {
     printf '%s%s' "$(basename "$test_file" .py)" "${1:${#test_file}}"
 }
 
-# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin): one job's timeout+retry
-# loop, writing PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; a device runs the file with TEST_DEVICE set to it.
-# Never returns nonzero itself, so backgrounding it and reaping with `wait`/`wait -n` can never trip `set -e`.
-run_test_file() {
-    local test_file="$1"
-    local status_file="$2"
-    local device="${3:-}"
-    local binary="${4:-$micropython_bin}"
-    local tag cmd file_timeout_s attempt attempt_start ec log_file attempt_pidfile
-    tag="$(_job_tag "$test_file${device:+[$device]}")"
+# _run_with_retries <tag> <what> <status_file> <timeout_s> <after> <command...>: one job's timeout+retry loop, writing
+# PASS, RETRIED-PASS <k>/<n> or FAIL to status_file; <after> runs after every attempt with the tag, the log and the
+# attempt number. Never returns nonzero itself, so backgrounding a job and reaping it with `wait -n` cannot trip `set -e`.
+_run_with_retries() {
+    local tag="$1" what="$2" status_file="$3" timeout_s="$4" after="$5" attempt attempt_start ec log_file attempt_pidfile
+    shift 5
     log_file="$results_dir/$tag.log"
     # The EXIT trap's stop: it signals the running attempt's timeout through this pid file; the job then ends rather
     # than start another attempt (the trap runs once the attempt's pipeline is done, sed and tee included).
     attempt_pidfile="$results_dir/$tag.attempt_pid"
     trap 'rm -f "$attempt_pidfile"; exit 143' TERM
-    echo "== Running $test_file"
-    # Every segment of MICROPYPATH below is load-bearing. ".frozen" explicitly, because
-    # MICROPYPATH REPLACES the default sys.path rather than extending it, and that default is what
-    # makes frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
-    #
-    # "frozen_modules" for the generated module's own `import frozen_html` (Part A.9 for why that
-    # cannot be ".frozen" itself), and "build/generated_src" FIRST so a device module resolves to
-    # the freshly generated one rather than any same-named file elsewhere on the path.
-    if [ "$coverage" = "1" ]; then
-        cmd=(tests/_coverage_runner.py "$test_file" "$raw_dir/$tag.json")
-    elif [ -n "${GC_THRESHOLD:-}" ]; then
-        # CLAUDE.md's (f) stage: the same suite again with the value the firmware ships, layered on
-        # a design that already passes at the reactive default. Never a substitute for that run.
-        cmd=(tests/_threshold_runner.py "$test_file" "$GC_THRESHOLD")
-    else
-        cmd=("$test_file")
-    fi
-    file_timeout_s="${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}"
     # Truncated once per job: the memory gate reads every attempt's output, a timed-out one included (CLAUDE.md memory rule).
     : >"$log_file"
-    for attempt in $(seq 1 "$max_attempts"); do
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
         # Each attempt opens with this line, so the summary reads its counts and skips from the deciding one.
         echo "[$tag] == attempt $attempt/$max_attempts" >>"$log_file"
         attempt_start=$SECONDS
         # 2>&1 | sed, not two streams: these run concurrently, so per-line tagging is what keeps
-        # a multi-file log readable. `set -o pipefail` makes the pipeline's status the interpreter's
+        # a multi-file log readable. `set -o pipefail` makes the pipeline's status the command's
         # own, so sed can never mask a real 124/1 from the command it pipes.
         #
         # SIGINT first (delivered at a safe point, SPECIFICATION.md B.14.1; microtest's ABORT line names the hung test), and
         # --kill-after the hard stop. timeout signals its child, then its group, and a second SIGINT still pending makes the
-        # port exit(1) at once (unix_mphal.c): its child is a shell catching it, so the interpreter gets one. The pid is timeout's.
+        # port exit(1) at once (unix_mphal.c): its child is a shell catching it, so the command gets one. The pid is timeout's.
         # @tunable runner.kill_after_s = 10
-        # @tunable l1.unix_heapsize = 16M
-        if (echo "$BASHPID" >"$attempt_pidfile" && MICROPYPATH="build/generated_src:src:tests:frozen_modules:.frozen" exec env -u TEST_DEVICE ${device:+"TEST_DEVICE=$device"} stdbuf -oL -eL timeout -s INT --kill-after=10 "$file_timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$binary" -X heapsize=16M "${cmd[@]}") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
+        if (echo "$BASHPID" >"$attempt_pidfile" && exec stdbuf -oL -eL timeout -s INT --kill-after=10 "$timeout_s" bash -c 'trap : INT; "$@"; exit' bash "$@") 2>&1 | sed -u "s/^/[$tag] /" | tee -a "$log_file"; then
             ec=0
         else
             ec=$?
         fi
         rm -f "$attempt_pidfile"
+        "$after" "$tag" "$log_file" "$attempt"
         if [ "$ec" -eq 0 ]; then
             _flag_memory_errors "$tag" "$log_file"
             # A pass that needed a retry is reported apart, a root-cause item (E.3.1), never a plain PASS.
@@ -555,21 +483,76 @@ run_test_file() {
                 echo "RETRIED-PASS $attempt/$max_attempts" >"$status_file"
             fi
             return 0
-        elif [ "$ec" -eq 124 ] || { [ "$ec" -eq 137 ] && [ $((SECONDS - attempt_start)) -ge "$file_timeout_s" ]; }; then
+        elif [ "$ec" -eq 124 ] || { [ "$ec" -eq 137 ] && [ $((SECONDS - attempt_start)) -ge "$timeout_s" ]; }; then
             if [ "$ec" -eq 137 ]; then
                 # Caught the interrupt and ran on: the hard stop's SIGKILL exits 137, not timeout's 124 - a timeout all the same.
-                echo "== $test_file did not end on the timeout's interrupt - killed by --kill-after on attempt $attempt/$max_attempts" >&2
+                echo "== $what did not end on the timeout's interrupt - killed by --kill-after on attempt $attempt/$max_attempts" >&2
             fi
             if [ "$attempt" -lt "$max_attempts" ]; then
-                echo "== $test_file exceeded ${file_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+                echo "== $what exceeded ${timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
                 continue
             fi
-            echo "== $test_file exceeded ${file_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+            echo "== $what exceeded ${timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
         fi
         _flag_memory_errors "$tag" "$log_file"
         echo "FAIL" >"$status_file"
         return 0
     done
+}
+
+# _append_twin_logs <tag> <log_file> <attempt>: every twin log of this attempt joins the job's log, so the memory gate
+# reads the twins' output too; the attempt's directory is kept, numbered (the harness empties a scenario's on a rerun).
+# shellcheck disable=SC2329  # invoked by name, as _run_with_retries' after-attempt hook
+_append_twin_logs() {
+    local tag="$1" log_file="$2" attempt="$3" twin_log
+    [ -d "$scenario_logs_dir" ] || return 0
+    while IFS= read -r -d '' twin_log; do
+        echo "[$tag] == twin log ${twin_log#"$scenario_logs_dir"/} (attempt $attempt)" >>"$log_file"
+        sed "s/^/[$tag] /" "$twin_log" >>"$log_file" || echo "[$tag] == twin log $twin_log could not be read" >>"$log_file"
+    done < <(find "$scenario_logs_dir" -type f -name '*.log' -print0 | LC_ALL=C sort -z)
+    mv "$scenario_logs_dir" "$scenario_logs_dir.attempt$attempt" || echo "[$tag] == the attempt's logs stay in $scenario_logs_dir" >>"$log_file"
+}
+
+# shellcheck disable=SC2329  # invoked by name, as _run_with_retries' after-attempt hook
+_no_twin_logs() {
+    return 0
+}
+
+# run_test_file <test_file> <status_file> [<device>] [<binary>] (default $micropython_bin): one test file's job on the
+# unit MICROPYPATH (scripts/micropypath.toml); a device runs the file with TEST_DEVICE set to it.
+run_test_file() {
+    local test_file="$1" status_file="$2" device="${3:-}" binary="${4:-$micropython_bin}" runner cmd
+    echo "== Running $test_file"
+    # Every segment of the unit layout is load-bearing. ".frozen" explicitly, because MICROPYPATH
+    # REPLACES the default sys.path rather than extending it, and that default is what makes
+    # frozen-in modules resolvable - drop it and `import asyncio` breaks with no clue why.
+    #
+    # "frozen_modules" for the generated module's own `import frozen_html` (Part A.9 for why that
+    # cannot be ".frozen" itself), and "build/generated_src" FIRST so a device module resolves to
+    # the freshly generated one rather than any same-named file elsewhere on the path.
+    if [ "$coverage" = "1" ]; then
+        runner=(tests/_coverage_runner.py "$test_file" "$raw_dir/$(_job_tag "$test_file${device:+[$device]}").json")
+    elif [ -n "${GC_THRESHOLD:-}" ]; then
+        # CLAUDE.md's (f) stage: the same suite again with the value the firmware ships, layered on
+        # a design that already passes at the reactive default. Never a substitute for that run.
+        runner=(tests/_threshold_runner.py "$test_file" "$GC_THRESHOLD")
+    else
+        runner=("$test_file")
+    fi
+    # @tunable l1.unix_heapsize = 16M
+    cmd=(env -u TEST_DEVICE "MICROPYPATH=$unit_micropypath" ${device:+"TEST_DEVICE=$device"} "$binary" -X heapsize=16M "${runner[@]}")
+    _run_with_retries "$(_job_tag "$test_file${device:+[$device]}")" "$test_file" "$status_file" "${per_file_timeout_overrides_s[$test_file]:-$per_file_timeout_s}" _no_twin_logs "${cmd[@]}"
+}
+
+# run_scenarios_job <device> <status_file>: the host-side twin scenario harness for one device at this run's GC stage,
+# on shared port 53 (the DNS scenarios deselected and listed: several devices' jobs run at once), its outcomes in a
+# run record the summary reads. Its twins boot build-standard; port 53's lock passes to it through the owner chain.
+run_scenarios_job() {
+    local device="$1" status_file="$2"
+    scenario_logs_dir="$results_dir/scenarios_$device"
+    echo "== Running the scenario harness for $device"
+    _run_with_retries "scenarios[$device]" "the scenario harness for $device" "$status_file" "${per_file_timeout_overrides_s[scenarios]}" _append_twin_logs \
+        uv run scripts/_digital_twin_scenarios.py --device "$device" --micropython-bin "$micropython_bin" --logs-dir "$scenario_logs_dir" --gc-threshold "${GC_THRESHOLD:--1}" --shared-port-53 --run-record "$results_dir/scenarios_$device.json"
 }
 
 # Dispatch order: the heaviest files first, not alphabetical glob order. Glob order
@@ -626,22 +609,16 @@ for test_file in tests/lwip_host/test_*.py; do
     fi
 done
 if [ "$coverage" = "0" ]; then
-    test_files+=(${lwip_host_files[@]+"${lwip_host_files[@]}"})
+    test_files+=("${lwip_host_files[@]}")
 fi
-# The derived devices: the stems of the wiring plans the generation step wrote from devices/*.toml, which nothing
-# here re-globs (the zz_test_ race above). A file whose own line reads `PER_DEVICE = True` runs once per device.
-derived_devices=()
-for plan in build/generated_src/sensortask_*_wiring_plan.json; do
-    if [ -f "$plan" ]; then
-        plan="${plan#build/generated_src/sensortask_}"
-        derived_devices+=("${plan%_wiring_plan.json}")
-    fi
-done
-if [ "${#derived_devices[@]}" -eq 0 ]; then
-    echo "error: no build/generated_src/sensortask_<device>_wiring_plan.json - the generation step wrote no device to run" >&2
-    exit 1
-fi
+# One scenario harness job per derived device, dispatched first (each is the longest job of the run); --coverage runs
+# none and lists them as skipped. A file whose own line reads `PER_DEVICE = True` runs once per derived device.
 job_list=()
+if [ "$coverage" = "0" ]; then
+    for device in "${devices[@]}"; do
+        job_list+=("scenarios[$device]")
+    done
+fi
 for test_file in "${test_files[@]}"; do
     marker=0
     grep -qx 'PER_DEVICE = True' "$test_file" || marker=$?
@@ -649,7 +626,7 @@ for test_file in "${test_files[@]}"; do
         echo "error: cannot read $test_file for its PER_DEVICE marker" >&2
         exit 1
     elif [ "$marker" -eq 0 ]; then
-        for device in "${derived_devices[@]}"; do
+        for device in "${devices[@]}"; do
             job_list+=("${test_file}[$device]")
         done
     else
@@ -668,6 +645,10 @@ for job in "${job_list[@]}"; do
     device="${job:${#test_file}}"
     device="${device#\[}"
     status_file="$results_dir/$(_job_tag "$job").status"
+    if [ "$test_file" = "scenarios" ]; then
+        run_scenarios_job "${device%]}" "$status_file" &
+        continue
+    fi
     binary="$micropython_bin"
     if [[ "$test_file" == tests/lwip_host/* ]]; then
         binary="$lwip_bin"
@@ -706,6 +687,33 @@ _failing_tests() {
         }'
 }
 
+# _scenario_outcomes <record>: the scenario harness's run record, one "<outcome>\t<name>\t<reason>" line per scenario;
+# fails on a missing or unreadable record, which its caller turns into no verdict.
+_scenario_outcomes() {
+    uv run python -c 'import json, sys
+for o in json.load(open(sys.argv[1], encoding="utf-8")):
+    print(o["outcome"], o["name"], " ".join(str(o["reason"]).split()), sep="\t")' "$1"
+}
+
+# _scenario_counts <tag>, the outcomes on stdin: "<passed> <failed> <skipped> <deselected> <what failed>", the last the
+# file reason's form: "N of M scenarios failed", then the first five failing ones with their reasons.
+_scenario_counts() {
+    local outcome name reason passed=0 failed=0 skipped=0 deselected=0 named=""
+    while IFS=$'\t' read -r outcome name reason; do
+        case "$outcome" in
+            passed) passed=$((passed + 1)) ;;
+            failed)
+                failed=$((failed + 1))
+                [ "$failed" -gt 5 ] || named+="${named:+; }FAIL $name: $reason"
+                ;;
+            skipped) skipped=$((skipped + 1)) ;;
+            deselected) deselected=$((deselected + 1)) ;;
+        esac
+    done
+    named="${named:+ ($named$([ "$failed" -le 5 ] || printf '; +%s more' "$((failed - 5))"))}"
+    printf '%s %s %s %s %s of %s scenarios failed%s\n' "$passed" "$failed" "$skipped" "$deselected" "$failed" "$((passed + failed))" "$named"
+}
+
 _join_reasons() {
     local out="$1" reason
     shift
@@ -732,12 +740,13 @@ evidence_files=()
 tests_passed=0
 tests_failed=0
 tests_skipped=0
+tests_deselected=0
 declare -A level_failed=([L1]=0 [L2]=0) level_retried=([L1]=0 [L2]=0)
 for job in "${job_list[@]}"; do
     test_file="$job"
     tag="$(_job_tag "$job")"
     level="L1"
-    if [[ "$tag" == test_digital_twin_* ]]; then
+    if [[ "$tag" == test_digital_twin_* || "$tag" == scenarios\[* ]]; then
         level="L2"
     fi
     status="$(cat "$results_dir/$tag.status" 2>/dev/null || true)"
@@ -747,7 +756,21 @@ for job in "${job_list[@]}"; do
     # Its microtest closing line; a log without one crashed or was killed.
     count_line="$(awk -v p="[$tag] " 'index($0, p) == 1 && substr($0, length(p) + 1) ~ /^[0-9]+\/[0-9]+ passed, [0-9]+ failed, [0-9]+ skipped/ { last = $0 } END { printf "%s", last }' <<<"$deciding")"
     reasons=()
-    if [[ "$count_line" =~ ([0-9]+)/([0-9]+)\ passed,\ ([0-9]+)\ failed,\ ([0-9]+)\ skipped ]]; then
+    scenario_outcomes=""
+    if [[ "$tag" == scenarios\[* ]]; then
+        # The harness prints no microtest closing line: its counts are its run record's, one test per scenario.
+        if scenario_outcomes="$(_scenario_outcomes "$results_dir/scenarios_${tag:10:-1}.json" 2>/dev/null)"; then
+            read -r scenario_passed scenario_failed scenario_skipped scenario_deselected file_failed_tests < <(_scenario_counts <<<"$scenario_outcomes")
+            tests_passed=$((tests_passed + scenario_passed))
+            tests_failed=$((tests_failed + scenario_failed))
+            tests_skipped=$((tests_skipped + scenario_skipped))
+            tests_deselected=$((tests_deselected + scenario_deselected))
+        else
+            scenario_outcomes=""
+            file_failed_tests="failed"
+            reasons+=("no verdict (run record missing or unreadable)")
+        fi
+    elif [[ "$count_line" =~ ([0-9]+)/([0-9]+)\ passed,\ ([0-9]+)\ failed,\ ([0-9]+)\ skipped ]]; then
         tests_passed=$((tests_passed + BASH_REMATCH[1]))
         tests_failed=$((tests_failed + BASH_REMATCH[3]))
         tests_skipped=$((tests_skipped + BASH_REMATCH[4]))
@@ -762,8 +785,8 @@ for job in "${job_list[@]}"; do
     # A missing or empty status is a missing verdict, never a pass by omission.
     case "$status" in
         PASS | "RETRIED-PASS "*) ;;
-        FAIL) reasons=("$file_failed_tests" ${reasons[@]+"${reasons[@]}"}) ;;
-        *) reasons=("no verdict" ${reasons[@]+"${reasons[@]}"}) ;;
+        FAIL) reasons=("$file_failed_tests" "${reasons[@]}") ;;
+        *) reasons=("no verdict" "${reasons[@]}") ;;
     esac
     if [ -s "$results_dir/$tag.noverdict" ]; then
         reasons+=("no verdict (per-file log missing or unreadable)")
@@ -801,10 +824,21 @@ for job in "${job_list[@]}"; do
             summary_add skipped "$test_file::${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
         fi
     done < <(printf '%s\n' "$deciding" | grep -F "[$tag] SKIP " || true)
+    # A scenario the harness did not run is named with its reason: a driver the device does not wire, or one its
+    # shared port 53 deselects (run_digital_twin_ci.sh holds the port and runs those).
+    while IFS=$'\t' read -r outcome name reason; do
+        case "$outcome" in
+            skipped) summary_add skipped "$test_file::$name" "$reason" ;;
+            deselected) summary_add deselected "$test_file::$name" "runner selection: $reason" ;;
+        esac
+    done <<<"$scenario_outcomes"
 done
 if [ "$coverage" = "1" ]; then
-    for test_file in ${lwip_host_files[@]+"${lwip_host_files[@]}"}; do
+    for test_file in "${lwip_host_files[@]}"; do
         summary_add skipped "$test_file" "not run under --coverage (the plain pass runs them)"
+    done
+    for device in "${devices[@]}"; do
+        summary_add skipped "scenarios[$device]" "not run under --coverage (the plain pass runs them)"
     done
 fi
 
@@ -847,8 +881,10 @@ if [ "${#l0_reasons[@]}" -gt 0 ]; then
     evidence_files+=("$tests_scripts_record")
     summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
 fi
-summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" 0 0 0 0
-summary_levels "L0 $([ "$tests_scripts_result" = "PASS" ] && printf 'PASS' || printf 'FAIL') · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") (tests/test_digital_twin_*.py only; run_digital_twin_ci.sh not run)"
+summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
+l2_scope="tests/test_digital_twin_*.py and the scenario harness"
+[ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
+summary_levels "L0 $([ "$tests_scripts_result" = "PASS" ] && printf 'PASS' || printf 'FAIL') · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
 if [ "$coverage" = "1" ]; then
     summary_gc_stage "coverage run (settrace)"
 elif [ -n "${GC_THRESHOLD:-}" ]; then
@@ -877,7 +913,7 @@ if [ "${#memory_error_files[@]}" -gt 0 ]; then
     echo "MemoryError seen (caught-and-logged counts too - SPECIFICATION.md Part I.4(e)):"
     for f in "${memory_error_files[@]}"; do
         echo "  - $f"
-        sed "s/^/      /" "$results_dir/$(basename "$f" .py).memerr"
+        sed "s/^/      /" "$results_dir/$(_job_tag "$f").memerr"
     done
 fi
 # A workflow-command annotation is the only channel that carries a failing file's own output off
@@ -891,22 +927,22 @@ if [ -n "${GITHUB_ACTIONS:-}" ]; then
     fi
     annotations_left=8
     annotations_withheld=0
-    for f in ${failed_files[@]+"${failed_files[@]}"}; do
+    for f in "${failed_files[@]}"; do
         if [ "$annotations_left" -eq 0 ]; then
             annotations_withheld=$((annotations_withheld + 1))
             continue
         fi
-        annotation_tag="$(basename "$f" .py)"
+        annotation_tag="$(_job_tag "$f")"
         annotation_detail="$({ tail -n 40 "$results_dir/$annotation_tag.log" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
         echo "::error title=$f::$annotation_detail"
         annotations_left=$((annotations_left - 1))
     done
-    for f in ${memory_error_files[@]+"${memory_error_files[@]}"}; do
+    for f in "${memory_error_files[@]}"; do
         if [ "$annotations_left" -eq 0 ]; then
             annotations_withheld=$((annotations_withheld + 1))
             continue
         fi
-        annotation_tag="$(basename "$f" .py)"
+        annotation_tag="$(_job_tag "$f")"
         annotation_detail="$({ cat "$results_dir/$annotation_tag.memerr" 2>/dev/null || true; } | sed -e 's/%/%25/g' -e 's/\r$//' | awk '{printf "%s%%0A", $0}')"
         echo "::error title=$f (allocation failure)::$annotation_detail"
         annotations_left=$((annotations_left - 1))
@@ -934,7 +970,7 @@ fi
 summary_status=0
 summary_text="$(summary_print "scripts/test.sh" "$exit_code")" || summary_status=$?
 printf '%s\n' "$summary_text" >"$results_dir/summary.txt"
-if evidence_dir="$(uv run scripts/_archive_evidence.py --runner test_sh ${evidence_files[@]+"${evidence_files[@]}"} "$results_dir/summary.txt")"; then
+if evidence_dir="$(uv run scripts/_archive_evidence.py --runner test_sh "${evidence_files[@]}" "$results_dir/summary.txt")"; then
     evidence_archived=1
     echo "== Evidence archived in $evidence_dir"
 else

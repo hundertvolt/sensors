@@ -87,7 +87,7 @@ def _expected_banner(driver: str, src_dir: Path, device: str) -> str:
 def test_the_sections_stand_in_the_fixed_order_under_their_banners(devices_dir: Path, repo_root: Path, device: str) -> None:
     # [device], [device.wiring] and the buses first, then each instance under the banner its driver's kind selects;
     # one banner form at the file's 100 characters, each banner over at least one instance (SPECIFICATION.md L.3).
-    text = (devices_dir / f"{device}.toml").read_text()
+    text = (devices_dir / f"{device}.toml").read_text(encoding="utf-8")
     lines = text.splitlines()
     instances = tomllib.loads(text).get("instance", [])
     assert isinstance(instances, list)
@@ -117,7 +117,7 @@ def test_the_sections_stand_in_the_fixed_order_under_their_banners(devices_dir: 
 def _fram_part_names(repo_root: Path) -> "dict[int, str]":
     # asy_fram_driver._KNOWN_PRODUCT_IDS's sizes with the part each entry's comment names, read by ast and tokenize.
     path = repo_root / "src" / "asy_fram_driver.py"
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     comments = {tok.start[0]: tok.string for tok in tokenize.generate_tokens(io.StringIO(text).readline) if tok.type == tokenize.COMMENT}
     for node in ast.parse(text).body:
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "_KNOWN_PRODUCT_IDS" and isinstance(node.value, ast.Dict):
@@ -133,7 +133,7 @@ def _fram_part_names(repo_root: Path) -> "dict[int, str]":
 def test_the_fram_part_is_named_above_its_size(devices_dir: Path, repo_root: Path, device: str) -> None:
     # The driver checks the wired chip against the part max_size implies; the TOML names that part beside it.
     parts = _fram_part_names(repo_root)
-    lines = (devices_dir / f"{device}.toml").read_text().splitlines()
+    lines = (devices_dir / f"{device}.toml").read_text(encoding="utf-8").splitlines()
     sizes = [n for n, line in enumerate(lines) if line.startswith("max_size = ")]
     for n in sizes:
         size = int(lines[n].split("=")[1], 0)
@@ -159,17 +159,17 @@ def test_every_device_is_covered_by_the_micropython_tiers_per_device_files(repo_
     # written from devices/*.toml), or one wrapper per device. Its library derives the set, or lists exactly these.
     expected = set(DEVICE_NAMES)
     problems = []
-    assert "grep -qx 'PER_DEVICE = True'" in (repo_root / "scripts" / "test.sh").read_text(), "scripts/test.sh no longer expands a PER_DEVICE file per device"
+    assert "grep -qx 'PER_DEVICE = True'" in (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8"), "scripts/test.sh no longer expands a PER_DEVICE file per device"
     for family in ("test_sensortask", "test_digital_twin_construction", "test_digital_twin_sensortask_integration", "test_digital_twin_timer_pool"):
         entry = repo_root / "tests" / f"{family}.py"
         present = {p.stem[len(family) + 1 :] for p in (repo_root / "tests").glob(f"{family}_*.py")}
-        if entry.exists() and "PER_DEVICE = True" in entry.read_text().splitlines():
+        if entry.exists() and "PER_DEVICE = True" in entry.read_text(encoding="utf-8").splitlines():
             if present:
                 problems.append(f"tests/{family}.py runs per device, yet wrappers for {sorted(present)} remain")
         elif present != expected:
             problems.append(f"tests/{family}_<device>.py covers {sorted(present)}, but devices/ holds {sorted(expected)}")
     for scenarios in ("_sensortask_scenarios.py", "_digital_twin_construction_scenarios.py"):
-        text = (repo_root / "tests" / scenarios).read_text()
+        text = (repo_root / "tests" / scenarios).read_text(encoding="utf-8")
         match = re.search(r"^_DEVICES = \(([^)]*)\)", text, re.MULTILINE)
         if match is None:
             if "generated_devices()" not in text:
@@ -185,14 +185,14 @@ def test_every_per_device_files_scratch_is_keyed_by_its_device(repo_root: Path) 
     # scripts/test.sh may run two devices' jobs of one PER_DEVICE file at once, and TmpScratch wipes its key's directory
     # at start and teardown: a key shared by the devices lets one process delete the other's live state.
     tests = repo_root / "tests"
-    files = [p for p in sorted(tests.glob("test_*.py")) if "PER_DEVICE = True" in p.read_text().splitlines()]
+    files = [p for p in sorted(tests.glob("test_*.py")) if "PER_DEVICE = True" in p.read_text(encoding="utf-8").splitlines()]
     assert files, "no PER_DEVICE file found - the check would pass vacuously"
-    imported = {n.module for p in files for n in ast.walk(ast.parse(p.read_text())) if isinstance(n, ast.ImportFrom) and n.module}
+    imported = {n.module for p in files for n in ast.walk(ast.parse(p.read_text(encoding="utf-8"))) if isinstance(n, ast.ImportFrom) and n.module}
     files += [tests / f"{name}.py" for name in sorted(imported) if name.startswith("_") and (tests / f"{name}.py").is_file()]
     shared = [
         f"{path.name}:{node.lineno}: TmpScratch({node.args[0].value!r})"
         for path in files
-        for node in ast.walk(ast.parse(path.read_text()))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "TmpScratch" and node.args and isinstance(node.args[0], ast.Constant)
     ]
     assert not shared, f"scratch keys every device's job shares - key them by the device: {shared}"
@@ -205,7 +205,7 @@ def test_every_device_is_in_the_ci_workflow_matrices(repo_root: Path) -> None:
     #
     # Regex rather than a YAML parse: pyyaml is not a dependency of this repo, and the matrix line
     # is a fixed one-line flow sequence. A reshaped matrix fails the count assert below, loudly.
-    text = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    text = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     matrices = re.findall(r"^\s*device: \[([^\]]*)\]", text, re.MULTILINE)
     assert len(matrices) == 2, f"expected exactly 2 device matrices in ci.yml (digital-twin-e2e, firmware-build-verify), found {len(matrices)} - update this check with the workflow"
     for matrix in matrices:

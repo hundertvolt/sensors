@@ -1,3 +1,6 @@
+"""The UART driver: non-blocking reads through the ring, the framing codecs and CRC, the cancel handshake, discard counts
+and write pacing."""
+
 import asyncio
 import gc
 import select
@@ -5,7 +8,7 @@ import time
 
 from _async_harness import run
 from _error_codes import code
-from _src_const import src_const
+from _src_const import src_int
 from _twin_random import FixedRandom
 from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get
 from machine import UART as FakeUART
@@ -62,14 +65,14 @@ _FEED_DELAY_MS = 3
 # @tunable l1.asy_uart_driver_hammer_bound_s = 60
 _HAMMER_BOUND_S = 60
 
-# asy_uart_driver.py's private const()s, read from its source (tests/_src_const.py); src_const() answers object.
-_UART0_RSR: int = src_const("src/asy_uart_driver.py", "_UART0_RSR")  # type: ignore[assignment]
-_UART0_IMSC: int = src_const("src/asy_uart_driver.py", "_UART0_IMSC")  # type: ignore[assignment]
-_UART0_DMACR: int = src_const("src/asy_uart_driver.py", "_UART0_DMACR")  # type: ignore[assignment]
-_IMSC_RX: int = src_const("src/asy_uart_driver.py", "_IMSC_RX")  # type: ignore[assignment]
-_DMACR_RXDMAE: int = src_const("src/asy_uart_driver.py", "_DMACR_RXDMAE")  # type: ignore[assignment]
-_UART_MIN_RXBUF: int = src_const("src/asy_uart_driver.py", "_UART_MIN_RXBUF")  # type: ignore[assignment]
-_RX_RELOAD: int = src_const("src/asy_uart_driver.py", "_RX_RELOAD")  # type: ignore[assignment]
+# asy_uart_driver.py's private const()s, read from its source (tests/_src_const.py).
+_UART0_RSR: int = src_int("src/asy_uart_driver.py", "_UART0_RSR")
+_UART0_IMSC: int = src_int("src/asy_uart_driver.py", "_UART0_IMSC")
+_UART0_DMACR: int = src_int("src/asy_uart_driver.py", "_UART0_DMACR")
+_IMSC_RX: int = src_int("src/asy_uart_driver.py", "_IMSC_RX")
+_DMACR_RXDMAE: int = src_int("src/asy_uart_driver.py", "_DMACR_RXDMAE")
+_UART_MIN_RXBUF: int = src_int("src/asy_uart_driver.py", "_UART_MIN_RXBUF")
+_RX_RELOAD: int = src_int("src/asy_uart_driver.py", "_RX_RELOAD")
 # UARTRSR's error flags (RP2040 datasheet 4.2.8, Table 427).
 _RSR_FE = 0x01
 _RSR_PE = 0x02

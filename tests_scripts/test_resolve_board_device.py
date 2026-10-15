@@ -32,10 +32,10 @@ class _Tree:
         usb_device = self._usb / tty
         interface = usb_device / f"{tty}:1.0"
         interface.mkdir(parents=True)
-        (usb_device / "idVendor").write_text(f"{vendor}\n")
+        (usb_device / "idVendor").write_text(f"{vendor}\n", encoding="utf-8")
         (self.sys_tty / tty).mkdir()
         (self.sys_tty / tty / "device").symlink_to(interface)
-        (self.dev / tty).write_text("")
+        (self.dev / tty).write_text("", encoding="utf-8")
         if by_id_name is not None:
             (self.by_id / by_id_name).symlink_to(Path("..") / ".." / tty)
 

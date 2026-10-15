@@ -78,18 +78,6 @@ class _ReportRecorder:
         self.tracebacks.append(exc)
 
 
-def _raised(exc: BaseException) -> BaseException:
-    # The exception as asyncio hands it over: raised once, so it carries a traceback.
-    try:
-        raise exc
-    except BaseException as caught:
-        return caught
-
-
-def _context(exc: object) -> "_Context":
-    return {"message": _UNRETRIEVED, "exception": exc, "future": object()}
-
-
 def _call_cost() -> int:
     # What one empty two-argument Python call allocates on this binary: 0, except build-settrace's frame
     # object per call (Part E.5.2), so "allocates nothing" holds the report to exactly that cost.
@@ -103,9 +91,8 @@ def _call_cost() -> int:
     return gc.mem_alloc() - before
 
 
-async def _dies(n: int) -> None:
-    held = bytearray(_LARGE_LOCAL if n % 2 == 0 else 16)
-    raise ValueError("probe", len(held))
+def _context(exc: object) -> "_Context":
+    return {"message": _UNRETRIEVED, "exception": exc, "future": object()}
 
 
 def _deaths(n_tasks: int) -> None:
@@ -117,6 +104,21 @@ def _deaths(n_tasks: int) -> None:
         assert all(task.done() for task in tasks)
 
     run(scenario())
+
+
+async def _dies(n: int) -> None:
+    held = bytearray(_LARGE_LOCAL if n % 2 == 0 else 16)
+    raise ValueError("probe", len(held))
+
+
+def _raised(exc: BaseException) -> BaseException:
+    # The exception as asyncio hands it over: raised once, so it carries a traceback.
+    try:
+        raise exc
+    except KeyboardInterrupt:
+        raise  # the per-file timeout's interrupt ends the run, never a helper's answer
+    except BaseException as caught:
+        return caught
 
 
 def _settled_alloc() -> int:
@@ -215,6 +217,15 @@ def test_unretrieved_deaths_through_the_real_loop_retain_nothing() -> None:
         report_unretrieved(None, asyncio_core._exc_context)  # later tests start from a clear context
     assert released <= _DRIFT_BYTES, released
     assert kept >= _LARGE_LOCAL, kept
+
+
+def test_the_raised_helper_lets_an_interrupt_through() -> None:
+    # The per-file timeout's first signal is SIGINT: a helper catching BaseException must not answer it as its result.
+    try:
+        caught = _raised(KeyboardInterrupt())
+    except KeyboardInterrupt:
+        return
+    raise AssertionError(f"_raised() swallowed the interrupt: {caught!r}")
 
 
 if __name__ == "__main__":

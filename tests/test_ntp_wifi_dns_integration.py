@@ -18,7 +18,7 @@ from _fast_sleep import FastAsyncSleep
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_int
 from _tmp_scratch import TmpScratch
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -59,7 +59,7 @@ patch_asy_udp_socket_for_unix_port()
 _NTP_UDP_PORT = src_const("src/asy_ntp_client.py", "_NTP_UDP_PORT")
 _DNS_PORT = src_const("src/asy_dns_client.py", "_DNS_PORT")
 _PHASE_STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
-_LOG_ALL: int = src_const("src/asy_print_log.py", "_LOG_ALL")  # type: ignore[assignment]  # src_const() answers object
+_LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
 
 # @tunable l1.ntp_wifi_dns_integration_lock_blocked_wait_s = 0.05
 _LOCK_BLOCKED_WAIT_S = 0.05

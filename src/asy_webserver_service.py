@@ -189,9 +189,8 @@ ROUTES = (
 
 
 def _body_as_dict(request: "_RequestLike") -> "dict[str, JsonValue] | None":
-    # None covers both a request.json access raising (malformed/undecodable JSON, matches
-    # asy_api_response.py's parse_cmd_request() precedent) and a syntactically valid but non-dict body
-    # (array/string/number/null) - both degrade to the same clean ERR envelope at the call site.
+    # None covers both a request.json access raising (malformed/undecodable JSON) and a syntactically
+    # valid but non-dict body (array/string/number/null) - both degrade to the same clean ERR envelope.
     try:
         data = request.json
     except Exception:

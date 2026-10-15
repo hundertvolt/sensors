@@ -148,7 +148,7 @@ def _arg_count(node: "ast.FunctionDef | ast.AsyncFunctionDef", *, is_method: boo
 def _over_max_args(repo_root: Path, files: "list[Path]", limit: int) -> "set[tuple[str, str]]":
     over = set()
     for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
         for name, node, is_method in _functions(tree):
             count = _arg_count(node, is_method=is_method)
             if count is not None and count > limit:
@@ -179,7 +179,7 @@ def _tail_problem(params: "list[str]", *, logger_allowed: bool) -> "str | None":
 def _constructor_tail_problems(repo_root: Path, files: "list[Path]") -> "list[str]":
     problems, checked = [], 0
     for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
         for cls in (n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)):
             for init in (n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__"):
                 params = [p.arg for p in [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]][1:]
@@ -222,7 +222,7 @@ def test_the_ast_count_agrees_with_ruff_on_every_file_without_an_exemption(repo_
     ruff_sites = {line.split(":")[0] + ":" + line.split(":")[1] for line in _findings(repo_root, _CEILINGS[3], 4)}
     ast_sites = set()
     for path in files:
-        tree = ast.parse((repo_root / path).read_text(), filename=str(path))
+        tree = ast.parse((repo_root / path).read_text(encoding="utf-8"), filename=str(path))
         for _, node, is_method in _functions(tree):
             count = _arg_count(node, is_method=is_method)
             if count is not None and count > 4:
@@ -244,7 +244,7 @@ def test_a_ceiling_raised_by_one_fails_the_check(repo_root: Path) -> None:
 
 def test_a_ninth_parameter_on_a_non_exempt_function_fails_the_check(repo_root: Path, tmp_path: Path) -> None:
     planted = tmp_path / "planted.py"
-    planted.write_text("class C:\n    def __init__(self, a, b, c, d, e, f, g, h, i):\n        pass\n\n\ndef ok(a, b, c, d, e, f, g, _h, i):\n    pass\n")
+    planted.write_text("class C:\n    def __init__(self, a, b, c, d, e, f, g, h, i):\n        pass\n\n\ndef ok(a, b, c, d, e, f, g, _h, i):\n    pass\n", encoding="utf-8")
     over = _over_max_args(tmp_path, [Path("planted.py")], 8)
     assert over == {("planted.py", "C.__init__")}
     assert len(_findings(repo_root, _CEILINGS[3], 8, (str(planted),))) == 1
@@ -272,6 +272,6 @@ def test_the_tail_check_accepts_the_tail_and_names_each_break(params: "list[str]
 
 def test_a_file_ruff_cannot_parse_fails_the_probe_rather_than_reading_as_no_finding(repo_root: Path, tmp_path: Path) -> None:
     planted = tmp_path / "broken.py"
-    planted.write_text("def f(:\n")
+    planted.write_text("def f(:\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="ruff reported more than PLR0913"):
         _findings(repo_root, _CEILINGS[3], 8, (str(planted),))

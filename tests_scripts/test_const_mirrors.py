@@ -1,6 +1,6 @@
 """Every test-side copy of a src/ const() is read or pinned: a module-level binding in tests/ named like a src/ const()
-reads it with src_const(), or is a literal citing its outside source and equal to the src/ value, or is the error
-catalog's code(); a copy under another name carries `# pins src/<file>.py <NAME>` and must equal it too."""
+reads it with src_const() or a typed reader, or is a literal citing its outside source and equal to src/'s value, or is
+the error catalog's code(); a copy under another name carries `# pins src/<file>.py <NAME>` and must equal it too."""
 
 import ast
 from pathlib import Path
@@ -13,13 +13,25 @@ _PIN = "# pins "
 _CATALOG_PREFIXES = ("_ERR_", "_WRN_")
 
 
+def _readers() -> "frozenset[str]":
+    # Every src_*(path, name) the tests' const helpers define: each returns one src/ const(), typed or not.
+    names: set[str] = set()
+    for helper in ("_src_const.py", "_src_schema.py"):
+        tree = ast.parse((REPO_ROOT / "tests" / helper).read_text(encoding="utf-8"))
+        names.update(node.name for node in tree.body if isinstance(node, ast.FunctionDef) and node.name.startswith("src_") and len(node.args.args) == 2)
+    return frozenset(names)
+
+
+_READERS = _readers()
+
+
 def _check(binding: "tuple[str, str, ast.expr]", *, cited: bool, expected: "list[object]", consts: "dict[str, dict[str, object]]") -> "list[str]":
-    # One binding (where, name, value): src_const() of an existing const, the catalog's code(), or a cited copy equal to src/.
+    # One binding (where, name, value): a src_*() read of an existing const, the catalog's code(), or a cited copy equal to src/.
     where, name, value = binding
     read = _src_const_call(value)
     if read is not None:
         file, read_name = read
-        return [] if file.startswith("src/") and read_name in consts.get(file.removeprefix("src/"), {}) else [f"{where}: src_const{read} names no const() in src/"]
+        return [] if file.startswith("src/") and read_name in consts.get(file.removeprefix("src/"), {}) else [f"{where}: the read of {read} names no const() in src/"]
     if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "code" and name.startswith(_CATALOG_PREFIXES):
         return []
     try:
@@ -42,7 +54,7 @@ def _imported_src_files(tree: ast.Module, consts: "dict[str, dict[str, object]]"
 
 
 def _src_const_call(node: ast.expr) -> "tuple[str, str] | None":
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "src_const" and len(node.args) == 2:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _READERS and len(node.args) == 2:
         path, name = node.args
         if isinstance(path, ast.Constant) and isinstance(name, ast.Constant):
             return str(path.value), str(name.value)
@@ -119,6 +131,7 @@ def test_every_test_copy_of_a_src_const_is_read_or_pinned() -> None:
     assert problems == [], "\n".join(problems)
     assert reads >= 1, "no src_const() binding found - the scan reads nothing"
     assert cited >= 1, "no cited copy found - the scan reads nothing"
+    assert {"src_const", "src_int", "src_schema"} <= _READERS, f"the reader scan found {sorted(_READERS)}"
 
 
 def test_every_src_const_is_read() -> None:
@@ -130,6 +143,7 @@ _PLANTED = {
     "copy": "_LIMIT = 4\n",
     "wrong cited copy": "_LIMIT = 4  # datasheet p.9\n",
     "missing const": 'from _src_const import src_const\n_LIMIT = src_const("src/asy_x.py", "_OTHER")\n',
+    "missing typed const": 'from _src_const import src_int\n_LIMIT = src_int("src/asy_x.py", "_OTHER")\n',
     "wrong pin": "_MY_LIMIT = 4  # pins src/asy_x.py _LIMIT\n",
     "pin to nothing": "_MY_LIMIT = 5  # pins src/asy_x.py _GONE\n",
 }
@@ -139,9 +153,9 @@ _PLANTED = {
 def test_a_planted_mirror_fails_and_its_read_or_cited_form_passes(tmp_path: Path, case: str) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
-    (tmp_path / "src" / "asy_x.py").write_text("_BASE = const(2)\n_LIMIT = const(_BASE + 3)\n")
-    (tmp_path / "tests" / "test_x.py").write_text(_PLANTED[case])
+    (tmp_path / "src" / "asy_x.py").write_text("_BASE = const(2)\n_LIMIT = const(_BASE + 3)\n", encoding="utf-8")
+    (tmp_path / "tests" / "test_x.py").write_text(_PLANTED[case], encoding="utf-8")
     assert mirror_problems(tmp_path / "src", tmp_path / "tests")[0], f"the planted {case} passed"
     clean = 'from _src_const import src_const\n_LIMIT = src_const("src/asy_x.py", "_LIMIT")\n_BASE = 2  # datasheet p.9\n_MY = 5  # pins src/asy_x.py _LIMIT\n'
-    (tmp_path / "tests" / "test_x.py").write_text(clean)
+    (tmp_path / "tests" / "test_x.py").write_text(clean, encoding="utf-8")
     assert mirror_problems(tmp_path / "src", tmp_path / "tests") == ([], 1, 2)

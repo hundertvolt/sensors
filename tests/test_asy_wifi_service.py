@@ -1,3 +1,6 @@
+"""WifiService: connect and reconnect, the hotspot fallback and its stations, LED handling, the persisted config and the
+network snapshot, against the network fake."""
+
 import asyncio
 import json
 import os
@@ -16,7 +19,8 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_float, src_int
+from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 from machine import Timer
@@ -38,24 +42,24 @@ def _src_pattern(name: str) -> "tuple[float, float]":
     return float(on_s), float(off_s)
 
 
-# Read from source: const() folds them out of the module (tests/_src_const.py); src_const() answers object, so each
-# binding is annotated with the type the tests use it as.
-_PHASE_STA_SEEKING: int = src_const("src/asy_wifi_service.py", "_PHASE_STA_SEEKING")  # type: ignore[assignment]
-_PHASE_STA_ESTABLISHED: int = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")  # type: ignore[assignment]
-_PHASE_HOTSPOT: int = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")  # type: ignore[assignment]
-_PHASE_DEACTIVATED: int = src_const("src/asy_wifi_service.py", "_PHASE_DEACTIVATED")  # type: ignore[assignment]
-_PHASE_SILENT: int = src_const("src/asy_wifi_service.py", "_PHASE_SILENT")  # type: ignore[assignment]
-_STATIONS_UNSET: int = src_const("src/asy_wifi_service.py", "_STATIONS_UNSET")  # type: ignore[assignment]
-_VAL_SSID: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_SSID")  # type: ignore[assignment]
-_VAL_PW: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_PW")  # type: ignore[assignment]
-_VAL_COUNTRY: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_COUNTRY")  # type: ignore[assignment]
-_VAL_HOSTNAME: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_HOSTNAME")  # type: ignore[assignment]
-_VAL_LED_WIFI_ON: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_LED_WIFI_ON")  # type: ignore[assignment]
-_VAL_HOTSPOT_PW: "cm.ConfigSchema" = src_const("src/asy_wifi_service.py", "_VAL_HOTSPOT_PW")  # type: ignore[assignment]
-_STA_DISCONNECT_POLL_S: float = src_const("src/asy_wifi_service.py", "_STA_DISCONNECT_POLL_S")  # type: ignore[assignment]
-_STA_DISCONNECT_WAIT_ITERS: int = src_const("src/asy_wifi_service.py", "_STA_DISCONNECT_WAIT_ITERS")  # type: ignore[assignment]
-_STA_RETRY_AFTER_LOSS_S: int = src_const("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")  # type: ignore[assignment]
-_STAT_JOINED_NO_IP: int = src_const("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")  # type: ignore[assignment]
+# Read from source: const() folds them out of the module (tests/_src_const.py), each by the typed reader of the type
+# the tests use it as.
+_PHASE_STA_SEEKING: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_SEEKING")
+_PHASE_STA_ESTABLISHED: int = src_int("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
+_PHASE_HOTSPOT: int = src_int("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
+_PHASE_DEACTIVATED: int = src_int("src/asy_wifi_service.py", "_PHASE_DEACTIVATED")
+_PHASE_SILENT: int = src_int("src/asy_wifi_service.py", "_PHASE_SILENT")
+_STATIONS_UNSET: int = src_int("src/asy_wifi_service.py", "_STATIONS_UNSET")
+_VAL_SSID: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_SSID")
+_VAL_PW: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_PW")
+_VAL_COUNTRY: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_COUNTRY")
+_VAL_HOSTNAME: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_HOSTNAME")
+_VAL_LED_WIFI_ON: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_LED_WIFI_ON")
+_VAL_HOTSPOT_PW: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_HOTSPOT_PW")
+_STA_DISCONNECT_POLL_S: float = src_float("src/asy_wifi_service.py", "_STA_DISCONNECT_POLL_S")
+_STA_DISCONNECT_WAIT_ITERS: int = src_int("src/asy_wifi_service.py", "_STA_DISCONNECT_WAIT_ITERS")
+_STA_RETRY_AFTER_LOSS_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
+_STAT_JOINED_NO_IP: int = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
 
 # @tunable l1.asy_wifi_service_connect_bound_s = 2.0
 _CONNECT_BOUND_S = 2.0
@@ -3884,7 +3888,7 @@ def test_the_radio_rung_fires_again_after_a_restart_and_a_good_iteration() -> No
     assert wlan.built == [network.STA_IF, network.STA_IF]
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Integration tests: real (not mocked) captive DNS server - downstream. _configure_hotspot_ap()
 # starts a real CaptiveDNS.run() task over a real UDPSocket, so a genuinely malformed/off-subnet
 # datagram is handled end to end rather than in isolation.
@@ -3892,7 +3896,7 @@ def test_the_radio_rung_fires_again_after_a_restart_and_a_good_iteration() -> No
 # CaptiveDNS.__init__ hardcodes privileged port 53 (no root in CI), redirected here by swapping
 # client._dns_server._udps for a fresh UDPSocket on a free ephemeral port before starting the
 # hotspot, since CaptiveDNS.run() only ever touches self._udps and never rebuilds it.
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 # This file's own band of tests/_port_bands.py, since files run concurrently. A duplicate unicast UDP bind does not
 # fail with EADDRINUSE here (both sockets set SO_REUSEADDR, confirmed directly): each datagram reaches one socket only,
@@ -4018,11 +4022,11 @@ def test_integration_hotspot_captive_dns_ignores_an_off_subnet_query() -> None:
     assert fake_udps.sent == []
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Integration tests: the full _connect_loop() task end to end through the fake network.WLAN, proving
 # how a real connect success/failure sequence propagates up through get_data()/get_error_counter()
 # and _connection_failures/hotspot fallback. Mirrors test_asy_ntp_client.py's own section.
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:

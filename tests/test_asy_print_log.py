@@ -1,3 +1,6 @@
+"""PrintLogHistory and its FRAM store: levels, the bounded history and its count cap, the one-slot repeat rule, the boot
+window and persistence across a reboot."""
+
 import asyncio
 from collections import deque
 

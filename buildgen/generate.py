@@ -150,11 +150,12 @@ def expected_facts(model: DeviceModel, src_dir: Path = REPO_ROOT / "src") -> Jso
     }
 
 
-def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = None, build_date: "str | None" = None) -> GeneratedDevice:
+def generate_device(toml_path: Path, src_dir: Path, ext_dir: "Path | None" = None, build_date: "str | None" = None, *, test_overrides: "tuple[str, ...]" = ()) -> GeneratedDevice:
+    # test_overrides names the test-only firmware overrides an image carries in its build info; never set for a release.
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
     module_name, entry_name, noautostart_name = _output_names(model.device)
-    module_source = _compiled(model.device, module_name, generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date(), src_dir))
+    module_source = _compiled(model.device, module_name, generate_module_source(model, model.construction_order, build_date if build_date is not None else current_build_date(), src_dir, test_overrides=test_overrides))
     return GeneratedDevice(
         model,
         module_source,

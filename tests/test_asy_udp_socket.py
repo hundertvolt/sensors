@@ -1,3 +1,6 @@
+"""UDPSocket: connect, send and receive with readiness waits and timeouts, the malformed-input sentinels, retries and
+self-healing, and the logged failures."""
+
 import asyncio
 
 # The stubs cover asyncio's public API only; this test reads the private core module's task queue.
@@ -11,7 +14,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 
 from _async_harness import run
 from _port_bands import PortAllocator
-from _src_const import src_const
+from _src_const import src_float, src_int
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
@@ -112,10 +115,10 @@ def _raw(addr: tuple[str, int]) -> tuple[str, int]:
     return socket.getaddrinfo(addr[0], addr[1])[0][-1]  # type: ignore[return-value]
 
 
-# The shipped values, read from source (tests/_src_const.py); src_const() answers object, so each is annotated.
-_RETRY_BACKOFF_S: float = src_const("src/asy_udp_socket.py", "_RETRY_BACKOFF_S")  # type: ignore[assignment]
-_POLL_WAIT_MS: int = src_const("src/asy_udp_socket.py", "_POLL_WAIT_MS")  # type: ignore[assignment]
-_POLL_IDLE_MS: int = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")  # type: ignore[assignment]
+# The shipped values, read from source (tests/_src_const.py).
+_RETRY_BACKOFF_S: float = src_float("src/asy_udp_socket.py", "_RETRY_BACKOFF_S")
+_POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
+_POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 
 
 # ---------------------------------------------------------------------------

@@ -119,7 +119,7 @@ def _fetch_shape(repo_root: Path) -> _FetchShape:
     # Derived, never hardcoded: every detector here indexes fetch()'s positional arguments, so a
     # reordered or renamed parameter would silently make them read the wrong one - and the keyword
     # fallback did exactly that, looking for `body=` when the parameter has always been `json_body`.
-    tree = ast.parse((repo_root / "tests_hardware" / "http_client.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / "http_client.py").read_text(encoding="utf-8"))
     fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "fetch"), None)
     assert fn is not None, "tests_hardware/http_client.py no longer defines fetch() - every detector in this file reads its call sites"
     names = [arg.arg for arg in fn.args.args]
@@ -131,7 +131,7 @@ def _fetch_shape(repo_root: Path) -> _FetchShape:
 
 def _fetch_calls(path: Path) -> "Iterator[tuple[str, ast.Call]]":
     # (enclosing function name, call) for every call named `fetch` in the module.
-    tree = _parse(path.read_text())
+    tree = _parse(path.read_text(encoding="utf-8"))
     for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
         for call in [n for n in ast.walk(fn) if isinstance(n, ast.Call)]:
             name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
@@ -186,7 +186,7 @@ _PERSISTING_COMMAND_WORDS = {"resetconfig": "deletes every config file (a flash-
 @cache
 def _system_cmds(repo_root: Path) -> frozenset[str]:
     # The _SYSTEM_CMDS tuple in src/asy_webserver_service.py, read by ast.
-    tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text())
+    tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text(encoding="utf-8"))
     value = next((n.value for n in ast.walk(tree) if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_SYSTEM_CMDS" for t in n.targets)), None)
     assert value is not None, "src/asy_webserver_service.py no longer defines _SYSTEM_CMDS - update this reader"
     inner = value.args[0] if isinstance(value, ast.Call) and value.args else value  # const((...,)) or a bare tuple
@@ -232,7 +232,7 @@ def _pytestmark(body: "list[ast.stmt]") -> "list[ast.expr]":
 
 def _marked_tests(path: Path) -> set[str]:
     # Every function carrying persistence_write: its own decorator, its class's decorator or pytestmark, or the module's.
-    tree = _parse(path.read_text())
+    tree = _parse(path.read_text(encoding="utf-8"))
     marked: set[str] = set()
 
     def visit(body: "list[ast.stmt]", *, inherited: bool) -> None:
@@ -286,7 +286,7 @@ _JUSTIFIED_FORWARDED_METHODS = {
 
 def _positional_parameters(path: Path, name: str) -> list[str]:
     # The positional parameter names of one top-level function, in order.
-    tree = _parse(path.read_text())
+    tree = _parse(path.read_text(encoding="utf-8"))
     fn = next((n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == name), None)
     assert fn is not None, f"{path}::{name} is gone - drop its _JUSTIFIED_FORWARDED_METHODS entry with it"
     return [arg.arg for arg in fn.args.args]
@@ -325,7 +325,7 @@ def test_a_synthetic_forwarding_wrapper_is_actually_caught(tmp_path: Path, repo_
         '    return http_client.fetch(ip, 80, method, route, body, timeout_s=10.0)\n'
         '\n'
         'def test_writes() -> None:\n'
-        '    _put(ip, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}})\n',
+        '    _put(ip, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}})\n', encoding="utf-8",
     )
     shape = _fetch_shape(repo_root)
     assert _persisting_put_functions(module, _dispatch_only_fields(repo_root), shape) == {}, "the PUT detector cannot see through a wrapper - if it ever can, this guard is redundant, not wrong"
@@ -336,7 +336,7 @@ def test_a_put_body_passed_by_keyword_is_still_seen(tmp_path: Path, repo_root: P
     # The positional-only read missed this outright, and its keyword fallback looked for `body=`
     # while the parameter has always been `json_body` - so the one escape hatch could never fire.
     module = tmp_path / "test_keyword.py"
-    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
+    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", json_body={"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n', encoding="utf-8")
     found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
     assert found == {"test_writes": {"PresOvers"}}
 
@@ -353,7 +353,7 @@ def test_fetch_is_the_only_route_from_this_tier_to_an_http_request(repo_root: Pa
     for path in _tests_hardware_modules(repo_root):
         if path.name == "http_client.py":  # the one place allowed to, and the shape everything else reads
             continue
-        for node in ast.walk(_parse(path.read_text())):
+        for node in ast.walk(_parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 offenders += [f"{path.relative_to(repo_root)}: import {a.name}" for a in node.names if a.name.split(".")[0] in _HTTP_LIBRARIES]
             elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in _HTTP_LIBRARIES:
@@ -367,9 +367,9 @@ def test_every_justified_exemption_still_rests_on_every_field_being_rejected(rep
     # against a fixed count, so a second entry cannot inherit the first one's verification.
     always_executed = _always_executed_fields(repo_root)
     for name in _JUSTIFIED_UNMARKED:
-        homes = [path for path in _tests_hardware_modules(repo_root) if f"def {name}(" in path.read_text()]
+        homes = [path for path in _tests_hardware_modules(repo_root) if f"def {name}(" in path.read_text(encoding="utf-8")]
         assert len(homes) == 1, f"{name} is gone (or defined twice: {homes}) - drop its _JUSTIFIED_UNMARKED entry with it"
-        fn_text = homes[0].read_text().split(f"def {name}(", 1)[1].split("\ndef ", 1)[0]
+        fn_text = homes[0].read_text(encoding="utf-8").split(f"def {name}(", 1)[1].split("\ndef ", 1)[0]
         fields = _persisting_put_functions(homes[0], _dispatch_only_fields(repo_root), _fetch_shape(repo_root)).get(name, set())
         needed = len(fields)
         # Three ways a PUT field provably writes nothing: rejected "Invalid", "Unchanged" (a stored field only - an
@@ -412,7 +412,7 @@ def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_roo
     # Proves the detector bites rather than merely agreeing with today's tree: the guard above passes
     # trivially if _persisting_put_functions() ever stops finding anything at all.
     module = tmp_path / "test_synthetic.py"
-    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n')
+    module.write_text('def test_writes() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {"BMP3XX": {"PresOvers": 4}}, timeout_s=10.0)\n', encoding="utf-8")
     found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root))
     assert found == {"test_writes": {"PresOvers"}}
     assert _marked_tests(module) == set(), "an unmarked writer must not look marked"
@@ -422,14 +422,14 @@ def test_a_synthetic_unmarked_writer_is_actually_caught(tmp_path: Path, repo_roo
 def test_a_dispatch_only_put_is_not_flagged(tmp_path: Path, repo_root: Path, body: str) -> None:
     # reboot/bootloader write nothing of their own; erasefram is FRAM, outside the wear gate.
     module = tmp_path / "test_dispatch.py"
-    module.write_text(f'def test_dispatches() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {body}, timeout_s=10.0)\n')
+    module.write_text(f'def test_dispatches() -> None:\n    http_client.fetch(ip, 80, "PUT", "/sensors", {body}, timeout_s=10.0)\n', encoding="utf-8")
     assert _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root), repo_root) == {}
 
 
 def test_a_resetconfig_command_is_a_persisting_write(tmp_path: Path, repo_root: Path) -> None:
     # resetconfig deletes every config file, so an unmarked test sending it spends a flash cycle.
     module = tmp_path / "test_reset.py"
-    module.write_text('def test_resets() -> None:\n    http_client.fetch(ip, 80, "PUT", "/status", {"SystemCmd": "resetconfig"}, timeout_s=10.0)\n')
+    module.write_text('def test_resets() -> None:\n    http_client.fetch(ip, 80, "PUT", "/status", {"SystemCmd": "resetconfig"}, timeout_s=10.0)\n', encoding="utf-8")
     found = _persisting_put_functions(module, _dispatch_only_fields(repo_root), _fetch_shape(repo_root), repo_root)
     assert found == {"test_resets": {"SystemCmd=resetconfig"}}, found
     assert _marked_tests(module) == set(), "an unmarked resetconfig writer must not look marked"
@@ -461,7 +461,7 @@ _SCRATCH_CFG_PATH = "_SCRATCH_CFG_PATH"
 @cache
 def _scd30_config_codes(repo_root: Path) -> frozenset[int]:
     # The SCD30 commands that write its NVM, read from the driver's own const() lines.
-    source = (repo_root / "src" / "asy_scd30_driver.py").read_text()
+    source = (repo_root / "src" / "asy_scd30_driver.py").read_text(encoding="utf-8")
     codes = {name: re.search(rf"^{name} = const\((0x[0-9A-Fa-f]+)\)", source, re.MULTILINE) for name in _SCD30_CONFIG_COMMANDS}
     missing = sorted(name for name, match in codes.items() if match is None)
     assert not missing, f"src/asy_scd30_driver.py no longer declares {missing} - update this reader"
@@ -536,7 +536,7 @@ def _persisting_device_calls(source: str, codes: frozenset[int], ints: "dict[str
 
 
 def _persisting_scripts(scripts_dir: Path, codes: frozenset[int]) -> "dict[str, list[str]]":
-    return {path.name: calls for path in sorted(scripts_dir.glob("*.py")) if (calls := _persisting_device_calls(path.read_text(), codes))}
+    return {path.name: calls for path in sorted(scripts_dir.glob("*.py")) if (calls := _persisting_device_calls(path.read_text(encoding="utf-8"), codes))}
 
 
 def _outermost_functions(tree: ast.Module) -> "list[ast.FunctionDef | ast.AsyncFunctionDef]":
@@ -571,7 +571,7 @@ def _running_functions(tree: ast.Module) -> "set[str]":
 def _script_runners(modules: "list[Path]", scripts: "set[str]") -> "dict[str, list[tuple[Path, ast.FunctionDef | ast.AsyncFunctionDef, int]]]":
     # Script -> (module, outermost function, first line naming it) for every function that names it and runs a script:
     # by a "<script>.py" string, or a module-level constant of any host module holding one (scd30_prerequisite.START_SCRIPT).
-    trees = {path: _parse(path.read_text()) for path in modules}
+    trees = {path: _parse(path.read_text(encoding="utf-8")) for path in modules}
     own: dict[Path, dict[str, set[str]]] = {path: {} for path in trees}
     for path, tree in trees.items():
         for node in tree.body:
@@ -668,7 +668,7 @@ def _confirmed_before(fn: "ast.FunctionDef | ast.AsyncFunctionDef", line: int) -
 def _unowned_device_writes(modules: "list[Path]", scripts_dir: Path, codes: frozenset[int]) -> "list[str]":
     persisting = _persisting_scripts(scripts_dir, codes)
     runners = _script_runners(modules, set(persisting))
-    dispatch = {script: _writing_states((scripts_dir / script).read_text(), codes) for script in persisting}
+    dispatch = {script: _writing_states((scripts_dir / script).read_text(encoding="utf-8"), codes) for script in persisting}
     offenders: list[str] = []
     for script, calls in persisting.items():
         if not runners.get(script):
@@ -694,7 +694,7 @@ def test_the_listed_device_scripts_and_persisting_calls_are_current(repo_root: P
     persisting = _persisting_scripts(repo_root / "tests_hardware" / "device_scripts", _scd30_config_codes(repo_root))
     stale = sorted((set(_PREREQUISITE_DEVICE_SCRIPTS) | set(_MANUAL_PERSISTING_STEPS)) - set(persisting))
     assert not stale, f"listed as persisting but no longer writing anything: {stale}"
-    defined = {n.name for f in ("asy_config_manager.py", "asy_scd30_driver.py") for n in ast.walk(ast.parse((repo_root / "src" / f).read_text())) if isinstance(n, ast.AsyncFunctionDef)}
+    defined = {n.name for f in ("asy_config_manager.py", "asy_scd30_driver.py") for n in ast.walk(ast.parse((repo_root / "src" / f).read_text(encoding="utf-8"))) if isinstance(n, ast.AsyncFunctionDef)}
     assert set(_CONFIG_WRITERS + _SCD30_NVM_SETTERS) <= defined, f"no longer an async def in src/: {sorted(set(_CONFIG_WRITERS + _SCD30_NVM_SETTERS) - defined)}"
 
 
@@ -715,9 +715,9 @@ def test_the_device_script_check_bites(tmp_path: Path, repo_root: Path) -> None:
     scripts.mkdir()
     host.mkdir()
     for name, source in _BITE_SCRIPTS.items():
-        (scripts / name).write_text(source)
+        (scripts / name).write_text(source, encoding="utf-8")
     runs = "\n".join(f"    board.run_isolated(DEVICE_SCRIPTS / {name!r})" for name in _BITE_SCRIPTS if name != "opens_for_write.py")
-    (host / "test_bite.py").write_text(f"import pytest\n\n\ndef test_unmarked(board):\n{runs}\n\n\n@pytest.mark.persistence_write\ndef test_marked(board):\n    board.run_isolated(DEVICE_SCRIPTS / 'writes_config.py')\n")
+    (host / "test_bite.py").write_text(f"import pytest\n\n\ndef test_unmarked(board):\n{runs}\n\n\n@pytest.mark.persistence_write\ndef test_marked(board):\n    board.run_isolated(DEVICE_SCRIPTS / 'writes_config.py')\n", encoding="utf-8")
     offenders = _unowned_device_writes([host / "test_bite.py"], scripts, _scd30_config_codes(repo_root))
     flagged = sorted({line.split(" runs ", 1)[1].split(" ", 1)[0] for line in offenders if " runs " in line})
     assert flagged == ["builds_production.py", "named_scd30_write.py", "raw_scd30_write.py", "writes_config.py"], offenders
@@ -734,10 +734,10 @@ def test_a_state_dispatched_script_gates_only_its_writing_states(tmp_path: Path,
     scripts, host = tmp_path / "device_scripts", tmp_path / "flash"
     scripts.mkdir()
     host.mkdir()
-    (scripts / "stated.py").write_text(_STATED)
-    (scripts / "default_writes.py").write_text(_STATED + "    else:\n        await _write()\n")
+    (scripts / "stated.py").write_text(_STATED, encoding="utf-8")
+    (scripts / "default_writes.py").write_text(_STATED + "    else:\n        await _write()\n", encoding="utf-8")
     runs = {"read": "'stated.py', STATE='r'", "default": "'stated.py'", "write": "'stated.py', STATE='w'", "unread": "'stated.py', STATE=s", "other": "'default_writes.py', STATE='x'"}
-    (host / "test_bite.py").write_text("\n\n".join(f"def test_{name}(board, s):\n    board.run_isolated(DEVICE_SCRIPTS / {args})\n" for name, args in runs.items()))
+    (host / "test_bite.py").write_text("\n\n".join(f"def test_{name}(board, s):\n    board.run_isolated(DEVICE_SCRIPTS / {args})\n" for name, args in runs.items()), encoding="utf-8")
     offenders = _unowned_device_writes([host / "test_bite.py"], scripts, _scd30_config_codes(repo_root))
     assert sorted(line.split("::", 1)[1].split(" ", 1)[0] for line in offenders) == ["test_other", "test_unread", "test_write"], offenders
 
@@ -746,15 +746,15 @@ def test_a_manual_step_needs_its_listing_and_a_confirm_first(tmp_path: Path, rep
     scripts, manual = tmp_path / "device_scripts", tmp_path / "manual"
     scripts.mkdir()
     manual.mkdir()
-    (scripts / "writes_config.py").write_text(_BITE_SCRIPTS["writes_config.py"])
+    (scripts / "writes_config.py").write_text(_BITE_SCRIPTS["writes_config.py"], encoding="utf-8")
     step = "def test_step(board):\n    {first}\n    {second}\n"
     run, ask = "board.run_isolated(DEVICE_SCRIPTS / 'writes_config.py')", "confirm('writes the config file once')"
     codes = _scd30_config_codes(repo_root)
-    (manual / "manual_step.py").write_text(step.format(first=ask, second=run))
+    (manual / "manual_step.py").write_text(step.format(first=ask, second=run), encoding="utf-8")
     assert _unowned_device_writes([manual / "manual_step.py"], scripts, codes), "an unlisted manual step must be flagged"
     monkeypatch.setitem(_MANUAL_PERSISTING_STEPS, "writes_config.py", "a stated write")
     assert _unowned_device_writes([manual / "manual_step.py"], scripts, codes) == []
-    (manual / "manual_step.py").write_text(step.format(first=run, second=ask))
+    (manual / "manual_step.py").write_text(step.format(first=run, second=ask), encoding="utf-8")
     assert _unowned_device_writes([manual / "manual_step.py"], scripts, codes), "a confirm() after the run must be flagged"
 
 
@@ -768,7 +768,7 @@ _JUSTIFIED_RAW_REQUESTS = {
 def _raw_write_requests(path: Path) -> "set[str]":
     # Outermost functions that send a raw PUT or POST request line over a socket.
     found: set[str] = set()
-    for fn in _outermost_functions(_parse(path.read_text())):
+    for fn in _outermost_functions(_parse(path.read_text(encoding="utf-8"))):
         texts = [n.value for n in ast.walk(fn) if isinstance(n, ast.Constant) and isinstance(n.value, str | bytes)]
         sends = any(isinstance(n, ast.Call) and _call_name(n) in {"sendall", "send"} for n in ast.walk(fn))
         if sends and any((t if isinstance(t, str) else t.decode("latin-1")).startswith(("PUT ", "POST ")) for t in texts):
@@ -788,17 +788,17 @@ def test_the_raw_request_check_and_class_marks_bite(tmp_path: Path) -> None:
     module = tmp_path / "test_raw.py"
     module.write_text(
         'import pytest\n\npytestmark = pytest.mark.persistence_write\n\n\ndef test_raw(sock):\n    sock.sendall(f"PUT /sensors HTTP/1.1\\r\\n".encode())\n\n\n'
-        "class TestGroup:\n    def test_in_class(self):\n        pass\n",
+        "class TestGroup:\n    def test_in_class(self):\n        pass\n", encoding="utf-8",
     )
     assert _raw_write_requests(module) == {"test_raw"}
     assert _marked_tests(module) == {"test_raw", "test_in_class"}, "a module pytestmark marks every test in it"
-    module.write_text("import pytest\n\n\n@pytest.mark.persistence_write\nclass TestGroup:\n    def test_a(self):\n        pass\n\n\ndef test_b():\n    pass\n")
+    module.write_text("import pytest\n\n\n@pytest.mark.persistence_write\nclass TestGroup:\n    def test_a(self):\n        pass\n\n\ndef test_b():\n    pass\n", encoding="utf-8")
     assert _marked_tests(module) == {"test_a"}
 
 
 def _marker_table(repo_root: Path) -> dict[str, str]:
     # tests_hardware/markers.py's MARKERS literal, read without importing it: name -> help text.
-    tree = ast.parse((repo_root / "tests_hardware" / "markers.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / "markers.py").read_text(encoding="utf-8"))
     value = next((n.value for n in tree.body if isinstance(n, ast.AnnAssign | ast.Assign) and "MARKERS" in ast.dump(n.target if isinstance(n, ast.AnnAssign) else n.targets[0])), None)
     assert value is not None, "tests_hardware/markers.py no longer assigns MARKERS - update this parse with it"
     table = ast.literal_eval(value)
@@ -812,7 +812,7 @@ def _registered_markers(repo_root: Path) -> set[str]:
 
 def _conftest_options(repo_root: Path) -> list[str]:
     # Every option flag tests_hardware/conftest.py registers, in order.
-    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text())
+    tree = ast.parse((repo_root / "tests_hardware" / "conftest.py").read_text(encoding="utf-8"))
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "addoption"]
     return [str(c.args[0].value) for c in calls if c.args and isinstance(c.args[0], ast.Constant)]
 
@@ -821,7 +821,7 @@ def _used_markers(repo_root: Path) -> dict[str, set[str]]:
     # Test function name -> the pytest.mark.* names it carries, across the whole tier.
     used: dict[str, set[str]] = {}
     for path in _tests_hardware_modules(repo_root):
-        for fn in [n for n in ast.walk(_parse(path.read_text())) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
+        for fn in [n for n in ast.walk(_parse(path.read_text(encoding="utf-8"))) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)]:
             for dec in fn.decorator_list:
                 for attr in [n for n in ast.walk(dec) if isinstance(n, ast.Attribute)]:
                     if isinstance(attr.value, ast.Attribute) and attr.value.attr == "mark":

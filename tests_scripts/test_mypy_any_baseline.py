@@ -62,6 +62,6 @@ def test_every_baseline_module_still_exists(repo_root: Path, config: str) -> Non
 
 def test_a_vanished_module_is_reported(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "kept.py").write_text("")
+    (tmp_path / "src" / "kept.py").write_text("", encoding="utf-8")
     assert _resolves(tmp_path, ["src"], "kept")
     assert not _resolves(tmp_path, ["src"], "renamed")

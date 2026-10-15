@@ -1,0 +1,8 @@
+tests/test_voc_algorithm.py@-1 5.06 42/42 passed, 0 failed, 0 skipped
+tests/test_voc_algorithm.py@32768 31.67 42/42 passed, 0 failed, 0 skipped
+tests/test_asy_webserver_service.py@-1 14.05 222/222 passed, 0 failed, 0 skipped
+tests/test_asy_webserver_service.py@32768 15.71 222/222 passed, 0 failed, 0 skipped
+BASE test_voc_algorithm.py@-1 4.63 42/42 passed, 0 failed, 0 skipped
+BASE test_voc_algorithm.py@32768 31.32 42/42 passed, 0 failed, 0 skipped
+BASE test_asy_webserver_service.py@-1 13.31 222/222 passed, 0 failed, 0 skipped
+BASE test_asy_webserver_service.py@32768 15.80 222/222 passed, 0 failed, 0 skipped

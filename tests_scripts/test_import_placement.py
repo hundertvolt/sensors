@@ -202,8 +202,8 @@ def test_each_kind_of_site_is_caught(tmp_path: Path) -> None:
         "mod = __import__('time')\nimportlib.import_module('x')\nexec(compile(open('f').read(), 'f', 'exec'))\n"
     )
     probe = tmp_path / "probe.py"
-    probe.write_text(source)
-    assert sorted(sites_in_source("probe.py", probe.read_text())) == sorted([
+    probe.write_text(source, encoding="utf-8")
+    assert sorted(sites_in_source("probe.py", probe.read_text(encoding="utf-8"))) == sorted([
         ("probe.py", "f", "json"),
         ("probe.py", "f", "."),
         ("probe.py", "C.g", "os"),

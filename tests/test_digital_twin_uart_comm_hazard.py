@@ -11,7 +11,7 @@ import machine
 import microtest
 from _async_harness import run
 from _error_codes import code
-from _src_const import src_const
+from _src_const import src_const, src_int
 from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get, frames
 from _uart_comm_hazard_common import register_both_crc_modes
 
@@ -52,7 +52,7 @@ _SIZE = _uart_const("_MSG_SIZE")
 _CHUNKS = _uart_const("_MSG_CHUNKS")
 _CUR = _uart_const("_MSG_CUR_CHUNK")
 _POS = _uart_const("_MSG_PAYLOAD")
-_CMD_GET: int = src_const("src/asy_uart_comm.py", "_CMD_GET")  # type: ignore[assignment]  # src_const() answers object
+_CMD_GET: int = src_int("src/asy_uart_comm.py", "_CMD_GET")
 _TRAIN = bytes(range(3 * _PAYLOAD - 4))  # a SET of three data chunks: a train with a middle to cut into
 _CLEAR_POINTS = ("before_the_first_frame", "mid_train", "after_the_last_ack")
 

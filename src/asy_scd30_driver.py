@@ -173,10 +173,12 @@ _FIELDS = const(("CO2", "Temp", "Hum", "WetBulb", "DewPoint", "FRCState", "FRCWa
 # reaches 150ms once a day for internal calibration, past rp2's own 50ms I2C default. Enforced as a
 # generator-checked build requirement (Part L.5), not a comment each TOML author must remember.
 # @requires bus.timeout>=200000
+#
 # Datasheet hard maximum, same source (Interface Description p.2): "Maximal I2C speed is
 # 100 kHz" - Sensirion recommends 50 kHz or less, which every device TOML uses today.
 # @requires bus.frequency<=100000
 # @wiring fram_target FRAMManager log optional kwarg
+#
 # Stuck-pin fallback reads after 2 * trigger_s ticks of 500 ms: at least one full second, at
 # most the chip's longest measurement interval (agent, 2026-09-29).
 # @limits trigger_s 1..1800

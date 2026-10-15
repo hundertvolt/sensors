@@ -24,7 +24,7 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[WiringField, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return parse_wiring(path, "fixture", "x")
 
 

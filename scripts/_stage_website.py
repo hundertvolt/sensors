@@ -7,7 +7,7 @@
 inlined, and js/main.js's import closure bundled into js/app.js, each module after the ones it imports. Every
 drift from the bundling rules or from the site's file set stops the build (SPECIFICATION.md H.2, H.7)."""
 
-# Usage: scripts/_stage_website.py <definitions.json> <stage_dir>
+# Usage: scripts/_stage_website.py [--build-date STAMP] <definitions.json> <stage_dir>
 # Reads html/ and js/ of the tree this script sits in; writes only <stage_dir>/index.html and <stage_dir>/js/app.js,
 # creating <stage_dir> if absent (its caller wipes it). An error exits 1 naming the rule, the file and line, and the fix.
 
@@ -24,6 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _STYLESHEET_TAG = '<link rel="stylesheet" href="style.css">'
 _ICON_TAG = '<link rel="icon" href="favicon.ico">'
 _HEAD_END = "</head>"
+# The firmware build's one build date, stamped into its image's page (scripts/build_firmware.py hands it on).
+_BUILD_DATE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _DEFINITIONS_OPEN = '<script type="application/json" id="inlined-definitions">'
 _SITE_FILES = frozenset({"html/index.html", "html/style.css", "html/favicon.ico"})
 _IMPORT_FORM = 'import { a, b } from "./x.js";'
@@ -464,11 +466,14 @@ def _visit(root: Path, name: str, chain: "tuple[str, ...]", where: str, parsed: 
 
 def main(argv: "list[str] | None" = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--build-date", default=None, metavar="STAMP", help="the firmware build's UTC build date (YYYY-MM-DDTHH:MM:SSZ), stamped into the page as <meta name=\"build-date\">; a site built on its own carries none")
     parser.add_argument("definitions", type=Path, help="the device's generated definitions.json")
     parser.add_argument("stage_dir", type=Path, help="the directory to fill, created if absent (the caller wipes it)")
     args = parser.parse_args(argv)
     try:
-        stage(REPO_ROOT, args.definitions, args.stage_dir)
+        if args.build_date is not None and not _BUILD_DATE.fullmatch(args.build_date):
+            raise StageError("--build-date", f"{args.build_date!r} is no UTC build stamp", "pass the firmware build's date as YYYY-MM-DDTHH:MM:SSZ")
+        stage(REPO_ROOT, args.definitions, args.stage_dir, build_date=args.build_date)
     except StageError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -478,7 +483,7 @@ def main(argv: "list[str] | None" = None) -> int:
     return 0
 
 
-def stage(root: Path, definitions_path: Path, stage_dir: Path) -> None:
+def stage(root: Path, definitions_path: Path, stage_dir: Path, *, build_date: "str | None" = None) -> None:
     # Everything is checked before the first write, so a refused build leaves no stage behind.
     definitions_text, definitions = _read_definitions(definitions_path)
     parsed: dict[str, _Module] = {}
@@ -490,6 +495,8 @@ def stage(root: Path, definitions_path: Path, stage_dir: Path) -> None:
     page = _page(root, definitions_text)
     _check_inlined(page, definitions)
     _check_bootstrap(root, page)
+    if build_date is not None:
+        page = page.replace(_HEAD_END, f'<meta name="build-date" content="{build_date}">\n{_HEAD_END}')
     bundle = _bundle(modules)
     (stage_dir / "js").mkdir(parents=True, exist_ok=True)
     (stage_dir / "index.html").write_text(page, encoding="utf-8")
@@ -497,4 +504,4 @@ def stage(root: Path, definitions_path: Path, stage_dir: Path) -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

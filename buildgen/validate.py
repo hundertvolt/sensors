@@ -1473,6 +1473,13 @@ def device_max_connections(toml_path: Path, src_dir: Path) -> int:
     return ceiling if _is_int(ceiling) else webserver_init_default(src_dir, "max_connections")
 
 
+def device_max_connections_by_name(device: str) -> int:
+    # The ceiling devices/<device>.toml builds, devices/ and src/ found from this package's own location, so a
+    # host instrument naming a device needs neither path nor a sys.path insert of its own.
+    root = Path(__file__).resolve().parent.parent
+    return device_max_connections(root / "devices" / f"{device}.toml", root / "src")
+
+
 def init_int_default(src_dir: Path, filename: str, class_name: str, name: str) -> int:
     # One `<class_name>.__init__` int keyword default, read out of the real source. buildgen never
     # imports src/ (it may use MicroPython-only syntax), so AST is the mechanism - the same one

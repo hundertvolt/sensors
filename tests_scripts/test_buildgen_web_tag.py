@@ -21,13 +21,13 @@ def src_dir(repo_root: Path) -> Path:
 
 def _parse(tmp_path: Path, source: str) -> "tuple[WebFieldTag, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return parse_web_tags(path, "fixture", "x")
 
 
 def _parse_group(tmp_path: Path, source: str) -> "tuple[WebGroupTag, ...]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return parse_web_group_tags(path, "fixture", "x")
 
 

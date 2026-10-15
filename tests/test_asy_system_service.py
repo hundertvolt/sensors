@@ -1,3 +1,6 @@
+"""SystemService: the boot batch, task supervision and restarts, staggered timers, the system commands and reboots, the
+debug level, reset reasons and the watchdog."""
+
 import asyncio
 import asyncio.core as asyncio_core  # type: ignore[import-not-found]  # asyncio's own context dict, read back below
 import gc
@@ -21,7 +24,8 @@ from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_int
+from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 from machine import Timer
@@ -69,10 +73,7 @@ _ERR, _WARN, _EVENT, _ALL = 1, 2, 4, 5
 
 
 def _const(name: str, path: str = _SRC) -> int:
-    # An int const() of the source (tests/_src_const.py), typed: src_const() answers object.
-    value = src_const(path, name)
-    assert isinstance(value, int), name
-    return value
+    return src_int(path, name)  # an int const() of the source (tests/_src_const.py)
 
 
 def _make_ntp_stub(
@@ -975,7 +976,7 @@ def test_a_write_accepted_inside_the_countdown_is_on_flash_before_the_reset() ->
 # ---------------------------------------------------------------------------
 
 _WRITE_OPCODE = 0x02  # keep in sync with tests/_fram_chip_fake.py's _OPCODE_WRITE (MB85RS64V DS501-00015 p.6)
-_ERASE_UNIT: int = src_const("src/asy_fram_manager.py", "_ERASE_UNIT")  # type: ignore[assignment]  # src_const() answers object
+_ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _HANG_WATCH_MS = 1000  # real time a hung step is watched: a fed step feeds well inside it
 _PURPOSES = ("_RR_REBOOT", "_RR_BOOTLOADER", "_RR_CONFIG_RESET", "_RR_FRAM_ERASED")
 _REST_WORDS = {"_RR_REBOOT": "reboot", "_RR_BOOTLOADER": "bootloader", "_RR_CONFIG_RESET": "resetconfig", "_RR_FRAM_ERASED": "erasefram"}
@@ -2215,9 +2216,7 @@ def test_rr_interrupted_is_21_and_decodes_like_every_other_record() -> None:
 
 def test_the_debug_level_range_is_the_loggers_level_range() -> None:
     # _apply_level() drops set_level()'s answer: safe only while the schema's bounds are the loggers' own.
-    schema = src_const(_SRC, "_VAL_DEBUG_LEVEL")
-    assert isinstance(schema, tuple), schema
-    field = schema[0]
+    field = src_schema(_SRC, "_VAL_DEBUG_LEVEL")[0]
     assert [field[3], field[4]] == [_const("_LOG_OFF", _LOG_SRC), _const("_LOG_ALL", _LOG_SRC)], field
 
 
@@ -3653,6 +3652,8 @@ def _raised(exc: BaseException) -> BaseException:
     # The exception as asyncio hands it over: raised once, so it carries a traceback.
     try:
         raise exc
+    except KeyboardInterrupt:
+        raise  # the per-file timeout's interrupt ends the run, never a helper's answer
     except BaseException as caught:
         return caught
 
@@ -3859,6 +3860,15 @@ def test_the_report_releases_the_dead_task_the_default_handler_keeps() -> None:
         svc.pr.report_unretrieved(None, asyncio_core._exc_context)  # later tests start from a clear context
     assert kept >= _LARGE_LOCAL, kept
     assert released <= _HAMMER_DRIFT_BYTES, released
+
+
+def test_the_raised_helper_lets_an_interrupt_through() -> None:
+    # The per-file timeout's first signal is SIGINT: a helper catching BaseException must not answer it as its result.
+    try:
+        caught = _raised(KeyboardInterrupt())
+    except KeyboardInterrupt:
+        return
+    raise AssertionError(f"_raised() swallowed the interrupt: {caught!r}")
 
 
 if __name__ == "__main__":

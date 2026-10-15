@@ -63,7 +63,8 @@ RESULT = "FROZEN_VERIFY_OK: " + sys.implementation.name
 """
 
 
-class SetupError(RuntimeError):
+class SetupError(Exception):
+    # A user error: what failed, where, and how to fix it; main() prints it as one line, with no traceback.
     pass
 
 
@@ -112,10 +113,16 @@ class ToolchainPin(TypedDict):
     apt_packages: list[str]
 
 
+class StubPins(TypedDict):
+    board: str
+    stdlib: str
+
+
 class Versions(TypedDict):
     micropython: MicropythonPin
     toolchain: ToolchainPin
     lwip: dict[str, int]
+    stubs: StubPins
 
 
 VERSIONS_PATH = Path(__file__).parent / "versions.toml"
@@ -391,7 +398,7 @@ def _raise_terminated(signum: int, _frame: object) -> NoReturn:
 
 def _read_node_record(node_root: Path) -> NodeRecord | None:
     try:
-        data = json.loads((node_root / NODE_RECORD).read_text())
+        data = json.loads((node_root / NODE_RECORD).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or set(data) != NodeRecord.__required_keys__:
@@ -410,7 +417,7 @@ def _read_usb_id_vendor(tty_name: str, sys_tty_dir: Path) -> str | None:
     for candidate in (node, *node.parents):
         vendor_file = candidate / "idVendor"
         if vendor_file.exists():
-            return vendor_file.read_text().strip()
+            return vendor_file.read_text(encoding="utf-8").strip()
     return None
 
 
@@ -566,7 +573,7 @@ def _write_json(path: Path, data: object) -> None:
     # Through a temporary file and a rename, so a run killed mid-write leaves no half file; the
     # toolchain lock makes the one temporary name safe.
     temporary = path.with_name(f"{path.name}.tmp")
-    temporary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    temporary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
 
 
@@ -746,6 +753,18 @@ def check_passwordless_sudo(commands: tuple[str, ...]) -> None:
             f"passwordless sudo missing or restricted to other arguments for: {', '.join(refused)} - the bench tier runs them "
             "unattended; see tests_hardware/README.md Prerequisites for the sudoers line",
         )
+
+
+def check_spoof_sudo() -> None:
+    # The off-subnet spoof test's own sudo call (a raw socket needs root), probed with the venv interpreter it runs
+    # under and an argument that only prints usage; root passes as it is.
+    if os.geteuid() == 0:
+        return
+    command = [str(REPO_ROOT / ".venv" / "bin" / "python"), str(REPO_ROOT / "tests_hardware" / "spoof_udp.py")]
+    try:
+        run(["sudo", "-k", "-n", *command, "--help"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
+    except SetupError:
+        raise SetupError(f"passwordless sudo missing for the off-subnet spoof: sudo -n {' '.join(command)} - the bench tier runs it unattended; see tests_hardware/README.md Prerequisites for its sudoers rule") from None
 
 
 def checkout_ref(repo: Path, ref: str) -> None:
@@ -1228,9 +1247,8 @@ def generate_bench_ap_credentials() -> tuple[str, str]:
 
 
 def latest_stable_micropython_ref() -> str:
-    # Backs --latest. The only hand-tracked version is the MicroPython ref (versions.toml), so
-    # "upgrade everything" reduces to writing the newest tag back there and letting
-    # derive_pico_sdk_commit()/derive_picotool_ref() do the rest.
+    # Backs --latest: writes the newest stable tag to versions.toml's ref; pico-sdk and picotool follow by
+    # derivation, the [stubs] pins by hand at the platform re-check (scripts/typecheck.sh refuses a mismatch).
     out = run_retried(["git", "ls-remote", "--tags", MICROPYTHON_URL], env=network_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
     candidates = []
     for line in out.splitlines():
@@ -1272,7 +1290,12 @@ def load_versions(path: Path) -> Versions:
     if not isinstance(packages, list) or not all(isinstance(name, str) for name in packages):
         raise _versions_defect(path, "toolchain", "apt_packages", packages, "a list of strings")
     lwip = _versions_table(data, path, "lwip")
-    return {"micropython": {"ref": ref}, "toolchain": {"board": board, "apt_packages": packages}, "lwip": cast("dict[str, int]", lwip)}
+    stubs = _versions_table(data, path, "stubs")
+    pins = {key: stubs.get(key) for key in ("board", "stdlib")}
+    for key, pin in pins.items():
+        if not isinstance(pin, str) or not pin:
+            raise _versions_defect(path, "stubs", key, pin, "a non-empty string")
+    return {"micropython": {"ref": ref}, "toolchain": {"board": board, "apt_packages": packages}, "lwip": cast("dict[str, int]", lwip), "stubs": {"board": str(pins["board"]), "stdlib": str(pins["stdlib"])}}
 
 
 def log(msg: str) -> None:
@@ -1346,6 +1369,14 @@ def main() -> int:
     elif not argv:
         argv = ["setup"]
     args = parser.parse_args(argv)
+    try:
+        return _dispatch(args)
+    except (SetupError, micropython_overrides.OverrideError, subprocess.CalledProcessError) as exc:  # each names its cause and fix
+        print(f"setup_toolchain: {exc}", file=sys.stderr)
+        return 1
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "board":
         # Reads /sys and /dev only: no lock, no versions.toml, and stdout carries nothing but the path.
         print(resolve_pico_device(args.device))
@@ -1389,7 +1420,7 @@ def pinned_node_major(repo_root: Path) -> str | None:
     nvmrc = repo_root / ".nvmrc"
     if not nvmrc.exists():
         return None
-    major = nvmrc.read_text().strip().lstrip("v")
+    major = nvmrc.read_text(encoding="utf-8").strip().lstrip("v")
     return major.split(".")[0] if major else None
 
 
@@ -1408,7 +1439,7 @@ def print_verification_summary(board: str, mpy_cross_binary: Path, unix_binary: 
 def read_toolchain_record(toolchain_dir: Path) -> ToolchainRecord | None:
     # None for a missing, unreadable or incomplete record: that toolchain was never verified as recorded.
     try:
-        data = json.loads((toolchain_dir / TOOLCHAIN_RECORD).read_text())
+        data = json.loads((toolchain_dir / TOOLCHAIN_RECORD).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(data, dict) or set(data) != ToolchainRecord.__required_keys__:
@@ -1524,6 +1555,7 @@ def run_env(args: argparse.Namespace, versions_path: Path, versions: Versions) -
 
     ensure_commands(_TIER_COMMANDS["bench"], skip_apt=args.skip_apt)
     check_passwordless_sudo(_BENCH_SUDO_COMMANDS)
+    check_spoof_sudo()
     # Always call ensure_bench_bridge() - it already handles the already-exists case itself, so
     # there's exactly one place this logic lives, not a separate short-circuit that could drift.
     ssid = ensure_bench_bridge(args.uplink_iface, args.wifi_iface, args.ssid, os.environ.get("BENCH_AP_PASSWORD") or None)
@@ -1748,13 +1780,11 @@ def toolchain_lock(toolchain_dir: Path) -> Iterator[None]:
     # first, never waits (a waiting run could hang). The OS drops the lock with a dying holder, so it
     # never goes stale; the directory is created first, so a first setup can take it.
     toolchain_dir.mkdir(parents=True, exist_ok=True)
-    with (toolchain_dir / TOOLCHAIN_LOCK).open("a+") as lock:
+    with (toolchain_dir / TOOLCHAIN_LOCK).open("a+", encoding="utf-8") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            lock.seek(0)
-            holder = lock.read().strip() or "unknown"
-            raise SetupError(f"another setup or firmware build (pid {holder}) is using {toolchain_dir} - wait for it to finish, or use another --toolchain-dir") from None
+            _refuse_held_lock(lock, toolchain_dir)
         lock.seek(0)
         lock.truncate()
         lock.write(f"{os.getpid()}\n")
@@ -1762,12 +1792,25 @@ def toolchain_lock(toolchain_dir: Path) -> Iterator[None]:
         yield
 
 
+def _refuse_held_lock(lock: IO[str], toolchain_dir: Path) -> NoReturn:
+    # A shared hold is a test run's (scripts/_unix_port.sh), which writes no pid: the file then names the last exclusive
+    # holder, long gone, so a lock this process can share is named for what holds it; an exclusive one by its pid.
+    try:
+        fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.seek(0)
+        holder = lock.read().strip() or "unknown"
+        raise SetupError(f"another setup or firmware build (pid {holder}) is using {toolchain_dir} - wait for it to finish, or use another --toolchain-dir") from None
+    fcntl.flock(lock, fcntl.LOCK_UN)
+    raise SetupError(f"a test run is using the Unix ports of {toolchain_dir} (it holds the toolchain lock shared) - wait for it to finish, or use another --toolchain-dir")
+
+
 def write_freeze_manifest(manifest_path: Path, port_manifest_relpath: str) -> None:
     # Mirrors this repo's manifest convention (legacy/firmware/python/Manifest/manifest.py): the
     # port's own manifest, then freeze FROZEN_MODULE_SUBDIR. freeze() resolves relative to this file, so
     # manifest_path is written as a sibling of that subdir - never inside it, never freezing itself.
     manifest_path.write_text(
-        f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n',
+        f'include("$(PORT_DIR)/{port_manifest_relpath}")\nfreeze("{FROZEN_MODULE_SUBDIR}")\n', encoding="utf-8",
     )
 
 
@@ -1777,21 +1820,21 @@ def write_frozen_verify_test(test_dir: Path) -> Path:
     module_dir = test_dir / FROZEN_MODULE_SUBDIR
     module_dir.mkdir()
     test_file = module_dir / f"{FROZEN_VERIFY_MODULE}.py"
-    test_file.write_text(FROZEN_VERIFY_PY)
+    test_file.write_text(FROZEN_VERIFY_PY, encoding="utf-8")
     return test_file
 
 
 def write_micropython_ref(path: Path, ref: str) -> None:
     # Rewrites the one `ref = "..."` line, through a checked copy and a rename: a missing, doubled or
     # misplaced line is refused with the file untouched, since the pin moves only on purpose.
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     new_text, count = re.subn(r'(?m)^ref = "[^"\n]*"$', f'ref = "{ref}"', text)
     if count == 0:
         raise SetupError(f'{path} has no `ref = "…"` line under [micropython] - nothing was written; restore the line (see SPECIFICATION.md B.3) and re-run')
     if count > 1:
         raise SetupError(f'{path} has {count} `ref = "…"` lines - the pin must be exactly one; remove the extra ones and re-run')
     candidate = path.with_name(f"{path.name}.tmp")
-    candidate.write_text(new_text)
+    candidate.write_text(new_text, encoding="utf-8")
     try:
         written = load_versions(candidate)["micropython"]["ref"]
     except SetupError:
@@ -1807,8 +1850,4 @@ def write_toolchain_record(toolchain_dir: Path, record: ToolchainRecord) -> None
 
 
 if __name__ == "__main__":
-    try:
-        sys.exit(main())
-    except (SetupError, micropython_overrides.OverrideError) as exc:  # both name their own cause and fix
-        print(f"\nFAILED: {exc}", file=sys.stderr)
-        sys.exit(1)
+    raise SystemExit(main())

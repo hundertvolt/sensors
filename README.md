@@ -61,10 +61,14 @@ CI-friendly re-check, a few minutes; it accepts the same `--toolchain-dir`/`--jo
 
 Every `setup` and `test` run deletes `toolchain-record.json` in the toolchain directory first and
 writes it last: what was built from what — refs, commits, picotool, compilers, input hashes
-(SPECIFICATION.md B.5). A directory without one is unfinished or older, so `scripts/test.sh` reruns
-`setup` on it and `scripts/build_firmware.py` refuses it. picotool is rebuilt and
-`sudo make install`ed only when its tag changed or the installed binary no longer reports it. One
-run at a time per toolchain directory: a second fails at once, naming the first one's pid.
+(SPECIFICATION.md B.5). A directory without one is unfinished or older: `scripts/build_firmware.py`
+refuses it, and every runner asks for a Unix-port binary through the one probe,
+`scripts/_unix_port.sh`, whose `ensure` reruns `setup` when the binary of the build flavour it needs
+(`standard`, `settrace` or `lwip`) is missing or reports another flavour, the record is missing, or an
+input hash in it differs from this tree's file. picotool is rebuilt and `sudo make install`ed only
+when its tag changed or the installed binary no longer reports it. One setup or firmware build at a
+time per toolchain directory, holding its lock exclusive; a test run holds it shared while it uses the
+binaries, so either refuses the other at once, naming what holds it.
 
 ## Dev environment setup (generic / flash / bench)
 
@@ -73,7 +77,7 @@ superset of the one before it:
 
 | Tier | Adds on top of the previous tier | Command |
 |---|---|---|
-| generic | Python (`uv sync`) + website (`npm ci`) deps, the firmware/Unix-port toolchain above | `uv run toolchain/setup_toolchain.py env --tier generic` |
+| generic | Python (`uv sync`) + website (`npm ci`) deps, the toolchain above: firmware, `mpy-cross` and the Unix-port build flavours `standard`, `settrace` and `lwip` | `uv run toolchain/setup_toolchain.py env --tier generic` |
 | flash | Non-root USB serial access (`dialout` group) + a real board, resolved by USB vendor ID `2e8a` and its MicroPython `/dev/serial/by-id` name (SPECIFICATION.md B.12) | `uv run toolchain/setup_toolchain.py env --tier flash` |
 | bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP; the commands it installs and the passwordless-sudo rules it checks: `tests_hardware/README.md` Prerequisites | `uv run toolchain/setup_toolchain.py env --tier bench` |
 
@@ -134,24 +138,29 @@ follow the delete-and-recreate recipe in `tests_hardware/README.md`'s 'Host netw
 Ruff and mypy checks, scoped to eight directories — `src/`, `tests/`, `digital_twin/`,
 `buildgen/`, `toolchain/`, `scripts/`, `tests_scripts/` and `tests_hardware/` (the legacy tree,
 `legacy/`, is never covered) — shellcheck over `scripts/`, actionlint +
-zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually. mypy
-runs three separate passes, since the MicroPython-target scopes and the host-CPython ones need
-different stdlib stubs and cannot share one invocation. Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
+zizmor over the GitHub Actions workflows, plus unit tests for `src/`, can be run manually; ruff and
+mypy's main pass also check the generated device modules in `build/generated_src/`. mypy runs three
+separate passes, since the MicroPython-target scopes and the host-CPython ones need different stdlib
+stubs and cannot share one invocation, plus three single-file checks (SPECIFICATION.md B.15). Needs Python 3.11+ (`tomllib`, stdlib only since 3.11 — `uv sync` enforces this
 automatically via `pyproject.toml`'s `requires-python`, so this only matters if `uv` has to fall
 back to whatever `python3` it finds):
 
 ```sh
 uv sync                    # one-time, and after pulling changes - installs every check tool into .venv
-source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh assume those tools are on PATH
+source .venv/bin/activate  # scripts/lint.sh and scripts/typecheck.sh refuse to run outside the synced project venv
 
-scripts/lint.sh            # ruff check, plus shellcheck (scripts/) and actionlint + zizmor (.github/)
-scripts/typecheck.sh       # mypy, using MicroPython stubs matching toolchain/versions.toml (see above)
+scripts/lint.sh            # generates build/generated_src/, then ruff check, shellcheck (scripts/), actionlint +
+                            # zizmor (.github/), the method-assign guard and the gc.collect() site checker
+scripts/typecheck.sh       # mypy, with the MicroPython stubs toolchain/versions.toml's [stubs] pins exactly
 scripts/test.sh            # runs every test in tests/, under a real MicroPython Unix-port interpreter -
                             # builds that interpreter automatically on first run (see SPECIFICATION.md Part E) -
                             # plus tests_scripts/, a CPython/pytest suite covering the host-only build
-                            # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py)
-scripts/test.sh --coverage # same, plus line coverage reports for src/, digital_twin/, the generated
-                            # modules and the host build chain (buildgen/, scripts/, toolchain/) - see below
+                            # tooling (scripts/build_frozen_html.sh, build_website.sh, build_firmware.py),
+                            # and the host-side twin scenario harness once per device; it builds what it
+                            # lacks, and rebuilds frozen_modules/frozen_html.py from the first device of
+                            # devices/*.toml every run
+scripts/test.sh --coverage # same but the scenario harness, plus line coverage reports for src/, digital_twin/,
+                            # the generated modules and the host build chain (buildgen/, scripts/, toolchain/) - see below
 uv run pytest tests_scripts # the pytest tier alone - needs the toolchain built first
                             # (scripts/test.sh or toolchain/setup_toolchain.py setup)
 ```
@@ -172,7 +181,8 @@ fast host is
 close to free; a `--coverage` run is the exception, CPU-bound under the settrace binary, and takes one
 file per usable core; set `TEST_PARALLELISM=1` for strictly sequential runs), `TESTS_SCRIPTS_TIMEOUT_S`
 (whole-suite timeout for the backgrounded `tests_scripts/` pytest job, a positive integer of
-seconds, default 1200 — roughly 5x its real runtime, so it only fires on a genuine hang), and
+seconds, default 1200 — about 1.7x its measured 698 s (SPECIFICATION.md Part N), so it only fires on
+a genuine hang), and
 `GC_THRESHOLD` (run the MicroPython tier with that `gc.threshold()` set instead of the interpreter's
 own reactive default — `GC_THRESHOLD=32768 scripts/test.sh` is the value the firmware's boot entry
 ships, and the suite has to pass both ways; a value that is not an integer, or falls outside the
@@ -212,8 +222,9 @@ All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
 `unit-tests-coverage` job — its coverage number advisory, its test result gating (SPECIFICATION.md
 Part E.5.3) — and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
 `unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
-never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`; see CLAUDE.md's
-"Code quality tooling" section
+never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`;
+`lint.sh` and `typecheck.sh` refuse an inactive venv, one `uv sync --locked` would change, and a tool
+resolving outside it (`scripts/_require_venv.sh`). See CLAUDE.md's "Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
 pytest/CPython, etc.).
@@ -327,6 +338,8 @@ uv run scripts/build_firmware.py wozi                                   # -> bui
 uv run scripts/build_firmware.py wozi --output build/my-firmware.uf2    # explicit output path
 uv run scripts/build_firmware.py wozi --jobs 8                          # override parallel make jobs
 uv run scripts/build_firmware.py wozi --toolchain-dir /path             # toolchain installed somewhere other than $PICO_TOOLCHAIN_DIR/~/pico-toolchain
+uv run scripts/build_firmware.py dev --no-autostart                     # -> build/firmware-dev-noautostart.uf2, boots to the REPL
+uv run scripts/build_firmware.py dev --tick-offset-test                 # -> build/firmware-dev-tickoffset.uf2, the rollover round's test image
 ```
 
 `<device>` (positional, required) must match a `devices/<device>.toml` file (`dev` is the
@@ -334,20 +347,33 @@ bench-only variant, never built for field deployment, but a real `src/`-assemble
 same). This script only builds `build/firmware-<device>.uf2` and, beside it, its image record
 `build/firmware-<device>.json` (the device, `BuildDate`, the firmware and website versions, the
 commit and whether the tree was dirty, `maxConnections`, the lwIP ensemble, the build's overrides,
-the device TOML and the UART CRC mode; SPECIFICATION.md B.11), which the bench tier compares with
-the board's `GET /system` before it tests ("Verify the image" in `tests_hardware/README.md`).
+the device TOML, the UART CRC mode, the image's size against the filesystem boundary and whether it
+autostarts; SPECIFICATION.md B.11), which the bench tier compares with the board's `GET /system`
+before it tests ("Verify the image" in `tests_hardware/README.md`). The build prints that size as
+`== Image: <used> B of <fs_base> B before the filesystem (<pct> %), <free> B free`.
 `--device-toml PATH` builds from a copy of the device TOML that changes only what the website does
-not show, e.g. a UART link's `crc`. It never flashes or touches real hardware — see "Flashing a
-real board" below for that step. Under the hood
-it also stages and freezes the real website for that one device, runnable on its own for just that
-step, for one device or for every device:
+not show, e.g. a UART link's `crc`. `--no-autostart` builds `build/firmware-<device>-noautostart.uf2`,
+which prints its manual start line and returns to the REPL instead of running `main()`; the board's
+filesystem must hold no `boot.py`/`main.py`, so erase it first.
+`--tick-offset-test` builds `build/firmware-<device>-tickoffset.uf2`, whose millisecond count wraps
+about 15 minutes after boot (SPECIFICATION.md B.14.5): the rollover round's image, never a release.
+Build intermediates stay under `build/` for inspection and are wiped at the next build of the same
+device: the staged modules and the rendered manifest in `build/firmware/<device>/` (with
+`-noautostart`/`-tickoffset` appended for those images, kept after a failed build too) and the
+website stage with its gzip tree in `build/website/<device>/` (`build/frozen_html/<name>/` for
+`scripts/build_frozen_html.sh` run on its own).
+It never flashes or touches real hardware — see "Flashing a real board" below for that step. Under
+the hood it also stages and freezes the real website for that one device, stamped with the
+firmware's build date, runnable on its own for just that step, for one device or for every device:
 
 ```sh
 scripts/build_website.sh wozi                                 # -> frozen_modules/frozen_html.py
 scripts/build_website.sh wozi build/frozen_website_wozi.py    # explicit output path
+scripts/build_website.sh --build-date 2026-10-15T12:00:00Z wozi   # stamps that UTC build date into the page; none by default
 scripts/build_website.sh --stage-only wozi <dir>              # stages index.html and js/app.js into <dir>, freezes nothing
 scripts/build_device_websites.sh                              # every device -> build/generated_html/<device>/frozen_html.py
-scripts/build_device_websites.sh --stage-only                 # every device, staged only -> build/staged_html/<device>/
+scripts/build_device_websites.sh --stage-only                 # every device, staged only -> build/staged_html/<device>/,
+                                                              # every staged page there removed first
 ```
 
 `.github/workflows/ci.yml`'s `firmware-build-verify` job runs the real `build_firmware.py` build on
@@ -394,8 +420,9 @@ recipes are exercised as real, automated/manual tests, not just prose here —
 `mpremote` (dev dependency, installed by `uv sync`) talks to a real RP2040/Pico W over its USB
 serial port. What each `mpremote` operation writes to the board, and what it stops:
 `tests_hardware/README.md` 'What each tool writes to the board'. `scripts/mpremote_connect.sh`
-wraps `uv run mpremote connect <device>` with a default device path of `/dev/ttyACM0`, overridable
-via `MPREMOTE_DEVICE`:
+runs `uv run --no-sync mpremote connect <board>`, where the board is the one `setup_toolchain.py
+board` resolves (USB vendor `2e8a` and its MicroPython by-id name); `MPREMOTE_DEVICE` overrides it.
+No board or several: the resolver's own error line ends the run, before any `mpremote` call:
 
 ```sh
 scripts/mpremote_connect.sh ls                                  # list the device's filesystem
@@ -407,8 +434,8 @@ MPREMOTE_DEVICE=/dev/ttyACM1 scripts/mpremote_connect.sh ls     # different seri
 Non-root serial access needs the connecting user in the `dialout` group (`sudo usermod -aG dialout
 $USER`, then re-login) and a real board plugged in — both checked/added automatically, including
 resolving which serial device is the board (USB vendor `2e8a` plus its MicroPython by-id name,
-SPECIFICATION.md B.12; `uv run toolchain/setup_toolchain.py board` prints it — still pass it as
-`MPREMOTE_DEVICE` yourself, or override with `--device` if more than one is plugged in), by
+SPECIFICATION.md B.12; `uv run toolchain/setup_toolchain.py board` prints it — override with
+`--device` or `MPREMOTE_DEVICE` if more than one is plugged in), by
 `uv run toolchain/setup_toolchain.py env --tier flash` (see "Dev environment setup" above). This
 is a genuinely different tier from the mocked `tests/` suite (which
 runs under the Unix port against `tests/machine.py`'s fake `machine` module — see
@@ -420,10 +447,10 @@ writes, by-hand workflow). **`tests_hardware/`** itself is the structured, repea
 `mpremote`/bench-bridge access — see `tests_hardware/README.md` for the full reference (prerequisites,
 env vars, safety facts, known assumptions) and the essential commands below for how to run it.
 
-## Real-hardware test tiers (flash / bench / soak / manual)
+## Real-hardware test tiers (flash / bench / soak / rollover / manual)
 
-Four ways to run `tests_hardware/` against a real board, each a strict superset of the previous
-one's hardware needs. **A session needs the project owner's explicit go-ahead, given in that
+The ways to run `tests_hardware/` against a real board: each needs at least the flash tier's
+hardware, and soak and rollover the bench tier's. **A session needs the project owner's explicit go-ahead, given in that
 session's own conversation, before running any of these** (see CLAUDE.md's hard rule) —
 `tests_hardware/README.md` is the durable reference for what a session with that go-ahead needs to
 know (safety facts, known assumptions/findings); this section only covers how to invoke each tier.
@@ -433,6 +460,7 @@ know (safety facts, known assumptions/findings); this section only covers how to
 | flash | `env --tier flash` (real USB board, no network) | `scripts/run_flash_hardware_suite.sh` |
 | bench | `env --tier bench` (also a real WiFi bridge) | `scripts/run_bench_hardware_suite.sh` |
 | soak | Same as bench, plus a deliberate long run | `scripts/run_bench_soak_tests.sh --duration {short,mid,long}` |
+| rollover | Same as bench, plus about two hours and one flash cycle | `scripts/run_bench_rollover_test.sh` |
 | manual | Same as flash/bench, plus a human present | `scripts/run_manual_hardware_tests.sh` |
 
 ```sh
@@ -445,7 +473,8 @@ scripts/run_bench_hardware_suite.sh
 # --skip-lower-levels is for debugging only: the run is never reported clean (NOT CLEAN, exit 4)
 scripts/run_flash_hardware_suite.sh --skip-lower-levels
 
-# Either wrapper passes through any extra pytest args
+# Either wrapper passes through any extra pytest args; each passes its own marker floor, so a -m you
+# pass narrows the selection, never replaces it (soak and rollover tests never run here)
 scripts/run_bench_hardware_suite.sh -k test_hotspot_role_reversal   # only tests matching a substring
 scripts/run_bench_hardware_suite.sh -m role_reversal                # only tests with a given marker
 scripts/run_bench_hardware_suite.sh -v                              # more verbose pytest output
@@ -459,15 +488,14 @@ scripts/run_flash_hardware_suite.sh --device /dev/ttyACM1           # same, via 
 scripts/run_flash_hardware_suite.sh --allow-flash-cycle
 scripts/run_bench_hardware_suite.sh --allow-persistence-write
 
-# The tick rollover, on top of a clean bench run: reflashes the tick-offset test image (one flash
-# cycle) and polls it about two hours over REST; the next round flashes its own image:
-scripts/_require_clean_hardware_run.sh --runner rollover --levels "L4 (tick rollover)" \
-    tests_hardware/bench/test_ticks_ms_rollover.py --allow-multi-day-rollover --allow-flash-cycle \
-    --rollover-image <tick-offset uf2>
+# The tick rollover, on top of a clean bench run: builds the bench device's tick-offset test image,
+# flashes it (one flash cycle) and polls it about two hours over REST; start it detached. The next
+# round flashes its own image:
+scripts/run_bench_rollover_test.sh
 
 # Soak durations (soak_duration marker) are NEVER bundled into either suite above - each is its own
 # invocation, liveness only, after a clean bench run (tests_hardware/soak_durations.py's
-# SOAK_DURATION_SECONDS):
+# SOAK_DURATION_SECONDS); a missing or unknown duration exits 2 naming the valid ones:
 scripts/run_bench_soak_tests.sh --duration short   # 60 s
 scripts/run_bench_soak_tests.sh --duration mid     # 600 s
 scripts/run_bench_soak_tests.sh --duration long    # 6 h
@@ -498,7 +526,8 @@ valid devices). A run serves that device's real, production website
 (`scripts/build_website.sh <device>`) — see `SPECIFICATION.md` Part H.7 for the full account.
 
 **Quick start: twin + real website, in one command** (builds the MicroPython Unix port and the
-website automatically if either is missing, then serves both forever):
+website automatically if either is missing, then serves both forever; it fails at once while another
+suite holds port 53, so run the suites one after the other):
 
 ```sh
 scripts/run_unix_port_integration.sh --device <name> --host 127.0.0.1 --port 8080
@@ -598,7 +627,8 @@ scripts/run_digital_twin_ci.sh <device> --gc-threshold 32768 --part harness   # 
 ```
 
 It ends with the summary block (SPECIFICATION.md E.10). Logs from every subprocess run land in
-`digital_twin_ci_logs/`. This is what `.github/workflows/ci.yml` runs
+`digital_twin_ci_logs/<device>/`; the runner first moves the previous run's there into
+`build/archive/digital_twin_ci_<device>/` (the newest three kept). This is what `.github/workflows/ci.yml` runs
 on every push/PR — see `digital_twin/README.md`'s "Automated CI suite" section for the full
 reference.
 

@@ -50,7 +50,7 @@ def _expected_probe(definitions: "dict[str, Any]") -> "dict[str, Any] | None":
 def test_every_device_yields_an_in_range_integer_probe(tmp_path: Path, device: str) -> None:
     definitions = definitions_for_toml(device_toml(device), _REPO_ROOT / "src")
     path = tmp_path / f"{device}.json"
-    path.write_text(json.dumps(definitions))
+    path.write_text(json.dumps(definitions), encoding="utf-8")
     done = _pick(path)
     assert done.returncode == 0, done.stderr
     probe = json.loads(done.stdout.strip().splitlines()[-1])
@@ -68,7 +68,7 @@ def test_a_device_with_no_candidate_fails_naming_itself(tmp_path: Path) -> None:
         ]}]}],
     }
     path = tmp_path / "fixture.json"
-    path.write_text(json.dumps(definitions))
+    path.write_text(json.dumps(definitions), encoding="utf-8")
     done = _pick(path)
     assert done.returncode != 0, f"pickProbe() returned {done.stdout!r} for definitions with no candidate"
     assert "fixture-device" in done.stderr
@@ -108,7 +108,7 @@ def test_a_webdriver_error_status_or_error_value_is_a_failure_naming_it(status: 
 
 def test_every_webdriver_command_in_the_smoke_checks_its_reply() -> None:
     # Navigation and window size were fire-and-forget: a failed resize went unnoticed (only the mobile width is asserted).
-    text = (_REPO_ROOT / "scripts" / "cross_browser_smoke.mjs").read_text()
+    text = (_REPO_ROOT / "scripts" / "cross_browser_smoke.mjs").read_text(encoding="utf-8")
 
     def body(name: str) -> str:
         return text.split(f"async function {name}(", 1)[1].split("\n}\n", 1)[0]

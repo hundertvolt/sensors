@@ -1,6 +1,6 @@
-"""The real device set, discovered from devices/*.toml rather than listed, and the queries the tests share over
-it: DEVICE_NAMES, device_toml(), devices_with(driver) and bench_device(), so a seventh device joins every suite with
-no edit there, and a test needing a device with some property selects it from the TOMLs, never by name."""
+"""The real device set, discovered from devices/*.toml rather than listed (scripts/_devices.sh states the same rule for the
+shell runners), and the queries the tests share over it: DEVICE_NAMES, device_toml(), devices_with(driver) and bench_device(),
+so a seventh device joins every suite with no edit there, and a test needing a device with some property selects it from the TOMLs, never by name."""
 
 from pathlib import Path
 

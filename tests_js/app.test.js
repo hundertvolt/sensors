@@ -1,3 +1,5 @@
+// Tests js/app.js's startApp(), the prototype entry: picking the device from ?device= and the manifest, the landing
+// section, the URL hash following the section, the stop handle, and a banner for each failed or torn load.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApp } from "../js/app.js";
 import { buildElements } from "./_dom_helpers.js";

@@ -328,9 +328,8 @@ jobs:
         run: node scripts/cross_browser_smoke.mjs
 
   lint-and-typecheck:
-    # ruff names every scope; mypy names only the main pass's, since scripts/typecheck.sh always
-    # runs the twin and host passes too (B.15). Explicit paths narrow only this CI call; a local run
-    # stays full-scope.
+    # ruff names every scope; mypy names exactly the main pass's files, and
+    # scripts/typecheck.sh always runs the twin and host passes too (B.15).
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -355,10 +354,12 @@ jobs:
               sleep $((attempt * 10))
           done
           uv sync
-      - name: Ruff (src/, tests/, digital_twin/, tests_hardware/, and the whole host build chain)
-        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts
-      - name: Mypy (src/, tests/, digital_twin/, tests_hardware/device_scripts/, and the whole host build chain)
-        run: uv run scripts/typecheck.sh src tests tests_hardware/device_scripts
+      - name: Generate the device modules (ruff checks them)
+        run: uv run scripts/_generate_sensortask_modules.py
+      - name: Ruff (every scope, the generated device modules included)
+        run: uv run ruff check src tests digital_twin tests_hardware buildgen scripts toolchain tests_scripts build/generated_src
+      - name: Mypy (all three passes; typecheck.sh)
+        run: uv run scripts/typecheck.sh src tests digital_twin tests_hardware/device_scripts build/generated_src
 
   shellcheck:
     # Its own stage so the tool has its own check run. scripts/ only: the legacy tree is never in
@@ -678,6 +679,8 @@ jobs:
       # "arm-none-eabi-gcc not found".
       - name: Install ARM toolchain apt packages
         run: |
+          source scripts/_require_python.sh
+          require_python311
           python3 - <<'PYEOF'
           import sys
           from pathlib import Path

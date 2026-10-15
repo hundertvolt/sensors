@@ -155,8 +155,8 @@ export async function getRealCurrentValues(_context, paths) {
 export async function archiveErrcount(_context, label) {
     const { "/status": status } = await getRealCurrentValues(_context, ["/status"]);
     // One run directory per test process: every device's counts of one run sit together, and the archive's keep-3
-    // pruning counts runs, never the devices of the run in progress.
-    archiveRunDir ??= execFileSync("uv", ["run", "--quiet", "scripts/_archive_evidence.py", "--runner", "live_twin", "--new-dir"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
+    // pruning counts runs, never the devices of the run in progress. A stdlib-only script: plain python3, never uv.
+    archiveRunDir ??= execFileSync("python3", ["scripts/_archive_evidence.py", "--runner", "live_twin", "--new-dir"], { cwd: REPO_ROOT, encoding: "utf8" }).trim();
     if (archiveRunDir === "") {
         throw new Error("archiveErrcount: scripts/_archive_evidence.py made no run directory");
     }

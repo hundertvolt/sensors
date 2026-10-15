@@ -20,7 +20,8 @@ from _generated_tree import devices
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json
-from _src_const import NTP_EPOCH_DELTA, py_value, src_const, src_consts
+from _src_const import NTP_EPOCH_DELTA, py_value, src_bytes, src_const, src_consts, src_float, src_int, src_strs
+from _src_schema import src_schema
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from _twin_random import FixedRandom
@@ -86,6 +87,19 @@ def test_src_const_refuses_a_name_that_is_no_const() -> None:
         raised = e.args[0]
     assert raised == "_body_as_dict is not a const() in src/asy_webserver_service.py", raised
 
+
+def test_each_typed_reader_raises_on_a_value_of_another_type() -> None:
+    ws = "src/asy_webserver_service.py"
+    for reader, name in ((src_int, "_SHUTDOWN_CMDS"), (src_float, "_SHUTDOWN_CMDS"), (src_bytes, "_PAUSE_TIME_MAX"), (src_schema, "_PAUSE_TIME_MAX"), (src_strs, "_PAUSE_TIME_MAX"), (src_schema, "_SHUTDOWN_CMDS")):
+        try:
+            reader(ws, name)
+        except TypeError as e:
+            assert name in str(e) and ws in str(e), e
+        else:
+            raise AssertionError(name + " read without a TypeError")
+    assert src_int(ws, "_PAUSE_TIME_MAX") == 3600 and src_float(ws, "_PAUSE_TIME_MAX") == 3600
+    assert src_strs(ws, "_SHUTDOWN_CMDS") == ("reboot", "bootloader", "resetconfig", "erasefram")
+    assert src_schema("src/asy_bmp3xx_driver.py", "_VAL_SAMPLE_INTERVAL") == (("SampleInterval", "int", 2, 1, 3600, None),)
 
 def test_src_consts_reads_each_file_once_and_every_src_const_evaluates() -> None:
     assert src_consts("src/asy_ntp_client.py") is src_consts("src/asy_ntp_client.py")

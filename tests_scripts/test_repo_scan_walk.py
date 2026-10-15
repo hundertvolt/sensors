@@ -13,7 +13,7 @@ _TREE = ("tests/a.py", "tests/sub/c.py", "tests/_tmp/key/b.py", "tests/_tmp/top.
 def _plant(root: Path) -> None:
     for name in _TREE:
         (root / name).parent.mkdir(parents=True, exist_ok=True)
-        (root / name).write_text("x = 1\n")
+        (root / name).write_text("x = 1\n", encoding="utf-8")
 
 
 def test_the_walk_lists_no_directory_under_concurrent_scratch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

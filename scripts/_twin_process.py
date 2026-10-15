@@ -15,13 +15,14 @@ from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from typing import IO, NamedTuple, TypeAlias
 
+import tomllib
+
 JSONValue: TypeAlias = bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"] | None
 JSONObject: TypeAlias = dict[str, JSONValue]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RUNNER = "digital_twin/run_generic_integration.py"
-# build/generated_src first: every device module and wiring plan is generated there (Part L.2).
-TWIN_MICROPYPATH = "build/generated_src:src:digital_twin:ext:frozen_modules:.frozen"
+LAYOUT_FILE = REPO_ROOT / "scripts" / "micropypath.toml"
 # The twin gate's copy of the four-gate marker set (CLAUDE.md), kept equal by test_memory_error_gate_agreement.py.
 MEMORY_ERROR_MARKERS = ("MemoryError", "memory allocation failed")
 
@@ -34,11 +35,25 @@ _EXIT_NAMES = {0: "a clean exit", EXIT_SIMULATED_RESET: "a simulated reset", EXI
 
 # @tunable l2.kill_reap_timeout_s = 5.0
 _KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
+# A feed gap above this share of the armed watchdog timeout is a near reset; a run that starves it on purpose skips the check.
+# @tunable l2.feed_gap_share_max = 0.75
+FEED_GAP_SHARE_MAX = 0.75
 # @tunable l2.serving_poll_s = 0.25
 _SERVING_POLL_S = 0.25
 # @tunable l2.serving_probe_timeout_s = 1.0
 _SERVING_PROBE_TIMEOUT_S = 1.0
 _LOG_TAIL_LINES = 20
+
+
+def _twin_layout() -> str:
+    # The twin layout of the one MICROPYPATH definition: build/generated_src first, where every device module is generated.
+    value = tomllib.loads(LAYOUT_FILE.read_text(encoding="utf-8")).get("twin")
+    if isinstance(value, str):
+        return value
+    raise ValueError(f'{LAYOUT_FILE} has no twin = "..." layout')
+
+
+TWIN_MICROPYPATH = _twin_layout()
 
 
 @dataclass(frozen=True)
@@ -83,13 +98,15 @@ class UartCounts(NamedTuple):
 
 @dataclass(frozen=True)
 class ShutdownLine:
-    # The runner's one shutdown line, field by field.
+    # The runner's one shutdown line, field by field, and the largest free heap block of the GC summary printed before it.
     would_have_triggered_count: int
     feed_count: int
     largest_feed_gap_ms: int
+    wdt_timeout_ms: int
     mem_backup_r0: tuple[int, ...]
     public_destinations_refused: int
     flash_stall_longest_ms: int
+    largest_free_block_bytes: int
     uart: dict[str, UartCounts] = field(default_factory=dict)
 
 
@@ -101,7 +118,8 @@ class ResetLine(NamedTuple):
 
 
 _SHUTDOWN_RE = re.compile(r"\] shutdown: (.*)$")
-_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "public_destinations_refused", "flash_stall_longest_ms")
+_SHUTDOWN_INTS = ("would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes")
+_MAX_FREE_RE = re.compile(r"\bmax free sz: (\d+)\s*$")  # micropython.mem_info()'s GC summary, in heap blocks (py/gc.c)
 _UART_RE = re.compile(r"^(\w+):transfers=(-?\d+),failures=(-?\d+),overruns=(-?\d+)$")
 _MEM_BACKUP_WORDS = 4
 _RESET_RE = re.compile(r"\] machine reset: kind=(reset|bootloader) reset_count=(\d+) bootloader_count=(\d+)\s*$")
@@ -129,12 +147,12 @@ def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
     fields: dict[str, str] = {}
     proc_dir = Path(f"/proc/{pid}")
     with contextlib.suppress(OSError):
-        for line in (proc_dir / "status").read_text().splitlines():
+        for line in (proc_dir / "status").read_text(encoding="utf-8").splitlines():
             if line.startswith(("State:", "VmRSS:")):
                 key, _, value = line.partition(":")
                 fields[key] = value.strip()
     with contextlib.suppress(OSError):
-        fields["wchan"] = (proc_dir / "wchan").read_text().strip() or "(running)"
+        fields["wchan"] = (proc_dir / "wchan").read_text(encoding="utf-8").strip() or "(running)"
     return fields
 
 
@@ -183,6 +201,13 @@ def exit_reason(code: int, *, killed: bool = False) -> str:
     return _EXIT_NAMES.get(code, f"exit code {code}")
 
 
+def feed_gap_verdict(line: ShutdownLine) -> str | None:
+    # None while the largest gap between two feeds stays within FEED_GAP_SHARE_MAX of the run's armed timeout.
+    if line.largest_feed_gap_ms <= FEED_GAP_SHARE_MAX * line.wdt_timeout_ms:
+        return None
+    return f"the largest feed gap {line.largest_feed_gap_ms} ms is above {FEED_GAP_SHARE_MAX:.0%} of the {line.wdt_timeout_ms} ms watchdog timeout - a supervisor pass came near a reset"
+
+
 def http(method: str, host: str, port: int, path: str, body: JSONValue = None, timeout_s: float = 5.0) -> tuple[int, JSONValue]:
     # The parsed JSON body, keyed off the real Content-Type: "/" serves the gzip site, which parses to None.
     conn = HTTPConnection(host, port, timeout=timeout_s)
@@ -209,7 +234,7 @@ def log_from(log_path: Path, offset: int) -> str:
 def log_memory_verdict(log_path: Path) -> str | None:
     # None for a readable, non-empty log carrying neither marker; otherwise why it gives no clean verdict.
     try:
-        text = log_path.read_text(errors="replace")
+        text = log_path.read_text(errors="replace", encoding="utf-8")
     except OSError as exc:
         return f"log {log_path} missing or unreadable, no memory verdict ({exc!r})"
     if not text:
@@ -236,12 +261,17 @@ def parse_machine_reset_line(log_text: str) -> ResetLine | None:
 
 def parse_shutdown_line(log_text: str) -> ShutdownLine | None:
     # None when no shutdown line was printed (a crash before the runner's finally); a malformed one raises.
-    lines = [m.group(1) for m in map(_SHUTDOWN_RE.search, log_text.splitlines()) if m is not None]
-    if not lines:
+    log_lines = log_text.splitlines()
+    found = [(index, m.group(1)) for index, m in enumerate(map(_SHUTDOWN_RE.search, log_lines)) if m is not None]
+    if not found:
         return None
-    if len(lines) > 1:
-        raise ValueError(f"the log carries {len(lines)} shutdown lines, the runner prints one")
-    text = lines[0].replace("mem_backup: r0=", "mem_backup_r0=")
+    if len(found) > 1:
+        raise ValueError(f"the log carries {len(found)} shutdown lines, the runner prints one")
+    index, text = found[0]
+    max_free = _MAX_FREE_RE.search(log_lines[index - 1]) if index > 0 else None
+    if max_free is None:
+        raise ValueError("the shutdown line follows no GC summary ending in max free sz: <blocks> - the runner prints micropython.mem_info() right before it")
+    text = text.replace("mem_backup: r0=", "mem_backup_r0=")
     fields: dict[str, str] = {}
     uart_tokens: list[str] = []
     for token in text.split():
@@ -264,7 +294,8 @@ def parse_shutdown_line(log_text: str) -> ShutdownLine | None:
     ints = {name: _int_field(fields, name) for name in _SHUTDOWN_INTS}
     return ShutdownLine(
         would_have_triggered_count=ints["would_have_triggered_count"], feed_count=ints["feed_count"], largest_feed_gap_ms=ints["largest_feed_gap_ms"],
-        mem_backup_r0=r0, public_destinations_refused=ints["public_destinations_refused"], flash_stall_longest_ms=ints["flash_stall_longest_ms"],
+        wdt_timeout_ms=ints["wdt_timeout_ms"], mem_backup_r0=r0, public_destinations_refused=ints["public_destinations_refused"],
+        flash_stall_longest_ms=ints["flash_stall_longest_ms"], largest_free_block_bytes=int(max_free.group(1)) * ints["gc_block_bytes"],
         uart=_uart_counts(uart_tokens),
     )
 
@@ -272,7 +303,7 @@ def parse_shutdown_line(log_text: str) -> ShutdownLine | None:
 def read_log(log_path: Path) -> str:
     # "" for a log that does not exist; log_memory_verdict() is the fail-closed reader.
     try:
-        return log_path.read_text(errors="replace")
+        return log_path.read_text(errors="replace", encoding="utf-8")
     except FileNotFoundError:
         return ""
 
@@ -315,7 +346,7 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
         "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold), *args,
     ]
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
-    log_file = log_path.open("w")  # closed by shutdown()/wait_exit(), which end the process first
+    log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)  # noqa: S603 - argv from repo paths and the caller's own flags, no shell
     return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
 

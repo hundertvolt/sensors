@@ -27,7 +27,7 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
-from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import device_with, devices_with_shared_bus, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -90,7 +90,7 @@ _SEED = bytes(range(5, 45))  # 40 bytes: over rp2's 32-byte DMA threshold, the o
 _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails rather than recovering inside the driver
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
-_ERASE_UNIT: int = src_const("src/asy_fram_manager.py", "_ERASE_UNIT")  # type: ignore[assignment]  # src_const() answers object
+_ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
 _GENERAL_CALL_ENTRY = ("writeto", 0x00, b"\x06", True)
 # Which get_data() field, per driver, proves that driver produced a real reading under load - the twin tier's much

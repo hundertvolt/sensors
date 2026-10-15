@@ -1,0 +1,26 @@
+ M host_typecheck.ini
+ M pyproject.toml
+ M scripts/_digital_twin_ci_suite.py
+ M tests/_bus_hazard_catalog.py
+ M tests/_sensortask_scenarios.py
+ M tests/_src_const.py
+ M tests/test_asy_bmp3xx_driver.py
+ M tests/test_asy_ntp_client.py
+ M tests/test_asy_sgp40_driver.py
+ M tests/test_asy_system_service.py
+ M tests/test_asy_webserver_service.py
+ M tests/test_asy_wifi_service.py
+ M tests/test_digital_twin_machine_uart.py
+ M tests/test_digital_twin_network_neopixel.py
+ M tests/test_setter_microdot_integration.py
+ M tests/test_shared_helpers.py
+ M tests_hardware/harness.py
+ M tests_scripts/_citation_allowlist.txt
+ M tests_scripts/_decision_vocab_allowlist.txt
+ M tests_scripts/conftest.py
+ M tests_scripts/test_buildgen_source_ast.py
+ M tests_scripts/test_const_mirrors.py
+ M tests_scripts/test_no_variant_literals.py
+ M tests_scripts/test_port_lock.py
+ M tests_scripts/test_unix_port_sh.py
+?? tests/_src_schema.py

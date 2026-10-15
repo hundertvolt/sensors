@@ -45,7 +45,7 @@ def _crc_problems(label: str, source: str) -> "list[str]":
 
 
 def _src_sources(repo_root: Path) -> "list[tuple[str, str]]":
-    return [(f"src/{p.name}", p.read_text()) for p in sorted((repo_root / "src").glob("*.py"))]
+    return [(f"src/{p.name}", p.read_text(encoding="utf-8")) for p in sorted((repo_root / "src").glob("*.py"))]
 
 
 def test_every_fram_chunk_in_src_is_created_with_a_real_crc(repo_root: Path) -> None:

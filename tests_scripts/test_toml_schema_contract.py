@@ -62,7 +62,7 @@ def _build_rows(src_dir: Path) -> "set[_Row]":
 
 @pytest.fixture(scope="module")
 def spec_text(repo_root: Path) -> str:
-    return (repo_root / "SPECIFICATION.md").read_text()
+    return (repo_root / "SPECIFICATION.md").read_text(encoding="utf-8")
 
 
 def test_the_l3_key_table_equals_the_builds_tables(spec_text: str, repo_root: Path) -> None:

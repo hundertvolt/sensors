@@ -7,7 +7,6 @@ import argparse
 import ipaddress
 import socket
 import struct
-import sys
 
 # RFC 5737's three TEST-NET blocks: the only sources this tool will forge.
 _DOCUMENTATION_NETWORKS = (ipaddress.ip_network("192.0.2.0/24"), ipaddress.ip_network("198.51.100.0/24"), ipaddress.ip_network("203.0.113.0/24"))
@@ -61,4 +60,4 @@ def main(argv: "list[str] | None" = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

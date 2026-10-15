@@ -32,6 +32,12 @@ class _Stub:
         self.records.append(purpose)
 
 
+class _InterruptingStub(_Stub):
+    # main() is interrupted by an interrupt the test did not plant: the per-file timeout's SIGINT landing in the entry.
+    async def main(self, *, watchdog: object, **_kw: object) -> None:
+        raise KeyboardInterrupt
+
+
 class _MicropythonStub:
     # The entry's `micropython`: records the emergency buffer it asks for.
     def __init__(self) -> None:
@@ -59,6 +65,8 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     try:
         exec(code, {"__name__": "__main__", "print": lambda *args: printed.append(args)})  # noqa: S102 - the generated entry itself
     except BaseException as e:  # what escapes the entry is the observation
+        if isinstance(e, KeyboardInterrupt) and e is not stub._raises:
+            raise  # an interrupt the stub did not plant is the per-file timeout's: it ends the run
         raised = e
     finally:
         asyncio.new_event_loop = real_new_loop
@@ -125,6 +133,17 @@ def test_the_no_autostart_entry_prints_the_start_line_and_starts_nothing() -> No
         assert printed == [(f"from machine import WDT; asyncio.run(main(watchdog=WDT(timeout={timeout})))",)], (device, printed)
         assert stub.calls == [] and stub.records == [] and loops == [], device
         assert micro.buffers == [100], device
+
+
+def test_an_interrupt_the_stub_did_not_plant_ends_the_run() -> None:
+    # Only the stub's own raise is the observation; any other interrupt is the per-file timeout's and ends the file.
+    require_fresh()
+    device = devices()[0]
+    try:
+        observed = _boot(device, "sensortask_" + device + "_main.py", _InterruptingStub())
+    except KeyboardInterrupt:
+        return
+    raise AssertionError(f"_boot() answered an interrupt it did not plant: {observed[3]!r}")
 
 
 if __name__ == "__main__":

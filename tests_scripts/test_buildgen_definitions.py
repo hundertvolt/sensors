@@ -33,8 +33,8 @@ from buildgen.version import WEBSITE_VERSION
 from buildgen.web_tag import _MAX_DECIMALS, SELF_GROUP, WebFieldTag, parse_web_tags, resolution_decimals
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text())
-_SHAPE_CASES = json.loads((_REPO_ROOT / "tests_scripts" / "definitions_shape_cases.json").read_text())
+_CATALOG = json.loads((_REPO_ROOT / "buildgen" / "error_catalog.json").read_text(encoding="utf-8"))
+_SHAPE_CASES = json.loads((_REPO_ROOT / "tests_scripts" / "definitions_shape_cases.json").read_text(encoding="utf-8"))
 # The files every device's mandatory networking/system groups are tagged in; instance files come from
 # the model (each instance's driver_info.source_path).
 _MANDATORY_TAG_FILES = ("asy_wifi_service.py", "asy_ntp_client.py", "asy_system_service.py")
@@ -1420,7 +1420,7 @@ def test_cli_output_equals_the_graph_ordered_build(repo_root: Path, src_dir: Pat
     assert main([str(toml_path), "--out", str(out_file)]) == 0
     model = build_model(toml_path, src_dir)
     build_construction_order(model)
-    assert json.loads(out_file.read_text()) == json.loads(json.dumps(generate_definitions(model, src_dir)))
+    assert json.loads(out_file.read_text(encoding="utf-8")) == json.loads(json.dumps(generate_definitions(model, src_dir)))
 
 
 def test_definitions_refuse_a_model_that_skipped_the_construction_order(src_dir: Path) -> None:

@@ -29,6 +29,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
 from buildgen.validate import device_max_connections, module_float_const, module_int_const
+from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 
 if TYPE_CHECKING:
@@ -42,6 +43,7 @@ from scripts._twin_process import (
     TwinRun,
     errcount_table,
     exit_reason,
+    feed_gap_verdict,
     log_from,
     log_memory_verdict,
     parse_machine_reset_line,
@@ -62,6 +64,7 @@ SITES_DIR = REPO_ROOT / "build" / "generated_html"
 HOST = "127.0.0.1"
 _BAND_OWNER = "_digital_twin_scenarios"  # this harness's row of the port-band table (tests/_port_bands.py), read as data
 _DNS_PORT = 53
+_LOCK_RUNNER = "scripts/_digital_twin_scenarios.py"
 _USAGE_EXIT = 2
 _EXIT_FAIL = 1
 _WEBSERVER = "asy_webserver_service.py"
@@ -106,6 +109,10 @@ _UART_LOAD_S = 20.0  # the concurrent-load window
 # @tunable l2.scenario_uart_load_faults = 3
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
+# The silicon floor for the largest block after the full system build (heap_headroom_after_full_system_build.py's
+# factor times heap_bounds.py's worst-case allocation), read as data: the load must not fragment the heap below it.
+_HEADROOM_SCRIPT = ("tests_hardware/device_scripts", "heap_headroom_after_full_system_build.py", "_WORST_CASE_FACTOR")
+_WORST_CASE = ("tests_hardware", "heap_bounds.py", "WORST_CASE_ALLOCATION")
 # @tunable web.connections_per_page_load = 2
 _CONNECTIONS_PER_PAGE_LOAD = 2  # the real post-inlining footprint of one page load (Part H.7)
 _WIFI_SCRIPTED_FAILURES = 5  # asy_wifi_service.py's conn_fail_to_hotspot
@@ -181,6 +188,7 @@ class Twin:
         self.run = run
         self.port = port
         self.exit_claimed = False  # a scenario that commands the exit checks it itself
+        self.starves_watchdog = False  # a scenario that stops the feed itself judges the watchdog's outcome
 
     def conn_slots(self, timeout_s: float = _DRAIN_WAIT_S) -> "tuple[int, int]":
         # The newest CONN_SLOTS line printed from now on: (open connections, listen backlog).
@@ -271,6 +279,9 @@ class Context:
         line = parse_shutdown_line(read_log(twin.run.log_path))
         if line is not None and line.public_destinations_refused != 0:
             self.failures.append(f"twin {self.boots} refused {line.public_destinations_refused} public destination(s)")
+        gap = feed_gap_verdict(line) if line is not None and not twin.starves_watchdog else None
+        if gap is not None:
+            self.failures.append(f"twin {self.boots}: {gap}")
 
     @property
     def drivers(self) -> "set[str]":
@@ -348,7 +359,7 @@ class SharedBoot:
 
 def _get_routes() -> "tuple[str, ...]":
     # The GET paths of the service's one route table, ROUTES, read by ast: a route it gains is driven with no edit here.
-    tree = ast.parse((SRC_DIR / _WEBSERVER).read_text())
+    tree = ast.parse((SRC_DIR / _WEBSERVER).read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "ROUTES" and isinstance(node.value, ast.Tuple):
             routes = [elt.elts[1].value for elt in node.value.elts if isinstance(elt, ast.Tuple) and isinstance(elt.elts[0], ast.Constant) and elt.elts[0].value == "GET" and isinstance(elt.elts[1], ast.Constant)]
@@ -380,7 +391,7 @@ def _accept_queue(port: int) -> "int | None":
     # None when nothing listens there.
     for table in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
         with contextlib.suppress(FileNotFoundError):
-            for row in table.read_text().splitlines()[1:]:
+            for row in table.read_text(encoding="utf-8").splitlines()[1:]:
                 fields = row.split()
                 if fields[3] == _TCP_LISTEN and int(fields[1].rsplit(":", 1)[1], 16) == port:
                     return int(fields[4].split(":")[1], 16)
@@ -485,7 +496,7 @@ def _backlog_covers_the_ceiling(ctx: Context) -> None:
 def _band(device: str) -> "tuple[int, int]":
     # The device's block of this harness's port band: its index in the generated devices times an even share,
     # the split tests/_port_bands.py's band_for_device() makes (pinned equal by an L0 test).
-    tree = ast.parse((REPO_ROOT / "tests" / "_port_bands.py").read_text())
+    tree = ast.parse((REPO_ROOT / "tests" / "_port_bands.py").read_text(encoding="utf-8"))
     bands = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "BANDS")
     first, last, _protocol = bands[_BAND_OWNER]
     devices = generated_devices()
@@ -599,7 +610,7 @@ def _counter(entry: JSONValue) -> int:
 
 
 def _definitions_text(device: str) -> str:
-    return (GENERATED_SRC_DIR / "definitions" / f"{device}.json").read_text()
+    return (GENERATED_SRC_DIR / "definitions" / f"{device}.json").read_text(encoding="utf-8")
 
 
 def _device(text: str) -> str:
@@ -846,9 +857,11 @@ def _hung_shutdown_steps(ctx: Context) -> None:
         if step == "S5erase" and "fram" not in ctx.drivers:
             continue
         with ctx.boot("--test-shutdown-hang", step) as twin:
+            twin.starves_watchdog = True
             _expect(twin.wait_line(f"HANG {step}", 0, _DRAIN_WAIT_S) is not None, f"{step}: the runner never armed the hang")
-            if step == "S1":  # hung only once the supervisor's next pass meets the ended task, which no line shows
-                time.sleep(_src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+            if step == "S1":  # hung once the supervisor's next pass meets the ended task, which the runner's HUNG line marks
+                met = twin.wait_line("HUNG S1", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+                _expect(met is not None, "S1: the supervisor's next pass never met the ended task")
             if cmd == "erasefram":
                 _save_fram_evidence(ctx, twin, f"hang_{step}")
             since = twin.mark()
@@ -923,6 +936,12 @@ def _key_tree(value: JSONValue) -> JSONValue:
     if isinstance(value, list):
         return [_key_tree(item) for item in value]
     return None
+
+
+def _link_roles(device: str) -> "dict[str, str]":
+    # Each uart_link instance's role by its key, as its TOML states it.
+    model = load_device(REPO_ROOT / "devices" / f"{device}.toml")
+    return {instance_label(spec.key): str(spec.fields.get("role", "")) for spec in model.instances.values() if spec.driver == "uart_link"}
 
 
 @scenario("get_measurements_and_sensors_are_reachable_and_shaped_correctly", family="sensortask_integration", shared=True)
@@ -1103,7 +1122,7 @@ def _put_round_trips(ctx: Context) -> None:
         answer = _request(twin.port, "PUT", "/notification", {"WarnCO2": _TEST_WARN_CO2})
         _expect(answer.status == HTTPStatus.OK and _object(answer).get("result") == {"WarnCO2": "Valid"}, f"PUT answered {answer.status} {answer.body!r}")
         _expect(_object(_request(twin.port, "GET", "/notification")).get("WarnCO2") == _TEST_WARN_CO2, "GET /notification does not read the write back")
-        stored = json.loads((state_paths(twin.run.state_dir).config_dir / "config_NOTIFY.cfg").read_text())
+        stored = json.loads((state_paths(twin.run.state_dir).config_dir / "config_NOTIFY.cfg").read_text(encoding="utf-8"))
         _expect(stored.get("WarnCO2") == _TEST_WARN_CO2, f"config_NOTIFY.cfg holds {stored!r}")
 
 
@@ -1198,7 +1217,7 @@ def _reset_errors_not_undone(ctx: Context) -> None:
 
 def _responder_host() -> str:
     # The NTP host the runner writes for its local responder (digital_twin/unixport/_offline_ntp_config.py), read by ast.
-    tree = ast.parse((REPO_ROOT / "digital_twin" / "unixport" / "_offline_ntp_config.py").read_text())
+    tree = ast.parse((REPO_ROOT / "digital_twin" / "unixport" / "_offline_ntp_config.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "_RESPONDER_HOST":
             return str(ast.literal_eval(node.value))
@@ -1231,6 +1250,43 @@ def _run_one(item: Scenario, ctx: Context, *, group_ends: bool = True) -> Outcom
     return Outcome(item.name, "passed", f"{elapsed:.1f}s")
 
 
+def _run_scenarios(args: argparse.Namespace, summary: Summary) -> int:
+    # The selected scenarios in run order, each outcome recorded; the summary block printed on every exit.
+    logs_dir = args.logs_dir or REPO_ROOT / "digital_twin_ci_logs" / "scenarios" / args.device
+    first, last = _band(args.device)
+    ports = iter(range(first, last + 1))
+    outcomes: list[Outcome] = []
+    exit_code = _EXIT_FAIL
+    shared: SharedBoot | None = None
+    try:
+        ordered = run_order(select(args.device, args.only, exclusive_port_53=args.exclusive_port_53))
+        group_ends = {group[-1] for group in shared_groups(ordered)}
+        for item, why_not in ordered:
+            if why_not is not None:
+                kind, reason = why_not.split(": ", 1)
+                outcomes.append(Outcome(item.name, kind, reason))
+                continue
+            scenario_dir = _fresh_dir(logs_dir / item.name)
+            ctx = Context(args.device, args.micropython_bin, args.gc_threshold, scenario_dir, _instances(args.device), ports, _hostname(args.device))
+            if item.shared:
+                shared = shared or SharedBoot(replace(ctx, logs_dir=_fresh_dir(logs_dir / _SHARED_DIR), failures=[]))
+                ctx.shared = shared
+            print(f"== {item.name}: {item.goal}", flush=True)
+            outcome = _run_one(item, ctx, group_ends=item.name in group_ends)
+            print(f"{outcome.outcome.upper()}: {item.name} - {outcome.reason}", flush=True)
+            outcomes.append(outcome)
+        for outcome in outcomes:
+            summary.add(outcome.outcome, outcome.name, outcome.reason if outcome.outcome != "passed" else "")
+        if args.run_record is not None:
+            args.run_record.write_text(json.dumps([o._asdict() for o in outcomes], indent=2), encoding="utf-8")
+        exit_code = _EXIT_FAIL if any(o.outcome == "failed" for o in outcomes) or not any(o.outcome == "passed" for o in outcomes) else 0
+    finally:
+        if shared is not None:
+            shared.stack.close()  # a run cut short leaves no twin behind
+        exit_code = summary.print(exit_code)
+    return exit_code
+
+
 def _run_selection(text: str) -> frozenset[str]:
     names = frozenset(part.strip() for part in text.split(",") if part.strip())
     unknown = sorted(names - set(SCENARIOS))
@@ -1243,7 +1299,7 @@ def _save_fram_evidence(ctx: Context, twin: Twin, label: str) -> None:
     # Before any erasefram: the errcount table over REST and a copy of the FRAM state file (CLAUDE.md's FRAM-log rule).
     evidence = ctx.logs_dir / f"fram_evidence_{label}"
     evidence.mkdir(parents=True, exist_ok=True)
-    (evidence / "errcount.json").write_text(json.dumps(_status(twin.port).get("errcount"), indent=2))
+    (evidence / "errcount.json").write_text(json.dumps(_status(twin.port).get("errcount"), indent=2), encoding="utf-8")
     fram = state_paths(twin.run.state_dir).fram
     if fram.exists():
         shutil.copy2(fram, evidence / fram.name)
@@ -1299,6 +1355,7 @@ def _site_definitions(ctx: Context) -> None:
         _expect(inlined == _definitions_text(ctx.device).replace("<", "\\u003c"), f"the inlined definitions are not {ctx.device}'s own")
 
 
+
 @scenario("a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website", family="real_website_integration", needs_site=True, shared=True)
 def _site_full_ceiling(ctx: Context) -> None:
     """The ceiling's worth of real page loads at once: every tab gets the whole page and bundle, identical for all."""
@@ -1315,7 +1372,6 @@ def _site_full_ceiling(ctx: Context) -> None:
         sizes = _together(tabs, tab)
         _expect(all(isinstance(s, tuple) and s[0] > _SITE_MIN_BYTES and s[1] > _SITE_MIN_BYTES for s in sizes), f"tab sizes {_statuses(sizes)}")
         _expect(len(set(sizes)) == 1, f"the tabs got different content: {sizes}")
-
 
 
 @scenario("real_website_put_to_unmatched_path_in_hotspot_mode_still_405", family="real_website_integration", needs_site=True, shared=True)
@@ -1359,6 +1415,7 @@ def _site_hotspot_toggle(ctx: Context) -> None:
         _expect(_hotspot(twin), "five failed station attempts never brought the hotspot back")
 
 
+
 @scenario("real_website_production_js_entry_is_served_not_the_prototype", family="real_website_integration", needs_site=True, shared=True)
 def _site_js(ctx: Context) -> None:
     """The served app bundle is the production entry, not the mock prototype."""
@@ -1374,7 +1431,6 @@ def _site_never_shadows(ctx: Context) -> None:
     with ctx.boot() as twin:
         blocks = _object(_request(twin.port, "GET", "/measurements"))
         _expect(set(blocks) == ctx.sensors, f"/measurements carries {sorted(blocks)}, the device's sensors are {sorted(ctx.sensors)}")
-
 
 
 @scenario("real_website_root_serves_the_actual_production_index_html", family="real_website_integration", needs_site=True, shared=True)
@@ -1465,7 +1521,6 @@ def _still_serving(port: int, timeout_s: float = _STILL_SERVING_S) -> None:
         time.sleep(0.1)
 
 
-
 def _system_cmd(port: int, cmd: str) -> JSONValue:
     return _result(_request(port, "PUT", "/system", {"SystemCmd": cmd}), "SystemCmd")
 
@@ -1502,57 +1557,88 @@ def _two_at_once(ctx: Context, first: str, second: str, label: str) -> None:
         _exits_with(twin, 4 if winner == "bootloader" else 3, f"{first} and {second} at once ({winner} won)")
 
 
-@scenario("uart_ring_under_concurrent_load", family="uart_load", drivers=("uart_link",))
-def _uart_ring_under_load(ctx: Context) -> None:
-    """Both links exercise through a ceiling-filling hammer, refusal logging, FRAM-log writes and config flushes: no overrun, no failed transfer, every PUT answered."""
+def _uart_load(ctx: Context, twin: Twin) -> None:
+    # A hammer one past the ceiling on /status and stored config PUTs every half second, each a flash write, for the window.
+    stop = threading.Event()
+    puts: list[object] = []
+
+    def hammer(_i: int) -> int:
+        served = 0
+        while not stop.is_set():
+            served += _status_of(twin.port, "/status") == HTTPStatus.OK
+        return served
+
+    def flusher(_i: int) -> int:
+        index = 0
+        while not stop.is_set():  # each a stored change, so each a config flush and its flash stall
+            try:
+                puts.append(_config_write(twin.port, index % 30)[1])
+            except RefusedError:  # the hammer holds the ceiling: a clean refusal, sent again
+                time.sleep(_LINE_POLL_S)
+                continue
+            index += 1
+            time.sleep(0.5)
+        return index
+
+    hammers = ctx.ceiling() + 1
+    results: list[object] = [None] * (hammers + 1)
+    threads = [threading.Thread(target=_record_into, args=(results, i, hammer if i < hammers else flusher)) for i in range(hammers + 1)]
+    for thread in threads:
+        thread.start()
+    time.sleep(_UART_LOAD_S)
+    stop.set()
+    for thread in threads:
+        thread.join(timeout=_REQUEST_TIMEOUT_S * 2)
+    _expect(all(isinstance(r, int) for r in results) and sum(int(str(r)) for r in results[:hammers]) > 0, f"a load thread raised or never ran: {_statuses(results)}")
+    _expect(bool(puts) and all(word in ("Valid", "Unchanged") for word in puts), f"config PUTs under load answered {puts!r}")
+
+
+def _uart_load_round(ctx: Context, hold: int, *, stall_max: bool) -> int:
+    # One boot under the load at one stall time; returns its longest flash stall. A typical stall never reaches the link
+    # timeout, so nothing fails, and it carries the over-cap offer; a maximum one may outlast it (counted, J.5).
     sgp40 = next((key for key, driver, _ext in ctx.instances if driver == "sgp40"), None)
     fault = ("--fault", f"{sgp40}:readfrom_into:{_UART_LOAD_FAULTS}:{_SGP40_MEASURE_RAW:04X}") if sgp40 and "fram" in ctx.drivers else ()
-    with ctx.boot(*_CONN, *fault) as twin:
-        stop = threading.Event()
-        puts: list[object] = []
-
-        def hammer(_i: int) -> int:
-            served = 0
-            while not stop.is_set():
-                served += _status_of(twin.port, "/status") == HTTPStatus.OK
-            return served
-
-        def flusher(_i: int) -> int:
-            index = 0
-            while not stop.is_set():  # each a stored change, so each a config flush and its flash stall
-                try:
-                    puts.append(_config_write(twin.port, index % 30)[1])
-                except RefusedError:  # the hammer holds the ceiling: a clean refusal, sent again
-                    time.sleep(_LINE_POLL_S)
-                    continue
-                index += 1
-                time.sleep(0.5)
-            return index
-
-        hammers = ctx.ceiling() + 1
-        results: list[object] = [None] * (hammers + 1)
-        threads = [threading.Thread(target=_record_into, args=(results, i, hammer if i < hammers else flusher)) for i in range(hammers + 1)]
-        for thread in threads:
-            thread.start()
-        time.sleep(_UART_LOAD_S)
-        stop.set()
-        for thread in threads:
-            thread.join(timeout=_REQUEST_TIMEOUT_S * 2)
-        _expect(all(isinstance(r, int) for r in results) and sum(int(str(r)) for r in results[:hammers]) > 0, f"a load thread raised or never ran: {_statuses(results)}")
-        _expect(bool(puts) and all(word in ("Valid", "Unchanged") for word in puts), f"config PUTs under load answered {puts!r}")
+    stall = "maximum" if stall_max else "typical"
+    links = {key: ext for key, driver, ext in ctx.instances if driver == "uart_link"}
+    initiators = sorted(key for key, role in _link_roles(ctx.device).items() if role == "initiator")
+    with ctx.boot(*_CONN, *fault, "--test-flash-stall-max" if stall_max else "--test-uart-over-cap") as twin:
+        _uart_load(ctx, twin)
         if fault:
-            _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, "the FRAM-log fault never logged, so no log write ran under the load")
+            _expect(_counter(_errcount(twin.port, "SGP40")) >= 1, f"{stall} stall: the FRAM-log fault never logged, so no log write ran under the load")
+        if not stall_max:
+            offers = [line.split()[1:] for line in log_from(twin.run.log_path, 0).splitlines() if line.startswith("UART_OVER_CAP ")]
+            _expect(sorted(offers) == [[key, "refused"] for key in initiators], f"the over-cap offers ended {offers}, not one refusal per initiating link {initiators}")
+            refusals = {_src_int("asy_uart_comm.py", name) for name in ("_ERR_UART_PAYLOAD_TOO_LARGE", "_ERR_UART_TRANSFER_CAP")}
+            for key in initiators:
+                entry = _errcount(twin.port, f"UART_{links[key]}")
+                history = entry.get("history")
+                logged = [item for item in (history if isinstance(history, list) else []) if isinstance(item, dict) and item.get("type") == "E" and item.get("num") in refusals]
+                _expect(len(logged) == 1, f"{key}: the refused over-cap train logged {len(logged)} time(s), not once ({entry!r})")
     line = parse_shutdown_line(read_log(twin.run.log_path))
     if line is None:
-        raise AssertionError("the twin printed no shutdown line")
-    links = {key for key, driver, _ext in ctx.instances if driver == "uart_link"}
-    _expect(set(line.uart) == links, f"the shutdown line names links {sorted(line.uart)}, the device wires {sorted(links)}")
-    hold = _src_int("asy_uart_comm.py", "_FLASH_HOLD_MAX_MS")
-    _expect(0 < line.flash_stall_longest_ms <= hold, f"the longest flash stall {line.flash_stall_longest_ms} ms is outside (0, {hold}]")
+        raise AssertionError(f"{stall} stall: the twin printed no shutdown line")
+    _expect(set(line.uart) == set(links), f"the shutdown line names links {sorted(line.uart)}, the device wires {sorted(links)}")
+    _expect(0 < line.flash_stall_longest_ms <= hold, f"{stall} stall: the longest flash stall {line.flash_stall_longest_ms} ms is outside (0, {hold}]")
     for key, counts in line.uart.items():
-        _expect(counts.rx_laps_and_errors == 0, f"{key}: {counts.rx_laps_and_errors} ring laps or receive errors under load")
-        _expect(counts.failures == 0, f"{key}: {counts.failures} failed transfer(s) for stalls shorter than the link timeout")
-    _expect(max(c.transfers for c in line.uart.values()) > 0, f"no link exercised under load: {line.uart}")
+        _expect(counts.rx_laps_and_errors == 0, f"{stall} stall, {key}: {counts.rx_laps_and_errors} ring laps or receive errors under load")
+        _expect(stall_max or counts.failures == 0, f"{key}: {counts.failures} failed transfer(s) for stalls shorter than the link timeout")
+    _expect(max(c.transfers for c in line.uart.values()) > 0, f"{stall} stall: no link exercised under load: {line.uart}")
+    floor = module_int_const(REPO_ROOT / _HEADROOM_SCRIPT[0], *_HEADROOM_SCRIPT[1:]) * module_int_const(REPO_ROOT / _WORST_CASE[0], *_WORST_CASE[1:])
+    # The floor is a layout claim, which the threshold stage carries (SPECIFICATION.md I.4(f)): at -1 the reactive collect
+    # scatters the run's survivors over the twin's whole heap (11,872-30,080 B largest of 870 KB free, 752 KB at 32768), so
+    # that stage prints the block and asserts nothing on it (agent, 2026-10-15).
+    print(f"{stall} stall: the largest free block after the load is {line.largest_free_block_bytes} B (floor {floor} B at the threshold stage)")
+    _expect(ctx.gc_threshold == -1 or line.largest_free_block_bytes >= floor, f"{stall} stall: the largest free block {line.largest_free_block_bytes} B after the load is below the {floor} B floor")
+    return line.flash_stall_longest_ms
+
+
+@scenario("uart_ring_under_concurrent_load", family="uart_load", drivers=("uart_link",))
+def _uart_ring_under_load(ctx: Context) -> None:
+    """Both links exercise through a ceiling hammer, FRAM-log writes and config flushes at the typical then the maximum flash stall: no overrun, a train past the cap refused once, the heap unfragmented."""
+    hold = _src_int("asy_uart_comm.py", "_FLASH_HOLD_MAX_MS")
+    typical = _uart_load_round(ctx, hold, stall_max=False)
+    longest = _uart_load_round(ctx, hold, stall_max=True)
+    _expect(longest > typical, f"the maximum stall's longest flush {longest} ms is no longer than the typical {typical} ms: the flag did not reach the stall")
 
 
 def _wait_reading(port: int, name: str, timeout_s: float = _SERVING_TIMEOUT_S) -> bool:
@@ -1566,51 +1652,26 @@ def _wait_reading(port: int, name: str, timeout_s: float = _SERVING_TIMEOUT_S) -
     return False
 
 
-def generated_devices() -> "list[str]":
-    # Every device buildgen generated a wiring plan for, by name.
-    prefix, suffix = "sensortask_", "_wiring_plan.json"
-    return sorted(p.name[len(prefix) : -len(suffix)] for p in GENERATED_SRC_DIR.glob(f"{prefix}*{suffix}"))
-
-
 def main(argv: "list[str] | None" = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.exclusive_port_53 and not _holds_port_53():
         print("error: --exclusive-port-53 needs port 53's lock held by the caller (scripts/run_digital_twin_ci.sh takes it)", file=sys.stderr)
         return _USAGE_EXIT
-    logs_dir = args.logs_dir or REPO_ROOT / "digital_twin_ci_logs" / "scenarios" / args.device
     summary = Summary("scripts/_digital_twin_scenarios.py", unit="scenarios", levels=f"L2 ({args.device})", gc_stage=str(args.gc_threshold))
-    first, last = _band(args.device)
-    ports = iter(range(first, last + 1))
-    outcomes: list[Outcome] = []
-    exit_code = _EXIT_FAIL
-    shared: SharedBoot | None = None
     try:
-        ordered = run_order(select(args.device, args.only, exclusive_port_53=args.exclusive_port_53))
-        group_ends = {group[-1] for group in shared_groups(ordered)}
-        for item, why_not in ordered:
-            if why_not is not None:
-                kind, reason = why_not.split(": ", 1)
-                outcomes.append(Outcome(item.name, kind, reason))
-                continue
-            scenario_dir = _fresh_dir(logs_dir / item.name)
-            ctx = Context(args.device, args.micropython_bin, args.gc_threshold, scenario_dir, _instances(args.device), ports, _hostname(args.device))
-            if item.shared:
-                shared = shared or SharedBoot(replace(ctx, logs_dir=_fresh_dir(logs_dir / _SHARED_DIR), failures=[]))
-                ctx.shared = shared
-            print(f"== {item.name}: {item.goal}", flush=True)
-            outcome = _run_one(item, ctx, group_ends=item.name in group_ends)
-            print(f"{outcome.outcome.upper()}: {item.name} - {outcome.reason}", flush=True)
-            outcomes.append(outcome)
-        for outcome in outcomes:
-            summary.add(outcome.outcome, outcome.name, outcome.reason if outcome.outcome != "passed" else "")
-        if args.run_record is not None:
-            args.run_record.write_text(json.dumps([o._asdict() for o in outcomes], indent=2))
-        exit_code = _EXIT_FAIL if any(o.outcome == "failed" for o in outcomes) or not any(o.outcome == "passed" for o in outcomes) else 0
-    finally:
-        if shared is not None:
-            shared.stack.close()  # a run cut short leaves no twin behind
-        exit_code = summary.print(exit_code)
-    return exit_code
+        # Every boot's captive DNS binds port 53: held for the whole run, or passed when a runner above holds it.
+        with port_lock(_DNS_PORT, _LOCK_RUNNER):
+            return _run_scenarios(args, summary)
+    except PortHeldError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        summary.add("failed", f"port {_DNS_PORT}", str(exc))
+        return summary.print(_EXIT_FAIL)
+
+
+def generated_devices() -> "list[str]":
+    # Every device buildgen generated a wiring plan for, by name.
+    prefix, suffix = "sensortask_", "_wiring_plan.json"
+    return sorted(p.name[len(prefix) : -len(suffix)] for p in GENERATED_SRC_DIR.glob(f"{prefix}*{suffix}"))
 
 
 def run_order(chosen: "list[tuple[Scenario, str | None]]") -> "list[tuple[Scenario, str | None]]":

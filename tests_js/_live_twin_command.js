@@ -221,7 +221,7 @@ async function applyDebugLevel(page, value) {
 }
 
 // Delegated to buildgen rather than re-parsed here, so a key left out falls back to src/'s own
-// default exactly as the build does. package.json's "pretest" hook already needs uv on PATH.
+// default exactly as the build does; buildgen is stdlib-only, so plain python3 runs it, never through uv.
 const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.validate import device_max_connections; print(device_max_connections(Path(sys.argv[1]), Path(sys.argv[2])))";
 
 /**
@@ -232,7 +232,7 @@ const CEILING_SCRIPT = "import sys; from pathlib import Path; from buildgen.vali
  */
 export function configuredMaxConnections(device, devicesDir = path.join(REPO_ROOT, "devices")) {
     const tomlPath = path.join(devicesDir, `${device}.toml`);
-    const out = execFileSync("uv", ["run", "--quiet", "python", "-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
+    const out = execFileSync("python3", ["-c", CEILING_SCRIPT, tomlPath, path.join(REPO_ROOT, "src")], { cwd: REPO_ROOT, encoding: "utf8" });
     const ceiling = Number(out.trim());
     if (!Number.isInteger(ceiling) || ceiling < 1) {
         throw new Error(`buildgen resolved no usable max_connections for ${tomlPath}: ${JSON.stringify(out)}`);

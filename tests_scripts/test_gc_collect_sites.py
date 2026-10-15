@@ -1,72 +1,112 @@
-"""Structural guard for SPECIFICATION.md I.4(f.1)'s boot-confined placement reset: `gc.collect()`
-lives in exactly two places, and a new call or a rename of either fails here - attributed to its
-enclosing function, so this catches what a path-based grep would miss."""
+"""SPECIFICATION.md I.4(f.1)'s boot-confined placement reset, through scripts/_check_gc_collect_sites.py: `gc.collect()`
+lives in exactly two functions, reached by any name bound to gc or to gc.collect, and a new site, a renamed allowed
+one or a file that does not parse fails - the live tree included, generated modules in memory."""
 
-import ast
+import subprocess
+import sys
 from pathlib import Path
+from types import ModuleType
 
-# The whole allowance. src/ is checked structurally (a real call node attributed to its enclosing
-# function, so a rename of an allowed site fails too); buildgen/ textually, since the generator emits
-# none. scripts/lint.sh greps the same rule as a fast path.
-_ALLOWED_SRC_SITES = {("asy_system_service.py", "run_setups"), ("asy_system_service.py", "start_tasks")}
+import pytest
+from _script_loader import load_script_module
 
-
-def _is_gc_collect(node: ast.AST) -> bool:
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "collect"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "gc"
-    )
+_ALLOWED_SRC = "import gc\n\n\nclass SystemService:\n    async def run_setups(self) -> None:\n        gc.collect()\n\n    async def start_tasks(self) -> None:\n        gc.collect()\n"
 
 
-def _collect_call_sites(tree: ast.Module) -> "list[str]":
-    # Every `gc.collect(...)` call in this module, labelled with the nearest enclosing function -
-    # "<module>" for one at import time, which would run on every boot. Explicit descent, not
-    # ast.walk(): a walk from the module reaches calls inside functions too and would double-count.
-    sites: list[str] = []
-
-    def visit(node: ast.AST, owner: str) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                visit(child, child.name)
-                continue
-            if _is_gc_collect(child):
-                sites.append(owner)
-            visit(child, owner)
-
-    visit(tree, "<module>")
-    return sites
+@pytest.fixture(scope="module")
+def checker(repo_root: Path) -> ModuleType:
+    return load_script_module(repo_root / "scripts" / "_check_gc_collect_sites.py", "_check_gc_collect_sites")
 
 
-def test_src_calls_gc_collect_only_in_the_two_boot_lists(repo_root: Path) -> None:
-    found = set()
-    for path in sorted((repo_root / "src").glob("*.py")):
-        for owner in _collect_call_sites(ast.parse(path.read_text())):
-            found.add((path.name, owner))
-    assert found == _ALLOWED_SRC_SITES, (
-        f"gc.collect() sites in src/ are {sorted(found)}, expected exactly {sorted(_ALLOWED_SRC_SITES)}. "
-        "I.4(f) confines it to the two one-time boot lists; anything else is the run phase."
-    )
+@pytest.fixture
+def tree(tmp_path: Path) -> Path:
+    # A stand-in repo holding only the allowed sites: every case adds one file, so the verdict is attributable to it.
+    (tmp_path / "src").mkdir()
+    (tmp_path / "buildgen").mkdir()
+    (tmp_path / "devices").mkdir()
+    (tmp_path / "src" / "asy_system_service.py").write_text(_ALLOWED_SRC, encoding="utf-8")
+    (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    sysfunct.run_setups(_collect_setups())")\n', encoding="utf-8")
+    return tmp_path
 
 
-def test_buildgen_emits_no_gc_collect(repo_root: Path) -> None:
-    # The boot lists run inside SystemService, so no generated module carries a collect of its own.
-    found = sorted(str(path.relative_to(repo_root)) for path in (repo_root / "buildgen").rglob("*.py") if "gc.collect(" in path.read_text())
-    assert not found, f"buildgen/ files containing 'gc.collect(' are {found}; the generator emits none (SPECIFICATION.md Part I.4(f.1))"
+def test_the_allowed_sites_alone_are_clean(checker: ModuleType, tree: Path) -> None:
+    assert checker.scan_tree(tree).findings == []
 
 
-def test_the_guard_would_notice_a_new_site(tmp_path: Path) -> None:
-    # A test for the guard: the walker must attribute a call to the function holding it, and must
-    # see one added at module level too - the case that would run on every import.
-    (tmp_path / "m.py").write_text(
-        "import gc\n\n\ndef boot() -> None:\n    gc.collect()\n\n\ngc.collect()\n",
-    )
-    assert sorted(_collect_call_sites(ast.parse((tmp_path / "m.py").read_text()))) == ["<module>", "boot"]
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        ("import gc\ngc.collect()\n", 2),
+        ("import gc as g\n\ndef run():\n    g.collect()\n", 4),
+        ("from gc import collect\n\ndef run():\n    collect()\n", 4),
+        ("from gc import collect as c\nc()\n", 2),
+        ("import gc\nsweep = gc.collect\nsweep()\n", 3),
+    ],
+    ids=["module-level", "module-alias", "imported-function", "function-alias", "assigned-alias"],
+)
+def test_a_collect_outside_the_table_is_reported_whatever_its_spelling(checker: ModuleType, tree: Path, source: str, line: int) -> None:
+    (tree / "src" / "asy_other.py").write_text(source, encoding="utf-8")
+    findings = checker.scan_tree(tree).findings
+    assert len(findings) == 1 and findings[0].startswith(f"src/asy_other.py:{line}: gc.collect() in "), findings
+    assert findings[0].endswith(" is not an allowed site (SPECIFICATION.md I.4(e)/(f.1))"), findings
 
 
-def test_the_guard_ignores_an_unrelated_collect_method(tmp_path: Path) -> None:
-    # `something_else.collect()` is not the gc call, and must not be reported as one.
-    (tmp_path / "m.py").write_text("def f(bag) -> None:\n    bag.collect()\n")
-    assert _collect_call_sites(ast.parse((tmp_path / "m.py").read_text())) == []
+def test_an_unrelated_collect_method_is_not_the_gc_call(checker: ModuleType, tree: Path) -> None:
+    (tree / "src" / "asy_other.py").write_text("def f(bag):\n    bag.collect()\n    bag.gc.collect()\n", encoding="utf-8")
+    assert checker.scan_tree(tree).findings == []
+
+
+def test_a_site_in_another_function_of_the_allowed_file_is_reported_by_its_qualified_name(checker: ModuleType, tree: Path) -> None:
+    (tree / "src" / "asy_system_service.py").write_text(_ALLOWED_SRC + "\n    def supervise(self) -> None:\n        gc.collect()\n", encoding="utf-8")
+    assert checker.scan_tree(tree).findings == ["src/asy_system_service.py:12: gc.collect() in SystemService.supervise is not an allowed site (SPECIFICATION.md I.4(e)/(f.1))"]
+
+
+def test_a_renamed_allowed_function_leaves_a_stale_row_that_is_reported(checker: ModuleType, tree: Path) -> None:
+    (tree / "src" / "asy_system_service.py").write_text(_ALLOWED_SRC.replace("start_tasks", "start_all"), encoding="utf-8")
+    findings = checker.scan_tree(tree).findings
+    assert "src/asy_system_service.py: the allowed site SystemService.start_tasks holds no gc.collect() call - restore it or remove its row" in findings
+    assert any("SystemService.start_all is not an allowed site" in f for f in findings), findings
+
+
+@pytest.mark.parametrize("filename", ["codegen.py", "sub/leaf.py"])
+def test_a_collect_anywhere_in_buildgen_s_text_is_reported(checker: ModuleType, tree: Path, filename: str) -> None:
+    # The generator emits none: a collect in an emitted string is a violation like a call.
+    (tree / "buildgen" / filename).parent.mkdir(exist_ok=True)
+    (tree / "buildgen" / filename).write_text('lines.append("    gc.collect()")\n', encoding="utf-8")
+    assert checker.scan_tree(tree).findings == [f"buildgen/{filename}:1: gc.collect( in buildgen/'s text - the generated modules carry none (SPECIFICATION.md I.4(f.1))"]
+
+
+def test_a_subdirectory_of_src_is_searched_too(checker: ModuleType, tree: Path) -> None:
+    (tree / "src" / "sub").mkdir()
+    (tree / "src" / "sub" / "leaf.py").write_text("import gc\ngc.collect()\n", encoding="utf-8")
+    assert [f.split(":")[0] for f in checker.scan_tree(tree).findings] == ["src/sub/leaf.py"]
+
+
+def test_a_file_that_does_not_parse_is_an_error_never_a_skip(checker: ModuleType, tree: Path) -> None:
+    (tree / "src" / "asy_broken.py").write_text("def (:\n", encoding="utf-8")
+    result = checker.scan_tree(tree)
+    assert result.errors and result.errors[0].startswith("src/asy_broken.py:1: cannot parse"), result.errors
+
+
+def test_a_root_with_no_source_to_scan_cannot_look(checker: ModuleType, tmp_path: Path) -> None:
+    # A --root naming the wrong directory finds nothing to check: an error, never a clean pass.
+    result = checker.scan_tree(tmp_path)
+    assert result.errors == ["src/: no Python file to scan - the gc.collect() check could not look"], result.errors
+
+
+def test_the_scopes_with_no_rows_yet_are_named_as_unchecked(checker: ModuleType, tree: Path) -> None:
+    assert checker.scan_tree(tree).unchecked == ("tests", "digital_twin", "tests_hardware")
+
+
+def test_the_live_tree_passes_the_command_with_its_generated_modules(repo_root: Path) -> None:
+    # The command lint.sh runs: exit 0 on the real tree, every derived device's module and boot entries checked.
+    done = subprocess.run([sys.executable, str(repo_root / "scripts" / "_check_gc_collect_sites.py")], cwd=repo_root, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "generated modules checked:" in done.stdout and "not checked yet: tests/, digital_twin/, tests_hardware/" in done.stdout, done.stdout
+
+
+@pytest.mark.parametrize(("planted", "code"), [("import gc\ngc.collect()\n", 1), ("def (:\n", 2)], ids=["finding", "unparsable"])
+def test_the_command_exits_1_on_a_finding_and_2_when_it_cannot_look(checker: ModuleType, tree: Path, planted: str, code: int, capsys: pytest.CaptureFixture[str]) -> None:
+    (tree / "src" / "asy_other.py").write_text(planted, encoding="utf-8")
+    assert checker.main(["--root", str(tree)]) == code
+    assert "src/asy_other.py:" in capsys.readouterr().err

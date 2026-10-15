@@ -24,7 +24,7 @@ from _script_loader import load_script_module
 from _toml_fixtures import array_at, base_doc, instance_of, instances, table, table_at, write_doc
 
 import buildgen.generate as generate_module
-from buildgen.codegen import _Ctx, _identifier, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
+from buildgen.codegen import _Ctx, _identifier, _lit, _sgp40_status_vars, generate_boot_entry_source, generate_module_source, trigger_spread
 from buildgen.definitions import definitions_for_toml
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import GeneratedDevice, generate_device, main
@@ -54,8 +54,16 @@ def _body(source: str) -> "list[ast.stmt]":
     return tree.body[1:]
 
 
+@pytest.mark.parametrize("value", ["plain", "it's", 'say "hi"', "both ' and \"", "emoji \U0001f600", "tab\tnl\n", "\x7f", "\u00e9", "\\"])
+def test_an_emitted_string_reads_back_as_itself_double_quoted_unless_it_holds_a_double_quote(value: str) -> None:
+    # A non-BMP character must stay one code point: a JSON-style surrogate-pair escape reads back as two in Python.
+    literal = _lit(value)
+    assert ast.literal_eval(literal) == value, literal
+    assert literal.startswith('"') or '"' in value, literal
+
+
 def _build_date_problems(module_source: str, now: datetime) -> "list[str]":
-    match = re.search(r"_BUILD_DATE = const\('([^']+)'\)", module_source)
+    match = re.search(r'_BUILD_DATE = const\("([^"]+)"\)', module_source)
     assert match is not None
     stamp = datetime.fromisoformat(match.group(1))  # raises ValueError if malformed; "Z" is UTC, not naive
     if stamp.tzinfo is None or stamp.utcoffset() != timedelta(0):
@@ -354,7 +362,7 @@ def test_real_device_header_imports_the_boot_marks_and_the_watchdog_type_only(de
     source = _real(device).module_source
     tree = ast.parse(source)
     runtime = [ast.unparse(n) for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
-    assert "from asy_system_service import SystemService, begin_boot, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, BOOT_NTP, BOOT_DONE" in runtime
+    assert "from asy_system_service import BOOT_DONE, BOOT_NTP, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, SystemService, begin_boot" in runtime
     assert [line for line in runtime if line.startswith("from asy_base_classes import ")] in (["from asy_base_classes import ValueRef, utc_now"], ["from asy_base_classes import utc_now"])
     assert "import frozen_html" in runtime
     assert "from machine import WDT" not in runtime
@@ -662,15 +670,15 @@ def _src_with_read_triggers(src_dir: Path, tmp_path: Path, drivers: "tuple[str, 
     copy = tmp_path / "src"
     shutil.copytree(src_dir, copy)
     for path in copy.glob("asy_*_driver.py"):
-        text = path.read_text()
-        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE))
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(r"^    def get_trigger_starters\(self\)[^\n]*:\n        return \[[^\n]*\]\n\n", "", text, flags=re.MULTILINE), encoding="utf-8")
     for driver in drivers:
         path = copy / f"asy_{driver}_driver.py"
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         match = re.search(r"^class \w+_Reader\(SensorReader(?:Config)?\):\n", text, re.MULTILINE)
         assert match is not None, driver
         method = "    def get_trigger_starters(self):\n        return [self.start_timer]\n\n"
-        path.write_text(text[: match.end()] + method + text[match.end() :])
+        path.write_text(text[: match.end()] + method + text[match.end() :], encoding="utf-8")
     return copy
 
 
@@ -734,13 +742,25 @@ def test_real_device_embeds_and_reports_version_and_build_date_exactly_once(src_
     assert result.module_source.count("_FIRMWARE_VERSION = const(") == 1
     assert result.module_source.count("_WEBSITE_VERSION = const(") == 1
     assert result.module_source.count("_BUILD_DATE = const(") == 1
-    assert f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})" in result.module_source
-    assert f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})" in result.module_source
-    assert "_BUILD_DATE = const('2026-09-12T10:00:00Z')" in result.module_source
+    assert f"_FIRMWARE_VERSION = const({_lit(FIRMWARE_VERSION)})" in result.module_source
+    assert f"_WEBSITE_VERSION = const({_lit(WEBSITE_VERSION)})" in result.module_source
+    assert '_BUILD_DATE = const("2026-09-12T10:00:00Z")' in result.module_source
     assert 'build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE}' in result.module_source
     # Regression guard against an earlier, corrected design: the version no longer
     # lives on GET /status's "system" section, so build_info above is its only key.
     assert result.module_source.count('"FirmwareVersion": _FIRMWARE_VERSION') == 1
+
+
+def test_a_test_override_is_named_in_the_build_info_and_a_release_build_names_none(src_dir: Path, ext_dir: Path) -> None:
+    # A test image says what it is from the device itself (GET /system's build object); a release image keeps
+    # exactly its three keys, so the API reference and the website's Build group are unchanged.
+    toml = device_toml(DEVICE_NAMES[0])
+    release = generate_device(toml, src_dir, ext_dir, build_date="2026-09-12T10:00:00Z")
+    tested = generate_device(toml, src_dir, ext_dir, build_date="2026-09-12T10:00:00Z", test_overrides=("tick_offset_test", "a_second_override"))
+    assert "TestOverrides" not in release.module_source
+    want = 'build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE, "TestOverrides": ["a_second_override", "tick_offset_test"]},'
+    changed = [(old, new) for old, new in zip(release.module_source.splitlines(), tested.module_source.splitlines(), strict=True) if old != new]
+    assert [new.strip() for _old, new in changed] == [want], changed
 
 
 def _toml_tables(doc: TomlDoc, key: str) -> "dict[str, TomlDoc]":
@@ -757,7 +777,7 @@ def test_real_device_defaults_to_a_real_current_build_date_when_none_is_given(sr
 @pytest.mark.parametrize("stamp", ["2026-09-12T10:00:00", "2026-09-12T12:00:00+02:00", "2026-09-12T09:58:30Z"])
 def test_a_naive_shifted_or_stale_build_date_is_refused(stamp: str) -> None:
     # Against a clock at 10:00:00 UTC: no zone, another zone, or ninety seconds old is no build-time UTC now.
-    assert _build_date_problems(f"_BUILD_DATE = const('{stamp}')\n", datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
+    assert _build_date_problems(f'_BUILD_DATE = const("{stamp}")\n', datetime(2026, 9, 12, 10, 0, tzinfo=UTC)), stamp
 
 
 def _trigger_modules(source: str) -> "list[str]":
@@ -967,7 +987,7 @@ def test_bus_spread_takes_the_largest_group_first_and_keeps_construction_order_o
 def test_a_device_whose_readers_declare_no_read_triggers_collects_none(ext_dir: Path, triggers_src: "Callable[[tuple[str, ...]], Path]", device: str) -> None:
     src = triggers_src(())
     for path in src.glob("asy_*_driver.py"):
-        assert "def get_trigger_starters" not in path.read_text(), path.name
+        assert "def get_trigger_starters" not in path.read_text(encoding="utf-8"), path.name
     result = generate_device(device_toml(device), src, ext_dir)
     assert _trigger_modules(result.module_source) == []
     assert ast.unparse(_function(result.module_source, "_collect_trigger_starters")).rstrip().endswith("return []")
@@ -982,8 +1002,8 @@ def test_novel_combo_fixture_generates_successfully(fixtures_dir: Path, src_dir:
     ast.parse(result.boot_entry_source)
     assert "scd30_primary" in result.module_source
     assert "scd30_secondary" in result.module_source
-    assert "SGP40_Reader(i2c1, temperature=ValueRef(scd30_secondary, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(scd30_primary, 'Hum')" in result.module_source
+    assert 'SGP40_Reader(i2c1, temperature=ValueRef(scd30_secondary, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(scd30_primary, "Hum")' in result.module_source
     # Only warn_co2 is wired - warn_voc/warn_hum must not appear at all.
     assert "WarnCO2" in result.module_source
     assert "WarnVOC" not in result.module_source
@@ -1014,10 +1034,10 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     assert "scd30_b" in result.module_source
     assert "sgp40_a" in result.module_source
     assert "sgp40_b" in result.module_source
-    assert "temperature=ValueRef(scd30_b, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(scd30_b, 'Hum')" in result.module_source
-    assert "temperature=ValueRef(bmp3xx_only, 'Temp')" in result.module_source
-    assert "humidity=ValueRef(_DefaultHumiditySource(relative_humidity=35), 'value')" in result.module_source
+    assert 'temperature=ValueRef(scd30_b, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(scd30_b, "Hum")' in result.module_source
+    assert 'temperature=ValueRef(bmp3xx_only, "Temp")' in result.module_source
+    assert 'humidity=ValueRef(_DefaultHumiditySource(relative_humidity=35), "value")' in result.module_source
     assert "_DefaultSignalSink().request_signal" in result.module_source
     # led_target/fram_target both left unwired - conn gets no LED, sysfunct no storage, both RAM logs.
     assert "ext_led=None" in result.module_source
@@ -1025,7 +1045,7 @@ def test_multi_instance_fixture_generates_successfully(fixtures_dir: Path, src_d
     # Only sgp40_a is monitored via warn_voc - exactly one NotificationSignal is passed
     # (warn_co2/warn_hum are absent from this fixture entirely, and sgp40_b is never a warn_* source).
     assert result.module_source.count("NotificationSignal(") == 1
-    assert "signals=(NotificationSignal('WarnVOC', ValueRef(sgp40_a, 'VOC'), _FIELD_WARN_VOC, (0, 1, 0)),)" in result.module_source
+    assert 'signals=(NotificationSignal("WarnVOC", ValueRef(sgp40_a, "VOC"), _FIELD_WARN_VOC, (0, 1, 0)),)' in result.module_source
     # Two scd30 instances and two sgp40 instances share one module each - one import line per
     # module, not one per instance, merging whichever _Default* extras either instance needs.
     assert result.module_source.count("from asy_scd30_driver import") == 1
@@ -1182,9 +1202,9 @@ def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, s
     assert "_DefaultSignalSink().request_signal" in result.module_source
     # Every defaulted per-value field always resolves to (provider, "value") - the fixed contract
     # every _Default<Field> class's get_data() follows - not the real field name.
-    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=20), 'value')" in result.module_source
+    assert 'temperature=ValueRef(_DefaultTemperatureSource(temperature=20), "value")' in result.module_source
     # humidity_source stays a real reference - not defaulted in this fixture.
-    assert "humidity=ValueRef(scd30, 'Hum')" in result.module_source
+    assert 'humidity=ValueRef(scd30, "Hum")' in result.module_source
 
 
 def test_device_level_led_target_unwired_passes_no_led(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
@@ -1252,7 +1272,7 @@ def test_cli_writes_module_and_boot_entry_to_out_dir(tmp_path: Path) -> None:
     exit_code = main([str(device_toml(device)), "--out-dir", str(out_dir)])
     assert exit_code == 0
     assert sorted(p.name for p in out_dir.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
-    ast.parse((out_dir / f"sensortask_{device}.py").read_text())
+    ast.parse((out_dir / f"sensortask_{device}.py").read_text(encoding="utf-8"))
 
 
 def test_cli_prints_module_source_without_out_dir(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1284,7 +1304,7 @@ def test_hostname_and_hotspot_password_are_wired_into_generated_code(device: str
     # passed to WifiService now, as the two persisted fields' per-device defaults.
     stated = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))["device"]
     result = _real(device)
-    assert f"WifiConfig({stated['hostname']!r}, {stated['hotspot_password']!r}, " in result.module_source
+    assert f"WifiConfig({_lit(stated['hostname'])}, {_lit(stated['hotspot_password'])}, " in result.module_source
     ast.parse(result.module_source)
 
 
@@ -1460,7 +1480,7 @@ def test_cli_entry_point_writes_both_files_and_exits_zero(tmp_path: Path, repo_r
     )
     assert result.returncode == 0, result.stderr
     assert sorted(p.name for p in out.iterdir()) == [f"sensortask_{device}.py", f"sensortask_{device}_main.py", f"sensortask_{device}_main_noautostart.py"]
-    ast.parse((out / f"sensortask_{device}.py").read_text())
+    ast.parse((out / f"sensortask_{device}.py").read_text(encoding="utf-8"))
 
 
 def test_cli_entry_point_reports_a_build_error_and_exits_nonzero(tmp_path: Path, repo_root: Path) -> None:

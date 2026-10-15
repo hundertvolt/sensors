@@ -1357,7 +1357,10 @@ def flush_fram() -> None:
 class Timer:
     ONE_SHOT = 0
     PERIODIC = 1
-    TEST_API = ("id", "mode", "callback", "period")  # rp2's Timer exposes none of them
+    TEST_API = ("id", "mode", "callback", "period", "drop_next_soft_callbacks")  # rp2's Timer exposes none of them
+    # Test-only: the next N soft callbacks of any Timer are lost, as while rp2's depth-8 scheduler queue is full
+    # (ports/rp2/mpconfigport.h:131, py/scheduler.c:163-181, v1.29.0); off by default, reset_test_state() clears it.
+    drop_next_soft_callbacks = 0
 
     def __init__(
         self,
@@ -1407,7 +1410,10 @@ class Timer:
                 if self._gen != gen:
                     return  # a re-init() from inside the callback superseded this loop
                 callback = self.callback
-                if callback is not None:
+                if callback is not None and not self._hard and Timer.drop_next_soft_callbacks > 0:
+                    # mpirq.c:105 ignores the full queue's refusal; the alarm re-arms anyway (machine_timer.c:50-60).
+                    Timer.drop_next_soft_callbacks -= 1
+                elif callback is not None:
                     try:
                         callback(self)
                     except Exception as e:  # a BaseException (the twin's reset, power loss) ends the loop
@@ -1739,6 +1745,7 @@ def reset_test_state() -> None:
     polled = UART.real_poll_queries
     UART.would_have_blocked_bytes = 0
     UART.real_poll_queries = 0
+    Timer.drop_next_soft_callbacks = 0
     reset_count = 0
     bootloader_count = 0
     power_on()

@@ -1,3 +1,6 @@
+"""The wear-budget counters: write_counting_open() and scd30_nvm_writes() count each write, a planted extra one too, leave
+reads and other commands out and refuse a log that dropped entries; the FRAM fake counts each write reaching its data phase."""
+
 import os
 
 from _async_harness import run

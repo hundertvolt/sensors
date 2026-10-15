@@ -1,0 +1,28 @@
+..................F                                                      [100%]
+=================================== FAILURES ===================================
+_______________ test_a_generated_device_modules_lines_are_traced _______________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u8')
+settrace_bin = PosixPath('/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10376/test_a_generated_device_module0')
+
+    def test_a_generated_device_modules_lines_are_traced(repo_root: Path, settrace_bin: Path, tmp_path: Path) -> None:
+        # build/generated_src/ is measured like src/: a device module imported by a test reaches the dump.
+        out, module = tmp_path / "raw.json", f"sensortask_{DEVICE_NAMES[0]}"
+        probe = _probe(tmp_path, f"import sys\nsys.path.insert(0, 'ext')\nimport {module}\nsys.exit(0)\n")  # microdot is in ext/, as the libraries add it
+        completed = _run(repo_root, settrace_bin, probe, out)
+>       assert completed.returncode == 0, f"{completed.stdout}\n{completed.stderr}"
+E       AssertionError: Traceback (most recent call last):
+E           File "tests/_coverage_runner.py", line 112, in _run
+E           File "/tmp/pytest-of-root/pytest-10376/test_a_generated_device_module0/probe_case.py", line 3, in <module>
+E           File "build/generated_src/sensortask_arzi.py", line 8, in <module>
+E         ImportError: no module named 'frozen_html'
+E         
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['/root/pico-toolchain/micropython/ports/unix/build-settrace/micropython', 'tests/_coverage_runn...ild/generated_src/sensortask_arzi.py", line 8, in <module>\nImportError: no module named \'frozen_html\'\n', stderr='').returncode
+
+tests_scripts/test_coverage_runner.py:308: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_coverage_runner.py::test_a_generated_device_modules_lines_are_traced
+1 failed, 18 passed in 2.66s

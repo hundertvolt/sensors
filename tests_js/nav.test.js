@@ -1,3 +1,5 @@
+// Tests js/nav.js's initNav(): the drawer built from definitions, opening and closing by hamburger, backdrop and
+// Escape, the inert closed drawer and focus, the current link and dispose() removing every listener.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initNav } from "../js/nav.js";
 

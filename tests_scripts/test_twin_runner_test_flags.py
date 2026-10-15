@@ -104,7 +104,7 @@ def test_nothing_the_firmware_freezes_names_a_test_flag_the_runner_or_a_twin_mod
 
 def test_a_flag_defaulting_on_or_an_unguarded_call_is_caught() -> None:
     source = RUNNER.read_text(encoding="utf-8")
-    on = source.replace("_NO_TEST_FLAGS = TestFlags(False, None, None, None, None)", "_NO_TEST_FLAGS = TestFlags(True, None, None, None, None)")
+    on = source.replace("_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False)", "_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, True)")
     assert on != source and any("by default" in p for p in default_problems(on))
     unguarded = source.replace("    if flags.conn_status_interval_ms:\n        tasks.append(", "    if True:\n        tasks.append(")
     assert unguarded != source and any("outside its flag's if" in p for p in guard_problems(unguarded))

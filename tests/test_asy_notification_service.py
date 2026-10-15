@@ -1,3 +1,6 @@
+"""NotificationService: signal validation and its refusals, thresholds, the sleep window, pause and override, and the
+monitor loop, all under driven time."""
+
 import asyncio
 import time
 
@@ -5,7 +8,7 @@ from _async_harness import cancel, run
 from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, UTCValid
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const
+from _src_const import src_int
 from _tmp_scratch import TmpScratch
 
 import asy_base_classes
@@ -27,7 +30,7 @@ if TYPE_CHECKING:
     from asy_print_log import ErrorLog
 
 
-_SAMPLE_MAX_AGE_S: int = src_const("src/asy_notification_service.py", "_SAMPLE_MAX_AGE_S")  # type: ignore[assignment]  # src_const() answers object
+_SAMPLE_MAX_AGE_S: int = src_int("src/asy_notification_service.py", "_SAMPLE_MAX_AGE_S")
 # @tunable l1.asy_notification_service_elapsed_stimulus_ms = 50
 _ELAPSED_STIMULUS_MS = 50
 # @tunable l1.asy_notification_service_override_secs = 2
@@ -1246,8 +1249,7 @@ def test_set_override_led_above_the_max_clamps_and_reads_back_clamped() -> None:
     # get_override_led()/set_override_led() are the coordinator's public override API and the REST layer's
     # only route to it - this drives set_override_led()'s clamp through both. The cap is read from source.
     coordinator, _clock, _cb = _make_coordinator()
-    cap = src_const("src/asy_notification_service.py", "_MAX_OVERRIDE_TIME")
-    assert isinstance(cap, int)
+    cap = src_int("src/asy_notification_service.py", "_MAX_OVERRIDE_TIME")
 
     async def scenario() -> "tuple[int, int, int]":
         await coordinator.set_override_led(cap * 3)  # well above the cap

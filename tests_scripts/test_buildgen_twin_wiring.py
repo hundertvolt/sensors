@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 def _driver_address_const(src_dir: Path, driver: str) -> int:
     # The test's own AST read of the driver file's `_<DRIVER>_ADDR = const(<int>)`, kept apart from
     # buildgen's reader so the two can disagree.
-    tree = ast.parse((src_dir / f"asy_{driver}_driver.py").read_text())
+    tree = ast.parse((src_dir / f"asy_{driver}_driver.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and [t.id for t in node.targets if isinstance(t, ast.Name)] == [f"_{driver.upper()}_ADDR"]:
             call = node.value
@@ -224,7 +224,7 @@ def test_bus_attached_driver_with_no_address_rule_fails_loud_not_silently_miswir
 
 def test_a_fixed_address_driver_without_its_address_constant_fails_the_twin_rule(tmp_path: Path) -> None:
     # A driver file that lost its _<DRIVER>_ADDR const: the plan cannot place the chip, so the build says which rule broke.
-    (tmp_path / "asy_scd30_driver.py").write_text("_SCD30_TIMEOUT_MS = const(20)\n")
+    (tmp_path / "asy_scd30_driver.py").write_text("_SCD30_TIMEOUT_MS = const(20)\n", encoding="utf-8")
     info = DriverInfo("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", tmp_path / "asy_scd30_driver.py", True)
     with pytest.raises(BuildError, match=r"_SCD30_ADDR.* - fix: ") as caught:
         fixed_address(info)

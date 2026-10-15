@@ -1,3 +1,5 @@
+// Tests js/main.js's production entry: definitions.json or the inlined element, the landing section, deep links
+// and Back through the page's history, Escape closing the drawer, the stop handle and a banner for each failed load.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startApp } from "../js/main.js";
 import { buildElements } from "./_dom_helpers.js";

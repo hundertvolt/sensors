@@ -40,11 +40,11 @@ def test_the_twin_tier_agrees_with_it(ci_suite: ModuleType, harness: ModuleType)
 def test_the_unit_tier_agrees_with_it(repo_root: Path, harness: ModuleType) -> None:
     # A grep pattern rather than a tuple, so this is the one gate that cannot simply be compared.
     pattern = "|".join(harness.MEMORY_ERROR_MARKERS)
-    assert f'local pattern="{pattern}"' in (repo_root / "scripts" / "test.sh").read_text(), f"scripts/test.sh's MemoryError gate no longer greps for {pattern!r}"
+    assert f'local pattern="{pattern}"' in (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8"), f"scripts/test.sh's MemoryError gate no longer greps for {pattern!r}"
 
 
 def test_the_js_gate_agrees_with_it(repo_root: Path, harness: ModuleType) -> None:
-    text = (repo_root / "tests_js" / "_memory_markers.js").read_text()
+    text = (repo_root / "tests_js" / "_memory_markers.js").read_text(encoding="utf-8")
     match = re.search(r"export const MEMORY_ERROR_MARKERS = \[([^\]]*)\]", text)
     assert match is not None, "tests_js/_memory_markers.js no longer exports a MEMORY_ERROR_MARKERS array literal"
     assert tuple(re.findall(r'"([^"]*)"', match.group(1))) == tuple(harness.MEMORY_ERROR_MARKERS), f"the JS gate matches {match.group(1)} against the hardware tier's {harness.MEMORY_ERROR_MARKERS}"
@@ -56,20 +56,20 @@ _JS_GATE_IMPORTERS = ("scripts/cross_browser_smoke.mjs", "tests_js/_live_twin_co
 
 @pytest.mark.parametrize("path", _JS_GATE_IMPORTERS)
 def test_every_js_twin_runner_imports_the_shared_markers(repo_root: Path, path: str) -> None:
-    text = (repo_root / path).read_text()
+    text = (repo_root / path).read_text(encoding="utf-8")
     assert re.search(r"""from\s+["'][^"']*_memory_markers\.js["']""", text), f"{path} must import the marker set from tests_js/_memory_markers.js"
 
 
 @pytest.mark.parametrize("path", ["tests_scripts/test_digital_twin_generated_boot.py", "tests_scripts/test_digital_twin_boot_contiguity.py"])
 def test_every_tests_scripts_twin_boot_gates_on_the_markers(repo_root: Path, path: str) -> None:
-    assert "MEMORY_ERROR_MARKERS" in (repo_root / path).read_text(), f"{path} boots a twin and must scan its output for harness.MEMORY_ERROR_MARKERS"
+    assert "MEMORY_ERROR_MARKERS" in (repo_root / path).read_text(encoding="utf-8"), f"{path} boots a twin and must scan its output for harness.MEMORY_ERROR_MARKERS"
 
 
 @pytest.mark.parametrize("path", _HARDWARE_TIER_FILES)
 def test_no_hardware_tier_gate_hardcodes_the_class_name_again(repo_root: Path, path: str) -> None:
     # The regression that would undo this: a new soak assertion written with a bare "MemoryError"
     # substring, which is green for every caught degrade. The shared constant is the only route.
-    text = (repo_root / path).read_text()
+    text = (repo_root / path).read_text(encoding="utf-8")
     assert "MEMORY_ERROR_MARKERS" in text, f"{path} must reach the marker set through harness.MEMORY_ERROR_MARKERS"
     offenders = [n for n, line in enumerate(text.split("\n"), 1) if '"MemoryError"' in line and "MEMORY_ERROR_MARKERS" not in line]
     assert not offenders, f"{path} lines {offenders} test for the bare class name, which a caught-and-logged failure never prints"
@@ -87,7 +87,7 @@ def _injected_messages(repo_root: Path) -> list[tuple[str, int, str]]:
     found: list[tuple[str, int, str]] = []
     for scope in _INJECTION_SCOPES:
         for path in python_files(repo_root, scope):
-            for node in ast.walk(ast.parse(path.read_text())):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 calls: list[ast.Call] = []
                 if isinstance(node, ast.Call) and _callee_name(node) == "MemoryError":
                     calls.append(node)

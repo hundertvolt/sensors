@@ -38,7 +38,7 @@ def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ..
     # Every `X = namedtuple("X", (...))` in the module, plus its module-level `_FIELDS` if any.
     tuples: dict[str, tuple[str, ...]] = {}
     fields: tuple[str, ...] | None = None
-    for node in ast.parse(path.read_text()).body:
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
         if not isinstance(node, ast.Assign) or len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
             continue
         name = node.targets[0].id
@@ -55,7 +55,7 @@ def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ..
 def _keyword_tuple(path: Path, function: str, keyword: str) -> "list[tuple[str, ...] | None]":
     # The literal tuple passed as `keyword=` to `function(...)`, once per call in the module.
     return [
-        _literal_tuple(k.value) for node in ast.walk(ast.parse(path.read_text()))
+        _literal_tuple(k.value) for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == function
         for k in node.keywords if k.arg == keyword
     ]
@@ -63,7 +63,7 @@ def _keyword_tuple(path: Path, function: str, keyword: str) -> "list[tuple[str, 
 
 def _a_device_with(driver: str) -> str:
     # The device name only labels a parse error, so any device whose TOML wires the driver will do.
-    return next(d for d in DEVICE_NAMES if any(i.get("driver") == driver for i in tomllib.loads(device_toml(d).read_text()).get("instance", [])))
+    return next(d for d in DEVICE_NAMES if any(i.get("driver") == driver for i in tomllib.loads(device_toml(d).read_text(encoding="utf-8")).get("instance", [])))
 
 
 def test_scd30_always_written_keys_equal_its_always_executed_tags() -> None:
@@ -86,7 +86,7 @@ def test_the_guard_actually_found_the_modules_it_guards() -> None:
 
 def _reader_tuple(path: Path, tuples: "dict[str, tuple[str, ...]]") -> "str | None":
     # The NamedTuple the module's reader passes as the first positional argument of its super().__init__().
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         func = node.func if isinstance(node, ast.Call) else None
         if isinstance(node, ast.Call) and isinstance(func, ast.Attribute) and func.attr == "__init__" and ast.unparse(func.value) == "super()" and node.args:
             first = node.args[0]

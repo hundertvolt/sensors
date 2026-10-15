@@ -2,9 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Automated version of the manual digital-twin on-demand walkthrough - drives `digital_twin/run_generic_integration.py` as a real subprocess, over real HTTP/UDP, through a sequence of real process restarts, and asserts every step. Device-generic (SPECIFICATION.md Part L.4): the required `--device` selects which real `devices/<device>.toml`-derived module + wiring plan to boot. The fault matrix is derived from that device's own wiring plan and instances, never a hardcoded driver list - a device without `bmp3xx` simply never faults/checks it.
-CPython/stdlib-only (the code under test still only ever runs under the real MicroPython Unix-port interpreter); invoked by `scripts/run_digital_twin_ci.sh` (which owns the build, and the per-device `buildgen` generation step this suite's own `--device` depends on) as its "test" phase, once per device via CI's own `strategy.matrix` (see `.github/workflows/ci.yml`'s `digital-twin-e2e` job).
-Full walkthrough and rationale: `digital_twin/README.md`'s "Automated CI suite" section."""
+"""L2 system suite: boots one derived device's generated graph in the twin (digital_twin/run_generic_integration.py) as a
+subprocess and drives it over HTTP/UDP through real restarts at gc.threshold -1, then 32768; its fault matrix comes from the
+device's wiring plan. Run by scripts/run_digital_twin_ci.sh; reference: digital_twin/README.md "Automated CI suite"."""
 
 import argparse
 import http.client
@@ -20,7 +20,7 @@ import threading
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import tomllib
 
@@ -31,18 +31,23 @@ if TYPE_CHECKING:
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections, module_int_const
+from buildgen.validate import device_max_connections_by_name, module_int_const
+from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 from scripts._twin_process import (
     EXIT_SIMULATED_BOOTLOADER,
     EXIT_SIMULATED_RESET,
     TWIN_MICROPYPATH,
+    JSONObject,
+    JSONValue,
     ShutdownLine,
     TwinLaunch,
     TwinRun,
     errcount_entry,
     errcount_table,
     exit_reason,
+    feed_gap_verdict,
+    log_from,
     log_memory_verdict,
     log_tail,
     parse_machine_reset_line,
@@ -72,6 +77,7 @@ HOST = "127.0.0.1"
 PORT = 18080  # a fixed, non-privileged, non-8080-default port - avoids colliding with a real
 # manual `scripts/run_unix_port_integration.sh` run on the same machine.
 DNS_PORT = 53  # asy_captive_dns.py's CaptiveDNS binds ("0.0.0.0", 53) unconditionally, real port only.
+_LOCK_RUNNER = "scripts/_digital_twin_ci_suite.py"
 _NTP_UNREACHABLE_HOST = "192.0.2.1"  # RFC 5737 TEST-NET-1, never answers: Run 8 configures it, Run 9 watches it
 _NTP_PORT = 123
 _CAP_NET_BIND_SERVICE = 10  # linux/capability.h
@@ -120,7 +126,11 @@ _LEFT_OUT = {
     ("uart_link", "fault", "bounded"): "drop, corrupt and truncate are tests/test_digital_twin_uart_link.py's; Run 3 carries uart_link:silent",
 }
 # @tunable l2.ntp_unreachable_watch_s = 90.0
-_NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9 - past the old NTP give-up (~60s), see that run
+_NTP_UNREACHABLE_WATCH_S = 90.0  # Run 9's bound - past the old NTP give-up (~60s), see that run
+# The attempts the NTP backoff (10 s, doubling) makes inside that bound, measured failing at ~4, 22 and 62 s of
+# serving, the next at ~142 s: Run 9's watch ends once that many failed (agent, 2026-10-15).
+# @tunable l2.ntp_unreachable_failures = 3
+_NTP_UNREACHABLE_FAILURES = 3
 # @tunable l2.bus_fault_error_count = 500
 _BUS_FAULT_ERROR_COUNT = 500  # sustained/high-repeat-count - see Run 3's own comment for why.
 # Driver to its own REST/error-log `_NAME`, read from each driver's source and pinned to it by an L0 test; an
@@ -177,21 +187,20 @@ _SHUTDOWN_S5_PREFIXES = ("Shutdown: resetconfig", "Shutdown: erasefram")
 _SERVER_OUTER_CAP_S = 15.0  # mirrors asy_webserver_service.py's _DEFAULT_OUTER_CAP_S - keep in sync
 # @tunable l2.reset_errors_timeout_margin_s = 2.0
 _RESET_ERRORS_TIMEOUT_S = _SERVER_OUTER_CAP_S + 2.0  # loopback: no WiFi close latency to absorb
-# The BUDGET rather than the timeout above, which only catches a call that never finished. Sized
-# from both datasets - twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of
-# the cap sits ~45% above anything legitimate, and dev needs ~10 more sources to breach it.
+# The BUDGET rather than the timeout above, which only catches a call that never finished. Sized from both datasets -
+# twin 8.259s worst, hardware 6.32s idle and 11.58s under load - so 80% of the cap sits ~45% above anything legitimate,
+# and a device wiring the most FRAM-backed sources still leaves ~10 before the budget.
 # @tunable l2.reset_errors_budget_ratio = 0.8
 _RESET_ERRORS_BUDGET_S = _SERVER_OUTER_CAP_S * 0.8
 
-# Run 11 (soak), moved host-side from the twin's own retired _soak() ("Driver/DUT process
-# separation"): this suite drives every soak request over real HTTP as Runs 1-10 do, so the
-# client's allocation and CPU work never shares the DUT's heap.
-_SOAK_ENDPOINTS = ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/")
-# 100, not wozi's original 40: dev's two extra uart_link instances mean more one-time post-boot
-# settling, so the trend check would otherwise measure an in-progress settle rather than a
-# plateau. digital_twin/README.md has the measurement.
+# Run 11 (soak), host-side ("Driver/DUT process separation"): every soak request goes over real HTTP, so the client's
+# allocation and CPU work never shares the DUT's heap; each cycle walks every GET route the device serves and the site.
 # @tunable l2.soak_warmup_cycles = 100
 _SOAK_WARMUP_CYCLES = 100
+# The warm-up ends once no cycle sets a new MEM_SAMPLE floor for this many cycles, the bound above: a device with more
+# instances settles longer after boot, and a trend taken mid-settle would read as a leak (digital_twin/README.md).
+# @tunable l2.soak_plateau_cycles = 20
+_SOAK_PLATEAU_CYCLES = 20
 # @tunable l2.soak_cycles = 20
 _SOAK_CYCLES = 20
 # gc.mem_free() lives in the twin's heap with no REST route, so --mem-sample-interval-ms prints a MEM_SAMPLE
@@ -279,6 +288,7 @@ class RunContext:
     wiring_plan_path: Path
     instances: tuple[Instance, ...]
     gc_threshold: int  # every spawned run at it: the WHOLE suite passes at -1 before it runs again at 32768 (Part I.4(e))
+    routes: tuple[str, ...]  # every GET route the device serves, from its API reference
     hostname: str = ""
     micropypath: str = TWIN_MICROPYPATH
 
@@ -308,6 +318,16 @@ class _SoakRun:
     shutdown_ec: int
     samples: list[int]
     trend_result: tuple[float, float, int, float, float] | None
+    requests: int  # warm-up and measured cycles together
+
+
+def _get_routes(reference: Path) -> tuple[str, ...]:
+    # Every GET route of a device's API reference (buildgen/api_reference.py's output), in its order.
+    document = json.loads(reference.read_text(encoding="utf-8"))
+    routes = document.get("routes") if isinstance(document, dict) else None
+    if not isinstance(routes, list) or not routes:
+        raise ValueError(f"{reference} lists no routes")
+    return tuple(str(r["path"]) for r in routes if isinstance(r, dict) and r.get("method") == "GET")
 
 
 def _archive_state(ctx: RunContext, label: str) -> None:
@@ -335,7 +355,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--micropython-bin", required=True, help="path to the built MicroPython Unix-port binary")
     parser.add_argument("--device", required=True, help="which devices/<device>.toml-generated module to drive this suite against")
-    parser.add_argument("--logs-dir", default=str(REPO_ROOT / "digital_twin_ci_logs"), help="directory to write per-run subprocess logs and each pass's state into")
+    parser.add_argument("--logs-dir", help="directory to write per-run subprocess logs and each pass's state into (default: digital_twin_ci_logs/<device>)")
     parser.add_argument("--only", type=_run_selection, help=f"run only these runs, comma-separated: {', '.join(RUN_NAMES)} (diagnosis)")
     parser.add_argument("--repeat", type=_positive_int, default=1, help="run the selection this many times per pass, each in fresh state (diagnosis)")
     parser.add_argument("--gc-threshold", type=int, choices=(-1, 32768), help="run only this GC stage's pass (default: -1, then 32768)")
@@ -353,7 +373,7 @@ def _check(*, condition: bool, msg: str) -> None:
 
 def _check_crc16_links(ctx: RunContext) -> None:
     # A --device-toml pass on a CRC16-derived TOML: the generated module builds every link bus with crc=CRC16().
-    source = (ctx.wiring_plan_path.parent / f"{ctx.module}.py").read_text()
+    source = (ctx.wiring_plan_path.parent / f"{ctx.module}.py").read_text(encoding="utf-8")
     buses = [line.strip() for line in source.splitlines() if "= asy_uart_driver.UART(" in line]
     _check(condition=bool(buses) and all("crc=CRC16()" in line for line in buses), msg=f"Run 3: every link bus of the derived module is built with crc=CRC16() ({buses!r})")
 
@@ -371,13 +391,16 @@ def _check_no_memory_error_in_log(log_path: Path, run_label: str) -> None:
     _check(condition=verdict is None, msg=f"{run_label}: log carries none of {_MEMORY_ERROR_MARKERS}" + (f" - {verdict}" if verdict else ""))
 
 
-def _check_run_log(run: TwinRun, run_label: str) -> None:
-    # Every launch's log: no memory marker, and no public destination refused (a non-zero count means product
-    # code tried to leave the loopback and TEST-NET ranges) - its shutdown line, when the run printed one.
+def _check_run_log(run: TwinRun, run_label: str, *, starves_watchdog: bool) -> None:
+    # Every launch's log: no memory marker; on its shutdown line, no public destination refused (product code leaving
+    # the loopback and TEST-NET ranges) and no feed gap near the watchdog timeout, unless the run starves it on purpose.
     _check_no_memory_error_in_log(run.log_path, run_label)
     line = _shutdown_line(run.log_path, run_label)
     if line is not None:
         _check(condition=line.public_destinations_refused == 0, msg=f"{run_label}: no public destination was refused (public_destinations_refused={line.public_destinations_refused})")
+        gap = feed_gap_verdict(line)
+        if not starves_watchdog:
+            _check(condition=gap is None, msg=f"{run_label}: no feed gap came near the watchdog timeout" + (f" - {gap}" if gap else f" (largest {line.largest_feed_gap_ms} ms of {line.wdt_timeout_ms} ms)"))
 
 
 def _commanded_reset(ctx: RunContext, proc: TwinRun, cmd: str, label: str, expected_exit: int) -> int:
@@ -424,13 +447,13 @@ def _concurrent_get(paths: list[str], timeout: float = 30.0) -> list[object]:
 def _config_files(ctx: RunContext) -> dict[str, str]:
     # The pass's config directory, file name to text: what the product wrote there.
     config_dir = state_paths(ctx.state_dir).config_dir
-    return {p.name: p.read_text(errors="replace") for p in sorted(config_dir.glob("config_*.cfg"))} if config_dir.exists() else {}
+    return {p.name: p.read_text(errors="replace", encoding="utf-8") for p in sorted(config_dir.glob("config_*.cfg"))} if config_dir.exists() else {}
 
 
 def _configured_max_connections(device: str) -> int:
     # The admission ceiling this tree builds for `device`, read by buildgen's own helper - so raising
     # a device's ceiling makes this run drive more concurrency instead of a stale literal.
-    return device_max_connections(REPO_ROOT / "devices" / f"{device}.toml", SRC_DIR)
+    return device_max_connections_by_name(device)
 
 
 def _count_verbose_log_lines(log_text: str) -> int:
@@ -443,17 +466,23 @@ def _count_verbose_log_lines(log_text: str) -> int:
     return count
 
 
+def _counter(entry: JSONValue) -> int:
+    # An errcount entry's counter, or -1 for an entry or counter that is not there, which no assertion reads as 0.
+    value = entry.get("counter") if isinstance(entry, dict) else None
+    return value if isinstance(value, int) else -1
+
+
 def _damage_config(ctx: RunContext) -> tuple[str, str]:
     # One file as bytes that are not JSON, one with a key out of range, one missing a key; returns the two whose
     # damage is a config fault (the missing key is a repair only), by their store names.
     config_dir = state_paths(ctx.state_dir).config_dir
     (config_dir / "config_NOTIFY.cfg").write_bytes(b"\xff not json {")
-    system = json.loads((config_dir / "config_SYSTEM.cfg").read_text())
+    system = json.loads((config_dir / "config_SYSTEM.cfg").read_text(encoding="utf-8"))
     system["DebugLevel"] = 99  # its schema admits 0-5
-    (config_dir / "config_SYSTEM.cfg").write_text(json.dumps(system))
-    wifi = json.loads((config_dir / "config_WIFI.cfg").read_text())
+    (config_dir / "config_SYSTEM.cfg").write_text(json.dumps(system), encoding="utf-8")
+    wifi = json.loads((config_dir / "config_WIFI.cfg").read_text(encoding="utf-8"))
     wifi.pop("Country")
-    (config_dir / "config_WIFI.cfg").write_text(json.dumps(wifi))
+    (config_dir / "config_WIFI.cfg").write_text(json.dumps(wifi), encoding="utf-8")
     return "NOTIFY", "SYSTEM"
 
 
@@ -462,7 +491,7 @@ def _describe_results(results: list[object]) -> list[object]:
     return [(r[0], type(r[1]).__name__) if isinstance(r, tuple) else r for r in results]
 
 
-def _errcount(name: str) -> dict[str, Any]:
+def _errcount(name: str) -> JSONObject:
     # TOLERANT: answers {} for a /status it could not parse, since the polling helpers call it in
     # a loop and a transient non-200 during boot must retry. Assertions take _errcount_required()
     # instead - {} reads as counter 0 - a split that makes the mistake unreachable.
@@ -470,14 +499,14 @@ def _errcount(name: str) -> dict[str, Any]:
     return errcount_entry(status, body, name)
 
 
-def _errcount_all() -> dict[str, dict[str, Any]]:
+def _errcount_all() -> dict[str, JSONObject]:
     # The whole errcount table from ONE /status read, for the sweeps that compare every registered source across a
     # reboot: a per-name loop could not tell a real loss from two reads straddling a fresh entry. Strict.
     status, body = _http("GET", "/status")
     return errcount_table(status, body)
 
 
-def _errcount_required(name: str) -> dict[str, Any]:
+def _errcount_required(name: str) -> JSONObject:
     # STRICT, for assertion sites: raises rather than returning {}, so an unreadable /status
     # becomes the caller's _fail() instead of a silent pass. Every registered source appears in
     # errcount whether or not it logged, so a missing entry is always a real failure.
@@ -487,17 +516,20 @@ def _errcount_required(name: str) -> dict[str, Any]:
     return entry
 
 
-def _error_codes(entry: dict[str, Any]) -> list[tuple[Any, Any]]:
-    # The (type, num) of every non-empty history slot, in order, read strictly: a missing history raises.
-    return [(item["type"], item["num"]) for item in entry["history"] if item["type"] != "N"]
+def _error_codes(entry: JSONObject) -> list[tuple[JSONValue, JSONValue]]:
+    # The (type, num) of every non-empty history slot, in order, read strictly: a missing or malformed history raises.
+    history = entry["history"]
+    if not isinstance(history, list) or not all(isinstance(item, dict) for item in history):
+        raise TypeError(f"the errcount history {history!r} is not a list of slots")
+    return [(item["type"], item["num"]) for item in history if isinstance(item, dict) and item["type"] != "N"]
 
 
-def _error_type_count(entry: dict[str, Any], type_char: str = "E") -> int:
+def _error_type_count(entry: JSONObject, type_char: str = "E") -> int:
     # entry["counter"] counts errors AND warnings in one history, and a "recovered after N
     # failures" notice is itself a "W" - so a recovery bumps it with no new failure. Counting one
     # type's entries is the real "did N of THIS happen" signal; WIFI's are "W", hence Run 8.
-    history = entry.get("history", [])
-    return sum(1 for item in history if isinstance(item, dict) and item.get("type") == type_char)
+    history = entry.get("history")
+    return sum(1 for item in (history if isinstance(history, list) else []) if isinstance(item, dict) and item.get("type") == type_char)
 
 
 def _fail(msg: str) -> None:
@@ -507,17 +539,24 @@ def _fail(msg: str) -> None:
     print(f"FAIL: {full_msg}", file=sys.stderr)
 
 
-def _failure_events(entry: dict[str, Any]) -> int:
+def _failure_events(entry: JSONObject) -> int:
     # asy_print_log.py's newest-entry rule folds a repeated code into one slot while "counter" counts every call,
     # so a failure is a counter step not backed by a "W" slot (exact while no warning repeats); -1 without a counter.
-    counter = entry.get("counter", -1)
-    return (counter if isinstance(counter, int) else -1) - _error_type_count(entry, "W")
+    return _counter(entry) - _error_type_count(entry, "W")
 
 
 def _fault_instances(ctx: RunContext, table: "dict[str, str]") -> list[Instance]:
     # The device's instances whose driver `table` names, sorted by key. A driver absent from every table is caught
     # by the L0 matrix and catalog tests, never skipped here in silence.
     return [inst for inst in ctx.instances if inst.driver in table]
+
+
+def _field(body: JSONValue, *keys: str) -> JSONValue:
+    # The value at `keys` down an answer's nested objects, or None where a level is no object or lacks the key.
+    node = body
+    for key in keys:
+        node = node.get(key) if isinstance(node, dict) else None
+    return node
 
 
 def _generate_from_toml(device_toml: Path, out_dir: Path) -> bool:
@@ -545,7 +584,7 @@ def _healthy_store_fault_instances(ctx: RunContext) -> list[Instance]:
     return _fault_instances(ctx, _BOUNDED_FAULT)
 
 
-def _http(method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 5.0) -> tuple[int, Any]:
+def _http(method: str, path: str, body: JSONObject | None = None, timeout: float = 5.0) -> tuple[int, JSONValue]:
     return twin_http(method, HOST, PORT, path, body, timeout_s=timeout)
 
 
@@ -555,19 +594,22 @@ def _link_crc_modes(device_toml: Path) -> list[str]:
     return [str(spec.fields.get("crc", "none")) for spec in model.instances.values() if spec.driver == "uart_link"]
 
 
-def _link_failures(before: dict[str, Any], after: dict[str, Any]) -> int:
+def _link_failures(before: JSONObject, after: JSONObject) -> int:
     # One process's own failures: a boot-time warning folded into an older slot before it cancels out.
     return _failure_events(after) - (_failure_events(before) if before else 0)
+
+
+def _logs_dir(args: argparse.Namespace) -> Path:
+    # --logs-dir, else the device's own directory, so two devices' runs never mix their logs or state.
+    return Path(args.logs_dir) if args.logs_dir else REPO_ROOT / "digital_twin_ci_logs" / args.device
 
 
 def _mem_paused() -> bool | None:
     # asy_system_service.py's own permanent-storage pause, as GET /status reports it. None means the
     # field wasn't readable at all, which is not the same answer as False.
     status, body = _http("GET", "/status")
-    if status != _HTTP_OK or not isinstance(body, dict):
-        return None
-    system = body.get("system", {})
-    return system.get("MemPaused") if isinstance(system, dict) else None
+    paused = _field(body, "system", "MemPaused") if status == _HTTP_OK else None
+    return paused if isinstance(paused, bool) else None
 
 
 def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | None:
@@ -590,11 +632,12 @@ def _mem_trend(samples: list[int]) -> tuple[float, float, int, float, float] | N
     return trend, tolerance, quarter, early_avg, late_avg
 
 
-def _non_empty_slots(entry: dict[str, Any]) -> list[tuple[Any, Any]]:
-    return [(item.get("type"), item.get("num")) for item in entry.get("history", []) if isinstance(item, dict) and item.get("type") != "N"]
+def _non_empty_slots(entry: JSONObject) -> list[tuple[JSONValue, JSONValue]]:
+    history = entry.get("history")
+    return [(item.get("type"), item.get("num")) for item in (history if isinstance(history, list) else []) if isinstance(item, dict) and item.get("type") != "N"]
 
 
-def _ntp_unreachable_verdict(nums: list[Any], *, route: bool) -> tuple[bool, str]:
+def _ntp_unreachable_verdict(nums: list[JSONValue], *, route: bool) -> tuple[bool, str]:
     # Run 9's check: a request that leaves this host goes unanswered (NTP_NO_REPLY); with no route out the send
     # itself fails (NTP_NOT_SENT). Exactly the one the route predicts is logged, never the other.
     expected, other = ("NTP_NO_REPLY", "NTP_NOT_SENT") if route else ("NTP_NOT_SENT", "NTP_NO_REPLY")
@@ -651,7 +694,7 @@ def _put_reset_errors_timed(run_label: str) -> int:
     return status
 
 
-def _put_system_cmd(cmd: object) -> str | None:
+def _put_system_cmd(cmd: JSONValue) -> str | None:
     # A system command's answer word, or None for a reply that carried none.
     status, body = _http("PUT", "/system", {"SystemCmd": cmd})
     if status != _HTTP_OK or not isinstance(body, dict):
@@ -690,11 +733,11 @@ def _reset_code(name: str) -> int:
     return _src_int("asy_system_service.py", name)
 
 
-def _restore_is_all_or_nothing(written: dict[str, Any], restored: dict[str, Any]) -> bool:
+def _restore_is_all_or_nothing(written: JSONObject, restored: JSONObject) -> bool:
     # Whole: the written ring and at least its count came back, newer slots only after it (this boot's
     # own). Nothing: no "E" slot survived, only what this boot logged itself. Else partial or garbled.
     slots, kept = _non_empty_slots(restored), _non_empty_slots(written)
-    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and restored.get("counter", -1) >= written.get("counter", 0)
+    whole = slots[: len(kept)] == kept and all(kind != "E" for kind, _ in slots[len(kept) :]) and _counter(restored) >= max(_counter(written), 0)
     return whole or all(kind != "E" for kind, _ in slots)
 
 
@@ -711,14 +754,17 @@ def _route_leaves_host(host: str, port: int) -> bool:
 
 def _run_10_watchdog_hang_backstop(ctx: RunContext) -> None:
     # ---- Run 10: one real blocking sleep per instance (_HANG_MATRIX), each in its own fresh process, freezing the
-    # interpreter past the WDT window to prove the simulated backstop engages, which Run 3's raised errors cannot.
-    # --duration 15, not 0: a hang can fire well after readiness, behind another driver's startup I/O. ----
+    # interpreter past the WDT window to prove the simulated backstop engages, which Run 3's raised errors cannot. A run
+    # ends on the runner's WATCHDOG_WOULD_TRIGGER line; --duration 15 bounds one whose hang fires late, behind startup I/O. ----
     for inst in _fault_instances(ctx, _HANG_MATRIX):
         _archive_state(ctx, f"run10 {inst.key}")
         label = f"Run 10 ({inst.key})"
         log10 = ctx.logs_dir / f"run10_watchdog_hang_backstop_{inst.key}.log"
         proc = _spawn(ctx, ["--hang", f"{inst.key}:{_HANG_MATRIX[inst.driver]}:12", "--duration", "15"], log10)
-        ec = _wait_exit(proc, label, timeout_s=_HANG_RUN_EXIT_WAIT_S)
+        deadline = time.monotonic() + _HANG_RUN_EXIT_WAIT_S
+        engaged = _wait_for_log_line(proc, "WATCHDOG_WOULD_TRIGGER", _HANG_RUN_EXIT_WAIT_S)
+        remaining = max(0.0, deadline - time.monotonic())
+        ec = _shutdown(proc, label, starves_watchdog=True) if engaged else _wait_exit(proc, label, timeout_s=remaining, starves_watchdog=True)
         _check(condition=ec == 0, msg=f"{label}: process survived a genuinely wedged bus and exited cleanly (exit code {ec})")
         wdt10 = _would_have_triggered_count(log10, label)
         _check(condition=wdt10 is not None and wdt10 >= 1, msg=f"{label}: the watchdog backstop actually engaged for a genuinely wedged bus (would_have_triggered_count={wdt10!r})")
@@ -731,8 +777,7 @@ def _run_11_soak(ctx: RunContext) -> None:
     run = _run_11_soak_boot(ctx, ctx.logs_dir / "run11_soak.log")
     for failure in run.http_failures:
         print(f"FAIL: Run 11: {failure}")
-    total_requests = (_SOAK_WARMUP_CYCLES + _SOAK_CYCLES) * len(_SOAK_ENDPOINTS)
-    _check(condition=not run.http_failures, msg=f"Run 11: {total_requests} soak requests across every endpoint produced zero HTTP failures ({len(run.http_failures)} found)")
+    _check(condition=not run.http_failures, msg=f"Run 11: {run.requests} soak requests across every endpoint produced zero HTTP failures ({len(run.http_failures)} found)")
     _check(condition=run.wdt_count == 0, msg=f"Run 11: watchdog never starved across the soak (would_have_triggered_count={run.wdt_count!r})")
     _check(condition=run.shutdown_ec == 0, msg=f"Run 11: clean shutdown (exit code {run.shutdown_ec})")
     _check(condition=len(run.samples) // 4 >= 1, msg=f"Run 11: enough MEM_SAMPLE lines in the cycles window to compute a memory trend ({len(run.samples)} samples)")
@@ -753,22 +798,17 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
     # --mem-sample-interval-ms and read back from the captured log, at ctx.gc_threshold like every other run. ----
     _archive_state(ctx, "run11")
     proc = _spawn(ctx, ["--mem-sample-interval-ms", str(_MEM_SAMPLE_INTERVAL_MS)], log_path)
+    endpoints = (*ctx.routes, "/")
     http_failures: list[str] = []
+    warmed = 0
     cycles_start: float | None = None
     cycles_end: float | None = None
     try:
         _wait_until_serving(proc)
-        for _ in range(_SOAK_WARMUP_CYCLES):
-            for path in _SOAK_ENDPOINTS:
-                try:
-                    _http("GET", path)
-                except (OSError, http.client.HTTPException) as e:
-                    # A genuine allocation/transport failure is one more failure, never an abort that would
-                    # deny every other endpoint and cycle its own chance to run.
-                    http_failures.append(f"warmup: GET {path} -> {e!r}")
+        warmed = _soak_warm_up(log_path, endpoints, http_failures)
         cycles_start = time.time()
         for cycle in range(_SOAK_CYCLES):
-            for path in _SOAK_ENDPOINTS:
+            for path in endpoints:
                 try:
                     status, _ = _http("GET", path)
                 except (OSError, http.client.HTTPException) as e:
@@ -790,7 +830,7 @@ def _run_11_soak_boot(ctx: RunContext, log_path: Path) -> _SoakRun:
         samples = [free for ts, free in _parse_mem_samples(log_text) if cycles_start <= ts <= cycles_end]
         if len(samples) // 4 >= 1:
             trend_result = _mem_trend(samples)
-    return _SoakRun(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result)
+    return _SoakRun(http_failures=http_failures, wdt_count=wdt_count, shutdown_ec=ec, samples=samples, trend_result=trend_result, requests=(warmed + _SOAK_CYCLES) * len(endpoints))
 
 
 def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
@@ -807,9 +847,7 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], log11b)
     try:
         _wait_until_serving(proc)
-        # The heaviest real endpoints, not the cheapest: /sensors and /status both grow with the
-        # device's own module count and are the two that stream (Part I.3).
-        endpoints = ("/sensors", "/status", "/measurements", "/networking", "/system")
+        endpoints = ctx.routes  # every GET route the device serves, the streaming /sensors and /status among them (Part I.3)
         for round_index in range(_CEILING_ROUNDS):
             # A slot is released in _serve()'s finally, AFTER the close is awaited, so it outlives the
             # response the client already holds (Part H.7.1) - round 0's too: the readiness probe's own
@@ -877,7 +915,7 @@ def _run_13_config_reset(ctx: RunContext) -> dict[str, str]:
         reason = _status_field("system", "ResetReason")
         _check(condition=reason == _reset_code("_RR_CONFIG_RESET"), msg=f"Run 13: ResetReason reads the config-reset code {_reset_code('_RR_CONFIG_RESET')} ({reason!r})")
         status, body = _http("GET", "/networking")
-        _check(condition=status == _HTTP_OK and body.get("Hostname") == ctx.hostname, msg=f"Run 13: Hostname is the TOML's {ctx.hostname!r} again ({body.get('Hostname') if isinstance(body, dict) else body!r})")
+        _check(condition=status == _HTTP_OK and _field(body, "Hostname") == ctx.hostname, msg=f"Run 13: Hostname is the TOML's {ctx.hostname!r} again ({_field(body, 'Hostname')!r})")
         faults = _status_field("system", "ConfigFaults")
         _check(condition=faults == [], msg=f"Run 13: ConfigFaults is empty after resetconfig ({faults!r})")
         rewritten = _config_files(ctx)
@@ -929,7 +967,7 @@ def _run_13_erase_fram(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         entry = _wait_for_error_type_count(chip.errcount_name, 1, timeout_s=_FIRST_FAULT_WAIT_S, run=proc)
-        _check(condition=_error_type_count(entry) >= 1 and entry.get("counter", -1) > 0, msg=f"Run 13: the planted {fault} logged {chip.errcount_name}'s own entry for the erase to clear within {_FIRST_FAULT_WAIT_S:.0f}s ({entry!r})")
+        _check(condition=_error_type_count(entry) >= 1 and _counter(entry) > 0, msg=f"Run 13: the planted {fault} logged {chip.errcount_name}'s own entry for the erase to clear within {_FIRST_FAULT_WAIT_S:.0f}s ({entry!r})")
         _save_fram_evidence(ctx, "run13 erasefram")
     except Exception as exc:
         _fail(f"Run 13 (erasefram setup): {exc!r}")
@@ -980,7 +1018,7 @@ def _run_13_reboot_sequence(ctx: RunContext, cmd: str, expected_exit: int, reaso
     label = f"Run 13 ({cmd})"
     proc = _spawn(ctx, [], ctx.logs_dir / f"run13_g_{cmd}.log")
     level = _src_int("asy_print_log.py", "_LOG_EVENT")
-    before: dict[str, dict[str, Any]] = {}
+    before: dict[str, JSONObject] = {}
     try:
         _wait_until_serving(proc)
         status, _ = _http("PUT", "/system", {"DebugLevel": level})
@@ -1001,7 +1039,7 @@ def _run_13_reboot_sequence(ctx: RunContext, cmd: str, expected_exit: int, reaso
         reason = _status_field("system", "ResetReason")
         _check(condition=reason == _reset_code(reason_name), msg=f"{label}: the relaunch reads ResetReason {_reset_code(reason_name)} ({reason!r})")
         status, body = _http("GET", "/system")
-        _check(condition=status == _HTTP_OK and body.get("DebugLevel") == level, msg=f"{label}: DebugLevel {level} survived the {cmd} ({body!r})")
+        _check(condition=status == _HTTP_OK and _field(body, "DebugLevel") == level, msg=f"{label}: DebugLevel {level} survived the {cmd} ({body!r})")
         after = _errcount_all()
         lost = [name for name, entry in before.items() if name not in _IN_MEMORY_ONLY_ERROR_SOURCES and _non_empty_slots(after.get(name, {}))[: len(_non_empty_slots(entry))] != _non_empty_slots(entry)]
         _check(condition=not lost, msg=f"{label}: every FRAM-backed history came back a superset of its pre-command one ({lost!r} did not)")
@@ -1032,25 +1070,25 @@ def _run_1_baseline(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], log1)
     try:
         _wait_until_serving(proc)
-        for path in ("/measurements", "/sensors", "/networking", "/system", "/notification", "/status", "/"):
+        for path in (*ctx.routes, "/"):
             status, _ = _http("GET", path)
             _check(condition=status == _HTTP_OK, msg=f"Run 1: GET {path} -> 200")
         times = (_status_field("system", "UTCTime"), _status_field("system", "LocalTime"))
         _check(condition=times == (None, None), msg=f"Run 1: UTCTime and LocalTime are null before the first NTP sync ({times!r})")
 
         status, body = _http("PUT", "/system", {"DebugLevel": _TEST_DEBUG_LEVEL})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "DebugLevel") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /system DebugLevel={_TEST_DEBUG_LEVEL} accepted")
         status, body = _http("GET", "/system")
-        _check(condition=status == _HTTP_OK and body.get("DebugLevel") == _TEST_DEBUG_LEVEL, msg=f"Run 1: GET /system reflects DebugLevel={_TEST_DEBUG_LEVEL} immediately")
+        _check(condition=status == _HTTP_OK and _field(body, "DebugLevel") == _TEST_DEBUG_LEVEL, msg=f"Run 1: GET /system reflects DebugLevel={_TEST_DEBUG_LEVEL} immediately")
 
         status, body = _http("PUT", "/notification", {"WarnCO2": _TEST_WARN_CO2})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("WarnCO2") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /notification WarnCO2={_TEST_WARN_CO2} accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "WarnCO2") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /notification WarnCO2={_TEST_WARN_CO2} accepted")
 
         status, body = _http("PUT", "/sensors", {"SCD30": {"MeasInterval": _TEST_SCD30_MEAS_INT}})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SCD30", {}).get("MeasInterval") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInterval={_TEST_SCD30_MEAS_INT} accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "SCD30", "MeasInterval") in ("Valid", "Unchanged"), msg=f"Run 1: PUT /sensors SCD30.MeasInterval={_TEST_SCD30_MEAS_INT} accepted")
 
         status, body = _http("PUT", "/networking", {"Hostname": "ci-digital-twin"})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "Hostname") in ("Valid", "Unchanged"), msg="Run 1: PUT /networking Hostname accepted")
 
         status = _put_reset_errors_timed("Run 1")
         _check(condition=status == _HTTP_OK, msg="Run 1: PUT /status ResetErrors accepted")
@@ -1071,13 +1109,13 @@ def _run_2_reboot_settings_persistence(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         status, body = _http("GET", "/system")
-        _check(condition=status == _HTTP_OK and body.get("DebugLevel") == _TEST_DEBUG_LEVEL, msg=f"Run 2: DebugLevel={_TEST_DEBUG_LEVEL} survived a real process restart (persistence of settings)")
+        _check(condition=status == _HTTP_OK and _field(body, "DebugLevel") == _TEST_DEBUG_LEVEL, msg=f"Run 2: DebugLevel={_TEST_DEBUG_LEVEL} survived a real process restart (persistence of settings)")
         status, body = _http("GET", "/notification")
-        _check(condition=status == _HTTP_OK and body.get("WarnCO2") == _TEST_WARN_CO2, msg="Run 2: WarnCO2 survived a real process restart")
+        _check(condition=status == _HTTP_OK and _field(body, "WarnCO2") == _TEST_WARN_CO2, msg="Run 2: WarnCO2 survived a real process restart")
         status, body = _http("GET", "/sensors")
-        _check(condition=status == _HTTP_OK and body.get("SCD30", {}).get("MeasInterval") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInterval survived a real process restart")
+        _check(condition=status == _HTTP_OK and _field(body, "SCD30", "MeasInterval") == _TEST_SCD30_MEAS_INT, msg="Run 2: SCD30 MeasInterval survived a real process restart")
         status, body = _http("GET", "/networking")
-        _check(condition=status == _HTTP_OK and body.get("Hostname") == "ci-digital-twin", msg="Run 2: Hostname survived a real process restart")
+        _check(condition=status == _HTTP_OK and _field(body, "Hostname") == "ci-digital-twin", msg="Run 2: Hostname survived a real process restart")
         verbose_lines = _wait_for_verbose_lines(log2, _MIN_VERBOSE_LOG_LINES, _ERROR_COUNT_WAIT_S)  # the value is in the log
     except Exception as exc:
         _fail(f"Run 2 (reboot + settings persistence): {exc!r}")
@@ -1098,7 +1136,7 @@ def _run_3_sustained_bus_fault_matrix(ctx: RunContext) -> None:
         op = _SUSTAINED_FAULT[inst.driver]
         fault_args += ["--fault", f"{inst.key}:{op}" if op == "silent" else f"{inst.key}:{op}:{_BUS_FAULT_ERROR_COUNT}"]
     proc = _spawn(ctx, fault_args, log3)
-    seen: dict[str, dict[str, Any]] = {}
+    seen: dict[str, JSONObject] = {}
     ec = -1
     try:
         _wait_until_serving(proc)
@@ -1147,7 +1185,7 @@ def _run_4_bus_fault_persistence_sweep(ctx: RunContext) -> None:
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 4: the boot that read the reset record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
 
 
-def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> dict[str, Any]:
+def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> JSONObject:
     # ---- Run 5: fresh boot with a small BOUNDED fault on SGP40's measure reads only, proving recovery - the half
     # Run 3 cannot show. A station link is configured so the clock syncs and each read carries a timestamp; the
     # failure count must then stay put across two observed read cycles. Runs where the device wires an SGP40 (C.8). ----
@@ -1159,11 +1197,11 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> dict[str, Any]:
     log5 = ctx.logs_dir / "run5_recovery_after_bounded_fault.log"
     proc = _spawn(ctx, ["--fault", f"{sgp40.key}:{_RUN_5_FAULT_OP}:{_BOUNDED_FAULT_COUNT}:{_SGP40_MEASURE_RAW:04X}"], log5)
     name = sgp40.errcount_name
-    final: dict[str, Any] = {}
+    final: JSONObject = {}
     try:
         _wait_until_serving(proc)
         status, body = _http("PUT", "/networking", {"SSID": _TEST_SSID})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SSID") in ("Valid", "Unchanged"), msg="Run 5: PUT /networking SSID accepted, so the clock can sync")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "SSID") in ("Valid", "Unchanged"), msg="Run 5: PUT /networking SSID accepted, so the clock can sync")
         expected_events = _BOUNDED_FAULT_COUNT * _EVENTS_PER_FAILED_READ
         entry = _wait_for_failure_events(name, expected_events, timeout_s=_ERROR_COUNT_WAIT_S)
         failures = _failure_events(entry)
@@ -1186,7 +1224,7 @@ def _run_5_recovery_after_bounded_fault(ctx: RunContext) -> dict[str, Any]:
     return final
 
 
-def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: dict[str, Any]) -> None:
+def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: JSONObject) -> None:
     # ---- Run 5b: reboot straight onto Run 5's state, fault-free. Run 5 shut down abruptly, which can catch a chunk
     # write in flight and lose the ring (owner, 2026-09-26, accepted: "an abrupt reset mid-write may lose a module's
     # whole FRAM history, all-or-nothing, never partial or garbled"), so the restored history is [] or Run 5's exactly. ----
@@ -1201,8 +1239,7 @@ def _run_5b_error_log_restore_is_all_or_nothing(ctx: RunContext, written: dict[s
             entry = _wait_for_error_type_count(name, _error_type_count(written), timeout_s=_ERROR_COUNT_WAIT_S)
             entry = entry or _errcount_required(name)
             restored, kept = _error_codes(entry), _error_codes(written)
-            counter = entry.get("counter", -1)
-            whole = restored == kept and counter >= written.get("counter", 0)
+            whole = restored == kept and _counter(entry) >= max(_counter(written), 0)
             nothing = restored == [] or all(kind != "E" for kind, _ in restored)
             _check(condition=whole or nothing, msg=f"Run 5b: {name}'s FRAM-backed history came back all-or-nothing after an abrupt restart - Run 5's exact ring and count or none of it (wrote {written!r}, restored {entry!r})")
     except Exception as exc:
@@ -1218,7 +1255,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
     # link chained onto the previous link's state (three at once would exhaust the restart budget, Part C.4.1). ----
     _archive_state(ctx, "run5c")
     recorded: dict[str, int] = {}
-    snapshot_table: dict[str, dict[str, Any]] = {}
+    snapshot_table: dict[str, JSONObject] = {}
     for inst in _healthy_store_fault_instances(ctx):
         name = inst.errcount_name
         before_link = snapshot_table.get(name, {})
@@ -1261,7 +1298,7 @@ def _run_5c_storage_paused_shutdown_never_loses_the_error_log(ctx: RunContext) -
             entry = restored_table.get(name, {})
             restored = _error_type_count(entry)
             _check(condition=restored == expected, msg=f"Run 5c: {name}'s {expected} chip-healthy error(s) survived a commanded reboot - the one case that must never lose them ({restored} found, {entry!r})")
-            _check(condition=entry.get("counter", -1) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
+            _check(condition=_counter(entry) >= expected, msg=f"Run 5c: {name}'s persisted error COUNT was restored too, not just the history ring ({entry!r})")
         # Every OTHER registered source in the same breath (SYSTEM/NOTIFY/NTP/WEBSERVER/DNSSRV, every FRAM-backed
         # CFGMGR_*, every uart_link instance). A fresh entry from THIS boot is legitimate: "nothing was lost".
         for name, before in snapshot_table.items():
@@ -1295,7 +1332,7 @@ def _run_6_configure_ssid(ctx: RunContext) -> None:
     try:
         _wait_until_serving(proc)
         status, body = _http("PUT", "/networking", {"SSID": _TEST_SSID})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("SSID") in ("Valid", "Unchanged"), msg="Run 6: PUT /networking SSID accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "SSID") in ("Valid", "Unchanged"), msg="Run 6: PUT /networking SSID accepted")
     except Exception as exc:
         _fail(f"Run 6 (configure SSID for WiFi test): {exc!r}")
     finally:
@@ -1316,7 +1353,7 @@ def _run_7_wifi_hotspot_dns(ctx: RunContext) -> None:
         _wait_until_serving(proc)
         # Waits for the FULL scripted failure count: hotspot activation, and so the CaptiveDNS, starts on the fifth.
         entry = _wait_for_errcount_above("WIFI", _WIFI_PERSISTED_EVENTS - 1, timeout_s=_LONG_WAIT_S)
-        _check(condition=entry.get("counter", -1) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
+        _check(condition=_counter(entry) >= _WIFI_PERSISTED_EVENTS, msg=f"Run 7: all {_WIFI_SCRIPTED_FAILURES} repeated WiFi connect failures drove real hotspot fallback, and both they and the fallback were recorded in WIFI's error counter ({entry!r})")
         logged = _error_type_count(entry, type_char="W")
         _check(condition=logged == _WIFI_PERSISTED_WARNINGS, msg=f"Run 7: those {_WIFI_SCRIPTED_FAILURES} identical verdicts spent one history slot, not one each, and the fallback one more ({_WIFI_PERSISTED_WARNINGS}) - the ring still holds what preceded the outage ({entry!r})")
         answered = _wait_for_dns_answer(HOST, timeout_s=_LONG_WAIT_S)
@@ -1353,7 +1390,7 @@ def _run_8_wifi_persistence_and_configure_ntp(ctx: RunContext) -> None:
         # RFC 5737 TEST-NET-1: no server answers it, a reproducible "unreachable" host rather than incidental
         # sandbox network policy; whether a route carries the request out decides Run 9's code (_route_leaves_host()).
         status, body = _http("PUT", "/networking", {"NTPHost": _NTP_UNREACHABLE_HOST})
-        _check(condition=status == _HTTP_OK and body.get("result", {}).get("NTPHost") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTPHost (unreachable) accepted")
+        _check(condition=status == _HTTP_OK and _field(body, "result", "NTPHost") in ("Valid", "Unchanged"), msg="Run 8: PUT /networking NTPHost (unreachable) accepted")
     except Exception as exc:
         _fail(f"Run 8 (WIFI persistence check + configure unreachable NTP): {exc!r}")
     finally:
@@ -1369,16 +1406,18 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
     proc = _spawn(ctx, [], log9)
     try:
         _wait_until_serving(proc)
-        system_before = _errcount_required("SYSTEM").get("counter", -1)
-        # 90s: the old five-failure streak ended the task after about 60s of 10s-tick attempts, so
-        # a regression shows here without waiting out the whole old reboot cycle.
-        time.sleep(_NTP_UNREACHABLE_WATCH_S)
+        system_before = _counter(_errcount_required("SYSTEM"))
+        # Past every attempt the backoff makes within the old give-up's reach, then one supervisor pass: the time a task
+        # that ended on the last failure takes to be restarted, an absence no probe can observe.
+        failed = _failure_events(_wait_for_failure_events("NTP", _NTP_UNREACHABLE_FAILURES, timeout_s=_NTP_UNREACHABLE_WATCH_S))
+        time.sleep(_src_int("asy_system_service.py", "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+        _check(condition=failed >= _NTP_UNREACHABLE_FAILURES, msg=f"Run 9: NTP failed {failed} time(s) within the {_NTP_UNREACHABLE_WATCH_S:.0f}s watch, every attempt its backoff schedules there")
         status, _ = _http("GET", "/system")
         _check(condition=status == _HTTP_OK, msg="Run 9: webserver stayed fully healthy with NTP permanently unreachable")
         nums = [num for _kind, num in _error_codes(_errcount_required("NTP"))]
         ok, msg = _ntp_unreachable_verdict(nums, route=_route_leaves_host(_NTP_UNREACHABLE_HOST, _NTP_PORT))
         _check(condition=ok, msg=msg)
-        system_after = _errcount_required("SYSTEM").get("counter", -1)
+        system_after = _counter(_errcount_required("SYSTEM"))
         _check(condition=system_after == system_before >= 0, msg=f"Run 9: no task ended and was restarted while NTP failed (SYSTEM counter {system_before} -> {system_after})")
     except Exception as exc:
         _fail(f"Run 9 (NTP unreachable): {exc!r}")
@@ -1388,11 +1427,11 @@ def _run_9_ntp_unreachable(ctx: RunContext) -> None:
 
 
 def _run_both_passes(args: argparse.Namespace) -> int:
-    generated_dir, micropypath = GENERATED_SRC_DIR, TWIN_MICROPYPATH
+    generated_dir, micropypath, logs_dir = GENERATED_SRC_DIR, TWIN_MICROPYPATH, _logs_dir(args)
     device_toml = REPO_ROOT / "devices" / f"{args.device}.toml"
     if args.device_toml is not None:
         device_toml = args.device_toml.resolve()
-        generated_dir = Path(args.logs_dir).resolve() / "generated"
+        generated_dir = logs_dir.resolve() / "generated"
         if not _generate_from_toml(device_toml, generated_dir):
             _SUMMARY.add("failed", f"generation from {device_toml} failed", "see the generator's output above")
             return 1
@@ -1404,14 +1443,21 @@ def _run_both_passes(args: argparse.Namespace) -> int:
         print(f"error: {wiring_plan_path} not found - {hint}", file=sys.stderr)
         _SUMMARY.add("failed", f"wiring plan {wiring_plan_path} missing", hint)
         return 1
+    reference = generated_dir / "api" / f"{device_toml.stem}.json"
+    if not reference.exists():
+        hint = "the generator writes it beside the wiring plan: run scripts/_generate_sensortask_modules.py"
+        print(f"error: {reference} not found - {hint}", file=sys.stderr)
+        _SUMMARY.add("failed", f"API reference {reference} missing", hint)
+        return 1
     base_ctx = RunContext(
         micropython_bin=args.micropython_bin,
-        logs_dir=Path(args.logs_dir),  # overridden per pass below
+        logs_dir=logs_dir,  # overridden per pass below
         device=args.device,
         module=module,
         wiring_plan_path=wiring_plan_path,
         instances=_plan_instances(device_toml),
         gc_threshold=-1,  # overridden per pass below
+        routes=_get_routes(reference),
         hostname=_toml_hostname(device_toml),
         micropypath=micropypath,
     )
@@ -1453,16 +1499,16 @@ def _save_fram_evidence(ctx: RunContext, label: str) -> None:
     evidence = ctx.logs_dir / "fram_evidence" / label.replace(" ", "_")
     evidence.mkdir(parents=True, exist_ok=True)
     status, body = _http("GET", "/status")
-    (evidence / "errcount.json").write_text(json.dumps({"status": status, "errcount": body.get("errcount") if isinstance(body, dict) else None}, indent=2))
+    (evidence / "errcount.json").write_text(json.dumps({"status": status, "errcount": body.get("errcount") if isinstance(body, dict) else None}, indent=2), encoding="utf-8")
     fram = state_paths(ctx.state_dir).fram
     if fram.exists():
         shutil.copy2(fram, evidence / fram.name)
 
 
-def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0) -> int:
+def _shutdown(run: TwinRun, run_label: str, timeout_s: float = 15.0, *, starves_watchdog: bool = False) -> int:
     ec = shutdown(run, run_label, timeout_s)
     _check_exit(run, ec, run_label)
-    _check_run_log(run, run_label)
+    _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec
 
 
@@ -1481,6 +1527,27 @@ def _shutdown_step_lines(log_text: str) -> list[str]:
     return [step for line in log_text.splitlines() for step in steps if f"SYSTEM {step}" in line]
 
 
+def _soak_warm_up(log_path: Path, endpoints: tuple[str, ...], http_failures: list[str]) -> int:
+    # Warm-up cycles until no cycle has set a new MEM_SAMPLE floor for _SOAK_PLATEAU_CYCLES cycles, at most
+    # _SOAK_WARMUP_CYCLES; a cycle that printed no sample counts toward neither. Returns the cycles run.
+    floor: int | None = None
+    held = 0
+    for cycle in range(_SOAK_WARMUP_CYCLES):
+        offset = len(read_log(log_path))
+        for path in endpoints:
+            try:
+                _http("GET", path)
+            except (OSError, http.client.HTTPException) as e:  # one more failure, never an abort of the cycles
+                http_failures.append(f"warmup: GET {path} -> {e!r}")
+        samples = [free for _ts, free in _parse_mem_samples(log_from(log_path, offset))]
+        if samples:
+            held = 0 if floor is None or min(samples) < floor else held + 1
+            floor = min(samples) if floor is None else min(floor, *samples)
+        if held >= _SOAK_PLATEAU_CYCLES:
+            return cycle + 1
+    return _SOAK_WARMUP_CYCLES
+
+
 def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> TwinRun:
     # Every run at ctx.gc_threshold, and every state path inside the pass's own state directory.
     launch = TwinLaunch(ctx.micropython_bin, ctx.module, ctx.wiring_plan_path, ctx.device, HOST, PORT, ctx.gc_threshold, ctx.micropypath)
@@ -1495,11 +1562,12 @@ def _src_int(filename: str, name: str) -> int:
 def _status_field(group: str, key: str) -> object:
     # One field of GET /status, strict: an unreadable answer raises rather than reading as a value.
     status, body = _http("GET", "/status")
-    if status != _HTTP_OK or not isinstance(body, dict) or not isinstance(body.get(group), dict):
+    block = _field(body, group)
+    if status != _HTTP_OK or not isinstance(block, dict):
         raise RuntimeError(f"GET /status gave no readable {group!r} block (status {status})")
-    if key not in body[group]:
+    if key not in block:
         raise RuntimeError(f"GET /status's {group!r} block carries no {key!r}")
-    return body[group][key]
+    return block[key]
 
 
 def _toml_hostname(device_toml: Path) -> str:
@@ -1526,10 +1594,10 @@ def _try_dns_query(host: str, timeout: float = 1.0) -> bool:
         sock.close()
 
 
-def _wait_exit(run: TwinRun, run_label: str, timeout_s: float) -> int:
+def _wait_exit(run: TwinRun, run_label: str, timeout_s: float, *, starves_watchdog: bool = False) -> int:
     ec = wait_exit(run, timeout_s)
     _check_exit(run, ec, run_label)
-    _check_run_log(run, run_label)
+    _check_run_log(run, run_label, starves_watchdog=starves_watchdog)
     return ec
 
 
@@ -1542,18 +1610,16 @@ def _wait_for_dns_answer(host: str, timeout_s: float) -> bool:
     return False
 
 
-def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> dict[str, Any]:
+def _wait_for_errcount_above(name: str, floor: int, timeout_s: float) -> JSONObject:
     # Polls /status until `name`'s error counter climbs above `floor`, or times out - used instead
     # of a fixed sleep for state-machine transitions (e.g. WiFi hotspot fallback) with real, but
     # not perfectly predictable, wall-clock timing.
     deadline = time.monotonic() + timeout_s
-    entry: dict[str, Any] = {}
-    while time.monotonic() < deadline:
+    while True:  # read at least once: the entry returned at the deadline is the last one read
         entry = _errcount(name)
-        if entry.get("counter", -1) > floor:
+        if _counter(entry) > floor or time.monotonic() >= deadline:
             return entry
         time.sleep(_ERRCOUNT_POLL_S)
-    return entry
 
 
 def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples: int = 3, interval_s: float = 2.0) -> dict[str, int]:
@@ -1575,29 +1641,38 @@ def _wait_for_error_counts_to_settle(names: list[str], timeout_s: float, samples
     raise RuntimeError(f"bounded-fault error counts never settled within {timeout_s}s - last read {current!r}, the one before {previous!r}")
 
 
-def _wait_for_error_type_count(name: str, target: int, timeout_s: float, type_char: str = "E", run: "TwinRun | None" = None) -> dict[str, Any]:
+def _wait_for_error_type_count(name: str, target: int, timeout_s: float, type_char: str = "E", run: "TwinRun | None" = None) -> JSONObject:
     # _wait_for_errcount_above()'s poll-never-sleep reasoning, keyed on one type's count rather than the raw counter
     # a "W" also bumps; given the run, the poll stops once its process has exited.
     deadline = time.monotonic() + timeout_s
-    entry: dict[str, Any] = {}
-    while time.monotonic() < deadline and (run is None or run.proc.poll() is None):
+    entry: JSONObject = {}
+    while True:  # read at least once: the entry returned at the deadline or the exit is the last one read
         entry = _errcount(name) or entry
-        if _error_type_count(entry, type_char) >= target:
+        if _error_type_count(entry, type_char) >= target or time.monotonic() >= deadline or (run is not None and run.proc.poll() is not None):
             return entry
         time.sleep(_ERRCOUNT_POLL_S)
-    return entry
 
 
-def _wait_for_failure_events(name: str, target: int, timeout_s: float) -> dict[str, Any]:
+def _wait_for_failure_events(name: str, target: int, timeout_s: float) -> JSONObject:
     # _wait_for_error_type_count()'s poll, keyed on failure events rather than history slots.
     deadline = time.monotonic() + timeout_s
-    entry: dict[str, Any] = {}
-    while time.monotonic() < deadline:
+    while True:  # read at least once: the entry returned at the deadline is the last one read
         entry = _errcount(name)
-        if _failure_events(entry) >= target:
+        if _failure_events(entry) >= target or time.monotonic() >= deadline:
             return entry
         time.sleep(_ERRCOUNT_POLL_S)
-    return entry
+
+
+def _wait_for_log_line(run: TwinRun, text: str, timeout_s: float) -> bool:
+    # Polls the run's log for a line holding `text` until the deadline or its process's exit, read once more after it.
+    deadline = time.monotonic() + timeout_s
+    while True:
+        exited = run.proc.poll() is not None
+        if any(text in line for line in read_log(run.log_path).splitlines()):
+            return True
+        if exited or time.monotonic() >= deadline:
+            return False
+        time.sleep(_VERBOSE_POLL_S)
 
 
 def _wait_for_ntp_sync(timeout_s: float) -> bool:
@@ -1667,7 +1742,12 @@ def main() -> int:
     _SUMMARY = Summary("scripts/_digital_twin_ci_suite.py", unit="checks", levels=f"L2 ({args.device})", gc_stage=stage)
     exit_code = 1
     try:
-        exit_code = _run_both_passes(args)
+        # The product's fixed ports, Run 7's captive DNS and every run's listener: passed when the runner holds them.
+        with port_lock(DNS_PORT, _LOCK_RUNNER), port_lock(PORT, _LOCK_RUNNER):
+            exit_code = _run_both_passes(args)
+    except PortHeldError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        _SUMMARY.add("failed", "the product's fixed ports", str(exc))
     finally:
         exit_code = _SUMMARY.print(exit_code)
     return exit_code
@@ -1728,4 +1808,4 @@ def run_suite(ctx: RunContext, only: "frozenset[str] | None" = None) -> None:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

@@ -1,3 +1,5 @@
+"""The SPI bus and device wrappers: chip select, the session lock, configuration and rp2's RX-overrun fault."""
+
 import asyncio
 import errno
 

@@ -1,3 +1,5 @@
+// Tests js/poll-manager.js: the one-in-flight request queue, JSON and torn-body failures, timeouts and aborts, and
+// startPolling()'s scheduling, error reports, backoff and its cap, stopAfterSuccess and stop().
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pollManager, startPolling } from "../js/poll-manager.js";
 import pollManagerSource from "../js/poll-manager.js?raw";

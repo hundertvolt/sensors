@@ -76,7 +76,7 @@ def _closure(js_dir: Path, name: str, order: list[str]) -> None:
     # An independent oracle: the depth-first post-order over each file's one-line imports.
     if name in order:
         return
-    for target in _ONE_LINE_IMPORT.findall((js_dir / name).read_text()):
+    for target in _ONE_LINE_IMPORT.findall((js_dir / name).read_text(encoding="utf-8")):
         _closure(js_dir, target, order)
     order.append(name)
 
@@ -101,22 +101,22 @@ def _site(root: Path, changes: "dict[str, str | None] | None" = None, definition
             path.unlink(missing_ok=True)
             continue
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
     (root / "scripts").mkdir(exist_ok=True)
     shutil.copy(_STAGER, root / "scripts" / _STAGER.name)
     shutil.copy(_ICON, root / "html" / "favicon.ico")
-    (root / "definitions.json").write_text(json.dumps(_DEFINITIONS) if definitions is None else definitions)
+    (root / "definitions.json").write_text(json.dumps(_DEFINITIONS) if definitions is None else definitions, encoding="utf-8")
     return root
 
 
-def _stage(root: Path, stage: str = "stage") -> "subprocess.CompletedProcess[str]":
-    return subprocess.run([sys.executable, str(root / "scripts" / _STAGER.name), "definitions.json", stage], cwd=root, capture_output=True, text=True, check=False)
+def _stage(root: Path, stage: str = "stage", *options: str) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run([sys.executable, str(root / "scripts" / _STAGER.name), *options, "definitions.json", stage], cwd=root, capture_output=True, text=True, check=False)
 
 
 def _staged(root: Path) -> tuple[str, str]:
     result = _stage(root)
     assert result.returncode == 0, result.stderr
-    return (root / "stage" / "index.html").read_text(), (root / "stage" / "js" / "app.js").read_text()
+    return (root / "stage" / "index.html").read_text(encoding="utf-8"), (root / "stage" / "js" / "app.js").read_text(encoding="utf-8")
 
 
 def test_a_valid_site_stages_the_page_and_the_bundle_and_nothing_else(tmp_path: Path) -> None:
@@ -219,15 +219,36 @@ def test_the_stager_writes_only_inside_the_stage_and_creates_it(tmp_path: Path) 
     assert {p: after[p] for p in before} == before
 
 
+def test_a_firmware_build_s_date_is_stamped_into_the_page_and_a_plain_build_carries_none(tmp_path: Path) -> None:
+    # The firmware build hands its one build date to the site, so the page names the build its image carries; a site
+    # built on its own stays reproducible, with no stamp.
+    root = _site(tmp_path)
+    page, _bundle = _staged(root)
+    assert "build-date" not in page
+    result = _stage(root, "stamped", "--build-date", "2026-10-15T08:30:00Z")
+    assert result.returncode == 0, result.stderr
+    stamped = (root / "stamped" / "index.html").read_text(encoding="utf-8")
+    assert stamped == page.replace("</head>", '<meta name="build-date" content="2026-10-15T08:30:00Z">\n</head>')
+
+
+@pytest.mark.parametrize("stamp", ["2026-10-15", "2026-10-15T08:30:00", '2026-10-15T08:30:00Z"><script>'])
+def test_a_build_date_that_is_no_utc_stamp_is_refused_and_nothing_is_staged(tmp_path: Path, stamp: str) -> None:
+    root = _site(tmp_path)
+    result = _stage(root, "stage", "--build-date", stamp)
+    assert result.returncode == 1
+    assert result.stderr.startswith("error: --build-date: ") and "YYYY-MM-DDTHH:MM:SSZ" in result.stderr, result.stderr
+    assert not (root / "stage").exists()
+
+
 def test_the_real_tree_stages_main_js_import_closure_in_dependency_order(tmp_path: Path) -> None:
     # The real site against the first derived device's generated definitions: the banner's list is the
     # closure, every module follows the ones it imports, each has its separator, and the page names the device.
     definitions = tmp_path / "definitions.json"
-    definitions.write_text(json.dumps(definitions_for_toml(_REPO / "devices" / f"{DEVICE_NAMES[0]}.toml", _REPO / "src")))
+    definitions.write_text(json.dumps(definitions_for_toml(_REPO / "devices" / f"{DEVICE_NAMES[0]}.toml", _REPO / "src")), encoding="utf-8")
     result = subprocess.run([sys.executable, str(_STAGER), str(definitions), str(tmp_path / "stage")], cwd=_REPO, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
-    bundle = (tmp_path / "stage" / "js" / "app.js").read_text()
-    page = (tmp_path / "stage" / "index.html").read_text()
+    bundle = (tmp_path / "stage" / "js" / "app.js").read_text(encoding="utf-8")
+    page = (tmp_path / "stage" / "index.html").read_text(encoding="utf-8")
 
     expected: list[str] = []
     _closure(_REPO / "js", "main.js", expected)
@@ -235,6 +256,6 @@ def test_the_real_tree_stages_main_js_import_closure_in_dependency_order(tmp_pat
     assert modules == expected
     assert _SEPARATOR.findall(bundle) == modules
     for position, name in enumerate(modules):
-        assert set(_ONE_LINE_IMPORT.findall((_REPO / "js" / name).read_text())) <= set(modules[:position]), name
+        assert set(_ONE_LINE_IMPORT.findall((_REPO / "js" / name).read_text(encoding="utf-8"))) <= set(modules[:position]), name
     start = page.index(_DEFINITIONS_OPEN) + len(_DEFINITIONS_OPEN)
     assert json.loads(page[start : page.index("</script>", start)])["device"]["id"] == DEVICE_NAMES[0]

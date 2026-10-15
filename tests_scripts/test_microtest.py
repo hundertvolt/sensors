@@ -58,7 +58,7 @@ def _interrupted(micropython_bin: Path, tmp_path: Path, source: str) -> "tuple[i
     # when it did not end within ten seconds of the interrupt, and was killed) and its output lines.
     marker = tmp_path / "hung"
     test_file = tmp_path / "test_case.py"
-    test_file.write_text(source.format(marker=str(marker)) + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n')
+    test_file.write_text(source.format(marker=str(marker)) + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
     env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:.frozen"}
     with subprocess.Popen([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
         deadline = time.monotonic() + 30
@@ -143,7 +143,7 @@ def test_an_exit_inside_a_test_aborts_the_file_and_the_later_tests_are_not_run(m
 
 def test_a_simulated_reset_escaping_a_test_fails_only_that_test(micropython_bin: Path, tmp_path: Path) -> None:
     # The loaded machine module names the reset class; microtest itself imports no fake.
-    (tmp_path / "machine.py").write_text("class SimulatedRebootError(BaseException):\n    pass\n")
+    (tmp_path / "machine.py").write_text("class SimulatedRebootError(BaseException):\n    pass\n", encoding="utf-8")
     done = _run(micropython_bin, tmp_path, "import machine\n\n\ndef test_a():\n    raise machine.SimulatedRebootError\n\n\ndef test_b():\n    pass\n")
     lines = done.stdout.splitlines()
     assert "FAIL test_a: reset reached without a catch" in lines, done.stdout
@@ -245,7 +245,7 @@ def _public_double_problems(directory: Path) -> "list[str]":
 
 def _run(micropython_bin: Path, tmp_path: Path, source: str) -> subprocess.CompletedProcess[str]:
     test_file = tmp_path / "test_case.py"
-    test_file.write_text(source + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n')
+    test_file.write_text(source + '\n\nif __name__ == "__main__":\n    import microtest\n\n    microtest.run(globals())\n', encoding="utf-8")
     env = {**os.environ, "MICROPYPATH": f"{REPO_ROOT / 'tests'}:.frozen"}
     return subprocess.run([str(micropython_bin), str(test_file)], cwd=tmp_path, env=env, capture_output=True, text=True, check=False, timeout=60)
 
@@ -329,7 +329,7 @@ _PLANTED = {
 @pytest.mark.parametrize("case", sorted(_PLANTED))
 def test_a_planted_violation_is_found_and_its_clean_form_is_not(tmp_path: Path, case: str) -> None:
     filename, source, scan = _PLANTED[case]
-    (tmp_path / filename).write_text(source)
+    (tmp_path / filename).write_text(source, encoding="utf-8")
     assert scan(tmp_path), f"the planted {case} violation passed the scan"
-    (tmp_path / filename).write_text("def test_a():\n    pass\n\n\n" + _TRAILER)
+    (tmp_path / filename).write_text("def test_a():\n    pass\n\n\n" + _TRAILER, encoding="utf-8")
     assert scan(tmp_path) == []

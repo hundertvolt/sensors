@@ -1,3 +1,5 @@
+// Tests js/render.js: the banner, a rendered section and its live updates, the Apply path's sparse body and
+// per-field results, the errcount cards, the reset toggle and the section controller's failure handling.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installMockFetch } from "../js/mock-server.js";
 import { hideBanner, renderSection, showBanner } from "../js/render.js";

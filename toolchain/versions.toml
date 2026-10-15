@@ -1,13 +1,20 @@
-# Pin for the build-environment installer (toolchain/setup_toolchain.py).
+# Pins for the build-environment installer (toolchain/setup_toolchain.py).
 #
-# Only the MicroPython ref is pinned by hand. pico-sdk is derived from MicroPython's own
-# lib/pico-sdk submodule at this ref, picotool as the newest tag sharing its major.minor (inside
-# pico-sdk's same-major rule, SPECIFICATION.md B.1).
+# The MicroPython ref and the stub releases ([stubs]) are pinned by hand. pico-sdk is derived from
+# MicroPython's own lib/pico-sdk submodule at this ref, picotool as the newest tag sharing its
+# major.minor (inside pico-sdk's same-major rule, SPECIFICATION.md B.1).
 #
 # A move is the owner's call (owner, 2026-09-26) and the platform re-check follows (SPECIFICATION.md
-# Part F): change `ref`, or run the installer with --latest, then re-run the installer.
+# Part F): change `ref` and [stubs], or run the installer with --latest, then re-run the installer.
 [micropython]
 ref = "v1.29.0"
+
+# Exact stub releases, X.Y.Z equal to the ref's (scripts/typecheck.sh and tests_scripts check): they move with
+# every [micropython] ref change (owner, 2026-10-02: 'we need to ensure that this will be updated along with
+# Micropython when switching to a newer release'). Re-run typecheck.sh after a bump.
+[stubs]
+board = "1.29.0.post1"
+stdlib = "1.29.0.post2"
 
 [toolchain]
 board = "RPI_PICO_W"

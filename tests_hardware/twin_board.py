@@ -9,11 +9,12 @@ import tempfile
 from pathlib import Path
 
 import harness
+import tomllib
 from harness import REPO_ROOT, HardwareNotAvailableError, HardwareTestFailureError
 
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import build_model
-from scripts._twin_process import EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET, TWIN_MICROPYPATH
+from scripts._twin_process import EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET
 
 RUNNER = "digital_twin/run_device_script.py"
 PLAN_DIR = REPO_ROOT / "build" / "twin_board"
@@ -21,6 +22,9 @@ PLAN_DIR = REPO_ROOT / "build" / "twin_board"
 _HEAP_SIZE = "16M"
 _EXIT_WATCHDOG_STARVED = 6  # run_device_script.py's own: the script starved the watchdog silicon would have reset on
 _DEFAULT_TIMEOUT_S = 60.0
+_PROBE_TIMEOUT_S = 60.0  # scripts/_unix_port.sh answers from the filesystem and one interpreter start
+# The twin's MICROPYPATH, from its one definition.
+_TWIN_LAYOUT = tomllib.loads((REPO_ROOT / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["twin"]
 
 
 def _plan(device: str) -> Path:
@@ -34,16 +38,12 @@ def _plan(device: str) -> Path:
     return path
 
 
-def unix_port_binary() -> Path:
-    # The standard Unix-port build scripts/test.sh runs the twin with, under $PICO_TOOLCHAIN_DIR like its own lookup.
-    toolchain = Path(os.environ.get("PICO_TOOLCHAIN_DIR", Path.home() / "pico-toolchain"))
-    return toolchain / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
+def _refused(done: "subprocess.CompletedProcess[str]", what: str) -> FileNotFoundError:
+    return FileNotFoundError(done.stderr.strip() or f"scripts/_unix_port.sh {what} exited {done.returncode}")
 
 
-def twin_micropypath() -> str:
-    # The twin's one MICROPYPATH with each directory made absolute, so a run works from the board's own filesystem;
-    # ".frozen" stays as it is, the interpreter's token for its frozen modules (asyncio among them), not a directory.
-    return ":".join(entry if entry == ".frozen" else str(REPO_ROOT / entry) for entry in TWIN_MICROPYPATH.split(":"))
+def _unix_port(*args: str) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run(["/bin/bash", str(REPO_ROOT / "scripts" / "_unix_port.sh"), *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_PROBE_TIMEOUT_S, check=False)  # noqa: S603 - argv from repo paths, no shell
 
 
 class TwinBoard:
@@ -60,9 +60,11 @@ class TwinBoard:
         self._last_output: list[str] = []
 
     def _run(self, script: Path, timeout_s: "float | None", *, expect_reset: bool) -> str:
-        binary = unix_port_binary()
-        if not binary.is_file():
-            raise FileNotFoundError(f"MicroPython Unix port not built at {binary} - run scripts/test.sh once")
+        # A missing build, or one of another build flavour, raises naming the probe's own fix.
+        done = _unix_port("check", "standard")
+        if done.returncode != 0:
+            raise _refused(done, "check standard")
+        binary = Path(done.stdout.strip())
         filesystem = Path(self._state.name) / "fs"
         filesystem.mkdir(exist_ok=True)
         argv = [str(binary), "-X", f"heapsize={_HEAP_SIZE}", str(REPO_ROOT / RUNNER), str(_plan(self.device)), str(Path(script).resolve()), "--gc-threshold", str(self.gc_threshold), "--state-dir", self._state.name]
@@ -116,3 +118,17 @@ class TwinBoard:
         del duration_s, baudrate
         lines, self._last_output = self._last_output, []
         return lines
+def twin_micropypath() -> str:
+    # The twin's one MICROPYPATH with each directory made absolute, so a run works from the board's own filesystem;
+    # ".frozen" stays as it is, the interpreter's token for its frozen modules (asyncio among them), not a directory.
+    return ":".join(entry if entry == ".frozen" else str(REPO_ROOT / entry) for entry in _TWIN_LAYOUT.split(":"))
+
+
+def unix_port_binary() -> Path:
+    # Where scripts/_unix_port.sh puts the standard build scripts/test.sh runs the twin with; it may not be built yet.
+    done = _unix_port("unix_port_bin", "standard")
+    if done.returncode != 0:
+        raise _refused(done, "unix_port_bin standard")
+    return Path(done.stdout.strip())
+
+

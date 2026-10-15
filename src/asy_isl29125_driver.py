@@ -253,8 +253,7 @@ class ISL29125_Reader(SensorReaderConfig):
         # set with no waiter is remembered, so an INT mid-cycle coalesces into one extra cycle.
         self._base_trigger_event = asyncio.ThreadSafeFlag()
         self._read_event = asyncio.ThreadSafeFlag()
-        # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
-        # requiring a positional id - a stub inaccuracy, not a code bug.
+        # Bare Timer() is valid on rp2 (id defaults to -1); the stub requires an id. Removal trigger: SPECIFICATION.md B.15.
         self._trigger_timer = Timer()
         self._trigger_period = LockedValue(init_value=int(trigger_s))
         self._trigger_counter = 0
@@ -1462,7 +1461,8 @@ class ISL29125_I2C:
         # sample interval, so the chip always raises RGBTHF before the periodic re-check decides; a
         # hand-set PRST can leave the fast path structurally dead (Part M.1.4).
         cycle = self.cycle_ms()
-        options: tuple[int, ...] = _PRST_SETTINGS  # const() is Any to mypy; same annotation decode_config() uses
+        # A const() tuple is typed Any by the stub; the annotation narrows it. Removal trigger: SPECIFICATION.md B.15.
+        options: tuple[int, ...] = _PRST_SETTINGS
         for persist in reversed(options):
             if persist * cycle < trigger_s * 1000:
                 return persist

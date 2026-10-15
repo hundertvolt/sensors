@@ -16,7 +16,7 @@ from _fram_builders import make_fram_manager
 from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
 from _recording_print import record_prints
-from _src_const import src_const
+from _src_const import src_const, src_int
 from _tmp_scratch import TmpScratch
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -56,7 +56,7 @@ patch_asy_udp_socket_for_unix_port()
 
 # Read from source: const() folds them out of the module (tests/_src_const.py).
 _NTP_UDP_PORT = src_const("src/asy_ntp_client.py", "_NTP_UDP_PORT")
-_LOG_ALL: int = src_const("src/asy_print_log.py", "_LOG_ALL")  # type: ignore[assignment]  # src_const() answers object
+_LOG_ALL: int = src_int("src/asy_print_log.py", "_LOG_ALL")
 
 # @tunable ntp.fetch_timeout_ms = 5000
 _FETCH_TIMEOUT_MS = 5000
@@ -415,7 +415,7 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
 # ntp_sync_callback is a real NTPClient.ntp_issynced, not the always-True stub the other FRAM tests use.
 # ---------------------------------------------------------------------------
 
-_STATUS_BUSY: int = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")  # type: ignore[assignment]  # src_const() answers object
+_STATUS_BUSY: int = src_int("src/asy_fram_manager.py", "_STATUS_BUSY")
 
 
 def test_fram_timestamped_chunk_torn_write_self_heals_with_a_real_ntp_derived_timestamp() -> None:
@@ -523,8 +523,8 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
     assert counter["SYSTEM"]["ErrNum"][-1] == code("E", "TASK_RETURNED")  # the task's end is persisted; the restart line is console-only
 
 
-_SCD30_ADDR: int = src_const("src/asy_scd30_driver.py", "_SCD30_ADDR")  # type: ignore[assignment]  # src_const() answers object
-_SGP40_ADDR: int = src_const("src/asy_sgp40_driver.py", "_SGP40_ADDR")  # type: ignore[assignment]  # src_const() answers object
+_SCD30_ADDR: int = src_int("src/asy_scd30_driver.py", "_SCD30_ADDR")
+_SGP40_ADDR: int = src_int("src/asy_sgp40_driver.py", "_SGP40_ADDR")
 
 
 def _make_scd30_reader(cfg_path: str, max_module_error: int = 1) -> SCD30_Reader:

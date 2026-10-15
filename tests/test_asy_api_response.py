@@ -1,3 +1,6 @@
+"""The REST envelope and setter dispatch: make_response()'s one code catalog, each code with a producer and its text, and
+handle_set_cmd()'s per-field result, its post-write hooks and a raising hook failing its group, logged."""
+
 import os
 from collections import namedtuple
 
@@ -23,40 +26,6 @@ Meas = namedtuple("Meas", ["temp", "hum"])
 _TEST_SCHEMA_SI: "cm.ConfigSchema" = (("SampleInterval", "int", 2, 1, 3600, None),)
 
 
-def _remove(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass  # already gone
-
-
-class _FakeRequest:
-    # Minimal stand-in for microdot.Request, mocking only the one boundary parse_cmd_request
-    # actually touches (the .json property) - same mocking-boundary convention tests/machine.py
-    # uses for real hardware buses.
-    def __init__(self, json_value: object, *, raise_instead: bool = False) -> None:
-        self._json_value = json_value
-        self._raise_instead = raise_instead
-        self.sock = (_NoopHolder(), _NoopHolder())
-
-    @property
-    def json(self) -> object:  # matches asy_api_response.py's own _RequestLike Protocol
-        if self._raise_instead:
-            raise ValueError("malformed body")
-        return self._json_value
-
-
-class _NoopHolder:
-    # The writer side of Request.sock as the static routes use it; nothing here opens a stream.
-    def hold(self, closable: object) -> None:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# make_response - envelope/catalog primitive
-# ---------------------------------------------------------------------------
-
-
 def _catalogued_codes() -> list[int]:
     # _STANDARD_CODES' keys as the source writes them: each "<int>:" line of its dict block.
     codes: list[int] = []
@@ -70,6 +39,20 @@ def _catalogued_codes() -> list[int]:
             elif inside:
                 codes.append(int(line.split(":", 1)[0]))
     raise AssertionError("_STANDARD_CODES block not found in src/asy_api_response.py")
+
+
+def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
+    # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
+    log = run(reader.pr.get_log())[reader.pr.name]
+    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+
+
+def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _TEST_SCHEMA_SI) -> "tuple[SensorReaderConfig, str]":
+    path = _scratch.path("config_" + name + ".cfg")
+    path_prefix = path.rsplit("/", 1)[0] + "/"
+    reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
+    run(reader.cfgmgr.setup())
+    return reader, path
 
 
 def _produced_codes() -> list[int]:
@@ -95,6 +78,28 @@ def _produced_codes() -> list[int]:
     return codes
 
 
+def _remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # already gone
+
+
+def _src_string_const(name: str) -> str:
+    # A `NAME = const("<text>")` line of the source: an underscore const() is not a module attribute on MicroPython.
+    with open("src/asy_api_response.py") as f:
+        for line in f:
+            if line.startswith(name + ' = const("'):
+                text: str = line.split('const("', 1)[1].split('")', 1)[0]
+                return text
+    raise AssertionError(name + " not found in src/asy_api_response.py")
+
+
+# ---------------------------------------------------------------------------
+# make_response - envelope/catalog primitive
+# ---------------------------------------------------------------------------
+
+
 def test_make_response_standard_success_code_uses_catalog_text() -> None:
     assert ar.make_response(0) == {"res": "OK", "code": 0, "descr": "Command executed", "result": {}}
 
@@ -118,8 +123,6 @@ def test_make_response_every_standard_code_present() -> None:
     catalog = {
         0: "Command executed",
         1: "Invalid JSON request",
-        2: "Command specifier missing",
-        3: "Invalid command",
         400: "Bad request",
         404: "Not found",
         405: "Method not allowed",
@@ -138,16 +141,6 @@ def test_every_catalogued_code_has_a_producer_and_every_produced_code_is_catalog
     never_produced = [c for c in catalogued if c not in produced]
     uncatalogued = [c for c in produced if c not in catalogued]
     assert never_produced == [] and uncatalogued == [], (never_produced, uncatalogued)
-
-
-def _src_string_const(name: str) -> str:
-    # A `NAME = const("<text>")` line of the source: an underscore const() is not a module attribute on MicroPython.
-    with open("src/asy_api_response.py") as f:
-        for line in f:
-            if line.startswith(name + ' = const("'):
-                text: str = line.split('const("', 1)[1].split('")', 1)[0]
-                return text
-    raise AssertionError(name + " not found in src/asy_api_response.py")
 
 
 def test_make_response_unknown_code_without_descr_falls_back_to_unknown_error() -> None:
@@ -185,78 +178,10 @@ def test_make_response_result_can_carry_partial_failures_under_an_overall_ok() -
 
 
 # ---------------------------------------------------------------------------
-# parse_cmd_request
-# ---------------------------------------------------------------------------
-
-
-def test_parse_cmd_request_valid_command_returns_the_json_and_no_error() -> None:
-    req = _FakeRequest({"cmd": "setThing", "Value": 1})
-    data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
-    assert data == {"cmd": "setThing", "Value": 1}
-    assert err is None
-
-
-def test_parse_cmd_request_body_raises_returns_invalid_json_error() -> None:
-    req = _FakeRequest(None, raise_instead=True)
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
-
-
-def test_parse_cmd_request_body_is_none_returns_invalid_json_error() -> None:
-    req = _FakeRequest(None)
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err is not None
-    assert err["code"] == 1
-
-
-def test_parse_cmd_request_body_is_a_non_dict_json_value_returns_invalid_json_error() -> None:
-    # More precise than treating a valid-but-non-dict JSON body (e.g. a bare list) as merely
-    # "missing cmd field" - it's a fundamentally wrong-shaped request.
-    for bad_body in ([1, 2, 3], "just a string", 42, True):
-        req = _FakeRequest(bad_body)
-        data, err = ar.parse_cmd_request(req, ["setThing"])
-        assert data is None
-        assert err is not None
-        assert err["code"] == 1
-
-
-def test_parse_cmd_request_missing_cmd_key_returns_missing_error() -> None:
-    req = _FakeRequest({"Value": 1})
-    data, err = ar.parse_cmd_request(req, ["setThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 2, "descr": "Command specifier missing", "result": {}}
-
-
-def test_parse_cmd_request_cmd_not_in_allowed_keys_returns_invalid_command_error() -> None:
-    req = _FakeRequest({"cmd": "unknownCmd"})
-    data, err = ar.parse_cmd_request(req, ["setThing", "getThing"])
-    assert data is None
-    assert err == {"res": "ERR", "code": 3, "descr": "Invalid command", "result": {}}
-
-
-def test_parse_cmd_request_empty_keys_list_rejects_every_cmd() -> None:
-    req = _FakeRequest({"cmd": "anything"})
-    data, err = ar.parse_cmd_request(req, [])
-    assert data is None
-    assert err is not None
-    assert err["code"] == 3
-
-
-# ---------------------------------------------------------------------------
 # handle_set_cmd - drives SensorReaderConfig._set_dict_cfg and the post-write hook and returns the per-field result;
 # a raising hook turns its group's fields "Failed", caught as defense in depth on top of Microdot's own
 # per-request catch (agent, 2026-08-03: prior field experience with Microdot behaving unexpectedly).
 # ---------------------------------------------------------------------------
-
-
-def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _TEST_SCHEMA_SI) -> "tuple[SensorReaderConfig, str]":
-    path = _scratch.path("config_" + name + ".cfg")
-    path_prefix = path.rsplit("/", 1)[0] + "/"
-    reader = SensorReaderConfig(Meas(20.0, 50), name, cfg_vals, max_module_error=3, cfg_path=path_prefix)
-    run(reader.cfgmgr.setup())
-    return reader, path
 
 
 def test_handle_set_cmd_valid_change_returns_its_per_field_result() -> None:
@@ -332,12 +257,6 @@ def test_handle_set_cmd_both_hooks_fire_together_when_provided() -> None:
         assert async_calls == [1]
     finally:
         _remove(path)
-
-
-def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
-    # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
-    log = run(reader.pr.get_log())[reader.pr.name]
-    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
 
 
 def test_handle_set_cmd_sync_post_fct_raising_fails_its_group() -> None:

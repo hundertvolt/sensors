@@ -16,7 +16,7 @@ _RUN_TIMEOUT_S = 60
 
 def _probe(tmp_path: Path, body: str) -> Path:
     path = tmp_path / "probe_case.py"
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return path
 
 

@@ -1,0 +1,14 @@
+.........                                                                [100%]
+============================= slowest 10 durations =============================
+6.38s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_bench_tier_deselects_exactly_its_persistence_writers_by_default
+1.41s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_flash_tier_gates_its_config_writing_reboot_tests_too
+1.39s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_dispatch_only_fields_are_not_treated_as_persistence_writes
+0.52s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_extra_flag_alone_without_the_global_flag_still_deselects_everything
+0.52s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_no_flags_deselects_every_real_persistence_write_test_but_keeps_the_rest
+0.50s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_the_extra_write_deselection_names_its_own_flag_once_the_global_one_is_given
+0.49s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_global_flag_alone_runs_the_routine_group_but_not_the_extra_test
+0.48s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_every_wear_gate_deselection_carries_the_flag_that_would_select_it
+0.39s call     tests_scripts/test_tests_hardware_persistence_write_gating.py::test_both_flags_runs_every_real_persistence_write_test
+
+(1 durations < 0.005s hidden.  Use -vv to show these durations.)
+9 passed in 12.45s

@@ -1,3 +1,6 @@
+"""FRAMManager and its chunks: allocation, the dual-block reads and writes with CRC, the status bytes, pause, timestamped
+chunks, and every fault failing cleanly and logged."""
+
 import asyncio
 
 from _async_harness import run
@@ -5,7 +8,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
-from _src_const import src_const
+from _src_const import src_int
 
 import asy_base_classes
 import asy_fram_manager
@@ -30,9 +33,9 @@ if TYPE_CHECKING:
     from asy_print_log import ErrorLog
 
 # The chunk's status-byte values, read from source (tests/_src_const.py).
-_STATUS_UNINIT: int = src_const("src/asy_fram_manager.py", "_STATUS_UNINIT")  # type: ignore[assignment]  # src_const() answers object
-_STATUS_IDLE: int = src_const("src/asy_fram_manager.py", "_STATUS_IDLE")  # type: ignore[assignment]
-_STATUS_BUSY: int = src_const("src/asy_fram_manager.py", "_STATUS_BUSY")  # type: ignore[assignment]
+_STATUS_UNINIT: int = src_int("src/asy_fram_manager.py", "_STATUS_UNINIT")
+_STATUS_IDLE: int = src_int("src/asy_fram_manager.py", "_STATUS_IDLE")
+_STATUS_BUSY: int = src_int("src/asy_fram_manager.py", "_STATUS_BUSY")
 
 # A status bit no real set_values_sync()/get_values_sync() return uses, so an injected failure
 # is distinguishable from every genuine one - see _fail_set_values_at() below.

@@ -1,8 +1,9 @@
-"""Unit tests for digital_twin/run_generic_integration.py: parse_args() and the grouped config, the reset and shutdown lines,
+"""Unit tests for digital_twin/run_generic_integration.py: parse_args(), the grouped config and test flags, the reset and shutdown lines,
 the shared chip lookup and fault plumbing, and one smoke boot of a generated module through the generic entry point (every
 device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; the soak check is the CI suite's Run 11)."""
 
 import asyncio
+import struct
 import sys
 import time
 
@@ -65,6 +66,9 @@ _RUN_BOUND_S = 5.0
 _MAIN_RUN_BOUND_S = 15.0
 
 
+# MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0), the unit of mem_info()'s max free sz.
+_GC_BLOCK_BYTES = 4 * struct.calcsize("P")
+
 _scratch = TmpScratch("rgi")
 _PORTS = PortAllocator("test_digital_twin_run_generic_integration")
 
@@ -113,12 +117,12 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
-        "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase",
+        "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase")
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True)
     for flags in (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x")):
         _refused(_parse, *flags)
 
@@ -176,8 +180,9 @@ def test_a_simulated_reset_maps_to_its_exit_code_and_its_line() -> None:
 
 
 class _FakeWatchdog:
-    # The run's WDT as the shutdown line reads it: its counts and its feed times (ticks_ms values).
+    # The run's WDT as the shutdown line reads it: its timeout, its counts and its feed times (ticks_ms values).
     def __init__(self) -> None:
+        self.timeout = 8000
         self.feed_count = 0
         self.would_have_triggered_count = 0
         self.feed_times: list[int] = []
@@ -212,10 +217,11 @@ def test_the_shutdown_line_carries_the_counts_the_largest_feed_gap_and_the_kept_
         _flash_stall.longest_ms = 0
     assert line == (
         "digital_twin/run_generic_integration.py [wozi] shutdown: would_have_triggered_count=1 feed_count=5 "
-        "largest_feed_gap_ms=3000 mem_backup: r0=0xdeadbeef,0x00000000,0x00000000,0x00000000 "
+        "largest_feed_gap_ms=3000 wdt_timeout_ms=8000 mem_backup: r0=0xdeadbeef,0x00000000,0x00000000,0x00000000 "
         f"public_destinations_refused={_unix_port_udp_addr_shim.public_destinations_refused} flash_stall_longest_ms=7 "
-        "uart=uart_link_init:transfers=3,failures=1,overruns=2"
+        f"gc_block_bytes={_GC_BLOCK_BYTES} uart=uart_link_init:transfers=3,failures=1,overruns=2"
     ), line
+
 
 
 def test_a_feed_span_the_watchdog_dropped_is_no_gap() -> None:
@@ -434,6 +440,58 @@ def _refused(fn: "Callable[P, object]", *args: "P.args", **kwargs: "P.kwargs") -
     except ValueError as e:
         return str(e)
     raise AssertionError(f"expected ValueError for {args!r}")
+
+
+def test_the_rebound_report_announces_itself_once_when_first_entered_then_never_returns() -> None:
+    said: list[str] = []
+    report = runner._test_report_then_hang("HUNG S1", said.append)
+
+    async def scenario() -> None:
+        assert said == []  # nothing at arming: the line marks the supervisor's pass meeting the ended task
+        assert await _times_out(report(object(), 1))
+        assert await _times_out(report(object(), 2))
+
+    run_timed(scenario(), _RUN_BOUND_S)
+    assert said == ["HUNG S1"]
+
+
+def test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum() -> None:
+    assert _flash_stall.use_max is False
+    runner._test_flash_stall_max()
+    assert _flash_stall.use_max is True  # machine.reset_test_state() puts it back after this test
+
+
+class _OverCapComm:
+    # An initiating UARTComm as the over-cap offer meets it: its cap and the stream SET it refuses past it.
+    def __init__(self) -> None:
+        self._max_transfer_bytes = 12192
+        self.offered: list[tuple[int, int]] = []
+
+    async def uart_set_stream(self, set_id: int, total_size: int, _pull: object) -> bool:
+        self.offered.append((set_id, total_size))
+        return total_size <= self._max_transfer_bytes
+
+
+class _ExercisedLink(_CountedLink):
+    def __init__(self, role: str) -> None:
+        super().__init__(0, 0)
+        self._role, self._comm = role, _OverCapComm()
+
+
+def test_the_over_cap_offer_waits_for_each_initiators_next_transfer_then_offers_one_train_past_its_cap() -> None:
+    said: list[str] = []
+    initiator, responder = _ExercisedLink("initiator"), _ExercisedLink("responder")
+
+    async def scenario() -> None:
+        offer = asyncio.create_task(runner._test_uart_over_cap([("uart_link_init", initiator, _OverrunBus(0)), ("uart_link_resp", responder, _OverrunBus(0))], said.append))
+        await asyncio.sleep_ms(runner._READY_POLL_MS * 2)  # two of its polls
+        assert initiator._comm.offered == []  # no transfer seen yet: a transaction may be in flight
+        initiator._transfers += 1
+        await asyncio.wait_for_ms(offer, 1000)
+
+    run_timed(scenario(), _RUN_BOUND_S)
+    assert initiator._comm.offered == [(0x02, 12193)] and responder._comm.offered == []
+    assert said == ["UART_OVER_CAP uart_link_init refused"]
 
 
 def test_s1_ends_one_supervised_task_and_its_dead_task_report_never_returns() -> None:

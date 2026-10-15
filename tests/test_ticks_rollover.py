@@ -8,7 +8,7 @@ import select
 import time
 
 from _async_harness import run
-from _src_const import src_const
+from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -66,7 +66,7 @@ _BMP_ADDR = 0x77
 _BMP_STATUS = 0x03  # the STATUS register; bit 4 is cmd_rdy (bst-bmp388-ds001 sec 4.3.3)
 _BMP_CMD_RDY = 0x10
 _LET_GO_READS = 5000  # a wait still running this many clock reads in is ended by the world, so a lost bound fails, not hangs
-_SIGNAL_WAIT_MS: int = src_const("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")  # type: ignore[assignment]  # src_const() answers object
+_SIGNAL_WAIT_MS: int = src_int("src/asy_neopixel_driver.py", "_SIGNAL_WAIT_MS")
 
 _scratch = TmpScratch("ticks_rollover")
 

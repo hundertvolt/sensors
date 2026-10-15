@@ -18,7 +18,6 @@ CLAUDE.md	- **mypy runs full `--strict`, minus exactly one flag.** All three con
 CLAUDE.md	Does **not** disable the `assignment` error code — the old `improved-quality/myp
 CLAUDE.md	Installed into `typings/` (gitignored) — **deliberately not** a `pyproject.toml`
 CLAUDE.md	On the *target* this is already institutionalized and stays that way: every oper
-CLAUDE.md	One further narrow exemption lives in a central `[[tool.mypy.overrides]]` block:
 CLAUDE.md	The hardware pair reads one shared `tests_hardware/harness.py` `MEMORY_ERROR_MAR
 CLAUDE.md	`scripts/test.sh`'s own backgrounded `tests_scripts/` tier is a deliberate non-i
 CLAUDE.md	`tests/` and `digital_twin/` reassign methods to mock them — that IS the project
@@ -96,7 +95,6 @@ SPECIFICATION.md	digital_twin/ Hardware simulator for I2C/SPI/WiFi under the Mic
 SPECIFICATION.md	it spends a real flash cycle, which is why `tests_hardware/`'s `@pytest.mark.per
 SPECIFICATION.md	no retained state unless deliberately stateful (prefer pure functions);
 SPECIFICATION.md	the exact boundary values *accepted*;
-SPECIFICATION.md	the excluded file holds two trivial fixtures, its real logic moved to `_script_l
 SPECIFICATION.md	the hotspot password is a per-device TOML field defaulting to the existing hardc
 SPECIFICATION.md	the ~5.8x wall-time cost is accepted, and the yield's original reason (a 256 B C
 SPECIFICATION.md	| Per-request timeout value | `poll-manager.js`'s `DEFAULT_TIMEOUT_MS` deliberat
@@ -126,7 +124,6 @@ digital_twin/_isl29125_chip.py	p12, Table 18 - HIGH at power-up by design
 digital_twin/machine.py	Spelled out rather than **kwargs-forwarded so the accepted settings are statical
 digital_twin/unix_port_poll_prewarm.py	A fresh socket per attempt, because a bind that failed leaves nothing worth reus
 digital_twin/unix_port_poll_prewarm.py	Only the accepted server-side socket has to stay registered to force pollfds gro
-host_typecheck.ini	it holds two trivial fixtures - an accepted gap (B.15).
 js/templates.js	See SPECIFICATION.md Part H.3's "One deliberate exception" note for why this ret
 pyproject.toml	---- Contradicts CLAUDE.md's own documentation rule (continued) ---- CPY001: no
 pyproject.toml	---- Deliberate, documented idiom ---- `x != x` is asy_scd30_driver.py's NaN tes
@@ -136,13 +133,11 @@ pyproject.toml	S110 wants a log call at sites that are deliberately silent;
 pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they r
 pyproject.toml	`assignment` is deliberately not disabled.
 pyproject.toml	asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: P
-scripts/build_firmware.py	The staged modules and the generated manifest.py live in separate sibling direct
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
 scripts/mpremote_connect.sh	`cp`/`rm`/`mkdir`/`rmdir` do write flash - be deliberate before passing those.
-scripts/test.sh	Per-file overrides for anything that outgrows the default - deliberately empty s
 src/asy_bmp3xx_driver.py	PresOvers/TempOvers/FiltCoeff are genuine discrete allowed-value sets, not conti
 src/asy_config_manager.py	A driver's generator-facing metadata is deliberately not a Python value at all -
 src/asy_fram_driver.py	get_values()' own numbers and messages, in the one place that has them, whicheve
@@ -334,9 +329,6 @@ tests/test_fram_integration.py	And the chunk must still be usable afterwards - a
 tests/test_notification_scd30_integration.py	Built outside scenario() deliberately: register_frame()/data_frame() call crc8_b
 tests/test_notification_scd30_sgp40_integration.py	scd_reader's real reading is deliberately not used: _settle_and_spike() below ne
 tests/test_notification_sgp40_integration.py	confirms the baseline genuinely settled before phase 2 starts
-tests/test_setter_microdot_integration.py	Deliberate difference from the BMP3xx equivalent above, worth stating rather tha
-tests/test_setter_microdot_integration.py	scripts/test.sh's MICROPYPATH deliberately excludes ext/, and changing that woul
-tests/test_setter_microdot_integration.py	setWiFiLED (unlike setNetwork) passes no post_fct at all - toggling the WiFi sta
 tests/test_ticks_rollover.py	Re-derives the exact accepted/rejected boundary independently of the bisection a
 tests/test_ticks_rollover.py	largest accepted delta is in (lo, hi)
 tests/test_tmp_scratch.py	A deliberately cheap population - the invariant is independence from sibling COU
@@ -410,7 +402,6 @@ tests_scripts/test_digital_twin_ci_suite_soak.py	A negative trend (memory went U
 tests_scripts/test_digital_twin_generated_boot.py	Same for a new synthetic fixture, minus the deliberately malformed ones (they ex
 tests_scripts/test_digital_twin_generated_boot.py	Through _devices.DEVICE_NAMES, not a local glob of devices/*.toml: that glob ran
 tests_scripts/test_http_client_ceiling_close.py	A timeout is the one worth naming: the DUT accepted the connection and then fail
-tests_scripts/test_lint_sh.py	tests/ and digital_twin/ carry ~157 of these deliberately - that IS the mocking
 tests_scripts/test_measurement_field_tuple_agreement.py	It stays deliberately: mypy's namedtuple plugin infers field names only from a l
 tests_scripts/test_memory_error_gate_agreement.py	A deliberate injection reads "simulated allocation failure" for exactly this rea
 tests_scripts/test_memory_error_gate_agreement.py	The other half of a substring gate: what the suite's own deliberate failures are

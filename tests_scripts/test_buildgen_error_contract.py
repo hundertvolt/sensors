@@ -161,7 +161,7 @@ def _signal_sink_default_without_request_signal(_monkeypatch: pytest.MonkeyPatch
 def _lwip_table_gone(monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
     # The toolchain's [lwip] table is read from toolchain/versions.toml; this row points that read at a copy without it.
     versions = tmp / "versions.toml"
-    versions.write_text('[toolchain]\nboard = "RPI_PICO_W"\n')
+    versions.write_text('[toolchain]\nboard = "RPI_PICO_W"\n', encoding="utf-8")
     real = model.lwip_macros
     monkeypatch.setattr(validate, "lwip_macros", lambda: real(versions))
 
@@ -171,7 +171,7 @@ def _no_patch(_monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
 
 
 def _out_dir_is_a_file(_monkeypatch: pytest.MonkeyPatch, tmp: Path) -> None:
-    (tmp / "out").write_text("a file where the output directory belongs\n")
+    (tmp / "out").write_text("a file where the output directory belongs\n", encoding="utf-8")
 
 
 def _recipe_table_without_neopixel(monkeypatch: pytest.MonkeyPatch, _tmp: Path) -> None:
@@ -492,7 +492,7 @@ def _run(row: Row, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypat
     devices.mkdir()
     toml = devices / f"{_DEVICE}.toml"
     if row.toml is not None:
-        toml.write_text(row.toml)
+        toml.write_text(row.toml, encoding="utf-8")
     elif not row.absent:
         doc: TomlDoc = base_doc()
         row.doc(doc)

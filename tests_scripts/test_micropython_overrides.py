@@ -149,10 +149,10 @@ def _fake_build(tmp_path: Path, *, stdout: str, returncode: int = 0, drop_key: s
     flags = build_dir / "CMakeFiles" / "firmware.dir"
     flags.mkdir(parents=True)
     lines = {"C_DEFINES": "-DPICO_BOARD=pico_w", "C_INCLUDES": "-I/over/ride -I/real/lwip_inc", "C_FLAGS": "-O2"}
-    (flags / "flags.make").write_text("".join(f"{key} = {value}\n" for key, value in lines.items() if key != drop_key))
+    (flags / "flags.make").write_text("".join(f"{key} = {value}\n" for key, value in lines.items() if key != drop_key), encoding="utf-8")
     argv_log = tmp_path / "argv.txt"
     compiler = tmp_path / "fake-gcc"
-    compiler.write_text(f"#!{sys.executable}\nimport sys, pathlib\npathlib.Path({str(argv_log)!r}).write_text(' '.join(sys.argv[1:]))\nsys.stdout.write({stdout!r})\nsys.stderr.write('boom')\nsys.exit({returncode})\n")
+    compiler.write_text(f"#!{sys.executable}\nimport sys, pathlib\npathlib.Path({str(argv_log)!r}).write_text(' '.join(sys.argv[1:]))\nsys.stdout.write({stdout!r})\nsys.stderr.write('boom')\nsys.exit({returncode})\n", encoding="utf-8")
     compiler.chmod(0o755)
     return build_dir, str(compiler), argv_log
 
@@ -167,9 +167,9 @@ def _fake_firmware_build(root: Path, compiled: "tuple[Path, ...]", *, empty: boo
         obj = target_dir / f"{str(source).lstrip('/')}.o"
         obj.parent.mkdir(parents=True, exist_ok=True)
         obj.write_bytes(b"" if empty else b"\x7fELF")
-        (obj.parent / f"{obj.name}.d").write_text(f"{obj}: {source}\n")
+        (obj.parent / f"{obj.name}.d").write_text(f"{obj}: {source}\n", encoding="utf-8")
         rules.append(f"CMakeFiles/firmware.dir{source}.o: CMakeFiles/firmware.dir/flags.make\nCMakeFiles/firmware.dir{source}.o: {source}\n")
-    (target_dir / "build.make").write_text("".join(rules))
+    (target_dir / "build.make").write_text("".join(rules), encoding="utf-8")
     return build_dir
 
 
@@ -181,13 +181,13 @@ def _fake_lwip_host_build(tmp_path: Path, *, source: str | None = None, block: s
     (build_dir / "extmod").mkdir(parents=True)
     copy = tmp_path / "build_overrides" / "unix_lwip_host_variant" / "src" / "extmod" / "modlwip.c"
     copy.parent.mkdir(parents=True)
-    copy.write_text("err_t err;\n" + ("        if (socket->timeout == 0) {\n            // Non-blocking: hand the wait back to the caller rather than sleeping inside this call.\n            MICROPY_PY_LWIP_EXIT\n            *_errno = MP_EAGAIN;\n            return MP_STREAM_ERROR;\n        }\n" if block == "kept" else ""))
+    copy.write_text("err_t err;\n" + ("        if (socket->timeout == 0) {\n            // Non-blocking: hand the wait back to the caller rather than sleeping inside this call.\n            MICROPY_PY_LWIP_EXIT\n            *_errno = MP_EAGAIN;\n            return MP_STREAM_ERROR;\n        }\n" if block == "kept" else ""), encoding="utf-8")
     named = source if source is not None else str(copy)
-    (build_dir / "extmod" / "modlwip.P").write_text(f"build-lwip/extmod/modlwip.o: \\\n {named} \\\n ../../py/mpconfig.h\n../../py/mpconfig.h:\n")
+    (build_dir / "extmod" / "modlwip.P").write_text(f"build-lwip/extmod/modlwip.o: \\\n {named} \\\n ../../py/mpconfig.h\n../../py/mpconfig.h:\n", encoding="utf-8")
     binary = build_dir / "micropython"
     binary.write_text(
         f"#!{sys.executable}\nimport pathlib, sys, time\npathlib.Path({str(tmp_path / 'probe-argv.txt')!r}).write_text(chr(10).join(sys.argv[1:]))\n"
-        f"time.sleep({sleep_s})\nprint({stdout!r})\nsys.stderr.write({stderr!r})\nsys.exit({exit_code})\n",
+        f"time.sleep({sleep_s})\nprint({stdout!r})\nsys.stderr.write({stderr!r})\nsys.exit({exit_code})\n", encoding="utf-8",
     )
     binary.chmod(0o755)
     return build_dir, micropython_dir, binary
@@ -202,7 +202,7 @@ def _fake_make(tmp_path: Path, *, pp: str | None = "", exit_code: int = 0, sleep
     make = bindir / "make"
     make.write_text(
         f"#!{sys.executable}\nimport pathlib, sys, time\npathlib.Path({str(argv_log)!r}).write_text(chr(10).join(sys.argv[1:]))\n"
-        f"time.sleep({sleep_s})\n" + ("" if pp is None else f"pathlib.Path(sys.argv[-1]).write_text({pp!r})\n") + f"print('PreProcess unix_mphal.c')\nsys.exit({exit_code})\n",
+        f"time.sleep({sleep_s})\n" + ("" if pp is None else f"pathlib.Path(sys.argv[-1]).write_text({pp!r})\n") + f"print('PreProcess unix_mphal.c')\nsys.exit({exit_code})\n", encoding="utf-8",
     )
     make.chmod(0o755)
     return {"PATH": str(bindir)}, argv_log
@@ -263,10 +263,10 @@ def _write_fake_lwip_host_tree(root: Path, *, drop: str | None = None) -> Path:
     _write_fake_modlwip_tree(root, drop=drop)
     for relative, anchors in _FAKE_LWIP_HOST_ANCHORS:
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
-        (root / relative).write_text("".join(f"{anchor}\n" for anchor in anchors if anchor != drop))
+        (root / relative).write_text("".join(f"{anchor}\n" for anchor in anchors if anchor != drop), encoding="utf-8")
     if drop != _FAKE_TCP_OUT:
         (root / _FAKE_TCP_OUT).parent.mkdir(parents=True, exist_ok=True)
-        (root / _FAKE_TCP_OUT).write_text("")
+        (root / _FAKE_TCP_OUT).write_text("", encoding="utf-8")
     return root
 
 
@@ -276,7 +276,7 @@ def _write_fake_lwip_tree(root: Path, *, drop: str | None = None, board: str = _
     opt_h = root / "lib" / "lwip" / "src" / "include" / "lwip"
     opt_h.mkdir(parents=True)
     guards = "\n".join(f"#if !defined {m} || defined __DOXYGEN__\n#define {m} 1\n#endif" for m in ("MEMP_NUM_TCP_PCB", "MEMP_NUM_TCP_PCB_LISTEN", "MEMP_NUM_PBUF", "PBUF_POOL_SIZE") if m != drop)
-    (opt_h / "opt.h").write_text(guards + "\n")
+    (opt_h / "opt.h").write_text(guards + "\n", encoding="utf-8")
 
     common = root / "extmod" / "lwip-include"
     common.mkdir(parents=True)
@@ -292,27 +292,27 @@ def _write_fake_lwip_tree(root: Path, *, drop: str | None = None, board: str = _
         "#define MEMP_NUM_TCP_SEG (32)",
         "#endif",
     ]
-    (common / "lwipopts_common.h").write_text("\n".join(line for line in common_lines if line != drop) + "\n")
+    (common / "lwipopts_common.h").write_text("\n".join(line for line in common_lines if line != drop) + "\n", encoding="utf-8")
 
     lwip_inc = root / "ports" / "rp2" / "lwip_inc"
     lwip_inc.mkdir(parents=True)
     inc_line = '#include "extmod/lwip-include/lwipopts_common.h"'
-    (lwip_inc / "lwipopts.h").write_text("" if inc_line == drop else inc_line + "\n")
+    (lwip_inc / "lwipopts.h").write_text("" if inc_line == drop else inc_line + "\n", encoding="utf-8")
 
     cmake_lines = [
         "include(${MICROPY_BOARD_DIR}/mpconfigboard.cmake)",
         "target_include_directories(${MICROPY_TARGET} PRIVATE\n        lwip_inc\n    )",
         "if(NOT MICROPY_BOARD_PINS)",
     ]
-    (root / "ports" / "rp2" / "CMakeLists.txt").write_text("\n".join(line for line in cmake_lines if line != drop) + "\n")
+    (root / "ports" / "rp2" / "CMakeLists.txt").write_text("\n".join(line for line in cmake_lines if line != drop) + "\n", encoding="utf-8")
 
     board_dir = root / "ports" / "rp2" / "boards" / board
     board_dir.mkdir(parents=True)
     board_cmake_line = "set(MICROPY_FROZEN_MANIFEST ${MICROPY_BOARD_DIR}/manifest.py)"
-    (board_dir / "mpconfigboard.cmake").write_text('set(PICO_BOARD "pico_w")\n' if board_cmake_line == drop else f'set(PICO_BOARD "pico_w")\n{board_cmake_line}\n')
+    (board_dir / "mpconfigboard.cmake").write_text('set(PICO_BOARD "pico_w")\n' if board_cmake_line == drop else f'set(PICO_BOARD "pico_w")\n{board_cmake_line}\n', encoding="utf-8")
     for name in ("mpconfigboard.h", "manifest.py", "pins.csv"):
         if name != drop:
-            (board_dir / name).write_text("")
+            (board_dir / name).write_text("", encoding="utf-8")
     return root
 
 
@@ -323,16 +323,16 @@ def _write_fake_micropython_tree(root: Path, *, anchor_line: str | None = _REAL_
     lines = ["// fake mpconfigvariant_common.h for testing", "#define MICROPY_DEBUG_PRINTERS (1)"]
     if anchor_line is not None:
         lines.insert(1, anchor_line)
-    common_header.write_text("\n".join(lines) + "\n")
+    common_header.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     standard_dir = variants_dir / "standard"
     standard_dir.mkdir()
     (standard_dir / "mpconfigvariant.h").write_text(
-        '#define MICROPY_CONFIG_ROM_LEVEL (MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES)\n#include "../mpconfigvariant_common.h"\n',
+        '#define MICROPY_CONFIG_ROM_LEVEL (MICROPY_CONFIG_ROM_LEVEL_EXTRA_FEATURES)\n#include "../mpconfigvariant_common.h"\n', encoding="utf-8",
     )
-    (standard_dir / "mpconfigvariant.mk").write_text("FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py\n")
+    (standard_dir / "mpconfigvariant.mk").write_text("FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py\n", encoding="utf-8")
     if with_manifest:
-        (standard_dir / "manifest.py").write_text('include("$(PORT_DIR)/variants/manifest.py")\n')
+        (standard_dir / "manifest.py").write_text('include("$(PORT_DIR)/variants/manifest.py")\n', encoding="utf-8")
     return root
 
 
@@ -341,13 +341,13 @@ def _write_fake_modlwip_tree(root: Path, *, drop: str | None = None) -> Path:
     # hold the lwIP override's files; `drop` leaves exactly one anchor out.
     source = ['#include "py/mphal.h"', _FAKE_MODLWIP_INCLUDE, _FAKE_POLL_SOCKETS, "static mp_uint_t lwip_tcp_send(void) {", "    err_t err;", _FAKE_MODLWIP_LOOP, "    return 0;", "}"]
     (root / "extmod").mkdir(parents=True, exist_ok=True)
-    (root / "extmod" / "modlwip.c").write_text("\n".join(line for line in source if line != drop and not (drop == _FAKE_MODLWIP_INSERT_AFTER and line == _FAKE_MODLWIP_LOOP)) + "\n")
+    (root / "extmod" / "modlwip.c").write_text("\n".join(line for line in source if line != drop and not (drop == _FAKE_MODLWIP_INSERT_AFTER and line == _FAKE_MODLWIP_LOOP)) + "\n", encoding="utf-8")
     for relative, anchors in _FAKE_MODLWIP_WIRING:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as f:
+        with path.open("a", encoding="utf-8") as f:
             f.write("".join(f"{anchor}\n" for anchor in anchors if anchor != drop) + ")\n")
-    (root / "py" / "mpconfig.h").write_text("#define MICROPY_VERSION_MAJOR 1\n#define MICROPY_VERSION_MINOR 29\n#define MICROPY_VERSION_MICRO 0\n")
+    (root / "py" / "mpconfig.h").write_text("#define MICROPY_VERSION_MAJOR 1\n#define MICROPY_VERSION_MINOR 29\n#define MICROPY_VERSION_MICRO 0\n", encoding="utf-8")
     return root
 
 
@@ -355,7 +355,7 @@ def _write_fake_mphalport(root: Path, body: str = _FAKE_TICKS_MS) -> Path:
     # ports/rp2/mphalport.h as pinned, cut to mp_hal_ticks_ms() and its neighbours.
     header = root / "ports" / "rp2" / "mphalport.h"
     header.parent.mkdir(parents=True, exist_ok=True)
-    header.write_text(f'#include "pico/time.h"\n\nstatic inline mp_uint_t mp_hal_ticks_us(void) {{\n    return time_us_32();\n}}\n\n{body}')
+    header.write_text(f'#include "pico/time.h"\n\nstatic inline mp_uint_t mp_hal_ticks_us(void) {{\n    return time_us_32();\n}}\n\n{body}', encoding="utf-8")
     return root
 
 
@@ -416,7 +416,7 @@ def test_apply_unix_kbd_intr_override_generated_mpconfigvariant_h_includes_the_r
     real_header = fake_mp_dir.resolve() / "ports" / "unix" / "variants" / "standard" / "mpconfigvariant.h"
     override_dir = tmp_path / "build_overrides" / "unix_kbd_intr_variant"
     overrides.apply_unix_kbd_intr_override(fake_mp_dir, tmp_path / "build_overrides")
-    generated = (override_dir / "mpconfigvariant.h").read_text()
+    generated = (override_dir / "mpconfigvariant.h").read_text(encoding="utf-8")
     assert f'#include "{real_header}"' in generated
     assert "#undef MICROPY_ASYNC_KBD_INTR" in generated
     assert "#define MICROPY_ASYNC_KBD_INTR (0)" in generated
@@ -434,7 +434,7 @@ def test_apply_unix_kbd_intr_override_generated_mpconfigvariant_mk_relays_to_the
     real_mk = fake_mp_dir.resolve() / "ports" / "unix" / "variants" / "standard" / "mpconfigvariant.mk"
     override_dir = tmp_path / "build_overrides" / "unix_kbd_intr_variant"
     overrides.apply_unix_kbd_intr_override(fake_mp_dir, tmp_path / "build_overrides")
-    assert (override_dir / "mpconfigvariant.mk").read_text().startswith(f"include {real_mk}\n")
+    assert (override_dir / "mpconfigvariant.mk").read_text(encoding="utf-8").startswith(f"include {real_mk}\n")
 
 
 def test_apply_unix_kbd_intr_override_generated_manifest_relays_via_include_rather_than_copying(overrides: ModuleType, tmp_path: Path) -> None:
@@ -444,7 +444,7 @@ def test_apply_unix_kbd_intr_override_generated_manifest_relays_via_include_rath
     real_manifest = fake_mp_dir.resolve() / "ports" / "unix" / "variants" / "standard" / "manifest.py"
     override_dir = tmp_path / "build_overrides" / "unix_kbd_intr_variant"
     overrides.apply_unix_kbd_intr_override(fake_mp_dir, tmp_path / "build_overrides")
-    assert (override_dir / "manifest.py").read_text() == f"include({str(real_manifest)!r})\n"
+    assert (override_dir / "manifest.py").read_text(encoding="utf-8") == f"include({str(real_manifest)!r})\n"
 
 
 def test_apply_unix_kbd_intr_override_missing_real_manifest_is_tolerated(overrides: ModuleType, tmp_path: Path) -> None:
@@ -487,7 +487,7 @@ def _recorded_make_cmd(
         recorded.append(cmd)
         if cmd[0] == "make":
             build_dir.mkdir(parents=True, exist_ok=True)
-            (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n")
+            (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n", encoding="utf-8")
             return f"LINK {expected_dir}/micropython\n"
         return "namespace(name='micropython')"
 
@@ -513,7 +513,7 @@ def test_build_unix_port_applies_the_override_the_constructed_make_command_carri
             # Stands in for what a real `make` invocation would produce - build_unix_port()'s
             # own binary.exists() check right after this needs something there.
             build_dir.mkdir(parents=True, exist_ok=True)
-            (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n")
+            (build_dir / "micropython").write_text("#!/bin/sh\necho fake\n", encoding="utf-8")
             return "LINK build-standard/micropython\n"
         return "namespace(name='micropython')"  # stands in for the post-build sys.implementation probe
 
@@ -553,21 +553,22 @@ def test_build_unix_port_applies_the_override_the_coverage_variant_gets_the_flag
 
 
 def test_build_unix_port_applies_the_override_the_shell_side_looks_for_every_build_flavour_where_it_is_built(repo_root: Path, setup_toolchain: ModuleType) -> None:
-    # Both consumers spell the directory out, because they resolve a binary before anything can
-    # ask it what it is. A renamed constant would leave scripts/test.sh rebuilding into a path
-    # it never looks at, and tests_scripts/test_coverage_runner.py skipping itself in silence.
-    shell = (repo_root / "scripts" / "test.sh").read_text()
-    conftest = (repo_root / "tests_scripts" / "conftest.py").read_text()
-    for variant in setup_toolchain.CURRENT_UNIX_BUILD_DIRS:
-        assert f'"$unix_dir/{variant}/micropython"' in shell, f"scripts/test.sh no longer resolves the {variant} binary - the constant and the shell have drifted apart"
-    assert f'"{setup_toolchain.UNIX_BUILD_DIR}"' in conftest, f"tests_scripts/conftest.py's micropython_bin fixture no longer points at {setup_toolchain.UNIX_BUILD_DIR}"
+    # Every consumer resolves a binary through scripts/_unix_port.sh's build-<flavour> before anything can ask it what it
+    # is. A renamed constant would leave every run rebuilding into a path the probe never looks at.
+    probe = (repo_root / "scripts" / "_unix_port.sh").read_text(encoding="utf-8")
+    assert '/micropython/ports/unix/build-$1/micropython"' in probe, "scripts/_unix_port.sh no longer resolves build-<flavour>/micropython - the constants and the shell have drifted apart"
+    flavours = re.search(r"^\s*(\w+(?: \| \w+)+)\) ;;$", probe, re.MULTILINE)
+    assert flavours, "scripts/_unix_port.sh's flavour case is gone - update this test with it"
+    assert sorted(f"build-{flavour}" for flavour in flavours.group(1).split(" | ")) == sorted(setup_toolchain.CURRENT_UNIX_BUILD_DIRS)
+    for consumer in ("scripts/test.sh", "tests_scripts/conftest.py"):
+        assert "_unix_port" in (repo_root / consumer).read_text(encoding="utf-8"), f"{consumer} no longer resolves its binary through scripts/_unix_port.sh"
 
 
 def test_build_unix_port_applies_the_override_a_setup_run_builds_every_build_flavour(repo_root: Path) -> None:
     # Structural: the real call is a multi-minute compile. What has to hold is that the
     # verification sequence asks for the settrace and lwIP host flavours at all - without them,
     # --coverage and the lwIP host test files have no binary, and scripts/test.sh fails a run it cannot repair.
-    source = (repo_root / "toolchain" / "setup_toolchain.py").read_text()
+    source = (repo_root / "toolchain" / "setup_toolchain.py").read_text(encoding="utf-8")
     assert "build_unix_port(micropython_dir, toolchain_dir, jobs, settrace=True)" in source, "setup must build the --coverage variant too, or scripts/test.sh --coverage has nothing to run"
     assert "build_unix_lwip_port(micropython_dir, toolchain_dir, jobs)" in source, "setup must build the lwIP host flavour too, or the lwIP host test files have nothing to run on"
 
@@ -609,7 +610,7 @@ def _lwip_anchors_found(overrides: ModuleType, micropython_dir: Path) -> "list[t
         "ports/rp2/CMakeLists.txt": list(overrides._RP2_CMAKE_ANCHORS),
         f"ports/rp2/boards/{_REAL_BOARD}/mpconfigboard.cmake": [overrides._BOARD_CMAKE_ANCHOR],
     }
-    return [(path, anchor) for path, anchors in sources.items() for anchor in anchors if anchor in (micropython_dir / path).read_text()]
+    return [(path, anchor) for path, anchors in sources.items() for anchor in anchors if anchor in (micropython_dir / path).read_text(encoding="utf-8")]
 
 
 @pytest.fixture
@@ -672,7 +673,7 @@ def test_apply_lwip_connection_counts_override_never_writes_inside_the_micropyth
 def test_apply_lwip_connection_counts_override_generated_lwipopts_includes_the_real_one_then_redefines_every_option(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_lwip_tree(tmp_path / "micropython")
     overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
-    generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+    generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text(encoding="utf-8")
     real = fake.resolve() / "ports" / "rp2" / "lwip_inc" / "lwipopts.h"
     assert f'#include "{real}"' in generated
     include_pos = generated.index(f'#include "{real}"')
@@ -687,7 +688,7 @@ def test_apply_lwip_connection_counts_override_the_board_cmake_prepends_the_over
     overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
     override_dir = tmp_path.resolve() / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME
     real_board = fake.resolve() / "ports" / "rp2" / "boards" / _REAL_BOARD
-    cmake = (override_dir / "mpconfigboard.cmake").read_text()
+    cmake = (override_dir / "mpconfigboard.cmake").read_text(encoding="utf-8")
     # BEFORE, not a plain include_directories(): a plain one lands after the port's own
     # target-level lwip_inc and the real lwipopts.h would silently win again.
     assert f'include_directories(BEFORE "{override_dir / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME}")' in cmake
@@ -702,8 +703,8 @@ def test_apply_lwip_connection_counts_override_the_board_header_and_manifest_rel
     overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _LWIP_MACROS)
     override_dir = tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME
     real_board = fake.resolve() / "ports" / "rp2" / "boards" / _REAL_BOARD
-    assert (override_dir / "mpconfigboard.h").read_text() == f'#include "{real_board / "mpconfigboard.h"}"\n'
-    assert (override_dir / "manifest.py").read_text() == f"include({str(real_board / 'manifest.py')!r})\n"
+    assert (override_dir / "mpconfigboard.h").read_text(encoding="utf-8") == f'#include "{real_board / "mpconfigboard.h"}"\n'
+    assert (override_dir / "manifest.py").read_text(encoding="utf-8") == f"include({str(real_board / 'manifest.py')!r})\n"
 
 
 def test_apply_lwip_connection_counts_override_is_idempotent(overrides: ModuleType, tmp_path: Path) -> None:
@@ -944,7 +945,7 @@ def test_lwip_ensemble_the_generated_header_carries_a_sentinel_the_build_check_d
     # verify clean against a build the override never touched.
     fake = _write_fake_lwip_tree(tmp_path / "micropython")
     overrides.apply_lwip_connection_counts_override(fake, tmp_path / "build_overrides", _REAL_BOARD, _pinned())
-    generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text()
+    generated = (tmp_path / "build_overrides" / overrides.LWIP_OVERRIDE_BOARD_DIR_NAME / overrides.LWIP_OVERRIDE_INCLUDE_DIR_NAME / "lwipopts.h").read_text(encoding="utf-8")
     assert f"#define {overrides.LWIP_OVERRIDE_SENTINEL} 1" in generated
 
 
@@ -960,7 +961,7 @@ def test_lwip_build_readback_a_build_that_resolved_every_option_as_asked_verifie
     build_dir, compiler, argv_log = _fake_build(tmp_path, stdout=_probe_lines(resolved))
     found = overrides.verify_lwip_macros_in_build(build_dir, asked, compiler)
     assert {name: found[name] for name in asked} == asked
-    assert "-I/over/ride -I/real/lwip_inc" in argv_log.read_text(), "the real build's own flags must reach the preprocessor"
+    assert "-I/over/ride -I/real/lwip_inc" in argv_log.read_text(encoding="utf-8"), "the real build's own flags must reach the preprocessor"
 
 
 def test_lwip_build_readback_an_expression_value_is_evaluated_not_compared_as_text(overrides: ModuleType, tmp_path: Path) -> None:
@@ -1023,7 +1024,7 @@ def test_lwip_build_readback_a_missing_compiler_is_named_not_a_bare_traceback(ov
 def test_lwip_build_readback_a_hung_compiler_is_named_after_the_timeout(overrides: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     build_dir, _compiler, _argv = _fake_build(tmp_path, stdout="")
     sleeper = tmp_path / "slow-gcc"
-    sleeper.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(30)\n")
+    sleeper.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(30)\n", encoding="utf-8")
     sleeper.chmod(0o755)
     monkeypatch.setattr(overrides, "_PREPROCESS_TIMEOUT_S", 0.2)
     with pytest.raises(overrides.OverrideError, match=r"compiler .*slow-gcc.* did not finish"):
@@ -1036,14 +1037,14 @@ def test_lwip_build_readback_the_compiler_cmake_recorded_is_used_when_none_is_pa
     resolved = {name: str(value) for name, value in asked.items()} | {overrides.LWIP_OVERRIDE_SENTINEL: "1"}
     build_dir, compiler, argv_log = _fake_build(tmp_path, stdout=_probe_lines(resolved))
     flags_make = build_dir / "CMakeFiles" / "firmware.dir" / "flags.make"
-    flags_make.write_text(f"# compile ASM with /nowhere/asm-gcc\n# compile C with {compiler}\n" + flags_make.read_text())
+    flags_make.write_text(f"# compile ASM with /nowhere/asm-gcc\n# compile C with {compiler}\n" + flags_make.read_text(encoding="utf-8"), encoding="utf-8")
     assert overrides.verify_lwip_macros_in_build(build_dir, asked)["TCP_MSS"] == 800
     assert argv_log.is_file(), "the recorded compiler was not the one run"
 
 
 def test_lwip_build_readback_the_cmake_cache_compiler_is_the_fallback_when_flags_make_names_none(overrides: ModuleType, tmp_path: Path) -> None:
     build_dir, compiler, _argv = _fake_build(tmp_path, stdout="")
-    (build_dir / "CMakeCache.txt").write_text(f"CMAKE_C_FLAGS:STRING=\nCMAKE_C_COMPILER:FILEPATH={compiler}\n")
+    (build_dir / "CMakeCache.txt").write_text(f"CMAKE_C_FLAGS:STRING=\nCMAKE_C_COMPILER:FILEPATH={compiler}\n", encoding="utf-8")
     assert overrides._recorded_c_compiler(build_dir, "") == compiler
     assert overrides._recorded_c_compiler(tmp_path / "unconfigured", "") == overrides._DEFAULT_COMPILER
 
@@ -1051,7 +1052,7 @@ def test_lwip_build_readback_the_cmake_cache_compiler_is_the_fallback_when_flags
 def test_lwip_build_readback_an_explicit_compiler_wins_over_the_recorded_one(overrides: ModuleType, tmp_path: Path) -> None:
     build_dir, compiler, argv_log = _fake_build(tmp_path, stdout="")
     flags_make = build_dir / "CMakeFiles" / "firmware.dir" / "flags.make"
-    flags_make.write_text(f"# compile C with {tmp_path / 'no-such-gcc'}\n" + flags_make.read_text())
+    flags_make.write_text(f"# compile C with {tmp_path / 'no-such-gcc'}\n" + flags_make.read_text(encoding="utf-8"), encoding="utf-8")
     overrides.read_lwip_macros_from_build(build_dir, _pinned(), compiler)
     assert argv_log.is_file()
 
@@ -1097,7 +1098,7 @@ def _lwip_fake_runner(rp2_dir: Path, recorded: "list[list[str]]") -> "_Run":
         recorded.append(cmd)
         build_dir = rp2_dir / f"build-{_REAL_BOARD}"
         (build_dir / "CMakeFiles" / "firmware.dir").mkdir(parents=True, exist_ok=True)
-        (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text("C_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n")
+        (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text("C_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n", encoding="utf-8")
         (build_dir / "firmware.uf2").write_bytes(b"")
         return ""
 
@@ -1142,9 +1143,9 @@ def test_build_firmware_applies_the_lwip_override_an_anchorless_tree_raises_befo
 
 def test_build_firmware_applies_the_lwip_override_a_versions_file_without_an_lwip_table_is_named(setup_toolchain: ModuleType, repo_root: Path, tmp_path: Path) -> None:
     # The shipped file minus its [lwip] table, so [lwip] is the one thing missing.
-    shipped = (repo_root / "toolchain" / "versions.toml").read_text()
+    shipped = (repo_root / "toolchain" / "versions.toml").read_text(encoding="utf-8")
     versions = tmp_path / "versions.toml"
-    versions.write_text(re.sub(r"^\[lwip\]\n(?:(?!\[).*\n?)*", "", shipped, flags=re.MULTILINE))
+    versions.write_text(re.sub(r"^\[lwip\]\n(?:(?!\[).*\n?)*", "", shipped, flags=re.MULTILINE), encoding="utf-8")
     with pytest.raises(setup_toolchain.SetupError, match=r"\[lwip\]"):
         setup_toolchain.load_lwip_macros(versions)
 
@@ -1203,9 +1204,9 @@ def test_a_relative_overrides_dir_still_writes_absolute_paths(overrides: ModuleT
     variant_dir = Path(result["VARIANT_DIR"])
     assert variant_dir == tmp_path.resolve() / "build_overrides" / overrides.UNIX_KBD_INTR_DIR_NAME
     real_variant = tmp_path.resolve() / "micropython" / "ports" / "unix" / "variants" / "standard"
-    assert f'#include "{real_variant / "mpconfigvariant.h"}"' in (variant_dir / "mpconfigvariant.h").read_text()
-    assert (variant_dir / "mpconfigvariant.mk").read_text().startswith(f"include {real_variant / 'mpconfigvariant.mk'}\n")
-    assert (variant_dir / "manifest.py").read_text() == f"include({str(real_variant / 'manifest.py')!r})\n"
+    assert f'#include "{real_variant / "mpconfigvariant.h"}"' in (variant_dir / "mpconfigvariant.h").read_text(encoding="utf-8")
+    assert (variant_dir / "mpconfigvariant.mk").read_text(encoding="utf-8").startswith(f"include {real_variant / 'mpconfigvariant.mk'}\n")
+    assert (variant_dir / "manifest.py").read_text(encoding="utf-8") == f"include({str(real_variant / 'manifest.py')!r})\n"
 
 
 # ---------------------------------------------------------------------------
@@ -1217,8 +1218,8 @@ def test_a_relative_overrides_dir_still_writes_absolute_paths(overrides: ModuleT
 def test_the_mbedtls_suppression_is_one_files_rule_in_each_generated_build_file(overrides: ModuleType, tmp_path: Path) -> None:
     kbd = overrides.apply_unix_kbd_intr_override(_write_fake_micropython_tree(tmp_path / "unix"), tmp_path / "build_overrides")
     board = overrides.apply_lwip_connection_counts_override(_write_fake_lwip_tree(tmp_path / "rp2"), tmp_path / "build_overrides", _REAL_BOARD, _pinned())
-    mk = (Path(kbd["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text().splitlines()
-    cmake = (Path(board["BOARD_DIR"]) / "mpconfigboard.cmake").read_text().splitlines()
+    mk = (Path(kbd["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text(encoding="utf-8").splitlines()
+    cmake = (Path(board["BOARD_DIR"]) / "mpconfigboard.cmake").read_text(encoding="utf-8").splitlines()
     unix_rule = "$(BUILD)/lib/mbedtls/library/ctr_drbg.o: CFLAGS += -Wno-array-bounds"
     rp2_rule = 'set_source_files_properties("${MICROPY_DIR}/lib/mbedtls/library/ctr_drbg.c" PROPERTIES COMPILE_OPTIONS "-Wno-array-bounds")'
     for lines, rule in ((mk, unix_rule), (cmake, rp2_rule)):
@@ -1239,7 +1240,7 @@ def test_no_make_command_carries_the_mbedtls_flag_globally(setup_toolchain: Modu
         if cmd[0] == "make" and cwd is not None and cwd.name == "unix":
             build = next((arg.partition("=")[2] for arg in cmd if arg.startswith("BUILD=")), "build-standard")
             (cwd / build).mkdir(parents=True, exist_ok=True)
-            (cwd / build / "micropython").write_text("")
+            (cwd / build / "micropython").write_text("", encoding="utf-8")
         elif cmd[0] == "make" and cwd is not None:
             target = cwd / f"build-{_REAL_BOARD}" / "CMakeFiles" / "firmware.dir"
             target.mkdir(parents=True, exist_ok=True)
@@ -1291,7 +1292,7 @@ def test_the_kbd_readback_preprocesses_with_the_builds_own_variables_and_removes
     env, argv_log = _fake_make(tmp_path, pp=_pp_text())
     make_vars = {"VARIANT": "standard", "VARIANT_DIR": "/over/unix_kbd_intr_variant", "CFLAGS_EXTRA": "-DMICROPY_PY_SYS_SETTRACE=1", "BUILD": "build-settrace"}
     overrides.verify_unix_kbd_intr_in_build(unix_dir, make_vars, "build-settrace", env=env)
-    assert argv_log.read_text().splitlines() == [*(f"{key}={value}" for key, value in make_vars.items()), "build-settrace/unix_mphal.pp"]
+    assert argv_log.read_text(encoding="utf-8").splitlines() == [*(f"{key}={value}" for key, value in make_vars.items()), "build-settrace/unix_mphal.pp"]
     assert not (unix_dir / "build-settrace" / "unix_mphal.pp").exists(), "the .pp must not outlive the check"
 
 
@@ -1301,7 +1302,7 @@ def test_the_kbd_readback_names_the_default_build_dir_itself(overrides: ModuleTy
     (unix_dir / "build-standard").mkdir(parents=True)
     env, argv_log = _fake_make(tmp_path, pp=_pp_text())
     overrides.verify_unix_kbd_intr_in_build(unix_dir, {"VARIANT": "standard", "VARIANT_DIR": "/v"}, "build-standard", env=env)
-    assert argv_log.read_text().splitlines()[-2:] == ["BUILD=build-standard", "build-standard/unix_mphal.pp"]
+    assert argv_log.read_text(encoding="utf-8").splitlines()[-2:] == ["BUILD=build-standard", "build-standard/unix_mphal.pp"]
 
 
 def test_the_kbd_readback_removes_the_pp_even_when_the_check_fails(overrides: ModuleType, tmp_path: Path) -> None:
@@ -1318,7 +1319,7 @@ def test_a_stale_pp_from_an_interrupted_run_is_never_read_as_this_builds(overrid
     # nothing must fail the proof, not let the old text vouch for the new build.
     unix_dir = tmp_path / "ports" / "unix"
     (unix_dir / "build-standard").mkdir(parents=True)
-    (unix_dir / "build-standard" / "unix_mphal.pp").write_text(_pp_text())
+    (unix_dir / "build-standard" / "unix_mphal.pp").write_text(_pp_text(), encoding="utf-8")
     env, _argv = _fake_make(tmp_path, pp=None)
     with pytest.raises(overrides.OverrideError, match=r"did not produce .*unix_mphal\.pp \(exit 0\)"):
         overrides.verify_unix_kbd_intr_in_build(unix_dir, {"VARIANT": "standard"}, "build-standard", env=env)
@@ -1378,7 +1379,7 @@ def test_the_modlwip_parametrization_covers_every_anchor_the_code_checks(overrid
 
 def test_a_repeated_retry_loop_is_refused(overrides: ModuleType, tmp_path: Path) -> None:
     source = _write_fake_modlwip_tree(tmp_path) / "extmod" / "modlwip.c"
-    source.write_text(source.read_text() + _FAKE_MODLWIP_LOOP)
+    source.write_text(source.read_text(encoding="utf-8") + _FAKE_MODLWIP_LOOP, encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match="found 2 times, not once"):
         overrides.verify_modlwip_eagain_anchor(tmp_path)
 
@@ -1387,14 +1388,14 @@ def test_the_cmake_wiring_out_of_order_is_refused(overrides: ModuleType, tmp_pat
     # usermod.cmake included before extmod.cmake set the list: the swap would find nothing to swap.
     _write_fake_modlwip_tree(tmp_path)
     cmake = tmp_path / "ports" / "rp2" / "CMakeLists.txt"
-    cmake.write_text("include(${MICROPY_DIR}/py/usermod.cmake)\n" + cmake.read_text().replace("include(${MICROPY_DIR}/py/usermod.cmake)", "", 1))
+    cmake.write_text("include(${MICROPY_DIR}/py/usermod.cmake)\n" + cmake.read_text(encoding="utf-8").replace("include(${MICROPY_DIR}/py/usermod.cmake)", "", 1), encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match="is no longer after the anchor before it"):
         overrides.verify_modlwip_eagain_anchor(tmp_path)
 
 
 def test_modlwip_c_outside_the_extmod_source_list_is_refused(overrides: ModuleType, tmp_path: Path) -> None:
     _write_fake_modlwip_tree(tmp_path)
-    (tmp_path / "extmod" / "extmod.cmake").write_text("set(MICROPY_SOURCE_EXTMOD\n    ${MICROPY_EXTMOD_DIR}/modnetwork.c\n)\n    ${MICROPY_EXTMOD_DIR}/modlwip.c\n")
+    (tmp_path / "extmod" / "extmod.cmake").write_text("set(MICROPY_SOURCE_EXTMOD\n    ${MICROPY_EXTMOD_DIR}/modnetwork.c\n)\n    ${MICROPY_EXTMOD_DIR}/modlwip.c\n", encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match=r"no longer inside set\(MICROPY_SOURCE_EXTMOD"):
         overrides.verify_modlwip_eagain_anchor(tmp_path)
 
@@ -1415,10 +1416,10 @@ def test_apply_modlwip_never_writes_inside_the_checkout(overrides: ModuleType, t
 def test_the_copy_differs_from_the_pinned_source_by_exactly_the_include_and_the_eagain_block(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_modlwip_tree(tmp_path / "micropython")
     copy_dir = Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"])
-    lines = (copy_dir / "modlwip.c").read_text().split("\n", 2)
+    lines = (copy_dir / "modlwip.c").read_text(encoding="utf-8").split("\n", 2)
     header, copy = lines[:2], lines[2]
     assert header == ["// Generated by toolchain/micropython_overrides.py from extmod/modlwip.c of MicroPython 1.29.0 -", "// SPECIFICATION.md B.14. Do not edit."]
-    diff = [line for line in difflib.ndiff((fake / "extmod" / "modlwip.c").read_text().splitlines(), copy.splitlines()) if line[:2] in {"- ", "+ "}]
+    diff = [line for line in difflib.ndiff((fake / "extmod" / "modlwip.c").read_text(encoding="utf-8").splitlines(), copy.splitlines()) if line[:2] in {"- ", "+ "}]
     assert diff == [
         f"- {_FAKE_MODLWIP_INCLUDE}",
         '+ #include "extmod/modnetwork.h"',
@@ -1435,7 +1436,7 @@ def test_the_eagain_block_sits_after_the_output_check_and_before_the_sleep(overr
     # After tcp_output()'s ERR_OK check (so a failed output still breaks out as before), before the
     # loop releases the lock and sleeps 50 ms - the wait this override hands back to the caller.
     fake = _write_fake_modlwip_tree(tmp_path / "micropython")
-    copy = (Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"]) / "modlwip.c").read_text()
+    copy = (Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"]) / "modlwip.c").read_text(encoding="utf-8")
     block = copy.index("        if (socket->timeout == 0) {\n")
     assert copy.index(_FAKE_MODLWIP_INSERT_AFTER) + len(_FAKE_MODLWIP_INSERT_AFTER) == block
     assert block < copy.index("        MICROPY_PY_LWIP_EXIT\n        mp_hal_delay_ms(50);")
@@ -1444,7 +1445,7 @@ def test_the_eagain_block_sits_after_the_output_check_and_before_the_sleep(overr
 def test_the_generated_micropython_cmake_is_pinned_byte_for_byte(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_modlwip_tree(tmp_path / "micropython")
     copy_dir = Path(overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")["USER_C_MODULES"])
-    assert (copy_dir / "micropython.cmake").read_text() == (
+    assert (copy_dir / "micropython.cmake").read_text(encoding="utf-8") == (
         "# Generated by toolchain/micropython_overrides.py - SPECIFICATION.md B.14.\n"
         'list(FIND MICROPY_SOURCE_EXTMOD "${MICROPY_EXTMOD_DIR}/modlwip.c" _sensors_modlwip_index)\n'
         "if(_sensors_modlwip_index EQUAL -1)\n"
@@ -1467,7 +1468,7 @@ def test_apply_modlwip_is_idempotent(overrides: ModuleType, tmp_path: Path) -> N
 def test_apply_modlwip_writes_nothing_when_an_anchor_or_the_version_is_missing(overrides: ModuleType, tmp_path: Path, dropped: str) -> None:
     fake = _write_fake_modlwip_tree(tmp_path / "micropython", drop=dropped)
     mpconfig = fake / "py" / "mpconfig.h"
-    mpconfig.write_text("".join(line for line in mpconfig.read_text().splitlines(keepends=True) if not line.startswith(dropped)))
+    mpconfig.write_text("".join(line for line in mpconfig.read_text(encoding="utf-8").splitlines(keepends=True) if not line.startswith(dropped)), encoding="utf-8")
     with pytest.raises(overrides.OverrideError):
         overrides.apply_modlwip_eagain_override(fake, tmp_path / "build_overrides")
     assert not (tmp_path / "build_overrides").exists()
@@ -1554,8 +1555,8 @@ def test_the_host_builds_own_flags_reach_modlwip_alone_and_never_the_test_rig(ov
         pytest.fail(f"no real toolchain checkout with lwIP at {micropython_dir} - build it with `toolchain/setup_toolchain.py setup` (scripts/test.sh does)")
     host = overrides.apply_unix_lwip_host_override(micropython_dir, tmp_path / "build_overrides", _pinned())
     rig = overrides.apply_unix_kbd_intr_override(micropython_dir, tmp_path / "build_overrides")
-    host_flags = [line for line in (Path(host["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text().splitlines() if "CFLAGS +=" in line]
-    rig_flags = [line for line in (Path(rig["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text().splitlines() if "CFLAGS +=" in line]
+    host_flags = [line for line in (Path(host["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text(encoding="utf-8").splitlines() if "CFLAGS +=" in line]
+    rig_flags = [line for line in (Path(rig["VARIANT_DIR"]) / "mpconfigvariant.mk").read_text(encoding="utf-8").splitlines() if "CFLAGS +=" in line]
     mbedtls = "$(BUILD)/lib/mbedtls/library/ctr_drbg.o: CFLAGS += -Wno-array-bounds"
     assert host_flags == [mbedtls, "$(BUILD)/extmod/modlwip.o: private CFLAGS += -Wno-sign-compare", "$(BUILD)/extmod/modlwip.o: private CFLAGS += -DSOMAXCONN=2"]
     assert rig_flags == [mbedtls]
@@ -1629,18 +1630,18 @@ def test_the_host_variant_relays_the_standard_variant_and_swaps_in_the_patched_c
         "mpconfigvariant.h", "mpconfigvariant.mk", "src/extmod/modlwip.c",
     ]
     assert (variant / "src" / "extmod" / "modlwip.c").read_bytes() == rp2_copy.read_bytes(), "the host build compiles the firmware's own patched copy"
-    header = (variant / "mpconfigvariant.h").read_text()
+    header = (variant / "mpconfigvariant.h").read_text(encoding="utf-8")
     assert header == overrides._unix_kbd_intr_header(real) + "void mp_lwip_host_poll(void);\n#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()\n"
-    mk = (variant / "mpconfigvariant.mk").read_text().splitlines()
+    mk = (variant / "mpconfigvariant.mk").read_text(encoding="utf-8").splitlines()
     # vpath before py/mkrules.mk's own `vpath %.c . $(TOP)`: make searches the copy's directory first.
     assert mk[:3] == [f"include {real / 'mpconfigvariant.mk'}", f"INC += -I{variant / 'lwip_inc'}", f"vpath extmod/modlwip.c {variant / 'src'}"]
-    assert (variant / "manifest.py").read_text() == f"include({str(real / 'manifest.py')!r})\n"
+    assert (variant / "manifest.py").read_text(encoding="utf-8") == f"include({str(real / 'manifest.py')!r})\n"
 
 
 def test_the_host_lwipopts_are_rp2s_with_the_hosts_alignment_and_the_pinned_table(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_lwip_host_tree(tmp_path / "micropython")
     variant = Path(overrides.apply_unix_lwip_host_override(fake, tmp_path / "build_overrides", _pinned())["VARIANT_DIR"])
-    text = (variant / "lwip_inc" / "lwipopts.h").read_text()
+    text = (variant / "lwip_inc" / "lwipopts.h").read_text(encoding="utf-8")
     common = text.index('#include "extmod/lwip-include/lwipopts_common.h"')
     assert all(text.index(setting) < common for setting in _FAKE_RP2_LWIP_SETTINGS)
     assert "#define LWIP_RAND() ((u32_t)rand())" in text and "#include <stdlib.h>" in text
@@ -1655,20 +1656,20 @@ def test_ipv6_fragment_headers_are_copied_on_the_host_and_never_in_the_firmware(
     fake = _write_fake_lwip_host_tree(tmp_path / "micropython")
     host = Path(overrides.apply_unix_lwip_host_override(fake, tmp_path / "build_overrides", _pinned())["VARIANT_DIR"]) / "lwip_inc" / "lwipopts.h"
     board = Path(overrides.apply_lwip_connection_counts_override(_write_fake_lwip_tree(tmp_path / "rp2"), tmp_path / "rp2_overrides", _REAL_BOARD, _pinned())["BOARD_DIR"])
-    lines = host.read_text().splitlines()
+    lines = host.read_text(encoding="utf-8").splitlines()
     define = lines.index("#define IPV6_FRAG_COPYHEADER 1")
     assert lines[define - 1].startswith("// ") and "ip6_frag.c" in lines[define - 1], "the define carries its reason"
-    assert not [path for path in board.rglob("*") if path.is_file() and "IPV6_FRAG_COPYHEADER" in path.read_text()]
+    assert not [path for path in board.rglob("*") if path.is_file() and "IPV6_FRAG_COPYHEADER" in path.read_text(encoding="utf-8")]
 
 
 def test_the_host_port_layer_runs_lwip_from_the_event_hook_and_asserts_loudly(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_lwip_host_tree(tmp_path / "micropython")
     variant = Path(overrides.apply_unix_lwip_host_override(fake, tmp_path / "build_overrides", _pinned())["VARIANT_DIR"])
-    port = (variant / "lwip_host_port.c").read_text()
+    port = (variant / "lwip_host_port.c").read_text(encoding="utf-8")
     for needed in ("u32_t sys_now(void) {\n    return (u32_t)mp_hal_ticks_ms();\n}", "int mp_mod_network_prefer_dns_use_ip_version = 4;", "    if (polling) {\n        return;\n    }\n    polling = 1;\n    netif_poll_all();\n    sys_check_timeouts();\n    polling = 0;"):
         assert needed in port, needed
     assert port.index("#if MICROPY_PY_LWIP") < port.index("u32_t sys_now(void)") < port.rindex("#endif")
-    cc = (variant / "lwip_inc" / "arch" / "cc.h").read_text()
+    cc = (variant / "lwip_inc" / "arch" / "cc.h").read_text(encoding="utf-8")
     assert "abort();" in cc.split("#define LWIP_PLATFORM_ASSERT(x)")[1].split("\n")[0], "rp2's assert is a no-op; the host instrument must stop"
 
 
@@ -1677,7 +1678,7 @@ def test_the_host_readback_accepts_the_patched_copy_and_modlwip_as_socket(overri
     overrides.verify_unix_lwip_host_in_build(build_dir, micropython_dir, binary, env={"PATH": os.environ["PATH"]})
     # lwip.reset() starts lwIP's cyclic timers; sleeping 2.5 s runs them through the event hook, past
     # two 1 s IPv6 reassembly ticks, and lwip.callback() runs them once more directly.
-    assert (tmp_path / "probe-argv.txt").read_text().splitlines() == [
+    assert (tmp_path / "probe-argv.txt").read_text(encoding="utf-8").splitlines() == [
         "-c", "import lwip, socket, time; print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print('lwip timers ok')",
     ]
 
@@ -1733,7 +1734,7 @@ def test_build_unix_lwip_port_builds_the_host_flavour_and_proves_it(tmp_path: Pa
         recorded.append(cmd)
         if cmd[0] == "make":
             (unix_dir / "build-lwip").mkdir(parents=True, exist_ok=True)
-            (unix_dir / "build-lwip" / "micropython").write_text("")
+            (unix_dir / "build-lwip" / "micropython").write_text("", encoding="utf-8")
         return "namespace(name='micropython')"
 
     monkeypatch.setattr(setup_toolchain, "run", fake_run)
@@ -1773,10 +1774,10 @@ def test_the_offset_wraps_both_counts_fifteen_minutes_after_boot(overrides: Modu
 def test_the_tick_copy_differs_from_the_pinned_header_by_exactly_the_return_line(overrides: ModuleType, tmp_path: Path) -> None:
     fake = _write_fake_mphalport(tmp_path / "micropython")
     overrides.apply_tick_offset_override(fake, tmp_path / "build_overrides", board=_REAL_BOARD)
-    lines = (tmp_path / "build_overrides" / overrides.TICK_OFFSET_DIR_NAME / "mphalport.h").read_text().split("\n", 4)
+    lines = (tmp_path / "build_overrides" / overrides.TICK_OFFSET_DIR_NAME / "mphalport.h").read_text(encoding="utf-8").split("\n", 4)
     prefix, body = lines[:4], lines[4]
     assert prefix[2:] == [f"#define MICROPY_SENSORS_TICK_OFFSET_MS ({2**32 - 900_000}u)", f"#define {overrides.TICK_OFFSET_SENTINEL} 1"]
-    diff = [line for line in difflib.ndiff((fake / "ports" / "rp2" / "mphalport.h").read_text().splitlines(), body.splitlines()) if line[:2] in {"- ", "+ "}]
+    diff = [line for line in difflib.ndiff((fake / "ports" / "rp2" / "mphalport.h").read_text(encoding="utf-8").splitlines(), body.splitlines()) if line[:2] in {"- ", "+ "}]
     # 32-bit unsigned: the sum wraps where the hardware count would, and the timer is never written.
     assert diff == ["-     return to_ms_since_boot(get_absolute_time());", "+     return (mp_uint_t)(to_ms_since_boot(get_absolute_time()) + MICROPY_SENSORS_TICK_OFFSET_MS);"]
 
@@ -1800,15 +1801,15 @@ def test_the_tick_readback_reads_the_sentinel_through_the_builds_own_mphal(overr
     applied, compiler, argv_log = _fake_build(tmp_path / "applied", stdout="TICKPROBE = 1\n")
     absent, compiler_2, _argv = _fake_build(tmp_path / "absent", stdout=f"TICKPROBE = {overrides.TICK_OFFSET_SENTINEL}\n")
     for build_dir, cc in ((applied, compiler), (absent, compiler_2)):
-        (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {cc}\nC_DEFINES = -DPICO_BOARD=pico_w\nC_INCLUDES = -I/tick -I/real\nC_FLAGS = -O2\n")
+        (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {cc}\nC_DEFINES = -DPICO_BOARD=pico_w\nC_INCLUDES = -I/tick -I/real\nC_FLAGS = -O2\n", encoding="utf-8")
     assert overrides.tick_offset_in_build(applied) is True
     assert overrides.tick_offset_in_build(absent) is False
-    assert "-I/tick -I/real" in argv_log.read_text(), "the build's own include order decides which mphalport.h is found"
+    assert "-I/tick -I/real" in argv_log.read_text(encoding="utf-8"), "the build's own include order decides which mphalport.h is found"
 
 
 def test_the_tick_readback_refuses_an_answer_it_cannot_read(overrides: ModuleType, tmp_path: Path) -> None:
     build_dir, compiler, _argv = _fake_build(tmp_path, stdout="TICKPROBE = 2\n")
-    (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {compiler}\nC_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n")
+    (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {compiler}\nC_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n", encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match=r"gave \['2'\], neither 1 nor absent"):
         overrides.tick_offset_in_build(build_dir)
 
@@ -1817,7 +1818,7 @@ def test_the_tick_readback_refuses_an_answer_it_cannot_read(overrides: ModuleTyp
 def test_a_build_that_is_not_what_it_was_asked_to_be_is_refused(overrides: ModuleType, tmp_path: Path, carries: str, expected: str, message: str) -> None:
     value = "1" if carries == "1" else overrides.TICK_OFFSET_SENTINEL
     build_dir, compiler, _argv = _fake_build(tmp_path, stdout=f"TICKPROBE = {value}\n")
-    (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {compiler}\nC_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n")
+    (build_dir / "CMakeFiles" / "firmware.dir" / "flags.make").write_text(f"# compile C with {compiler}\nC_DEFINES = \nC_INCLUDES = \nC_FLAGS = \n", encoding="utf-8")
     with pytest.raises(overrides.OverrideError, match=message):
         overrides.verify_tick_offset_in_build(build_dir, expected=expected == "test")
     overrides.verify_tick_offset_in_build(build_dir, expected=expected != "test")
@@ -1852,7 +1853,7 @@ def test_build_firmware_applies_the_tick_override_only_for_the_test_image_and_pr
     calls = _stub_build_readbacks(setup_toolchain, monkeypatch)
     monkeypatch.setattr(setup_toolchain.micropython_overrides, "verify_lwip_macros_in_build", lambda *_a, **_k: {})
     assert setup_toolchain.build_firmware(fake_mp_dir, _REAL_BOARD, 2, toolchain_dir=toolchain_dir, lwip_macros=_pinned(), tick_offset_test=wanted) == build_dir / "firmware.uf2"
-    board_cmake = (toolchain_dir / "build_overrides" / "lwip_connection_counts_board" / "mpconfigboard.cmake").read_text()
+    board_cmake = (toolchain_dir / "build_overrides" / "lwip_connection_counts_board" / "mpconfigboard.cmake").read_text(encoding="utf-8")
     tick_dir = toolchain_dir.resolve() / "build_overrides" / "tick_offset_test"
     assert (f'include_directories(BEFORE "{tick_dir}")' in board_cmake) is wanted
     assert [kwargs for _args, kwargs in applied] == ([{"board": _REAL_BOARD}] if wanted else [])
@@ -1879,7 +1880,7 @@ def test_a_rerun_leaves_nothing_an_earlier_run_wrote_in_the_override_dir(overrid
     stale = [written / "old_port.c", written / "lwip_inc" / "lwip" / "stale.h"]
     for path in stale:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("int left_by_an_older_generator;\n")
+        path.write_text("int left_by_an_older_generator;\n", encoding="utf-8")
     applies[override]()
     assert not [path for path in stale if path.exists()], f"{written.name} kept files the current generator did not write"
 

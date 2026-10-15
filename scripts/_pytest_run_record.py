@@ -120,5 +120,5 @@ class _Recorder:
         path = Path(target)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(record, indent=1) + "\n")
+        tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
         os.replace(tmp, path)

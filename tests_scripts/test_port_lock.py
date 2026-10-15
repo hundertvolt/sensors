@@ -1,6 +1,6 @@
-"""The product-fixed port lock, scripts/_port_lock.sh: a port a live runner holds refuses every other runner at once,
-naming the holder; a dead holder's lock is taken over; the holder's own descendants pass; a runner removes only its own
-locks, on every exit path. Every lock here lives under tmp_path, never the runtime dir a real suite's runner uses."""
+"""The product-fixed port lock, scripts/_port_lock.sh and its CPython reader scripts/_port_lock.py: a port a live runner
+holds refuses every other runner at once, naming the holder; a dead holder's lock is taken over; the holder's descendants
+pass, in either language; a runner removes only its own locks. Every lock lives under tmp_path, never a real runner's."""
 
 import errno
 import os
@@ -8,15 +8,19 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from _script_loader import load_script_module
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _LOCK_LIB = REPO_ROOT / "scripts" / "_port_lock.sh"
+_PY_LIB = REPO_ROOT / "scripts" / "_port_lock.py"
 _CHAIN_VARS = ("SENSORS_PORT_LOCK_OWNER", "SENSORS_PORT_LOCKS_HELD")
 _RACERS = 6
 # Each runner's arguments and the product-fixed ports it holds for its whole run, in the order it takes them.
@@ -26,6 +30,28 @@ _RUNNERS: dict[str, tuple[tuple[str, ...], tuple[int, ...]]] = {
     "scripts/run_unix_port_integration.sh": (("--device", "fixture_device"), (53,)),
 }
 _RUNNER_PORTS = [(runner, port) for runner, (_, ports) in _RUNNERS.items() for port in ports]
+# The first uv call past each runner's locks: the twin runner archives the device's last logs before its toolchain step.
+_FIRST_CALLS = {
+    "scripts/test.sh": "uv run toolchain/setup_toolchain.py setup",
+    "scripts/run_digital_twin_ci.sh": "uv run --no-sync scripts/_archive_evidence.py --runner digital_twin_ci_fixture_device ",
+    "scripts/run_unix_port_integration.sh": "uv run toolchain/setup_toolchain.py setup",
+}
+# A CPython runner holding one port through scripts/_port_lock.py: prints "took <pid>", then runs the command it is
+# given (printing "then <exit code>") or blocks on stdin; a refusal prints the error and exits 1, as its callers do.
+_PY_HOLDER = """import os, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+from _port_lock import PortHeldError, port_lock
+try:
+    with port_lock(int(sys.argv[2]), sys.argv[3]):
+        print("took", os.getpid(), flush=True)
+        if sys.argv[4:]:
+            print("then", subprocess.run(sys.argv[4:], check=False).returncode, flush=True)
+        else:
+            sys.stdin.read()
+except PortHeldError as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+"""
 
 
 def _child(*lines: str) -> str:
@@ -102,6 +128,22 @@ def _plant(runtime_dir: Path, port: int, pid: int, runner: str) -> None:
     (lock / "runner").write_text(f"{runner}\n", encoding="utf-8")
 
 
+def _py(*args: str) -> list[str]:
+    return [sys.executable, "-I", "-c", _PY_HOLDER, str(REPO_ROOT / "scripts"), *args]
+
+
+@contextmanager
+def _py_holder(runtime_dir: Path, port: int, runner: str) -> Iterator[tuple[subprocess.Popen[str], int]]:
+    proc = subprocess.Popen(_py(str(port), runner), env=_env(runtime_dir), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert proc.stdout is not None
+        line = proc.stdout.readline()
+        assert line.startswith("took "), f"the CPython holder did not take {port}: {line!r} {proc.stderr.read() if proc.stderr else ''}"
+        yield proc, int(line.split()[1])
+    finally:
+        _stop(proc)
+
+
 def _recorded(runtime_dir: Path, port: int) -> tuple[str, str]:
     lock = _lock(runtime_dir, port)
     return (lock / "pid").read_text(encoding="utf-8").strip(), (lock / "runner").read_text(encoding="utf-8").strip()
@@ -122,10 +164,10 @@ def _run_runner(tmp_path: Path, runner: str) -> tuple[subprocess.CompletedProces
 
 
 def _runner_tree(tmp_path: Path, runner: str) -> tuple[Path, Path]:
-    # A copy of the runner beside the lock library in a throwaway tree, with a scratch file its sweeps would
-    # remove; every uv call is logged with the locks held at that moment and fails, ending the run there.
+    # A copy of the runner beside every library it may source and the layout file in a throwaway tree, with a scratch
+    # file its sweeps would remove; every uv call is logged with the locks held at that moment and fails, ending the run.
     root = tmp_path / "repo"
-    for rel in (runner, "scripts/_port_lock.sh"):
+    for rel in (runner, "scripts/micropypath.toml", *(p.relative_to(REPO_ROOT).as_posix() for p in (REPO_ROOT / "scripts").glob("_*.sh"))):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / rel, root / rel)
     (root / "devices").mkdir()
@@ -156,6 +198,20 @@ def _stop(proc: subprocess.Popen[str]) -> None:
     if proc.poll() is None:
         proc.kill()
     proc.wait(timeout=10)
+
+
+@pytest.fixture(scope="module")
+def port_lock_py() -> ModuleType:
+    return load_script_module(_PY_LIB, "_port_lock")
+
+
+@pytest.fixture
+def py_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # This pytest process as an unrelated CPython runner on a private lock root, its inherited chain dropped.
+    for name in _CHAIN_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    return tmp_path
 
 
 def test_a_second_runner_on_a_held_port_exits_1_naming_the_holder(tmp_path: Path) -> None:
@@ -340,12 +396,136 @@ def test_each_runner_refuses_a_port_a_live_process_holds_before_touching_anythin
 
 @pytest.mark.parametrize("runner", list(_RUNNERS))
 def test_each_runner_holds_its_ports_past_the_lock_and_releases_them_on_exit(tmp_path: Path, runner: str) -> None:
-    # The stub uv fails the toolchain step, the first thing past the locks: an abort under set -e.
+    # The stub uv fails the first step past the locks: an abort under set -e.
     done, _, calls = _run_runner(tmp_path, runner)
     assert done.returncode == 1, done.stderr
     held = " ".join(sorted(f"sensors-port-{port}.lock" for port in _RUNNERS[runner][1]))
     first = calls.read_text(encoding="utf-8").splitlines()[0]
-    assert first.startswith("uv run toolchain/setup_toolchain.py setup"), done.stderr
-    assert first.endswith(f"| held: {held} "), f"{runner} reached its toolchain step without holding its ports: {first}"
+    assert first.startswith(_FIRST_CALLS[runner]), done.stderr
+    assert first.endswith(f"| held: {held} "), f"{runner} reached its first step without holding its ports: {first}"
     assert list((tmp_path / "runtime").iterdir()) == [], "the runner's exit left a lock behind"
 
+
+
+def test_the_cpython_reader_refuses_a_port_a_bash_runner_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
+    with _holder(py_runtime, (53,), "bash-runner") as (holder, holder_pid):
+        with pytest.raises(port_lock_py.PortHeldError) as refused, port_lock_py.port_lock(53, "py-runner"):
+            pytest.fail("the CPython reader proceeded on a held port")
+        assert str(refused.value) == _held(53, "bash-runner", holder_pid)
+        assert _recorded(py_runtime, 53) == (str(holder_pid), "bash-runner")
+        assert _end_normally(holder) == 0
+    assert not _lock(py_runtime, 53).exists()
+
+
+def test_a_bash_runner_refuses_a_port_the_cpython_reader_holds(tmp_path: Path) -> None:
+    with _py_holder(tmp_path, 53, "py-holder") as (holder, holder_pid):
+        taker = _run(tmp_path, "port_lock_take 53 bash-runner", "echo proceeded")
+        assert (taker.returncode, taker.stderr.strip(), taker.stdout) == (1, _held(53, "py-holder", holder_pid), "")
+        assert _recorded(tmp_path, 53) == (str(holder_pid), "py-holder")
+        assert _end_normally(holder) == 0
+    assert not _lock(tmp_path, 53).exists(), "the CPython holder left its lock behind"
+
+
+def test_the_cpython_reader_takes_over_a_dead_holders_lock_and_chains_while_it_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
+    _plant(py_runtime, 53, _dead_pid(), "crashed-runner")
+    with port_lock_py.port_lock(53, "py-runner"):
+        assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner")
+        assert (os.environ["SENSORS_PORT_LOCKS_HELD"], os.environ["SENSORS_PORT_LOCK_OWNER"]) == ("53", str(os.getpid()))
+    assert not _lock(py_runtime, 53).exists()
+    assert [name for name in _CHAIN_VARS if name in os.environ] == [], "the chain still lists a released port"
+
+
+def test_a_lock_left_without_a_pid_is_taken_over_by_the_cpython_reader(port_lock_py: ModuleType, py_runtime: Path) -> None:
+    _lock(py_runtime, 53).mkdir()
+    with port_lock_py.port_lock(53, "py-runner"):
+        assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner")
+
+
+def test_a_cpython_child_of_a_bash_holder_passes_without_retaking(tmp_path: Path) -> None:
+    child = shlex.join(_py("53", "py-child", "/bin/true"))
+    done = _run(tmp_path, "port_lock_take 53 bash-parent", child, 'cat "$XDG_RUNTIME_DIR/sensors-port-53.lock/pid"; echo "parent $$"')
+    assert done.returncode == 0, done
+    took, then, recorded, parent = done.stdout.splitlines()
+    assert (took.split()[0], then) == ("took", "then 0")
+    assert recorded == parent.removeprefix("parent "), "the CPython child retook its parent's lock, or released it"
+
+
+def test_a_bash_child_of_a_cpython_holder_passes_without_retaking(tmp_path: Path) -> None:
+    bash_child = ["/bin/bash", "-c", _script("port_lock_take 53 bash-child", "echo child-took")]
+    done = subprocess.run(_py("53", "py-parent", *bash_child), env=_env(tmp_path), capture_output=True, text=True, check=False, timeout=30)
+    assert done.returncode == 0, done
+    assert done.stdout.splitlines()[1:] == ["child-took", "then 0"]
+    assert not _lock(tmp_path, 53).exists()
+
+
+@pytest.mark.parametrize(("owner_is_holder", "held"), [(True, "18080"), (False, "53")], ids=["port-not-listed", "holder-not-an-ancestor"])
+def test_the_cpython_reader_refuses_an_unrelated_holder_whatever_chain_it_inherited(port_lock_py: ModuleType, py_runtime: Path, monkeypatch: pytest.MonkeyPatch, *, owner_is_holder: bool, held: str) -> None:
+    with _other_process() as other:
+        _plant(py_runtime, 53, other, "other-runner")
+        monkeypatch.setenv("SENSORS_PORT_LOCK_OWNER", str(other) if owner_is_holder else str(_dead_pid()))
+        monkeypatch.setenv("SENSORS_PORT_LOCKS_HELD", held)
+        with pytest.raises(port_lock_py.PortHeldError) as refused, port_lock_py.port_lock(53, "py-runner"):
+            pytest.fail("the CPython reader proceeded on a held port")
+        assert str(refused.value) == _held(53, "other-runner", other)
+        assert _recorded(py_runtime, 53) == (str(other), "other-runner")
+
+
+def test_a_nested_take_is_re_entrant_and_only_the_outer_release_removes_the_lock(port_lock_py: ModuleType, py_runtime: Path) -> None:
+    with port_lock_py.port_lock(53, "py-runner"):
+        with port_lock_py.port_lock(53, "py-runner"):
+            pass
+        assert _recorded(py_runtime, 53) == (str(os.getpid()), "py-runner"), "the inner release removed the outer take's lock"
+    assert not _lock(py_runtime, 53).exists()
+
+
+def test_the_cpython_reader_releases_only_a_lock_it_still_holds(port_lock_py: ModuleType, py_runtime: Path) -> None:
+    with _other_process() as other:
+        with port_lock_py.port_lock(53, "py-runner"):
+            (_lock(py_runtime, 53) / "pid").write_text(f"{other}\n", encoding="utf-8")
+        assert _recorded(py_runtime, 53) == (str(other), "py-runner"), "the release removed a lock another runner took over"
+
+
+def test_a_cpython_holder_interrupted_releases_and_one_killed_is_taken_over(tmp_path: Path) -> None:
+    with _py_holder(tmp_path, 53, "py-holder") as (holder, _):
+        holder.send_signal(signal.SIGINT)
+        holder.wait(timeout=10)
+    assert not _lock(tmp_path, 53).exists(), "SIGINT ended the CPython holder without its release"
+    with _py_holder(tmp_path, 53, "py-holder") as (holder, _):
+        holder.send_signal(signal.SIGKILL)
+        holder.wait(timeout=10)
+    taker = _run(tmp_path, "port_lock_take 53 next-runner", "echo took")
+    assert (taker.returncode, taker.stdout) == (0, "took\n"), "a killed CPython holder's lock was not taken over"
+
+
+def test_bash_and_cpython_takers_racing_leave_exactly_one_holder(tmp_path: Path) -> None:
+    racers = [_start_holder(tmp_path, (53,), f"bash-{n}") for n in range(_RACERS // 2)]
+    racers += [subprocess.Popen(_py("53", f"py-{n}"), env=_env(tmp_path), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for n in range(_RACERS // 2)]
+    try:
+        deadline = time.monotonic() + 20
+        while sum(proc.poll() is None for proc in racers) > 1 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        alive = [proc for proc in racers if proc.poll() is None]
+        assert len(alive) == 1, f"{len(alive)} racers hold port 53 at once"
+        assert alive[0].stdout is not None
+        took = alive[0].stdout.readline().split()
+        assert took[0] == "took", took
+        holder_runner = _recorded(tmp_path, 53)[1]
+        for proc in racers:
+            if proc is not alive[0]:
+                assert (proc.returncode, proc.stderr.read().strip() if proc.stderr else "") == (1, _held(53, holder_runner, int(took[1])))
+    finally:
+        for proc in racers:
+            _stop(proc)
+
+
+@pytest.mark.parametrize(("port", "runner"), [(0, "r"), (65536, "r"), (True, "r"), (53, "")], ids=["zero", "too-high", "a-bool", "no-runner"])
+def test_a_malformed_cpython_take_is_refused_before_touching_the_root(port_lock_py: ModuleType, py_runtime: Path, port: int, runner: str) -> None:
+    with pytest.raises(ValueError, match=r"^port_lock\(port, runner\) needs a port 1-65535 and a runner name, not "), port_lock_py.port_lock(port, runner):
+        pytest.fail("a malformed take proceeded")
+    assert list(py_runtime.iterdir()) == []
+
+
+def test_a_cpython_take_on_a_missing_lock_root_is_refused_naming_it(port_lock_py: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "missing"))
+    with pytest.raises(ValueError, match=r"^port_lock: the lock root .*/missing is not a writable directory$"), port_lock_py.port_lock(53, "py-runner"):
+        pytest.fail("a take on a missing root proceeded")

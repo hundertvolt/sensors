@@ -177,8 +177,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         self._cycle_comp: list[float] = list(_COMP_FALLBACK)  # this cycle's compensation, captured before its conversion
         self._base_trigger_event = asyncio.ThreadSafeFlag()
         self._read_event = asyncio.ThreadSafeFlag()
-        # Bare Timer() is valid on rp2 (id defaults to -1) despite the installed stub package
-        # requiring a positional id - a stub inaccuracy, not a code bug.
+        # Bare Timer() is valid on rp2 (id defaults to -1); the stub requires an id. Removal trigger: SPECIFICATION.md B.15.
         self._trigger_timer = Timer()
         self._trigger_period = LockedValue(init_value=int(trigger_s))
         self._trigger_counter = 0
@@ -459,8 +458,8 @@ class BMP3XX_I2C:
         # bare IndexError leak out of this protocol-layer failure.
         if osr >= len(_OSR_SETTINGS):
             raise OSError(f"OSR bit-field at bit {start_bit} read back reserved encoding {osr}")
-        # micropython-stubs' const() stub types indexing as Any even though it's genuinely int at
-        # runtime - explicit int narrows it back rather than returning Any from a -> int function.
+        # The stub types indexing a const() tuple as Any; the int annotation narrows it. Removal trigger:
+        # SPECIFICATION.md B.15.
         result: int = _OSR_SETTINGS[osr]
         return result
 

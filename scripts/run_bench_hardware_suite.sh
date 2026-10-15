@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# L4: lower levels (scripts/_run_lower_levels.sh L4), then L3 as its own clean step, then
-# tests_hardware/bench/ against a real board and WiFi bridge, with soak and the rollover wait
-# excluded (each runs only through its own opt-in). Provisioning: tests_hardware/README.md.
+# L4: lower levels (scripts/_run_lower_levels.sh L4), then L3 as its own clean step, then tests_hardware/bench/
+# against a real board and WiFi bridge; soak and the rollover wait never run here, whatever -m a caller passes (it
+# narrows). Provisioning: tests_hardware/README.md.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -13,11 +13,12 @@ Runs L0-L2 (scripts/_run_lower_levels.sh L4), then tests_hardware/flash/ (L3) as
 must pass before tests_hardware/bench/ (L4) runs; each step prints its summary block.
   --skip-lower-levels  skip L0-L2; for iterative debugging, never reported clean (exit 4)
   -h, --help           this text
-Other arguments go to pytest. Test paths (arguments starting with tests_hardware/) go to the bench
-step only and replace its tests_hardware/bench; every other argument goes to both steps (an option
-whose value starts with tests_hardware/ is written --option=VALUE). Environment: MPREMOTE_DEVICE (the
-board's serial device; default: the one MicroPython board found by its /dev/serial/by-id name),
-BENCH_AP_PASSWORD (default: read from the bench bridge), PICO_TOOLCHAIN_DIR (default ~/pico-toolchain).
+Other arguments go to pytest; a -m you pass narrows the selection, and soak and rollover tests never run
+here. Test paths (arguments starting with tests_hardware/) go to the bench step only and replace its
+tests_hardware/bench; every other argument goes to both steps (an option whose value starts with
+tests_hardware/ is written --option=VALUE). Environment: MPREMOTE_DEVICE (the board's serial device;
+default: the one MicroPython board found by its /dev/serial/by-id name), BENCH_AP_PASSWORD (default:
+read from the bench bridge), PICO_TOOLCHAIN_DIR (default ~/pico-toolchain).
 USAGE
 }
 
@@ -44,5 +45,5 @@ fi
 
 floor="not soak_duration and not multi_day_rollover"
 # The flash step has its own runner name, so its evidence keeps its own newest three.
-scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_flash_step --levels "L3" tests_hardware/flash -m "$floor" "${args[@]}"
-scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite "${levels[@]}" "${paths[@]}" -m "$floor" "${args[@]}"
+scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite_flash_step --levels "L3" --marker-floor "$floor" tests_hardware/flash "${args[@]}"
+scripts/_require_clean_hardware_run.sh --runner run_bench_hardware_suite "${levels[@]}" --marker-floor "$floor" "${paths[@]}" "${args[@]}"

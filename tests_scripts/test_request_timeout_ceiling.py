@@ -29,7 +29,7 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
     # The literal default of a keyword parameter, found anywhere in a module's function/method
     # signatures. src/ is MicroPython-target code (`from machine import ...` at module level), so it is
     # read with ast, never imported - same posonlyargs+args/defaults idiom as buildgen/defaults.py.
-    tree = ast.parse(source_path.read_text())
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     # Collected rather than short-circuited on the first hit: a second signature declaring the same
     # parameter with a different default would make "the" ceiling ambiguous, and silently pinning
     # whichever one ast happened to reach first is exactly the drift this file exists to catch.
@@ -56,7 +56,7 @@ def _default_for_parameter(source_path: Path, param: str) -> float:
 
 def _module_constant(source_path: Path, name: str) -> float:
     # A module-level numeric constant's literal value, plain (`NAME = 5.0`) or `const()`-wrapped (`NAME = const(5.0)`).
-    tree = ast.parse(source_path.read_text())
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
     for node in tree.body:
         if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)):
             continue
@@ -78,7 +78,7 @@ def test_the_web_ui_gives_up_exactly_at_the_servers_own_ceiling(repo_root: Path,
     # CLAUDE.md's src/<->js/ cross-language mirror obligation (SPECIFICATION.md Part G) applied to
     # the one number that decides whether a slow request is a server abort the UI can report or a
     # client-side give-up it cannot explain. Only the two ends being equal makes the first true.
-    js_text = (repo_root / "js" / "poll-manager.js").read_text()
+    js_text = (repo_root / "js" / "poll-manager.js").read_text(encoding="utf-8")
     match = re.search(r"(?:export )?const DEFAULT_TIMEOUT_MS = (\d+);", js_text)
     assert match is not None, "js/poll-manager.js no longer declares DEFAULT_TIMEOUT_MS - update this mirror check with it"
     assert float(match.group(1)) / 1000.0 == outer_cap_s, f"js/poll-manager.js's DEFAULT_TIMEOUT_MS ({match.group(1)}ms) must mirror asy_webserver_service.py's outer_cap_s ({outer_cap_s}s)"
@@ -109,7 +109,7 @@ def test_the_bench_tiers_reset_errors_timeout_sits_above_the_same_ceiling(repo_r
     assert reset_timeout > outer_cap_s, f"tests_hardware/error_log_helpers.py's reset timeout ({reset_timeout}s) must sit above the server's own {outer_cap_s}s cap"
     # It must also actually be the value the helper passes - a named constant that no call site uses
     # would satisfy the bound above while every real request still ran on a stale literal.
-    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
+    assert "timeout_s=_RESET_ERRORS_TIMEOUT_S" in helpers.read_text(encoding="utf-8"), "reset_all_error_logs() must pass _RESET_ERRORS_TIMEOUT_S, not a literal of its own"
 
 
 # The two instruments that HOLD connections open against the board. Both failed silently on silicon
@@ -157,7 +157,7 @@ def test_conflicting_defaults_are_refused_rather_than_silently_picking_one(tmp_p
     # value. ast.walk() order is not the source order a reader would assume, so "whichever came
     # first" would pin an arbitrary one of the two and still report every mirror as in sync.
     source = tmp_path / "two_defaults.py"
-    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n")
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef helper(outer_cap_s: float = 30.0) -> None: ...\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="conflicting defaults"):
         _default_for_parameter(source, "outer_cap_s")
 
@@ -166,7 +166,7 @@ def test_a_parameter_that_carries_no_literal_default_is_refused(tmp_path: Path) 
     # A required parameter, or one defaulting to an expression rather than a literal, leaves nothing
     # to mirror. Failing loud here is what stops the ceiling checks degrading into no-ops.
     source = tmp_path / "no_default.py"
-    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n")
+    source.write_text("_CAP = 15.0\ndef serve(outer_cap_s: float) -> None: ...\ndef other(*, outer_cap_s: float = _CAP) -> None: ...\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="no literal default"):
         _default_for_parameter(source, "outer_cap_s")
 
@@ -175,7 +175,7 @@ def test_the_same_default_declared_twice_is_not_a_conflict(tmp_path: Path) -> No
     # The guard must bite on disagreement only - two signatures agreeing on the ceiling is exactly
     # the mirroring this file wants, not a failure.
     source = tmp_path / "agreeing.py"
-    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n")
+    source.write_text("def serve(*, outer_cap_s: float = 15.0) -> None: ...\ndef again(outer_cap_s: int = 15) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(source, "outer_cap_s") == 15.0
 
 
@@ -183,10 +183,10 @@ def test_defaults_are_read_from_every_argument_position(tmp_path: Path) -> None:
     # Python binds posonly/positional/kwonly defaults from two separate ast lists, and the real
     # signature has moved between those positions before. Missing one reads as "no default at all".
     posonly = tmp_path / "posonly.py"
-    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n")
+    posonly.write_text("def serve(outer_cap_s: float = 15.0, /) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(posonly, "outer_cap_s") == 15.0
     trailing = tmp_path / "trailing.py"
-    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n")
+    trailing.write_text("def serve(self, app: object, outer_cap_s: float = 15.0) -> None: ...\n", encoding="utf-8")
     assert _default_for_parameter(trailing, "outer_cap_s") == 15.0
 
 
@@ -194,7 +194,7 @@ def test_a_missing_module_constant_is_refused_rather_than_read_as_zero(tmp_path:
     # tests_hardware/'s copy is the one most likely to be renamed away, and a parser returning a
     # falsy placeholder would make the "above the cap" bound fail confusingly instead of naming it.
     source = tmp_path / "constants.py"
-    source.write_text("_OTHER_TIMEOUT_S = 30.0\n")
+    source.write_text("_OTHER_TIMEOUT_S = 30.0\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
 
@@ -203,7 +203,7 @@ def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> N
     # A constant turned into a string/None keeps the name alive while making every comparison
     # against it meaningless - so the name matching is deliberately not enough on its own.
     source = tmp_path / "stringly.py"
-    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n_CAP_S = const("15.0")\n')
+    source.write_text('_RESET_ERRORS_TIMEOUT_S = "30.0"\n_CAP_S = const("15.0")\n', encoding="utf-8")
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
         _module_constant(source, "_RESET_ERRORS_TIMEOUT_S")
     with pytest.raises(AssertionError, match="no module-level numeric constant"):
@@ -213,7 +213,7 @@ def test_a_non_numeric_constant_does_not_satisfy_the_lookup(tmp_path: Path) -> N
 def test_a_const_wrapped_constant_reads_like_a_plain_one(tmp_path: Path) -> None:
     # src/'s defaults are MicroPython const()s; the reader unwraps the one literal argument.
     source = tmp_path / "consts.py"
-    source.write_text("_DEFAULT_OUTER_CAP_S = const(15.0)\n_DEFAULT_MAX_CONNECTIONS = const(6)\n_PLAIN_S = 2.5\n")
+    source.write_text("_DEFAULT_OUTER_CAP_S = const(15.0)\n_DEFAULT_MAX_CONNECTIONS = const(6)\n_PLAIN_S = 2.5\n", encoding="utf-8")
     assert [_module_constant(source, n) for n in ("_DEFAULT_OUTER_CAP_S", "_DEFAULT_MAX_CONNECTIONS", "_PLAIN_S")] == [15.0, 6.0, 2.5]
 
 
@@ -317,7 +317,7 @@ def test_the_bench_ceiling_test_keeps_its_held_set_inside_the_per_call_timeout(r
     # A held socket silent past per_call_timeout_s is answered and logs HTTP_CALL_TIMEOUT, failing the test's
     # own empty-WEBSERVER-log check; one extra blocking in recv for 10 s held the set that long.
     path = repo_root / "tests_hardware" / "bench" / "test_network_resilience.py"
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
 
     def value(arg: ast.expr) -> float | None:
         if isinstance(arg, ast.Name):

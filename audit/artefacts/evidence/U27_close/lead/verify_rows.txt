@@ -1,0 +1,29 @@
+4 HW_BENCH.089 | scripts/run_bench_rollover_test.sh:46:scripts/_require_clean_hardware_run.sh --runner run_bench_rollover_test --levels "rollover (not a level)" --marker-floor "multi_day_rollover" tests_hardware/bench --allow-multi-day-rollover --allow-flash-cycle --rollover-image "$image" "$@" tests_hardware/bench/test_ticks_ms_rollover.py:46:        pytest.skip("about two hours on the tick-offset test image: runs with --allow-multi-day-rollover and --rollover-image") tests_hardware/bench/test_ticks_ms_rollover.py:47:    option = request.config.getoption("--rollover-image") 
+10 SCR.004 | scripts/_pytest_run_record.py:6:# collection, deselected, options, markexpr, collect_only, session_notes, exitstatus (pytest's exit). scripts/_pytest_run_record.py:115:            "markexpr": str(self.config.option.markexpr or ""), 
+17 SRC_CORE.071 | src/asy_api_response.py:27:    class _RequestLike(Protocol):  # noqa: PYI046  # asy_webserver_service.py imports it for its routes src/asy_webserver_service.py:30:    from asy_api_response import ResponseEnvelope, _RequestLike  # the shared microdot.Request stand-in (Part G.1: reuse, never reimplement) src/asy_webserver_service.py:79:    RouteHandler = Callable[[_RequestLike], Awaitable[object]] | Callable[[_RequestLike, str], Awaitable[object]] 
+26 SRC_SENS.062 | comment hits: 0
+33-35 tests/microtest.py | line 1: """Minimal test runner for the MicroPython Unix port: runs each `test_*` function of a nam
+33-35 tests/_threshold_runner.py | line 1: """Runs one test file at a given gc.threshold() stage: sets the threshold, executes the fi
+33-35 tests/_coverage_runner.py | line 1: """Runs one test file under `sys.settrace` and dumps the executed lines of the traced pref
+36 TEST_HELP.010 | B.15 Timer() 
+48 TOOL.078 | uv.lock diff 0c0ad52..233c8f9: empty; W1 lead step: uv lock --check OK, ruff 0.16.10 / mypy 2.4.0 = pins
+49 TSC.002 | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_no_variant_literals.py included)
+51 TSC.021 | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_bench_harness_helpers.py included)
+56/57 SCR.001/002 | GITHUB_STEP_SUMMARY in scripts/: 0 files; test: tests_scripts/test_summary_block.py:362:        assert "GITHUB_STEP_SUMMARY" not in path.read_text(), path 
+58/64 SCR.005/TSC.197 | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_hardware_verdict.py included)
+68-75,176-182,186 TWIN.* | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_comment_block_cap.py, header-presence and cap cases, included)
+77g GEN.016 | buildgen/definitions.py:860:    raise SystemExit(main()) 
+77g HW_BENCH.106 | if __name__ == "__main__":     raise SystemExit(runner.main()) 
+84 HW_BENCH.038 | tests_hardware/conformance.py:76:    binary = twin_board.unix_port_binary() tests_hardware/twin_board.py:127:def unix_port_binary() -> Path: 
+89/90 HW_DEV.001/003 | tests_hardware/device_scripts/_shared/__init__.py; re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_lint_type_scopes.py included)
+91 HW_DEV.116 | import _bench_device as device  # rendered: the bench device's generated module
+95 SCR.012 | scripts/_digital_twin_scenarios.py scripts/_port_lock.py scripts/_port_lock.sh scripts/_unix_port.sh scripts/run_digital_twin_ci.sh scripts/run_unix_port_integration.sh scripts/test.sh 
+104 SCR.044 | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_test_sh.py included)
+123 TEST_HELP.033 | ls-tree tests/_webserver_concurrency_scenarios.py: ''
+137 TOOL.080 | toolchain/micropython_overrides.py:133:def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]: ; re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X) (test_micropython_overrides.py included)
+143 TSC.016 | single-file host mypy on tests_scripts/conftest.py rc=0 (u27/rebuild/proof/timeline.txt)
+149/150/164/165/185 TSC.045/048/177/180/165 | re-proof tier at 233c8f9 (u27/rebuild/proof): 6160 passed, 6 skipped, sole red test_tunables_register (lane X)
+183 TWIN.050 | scripts/_twin_process.py:101:    # The runner's one shutdown line, field by field, and the largest free heap block of the GC summary printed before it. scripts/_twin_process.py:120:_SHUTDOWN_RE = re.compile(r"\] shutdown: (.*)$") scripts/_twin_process.py:137:        raise ValueError(f"the shutdown line carries no {name}= field") ; the MicroPython file runs at the gate (test.sh both stages)
+189 TWIN.136 | DeflateIO outside audit/: ext/freezefs/ffsextract.py ext/freezefs/ffsmount.py tests/test_website_build_integration.py 
+196 WEB.060 | line 1: /**
+202 WEB.063 | line 2: // REST API over real HTTP, SPECIFICATION.md Part H.7). A missing interpreter or build fails the suite; it nev; the npm leg runs at the gate

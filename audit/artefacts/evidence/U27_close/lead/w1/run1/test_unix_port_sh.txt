@@ -1,0 +1,25 @@
+......................................F.............                     [100%]
+=================================== FAILURES ===================================
+____ test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit _____
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u27w1/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10119/test_a_run_holds_the_lock_shar0')
+
+    def test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+        toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+        env = _env(tmp_path, toolchain)
+        script = "\n".join(["set -euo pipefail", f"source {shlex.quote(str(_LIB))}", "unix_port_ensure standard", "unix_port_check lwip", 'echo "ready"', "read -r _ || true"])
+        run = subprocess.Popen(["/bin/bash", "-c", script], cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            assert run.stdout is not None
+            assert run.stdout.readline().strip() == "ready", run.stderr.read() if run.stderr else ""
+            assert _run(env, "check", "settrace").returncode == 0, "a second run sharing the lock was refused"
+>           with pytest.raises(setup_toolchain.SetupError, match=r"another setup or firmware build"), setup_toolchain.toolchain_lock(toolchain):
+E           AssertionError: Regex pattern did not match.
+E             Expected regex: 'another setup or firmware build'
+E             Actual message: 'a test run is using the Unix ports of /tmp/pytest-of-root/pytest-10119/test_a_run_holds_the_lock_shar0/toolchain (it holds the toolchain lock shared) - wait for it to finish, or use another --toolchain-dir'
+
+tests_scripts/test_unix_port_sh.py:355: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_unix_port_sh.py::test_a_run_holds_the_lock_shared_for_its_life_and_releases_it_on_exit
+1 failed, 51 passed in 6.14s

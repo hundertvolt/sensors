@@ -32,7 +32,7 @@ from _shared_rest_roundtrip import (
     assert_sensor_payload_not_self_wrapped,
     drain_json_response_body,
 )
-from _src_const import src_const
+from _src_const import src_const, src_int
 from _strict_json import strict_loads
 from _tmp_scratch import TmpScratch
 from _twin_devices import generated_devices, wiring_plan
@@ -1054,9 +1054,7 @@ async def _cancel_reset_task(sysfunct: "Any") -> None:
 
 
 def _system_const(name: str) -> int:
-    value = src_const("src/asy_system_service.py", name)
-    assert isinstance(value, int), (name, value)
-    return value
+    return src_int("src/asy_system_service.py", name)
 
 
 class _StaggerClock:
@@ -1483,8 +1481,7 @@ def _scenario_serving_demand(device: str) -> None:
                 assert _strict(drain_json_response_body(iter(sent)))["SSID"] == ssid
     finally:
         asy_webserver_service._PieceWriter = real_writer  # type: ignore[misc]
-    head = src_const("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")
-    assert isinstance(head, int), head
+    head = src_int("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")
     body_cap = Request.max_content_length  # this device's ServingLimits, set by the build above
     largest_body = max(size for size, _ in sizes.values())
     most_pieces = max(count for _, count in sizes.values())

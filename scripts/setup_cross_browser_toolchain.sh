@@ -17,6 +17,10 @@ Environment:
 EOF
     exit 0
 fi
+if [ "$#" -gt 0 ]; then
+    echo "error: unknown argument '$1' - scripts/setup_cross_browser_toolchain.sh takes none (see --help)" >&2
+    exit 2
+fi
 
 # Non-fatal, like toolchain/setup_toolchain.py's own ensure_apt_packages(): an unrelated
 # third-party source (a PPA that 403s or whose key expired) must not stop an install from the main

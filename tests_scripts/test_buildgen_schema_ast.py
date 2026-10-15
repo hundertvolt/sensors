@@ -17,13 +17,13 @@ def src_dir(repo_root: Path) -> Path:
 
 def _extract(tmp_path: Path, source: str) -> "dict[str, FieldSchema]":
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     return extract_field_schemas(path)
 
 
 def _extract_expecting(tmp_path: Path, source: str, match: str, rule: str) -> BuildError:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     with pytest.raises(BuildError, match=match) as raised:
         extract_field_schemas(path, device="fixture", instance_label="x")
     assert (raised.value.rule, raised.value.device, raised.value.instance) == (rule, "fixture", "x")
@@ -242,7 +242,7 @@ def test_extract_field_schemas_unreadable_file_is_a_build_error(tmp_path: Path) 
 
 def test_extract_field_schemas_a_syntax_error_names_the_file(tmp_path: Path) -> None:
     path = tmp_path / "asy_x_driver.py"
-    path.write_text("class Broken(:\n")
+    path.write_text("class Broken(:\n", encoding="utf-8")
     with pytest.raises(BuildError, match="has a syntax error") as raised:
         extract_field_schemas(path, device="fixture", instance_label="x")
     assert raised.value.rule == "source.syntax-error"
@@ -256,7 +256,7 @@ def test_extract_field_schemas_places_its_errors_at_the_callers_field(tmp_path: 
     assert (raised.value.rule, raised.value.field) == ("src.unreadable", "HotspotPW")
     path = tmp_path / "asy_x_driver.py"
     for text, rule in (("class Broken(:\n", "source.syntax-error"), ('_VAL_A = const((("A", "int", 2, 0, 10),))\n', "schema.malformed")):
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         with pytest.raises(BuildError) as raised:
             extract_field_schemas(path, field="HotspotPW")
         assert (raised.value.rule, raised.value.field, str(raised.value).startswith("[<src>.HotspotPW] ")) == (rule, "HotspotPW", True)

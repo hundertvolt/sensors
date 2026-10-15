@@ -12,7 +12,8 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
-from _src_const import src_const
+from _src_const import src_int
+from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
 
@@ -70,9 +71,9 @@ def _word(value: int) -> bytes:
     return payload + bytes([_crc8(payload)])
 
 
-_BACKUP_COUNTER_MAX: int = src_const("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")  # type: ignore[assignment]  # src_const() answers object
-_COMP_MAX_AGE_S: int = src_const("src/asy_sgp40_driver.py", "_COMP_MAX_AGE_S")  # type: ignore[assignment]
-_VOC_SETTLED_SAMPLES: int = src_const("src/asy_sgp40_driver.py", "_VOC_SETTLED_SAMPLES")  # type: ignore[assignment]
+_BACKUP_COUNTER_MAX: int = src_int("src/asy_sgp40_driver.py", "_BACKUP_COUNTER_MAX")
+_COMP_MAX_AGE_S: int = src_int("src/asy_sgp40_driver.py", "_COMP_MAX_AGE_S")
+_VOC_SETTLED_SAMPLES: int = src_int("src/asy_sgp40_driver.py", "_VOC_SETTLED_SAMPLES")
 
 
 def _entries(log: "ErrorLog") -> "list[tuple[str, int]]":
@@ -2209,10 +2210,10 @@ def test_the_sample_counter_saturates_at_the_cap() -> None:
 _SGP_CFG_FILE = "config_SGP40.cfg"
 
 # The driver's schema rows, read from its source (tests/_src_const.py).
-_VAL_BACKUP_PERIOD: "ConfigSchema" = src_const("src/asy_sgp40_driver.py", "_VAL_BACKUP_PERIOD")  # type: ignore[assignment]  # src_const() answers object
-_VAL_BACKUP_MAX_AGE: "ConfigSchema" = src_const("src/asy_sgp40_driver.py", "_VAL_BACKUP_MAX_AGE")  # type: ignore[assignment]
-_VAL_WAIT_TIME_NTP: "ConfigSchema" = src_const("src/asy_sgp40_driver.py", "_VAL_WAIT_TIME_NTP")  # type: ignore[assignment]
-_VAL_RESET_VOC: "ConfigSchema" = src_const("src/asy_sgp40_driver.py", "_VAL_RESET_VOC")  # type: ignore[assignment]
+_VAL_BACKUP_PERIOD: "ConfigSchema" = src_schema("src/asy_sgp40_driver.py", "_VAL_BACKUP_PERIOD")
+_VAL_BACKUP_MAX_AGE: "ConfigSchema" = src_schema("src/asy_sgp40_driver.py", "_VAL_BACKUP_MAX_AGE")
+_VAL_WAIT_TIME_NTP: "ConfigSchema" = src_schema("src/asy_sgp40_driver.py", "_VAL_WAIT_TIME_NTP")
+_VAL_RESET_VOC: "ConfigSchema" = src_schema("src/asy_sgp40_driver.py", "_VAL_RESET_VOC")
 
 
 def test_get_cfg_schema_is_the_module_schema() -> None:

@@ -14,7 +14,7 @@ _RUNTIME_JSON_DIRS = ("mockdata",)
 
 
 def _coverage_exclude_globs(repo_root: Path) -> list[str]:
-    text = (repo_root / "vitest.config.js").read_text()
+    text = (repo_root / "vitest.config.js").read_text(encoding="utf-8")
     block = text.find("coverage: {")
     assert block != -1, "vitest.config.js no longer configures test.coverage at all"
     match = re.search(r"exclude:\s*\[([^\]]*)\]", text[block:])

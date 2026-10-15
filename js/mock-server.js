@@ -11,7 +11,7 @@ import { isRecord, neverUnchanged } from "./definitions.js";
 const COUNTER_CAP = 2 ** 30 - 1;
 // src/asy_api_response.py's _STANDARD_CODES (SPECIFICATION.md C.5.3).
 /** @type {Record<number, string>} */
-const STANDARD_CODES = { 0: "Command executed", 1: "Invalid JSON request", 2: "Command specifier missing", 3: "Invalid command", 400: "Bad request", 404: "Not found", 405: "Method not allowed", 413: "Payload too large", 500: "Internal server error" };
+const STANDARD_CODES = { 0: "Command executed", 1: "Invalid JSON request", 400: "Bad request", 404: "Not found", 405: "Method not allowed", 413: "Payload too large", 500: "Internal server error" };
 const LED_BUSY_DESCR = "LED busy - retry later"; // src/asy_webserver_service.py's _LED_BUSY_DESCR
 const LED_DURATION_MEMBER = "T"; // the seconds member of src/asy_webserver_service.py's _LIGHT_CMD_FIELDS
 const DNS_LABEL_MAX = 63; // matches src/asy_dns_client.py's own DNS_LABEL_MAX

@@ -15,7 +15,7 @@ import microdot
 from _async_harness import run
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const
+from _src_const import src_int
 from _strict_json import strict_loads
 from microdot import Microdot, Request
 
@@ -42,14 +42,14 @@ if TYPE_CHECKING:
     Sleep = Callable[[float], Awaitable[None]]
 
 
-# The shipped values, read from source (tests/_src_const.py); src_const() answers object, so each int is annotated.
-_CHUNK_BYTES: int = src_const("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")  # type: ignore[assignment]
-_MAX_CONNECTIONS: int = src_const("src/asy_webserver_service.py", "_DEFAULT_MAX_CONNECTIONS")  # type: ignore[assignment]
-_MAX_CONTENT_LENGTH: int = src_const("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")  # type: ignore[assignment]
-_MAX_HEADER_LINES: int = src_const("src/asy_webserver_service.py", "_MAX_HEADER_LINES")  # type: ignore[assignment]
-_MAX_HEAD_BYTES: int = src_const("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")  # type: ignore[assignment]
-_START_RETRIES: int = src_const("src/asy_webserver_service.py", "_START_RETRIES")  # type: ignore[assignment]
-_START_RETRY_S: int = src_const("src/asy_webserver_service.py", "_START_RETRY_S")  # type: ignore[assignment]
+# The shipped values, read from source (tests/_src_const.py).
+_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
+_MAX_CONNECTIONS: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONNECTIONS")
+_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
+_MAX_HEADER_LINES: int = src_int("src/asy_webserver_service.py", "_MAX_HEADER_LINES")
+_MAX_HEAD_BYTES: int = src_int("src/asy_webserver_service.py", "_MAX_HEAD_BYTES")
+_START_RETRIES: int = src_int("src/asy_webserver_service.py", "_START_RETRIES")
+_START_RETRY_S: int = src_int("src/asy_webserver_service.py", "_START_RETRY_S")
 
 _W_PEER_RESET = code("W", "HTTP_PEER_RESET")
 _W_CALL_TIMEOUT = code("W", "HTTP_CALL_TIMEOUT")
@@ -60,7 +60,7 @@ _W_BAD_HEAD = code("W", "HTTP_BAD_HEAD")
 _W_START_FAILED = code("W", "HTTP_START_FAILED")
 _E_UNEXPECTED = code("E", "UNEXPECTED")
 
-_HOUR_S: int = src_const("src/asy_base_classes.py", "_HOUR_S")  # type: ignore[assignment]  # the drop window's bin width
+_HOUR_S: int = src_int("src/asy_base_classes.py", "_HOUR_S")  # the drop window's bin width
 _STEP_S = 0.005  # the driven clock's advance per scheduler round: a whole request takes well under 0.5 s of it
 
 # This file's own TCP block, below the ephemeral range and clear of every other file's base (SPECIFICATION.md E.1):

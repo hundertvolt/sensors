@@ -45,7 +45,7 @@ def _flag(dest: str) -> str:
 
 def _load(path: Path) -> "dict[str, object]":
     try:
-        record = json.loads(path.read_text())
+        record = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return record if isinstance(record, dict) else {}

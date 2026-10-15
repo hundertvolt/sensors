@@ -42,13 +42,13 @@ def test_resolve_driver_real_drivers(src_dir: Path, driver: str, module: str, cl
 
 def test_a_plain_sensor_reader_subclass_needs_setup(tmp_path: Path) -> None:
     # SensorReader.setup() sets the reader's own logger up, so every reader joins the boot batch.
-    (tmp_path / "asy_plain_driver.py").write_text("class Plain_Reader(SensorReader):\n    pass\n")
+    (tmp_path / "asy_plain_driver.py").write_text("class Plain_Reader(SensorReader):\n    pass\n", encoding="utf-8")
     assert resolve_driver("plain", tmp_path, "fixture").needs_setup is True
 
 
 def test_read_triggers_are_declared_by_the_reader_class_itself(tmp_path: Path) -> None:
-    (tmp_path / "asy_trig_driver.py").write_text("class Trig_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n")
-    (tmp_path / "asy_tick_driver.py").write_text("class Tick_Reader(SensorReaderConfig):\n    def get_timer_starters(self):\n        return []\n")
+    (tmp_path / "asy_trig_driver.py").write_text("class Trig_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n", encoding="utf-8")
+    (tmp_path / "asy_tick_driver.py").write_text("class Tick_Reader(SensorReaderConfig):\n    def get_timer_starters(self):\n        return []\n", encoding="utf-8")
     assert class_has_read_triggers(resolve_driver("trig", tmp_path, "fixture")) is True
     assert class_has_read_triggers(resolve_driver("tick", tmp_path, "fixture")) is False
 
@@ -62,28 +62,28 @@ def test_resolve_driver_unknown_driver_raises(src_dir: Path) -> None:
 def test_resolve_driver_reads_the_class_name_not_a_naive_uppercase(tmp_path: Path) -> None:
     # The whole point of AST-based resolution: every real driver's class now matches the naive
     # "<driver>".upper() + "_Reader", so a driver file whose class does not proves the AST read.
-    (tmp_path / "asy_chipx_driver.py").write_text("class ChipX_Reader(SensorReader):\n    pass\n")
+    (tmp_path / "asy_chipx_driver.py").write_text("class ChipX_Reader(SensorReader):\n    pass\n", encoding="utf-8")
     info = resolve_driver("chipx", tmp_path, "fixture")
     assert info.class_name == "ChipX_Reader"
     assert info.class_name != "chipx".upper() + "_Reader"
 
 
 def test_resolve_driver_file_with_no_reader_subclass(tmp_path: Path) -> None:
-    (tmp_path / "asy_bogus_driver.py").write_text("class NotAReader:\n    pass\n")
+    (tmp_path / "asy_bogus_driver.py").write_text("class NotAReader:\n    pass\n", encoding="utf-8")
     with pytest.raises(BuildError, match="no SensorReader/SensorReaderConfig subclass") as raised:
         resolve_driver("bogus", tmp_path, "fixture")
     assert raised.value.rule == "driver.no-reader-class"
 
 
 def test_resolve_driver_file_with_two_reader_subclasses_is_ambiguous(tmp_path: Path) -> None:
-    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n")
+    (tmp_path / "asy_dual_driver.py").write_text("class Foo_Reader(SensorReader):\n    pass\n\n\nclass Bar_Reader(SensorReaderConfig):\n    pass\n", encoding="utf-8")
     with pytest.raises(BuildError, match="ambiguous") as raised:
         resolve_driver("dual", tmp_path, "fixture")
     assert raised.value.rule == "driver.ambiguous-reader-class"
 
 
 def test_resolve_driver_syntax_error_in_driver_file(tmp_path: Path) -> None:
-    (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n")
+    (tmp_path / "asy_broken_driver.py").write_text("class Foo(:\n", encoding="utf-8")
     with pytest.raises(BuildError, match="syntax error") as raised:
         resolve_driver("broken", tmp_path, "fixture")
     assert raised.value.rule == "source.syntax-error"
@@ -128,7 +128,7 @@ def test_parse_name_constant_confirms_notify_is_not_notification(src_dir: Path) 
 
 def test_parse_name_constant_missing(tmp_path: Path) -> None:
     path = tmp_path / "asy_foo_driver.py"
-    path.write_text("class Foo_Reader(SensorReader):\n    pass\n")
+    path.write_text("class Foo_Reader(SensorReader):\n    pass\n", encoding="utf-8")
     with pytest.raises(BuildError, match="no module-level _NAME") as raised:
         parse_name_constant(path, "fixture", "foo")
     assert raised.value.rule == "source.name-missing"
@@ -136,7 +136,7 @@ def test_parse_name_constant_missing(tmp_path: Path) -> None:
 
 def test_parse_name_constant_non_string(tmp_path: Path) -> None:
     path = tmp_path / "asy_foo_driver.py"
-    path.write_text("_NAME = 42\n")
+    path.write_text("_NAME = 42\n", encoding="utf-8")
     with pytest.raises(BuildError, match="not a plain/const") as raised:
         parse_name_constant(path, "fixture", "foo")
     assert raised.value.rule == "source.name-not-literal"
@@ -170,7 +170,7 @@ def test_data_fields_reads_every_wired_producers_namedtuple(src_dir: Path, drive
 
 def test_data_fields_accepts_the_string_form_of_the_annotation(tmp_path: Path) -> None:
     path = tmp_path / "asy_chip_driver.py"
-    path.write_text('CHIP = namedtuple("CHIP", ("A", "B"))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> "CHIP":\n        pass\n')
+    path.write_text('CHIP = namedtuple("CHIP", ("A", "B"))\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> "CHIP":\n        pass\n', encoding="utf-8")
     assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A", "B"})
 
 
@@ -178,9 +178,9 @@ def test_data_fields_follows_a_rewritten_file(tmp_path: Path) -> None:
     # The cache keys on the source text, so an edit at the same path is never answered stale.
     path = tmp_path / "asy_chip_driver.py"
     reader = "\n\n\nclass Chip_Reader(SensorReader):\n    async def get_data(self) -> CHIP:\n        pass\n"
-    path.write_text('CHIP = namedtuple("CHIP", ("A",))' + reader)
+    path.write_text('CHIP = namedtuple("CHIP", ("A",))' + reader, encoding="utf-8")
     assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A"})
-    path.write_text('CHIP = namedtuple("CHIP", ("A", "C"))' + reader)
+    path.write_text('CHIP = namedtuple("CHIP", ("A", "C"))' + reader, encoding="utf-8")
     assert data_fields(path, "Chip_Reader", "fixture", "chip") == frozenset({"A", "C"})
 
 
@@ -198,7 +198,7 @@ def test_data_fields_follows_a_rewritten_file(tmp_path: Path) -> None:
 )
 def test_data_fields_refuses_anything_but_a_literal_namedtuple(tmp_path: Path, source: str) -> None:
     path = tmp_path / "asy_chip_driver.py"
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
     with pytest.raises(BuildError) as excinfo:
         data_fields(path, "Chip_Reader", "fixture", "chip_a")
     assert excinfo.value.rule == "source.fields-unreadable"
@@ -240,9 +240,9 @@ def test_the_driver_files_read_the_same_under_any_locale(repo_root: Path) -> Non
 def test_the_driver_facts_follow_a_file_rewritten_at_the_same_path(tmp_path: Path) -> None:
     # Every fact is cached by the file's text, not its path: a rewritten file is read again.
     path = tmp_path / "asy_chip_driver.py"
-    path.write_text('_NAME = const("ONE")\n\n\nclass One_Reader(SensorReader):\n    pass\n')
+    path.write_text('_NAME = const("ONE")\n\n\nclass One_Reader(SensorReader):\n    pass\n', encoding="utf-8")
     first = resolve_driver("chip", tmp_path, "fixture")
     assert (first.class_name, parse_name_constant(path, "fixture", "chip"), class_has_read_triggers(first)) == ("One_Reader", "ONE", False)
-    path.write_text('_NAME = const("TWO")\n\n\nclass Two_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n')
+    path.write_text('_NAME = const("TWO")\n\n\nclass Two_Reader(SensorReader):\n    def get_trigger_starters(self):\n        return []\n', encoding="utf-8")
     second = resolve_driver("chip", tmp_path, "fixture")
     assert (second.class_name, parse_name_constant(path, "fixture", "chip"), class_has_read_triggers(second)) == ("Two_Reader", "TWO", True)

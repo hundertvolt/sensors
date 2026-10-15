@@ -286,8 +286,8 @@ _HEAD = "| ID | Value | Sites (file — literal) | Dependants | Basis | Margin |
 
 def _tree(tmp_path: Path, source: str, rows: "list[str]") -> Path:
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "mod.py").write_text(source)
-    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n")
+    (tmp_path / "src" / "mod.py").write_text(source, encoding="utf-8")
+    (tmp_path / "SPECIFICATION.md").write_text(f"# Part N\n\n{_BEGIN}\n## N.3\n\n{_HEAD}\n" + "\n".join(rows) + f"\n{_END}\n", encoding="utf-8")
     return tmp_path
 
 
@@ -327,7 +327,7 @@ def test_a_tag_whose_literal_is_not_on_the_next_line_is_reported(tmp_path: Path)
 
 def test_a_tag_in_a_file_type_the_check_cannot_read_is_reported(tmp_path: Path) -> None:
     root = _tree(tmp_path, "", [])
-    (root / "src" / "mypy.ini").write_text(f"[mypy]\n# @{_NAME} x.wait_s = 5\nwait = 5\n")
+    (root / "src" / "mypy.ini").write_text(f"[mypy]\n# @{_NAME} x.wait_s = 5\nwait = 5\n", encoding="utf-8")
     assert any("file type this check cannot read" in p for p in check_tree(root)), check_tree(root)
 
 

@@ -1,3 +1,5 @@
+// Tests js/mock-server.js's installMockFetch(): each route answered as the real server answers it - validation and
+// result words, masking, dispatched commands, the clock-driven values, delays and the error-counter reset.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import samples from "../mockdata/samples.json";
 import radioShapes from "../tests/_radio_shape_cases.json";

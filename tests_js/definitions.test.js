@@ -1,3 +1,5 @@
+// Tests js/definitions.js: validateDefinitions()'s accepts and refusals of the document's shape, isRecord(),
+// resolveFieldValue()'s flat keys and nested paths, loadDefinitions(), and the generated loader's TOML stamp.
 import { afterEach, describe, expect, it, vi } from "vitest";
 // Every device's generated definitions come from tests_js/_generated_definitions.js (a real browser run: no node:fs).
 import { GENERATED_DEFINITIONS, staleAgainst } from "./_generated_definitions.js";

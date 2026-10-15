@@ -22,7 +22,7 @@ def _errcount_name(driver: str) -> str:
 
 
 def _function(name: str) -> ast.FunctionDef:
-    for node in ast.parse(_MACHINE.read_text()).body:
+    for node in ast.parse(_MACHINE.read_text(encoding="utf-8")).body:
         if isinstance(node, ast.FunctionDef) and node.name == name:
             return node
     raise AssertionError(f"digital_twin/machine.py no longer defines {name}()")
@@ -50,7 +50,7 @@ def test_every_i2c_driver_has_its_chip_fake_and_its_dispatch_branch() -> None:
 
 
 def test_the_store_and_the_link_are_wired_by_their_own_seams() -> None:
-    source = _MACHINE.read_text()
+    source = _MACHINE.read_text(encoding="utf-8")
     assert "FRAMChip(" in ast.unparse(_function("_wire_spi_device")), "_wire_spi_device() no longer builds the FRAM fake"
     assert (_REPO_ROOT / "digital_twin" / "_fram_chip.py").is_file()
     assert "class UARTLink" in source and "def attach_crossover_jumper(" in source, "the UART pair's crossover is gone"

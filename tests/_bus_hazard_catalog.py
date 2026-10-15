@@ -8,7 +8,7 @@ import time
 
 import microtest
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const
+from _src_const import src_int
 from machine import I2C as FakeI2C
 from machine import Pin
 
@@ -31,9 +31,7 @@ if TYPE_CHECKING:
 _GENERAL_CALL_ADDR = 0x00
 def i2c_const(name: str) -> int:
     # A folded const() of asy_i2c_driver.py (its recovery status bits, its clear's pulse count), read from its source.
-    value = src_const("src/asy_i2c_driver.py", name)
-    assert isinstance(value, int), (name, value)
-    return value
+    return src_int("src/asy_i2c_driver.py", name)
 
 
 # I2C spec reserved address ranges (0x00-0x07 general call, CBUS, reserved and Hs-mode; 0x78-0x7F 10-bit

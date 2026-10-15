@@ -1,3 +1,6 @@
+"""CRC8/16/32 and CRCPass against cited check values: bounds and refusals, pass mode, and incremental use matching one
+bulk pass."""
+
 import asyncio
 
 from _async_harness import run

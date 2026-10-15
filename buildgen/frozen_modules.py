@@ -3,6 +3,7 @@ transitive `import`/`from...import` closure, AST-scanned, seeded from the genera
 own imports. Computes *which* modules; `scripts/build_firmware.py` stages them."""
 
 import ast
+import functools
 from pathlib import Path
 
 from buildgen.errors import BuildError
@@ -36,14 +37,22 @@ def _local_imports_of(module: str, roots: "tuple[Path, ...]", device: str = "<sr
     for root in roots:
         path = root / f"{module}.py"
         if path.is_file():
+            text = path.read_text(encoding="utf-8")
             try:
-                tree = parse_source(path.read_text(encoding="utf-8"), str(path))
+                parse_source(text, str(path))
             except SyntaxError as e:
                 raise BuildError(device, f"{path} has a syntax error: {e}", rule="source.syntax-error", fix="fix the file so Python can parse it", instance=module) from e
-            names: set[str] = set()
-            _collect_imports(tree, names)
-            return _with_a_file(names, roots)
+            return _with_a_file(set(_imports_in(text)), roots)
     return set()
+
+
+@functools.lru_cache(maxsize=256)
+def _imports_in(text: str) -> "frozenset[str]":
+    # Each file's own imports, walked once per text (parse_source's key) rather than once per device and
+    # closure step; an edited file is a new key, so never answered stale.
+    names: set[str] = set()
+    _collect_imports(parse_source(text), names)
+    return frozenset(names)
 
 
 def _with_a_file(names: "set[str]", roots: "tuple[Path, ...]") -> "set[str]":

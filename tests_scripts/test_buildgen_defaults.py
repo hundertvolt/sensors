@@ -62,7 +62,7 @@ def test_find_default_class_not_declared_returns_none(src_dir: Path) -> None:
 
 def test_default_init_params_required_and_optional(tmp_path: Path) -> None:
     path = tmp_path / "asy_fake_driver.py"
-    path.write_text("class _DefaultFoo:\n    def __init__(self, required_one, optional_one=5):\n        pass\n")
+    path.write_text("class _DefaultFoo:\n    def __init__(self, required_one, optional_one=5):\n        pass\n", encoding="utf-8")
     class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     params = default_init_params(class_node)
@@ -72,7 +72,7 @@ def test_default_init_params_required_and_optional(tmp_path: Path) -> None:
 
 def test_default_init_params_keyword_only_parameters_join_the_schema(tmp_path: Path) -> None:
     path = tmp_path / "asy_fake_driver.py"
-    path.write_text("class _DefaultFoo:\n    def __init__(self, *, need, opt=1):\n        pass\n")
+    path.write_text("class _DefaultFoo:\n    def __init__(self, *, need, opt=1):\n        pass\n", encoding="utf-8")
     class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     assert default_init_params(class_node) == (DefaultParam("need", has_default=False), DefaultParam("opt", has_default=True))
@@ -82,7 +82,7 @@ def test_default_init_params_no_init_means_zero_params(tmp_path: Path) -> None:
     # A class with no explicit __init__ (e.g. _DefaultSignalSink) genuinely takes zero constructor
     # arguments - real, legal shape for {default = true} with no other keys at all.
     path = tmp_path / "asy_fake_driver.py"
-    path.write_text("class _DefaultFoo:\n    pass\n")
+    path.write_text("class _DefaultFoo:\n    pass\n", encoding="utf-8")
     class_node = find_default_class(path, "fixture", "fake", "foo")
     assert class_node is not None
     assert default_init_params(class_node) == ()
@@ -90,7 +90,7 @@ def test_default_init_params_no_init_means_zero_params(tmp_path: Path) -> None:
 
 def test_find_default_class_syntax_error(tmp_path: Path) -> None:
     path = tmp_path / "asy_broken_driver.py"
-    path.write_text("def f(:\n")
+    path.write_text("def f(:\n", encoding="utf-8")
     with pytest.raises(BuildError, match="syntax error") as raised:
         find_default_class(path, "fixture", "broken", "foo")
     assert raised.value.rule == "source.syntax-error"

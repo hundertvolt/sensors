@@ -1,3 +1,6 @@
+"""The I2C bus and device wrappers: register and struct access, bit fields, the bus lock and its sessions, the recovery
+rungs, scratch buffers and the bounds that keep a stuck bus from deadlocking."""
+
 import asyncio
 import errno
 import struct
@@ -5,7 +8,7 @@ import time
 
 from _async_harness import run
 from _bus_hazard_catalog import PollRoundClock
-from _src_const import src_const
+from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from machine import _OMITTED, Pin
 from machine import I2C as FakeI2C
@@ -31,11 +34,11 @@ _DEADLOCK_WAIT_S = 0.2
 # @tunable l1.asy_i2c_driver_held_scl_timeout_us = 3000
 _HELD_SCL_TIMEOUT_US = 3000  # a short bus timeout: a line that never releases ends the wait at it
 # asy_i2c_driver's private _REC_* bits, read from source (tests/_src_const.py).
-_REC_SDA_LOW: int = src_const("src/asy_i2c_driver.py", "_REC_SDA_LOW")  # type: ignore[assignment]  # src_const() answers object
-_REC_SDA_STUCK: int = src_const("src/asy_i2c_driver.py", "_REC_SDA_STUCK")  # type: ignore[assignment]
-_REC_SCL_HELD: int = src_const("src/asy_i2c_driver.py", "_REC_SCL_HELD")  # type: ignore[assignment]
-_REC_NO_CONTROLLER: int = src_const("src/asy_i2c_driver.py", "_REC_NO_CONTROLLER")  # type: ignore[assignment]
-_SCRATCH_SIZE: int = src_const("src/asy_i2c_driver.py", "_SCRATCH_SIZE")  # type: ignore[assignment]
+_REC_SDA_LOW: int = src_int("src/asy_i2c_driver.py", "_REC_SDA_LOW")
+_REC_SDA_STUCK: int = src_int("src/asy_i2c_driver.py", "_REC_SDA_STUCK")
+_REC_SCL_HELD: int = src_int("src/asy_i2c_driver.py", "_REC_SCL_HELD")
+_REC_NO_CONTROLLER: int = src_int("src/asy_i2c_driver.py", "_REC_NO_CONTROLLER")
+_SCRATCH_SIZE: int = src_int("src/asy_i2c_driver.py", "_SCRATCH_SIZE")
 _SCL, _SDA = 1, 0  # _make_i2c()'s pins
 _HOST_STALL_MS = 60  # past rp2's 50 ms default bus timeout, the SCL-release bound of a construction without one
 _LET_GO_READS = 5000  # a line "held for good" lets go this many reads in, so a wait that never ends fails, not hangs

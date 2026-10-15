@@ -1,3 +1,6 @@
+"""ISL29125 driver and reader: ranges and resolution, conversions, the interrupt thresholds and their window, the chip's
+shadowed state, configuration and the logged error ladder."""
+
 import asyncio
 import errno as errno_mod
 import struct
@@ -8,7 +11,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const
+from _src_const import src_float, src_int, src_strs
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
 from machine import I2C as FakeI2C
@@ -44,11 +47,11 @@ _STATUS_RGBTHF = 0x01  # p.12, Table 15, bit 0
 _STATUS_BOUTF = 0x04  # p.12, Table 15, bit 2
 _RANGE_LOW_LUX = 375  # p.10, Table 5
 _RANGE_HIGH_LUX = 10000  # p.10, Table 5
-_GAIN_RATIO_NOMINAL: float = src_const("src/asy_isl29125_driver.py", "_GAIN_RATIO_NOMINAL")  # type: ignore[assignment]  # src_const() answers object
-_GAIN_RATIO_MIN: float = src_const("src/asy_isl29125_driver.py", "_GAIN_RATIO_MIN")  # type: ignore[assignment]
-_GAIN_RATIO_MAX: float = src_const("src/asy_isl29125_driver.py", "_GAIN_RATIO_MAX")  # type: ignore[assignment]
-_AR_DOWN_DIVISOR: float = src_const("src/asy_isl29125_driver.py", "_AR_DOWN_DIVISOR")  # type: ignore[assignment]
-_CAL_CONVERGE_N: int = src_const("src/asy_isl29125_driver.py", "_CAL_CONVERGE_N")  # type: ignore[assignment]
+_GAIN_RATIO_NOMINAL: float = src_float("src/asy_isl29125_driver.py", "_GAIN_RATIO_NOMINAL")
+_GAIN_RATIO_MIN: float = src_float("src/asy_isl29125_driver.py", "_GAIN_RATIO_MIN")
+_GAIN_RATIO_MAX: float = src_float("src/asy_isl29125_driver.py", "_GAIN_RATIO_MAX")
+_AR_DOWN_DIVISOR: float = src_float("src/asy_isl29125_driver.py", "_AR_DOWN_DIVISOR")
+_CAL_CONVERGE_N: int = src_int("src/asy_isl29125_driver.py", "_CAL_CONVERGE_N")
 
 try:
     from typing import TYPE_CHECKING
@@ -1255,7 +1258,7 @@ def test_the_nested_body_carries_every_tuple_field_exactly_once() -> None:
         "Sat": ("HSB", "S"), "Bri": ("HSB", "B"), "CCT": ("CCT",), "RangeAct": ("RangeAct",), "Overrange": ("Overrange",),
         "GainMeas": ("GainMeas",), "CalLight": ("CalLight",), "TS": ("TS",),
     }
-    fields: tuple[str, ...] = src_const("src/asy_isl29125_driver.py", "_FIELDS")  # type: ignore[assignment]  # src_const() answers object
+    fields: tuple[str, ...] = src_strs("src/asy_isl29125_driver.py", "_FIELDS")
     assert set(paths) == set(fields)
     _i2c, reader = _make_reader("nested_fields")
     values = [1000 + index for index in range(len(fields))]  # one distinct value per field

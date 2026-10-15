@@ -1,0 +1,6 @@
+FAIL test_networking_put_of_valid_identity_fields_applies_them_and_reconnects:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 38, in _call
+  File "<string>", line 290, in test_networking_put_of_valid_identity_fields_applies_them_and_reconnects
+AssertionError: 
+0/1 passed, 1 failed, 0 skipped

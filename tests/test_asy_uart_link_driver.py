@@ -1,10 +1,13 @@
+"""UartLinkExerciser: the bench exerciser's transfers, failure counts and banner across a real UART_Comm pair in both
+CRC modes, its task starters and its FRAM-backed log."""
+
 import asyncio
 import select
 
 from _async_harness import cancel, run
 from _error_codes import code
 from _generated_tree import devices
-from _src_const import src_const
+from _src_const import src_bytes
 from _uart_comm_harness import POLL_WAIT_MS, RUN_LIMIT_S, TIMEOUT_MS, PollRoundClock, awaited_with_listener, copied_out, transfer_limits
 from _uart_comm_hazard_common import register_both_crc_modes
 from machine import UART as FakeUART
@@ -44,7 +47,7 @@ _TASK_END_ROUNDS = 200
 # wait before the peer runs and a correct exchange fails; on the poll-round clock it cannot (SPECIFICATION.md Part J.7).
 _STALL_AFTER = 2
 _STALL_MS = TIMEOUT_MS + 10
-_BANNER: bytes = src_const("src/asy_uart_link_driver.py", "_BANNER")  # type: ignore[assignment]  # src_const() answers object
+_BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
 
 
 class Pair:

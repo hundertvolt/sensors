@@ -47,7 +47,7 @@ def _drivers(device: str) -> "tuple[str, ...]":
 
 def _cap_from_src(repo_root: Path) -> int:
     # `ServingLimits`' shipped `max_content_length`: `_DEFAULT_MAX_CONTENT_LENGTH = const(<int>)`, read out of the source.
-    tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text())
+    tree = ast.parse((repo_root / "src" / "asy_webserver_service.py").read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_DEFAULT_MAX_CONTENT_LENGTH" for t in node.targets):
             value = node.value

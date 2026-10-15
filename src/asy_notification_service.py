@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from typing import Protocol
 
-    # The stubs model a ticks_ms() value as an opaque type, not a plain int, precisely so it can
-    # only ever reach time.ticks_diff() - _next_sleep_s()'s t0 is exactly such a value.
+    # The stubs' only name for a ticks_ms() value is private (_mpy_shed); _next_sleep_s()'s t0 is one.
+    # Removal trigger: SPECIFICATION.md B.15.
     from _mpy_shed.time_mp import _TicksMs
 
     from asy_base_classes import TaskStarter, TimerStarter, ValueRef

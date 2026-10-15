@@ -1,10 +1,10 @@
-# Boots one real generated device and prints a labelled micropython.mem_info(1) map at each end of
-# the two one-time boot lists, with SystemService's gc.collect() calls either live or suppressed.
-# Not a test_*.py file, so scripts/test.sh's glob never runs it - see the header of its own consumer.
-#
-# Its consumer is tests_scripts/test_digital_twin_boot_contiguity.py, which spawns this under the
-# Unix-port binary and measures the captured maps with tests_hardware/heap_map.py. The map goes to
-# the platform print rather than sys.stdout, so it cannot be read back in-process (Part I.4(f.1)).
+"""Boots one real generated device and prints a labelled micropython.mem_info(1) map at each end of the two one-time
+boot lists, with SystemService's gc.collect() calls live or suppressed. Not a test_*.py file: scripts/test.sh never runs it.
+
+Its consumer, tests_scripts/test_digital_twin_boot_contiguity.py, spawns it under the Unix-port binary and measures the
+maps with tests_hardware/heap_map.py; the map goes to the platform print, not sys.stdout, so it is never read in-process
+(Part I.4(f.1))."""
+
 import gc
 import sys
 

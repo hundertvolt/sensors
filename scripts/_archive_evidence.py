@@ -13,7 +13,6 @@ runs per runner (SSD wear; owner, 2026-09-26)."""
 import argparse
 import re
 import shutil
-import sys
 import time
 from pathlib import Path
 
@@ -110,4 +109,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

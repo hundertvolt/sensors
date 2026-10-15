@@ -1,3 +1,6 @@
+"""The derived-quantity formulas (dew point, wet bulb, altitude, chromaticity, the EMA, ...) against reference values,
+their range boundaries and their non-finite inputs."""
+
 import math_helpers as mh
 
 

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["coverage"]
+# dependencies = ["coverage==7.16.2"]
 # ///
-"""Merges the raw per-test-file line-hit JSON dumps written by tests/_coverage_runner.py (run under the MicroPython Unix port) into a single coverage.py CoverageData file, then lets coverage.py render the HTML and markdown reports from it (and XML when --xml-file names one) - the second half of the collect/render split described in SPECIFICATION.md Part E.5 ("Coverage").
-Self-contained via `uv run` (like toolchain/setup_toolchain.py), its PEP 723 block naming its own coverage dependency: scripts/test.sh --coverage works standalone with only `uv` installed, without requiring `uv sync`/an activated venv first."""
+"""Renders the Unix-port coverage dumps (tests/_coverage_runner.py's JSON) into coverage.py data, then HTML and a
+markdown summary for one traced directory, plus Cobertura XML when --xml-file names one (SPECIFICATION.md E.5)."""
 
 import argparse
 import glob
 import json
 import os
-import sys
 
 import coverage
 
@@ -50,7 +49,7 @@ def main() -> int:
     cov.html_report(morfs=src_files, directory=os.path.join(repo_root, args.html_dir))
     if args.xml_file is not None:
         cov.xml_report(morfs=src_files, outfile=os.path.join(repo_root, args.xml_file))
-    with open(os.path.join(repo_root, args.markdown_file), "w") as f:
+    with open(os.path.join(repo_root, args.markdown_file), "w", encoding="utf-8") as f:
         cov.report(morfs=src_files, output_format="markdown", file=f)
 
     print(f"\nHTML report:     {args.html_dir}/index.html")
@@ -67,7 +66,7 @@ def merge_raw_dumps(raw_dir: str, repo_root: str) -> dict[str, list[int]]:
         raise SystemExit(f"No raw coverage dumps found in {raw_dir}")
 
     for raw_file in raw_files:
-        with open(raw_file) as f:
+        with open(raw_file, encoding="utf-8") as f:
             per_file_hits: dict[str, list[int]] = json.load(f)
         for rel_path, lines in per_file_hits.items():
             abs_path = os.path.join(repo_root, rel_path)
@@ -77,4 +76,4 @@ def merge_raw_dumps(raw_dir: str, repo_root: str) -> dict[str, list[int]]:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

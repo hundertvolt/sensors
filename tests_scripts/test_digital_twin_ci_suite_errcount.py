@@ -1,12 +1,12 @@
-"""Tests scripts/_digital_twin_ci_suite.py's own pure error-log helpers - _error_type_count()'s
-type_char selection (Run 8's "W" case) and the fault matrix's instance selection - without a live twin
-subprocess/HTTP server, the same way test_digital_twin_ci_suite_soak.py does for Run 11's."""
+"""Tests scripts/_digital_twin_ci_suite.py's pure helpers without a live twin: _error_type_count()'s type_char selection
+(Run 8's "W" case), the fault matrix's instance selection, the shutdown line's parse and its feed-gap verdict, and the
+events Runs 9 and 10 end their waits on - the same way test_digital_twin_ci_suite_soak.py does for Run 11's."""
 
 import errno
 import functools
 import re
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,10 +19,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-def _ctx(ci_suite: ModuleType, keys: "list[str]") -> object:
+def _ctx(ci_suite: ModuleType, keys: "list[str]", logs_dir: Path = Path("/nonexistent")) -> object:
     # One RunContext over the named instance keys; a key "<driver>_<ext>" is an instance with that name_ext.
     instances = tuple(sorted(ci_suite.Instance(key, *(key.rsplit("_", 1) if key.startswith("uart_link_") else (key, ""))) for key in keys))
-    return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device="fixture-device", module="sensortask_fixture", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+    return ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=logs_dir, device="fixture-device", module="sensortask_fixture", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1, routes=("/status",))
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ def test_every_i2c_or_spi_attached_driver_a_real_device_declares_is_faultable(ci
     # Every bus a device declares an instance on - i2c, spi and the uart_link pair's - is faulted by Run 3.
     attached = set()
     for device in DEVICE_NAMES:
-        doc = tomllib.loads(device_toml(device).read_text())
+        doc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
         attached |= {inst["driver"] for inst in doc.get("instance", []) if str(inst.get("bus", "")).startswith(("i2c", "spi", "uart"))}
     missing = sorted(attached - set(ci_suite._SUSTAINED_FAULT))
     assert not missing, f"bus-attached driver(s) {missing} are declared by a real device but absent from _SUSTAINED_FAULT, so Run 3 skips them without saying so"
@@ -376,10 +376,10 @@ def test_the_commanded_reset_deadline_follows_both_src_constants(ci_suite: Modul
     # a margin, read from src. A copy with both changed must move the deadline by exactly their sum.
     src = tmp_path / "src"
     src.mkdir()
-    original = (Path(ci_suite.SRC_DIR) / "asy_system_service.py").read_text()
+    original = (Path(ci_suite.SRC_DIR) / "asy_system_service.py").read_text(encoding="utf-8")
     modified = original.replace("_RESET_DELAY = const(4)", "_RESET_DELAY = const(9)").replace("_TASK_CHECK_TIME = const(2)", "_TASK_CHECK_TIME = const(5)")
     assert modified != original, "the src constants are no longer in the pinned form - update this case with them"
-    (src / "asy_system_service.py").write_text(modified)
+    (src / "asy_system_service.py").write_text(modified, encoding="utf-8")
     monkeypatch.setattr(ci_suite, "SRC_DIR", src)
     assert ci_suite._commanded_reset_deadline_s() == 9 + 5 + ci_suite._COMMANDED_RESET_MARGIN_S, "the deadline must follow both constants and its margin"
 
@@ -388,7 +388,7 @@ def test_every_reset_errors_call_in_the_suite_goes_through_the_timed_helper(ci_s
     # A budget helper that some call site bypasses measures nothing on that path. Checked against the
     # real source: a second raw _http("PUT", "/status", {"ResetErrors": ...}) is exactly how the gap
     # would reappear, and it would still pass every behavioural test above.
-    source = Path(ci_suite.__file__ or "").read_text()
+    source = Path(ci_suite.__file__ or "").read_text(encoding="utf-8")
     raw = [line.strip() for line in source.splitlines() if '"ResetErrors"' in line and "_http(" in line]
     assert len(raw) == 1, f"the ResetErrors PUT must be issued in exactly one place - _put_reset_errors_timed() - found {len(raw)}: {raw}"
     assert source.count("_put_reset_errors_timed(") >= 3, "both run functions that reset the error logs must call the timed helper (plus its own definition)"
@@ -511,15 +511,21 @@ def test_the_route_probe_reports_a_host_with_no_route_out(ci_suite: ModuleType, 
 
 _PREFIX = "digital_twin/run_generic_integration.py [dev]"
 _R0 = "0x00000000,0x00000000,0x00000000,0x00000000"
-_SHUTDOWN = f"{_PREFIX} shutdown: would_have_triggered_count=0 feed_count=41 largest_feed_gap_ms=812 mem_backup: r0={_R0} public_destinations_refused=0 flash_stall_longest_ms=3"
+# The GC summary micropython.mem_info() prints right before the line: its max free sz is in heap blocks.
+_GC_SUMMARY = " No. of 1-blocks: 14, 2-blocks: 4, max blk sz: 9, max free sz: 64730"
+_SHUTDOWN = (
+    f"{_GC_SUMMARY}\n{_PREFIX} shutdown: would_have_triggered_count=0 feed_count=41 largest_feed_gap_ms=812 wdt_timeout_ms=8000 "
+    f"mem_backup: r0={_R0} public_destinations_refused=0 flash_stall_longest_ms=3 gc_block_bytes=32"
+)
 
 
 def test_the_shutdown_line_yields_every_field_and_one_uart_entry_per_instance() -> None:
     line = f"{_SHUTDOWN} uart=uart_link_initiator:transfers=12,failures=0,overruns=1 uart=uart_link_responder:transfers=11,failures=2,overruns=0"
     parsed = twin_process.parse_shutdown_line(f"boot\n{line}\nbye\n")
     assert parsed is not None
-    assert (parsed.would_have_triggered_count, parsed.feed_count, parsed.largest_feed_gap_ms) == (0, 41, 812)
+    assert (parsed.would_have_triggered_count, parsed.feed_count, parsed.largest_feed_gap_ms, parsed.wdt_timeout_ms) == (0, 41, 812, 8000)
     assert parsed.mem_backup_r0 == (0, 0, 0, 0)
+    assert parsed.largest_free_block_bytes == 64730 * 32
     assert (parsed.public_destinations_refused, parsed.flash_stall_longest_ms) == (0, 3)
     assert parsed.uart == {"uart_link_initiator": twin_process.UartCounts(12, 0, 1), "uart_link_responder": twin_process.UartCounts(11, 2, 0)}
     assert parsed.uart["uart_link_initiator"].rx_laps_and_errors == 1
@@ -538,7 +544,7 @@ def test_a_log_without_a_shutdown_line_reads_none() -> None:
     assert twin_process.parse_shutdown_line("boot\nTraceback (most recent call last):\n") is None
 
 
-@pytest.mark.parametrize("field", ["would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "public_destinations_refused", "flash_stall_longest_ms"])
+@pytest.mark.parametrize("field", ["would_have_triggered_count", "feed_count", "largest_feed_gap_ms", "wdt_timeout_ms", "public_destinations_refused", "flash_stall_longest_ms", "gc_block_bytes"])
 def test_a_shutdown_line_missing_a_field_fails_naming_it(field: str) -> None:
     line = " ".join(token for token in _SHUTDOWN.split(" ") if not token.startswith(f"{field}="))
     with pytest.raises(ValueError, match=field):
@@ -552,6 +558,31 @@ def test_a_shutdown_line_with_a_bad_r0_or_count_fails_naming_it() -> None:
         twin_process.parse_shutdown_line(_SHUTDOWN.replace(f"mem_backup: r0={_R0} ", ""))
     with pytest.raises(ValueError, match="feed_count"):
         twin_process.parse_shutdown_line(_SHUTDOWN.replace("feed_count=41", "feed_count=4x"))
+
+
+def test_a_shutdown_line_after_no_gc_summary_fails_naming_it() -> None:
+    # The largest free block has no reader but mem_info()'s printout, so a line without it is a run that measured nothing.
+    with pytest.raises(ValueError, match="max free sz"):
+        twin_process.parse_shutdown_line(_SHUTDOWN.replace(f"{_GC_SUMMARY}\n", "booted\n"))
+
+
+@pytest.mark.parametrize(("gap", "problem"), [(6000, False), (6300, True)])
+def test_a_feed_gap_above_three_quarters_of_the_watchdog_timeout_is_a_near_reset(gap: int, *, problem: bool) -> None:
+    line = twin_process.parse_shutdown_line(_SHUTDOWN.replace("largest_feed_gap_ms=812", f"largest_feed_gap_ms={gap}"))
+    assert line is not None
+    verdict = twin_process.feed_gap_verdict(line)
+    assert (verdict is not None) == problem, verdict
+    assert verdict is None or (f"{gap} ms" in verdict and "8000 ms" in verdict), verdict
+
+
+@pytest.mark.parametrize("starves", [False, True])
+def test_a_run_whose_feed_gap_came_near_the_watchdog_fails_unless_it_starves_it_by_design(ci_suite: ModuleType, tmp_path: Path, *, starves: bool) -> None:
+    log = tmp_path / "twin.log"
+    log.write_text(_SHUTDOWN.replace("largest_feed_gap_ms=812", "largest_feed_gap_ms=6300") + "\n", encoding="utf-8")
+    run = twin_process.TwinRun(proc=None, log_path=log, log_file=log.open(encoding="utf-8"), device="fixture-device", state_dir=tmp_path)  # type: ignore[arg-type]
+    failures = _failures_of(ci_suite, lambda: ci_suite._check_run_log(run, "Run 1", starves_watchdog=starves))
+    gap_failures = [f for f in failures if "feed gap" in f]
+    assert gap_failures == [] if starves else (len(gap_failures) == 1 and "6300 ms" in gap_failures[0]), failures
 
 
 @pytest.mark.parametrize("token", ["uart=UART_init:transfers=1,failures=x,overruns=0", "uart=UART_init:transfers=1,failures=0", "uart=UART_init"])
@@ -573,7 +604,7 @@ def test_the_machine_reset_line_names_its_kind_and_counts() -> None:
 
 
 def test_the_shared_exit_codes_are_the_runners_own() -> None:
-    source = (Path(__file__).resolve().parent.parent / "digital_twin" / "run_generic_integration.py").read_text()
+    source = (Path(__file__).resolve().parent.parent / "digital_twin" / "run_generic_integration.py").read_text(encoding="utf-8")
     for name in ("RESET", "BOOTLOADER", "POWER_LOSS"):
         found = re.search(rf"^_EXIT_SIMULATED_{name} = (\d+)$", source, re.MULTILINE)
         assert found is not None, f"the runner no longer defines _EXIT_SIMULATED_{name}"
@@ -605,7 +636,7 @@ def test_an_empty_log_gives_no_memory_verdict(ci_suite: ModuleType, tmp_path: Pa
 def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -> "list[str]":
     # Runs the check over one captured run log and returns whatever failures it recorded.
     log = tmp_path / "run.log"
-    log.write_text(log_text)
+    log.write_text(log_text, encoding="utf-8")
     saved = list(ci_suite._FAILURES)  # module-level and session-shared: never left mutated
     ci_suite._FAILURES.clear()
     try:
@@ -618,8 +649,8 @@ def _memory_error_verdict(ci_suite: ModuleType, tmp_path: Path, log_text: str) -
 def _run_stub(tmp_path: Path, *, killed: bool) -> object:
     # A TwinRun whose log holds two lines; only the fields _check_exit() reads.
     log = tmp_path / "twin.log"
-    log.write_text("booting\nSegmentation fault\n")
-    return twin_process.TwinRun(proc=None, log_path=log, log_file=log.open(), device="fixture-device", state_dir=tmp_path, killed=killed)  # type: ignore[arg-type]
+    log.write_text("booting\nSegmentation fault\n", encoding="utf-8")
+    return twin_process.TwinRun(proc=None, log_path=log, log_file=log.open(encoding="utf-8"), device="fixture-device", state_dir=tmp_path, killed=killed)  # type: ignore[arg-type]
 
 
 def test_a_signal_death_the_suite_did_not_cause_fails_as_a_crash_with_the_log_tail(ci_suite: ModuleType, tmp_path: Path) -> None:
@@ -673,8 +704,54 @@ def test_run_9_fails_closed_on_a_system_entry_without_a_counter(ci_suite: Module
     assert any("no task ended and was restarted" in f for f in failures), failures
 
 
+@pytest.mark.parametrize(("failed", "bound"), [(3, 90.0), (2, 0.0)])
+def test_run_9_ends_its_watch_once_ntp_failed_every_scheduled_attempt_never_after_a_fixed_wait(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, failed: int, bound: float) -> None:
+    # The watch ends on the failures, then one supervisor pass; at the bound with fewer, the run fails naming the count.
+    expected = "NTP_NO_REPLY" if ci_suite._route_leaves_host(ci_suite._NTP_UNREACHABLE_HOST, ci_suite._NTP_PORT) else "NTP_NOT_SENT"
+    failures = _stub_status(ci_suite, monkeypatch, {"SYSTEM": {"counter": 0, "history": []}, "NTP": {"counter": failed, "history": [{"type": "E", "num": ci_suite.code("E", expected)}]}})
+    slept: list[float] = []
+    monkeypatch.setattr(ci_suite.time, "sleep", slept.append)
+    monkeypatch.setattr(ci_suite, "_NTP_UNREACHABLE_WATCH_S", bound)
+    ci_suite._run_9_ntp_unreachable(_ctx(ci_suite, []))
+    assert sum(slept) < ci_suite._NTP_UNREACHABLE_WATCH_S or bound == 0.0, slept
+    assert 90.0 not in slept, slept
+    counted = [f for f in failures if "NTP failed" in f]
+    assert counted == [] if failed >= ci_suite._NTP_UNREACHABLE_FAILURES else (len(counted) == 1 and f"failed {failed} time(s)" in counted[0]), failures
+
+
 def test_run_8_fails_closed_on_a_wifi_entry_without_a_counter(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
     # A missing counter once read as 0, inside the all-or-nothing set (0, 6).
     failures = _stub_status(ci_suite, monkeypatch, {"WIFI": {"history": []}})
     ci_suite._run_8_wifi_persistence_and_configure_ntp(_ctx(ci_suite, []))
     assert any("the counter came back with it" in f for f in failures), failures
+
+
+@pytest.mark.parametrize("engaged", [True, False])
+def test_run_10_ends_each_hang_run_on_the_runners_line_and_otherwise_waits_out_its_duration(ci_suite: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, engaged: bool) -> None:
+    # A hang run's feed gap is past the timeout on purpose, so its log skips the near-reset check.
+    ended: list[str] = []
+    line = _SHUTDOWN.replace("would_have_triggered_count=0", "would_have_triggered_count=1").replace("largest_feed_gap_ms=812", "largest_feed_gap_ms=12010")
+
+    def spawn(_ctx: object, _args: object, log_path: Path) -> object:
+        log_path.write_text(("WATCHDOG_WOULD_TRIGGER count=1\n" if engaged else "") + line + "\n", encoding="utf-8")
+        return twin_process.TwinRun(proc=SimpleNamespace(poll=lambda: None), log_path=log_path, log_file=log_path.open(encoding="utf-8"), device="fixture-device", state_dir=tmp_path)  # type: ignore[arg-type]
+
+    def interrupted(_run: object, _label: object, _timeout_s: object) -> int:
+        ended.append("SIGINT")
+        return 0
+
+    def waited_out(_run: object, _timeout_s: object) -> int:
+        ended.append("duration")
+        return 0
+
+    monkeypatch.setattr(ci_suite, "_archive_state", lambda _ctx, _label: None)
+    monkeypatch.setattr(ci_suite, "_spawn", spawn)
+    monkeypatch.setattr(ci_suite, "shutdown", interrupted)
+    monkeypatch.setattr(ci_suite, "wait_exit", waited_out)
+    monkeypatch.setattr(ci_suite, "_HANG_RUN_EXIT_WAIT_S", 0.02)
+    monkeypatch.setattr(ci_suite, "_VERBOSE_POLL_S", 0.01)
+    ctx = _ctx(ci_suite, ["sgp40"], tmp_path)
+    failures = _failures_of(ci_suite, lambda: ci_suite._run_10_watchdog_hang_backstop(ctx))
+    assert failures == [], failures
+    assert ended == ["SIGINT" if engaged else "duration"], ended
+

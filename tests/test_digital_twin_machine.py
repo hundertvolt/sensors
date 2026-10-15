@@ -1201,6 +1201,7 @@ def test_reset_test_state_restores_every_machine_knob() -> None:
     UART(0, tx=Pin(0), rx=Pin(1))
     machine.set_alarm_pool_free(0)
     UART.would_have_blocked_bytes = 5
+    Timer.drop_next_soft_callbacks = 2
     machine.reset_count = machine.bootloader_count = 3
     machine.mem_backup(0)[0] = 7
     RTC().datetime((2026, 1, 1, 4, 12, 0, 0, 0))
@@ -1211,7 +1212,7 @@ def test_reset_test_state_restores_every_machine_knob() -> None:
     assert (machine._wiring_plan, machine._random_source, machine._fram_state_path, machine._scd30_state_path, machine._mem_backup_state_path) == (None,) * 5
     assert (machine._current_fram_chip, machine._current_scd30_chip, machine._ALARMS_FREE) == (None, None, 16)
     assert [machine.peripheral(name) for name in ("i2c0", "spi0", "uart0")] == [None, None, None]
-    assert (UART.would_have_blocked_bytes, machine.reset_count, machine.bootloader_count) == (0, 0, 0)
+    assert (UART.would_have_blocked_bytes, Timer.drop_next_soft_callbacks, machine.reset_count, machine.bootloader_count) == (0, 0, 0, 0)
     assert (list(machine.mem_backup(0)), machine.reset_cause(), RTC().datetime()) == ([0] * 4, machine.PWRON_RESET, (2021, 1, 1, 4, 0, 0, 0, 0))
     assert Pin._registry == {}
 
@@ -1411,6 +1412,48 @@ def test_a_soft_callback_failure_is_printed_and_the_schedule_goes_on() -> None:
     reported = _reports_during(lambda: run(scenario(), _RUN_BOUND_S))
     assert len(calls) >= 2
     assert reported == [("planted callback failure", False)]
+
+
+def test_a_periodic_timer_fires_again_after_its_soft_callbacks_are_dropped() -> None:
+    # rp2 loses a soft callback while its depth-8 scheduler queue is full and re-arms a PERIODIC alarm anyway
+    # (shared/runtime/mpirq.c:105, ports/rp2/machine_timer.c:50-60, v1.29.0): the next period's call heals the drop.
+    drops_left_at_call: list[int] = []
+    assert Timer.drop_next_soft_callbacks == 0, "the knob is off by default"
+
+    async def scenario() -> None:
+        Timer.drop_next_soft_callbacks = 2
+        timer = Timer(period=_SHORT_PERIOD_MS, callback=lambda _t: drops_left_at_call.append(Timer.drop_next_soft_callbacks))
+        for _ in range(_CHAIN_POLL_TRIES):
+            if drops_left_at_call:
+                break
+            await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+        timer.deinit()
+
+    run(scenario(), _RUN_BOUND_S)
+    assert drops_left_at_call[:1] == [0], f"the first delivered call came with {drops_left_at_call[:1]} drops still pending"
+
+
+def test_a_dropped_one_shot_never_fires_and_frees_its_alarm_while_a_hard_callback_is_never_dropped() -> None:
+    calls: list[str] = []
+
+    async def scenario() -> None:
+        machine.set_alarm_pool_free(1)
+        Timer.drop_next_soft_callbacks = 1
+        Timer(period=_SHORT_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda _t: calls.append("soft"))
+        for _ in range(_CHAIN_POLL_TRIES):
+            if Timer.drop_next_soft_callbacks == 0:
+                break
+            await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+        await asyncio.sleep_ms(_SHORT_PERIOD_MS * 3)  # past where a late call would land
+        Timer.drop_next_soft_callbacks = 1
+        Timer(period=_SHORT_PERIOD_MS, mode=Timer.ONE_SHOT, callback=lambda _t: calls.append("hard"), hard=True)  # the dropped one's alarm, free again
+        for _ in range(_CHAIN_POLL_TRIES):
+            if calls:
+                return
+            await asyncio.sleep_ms(_SHORT_PERIOD_MS)
+
+    run(scenario(), _RUN_BOUND_S)
+    assert (calls, Timer.drop_next_soft_callbacks) == (["hard"], 1)
 
 
 def test_a_hard_callback_failure_stops_the_schedule_and_frees_its_alarm() -> None:

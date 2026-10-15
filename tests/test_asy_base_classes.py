@@ -1,3 +1,6 @@
+"""The base classes: the locked counters and values, the region and piece buffers, the SensorReader error-check ladder
+and trigger loop, and SensorReaderConfig's get/set with push callbacks, failed-push recovery and its FRAM-backed store."""
+
 import asyncio
 import errno
 import gc

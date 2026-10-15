@@ -14,7 +14,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const
+from _src_const import src_float
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C as FakeI2C
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 _ADDR = 0x61  # Interface Description 1.1.1: the address is fixed
 # @tunable scd30.start_trigger_period_ms = 500
 _START_TRIGGER_PERIOD_MS = 500  # pins src/asy_scd30_driver.py _START_TRIGGER_PERIOD_MS
-_SOFT_RESET_WAIT_S: float = src_const("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_S")  # type: ignore[assignment]  # src_const() answers object
+_SOFT_RESET_WAIT_S: float = src_float("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_S")
 # @tunable l1.asy_scd30_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
@@ -750,10 +750,10 @@ def test_setup_probe_failure_never_reaches_firmware_read_or_reset() -> None:
     assert len(i2c.log) == 0  # probe failed before any command bytes were even written
 
 
-# ===========================================================================
+# ---------------------------------------------------------------------------
 # Integration level: SCD30_Reader wired to the real asy_i2c_driver.I2C/I2CDevice,
 # asy_base_classes.SensorReader, and asy_print_log.PrintLogHistory - only the raw I2C bus is mocked.
-# ===========================================================================
+# ---------------------------------------------------------------------------
 
 
 def test_reader_init_constructs_a_real_input_pin_and_leaves_timer_unarmed() -> None:
@@ -2214,10 +2214,10 @@ def test_concurrent_read_and_write_never_interleave_on_the_wire_byte_exact() -> 
 
 
 def test_never_touches_any_address_but_its_own() -> None:
+    # Each call gets the replies it reads (a measurement its ready word and data frame, the rest register words, the
+    # snapshot six), so only the bus layer's own refusal may end one early.
     scd, i2c = _make_scd()
-    for _ in range(40):  # generous - some methods issue more than one read
-        i2c.read_queue.append(register_frame(1))
-        i2c.read_queue.append(data_frame(400.0, 20.0, 50.0))
+    measurement, words = [register_frame(1), data_frame(400.0, 20.0, 50.0)], [register_frame(1)] * 6  # built outside the loop: each runs a CRC
 
     async def exercise() -> None:
         for call in (
@@ -2239,9 +2239,10 @@ def test_never_touches_any_address_but_its_own() -> None:
             lambda: scd.set_temperature_offset(1.0),
             lambda: scd.set_forced_recalibration_reference(500),
         ):
+            i2c.read_queue[:] = measurement if call == scd.read_measurement else words
             try:
                 await call()
-            except Exception:  # only the addresses *touched* matter for this sweep, not success
+            except OSError:  # the bus layer's own refusal: only the addresses touched matter, not success
                 pass
 
     with FastAsyncSleep():

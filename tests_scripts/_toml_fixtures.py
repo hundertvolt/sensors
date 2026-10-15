@@ -166,11 +166,11 @@ def with_uart_pair(doc: TomlDoc) -> TomlDoc:
 
 def write_doc(tmp_path: Path, name: str, doc: TomlDoc) -> Path:
     path = tmp_path / f"{name}.toml"
-    path.write_text(dump_toml(doc))
+    path.write_text(dump_toml(doc), encoding="utf-8")
     return path
 
 
 def write_text(tmp_path: Path, name: str, text: str) -> Path:
     path = tmp_path / f"{name}.toml"
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     return path

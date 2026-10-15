@@ -1,55 +1,45 @@
-"""scripts/lint.sh's three grep guards enforce rules mypy and ruff cannot express, and their own
-failure mode is silent: a drifted pattern stops matching and the gate goes green on a real
-violation. Each block is extracted from the live script and run against a fabricated tree."""
+"""scripts/lint.sh: its method-assign guard (a rule mypy and ruff cannot express) extracted as the grep_guard call that
+names it and run on fabricated trees - failing closed when grep cannot look - and the whole script in a sandbox with
+its tools stubbed: help, arguments, the venv check, and a summary block naming every check."""
 
-import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-_METHOD_ASSIGN = "method-assign"
-_SRC_COLLECT = "gc.collect() in src/"
-_BUILDGEN_COLLECT = "gc.collect() in buildgen/"
+_REPO = Path(__file__).resolve().parent.parent
+_CHECKS = ("generation", "ruff", "shellcheck", "actionlint", "zizmor", "method-assign guard", "gc sites")
+_TOOLS = ("ruff", "shellcheck", "actionlint", "zizmor")
 
 
-def _guard_block(repo_root: Path, needle: str) -> str:
-    # The one `if grep ...; then ... fi` block of scripts/lint.sh whose message contains `needle`.
-    text = (repo_root / "scripts" / "lint.sh").read_text()
-    blocks = [b for b in re.findall(r"^if grep .*?^fi$", text, re.MULTILINE | re.DOTALL) if needle in b]
-    assert len(blocks) == 1, f"expected exactly one lint.sh guard mentioning {needle!r}, found {len(blocks)}"
-    return str(blocks[0])
+def _guard(repo_root: Path) -> str:
+    # lint.sh's grep_guard function and its one call naming method-assign, as one runnable block.
+    text = (repo_root / "scripts" / "lint.sh").read_text(encoding="utf-8")
+    function = re.search(r"^grep_guard\(\) \{\n.*?^\}$", text, re.MULTILINE | re.DOTALL)
+    calls = [line for line in text.splitlines() if line.startswith("grep_guard method-assign ")]
+    assert function is not None and len(calls) == 1, "expected lint.sh's grep_guard function and one method-assign call"
+    return f"{function.group(0)}\n{calls[0]}"
 
 
-def _run_guard(repo_root: Path, tree: Path, needle: str, script_home: Path | None = None) -> subprocess.CompletedProcess[str]:
-    # The probe script never lands in the tree it searches: the live-tree case below would otherwise
-    # leave a guard.sh behind in the repo, the very leak scripts/test.sh has a sweep for.
-    slug = re.sub(r"[^a-z]+", "_", needle.lower()).strip("_")
-    script = (script_home or tree) / f"guard_{slug}.sh"
-    # set -euo pipefail as the real script has it: without -o pipefail the piped gc.collect guards
-    # would report the wrong command's status, which is exactly the kind of drift this checks.
-    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nstatus=0\n{_guard_block(repo_root, needle)}\nexit "$status"\n')
-    return subprocess.run(["/bin/bash", str(script)], cwd=tree, capture_output=True, text=True, check=False)
+def _run_guard(repo_root: Path, tree: Path, script_home: Path) -> subprocess.CompletedProcess[str]:
+    # The probe never lands in the tree it searches: the live-tree case would otherwise leave it in the repo.
+    script = script_home / "guard.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\nstatus=0\n{_guard(repo_root)}\nexit "$status"\n', encoding="utf-8")
+    return subprocess.run(["/bin/bash", str(script)], cwd=tree, capture_output=True, text=True, check=False, timeout=30)
 
 
 @pytest.fixture
 def tree(tmp_path: Path) -> Path:
-    # A minimal stand-in repo: both scopes present and both clean, so every case below adds
-    # exactly one file and the guard's verdict is attributable to it.
-    (tmp_path / "src").mkdir()
-    (tmp_path / "buildgen").mkdir()
-    (tmp_path / "src" / "asy_system_service.py").write_text("import gc\n\n\nasync def run_setups() -> None:\n    gc.collect()\n\n\nasync def start_tasks() -> None:\n    gc.collect()\n")
-    (tmp_path / "src" / "asy_fram_driver.py").write_text("x = 1\n")
-    (tmp_path / "buildgen" / "codegen.py").write_text('lines.append("    sysfunct.run_setups(_collect_setups())")\n')
-    (tmp_path / "buildgen" / "driver_registry.py").write_text("y = 2\n")
-    return tmp_path
+    root = tmp_path / "tree"
+    (root / "src").mkdir(parents=True)
+    (root / "src" / "asy_fram_driver.py").write_text("x = 1\n", encoding="utf-8")
+    return root
 
 
-@pytest.mark.parametrize("needle", [_METHOD_ASSIGN, _SRC_COLLECT, _BUILDGEN_COLLECT])
-def test_each_guard_passes_a_tree_that_only_holds_its_allowed_sites(repo_root: Path, tree: Path, needle: str) -> None:
-    result = _run_guard(repo_root, tree, needle)
-    assert result.returncode == 0, f"the {needle!r} guard failed a clean tree: {result.stdout}{result.stderr}"
+def test_the_guard_passes_a_clean_tree(repo_root: Path, tree: Path, tmp_path: Path) -> None:
+    assert _run_guard(repo_root, tree, tmp_path).returncode == 0
 
 
 @pytest.mark.parametrize(
@@ -60,115 +50,105 @@ def test_each_guard_passes_a_tree_that_only_holds_its_allowed_sites(repo_root: P
         "obj.meth = other  # type: ignore[method-assign,assignment]",
     ],
 )
-def test_a_method_assign_suppression_anywhere_in_src_fails_the_gate(repo_root: Path, tree: Path, suppression: str) -> None:
+def test_a_method_assign_suppression_anywhere_in_src_fails_the_gate(repo_root: Path, tree: Path, tmp_path: Path, suppression: str) -> None:
     # The combined forms are the ones a pattern without `[^]]*` would miss, and they are what a real
     # site looks like: a method reassignment usually trips `assignment` in the same breath.
-    (tree / "src" / "asy_fram_driver.py").write_text(f"{suppression}\n")
-    result = _run_guard(repo_root, tree, _METHOD_ASSIGN)
+    (tree / "src" / "sub").mkdir()
+    (tree / "src" / "sub" / "leaf.py").write_text(f"{suppression}\n", encoding="utf-8")
+    result = _run_guard(repo_root, tree, tmp_path)
     assert result.returncode == 1, f"a {suppression!r} in src/ must fail the lint gate"
     assert "must never suppress method-assign" in result.stderr
+    assert "src/sub/leaf.py:1:" in result.stdout, "the guard prints the site it found"
 
 
-def test_the_same_suppression_outside_src_is_left_alone(repo_root: Path, tree: Path) -> None:
-    # tests/ and digital_twin/ carry ~157 of these deliberately - that IS the mocking mechanism.
+def test_the_same_suppression_outside_src_is_left_alone(repo_root: Path, tree: Path, tmp_path: Path) -> None:
+    # tests/ and digital_twin/ mock by reassigning methods, so they carry these: that IS the mocking mechanism.
     (tree / "tests").mkdir()
-    (tree / "tests" / "machine.py").write_text("obj.meth = other  # type: ignore[method-assign]\n")
-    assert _run_guard(repo_root, tree, _METHOD_ASSIGN).returncode == 0
+    (tree / "tests" / "machine.py").write_text("obj.meth = other  # type: ignore[method-assign]\n", encoding="utf-8")
+    assert _run_guard(repo_root, tree, tmp_path).returncode == 0
 
 
-def test_a_gc_collect_outside_the_allowed_src_file_fails_the_gate(repo_root: Path, tree: Path) -> None:
-    (tree / "src" / "asy_fram_manager.py").write_text("import gc\ngc.collect()\n")
-    result = _run_guard(repo_root, tree, _SRC_COLLECT)
-    assert result.returncode == 1, "gc.collect() in src/asy_fram_manager.py must fail the lint gate (SPECIFICATION.md Part I.4(f.1))"
-    assert "I.4(f.1)" in result.stderr
+def test_a_guard_that_cannot_look_fails_closed(repo_root: Path, tree: Path, tmp_path: Path) -> None:
+    # grep exit 2 (here: no src/ to search) is an error, never "no match", so a guard that could not look fails.
+    (tree / "src" / "asy_fram_driver.py").unlink()
+    (tree / "src").rmdir()
+    result = _run_guard(repo_root, tree, tmp_path)
+    assert result.returncode == 1
+    assert "error: lint.sh could not search (-rn type: ignore\\[[^]]*method-assign src/, grep exit 2) - the method-assign guard did not look" in result.stderr
 
 
-@pytest.mark.parametrize(
-    ("filename", "text"),
-    [("codegen.py", 'lines.append("    gc.collect()")\n'), ("driver_registry.py", "import gc\ngc.collect()\n"), ("sub/leaf.py", "import gc\ngc.collect()\n")],
-)
-def test_a_gc_collect_anywhere_in_buildgen_fails_the_gate(repo_root: Path, tree: Path, filename: str, text: str) -> None:
-    # The generator emits none: the boot lists' collects live in SystemService.run_setups() and
-    # start_tasks(), so codegen.py's own emitted-source string is a violation like any other.
-    (tree / "buildgen" / filename).parent.mkdir(exist_ok=True)
-    (tree / "buildgen" / filename).write_text(text)
-    result = _run_guard(repo_root, tree, _BUILDGEN_COLLECT)
-    assert result.returncode == 1, f"gc.collect( in buildgen/{filename} must fail the lint gate (SPECIFICATION.md Part I.4(f.1))"
-    assert "I.4(f.1)" in result.stderr
+def test_the_live_tree_satisfies_the_guard(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_guard(repo_root, repo_root, tmp_path)
+    assert result.returncode == 0, f"the live tree violates lint.sh's method-assign guard: {result.stdout}{result.stderr}"
 
 
-@pytest.mark.parametrize("filename", ["not_asy_system_service.py", "asy_system_service_helper.py"])
-def test_a_filename_that_merely_contains_the_allowed_one_is_not_excused(repo_root: Path, tree: Path, filename: str) -> None:
-    # The bite: the exclusion is `grep -v "^src/asy_system_service.py:"`, anchored and with the colon.
-    # Unanchored, every one of these names would inherit the exception silently.
-    (tree / "src" / filename).write_text("import gc\ngc.collect()\n")
-    assert _run_guard(repo_root, tree, _SRC_COLLECT).returncode == 1, f"src/{filename} must not inherit {_SRC_COLLECT}'s single-file exception"
+def _sandbox(repo_root: Path, tmp_path: Path, failing_tool: "str | None", *, devices: bool) -> "tuple[Path, dict[str, str]]":
+    # scripts/ copied, the trees the checks read linked (devices/ empty unless asked: the gc checker then generates
+    # nothing), a .venv of stub tools (one may fail) and the real interpreter; uv is a stub that records and passes.
+    root = tmp_path / "repo"
+    (root / "scripts").mkdir(parents=True)
+    for path in (repo_root / "scripts").iterdir():
+        if path.is_file():
+            (root / "scripts" / path.name).write_bytes(path.read_bytes())
+    for name in ("src", "buildgen", "ext", *(("devices",) if devices else ())):
+        (root / name).symlink_to(repo_root / name)
+    if not devices:
+        (root / "devices").mkdir()
+    venv_bin = root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    for tool in _TOOLS:
+        (venv_bin / tool).write_text(f'#!/bin/sh\necho "{tool} $*" >> "$TOOL_CALLS"\nexit {1 if tool == failing_tool else 0}\n', encoding="utf-8")
+        (venv_bin / tool).chmod(0o755)
+    (venv_bin / "python3").symlink_to(sys.executable)
+    uv_bin = tmp_path / "uv_bin"
+    uv_bin.mkdir()
+    (uv_bin / "uv").write_text('#!/bin/sh\necho "uv $*" >> "$TOOL_CALLS"\nexit 0\n', encoding="utf-8")
+    (uv_bin / "uv").chmod(0o755)
+    env = {"PATH": f"{venv_bin}:{uv_bin}:/usr/bin:/bin", "VIRTUAL_ENV": str(root / ".venv"), "TOOL_CALLS": str(tmp_path / "calls"), "HOME": str(tmp_path)}
+    return root, env
 
 
-def test_the_allowed_file_may_hold_several_collects(repo_root: Path, tree: Path) -> None:
-    # The allowed file genuinely holds several: run_setups() and start_tasks() each collect once before
-    # their list and once after each unit.
-    (tree / "src" / "asy_system_service.py").write_text("import gc\ngc.collect()\nfor _ in range(2):\n    gc.collect()\n")
-    assert _run_guard(repo_root, tree, _SRC_COLLECT).returncode == 0
-
-
-def test_a_subdirectory_of_an_allowed_scope_is_searched_too(repo_root: Path, tree: Path) -> None:
-    # -r, not a flat glob: src/ is flat today, but a guard that stopped at the top level would go
-    # green the day it is not.
-    (tree / "src" / "sub").mkdir()
-    (tree / "src" / "sub" / "leaf.py").write_text("import gc\ngc.collect()\n")
-    assert _run_guard(repo_root, tree, _SRC_COLLECT).returncode == 1
-
-
-def test_the_live_tree_satisfies_all_three_guards(repo_root: Path, tmp_path: Path) -> None:
-    # Run against the real repo, so the pytest tier states the invariant independently of whether
-    # anyone ran scripts/lint.sh - the same reason test_gc_collect_sites.py exists beside it.
-    for needle in (_METHOD_ASSIGN, _SRC_COLLECT, _BUILDGEN_COLLECT):
-        result = _run_guard(repo_root, repo_root, needle, script_home=tmp_path)
-        assert result.returncode == 0, f"the live tree violates lint.sh's {needle!r} guard: {result.stdout}{result.stderr}"
-
-
-# --- the command line and the summary block (SPECIFICATION.md E.10) ---------------------------------
-
-_CHECKS = ("ruff", "shellcheck", "actionlint", "zizmor", "method-assign guard", "gc.collect sites")
-
-
-def _run_lint(repo_root: Path, tmp_path: Path, *args: str, failing_tool: str | None = None) -> subprocess.CompletedProcess[str]:
-    # scripts/lint.sh with its four external tools stubbed on PATH (one may fail); the grep guards
-    # run for real against the live tree, which the test above holds clean.
-    stub_bin = tmp_path / "stub_bin"
-    stub_bin.mkdir(exist_ok=True)
-    for tool in ("ruff", "shellcheck", "actionlint", "zizmor"):
-        (stub_bin / tool).write_text(f"#!/bin/sh\nexit {1 if tool == failing_tool else 0}\n")
-        (stub_bin / tool).chmod(0o755)
-    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
-    return subprocess.run(["/bin/bash", str(repo_root / "scripts" / "lint.sh"), *args], env=env, capture_output=True, text=True, check=False, timeout=120)
+def _run_lint(repo_root: Path, tmp_path: Path, *args: str, failing_tool: "str | None" = None, env_change: "dict[str, str] | None" = None, devices: bool = False) -> subprocess.CompletedProcess[str]:
+    root, env = _sandbox(repo_root, tmp_path, failing_tool, devices=devices)
+    env.update(env_change or {})
+    return subprocess.run(["/bin/bash", str(root / "scripts" / "lint.sh"), *args], cwd=root, env=env, capture_output=True, text=True, check=False, timeout=120)
 
 
 def test_help_prints_the_usage_and_exits_0(repo_root: Path, tmp_path: Path) -> None:
     for flag in ("-h", "--help"):
-        result = _run_lint(repo_root, tmp_path, flag, failing_tool="ruff")
+        result = _run_lint(repo_root, tmp_path / flag, flag, failing_tool="ruff")
         assert result.returncode == 0, result.stderr
         assert result.stdout.startswith("Usage: scripts/lint.sh - no arguments"), result.stdout
         assert "== Summary" not in result.stdout, "--help runs no check"
 
 
-def test_any_other_argument_is_a_usage_error(repo_root: Path, tmp_path: Path) -> None:
+def test_any_other_argument_is_a_usage_error_naming_it(repo_root: Path, tmp_path: Path) -> None:
     result = _run_lint(repo_root, tmp_path, "src/")
     assert result.returncode == 2
-    assert "Usage: scripts/lint.sh" in result.stderr
+    assert "error: unknown argument src/" in result.stderr and "Usage: scripts/lint.sh" in result.stderr
     assert result.stdout == ""
+    assert not (tmp_path / "calls").exists(), "a refused run ran a tool"
 
 
-def test_a_clean_run_ends_with_the_block_counting_every_check(repo_root: Path, tmp_path: Path) -> None:
-    result = _run_lint(repo_root, tmp_path)
+def test_outside_the_project_venv_nothing_runs(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path, env_change={"VIRTUAL_ENV": str(tmp_path / "elsewhere")})
+    assert result.returncode == 1
+    assert "error: activate the project venv first" in result.stderr
+    assert not (tmp_path / "calls").exists(), "a check ran outside the venv"
+
+
+def test_a_clean_run_generates_first_then_ends_with_the_block_counting_every_check(repo_root: Path, tmp_path: Path) -> None:
+    result = _run_lint(repo_root, tmp_path, devices=True)
     assert result.returncode == 0, result.stdout + result.stderr
+    calls = (tmp_path / "calls").read_text(encoding="utf-8").splitlines()
+    assert calls[:2] == ["uv sync --locked --check --offline", "uv run --no-sync scripts/_generate_sensortask_modules.py"], calls
+    assert calls[2].startswith("ruff check ") and calls[2].endswith(" build/generated_src"), calls
     block = result.stdout[result.stdout.index("== Summary: scripts/lint.sh ==") :]
     assert f"\nCounts (checks): passed {len(_CHECKS)} · failed 0 ·" in block
     assert block.endswith("Result: PASS\nExit code: 0\n")
 
 
-@pytest.mark.parametrize("tool", ["ruff", "shellcheck", "actionlint", "zizmor"])
+@pytest.mark.parametrize("tool", _TOOLS)
 def test_a_failing_check_is_named_in_the_block_and_fails_the_run(repo_root: Path, tmp_path: Path, tool: str) -> None:
     result = _run_lint(repo_root, tmp_path, failing_tool=tool)
     assert result.returncode == 1
@@ -176,3 +156,4 @@ def test_a_failing_check_is_named_in_the_block_and_fails_the_run(repo_root: Path
     assert f"\nCounts (checks): passed {len(_CHECKS) - 1} · failed 1 ·" in block
     assert f"Failed:\n  - {tool}\n" in block
     assert block.endswith("Result: FAIL\nExit code: 1\n")
+

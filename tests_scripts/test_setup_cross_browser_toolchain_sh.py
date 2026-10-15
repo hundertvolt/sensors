@@ -20,19 +20,19 @@ def _stub_tree(tmp_path: Path, *, update_rc: int, install_rc: int) -> tuple[Path
     # Absolute shebangs and an `env` stub, because the PATH below holds nothing else: the script
     # probes for WebKitWebDriver with `command -v`, so a host that has one would skip the only
     # block that reaches apt and pass this test for the wrong reason.
-    (stub_bin / "sudo").write_text('#!/bin/bash\nexec "$@"\n')
-    (stub_bin / "env").write_text('#!/bin/bash\nwhile [[ "$1" == *=* ]]; do export "$1"; shift; done\nexec "$@"\n')
+    (stub_bin / "sudo").write_text('#!/bin/bash\nexec "$@"\n', encoding="utf-8")
+    (stub_bin / "env").write_text('#!/bin/bash\nwhile [[ "$1" == *=* ]]; do export "$1"; shift; done\nexec "$@"\n', encoding="utf-8")
     (stub_bin / "apt-get").write_text(
         "#!/bin/bash\n"
         f'echo "$@" >> {calls}\n'
         f'if [ "$1" = "update" ]; then echo "E: Failed to fetch a PPA" >&2; exit {update_rc}; fi\n'
-        f"exit {install_rc}\n",
+        f"exit {install_rc}\n", encoding="utf-8",
     )
-    (stub_bin / "microsoft-edge-stable").write_text("#!/bin/bash\nexit 0\n")
+    (stub_bin / "microsoft-edge-stable").write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
     ff = tmp_path / "cross-browser" / "mamba_root" / "envs" / "ff" / "bin"
     ff.mkdir(parents=True)
     for name in ("firefox", "geckodriver"):
-        (ff / name).write_text("#!/bin/bash\nexit 0\n")
+        (ff / name).write_text("#!/bin/bash\nexit 0\n", encoding="utf-8")
         (ff / name).chmod(0o755)
     for stub in stub_bin.iterdir():
         stub.chmod(0o755)
@@ -59,20 +59,20 @@ def test_an_unrelated_apt_source_that_fails_update_does_not_stop_the_install(scr
     stub_bin, calls = _stub_tree(tmp_path, update_rc=100, install_rc=0)
     result = _run(script, tmp_path, stub_bin)
     assert result.returncode == 0, f"the installer aborted on a failed apt-get update: {result.stdout}{result.stderr}"
-    assert "webkit2gtk-driver" in calls.read_text(), "apt-get install never ran, so the update failure still stopped it"
+    assert "webkit2gtk-driver" in calls.read_text(encoding="utf-8"), "apt-get install never ran, so the update failure still stopped it"
 
 
 def test_removing_the_tolerance_is_what_brings_the_abort_back(script: Path, tmp_path: Path) -> None:
     # The control arm: the same run against a copy whose `|| echo ...` is stripped must fail, so a
     # green result above is attributable to the tolerance rather than to the stubs being lenient.
     bare = tmp_path / "bare.sh"
-    text = script.read_text()
+    text = script.read_text(encoding="utf-8")
     assert _TOLERANCE in text, "the apt_update tolerance this test is about is no longer in the script"
-    bare.write_text(text.replace(_TOLERANCE, ""))
+    bare.write_text(text.replace(_TOLERANCE, ""), encoding="utf-8")
     stub_bin, calls = _stub_tree(tmp_path, update_rc=100, install_rc=0)
     result = _run(bare, tmp_path, stub_bin)
     assert result.returncode != 0, "a bare apt-get update somehow survived a failing update"
-    assert "webkit2gtk-driver" not in calls.read_text()
+    assert "webkit2gtk-driver" not in calls.read_text(encoding="utf-8")
 
 
 def test_a_package_that_really_cannot_be_installed_still_fails(script: Path, tmp_path: Path) -> None:
@@ -82,7 +82,7 @@ def test_a_package_that_really_cannot_be_installed_still_fails(script: Path, tmp
 
 
 def test_no_apt_get_install_tolerates_its_own_failure(script: Path) -> None:
-    installs = [line for line in script.read_text().splitlines() if "apt-get install" in line]
+    installs = [line for line in script.read_text(encoding="utf-8").splitlines() if "apt-get install" in line]
     assert installs, "no apt-get install line found - this guard is pinned to the wrong script"
     for line in installs:
         assert "||" not in line, f"an apt-get install line tolerates its own failure: {line.strip()}"

@@ -1,3 +1,6 @@
+"""The captive DNS server: query parsing and its refusals, the derived domain, the A-record replies, the server's own
+logger, its backoff and recovery, and real loopback traffic on a real port."""
+
 import asyncio
 import errno
 import socket
@@ -9,7 +12,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 from _async_harness import cancel, run
 from _error_codes import code
 from _port_bands import PortAllocator
-from _src_const import src_const
+from _src_const import src_int
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
 import asy_captive_dns
@@ -34,7 +37,7 @@ if TYPE_CHECKING:
 
 
 # The suite's waits, bounds and backoff-gap bands, one constant each (SPECIFICATION.md Part N).
-_ERROR_RETRY_WAIT_S: int = src_const("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")  # type: ignore[assignment]  # src_const() answers object
+_ERROR_RETRY_WAIT_S: int = src_int("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")
 # @tunable l1.captive_dns_wait_until_timeout_ms = 1000
 _WAIT_UNTIL_TIMEOUT_MS = 1000
 # @tunable l1.captive_dns_wait_until_poll_ms = 10

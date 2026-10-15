@@ -1,0 +1,12 @@
+ M host_typecheck.ini
+ M pyproject.toml
+ M scripts/_digital_twin_ci_suite.py
+ M tests/_bus_hazard_catalog.py
+ M tests/_sensortask_scenarios.py
+ M tests/test_digital_twin_machine_uart.py
+ M tests/test_digital_twin_network_neopixel.py
+ M tests/test_setter_microdot_integration.py
+ M tests/test_shared_helpers.py
+ M tests_hardware/harness.py
+ M tests_scripts/conftest.py
+ M tests_scripts/test_buildgen_source_ast.py

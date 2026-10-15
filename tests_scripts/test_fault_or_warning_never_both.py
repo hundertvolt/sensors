@@ -224,7 +224,7 @@ def _parse(path: str, source: str) -> _Module:
 
 
 def _src_modules() -> "list[_Module]":
-    return [_parse(f"src/{p.name}", p.read_text()) for p in sorted((_REPO / "src").glob("*.py"))]
+    return [_parse(f"src/{p.name}", p.read_text(encoding="utf-8")) for p in sorted((_REPO / "src").glob("*.py"))]
 
 
 @pytest.fixture(scope="module")
@@ -234,8 +234,8 @@ def tree_pairs(tmp_path_factory: pytest.TempPathFactory) -> "set[Pair]":
     for device in DEVICE_NAMES:
         result = generate_device(_REPO / "devices" / f"{device}.toml", _REPO / "src", _REPO / "ext")
         target = generated / f"sensortask_{device}.py"
-        target.write_text(result.module_source)
-        modules.append(_parse(f"build/generated_src/{target.name}", target.read_text()))
+        target.write_text(result.module_source, encoding="utf-8")
+        modules.append(_parse(f"build/generated_src/{target.name}", target.read_text(encoding="utf-8")))
     return _pairs(modules)
 
 

@@ -1,3 +1,6 @@
+"""BMP3XX driver and reader against the fake I2C bus: identification and calibration, the measurement cycle and its
+conversion wait, oversampling and filter settings, the config setters and their recovery, and the logged error ladder."""
+
 import asyncio
 import errno as errno_mod
 import struct
@@ -8,7 +11,8 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
-from _src_const import src_const
+from _src_const import src_float, src_int
+from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
@@ -46,8 +50,8 @@ _REGISTER_CAL_DATA = 0x31  # DS001 §4.3.21, Table 23 NVM_PAR_T1
 _REGISTER_CMD = 0x7E  # DS001 §4.3.22
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # DS001 §3.4.1-3.4.2, Tables 6-7: encodings 000-101
 _IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)  # DS001 §4.3.20, Table 44: iir_filter 000-111
-_STATUS_POLL_S: float = src_const("src/asy_bmp3xx_driver.py", "_STATUS_POLL_S")  # type: ignore[assignment]  # src_const() answers object
-_MEAS_TIMEOUT_MS: int = src_const("src/asy_bmp3xx_driver.py", "_MEAS_TIMEOUT_MS")  # type: ignore[assignment]  # src_const() answers object
+_STATUS_POLL_S: float = src_float("src/asy_bmp3xx_driver.py", "_STATUS_POLL_S")
+_MEAS_TIMEOUT_MS: int = src_int("src/asy_bmp3xx_driver.py", "_MEAS_TIMEOUT_MS")
 
 
 # @tunable l1.asy_bmp3xx_driver_event_wait_s = 1
@@ -1088,14 +1092,14 @@ def test_reader_set_pressure_oversampling_logs_and_returns_false_on_bus_failure(
 # attached to a BMP3XX_Reader - every field's valid range, then invalid-field recombinations.
 # ---------------------------------------------------------------------------
 
-_VAL_SAMPLE_INTERVAL: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_SAMPLE_INTERVAL")  # type: ignore[assignment]  # src_const() answers object
-_VAL_PRES_OVERS: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_PRES_OVERS")  # type: ignore[assignment]
-_VAL_TEMP_OVERS: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OVERS")  # type: ignore[assignment]
-_VAL_FILT_COEFF: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_FILT_COEFF")  # type: ignore[assignment]
-_VAL_PRES_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_PRES_OFFSET")  # type: ignore[assignment]
-_VAL_TEMP_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OFFSET")  # type: ignore[assignment]
-_VAL_SEA_LEVEL_OFFSET: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_SEA_LEVEL_OFFSET")  # type: ignore[assignment]
-_VAL_MEAN_ATM_TEMP: "ConfigSchema" = src_const("src/asy_bmp3xx_driver.py", "_VAL_MEAN_ATM_TEMP")  # type: ignore[assignment]
+_VAL_SAMPLE_INTERVAL: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_SAMPLE_INTERVAL")
+_VAL_PRES_OVERS: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_PRES_OVERS")
+_VAL_TEMP_OVERS: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OVERS")
+_VAL_FILT_COEFF: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_FILT_COEFF")
+_VAL_PRES_OFFSET: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_PRES_OFFSET")
+_VAL_TEMP_OFFSET: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_TEMP_OFFSET")
+_VAL_SEA_LEVEL_OFFSET: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_SEA_LEVEL_OFFSET")
+_VAL_MEAN_ATM_TEMP: "ConfigSchema" = src_schema("src/asy_bmp3xx_driver.py", "_VAL_MEAN_ATM_TEMP")
 _FULL_SCHEMA = _VAL_SAMPLE_INTERVAL + _VAL_PRES_OVERS + _VAL_TEMP_OVERS + _VAL_FILT_COEFF + _VAL_PRES_OFFSET + _VAL_TEMP_OFFSET + _VAL_SEA_LEVEL_OFFSET + _VAL_MEAN_ATM_TEMP
 
 # Both read off the schema rows (name, type, def, min, max, special): name -> (type, min, max) for a continuous field,
@@ -2410,7 +2414,7 @@ def test_never_touches_any_address_but_its_own() -> None:
         ):
             try:
                 await call()
-            except Exception:  # only the addresses *touched* matter for this sweep, not success
+            except OSError:  # the bus layer's own refusal: only the addresses touched matter, not success
                 pass
 
     with FastAsyncSleep():

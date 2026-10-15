@@ -1,6 +1,6 @@
 """tests_hardware/twin_board.py keeps harness.Board's shape (ast) and runs a device script under the real Unix-port twin
-through digital_twin/run_device_script.py: output back, a raising or watchdog-starving script failing, a reset's output
-kept, both GC stages, the one MICROPYPATH (scripts/_twin_process.py), and the conformance probes' twin runs and diff."""
+through digital_twin/run_device_script.py: output back, a raising or starving script failing, a reset's output kept, both
+GC stages, the twin layout and the probe's binary (scripts/micropypath.toml, _unix_port.sh), the conformance probes."""
 
 import ast
 import os
@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import tomllib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"))
 
@@ -16,9 +17,17 @@ import conformance
 import harness
 import twin_board
 
-from scripts import _twin_process
-
 TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
+_TWIN_LAYOUT = tomllib.loads((TESTS_HARDWARE.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["twin"]
+
+
+def _plant_binary(toolchain: Path, *, reports: str) -> Path:
+    # A stand-in the shared probe asks for its build flavour: it answers with `reports`.
+    binary = toolchain / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(f"#!/bin/sh\necho {reports}\n", encoding="utf-8")
+    binary.chmod(0o755)
+    return binary
 
 
 def _public_methods(path: Path, cls: str) -> "dict[str, list[tuple[str, str]]]":
@@ -58,24 +67,27 @@ def test_twin_board_has_boards_public_methods_with_the_same_parameters() -> None
     assert twin == board, f"TwinBoard differs from Board: {sorted(set(twin.items()) ^ set(board.items()))}"
 
 
-def test_the_twin_runs_with_the_twins_one_micropypath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
-    binary = tmp_path / "micropython" / "ports" / "unix" / "build-standard" / "micropython"
-    binary.parent.mkdir(parents=True)
-    binary.write_text("")
-    seen: list[dict[str, str]] = []
+def test_the_twin_runs_the_probes_binary_with_the_twins_one_micropypath(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repo_root: Path) -> None:
+    binary = _plant_binary(tmp_path, reports="standard")
+    seen: list[tuple[list[str], dict[str, str]]] = []
+    real_run = subprocess.run
 
     def run(argv: "list[str]", **kwargs: object) -> "subprocess.CompletedProcess[str]":
+        if argv[0] == "/bin/bash":  # the shared probe itself runs for real
+            return real_run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
         env = kwargs["env"]
         assert isinstance(env, dict)
-        seen.append(env)
+        seen.append((argv, env))
         return subprocess.CompletedProcess(argv, 0, "ok\n", "")
 
     monkeypatch.setenv("PICO_TOOLCHAIN_DIR", str(tmp_path))
     monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / "twin")
     monkeypatch.setattr(subprocess, "run", run)
     twin_board.TwinBoard().run_isolated(_script(tmp_path, "print('ok')\n"))
-    assert seen[0]["MICROPYPATH"] == twin_board.twin_micropypath() and seen[0]["TZ"] == "UTC"
-    assert [entry.removeprefix(f"{repo_root}/") for entry in seen[0]["MICROPYPATH"].split(":")] == _twin_process.TWIN_MICROPYPATH.split(":")
+    argv, env = seen[0]
+    assert argv[0] == str(binary) and twin_board.unix_port_binary() == binary
+    assert env["MICROPYPATH"] == twin_board.twin_micropypath() and env["TZ"] == "UTC"
+    assert [entry.removeprefix(f"{repo_root}/") for entry in env["MICROPYPATH"].split(":")] == _TWIN_LAYOUT.split(":")
 
 
 @pytest.mark.parametrize("gc_threshold", [-1, 32768])
@@ -122,12 +134,21 @@ def test_a_second_watchdog_construction_is_the_armed_one(twin: "twin_board.TwinB
 def test_a_missing_unix_port_names_the_build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PICO_TOOLCHAIN_DIR", str(tmp_path / "no-toolchain"))
     monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / "twin")
-    with pytest.raises(FileNotFoundError, match=r"run scripts/test\.sh once"):
+    with pytest.raises(FileNotFoundError, match=r"^error: no MicroPython Unix port at .*build-standard/micropython - build it with: uv run toolchain/setup_toolchain\.py setup$"):
+        twin_board.TwinBoard().run_isolated(_script(tmp_path, "print(1)\n"))
+
+
+def test_a_binary_of_another_build_flavour_is_refused_naming_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A settrace build would run every twin at 4-5x the allocations (SPECIFICATION.md E.5.2): the run refuses it.
+    _plant_binary(tmp_path, reports="settrace")
+    monkeypatch.setenv("PICO_TOOLCHAIN_DIR", str(tmp_path))
+    monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / "twin")
+    with pytest.raises(FileNotFoundError, match=r"reports itself as the 'settrace' build flavour, not 'standard'"):
         twin_board.TwinBoard().run_isolated(_script(tmp_path, "print(1)\n"))
 
 
 def test_the_runner_prints_its_usage_and_refuses_a_malformed_call(micropython_bin: Path, repo_root: Path) -> None:
-    env = dict(os.environ, MICROPYPATH=_twin_process.TWIN_MICROPYPATH, TZ="UTC")
+    env = dict(os.environ, MICROPYPATH=_TWIN_LAYOUT, TZ="UTC")
     usage = subprocess.run([str(micropython_bin), twin_board.RUNNER, "--help"], cwd=repo_root, env=env, capture_output=True, text=True, timeout=60, check=False)
     bad = subprocess.run([str(micropython_bin), twin_board.RUNNER, "only-one"], cwd=repo_root, env=env, capture_output=True, text=True, timeout=60, check=False)
     assert (usage.returncode, bad.returncode) == (0, 2), (usage.stdout, bad.stdout)

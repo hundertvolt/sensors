@@ -47,16 +47,16 @@ def test_main_generates_every_real_device_matching_generate_device_directly(gene
     out_dir = tmp_path / "build" / "generated_src"
     for device in DEVICE_NAMES:
         expected = generate_device(repo_root / "devices" / f"{device}.toml", repo_root / "src", repo_root / "ext", build_date="2026-09-12T10:00:00Z")
-        assert (out_dir / f"sensortask_{device}.py").read_text() == expected.module_source
-        assert (out_dir / f"sensortask_{device}_main.py").read_text() == expected.boot_entry_source
-        assert (out_dir / f"sensortask_{device}_main_noautostart.py").read_text() == expected.boot_entry_noautostart_source
-        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text()) == expected.expected_facts
+        assert (out_dir / f"sensortask_{device}.py").read_text(encoding="utf-8") == expected.module_source
+        assert (out_dir / f"sensortask_{device}_main.py").read_text(encoding="utf-8") == expected.boot_entry_source
+        assert (out_dir / f"sensortask_{device}_main_noautostart.py").read_text(encoding="utf-8") == expected.boot_entry_noautostart_source
+        assert json.loads((out_dir / f"sensortask_{device}_expected.json").read_text(encoding="utf-8")) == expected.expected_facts
         # compute_twin_wiring() is the plan's one producer, "instances" included: the file is its output unchanged.
-        assert json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text()) == compute_twin_wiring(expected.model)
-        written = json.loads((out_dir / "definitions" / f"{device}.json").read_text())
+        assert json.loads((out_dir / f"sensortask_{device}_wiring_plan.json").read_text(encoding="utf-8")) == compute_twin_wiring(expected.model)
+        written = json.loads((out_dir / "definitions" / f"{device}.json").read_text(encoding="utf-8"))
         assert written == definitions_for_toml(repo_root / "devices" / f"{device}.toml", repo_root / "src")
-        assert (out_dir / "api" / f"{device}.json").read_text() == api_reference_json(generate_api_reference(expected.model, repo_root / "src"))
-    assert json.loads((out_dir / "definitions" / "index.json").read_text()) == {"devices": sorted(DEVICE_NAMES)}
+        assert (out_dir / "api" / f"{device}.json").read_text(encoding="utf-8") == api_reference_json(generate_api_reference(expected.model, repo_root / "src"))
+    assert json.loads((out_dir / "definitions" / "index.json").read_text(encoding="utf-8")) == {"devices": sorted(DEVICE_NAMES)}
 
 
 def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_sensortask_modules: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -64,7 +64,7 @@ def test_main_reports_a_build_error_and_exits_nonzero_without_crashing(generate_
     # report it and return 1 rather than let a traceback escape or leave a half-generated tree.
     # generate_device is monkeypatched: only this script's reporting contract is under test.
     (tmp_path / "devices").mkdir()
-    (tmp_path / "devices" / "broken.toml").write_text("# not a real device\n")
+    (tmp_path / "devices" / "broken.toml").write_text("# not a real device\n", encoding="utf-8")
     monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
 
     def fake_generate_device(*_args: object, **_kwargs: object) -> SimpleNamespace:
@@ -110,7 +110,7 @@ def _single_device_run(generate_sensortask_modules: ModuleType, repo_root: Path,
     root.mkdir()
     _one_device_tree(repo_root, root)
     toml = tmp_path / "fixture_device.toml"
-    toml.write_text((repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml").read_text())
+    toml.write_text((repo_root / "devices" / f"{DEVICE_NAMES[0]}.toml").read_text(encoding="utf-8"), encoding="utf-8")
     monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", root)
     monkeypatch.setattr(generate_sensortask_modules, "current_build_date", lambda: "2026-09-12T10:00:00Z")
     out = tmp_path / "out"
@@ -121,7 +121,7 @@ def test_the_single_device_mode_writes_that_toml_s_outputs_into_its_directory_on
     code, out, root = _single_device_run(generate_sensortask_modules, repo_root, tmp_path, monkeypatch)
     assert code == 0
     expected = generate_device(tmp_path / "fixture_device.toml", repo_root / "src", repo_root / "ext", build_date="2026-09-12T10:00:00Z")
-    files = {p.relative_to(out).as_posix(): p.read_text() for p in out.rglob("*") if p.is_file()}
+    files = {p.relative_to(out).as_posix(): p.read_text(encoding="utf-8") for p in out.rglob("*") if p.is_file()}
     assert sorted(files) == sorted([
         "sensortask_fixture_device.py", "sensortask_fixture_device_main.py", "sensortask_fixture_device_main_noautostart.py",
         "sensortask_fixture_device_expected.json", "sensortask_fixture_device_wiring_plan.json",
@@ -219,9 +219,9 @@ def test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touc
     assert [p for p in out_dir.rglob(f"*{removed}*") if p.is_file()], "the removed device was never generated - the sweep below would hold vacuously"
     beside = tmp_path / "build" / "generated_html" / removed / "index.html"
     beside.parent.mkdir(parents=True)
-    beside.write_text("another builder's output\n")
+    beside.write_text("another builder's output\n", encoding="utf-8")
     in_flight = out_dir / f"sensortask_{removed}.py.tmp"
-    in_flight.write_text("a concurrent run's file before its rename\n")
+    in_flight.write_text("a concurrent run's file before its rename\n", encoding="utf-8")
     (tmp_path / "devices" / f"{removed}.toml").unlink()
     assert generate_sensortask_modules.main() == 0
 
@@ -229,7 +229,7 @@ def test_a_removed_devices_outputs_leave_the_tree_and_nothing_outside_it_is_touc
     assert not [name for name in left if removed in name], left
     assert {f"sensortask_{kept}.py", f"definitions/{kept}.json", f"api/{kept}.json"} <= set(left), left
     assert beside.is_file() and in_flight.is_file(), "the sweep reached past the generator's own finished outputs"
-    assert json.loads((out_dir / ".inputs_stamp.json").read_text())["outputs"] == left, "the stamp must list exactly the tree's files"
+    assert json.loads((out_dir / ".inputs_stamp.json").read_text(encoding="utf-8"))["outputs"] == left, "the stamp must list exactly the tree's files"
 
 
 def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_output(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,7 +241,7 @@ def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_outpu
         (tmp_path / shared).symlink_to(repo_root / shared)
     (tmp_path / "scripts").mkdir()
     (tmp_path / "scripts" / "_generate_sensortask_modules.py").write_bytes((repo_root / "scripts" / "_generate_sensortask_modules.py").read_bytes())
-    (tmp_path / "devices" / "zz_test_fixture.toml").write_text("# a concurrent test's fixture, never an input\n")
+    (tmp_path / "devices" / "zz_test_fixture.toml").write_text("# a concurrent test's fixture, never an input\n", encoding="utf-8")
     renamed: list[Path] = []
     real_replace = os.replace
 
@@ -260,5 +260,43 @@ def test_both_freshness_stamps_hash_every_input_and_land_after_every_other_outpu
     expected = {str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     assert "ext/microdot.py" in expected  # the frozen-module closure reads it (buildgen/frozen_modules.py)
     outputs = sorted(p.relative_to(out_dir).as_posix() for p in out_dir.rglob("*") if p.is_file())
-    assert json.loads(stamps[0].read_text()) == {"inputs": expected, "outputs": outputs}
-    assert json.loads(stamps[1].read_text()) == {"tomls": {DEVICE_NAMES[0]: expected[f"devices/{DEVICE_NAMES[0]}.toml"]}}
+    assert json.loads(stamps[0].read_text(encoding="utf-8")) == {"inputs": expected, "outputs": outputs}
+    assert json.loads(stamps[1].read_text(encoding="utf-8")) == {"tomls": {DEVICE_NAMES[0]: expected[f"devices/{DEVICE_NAMES[0]}.toml"]}}
+
+
+def test_a_later_device_failing_writes_nothing_for_any_device(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # All or nothing across the batch: every device is generated in memory before the first file is written, so
+    # the second device failing leaves the first device's previous files byte-unchanged, newer date or not.
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    first, second = DEVICE_NAMES[0], DEVICE_NAMES[1]
+    (tmp_path / "devices" / f"{second}.toml").symlink_to(repo_root / "devices" / f"{second}.toml")
+    monkeypatch.setattr(generate_sensortask_modules, "current_build_date", lambda: "2026-09-12T10:00:00Z")
+    assert generate_sensortask_modules.main() == 0
+    before = {p: p.read_bytes() for p in out_dir.rglob("*") if p.is_file()}
+    real_generate = generate_sensortask_modules.generate_device
+
+    def second_fails(toml: Path, *args: object, **kwargs: object) -> object:
+        if toml.stem == second:
+            raise BuildError(second, "planted failure", rule="test.simulated-failure", fix="repair the fixture")
+        return real_generate(toml, *args, **kwargs)
+
+    monkeypatch.setattr(generate_sensortask_modules, "generate_device", second_fails)
+    monkeypatch.setattr(generate_sensortask_modules, "current_build_date", lambda: "2026-09-13T10:00:00Z")
+    assert generate_sensortask_modules.main() == 1
+    assert "planted failure - fix: repair the fixture" in capsys.readouterr().err
+    after = {p: p.read_bytes() for p in out_dir.rglob("*") if p.is_file()}
+    assert after == before, f"{first}'s files changed although {second} failed: {sorted(str(p.name) for p in after if after[p] != before.get(p))}"
+
+
+def test_the_prune_reports_what_it_removed(generate_sensortask_modules: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(generate_sensortask_modules, "REPO_ROOT", tmp_path)
+    out_dir = _one_device_tree(repo_root, tmp_path)
+    assert generate_sensortask_modules.main() == 0
+    capsys.readouterr()
+    assert generate_sensortask_modules.main() == 0
+    assert "Pruned" not in capsys.readouterr().out, "a clean re-run pruned something"
+    (out_dir / "sensortask_gone.py").write_text("a removed device's module\n", encoding="utf-8")
+    (out_dir / "api" / "gone.json").write_text("{}\n", encoding="utf-8")
+    assert generate_sensortask_modules.main() == 0
+    assert "Pruned 2 stale output(s): api/gone.json, sensortask_gone.py" in capsys.readouterr().out

@@ -24,7 +24,7 @@ from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
-from buildgen.validate import build_model, device_max_connections, module_float_const, module_str_const, webserver_init_default
+from buildgen.validate import build_model, device_max_connections, device_max_connections_by_name, module_float_const, module_str_const, webserver_init_default
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 
 # The shared host-label corpus src/, the mock and this check all read (tests/_radio_shape_cases.json).
-_RADIO_SHAPES = json.loads((Path(__file__).resolve().parent.parent / "tests" / "_radio_shape_cases.json").read_text())
+_RADIO_SHAPES = json.loads((Path(__file__).resolve().parent.parent / "tests" / "_radio_shape_cases.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ def _construction(source: str, var: str) -> str:
 
 def _src_int(src_dir: Path, filename: str, name: str) -> int:
     # A src/ file's module-level `NAME = const(<int>)`, read here independently of the reader under test.
-    for node in ast.parse((src_dir / filename).read_text()).body:
+    for node in ast.parse((src_dir / filename).read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and [t.id for t in node.targets if isinstance(t, ast.Name)] == [name]:
             value = node.value.args[0] if isinstance(node.value, ast.Call) else node.value
             assert isinstance(value, ast.Constant) and isinstance(value.value, int), f"{filename}'s {name} is no int literal"
@@ -317,7 +317,7 @@ def test_a_device_wiring_that_is_not_a_table_is_rejected(tmp_path: Path, src_dir
     doc = base_doc()
     table_at(doc, "device")["wiring"] = value
     path = write_doc(tmp_path, "fixture", doc)
-    assert tomllib.loads(path.read_text())["device"]["wiring"] == value
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["device"]["wiring"] == value
     with pytest.raises(BuildError, match=r"\[device\]\.wiring must be a table") as info:
         build_model(path, src_dir)
     assert (info.value.rule, info.value.field) == ("device.wiring-not-table", "wiring")
@@ -506,7 +506,7 @@ def test_driver_resolvable_but_missing_buildspec_entry_reports_the_real_cause(tm
     # asy_<name>_driver.py with a SensorReader subclass) but has no buildspec.py entry at all -
     # must fail loud, naming the real cause, not report every one of its fields as "unrecognized".
     custom_src = shutil.copytree(src_dir, tmp_path / "src")
-    (custom_src / "asy_bogus2_driver.py").write_text('_NAME = "BOGUS2"\n\n\nclass Bogus2_Reader(SensorReader):\n    pass\n')
+    (custom_src / "asy_bogus2_driver.py").write_text('_NAME = "BOGUS2"\n\n\nclass Bogus2_Reader(SensorReader):\n    pass\n', encoding="utf-8")
     doc: TomlDoc = {
         "device": {"name": "Test", "hostname": "SensorStationTest", "hotspot_password": "12345678", "conn_fail_to_hotspot": 5, "hotspot_time_min": 8},
         "bus": {},
@@ -1291,7 +1291,7 @@ def test_temperature_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path
     table_at(doc, "instance", 1, "wiring")["temperature_source"] = {"default": True, "temperature": 20}
     model, source = _generated(tmp_path, src_dir, doc)  # humidity_source stays a real reference
     assert model.instances[("sgp40", "")].wiring["temperature_source"] == {"default": True, "temperature": 20}
-    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=20), 'value'), humidity=ValueRef(scd30, 'Hum')" in source
+    assert 'temperature=ValueRef(_DefaultTemperatureSource(temperature=20), "value"), humidity=ValueRef(scd30, "Hum")' in source
 
 
 def test_humidity_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -1299,7 +1299,7 @@ def test_humidity_source_default_opt_in_is_fine(tmp_path: Path, src_dir: Path) -
     table_at(doc, "instance", 1, "wiring")["humidity_source"] = {"default": True}
     model, source = _generated(tmp_path, src_dir, doc)  # the default's own humidity parameter keeps its default
     assert model.instances[("sgp40", "")].wiring["humidity_source"] == {"default": True}
-    assert "humidity=ValueRef(_DefaultHumiditySource(), 'value')" in source
+    assert 'humidity=ValueRef(_DefaultHumiditySource(), "value")' in source
 
 
 def test_temperature_source_default_with_unknown_key_rejected(tmp_path: Path, src_dir: Path) -> None:
@@ -1322,7 +1322,7 @@ def test_sgp40_without_any_scd30_using_both_defaults(tmp_path: Path, src_dir: Pa
     del table_at(doc, "instance", 3, "wiring")["warn_co2"]  # notification, now index 3 - referenced scd30
     model, source = _generated(tmp_path, src_dir, doc)
     assert ("scd30", "") not in model.instances
-    assert "temperature=ValueRef(_DefaultTemperatureSource(temperature=22), 'value'), humidity=ValueRef(_DefaultHumiditySource(), 'value')" in source
+    assert 'temperature=ValueRef(_DefaultTemperatureSource(temperature=22), "value"), humidity=ValueRef(_DefaultHumiditySource(), "value")' in source
 
 
 def test_optional_wiring_field_absent_is_fine(tmp_path: Path, src_dir: Path) -> None:
@@ -1555,7 +1555,7 @@ def _staged_src_with_scd30_tag(tmp_path: Path, src_dir: Path, replacement: str) 
     staged = tmp_path / "staged_src"
     shutil.copytree(src_dir, staged)
     driver = staged / "asy_scd30_driver.py"
-    driver.write_text(driver.read_text().replace("# @requires bus.timeout>=200000", replacement))
+    driver.write_text(driver.read_text(encoding="utf-8").replace("# @requires bus.timeout>=200000", replacement), encoding="utf-8")
     return staged
 
 
@@ -1636,9 +1636,9 @@ def _staged_src(tmp_path: Path, src_dir: Path, filename: str, old: str, new: str
     if not staged.exists():
         shutil.copytree(src_dir, staged)
     target = staged / filename
-    text = target.read_text()
+    text = target.read_text(encoding="utf-8")
     assert old in text, f"{filename} no longer contains {old!r}"
-    target.write_text(text.replace(old, new, 1))
+    target.write_text(text.replace(old, new, 1), encoding="utf-8")
     return staged
 
 
@@ -1749,7 +1749,7 @@ def test_the_fixture_writer_writes_every_planted_value_exactly(tmp_path: Path, v
 
     doc = base_doc()
     table_at(doc, "device", "wiring")["led_target"] = value
-    assert tomllib.loads(write_doc(tmp_path, "fixture", doc).read_text())["device"]["wiring"]["led_target"] == value
+    assert tomllib.loads(write_doc(tmp_path, "fixture", doc).read_text(encoding="utf-8"))["device"]["wiring"]["led_target"] == value
 
 
 @pytest.mark.parametrize("value", [5, True, ["neopixel"], {"target": "neopixel"}, {}])
@@ -1759,7 +1759,7 @@ def test_device_wiring_value_must_be_a_string_reference(tmp_path: Path, src_dir:
     table_at(doc, "device", "wiring")["led_target"] = value
     path = write_doc(tmp_path, "fixture", doc)
     # The refusal must come from the wrong value itself, so the file has to carry it exactly.
-    assert tomllib.loads(path.read_text())["device"]["wiring"]["led_target"] == value
+    assert tomllib.loads(path.read_text(encoding="utf-8"))["device"]["wiring"]["led_target"] == value
     with pytest.raises(BuildError, match="must be a string instance reference"):
         build_model(path, src_dir)
 
@@ -1936,7 +1936,7 @@ def test_the_uart_buffer_edges_pass_the_range_check(tmp_path: Path, src_dir: Pat
 def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path: Path) -> None:
     from buildgen.validate import module_int_const
 
-    (tmp_path / "m.py").write_text("_A = const(21)\n_B = 5\n_C = const(True)\n_D = const(_A)\n")
+    (tmp_path / "m.py").write_text("_A = const(21)\n_B = 5\n_C = const(True)\n_D = const(_A)\n", encoding="utf-8")
     assert module_int_const(tmp_path, "m.py", "_A") == 21
     assert module_int_const(tmp_path, "m.py", "_B") == 5
     for name in ("_C", "_D", "_MISSING"):
@@ -1948,7 +1948,7 @@ def test_module_int_const_reads_a_const_or_a_plain_int_and_names_a_miss(tmp_path
 
 def test_module_float_and_str_consts_read_only_their_own_literal_type(tmp_path: Path) -> None:
     # The ServingLimits/StaticSite defaults codegen passes: a float or a str const(), never another type.
-    (tmp_path / "m.py").write_text('_F = const(5.0)\n_I = const(5)\n_S = const("index.html")\n')
+    (tmp_path / "m.py").write_text('_F = const(5.0)\n_I = const(5)\n_S = const("index.html")\n', encoding="utf-8")
     assert module_float_const(tmp_path, "m.py", "_F") == 5.0
     assert module_str_const(tmp_path, "m.py", "_S") == "index.html"
     with pytest.raises(BuildError, match="no longer has a readable float _I"):
@@ -2091,9 +2091,9 @@ def _crc_widths(crc_source: str) -> "dict[str, int]":
 
 def test_uart_crc_modes_match_crc_checks(tmp_path: Path, src_dir: Path) -> None:
     # Guard: buildspec's hand-kept CRC table names real asy_crc_checks classes with their real widths.
-    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text())
+    widths = _crc_widths((src_dir / "asy_crc_checks.py").read_text(encoding="utf-8"))
     assert {mode: (cls, widths.get(cls)) for mode, (cls, _width) in UART_CRC_MODES.items()} == UART_CRC_MODES
-    renamed = (src_dir / "asy_crc_checks.py").read_text().replace("class CRC16(", "class CRC16Renamed(")
+    renamed = (src_dir / "asy_crc_checks.py").read_text(encoding="utf-8").replace("class CRC16(", "class CRC16Renamed(")
     assert "CRC16" not in _crc_widths(renamed), "the bite: a table naming a class the module lacks must not match"
 
 
@@ -2180,7 +2180,7 @@ def test_an_unstated_transfer_cap_is_read_from_the_protocol_source(tmp_path: Pat
 
 def test_every_shipped_link_states_its_ring_and_its_cap(src_dir: Path) -> None:
     # A device with links states both values, so the build checks the pair it ships rather than a default.
-    links = [d for d in DEVICE_NAMES if any(i.get("driver") == "uart_link" for i in tomllib.loads(device_toml(d).read_text()).get("instance", []))]
+    links = [d for d in DEVICE_NAMES if any(i.get("driver") == "uart_link" for i in tomllib.loads(device_toml(d).read_text(encoding="utf-8")).get("instance", []))]
     for device in links:
         model = build_model(device_toml(device), src_dir)
         for spec in (s for s in model.instances.values() if s.driver == "uart_link"):
@@ -2400,7 +2400,7 @@ def test_an_unloadable_override_module_is_a_named_build_error(tmp_path: Path, sr
 
 
 def _webserver_src(tmp_path: Path, body: str) -> Path:
-    (tmp_path / "asy_webserver_service.py").write_text(body)
+    (tmp_path / "asy_webserver_service.py").write_text(body, encoding="utf-8")
     return tmp_path
 
 
@@ -2433,7 +2433,7 @@ def test_init_int_default_reads_the_named_class_in_the_named_file_only(tmp_path:
     # file both scope the lookup, and a miss names both rather than falling back to a guess.
     from buildgen.validate import init_int_default
 
-    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n")
+    (tmp_path / "asy_ntp_client.py").write_text("class Other:\n    def __init__(self, retry_s=99): ...\n\nclass NTPClient:\n    def __init__(self, a, retry_s: int = 10, *, retry_max_s: int = 600): ...\n", encoding="utf-8")
     assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_s") == 10
     assert init_int_default(tmp_path, "asy_ntp_client.py", "NTPClient", "retry_max_s") == 600
     with pytest.raises(BuildError, match=r"NTPClient\.__init__ no longer has a readable int default for 'gone'"):
@@ -2457,7 +2457,7 @@ def test_an_unreadable_webserver_source_is_a_named_build_error(tmp_path: Path, c
     from buildgen.validate import webserver_init_default
 
     if content is not None:
-        (tmp_path / "asy_webserver_service.py").write_text(content)
+        (tmp_path / "asy_webserver_service.py").write_text(content, encoding="utf-8")
     with pytest.raises(BuildError, match=r"cannot read .*asy_webserver_service\.py to resolve its _DEFAULT_MAX_CONNECTIONS") as info:
         webserver_init_default(tmp_path, "max_connections")
     assert info.value.field == "_DEFAULT_MAX_CONNECTIONS"
@@ -2528,6 +2528,12 @@ def test_device_max_connections_reads_the_toml_else_the_src_default(tmp_path: Pa
     assert device_max_connections(write_doc(tmp_path, "stated", doc), src_dir) == 3
     table_at(doc, "device").pop("max_connections")
     assert device_max_connections(write_doc(tmp_path, "unstated", doc), src_dir) == webserver_init_default(src_dir, "max_connections")
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_the_ceiling_by_device_name_equals_the_path_form(device: str, src_dir: Path) -> None:
+    # The host instruments name a device, never a path: the by-name lookup finds devices/ and src/ itself.
+    assert device_max_connections_by_name(device) == device_max_connections(device_toml(device), src_dir)
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)

@@ -88,9 +88,9 @@ def test_never():
 def _run(tmp_path: Path, *args: str) -> tuple[subprocess.CompletedProcess[str], Path]:
     suite = tmp_path / "suite"
     suite.mkdir()
-    (suite / "conftest.py").write_text(_CONFTEST)
-    (suite / "test_things.py").write_text(_TESTS)
-    (suite / "test_module_skip.py").write_text(_MODULE_SKIP)
+    (suite / "conftest.py").write_text(_CONFTEST, encoding="utf-8")
+    (suite / "test_things.py").write_text(_TESTS, encoding="utf-8")
+    (suite / "test_module_skip.py").write_text(_MODULE_SKIP, encoding="utf-8")
     record = tmp_path / "out" / "record.json"
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "scripts")}
     argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-p", "_pytest_run_record", f"--run-record={record}", "--rootdir", str(suite), str(suite), *args]
@@ -102,7 +102,7 @@ def _run(tmp_path: Path, *args: str) -> tuple[subprocess.CompletedProcess[str], 
 def record(tmp_path_factory: pytest.TempPathFactory) -> dict[str, object]:
     done, path = _run(tmp_path_factory.mktemp("run"), "-m", "not slow")
     assert done.returncode == 1, done.stdout + done.stderr
-    loaded: dict[str, object] = json.loads(path.read_text())
+    loaded: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
     return loaded
 
 
@@ -158,7 +158,7 @@ def test_session_notes_reach_the_record(record: dict[str, object]) -> None:
 def test_collect_only_is_recorded(tmp_path: Path) -> None:
     done, path = _run(tmp_path, "--collect-only")
     assert done.returncode == 0, done.stdout + done.stderr
-    loaded = json.loads(path.read_text())
+    loaded = json.loads(path.read_text(encoding="utf-8"))
     assert loaded["collect_only"] is True
     # Collected, never run: each test is listed with no outcome, which every reader takes as no verdict.
     assert sorted(t["nodeid"].split("::")[-1] for t in loaded["tests"]) == ["test_fail", "test_pass", "test_setup_error", "test_skip", "test_slow"]
@@ -168,7 +168,7 @@ def test_collect_only_is_recorded(tmp_path: Path) -> None:
 def test_the_summary_reader_turns_the_record_into_the_block(record: dict[str, object], tmp_path: Path) -> None:
     emitter = load_script_module(REPO_ROOT / "scripts" / "_summary_block.py", "_summary_block_rr")
     path = tmp_path / "r.json"
-    path.write_text(json.dumps(record))
+    path.write_text(json.dumps(record), encoding="utf-8")
     summary = emitter.from_run_record(path)
     counts = summary.counts()
     assert (counts.passed, counts.failed, counts.skipped, counts.deselected, counts.recovered) == (0, 2, 2, 2, 2)

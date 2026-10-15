@@ -25,10 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests_hardware"
 # No E402 suppression: ruff exempts a sys.path insert outright, and RUF100 fails an unused one.
 from heap_map import HeapMap, delta, parse_labelled
 
-# scripts/test.sh's own MICROPYPATH, heap size and interpreter, so this measures what the suite
-# measures. The heap size is deliberately NOT calibrated to a fill fraction: every bound below is
-# an absolute offset from the seam, and those proved heap-size independent at 8M and 16M.
-_MICROPYPATH = "build/generated_src:src:tests:frozen_modules:.frozen"
+# scripts/test.sh's own MICROPYPATH (the unit layout, scripts/micropypath.toml), heap size and interpreter, so this
+# measures what the suite measures. The heap size is deliberately NOT calibrated to a fill fraction: every bound below
+# is an absolute offset from the seam, and those proved heap-size independent at 8M and 16M.
+_MICROPYPATH = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
 # @tunable l1.unix_heapsize = 16M
 _HEAPSIZE = "16M"
 _PROBE = "tests/_boot_contiguity_probe.py"
@@ -282,7 +282,7 @@ def test_a_real_boot_fires_exactly_the_collects_the_static_guards_count(
     # collect, so a dropped leading collect would re-anchor it silently - this is the assertion that
     # keeps that anchor honest, and it is what then fails.
     counters = boot_probe(device, _ARM_LIVE).counters
-    source = (repo_root / "build" / "generated_src" / f"sensortask_{device}.py").read_text()
+    source = (repo_root / "build" / "generated_src" / f"sensortask_{device}.py").read_text(encoding="utf-8")
     setup_calls = _setup_list_length(source)
     assert setup_calls > 0, f"{device}: the generated _collect_setups() lists no setup at all, so this count would be vacuous"
     assert counters["batch_collects"] == setup_calls + 1, f"{device}: the generated _collect_setups() lists {setup_calls} setups, so run_setups() must collect {setup_calls + 1} times (one before the list, one after each unit) - a real boot fired {counters['batch_collects']}"
@@ -331,7 +331,7 @@ def test_the_uart_receive_rings_land_with_the_boot_survivors(boot_probe: Callabl
     # the same ring after the starter loop, nothing reallocated once the batch ended.
     run = boot_probe(device, _ARM_LIVE)
     after_batch, after_loop = run.rings.get("after_batch", {}), run.rings.get("after_starter_loop_end", {})
-    plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text())
+    plan = json.loads((_GENERATED / f"sensortask_{device}_wiring_plan.json").read_text(encoding="utf-8"))
     assert "uart_link" in plan["instances"] and plan["uart"], f"{device} declares a uart_link, yet its generated wiring plan builds no UART bus"
     assert len(after_batch) == len(plan["uart"]), f"{device}: the probe reported rings for {sorted(after_batch)}, not one per bus of the {len(plan['uart'])}-bus link"
     assert after_loop == after_batch, f"{device}: a receive ring moved or appeared after the setup batch: {after_batch} then {after_loop}"
@@ -413,8 +413,8 @@ def test_the_probe_runs_under_the_same_interpreter_settings_as_the_suite(repo_ro
     # This file's header claims it measures what scripts/test.sh measures. A MICROPYPATH that
     # drifted would resolve `import sensortask_<device>` somewhere else, or not at all, and the
     # measurement would silently describe a different build than the one the suite runs.
-    text = (repo_root / "scripts" / "test.sh").read_text()
-    assert f'MICROPYPATH="{_MICROPYPATH}"' in text, f"scripts/test.sh no longer runs the suite on MICROPYPATH={_MICROPYPATH!r} - re-derive this probe's own bounds against whatever replaced it"
+    text = (repo_root / "scripts" / "test.sh").read_text(encoding="utf-8")
+    assert 'unit_micropypath="$(micropypath unit)"' in text and '"MICROPYPATH=$unit_micropypath"' in text, "scripts/test.sh no longer runs the suite on the unit layout of scripts/micropypath.toml - re-derive this probe's own bounds against whatever replaced it"
     assert f"-X heapsize={_HEAPSIZE}" in text, f"scripts/test.sh no longer runs the suite at heapsize={_HEAPSIZE} - the bounds proved heap-size independent at 8M and 16M, so confirm that still holds before changing this"
 
 
@@ -422,8 +422,8 @@ def test_the_twin_probe_and_the_board_script_read_at_the_same_positions(repo_roo
     # Drift here is silent and invalidates the handover: the board reading is only comparable to the
     # twin's if both bound the same starter loop and timer start alike. Two files by necessity - a
     # device script is pushed to the board standalone and can import nothing from tests_scripts/.
-    twin = _int_constants((repo_root / _PROBE).read_text(), _MIRRORED_BOUNDS)
-    board = _int_constants((repo_root / _BOARD_SCRIPT).read_text(), _MIRRORED_BOUNDS)
+    twin = _int_constants((repo_root / _PROBE).read_text(encoding="utf-8"), _MIRRORED_BOUNDS)
+    board = _int_constants((repo_root / _BOARD_SCRIPT).read_text(encoding="utf-8"), _MIRRORED_BOUNDS)
     assert set(twin) == set(_MIRRORED_BOUNDS), f"{_PROBE} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(twin))} - update this guard with it"
     assert set(board) == set(_MIRRORED_BOUNDS), f"{_BOARD_SCRIPT} no longer declares {sorted(set(_MIRRORED_BOUNDS) - set(board))} - update this guard with it"
     assert twin == board, f"the twin probe and the board script disagree on {[name for name in _MIRRORED_BOUNDS if twin[name] != board[name]]}: {twin} against {board}"

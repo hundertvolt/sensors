@@ -1,3 +1,5 @@
+// Tests js/templates.js: formatFieldValue(), each field kind's markup, ids and labels, the clear button, codes and
+// timestamps, unavailable sources, the errcount group, the section shell, the nav drawer and textContent-only output.
 import { afterEach, describe, expect, it } from "vitest";
 import { userEvent } from "vitest/browser";
 import { ERR_COUNT_CAP, isUnavailable } from "../js/api-contract.js";

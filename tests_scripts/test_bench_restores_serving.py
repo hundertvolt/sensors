@@ -61,7 +61,7 @@ def _problems(source: str) -> list[str]:
 
 
 def _runners() -> list[Path]:
-    return sorted(p for p in BENCH.glob("test_*.py") if f".{_RUNS}(" in p.read_text())
+    return sorted(p for p in BENCH.glob("test_*.py") if f".{_RUNS}(" in p.read_text(encoding="utf-8"))
 
 
 def test_the_rule_sees_the_bench_tests_that_run_device_scripts() -> None:
@@ -71,7 +71,7 @@ def test_the_rule_sees_the_bench_tests_that_run_device_scripts() -> None:
 
 @pytest.mark.parametrize("module", _runners(), ids=lambda p: p.name)
 def test_every_bench_test_running_a_device_script_restores_the_board_to_serving(module: Path) -> None:
-    assert _problems(module.read_text()) == [], module.name
+    assert _problems(module.read_text(encoding="utf-8")) == [], module.name
 
 
 def test_a_restore_outside_a_finally_does_not_count() -> None:

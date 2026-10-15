@@ -1,3 +1,6 @@
+"""FRAM_SPI against the fake MB85RS64V: identifying it and the 256 KB chip, write protection and WREN latching, a chip that
+is lost or absent, verified writes and the session lock."""
+
 import asyncio
 
 from _async_harness import run

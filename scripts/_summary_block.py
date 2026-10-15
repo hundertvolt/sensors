@@ -188,7 +188,7 @@ def from_run_record(path: Path) -> Summary:
     # The pytest run record as a Summary (unit tests); a missing or unreadable record is one failed item.
     summary = Summary("pytest")
     try:
-        record = json.loads(path.read_text())
+        record = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(record, dict):
             raise TypeError("not a JSON object")
     except (OSError, TypeError, ValueError):

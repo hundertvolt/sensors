@@ -1,6 +1,6 @@
-"""Proves a Session-3-generated `sensortask_<device>.py` module actually boots under the digital twin's real MicroPython Unix-port environment and serves real REST requests - not just that it `ast.parse()`s (buildgen/'s own documented proof depth ceiling) or that buildgen.twin_wiring's plan looks right in isolation (test_buildgen_twin_wiring.py).
-Spawns the real Unix-port binary as a subprocess and speaks plain HTTP to it, the same pattern scripts/_digital_twin_ci_suite.py already uses for each device's generated module; wiring this into scripts/run_digital_twin_ci.sh stays Session 6's job (SPECIFICATION.md Part L.4).
-See digital_twin/README.md's "Booting a generated device" section for the full mechanism this exercises."""
+"""Proves each generated sensortask_<device>.py boots under the digital twin's real MicroPython
+Unix-port environment and serves real REST requests, beyond ast.parse() and the wiring plan's own tests
+(test_buildgen_twin_wiring.py). See digital_twin/README.md's "Booting a generated device"."""
 
 import ast
 import http.client
@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import tomllib
 from _devices import DEVICE_NAMES
 from _devices import device_toml as device_toml_path
 from _script_loader import load_script_module
@@ -77,6 +78,7 @@ _RESET_LINE = re.compile(r"\] machine reset: kind=reset reset_count=1 ")
 # time, before conftest.py reclaims a zz_test_*.toml leaked by a SIGKILLed run - and this is the
 # one suite that would actually BOOT that deliberately malformed fixture.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_LAYOUTS = _REPO_ROOT / "scripts" / "micropypath.toml"
 _FIXTURE_TOMLS = sorted(p.name for p in (_REPO_ROOT / "tests_scripts" / "buildgen_fixtures").glob("*.toml") if not p.name.startswith("malformed_"))
 # The sections whose groups each read the GET body under the group's own key (js/render.js groupSourceFrom()).
 _GROUP_KEYED_SECTIONS = frozenset({"measurements", "sensors", "status"})
@@ -93,14 +95,13 @@ def _get_routes(source: Path) -> "tuple[str, ...]":
 _SMOKE_ENDPOINTS = _get_routes(_REPO_ROOT / "src" / "asy_webserver_service.py")
 
 
-def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, device_toml: Path, tmp_path: Path, port: int) -> list[str]:
-    # Generates `device_toml` via buildgen, boots the result under run_generic_integration.py in a
-    # real MicroPython Unix-port subprocess, hits a handful of real REST endpoints, and returns any
-    # failures (empty list = clean boot, clean REST responses, clean shutdown).
-    generated = generate_device(device_toml, src_dir, ext_dir)
+def _boot_generated_device(root: "Path | None", generated: "GeneratedDevice", micropython_bin: Path, tmp_path: Path, port: int, *, image: bool = False) -> list[str]:
+    # Boots `generated` from `root` (a compiled image's stage when `image`; None: its source module and the stub site)
+    # under run_generic_integration.py, smokes every GET route and returns the failures (none: a clean boot, clean
+    # answers and a clean shutdown); the runner's own files go to tmp_path.
     stop_file = tmp_path / "stop"
-    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--duration", str(_TWIN_DURATION_S), "--stop-file", str(stop_file))
-    definitions = generate_definitions(generated.model, src_dir)
+    cmd, env = _twin_launch(micropython_bin, generated, tmp_path, port, "--duration", str(_TWIN_DURATION_S), "--stop-file", str(stop_file), root=root, image=image)
+    definitions = generate_definitions(generated.model, _REPO_ROOT / "src")
 
     def smoke(proc: subprocess.Popen[str]) -> list[str]:
         _wait_until_serving(proc, port, _BOOT_TIMEOUT_S)
@@ -130,7 +131,7 @@ def _boot_generated_device(repo_root: Path, micropython_bin: Path, src_dir: Path
         stop_file.touch()  # done: the twin leaves its serving on the same clean path its duration ends on
         return failures
 
-    failures, output = _run_twin(cmd, repo_root, env, smoke)
+    failures, output = _run_twin(cmd, _REPO_ROOT, env, smoke)
     if _STOP_SEEN not in output:
         failures.append(f"the twin did not end on its stop file - it served out its whole {_TWIN_DURATION_S} s bound")
     return failures
@@ -345,20 +346,28 @@ def test_the_status_field_parity_check_reads_a_maintenance_field_by_its_path() -
         assert _status_field_parity_failures(definitions, body), body
 
 
-def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: Path, port: int, *args: str, mem_backup: str = "") -> "tuple[list[str], dict[str, str]]":
-    # Writes `generated`'s module, stub site and wiring plan into tmp_path and returns the runner's argv and env. FRAM
-    # and SCD30 state stay in memory, the config directory is tmp_path's own: a boot writes nothing outside tmp_path.
+def _twin_micropypath(root: Path, *, image: bool = False) -> str:
+    # scripts/micropypath.toml's twin layout, root in place of build/generated_src: root carries its own module and stub
+    # frozen_html.py, so frozen_modules goes, and a compiled image's stage holds every module it freezes, so src and ext.
+    micropypath = tomllib.loads(_LAYOUTS.read_text(encoding="utf-8"))["twin"]
+    dropped = {"frozen_modules", "src", "ext"} if image else {"frozen_modules"}
+    # Each segment of the read layout kept or swapped, for the reason above.
+    return ":".join(str(root) if segment == "build/generated_src" else segment for segment in micropypath.split(":") if segment not in dropped)
+
+
+def _twin_launch(micropython_bin: Path, generated: "GeneratedDevice", tmp_path: Path, port: int, *args: str, mem_backup: str = "", root: "Path | None" = None, image: bool = False) -> "tuple[list[str], dict[str, str]]":
+    # The runner's argv and env, the wiring plan written to tmp_path; with no root the module and stub site go there too.
+    # FRAM and SCD30 state stay in memory and the config directory is tmp_path's own, so a boot writes nothing outside.
     module_name = f"sensortask_{generated.model.device}"
-    (tmp_path / f"{module_name}.py").write_text(generated.module_source)
-    (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML)
+    if root is None:
+        root = tmp_path
+        (tmp_path / f"{module_name}.py").write_text(generated.module_source, encoding="utf-8")
+        (tmp_path / "frozen_html.py").write_text(_STUB_FROZEN_HTML, encoding="utf-8")
     wiring_plan_path = tmp_path / "wiring_plan.json"
-    wiring_plan_path.write_text(json.dumps(compute_twin_wiring(generated.model)))
+    wiring_plan_path.write_text(json.dumps(compute_twin_wiring(generated.model)), encoding="utf-8")
     (tmp_path / "config").mkdir(exist_ok=True)
     env = dict(os.environ)
-    # tmp_path first: makes `import sensortask_<device>` (inside run_generic_integration.py) resolve
-    # to THIS generated module rather than any same-named one elsewhere on the path -
-    # every other import the generated module needs still falls through to `src/`/`ext/`, unaffected.
-    env["MICROPYPATH"] = f"{tmp_path}:src:digital_twin:ext:.frozen"
+    env["MICROPYPATH"] = _twin_micropypath(root, image=image)
     env["TZ"] = "UTC"
     cmd = [
         str(micropython_bin),
@@ -387,7 +396,7 @@ def _twin_output_failures(returncode: int | None, output: str) -> list[str]:
 
 def _uart_link_device() -> str:
     # The device wiring a uart_link pair, found by data rather than named.
-    found = [d for d in DEVICE_NAMES if 'driver = "uart_link"' in device_toml_path(d).read_text()]
+    found = [d for d in DEVICE_NAMES if 'driver = "uart_link"' in device_toml_path(d).read_text(encoding="utf-8")]
     assert found, "no device wires a uart_link pair - the CRC16 boot has nothing to derive from"
     return found[0]
 
@@ -480,28 +489,24 @@ def test_a_twin_that_dies_before_serving_keeps_its_output(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("device_toml_name", _FIXTURE_TOMLS)
 def test_synthetic_fixture_boots_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
+    micropython_bin: Path, src_dir: Path, ext_dir: Path, fixtures_dir: Path, tmp_path: Path, device_toml_name: str,
 ) -> None:
     # The mandatory synthetic fixtures (SPECIFICATION.md Part L.1's acceptance criterion #2) - proves
     # the generic wiring mechanism handles a hardware combination no real device uses, beyond the
     # real devices' own layouts.
-    device_toml = fixtures_dir / device_toml_name
-    port = _free_port()
-    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, device_toml, tmp_path, port)
-    assert failures == []
+    generated = generate_device(fixtures_dir / device_toml_name, src_dir, ext_dir)
+    assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 def test_real_device_boots_its_generated_module_and_serves_over_real_http(
-    repo_root: Path, micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
+    micropython_bin: Path, src_dir: Path, ext_dir: Path, tmp_path: Path, device: str,
 ) -> None:
     # Every real device's own TOML, generated fresh here - the actual proof that Session 3's
     # generator produces a module that runs, for every real device, not just ast.parse()s
     # (SPECIFICATION.md Part L.4: "ideally every" entry point).
-    toml_path = device_toml_path(device)
-    port = _free_port()
-    failures = _boot_generated_device(repo_root, micropython_bin, src_dir, ext_dir, toml_path, tmp_path, port)
-    assert failures == []
+    generated = generate_device(device_toml_path(device), src_dir, ext_dir)
+    assert _boot_generated_device(None, generated, micropython_bin, tmp_path, _free_port()) == []
 
 
 @pytest.fixture
@@ -520,10 +525,10 @@ def test_the_uart_link_device_boots_and_exercises_its_link_with_crc16_on_both_en
     # Its TOML with crc = "crc16" on both ends, generated and booted like the shipped devices: the link's transfers rise
     # across two reads a few seconds apart and none fails, so both ends speak the same CRC framing.
     device = _uart_link_device()
-    text = device_toml_path(device).read_text()
+    text = device_toml_path(device).read_text(encoding="utf-8")
     derived = tmp_path / f"{device}.toml"
-    derived.write_text(text.replace('driver = "uart_link"\n', 'driver = "uart_link"\ncrc = "crc16"\n'))
-    assert derived.read_text().count('crc = "crc16"') == text.count('driver = "uart_link"') == 2
+    derived.write_text(text.replace('driver = "uart_link"\n', 'driver = "uart_link"\ncrc = "crc16"\n'), encoding="utf-8")
+    assert derived.read_text(encoding="utf-8").count('crc = "crc16"') == text.count('driver = "uart_link"') == 2
     generated = generate_device(derived, src_dir, ext_dir)
     assert generated.module_source.count("crc=CRC16()") == 2, "the derived module does not build both link buses with CRC16"
     port = _free_port()
@@ -549,7 +554,7 @@ def test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalati
 ) -> None:
     # A sustained SGP40 write fault spends the restart budget: the run exits as a simulated reset, prints its reset
     # line, flushes the watchdog scratch registers with the watchdog cause, and the next launch reads the escalation.
-    device = next(d for d in DEVICE_NAMES if 'driver = "sgp40"' in device_toml_path(d).read_text())
+    device = next(d for d in DEVICE_NAMES if 'driver = "sgp40"' in device_toml_path(d).read_text(encoding="utf-8"))
     generated = generate_device(device_toml_path(device), src_dir, ext_dir)
     mem_backup = tmp_path / "mem_backup_state.json"
     port = _free_port()
@@ -562,8 +567,8 @@ def test_a_sustained_fault_resets_the_device_and_the_relaunch_reads_the_escalati
     failures, output = _run_twin(cmd, repo_root, env, until_reset)
     assert failures == [f"subprocess exited with code {_RESET_EXIT}:\n{output}"], failures
     assert _RESET_LINE.search(output), output[-2000:]
-    state = json.loads(mem_backup.read_text())
-    wdt_reset = re.search(r"^WDT_RESET = (\d+)$", (repo_root / "digital_twin" / "machine.py").read_text(), re.MULTILINE)
+    state = json.loads(mem_backup.read_text(encoding="utf-8"))
+    wdt_reset = re.search(r"^WDT_RESET = (\d+)$", (repo_root / "digital_twin" / "machine.py").read_text(encoding="utf-8"), re.MULTILINE)
     assert wdt_reset is not None and state["cause"] == int(wdt_reset.group(1)), state
 
     stop_file = tmp_path / "stop"

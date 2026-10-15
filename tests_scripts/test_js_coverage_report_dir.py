@@ -12,7 +12,7 @@ _PYTHON_SCOPES = ("src", "tests", "tests_scripts", "tests_hardware", "scripts", 
 
 
 def _reports_directory(repo_root: Path) -> str:
-    text = (repo_root / "vitest.config.js").read_text()
+    text = (repo_root / "vitest.config.js").read_text(encoding="utf-8")
     match = re.search(r'reportsDirectory:\s*"([^"]+)"', text)
     assert match is not None, "vitest.config.js no longer sets coverage.reportsDirectory - the default is `coverage`"
     return match.group(1)
@@ -24,7 +24,7 @@ def _top_level_imports(repo_root: Path) -> set[str]:
     names: set[str] = set()
     for scope in _PYTHON_SCOPES:
         for path in python_files(repo_root, scope):
-            for node in ast.walk(ast.parse(path.read_text())):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Import):
                     names.update(alias.name.split(".")[0] for alias in node.names)
                 elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
@@ -42,12 +42,12 @@ def test_the_report_directory_is_not_a_name_this_repo_imports(repo_root: Path) -
 
 def test_ci_uploads_the_directory_vitest_actually_writes(repo_root: Path) -> None:
     name = _reports_directory(repo_root)
-    ci = (repo_root / ".github" / "workflows" / "ci.yml").read_text()
+    ci = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert f"hashFiles('{name}/index.html')" in ci, "ci.yml gates the JS coverage upload on a directory vitest no longer writes"
     assert f"path: {name}/" in ci, "ci.yml uploads a JS coverage directory vitest no longer writes"
 
 
 def test_the_report_directory_is_gitignored(repo_root: Path) -> None:
     name = _reports_directory(repo_root)
-    ignored = (repo_root / ".gitignore").read_text().splitlines()
+    ignored = (repo_root / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert f"{name}/" in ignored, f"{name}/ is regenerated every run and must not be committable"

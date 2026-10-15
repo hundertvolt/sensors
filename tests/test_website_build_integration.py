@@ -49,9 +49,9 @@ def _bundle_modules(body: bytes) -> "list[str]":
 
 
 def _decompress(body: "_ResponseBody") -> bytes:
-    # send_file() streams from a file-like object, so .read() first; DeflateIO(AUTO) detects the gzip
-    # header (confirmed on v1.29.0). No `with`: the real object supports it but the stubs don't declare
-    # __enter__/__exit__ (the same stub-gap class as Timer()/I2C.deinit()), and a BytesIO needs no close.
+    # send_file() streams from a file-like object; DeflateIO(AUTO) detects the gzip header (v1.29.0). No `with` (a BytesIO
+    # needs no close) and an ignore: the stub declares neither __enter__/__exit__ nor a typed read() - removal trigger:
+    # SPECIFICATION.md B.15.
     import io
 
     import deflate

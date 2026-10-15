@@ -21,7 +21,7 @@ def _chip_hook_ops() -> "set[tuple[str, str, str]]":
     found: set[tuple[str, str, str]] = set()
     for path in sorted((_REPO_ROOT / "digital_twin").glob("_*_chip.py")):
         driver = path.stem[1 : -len("_chip")]
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _HOOKS and node.args and isinstance(node.args[0], ast.Constant):
                 found.add((driver, _HOOKS[node.func.attr], str(node.args[0].value)))
     return found
@@ -40,7 +40,7 @@ def _suite(*args: str) -> "subprocess.CompletedProcess[str]":
 
 def _vocabulary(name: str) -> "dict[str, tuple[str, ...]]":
     # One of digital_twin/launch.py's --fault/--hang tables, read by ast: driver -> its ops.
-    for node in ast.parse((_REPO_ROOT / "digital_twin" / "launch.py").read_text()).body:
+    for node in ast.parse((_REPO_ROOT / "digital_twin" / "launch.py").read_text(encoding="utf-8")).body:
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
             table = ast.literal_eval(node.value)
             assert isinstance(table, dict)
@@ -74,7 +74,7 @@ def test_the_matrix_names_only_ops_the_twin_accepts(ci_suite: ModuleType) -> Non
 def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, device: str) -> None:
     instances = ci_suite._plan_instances(device_toml(device))
     links = [inst.key for inst in instances if inst.driver == "uart_link"]
-    ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1)
+    ctx = ci_suite.RunContext(micropython_bin="/nonexistent", logs_dir=Path("/nonexistent"), device=device, module=f"sensortask_{device}", wiring_plan_path=Path("/nonexistent"), instances=instances, gc_threshold=-1, routes=("/status",))
     faulted = [inst.key for inst in ci_suite._fault_instances(ctx, ci_suite._SUSTAINED_FAULT) if inst.driver == "uart_link"]
     assert faulted == links
     assert ci_suite._SUSTAINED_FAULT["uart_link"] == "silent"

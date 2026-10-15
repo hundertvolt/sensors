@@ -3,6 +3,7 @@ and its two boot entries, from a validated `DeviceModel` and its construction or
 (`buildgen.graph.build_construction_order()`)."""
 
 import keyword
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -33,6 +34,19 @@ _NTP_FETCH_TIMEOUT_MS = 5000
 _BOOT_KEYWORDS = (("cfg_path", 'str = ""'), ("debug", "int | None = None"), ("web_host", 'str = "0.0.0.0"'), ("web_port", "int = 80"))
 _BOOT_SIGNATURE = '*, watchdog: "WDT", ' + ", ".join(f"{name}: {rest}" for name, rest in _BOOT_KEYWORDS)
 _UART_COMM = "asy_uart_comm.py"  # the link protocol module whose defaults a TransferLimits carries
+
+
+def _lit(value: object) -> str:
+    # A Python literal for an emitted value, strings double-quoted as ruff's style wants them in the generated tree; a
+    # single-quoted repr() holding no '"' holds no quote at all, so only its delimiters change. Tuples and lists recurse.
+    if isinstance(value, str):
+        text = repr(value)
+        return f'"{text[1:-1]}"' if text.startswith("'") and '"' not in value else text
+    if isinstance(value, tuple):
+        return "(" + ", ".join(map(_lit, value)) + ("," if len(value) == 1 else "") + ")"
+    if isinstance(value, list):
+        return "[" + ", ".join(map(_lit, value)) + "]"
+    return repr(value)
 
 
 def _text(value: TomlValue) -> str:
@@ -76,6 +90,7 @@ class _Ctx:
     # FRAM instance var -> its LogConfig var (log_<fram var>); a module with no FRAM store gets log_ram.
     log_vars: "dict[str, str]" = field(default_factory=dict)
     src: "Path | None" = None  # src/, for the shipped defaults codegen reads by AST
+    test_overrides: "tuple[str, ...]" = ()  # the test-only firmware overrides a test image names in its build info
 
     @property
     def src_dir(self) -> Path:
@@ -97,7 +112,7 @@ class _Ctx:
         # SPECIFICATION.md Part L.6.2's generated-code shape: construct the provider inline, at the exact
         # call-site the real wiring expression would occupy - never a separate named global.
         class_name = default_class_name(toml_field)
-        kwargs = ", ".join(f"{k}={v!r}" for k, v in value.items() if k != "default")
+        kwargs = ", ".join(f"{k}={_lit(v)}" for k, v in value.items() if k != "default")
         return f"{class_name}({kwargs})"
 
     def wiring_expr(self, spec: InstanceSpec, wf: WiringField) -> str:
@@ -114,9 +129,9 @@ class _Ctx:
         # attribute name, or an explicit default provider, whose one field is "value".
         reference = _table(value)
         if reference.get("default") is True:
-            return f"ValueRef({self.default_provider_expr(toml_field, reference)}, {'value'!r})"
+            return f'ValueRef({self.default_provider_expr(toml_field, reference)}, "value")'
         source_var = self.instance_var(resolve_instance_key(self.model, _text(reference["source"])))
-        return f"ValueRef({source_var}, {reference['field']!r})"
+        return f"ValueRef({source_var}, {_lit(reference['field'])})"
 
     def value_wiring_kwargs(self, spec: InstanceSpec) -> "list[tuple[str, str]]":
         # Every @value-wiring field the TOML wires, in the driver's tag order; an optional one left out
@@ -129,6 +144,11 @@ def _wf(spec: InstanceSpec, toml_field: str) -> "WiringField | None":
         if wf.toml_field == toml_field:
             return wf
     return None
+
+
+def _tuple(items: "list[str]") -> str:
+    # A one-line tuple of emitted expressions: a trailing comma only where one element needs it.
+    return "(" + ", ".join(items) + ("," if len(items) == 1 else "") + ")"
 
 
 def _kw(pairs: "list[tuple[str, str]]") -> str:
@@ -182,7 +202,7 @@ def _build_args_scd30(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[t
         kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
-        kw.append(("name_ext", repr(spec.name_ext)))
+        kw.append(("name_ext", _lit(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
     kw.append(_fram_kw(spec, ctx))
     return pos, kw
@@ -197,7 +217,7 @@ def _build_args_sgp40(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[t
         kw.append(("backup", f"SgpBackup({fram_var}, ntp.ntp_issynced)"))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
-        kw.append(("name_ext", repr(spec.name_ext)))
+        kw.append(("name_ext", _lit(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
     kw.append(_fram_kw(spec, ctx))
     return pos, kw
@@ -213,7 +233,7 @@ def _build_args_bmp3xx(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], list[
         kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
-        kw.append(("name_ext", repr(spec.name_ext)))
+        kw.append(("name_ext", _lit(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
     kw.append(_fram_kw(spec, ctx))
     return pos, kw
@@ -230,7 +250,7 @@ def _build_args_isl29125(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], lis
         kw.append(("trigger_s", str(f["trigger_s"])))
     kw.append(("max_module_error", "_MAX_MODULE_ERROR"))
     if spec.name_ext:
-        kw.append(("name_ext", repr(spec.name_ext)))
+        kw.append(("name_ext", _lit(spec.name_ext)))
     kw.append(("cfg_path", "cfg_path"))
     # Omitted -> the driver's own irq_pull_up=True default (the internal pull-up, for a board with
     # no external resistor of its own); a device whose board already has one sets this false.
@@ -269,10 +289,10 @@ def _build_args_uart_link(spec: InstanceSpec, ctx: _Ctx) -> "tuple[list[str], li
     f = spec.fields
     defaults = [module_int_const(ctx.src_dir, _UART_COMM, name) for name in ("_DEFAULT_PAYLOAD_SIZE", "_DEFAULT_TIMEOUT_MS", "_DEFAULT_CHUNK_BYTES")]
     cap = f["max_transfer_bytes"] if "max_transfer_bytes" in f else module_int_const(ctx.src_dir, _UART_COMM, "_DEFAULT_MAX_TRANSFER_BYTES")
-    pos = [ctx.bus_var(_text(f["bus"])), repr(f["role"])]
+    pos = [ctx.bus_var(_text(f["bus"])), _lit(f["role"])]
     kw: list[tuple[str, str]] = [("limits", f"TransferLimits({', '.join(map(str, defaults))}, {cap})")]
     if spec.name_ext:
-        kw.append(("name_ext", repr(spec.name_ext)))
+        kw.append(("name_ext", _lit(spec.name_ext)))
     kw.append(_fram_kw(spec, ctx))
     return pos, kw
 
@@ -317,14 +337,14 @@ def _notification_signals(spec: InstanceSpec, ctx: _Ctx) -> str:
         if sig is None:
             # validate.py refuses a warn_* key outside the catalog before generation starts.
             raise BuildInternalError(f"[{ctx.model.device}/{spec.label}.{toml_field}] a warn signal outside buildgen.signals.WARN_SIGNALS reached codegen")
-        signals.append(f"NotificationSignal({sig.name!r}, {ctx.value_ref(source, toml_field)}, {sig.const_name}, {sig.color!r})")
+        signals.append(f"NotificationSignal({_lit(sig.name)}, {ctx.value_ref(source, toml_field)}, {sig.const_name}, {_lit(sig.color)})")
     return "(" + ", ".join(signals) + ("," if len(signals) == 1 else "") + ")"
 
 
 def _schema_literal(toml_field: str) -> str:
     # A warn signal's one-field schema, rendered from the catalog in the form the device modules have always carried.
     sig = WARN_SIGNALS[toml_field]
-    return f'(("{sig.name}", "{sig.field_type}", {sig.default!r}, {sig.min!r}, {sig.max!r}, None),)'
+    return f"(({_lit(sig.name)}, {_lit(sig.field_type)}, {_lit(sig.default)}, {_lit(sig.min)}, {_lit(sig.max)}, None),)"
 
 
 def _bus_crc_class(model: DeviceModel, bus_id: str) -> "str | None":
@@ -350,45 +370,34 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append("from microdot import Microdot")
     lines.append("from micropython import const")
     lines.append("")
-    lines.append("import asy_i2c_driver")
-    lines.append("import asy_spi_driver")
-    lines.append("import asy_uart_driver")
-    lines.append("import asy_config_manager as cm")
     # One import line per module, not per instance - two instances of the same driver (e.g. a
     # multi-scd30 device) share one module and must share one import line, merging whichever
     # _Default* extras either instance's own wiring needs rather than importing the class twice.
-    module_imports: dict[str, tuple[str, list[str]]] = {}
+    bus_kinds = {bus_id.rstrip("0123456789") for bus_id in _bus_tables(model)}
+    plain = ["asy_config_manager as cm", *(_BUS_CLASSES[kind].split(".")[0] for kind in bus_kinds)]
+    names: dict[str, list[str]] = {}
     for spec in sorted(instances.values(), key=lambda s: s.order_index):
         if spec.driver_info is None:
             raise BuildInternalError(f"[{ctx.model.device}/{spec.label}] driver_info unresolved by codegen time")
+        wanted = [spec.driver_info.class_name, *(default_class_name(f) for f in _defaulted_wiring_fields(spec))]
         if spec.driver == "notification":
-            continue  # imported below, together with NotificationSignal
-        _class_name, extras = module_imports.setdefault(spec.driver_info.module, (spec.driver_info.class_name, []))
-        names = [default_class_name(f) for f in _defaulted_wiring_fields(spec)]
+            wanted.append("NotificationSignal")
         if spec.driver == "sgp40" and _fram_var(spec, ctx) is not None:
-            names.append("SgpBackup")
-        for name in names:
-            if name not in extras:
-                extras.append(name)
-    for module, (class_name, extras) in module_imports.items():
-        extra = "".join(f", {name}" for name in extras)
-        lines.append(f"from {module} import {class_name}{extra}")
-    if "notification" in have:
-        notif_extra_spec = next(s for s in instances.values() if s.driver == "notification")
-        notif_extra = "".join(f", {default_class_name(f)}" for f in _defaulted_wiring_fields(notif_extra_spec))
-        lines.append(f"from asy_notification_service import NotificationService, NotificationSignal{notif_extra}")
-    lines.append("from asy_ntp_client import NTPClient, NtpTiming")
-    lines.append("from asy_webserver_service import RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService")
-    lines.append("from asy_wifi_service import WifiService, WifiConfig")
+            wanted.append("SgpBackup")
+        names.setdefault(spec.driver_info.module, []).extend(wanted)
+    names["asy_ntp_client"] = ["NTPClient", "NtpTiming"]
+    names["asy_webserver_service"] = ["RouteSources", "ServingLimits", "SettingsGroup", "StaticSite", "WebserverService"]
+    names["asy_wifi_service"] = ["WifiService", "WifiConfig"]
     # utc_now() answers /status's UnixTime on every device; ValueRef only where a value is wired.
-    lines.append(f"from asy_base_classes import {'ValueRef, ' if have & {'sgp40', 'notification'} else ''}utc_now")
+    names["asy_base_classes"] = ["ValueRef", "utc_now"] if have & {"sgp40", "notification"} else ["utc_now"]
     crc_classes = sorted({c for c in (_bus_crc_class(model, b) for b in _bus_tables(model)) if c is not None})
     if crc_classes:
-        lines.append(f"from asy_crc_checks import {', '.join(crc_classes)}")
+        names["asy_crc_checks"] = crc_classes
     if "uart_link" in have:
-        lines.append("from asy_uart_comm import TransferLimits")
-    lines.append("from asy_print_log import DEFAULT_LOG, LogConfig")
-    lines.append("from asy_system_service import SystemService, begin_boot, BOOT_SETUP, BOOT_TASKS, BOOT_TIMERS, BOOT_NTP, BOOT_DONE")
+        names["asy_uart_comm"] = ["TransferLimits"]
+    names["asy_print_log"] = ["DEFAULT_LOG", "LogConfig"]
+    names["asy_system_service"] = ["SystemService", "begin_boot", "BOOT_SETUP", "BOOT_TASKS", "BOOT_TIMERS", "BOOT_NTP", "BOOT_DONE"]
+    lines.extend(_sorted_imports(plain, names))
     lines.append("")
     lines.append("try:")
     lines.append("    from typing import TYPE_CHECKING")
@@ -406,10 +415,32 @@ def _emit_header_and_imports(lines: "list[str]", model: DeviceModel, ctx: _Ctx, 
     lines.append(f"_DNS_TIMEOUT_MS = const({_DNS_TIMEOUT_MS})")
     lines.append(f"_DNS_TRIES = const({_DNS_TRIES})")
     lines.append(f"_NTP_FETCH_TIMEOUT_MS = const({_NTP_FETCH_TIMEOUT_MS})")
-    lines.append(f"_FIRMWARE_VERSION = const({FIRMWARE_VERSION!r})")
-    lines.append(f"_WEBSITE_VERSION = const({WEBSITE_VERSION!r})")
-    lines.append(f"_BUILD_DATE = const({build_date!r})")
+    lines.append(f"_FIRMWARE_VERSION = const({_lit(FIRMWARE_VERSION)})")
+    lines.append(f"_WEBSITE_VERSION = const({_lit(WEBSITE_VERSION)})")
+    lines.append(f"_BUILD_DATE = const({_lit(build_date)})")
     lines.append("")
+
+
+def _natural(text: str) -> "tuple[tuple[int, int | str], ...]":
+    # isort's natural order: digit runs compare as numbers, the rest case-insensitively.
+    return tuple((0, int(part)) if part.isdigit() else (1, part.lower()) for part in re.findall(r"\d+|\D+", text))
+
+
+def _member_rank(name: str) -> int:
+    # ruff's isort member kinds (order-by-type): CONSTANTS, then Classes, then everything else.
+    if len(name) > 1 and name.isupper():
+        return 0
+    return 1 if name[:1].isupper() else 2
+
+
+def _sorted_imports(plain: "list[str]", names: "dict[str, list[str]]") -> "list[str]":
+    # The first-party block as ruff's isort orders it, so the generated tree lints like src/: every `import x` line,
+    # then every `from x import ...`, modules and their names in natural order, each name once.
+    lines = [f"import {module}" for module in sorted(set(plain), key=_natural)]
+    for module in sorted(names, key=_natural):
+        members = sorted(dict.fromkeys(names[module]), key=lambda n: (_member_rank(n), _natural(n), n))
+        lines.append(f"from {module} import {', '.join(members)}")
+    return lines
 
 
 def _emit_globals(lines: "list[str]", instances: "dict[tuple[str, str], InstanceSpec]", have: "set[str]", global_types: "dict[str, str]") -> None:
@@ -430,7 +461,7 @@ def _emit_globals(lines: "list[str]", instances: "dict[tuple[str, str], Instance
 def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instances: "dict[tuple[str, str], InstanceSpec]", have: "set[str]", construction_order: "list[str | tuple[str, str]]", all_vars: "list[str]", sensor_vars: "list[str]") -> None:
     device_table = _table(model.doc["device"])
     lines.append("async def build_system(")
-    lines.append(f"    {_BOOT_SIGNATURE}")
+    lines.append(f"    {_BOOT_SIGNATURE},")
     lines.append(") -> None:")
     lines.append('    """Construct every module in the generated order (SPECIFICATION.md Part A.7)."""')
     lines.append("    global " + ", ".join([*all_vars, "webserver"]))
@@ -472,7 +503,7 @@ def _emit_build_system(lines: "list[str]", model: DeviceModel, ctx: _Ctx, instan
 
             # hostname/hotspot_password are [device]'s values, passed as the DEFAULTS of the two
             # ConfigManager-persisted fields (_with_default). The status LED is built first (graph.py).
-            wifi = f"WifiConfig({device_table['hostname']!r}, {device_table['hotspot_password']!r}, {device_table['conn_fail_to_hotspot']}, {device_table['hotspot_time_min']})"
+            wifi = f"WifiConfig({_lit(device_table['hostname'])}, {_lit(device_table['hotspot_password'])}, {device_table['conn_fail_to_hotspot']}, {device_table['hotspot_time_min']})"
             lines.append(f"    conn = WifiService({wifi}, {led_kw}, max_module_error=_MAX_MODULE_ERROR, cfg_path=cfg_path, {_device_log_arg(model, ctx, 'conn')})")
             continue
         if node == "ntp":
@@ -548,8 +579,8 @@ def _global_types(model: DeviceModel, construction_order: "list[str | tuple[str,
     return types
 
 
-def generate_module_source(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", build_date: str, src_dir: Path) -> str:
-    ctx = _Ctx(model, src=src_dir)
+def generate_module_source(model: DeviceModel, construction_order: "list[str | tuple[str, str]]", build_date: str, src_dir: Path, *, test_overrides: "tuple[str, ...]" = ()) -> str:
+    ctx = _Ctx(model, src=src_dir, test_overrides=test_overrides)
     instances = model.instances
     # Every FRAM instance some module logs into, the device's infra included, gets its LogConfig.
     targeted = [_device_fram_var(model, ctx)] + [_fram_var(spec, ctx) for spec in instances.values()]
@@ -683,7 +714,9 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
         notification = _singleton_var(ctx, "notification")
         lines.append(f'                "notification": [SettingsGroup({notification}, cm.schema_names({notification}.get_cfg_schema()))],')
     lines.append("            },")
-    lines.append('            build_info={"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE},')
+    # A test image names its test-only firmware overrides; a release image keeps exactly the three keys.
+    overrides = f', "TestOverrides": {_lit(sorted(ctx.test_overrides))}' if ctx.test_overrides else ""
+    lines.append(f'            build_info={{"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE{overrides}}},')
     lines.append("            system_cmd=_system_cmd_callback,")
     lines.append(f"            notification_led={'_notification_led_callback' if 'neopixel' in have else None},")
     lines.append(f"            notification_pause={'_notification_pause_callback' if 'notification' in have else None},")
@@ -708,7 +741,7 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
     lines.append("            port=web_port,")
     lines.append("        ),")
     lines.append("        uptime_s=sysfunct.get_uptime,")
-    lines.append(f'        static=StaticSite(mount="/html", index_file={module_str_const(src_dir, ws, "_DEFAULT_STATIC_INDEX")!r}, is_hotspot_active=conn.is_hotspot_active),')
+    lines.append(f'        static=StaticSite(mount="/html", index_file={_lit(module_str_const(src_dir, ws, "_DEFAULT_STATIC_INDEX"))}, is_hotspot_active=conn.is_hotspot_active),')
     lines.append(f"        {log_arg},")
     lines.append("    )")
 
@@ -739,8 +772,8 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append(f"    return [{', '.join(f'{name}.setup' for name in _setup_vars(construction_order, ctx))}]")
     lines.append("")
     lines.append('def _collect_error_sources() -> "list[ErrorSource]":')
-    lines.append('    sources: "list[ErrorSource]" = []')
-    lines.append(f"    for module in ({', '.join(modules)},):")
+    lines.append("    sources: list[ErrorSource] = []")
+    lines.append(f"    for module in {_tuple(modules)}:")
     lines.append("        sources.extend(module.get_error_sources())")
     lines.append("    return sources")
     lines.append("")
@@ -761,13 +794,13 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append("    return stores")
     lines.append("")
     lines.append('def _collect_task_starters() -> "list[TaskStarter]":')
-    lines.append('    starters: "list[TaskStarter]" = []')
+    lines.append("    starters: list[TaskStarter] = []")
     lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        starters.extend(module.get_task_starters())")
     lines.append("    return starters")
     lines.append("")
     lines.append('def _collect_timer_starters() -> "list[TimerStarter]":')
-    lines.append('    starters: "list[TimerStarter]" = []')
+    lines.append("    starters: list[TimerStarter] = []")
     lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        starters.extend(module.get_timer_starters())")
     lines.append("    return starters")
@@ -794,8 +827,8 @@ def _emit_trigger_collector(lines: "list[str]", sensor_specs: "list[InstanceSpec
         lines.append("")
         return
     lines.append("    # In stagger-slot order: readers sharing a bus sit furthest apart (SPECIFICATION.md Part C.9.1).")
-    lines.append('    starters: "list[TimerStarter]" = []')
-    lines.append(f"    for module in ({', '.join(order)},):")
+    lines.append("    starters: list[TimerStarter] = []")
+    lines.append(f"    for module in {_tuple(order)}:")
     lines.append("        starters.extend(module.get_trigger_starters())")
     lines.append("    return starters")
     lines.append("")
@@ -808,7 +841,7 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         "import sys\n\n"
         "# frozen code first: a filesystem .py/.mpy may not replace a frozen module (owner, 2026-09-26)\n"
         'sys.path.insert(0, ".frozen")\n\n'
-        "import gc\n"
+        "import gc\n\n"
         "import micropython\n\n"
         "# room for a MemoryError's message when the heap cannot place it (Part I.4(e))\n"
         # @tunable gc.emergency_exc_buf_bytes = 100
@@ -837,7 +870,7 @@ def generate_boot_entry_source(device: str, *, autostart: bool = True) -> str:
         + "from machine import WDT\n\n"
         + f"watchdog = WDT(timeout={_WDT_TIMEOUT_MS})\n\n"
         + head
-        + "from asy_system_service import RR_INTERRUPTED, write_reset_record\n"
+        + "\nfrom asy_system_service import RR_INTERRUPTED, write_reset_record\n"
         + threshold
         + "try:\n"
         "    asyncio.run(main(watchdog=watchdog))\n"

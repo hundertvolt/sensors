@@ -1,3 +1,6 @@
+"""ConfigManager and its schema helpers: type and range checks with their specials, coercion, defaults, the file's
+repair and fallbacks, typed reads, compare-before-write and the deferred, logged writes."""
+
 import asyncio
 import json
 import os

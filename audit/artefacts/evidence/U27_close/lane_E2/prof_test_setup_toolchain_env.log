@@ -1,0 +1,13 @@
+........................................................................ [ 46%]
+........................................................................ [ 92%]
+............                                                             [100%]
+============================= slowest 8 durations ==============================
+0.50s call     tests_scripts/test_setup_toolchain_env.py::test_run_ends_a_stalled_command_with_its_whole_process_group
+0.37s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[2-running]
+0.12s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[2-starting]
+0.12s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[1-starting]
+0.12s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[1-running]
+0.12s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[15-starting]
+0.12s call     tests_scripts/test_setup_toolchain_env.py::test_a_signalled_installer_takes_its_running_command_down_with_it[15-running]
+0.06s call     tests_scripts/test_setup_toolchain_env.py::test_a_second_run_on_one_toolchain_fails_at_once_naming_the_first
+156 passed in 2.58s

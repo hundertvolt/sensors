@@ -10,7 +10,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import microtest
 import network
 from _async_harness import run
-from _src_const import src_const
+from _src_const import src_float, src_int
 from _twin_common import COUNTER_CAP, LOG_MAXLEN
 from neopixel import NeoPixel
 from network import (
@@ -53,7 +53,7 @@ def _value_error(call: "object") -> str:
 
 def test_one_connect_phase_fits_the_services_poll_budget() -> None:
     # The twin's connect phase stays under _poll_sta_connect_status()'s whole wait, or every boot would fall back.
-    budget_s = src_const("src/asy_wifi_service.py", "_STA_CONNECT_POLL_S") * src_const("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS")  # type: ignore[operator]
+    budget_s = src_float("src/asy_wifi_service.py", "_STA_CONNECT_POLL_S") * src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS")
     assert budget_s > network._CONNECT_DELAY_S
 
 

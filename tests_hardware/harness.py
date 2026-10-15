@@ -34,7 +34,7 @@ from buildgen.graph import build_construction_order
 from buildgen.jsontypes import JsonDict
 from buildgen.schema_ast import extract_field_schemas
 from buildgen.source_ast import parse_source
-from buildgen.validate import build_model, device_max_connections
+from buildgen.validate import build_model, device_max_connections_by_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -449,7 +449,7 @@ def boot_lines(lines: "list[str]") -> "list[str]":
 def configured_max_connections(device: "str | None" = None) -> int:
     # The admission ceiling this repo's config would build for `device` (the bench board by default). It describes the
     # TREE, not necessarily the image on the board, so a test that cares asserts the two agree.
-    return device_max_connections(device_toml(device), SRC_DIR)
+    return device_max_connections_by_name(device or bench_device())
 
 
 def crash_lines(lines: "list[str]") -> "list[str]":

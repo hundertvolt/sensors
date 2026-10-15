@@ -8,7 +8,9 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drainChildOutput } from "../tests_js/_memory_markers.js";
-import { makeConfigDir, removeConfigDir } from "../tests_js/_twin_process.js";
+import { withSite } from "../tests_js/_micropypath.js";
+import { acquirePortLock } from "../tests_js/_port_lock.js";
+import { MICROPYPATH, makeConfigDir, removeConfigDir, requireInterpreter } from "../tests_js/_twin_process.js";
 import { pickProbe, webDriverFailure } from "./_cross_browser_probe.mjs";
 import { classifyConnections, settledPageLoadConnections, startCountingProxy } from "./_page_load_connections.mjs";
 
@@ -17,15 +19,17 @@ import { classifyConnections, settledPageLoadConnections, startCountingProxy } f
 /** @typedef {import("./_page_load_connections.mjs").CountingProxy} CountingProxy */
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TOOLCHAIN_DIR = process.env.PICO_TOOLCHAIN_DIR || path.join(homedir(), "pico-toolchain");
-const MICROPYTHON_BIN = path.join(TOOLCHAIN_DIR, "micropython", "ports", "unix", "build-standard", "micropython");
 // Every device's module, wiring plan and definitions come from build/generated_src/ and its site from
 // build/generated_html/<device>/ (SPECIFICATION.md Part L.2); `npm run build:site` writes both.
 /** @param {string} device */
 function micropythonPath(device) {
-    return `build/generated_src:src:digital_twin:ext:build/generated_html/${device}:.frozen`;
+    // The twin layout with the device's own built site in place of the unit tier's shared copy.
+    return withSite(MICROPYPATH, `build/generated_html/${device}`);
 }
 const HOST = "127.0.0.1";
+// Every twin's captive DNS binds the product's port 53: the smoke holds its lock for the whole run (CLAUDE.md).
+const DNS_PORT = 53;
+const LOCK_RUNNER = "scripts/cross_browser_smoke.mjs";
 // Distinct from every other fixed port this repo already uses for a twin/integration run - see
 // tests_js/_live_twin_command.js's own comment for the full enumeration this continues (19481,
 // 19482 already taken by that file and _live_matrix_command.js).
@@ -65,7 +69,8 @@ engine (WebKitGTK, Firefox, Edge, Playwright's Chromium) at two viewports (SPECI
 Environment:
   PICO_TOOLCHAIN_DIR           the MicroPython toolchain (default: ~/pico-toolchain)
   CROSS_BROWSER_TOOLCHAIN_DIR  Firefox and geckodriver (default: ~/cross-browser-toolchain)
-Exit codes: 0 every check passed; 1 a check failed, a twin logged an allocation failure, or nothing ran; 2 a usage error.`;
+Exit codes: 0 every check passed; 1 a check failed, a twin logged an allocation failure, nothing ran, the Unix port is
+not built or port 53 is held; 2 a usage error.`;
 
 // Loaded only after the arguments are read, so --help answers on a checkout with no node_modules.
 /** @type {typeof import("playwright")} */
@@ -158,7 +163,7 @@ function trackProcess(proc, label) {
 function spawnTwin(device, configDir) {
     return trackProcess(
         spawn(
-            MICROPYTHON_BIN,
+            requireInterpreter(),
             [
                 "digital_twin/run_generic_integration.py",
                 "--module",
@@ -611,8 +616,11 @@ async function main() {
         process.exit(2);
     }
     playwright = await import("playwright");
-    if (!existsSync(MICROPYTHON_BIN)) {
-        console.error(`MicroPython Unix port not built at ${MICROPYTHON_BIN} - run 'uv run toolchain/setup_toolchain.py setup' first.`);
+    try {
+        requireInterpreter();
+        acquirePortLock(DNS_PORT, LOCK_RUNNER); // released at this process's exit
+    } catch (err) {
+        console.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
     }
 
