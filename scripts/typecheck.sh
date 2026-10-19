@@ -3,7 +3,7 @@
 # checks; why three: CLAUDE.md "Code quality tooling". Stubs install into typings/ at the exact pins of
 # toolchain/versions.toml [stubs] (SPECIFICATION.md B.15).
 set -euo pipefail
-usage="Usage: scripts/typecheck.sh [PATH ...] - extra paths narrow the main pass for a local run; CI passes exactly its files (tests_scripts/test_lint_type_scopes.py checks)"
+usage="Usage: scripts/typecheck.sh [PATH ...] - extra paths narrow the main pass for a local run; CI passes none, so it checks [tool.mypy]'s files (tests_scripts/test_lint_type_scopes.py checks)"
 for arg in "$@"; do
     case "$arg" in
         -h | --help)
@@ -177,8 +177,8 @@ _record() {
     fi
 }
 
-# Extra args narrow the main pass for a local run; CI passes exactly `files` (tests_scripts/test_lint_type_scopes.py
-# checks).
+# Extra args narrow the main pass for a local run; CI passes none, so it checks `files` as a plain local run does
+# (tests_scripts/test_lint_type_scopes.py checks).
 _record "main pass" "pyproject.toml [tool.mypy]" mypy "$@"
 # mypy resolves each bare machine/network/neopixel name to one file per run, so the twin's own fakes and the board
 # stubs can never both be right in one pass: the twin pass takes its files from its ini.

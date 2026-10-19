@@ -62,7 +62,7 @@ class _ReportRecorder:
 
     def __enter__(self) -> "Self":
         unix_port_unretrieved_report.print = self._print  # type: ignore[attr-defined]
-        unix_port_unretrieved_report.sys = self  # type: ignore[attr-defined, assignment]
+        unix_port_unretrieved_report.sys = self  # type: ignore[assignment, attr-defined]
         return self
 
     def __exit__(self, *exc_info: object) -> None:

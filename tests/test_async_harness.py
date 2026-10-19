@@ -354,7 +354,7 @@ def test_run_from_inside_a_coroutine_is_refused_not_crashed() -> None:
             "run(_outer())\nprint('DONE')\n",
         )
     binary = sys.executable  # type: ignore[attr-defined]  # the Unix port's sys has it; the rp2 board stub does not
-    status = os.system(binary + " " + script + " > " + out + " 2>&1")  # noqa: S605 - no subprocess module here; this file's own scratch paths
+    status = os.system(binary + " " + script + " > " + out + " 2>&1")
     with open(out) as f:
         lines = f.read().split("\n")
     assert status == 0, f"exit status {status}: {lines}"
@@ -379,7 +379,7 @@ def test_a_finished_task_another_awaited_is_passed_over_not_awaited_again() -> N
             "asyncio.run(_main())\n",
         )
     binary = sys.executable  # type: ignore[attr-defined]  # the Unix port's sys has it; the rp2 board stub does not
-    status = os.system(binary + " " + script + " > " + out + " 2>&1")  # noqa: S605 - no subprocess module here; this file's own scratch paths
+    status = os.system(binary + " " + script + " > " + out + " 2>&1")
     with open(out) as f:
         lines = f.read().split("\n")
     assert "CLEARED True True" in lines, lines

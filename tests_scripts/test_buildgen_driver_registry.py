@@ -23,7 +23,7 @@ def src_dir(repo_root: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "driver,module,class_name,kind,needs_setup",
+    ("driver", "module", "class_name", "kind", "needs_setup"),
     [
         ("scd30", "asy_scd30_driver", "SCD30_Reader", "sensor", True),
         ("sgp40", "asy_sgp40_driver", "SGP40_Reader", "sensor", True),
@@ -108,7 +108,7 @@ def test_singleton_service_drivers_excludes_uart_link() -> None:
 
 
 @pytest.mark.parametrize(
-    "driver,expected_name",
+    ("driver", "expected_name"),
     [("scd30", "SCD30"), ("sgp40", "SGP40"), ("bmp3xx", "BMP3XX"), ("isl29125", "ISL29125"), ("fram", "FRAM"), ("neopixel", "NEOPIXEL"), ("notification", "NOTIFY"), ("uart_link", "UART")],
 )
 def test_parse_name_constant_real_drivers(src_dir: Path, driver: str, expected_name: str) -> None:
@@ -157,7 +157,7 @@ _UNREADABLE_FIX = "declare get_data()'s result as a module-level namedtuple with
 
 
 @pytest.mark.parametrize(
-    "driver,wired_fields",
+    ("driver", "wired_fields"),
     [("scd30", {"CO2", "Temp", "Hum"}), ("bmp3xx", {"Temp"}), ("sgp40", {"VOC"})],
 )
 def test_data_fields_reads_every_wired_producers_namedtuple(src_dir: Path, driver: str, wired_fields: "set[str]") -> None:

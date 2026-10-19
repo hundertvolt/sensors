@@ -19,7 +19,7 @@ def src_dir(repo_root: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "toml_field,expected_class",
+    ("toml_field", "expected_class"),
     [
         ("temperature_source", "_DefaultTemperatureSource"),
         ("humidity_source", "_DefaultHumiditySource"),

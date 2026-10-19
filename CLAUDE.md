@@ -9,7 +9,8 @@ list included) — that section is the single place the list is kept, not duplic
 
 Full detail (folder contents, the "read the PDF first" rule, what to do when one's missing): see
 SPECIFICATION.md Part A.6. Short version: `datasheets/` holds real datasheet PDFs for the chips
-this codebase drives — read them first for any hardware-interaction claim, and say so explicitly
+this codebase drives, as the private submodule `hundertvolt/datasheets` (`git submodule update
+--init datasheets`) — read them first for any hardware-interaction claim, and say so explicitly
 if one you need isn't there rather than falling back to web search/training memory.
 
 ## Platform target
@@ -504,7 +505,7 @@ information):
   Applied across `src/` in one pass (project owner's direction, 2026-09-18) and repo-wide since:
   **every scope measures zero over-cap blocks, header and inline alike — Python, JS, CSS, since
   2026-09-22 `scripts/`'s shell, and since 2026-09-24 the config files too** (`pyproject.toml`,
-  `ci.yml` and the composite action, `zizmor.yml`, the TOMLs and INIs, `eslint.config.js`). Keep new code to this bar. **How a block is counted**, since a
+  `ci.yml` and the composite actions, `zizmor.yml`, the TOMLs and INIs, `eslint.config.js`, the JSONC `tsconfig*.json`). Keep new code to this bar. **How a block is counted**, since a
   naive line count measures this tree anywhere from 0 to 458: prose lines only; a bare `#` line, a
   blank line inside a docstring and a `# ----` divider rule (four or more dashes) separate paragraphs
   rather than joining them, while a rule of `=`, `~`, `*` or `#` is prose; a docstring's own lone
@@ -513,8 +514,9 @@ information):
   and a trailing comment annotates its own code line, so it never starts a block.
   `tests_scripts/test_comment_block_cap.py` gates exactly that at zero for Python and shell in all
   eight scopes and the generated device modules, and checks every file's header is there: a module
-  docstring in Python, a comment after the shebang in shell, a leading comment in JS, CSS, YAML, TOML
-  and INI, a comment after the doctype in `html/index.html`. JS (JSDoc `@param`/`@returns`
+  docstring in Python (ruff's D100/D104 fail a module or package without one too), a comment after the
+  shebang in shell, a leading comment in JS, CSS, YAML, TOML and INI, a comment after the doctype in
+  `html/index.html`. JS (JSDoc `@param`/`@returns`
   continuation lines not being commentary), CSS and the config files keep their content cap
   review-enforced (a titled `# ---- X ----` banner counts as a prose line; only a bare rule is
   punctuation).
@@ -554,8 +556,8 @@ information):
   unpinned upgrade into a hard CI failure on a rule nobody chose.
 - **Wired into CI** via `.github/workflows/ci.yml` (GitHub Actions). **Each tool is its own job/
   stage**, so a failure names the tool directly instead of a shared "lint" job going red:
-  `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, plus the test/build
-  stages (`unit-tests`, `unit-tests-gc-threshold`, `unit-tests-coverage`, `digital-twin-e2e`,
+  `lint-and-typecheck` (ruff + mypy), `shellcheck`, `actionlint`, `zizmor`, the `devices` job that derives the device
+  matrices from `devices/*.toml`, plus the test/build stages (`unit-tests`, `unit-tests-gc-threshold`, `unit-tests-coverage`, `digital-twin-e2e`,
   `firmware-build-verify`) and the
   web tier. Note `unit-tests` keeps `needs: lint-and-typecheck` (the standing hang backstop below);
   the other lint stages run in parallel and gate nothing, so one of them failing no longer silently
@@ -567,8 +569,10 @@ information):
   `continue-on-error`. The three exit codes and what CI does with each: SPECIFICATION.md Part E.5.3.
 - **`zizmor` audits the GitHub Actions workflows themselves** — `GITHUB_TOKEN` scope, checkout
   credential persistence, action pinning: the one part of the supply chain ruff/mypy can't see.
-  Policy config is `.github/zizmor.yml` (only `unpinned-uses` is configured — `actions/*` may be
-  tag-pinned, everything third-party must be SHA-pinned; every other audit runs at its default).
+  Policy config is `.github/zizmor.yml`: `unpinned-uses` has a policy — `actions/*` may be
+  tag-pinned, everything third-party is pinned to a commit SHA (never a tag object) with an
+  exact-version comment — and `self-repository` is disabled (below); every other audit runs at its
+  default.
   Always invoked `--offline`, which skips the two audits needing the GitHub API, so it behaves
   identically in CI, on a dev box, and in the clean-chroot recipe below. **`self-repository` is
   deliberately `disable: true`** — it wants `uses: $/.github/...` (GitHub's July-2026 syntax) and
@@ -640,8 +644,10 @@ information):
   the MicroPython-stub-replaced one `custom_typeshed_dir` installs for `src/` (`tomllib` alone
   doesn't exist in that stub subset). Same "two resolution universes can't coexist in one run"
   isolation `digital_twin/typecheck.ini` already establishes for its own, different reason.
-  `tests_scripts/`, `scripts/` and `toolchain/` carry the same `per-file-ignores` block `tests/`
-  does.
+  `pyproject.toml`'s per-file block is the list, each entry with its reason: the test suites
+  (`tests/`, `tests_scripts/`, `tests_hardware/`) share the test rules, MicroPython-run code and host
+  code each carry the rules whose reasons hold only there (SPECIFICATION.md Part D.6 names both
+  groups), and `tests_scripts/test_ruff_exemptions_live.py` fails on an entry that no longer fires.
 - **`scripts/test.sh --coverage` reports `src/` line coverage; it never gates anything** — no
   threshold is enforced anywhere, by design (confirmed directly, not a placeholder for a future
   gate). Since `coverage.py` only runs under CPython while `src/` only ever runs
@@ -674,38 +680,34 @@ information):
   passed (it did, on run `34755468619`). Its coverage *report* never gates; its *test result* does
   (Part E.5.3). A markdown summary goes to that
   run's GitHub Actions Job Summary (not the repo's main page), the HTML report is a downloadable
-  build artifact (GitHub doesn't render it inline), and the Cobertura XML uploads to Codecov —
-  which needs this repo registered at codecov.io plus a token/OIDC setup that hasn't happened yet,
-  so that upload currently no-ops. Locally, `--coverage` only prints the output paths; nothing
+  build artifact (GitHub doesn't render it inline); no Cobertura XML is written and nothing uploads
+  to Codecov (SPECIFICATION.md Part E.5). Locally, `--coverage` only prints the output paths; nothing
   opens automatically.
-- **A third party's momentary outage must never read as a red test result.** `scripts/test.sh`'s
-  pytest tier shells out to `uv run`, and that implicitly builds the **whole** `dev` group first —
-  ruff, mypy, shellcheck, zizmor and `actionlint-py` included, none of which `tests_scripts/` needs.
-  `actionlint-py` ships no wheel and downloads its binary from a release URL inside its own build
-  backend, so one bad response there fails the entire `unit-tests` lane on a tree where nothing is
-  wrong. Not hypothetical: `error: HTTP Error 500: Internal Server Error` on 2026-09-13, with
-  `lint-and-typecheck`'s identical `uv sync` succeeding 27 seconds earlier in the same workflow run,
-  and the re-run green with no code change. `ci.yml`'s `unit-tests` job therefore does its own
-  `uv sync` with three attempts **before** `scripts/test.sh`, which then finds the environment
-  current and rebuilds nothing. Same reasoning as the `if: !cancelled()` edge below — a lint tool's
-  problem must not erase the answer the tests give — applied to the dependency build rather than to
-  the job graph. Don't "simplify" the retry away (owner, 2026-09-26); and if a test lane ever goes
-  red with no test named in the summary, read the `uv`/build output before the test output.
+- **A third party's momentary outage must never read as a red test result** (owner, 2026-09-26).
+  `uv run` builds the whole `dev` group first, and `actionlint-py` downloads its binary inside its
+  own build backend, so one bad response there would fail a lane on a healthy tree. Every CI job
+  that syncs runs `scripts/uv_sync_retried.sh` (`uv sync --locked`, three attempts) first — in
+  `unit-tests` as the toolchain action's first step, ahead of `scripts/test.sh` — every hardware
+  runner runs it before its hardware step, and `setup_toolchain.py`'s `run_retried()` matches it.
+  Don't simplify the retry away; a test lane red with no test named in its summary is read from the
+  `uv`/build output first.
 - **Standing backstop: hanging tests are never allowed.** `scripts/test.sh`/`ci.yml` enforce a
   per-file `timeout`+retry, `stdbuf -oL -eL` line buffering, and `needs: lint-and-typecheck` job
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
   hang is fixed. The per-file `timeout` sends SIGINT first, which microtest turns into an `ABORT`
   line naming the hung test with its traceback; `--kill-after` stays the hard stop, and a file it
   kills past its timeout (exit 137) is retried like a timeout (124). **The `needs:` edge is for
-  SEQUENCING only — `unit-tests` and `firmware-build-verify` carry `if: ${{ !cancelled() }}` so they
-  still run when the job they follow fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also
+  SEQUENCING only — `unit-tests`, `unit-tests-gc-threshold`, `firmware-build-verify` and
+  `web-unit-tests` carry `if: ${{ !cancelled() }}` so they still run when the job they follow
+  fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also
   implies success-gating, which was never chosen here (that job's own comment says the sequencing
   "isn't required" for the hang) and is actively harmful: a red `lint-and-typecheck` silently SKIPS
   every Python test lane. That is not hypothetical — it is why `unit-tests`, `digital-twin-e2e` and
   `firmware-build-verify` had never once run on the branch that introduced `select = ["ALL"]`, and
   it concealed that for the branch's whole life. Keep the sequencing; never restore the gating.
-  `digital-twin-e2e` is the exception — its `needs: unit-tests` comment states fail-fast as the
-  actual intent, so it stays gated.
+  `digital-twin-e2e`, `unit-tests-coverage`, `web-put-matrix`, `web-coverage` and
+  `web-cross-browser-smoke` stay success-gated, each job's comment stating why;
+  `tests_scripts/test_ci_workflow.py` fails on an edge that has neither.
 - **Known hang cause, fixed**: a real `select.poll()` asks each registered stream object for a file
   descriptor (`MP_STREAM_GET_FILENO`) and, on any non-error answer, polls that descriptor instead of
   the object's own `ioctl()` (`extmod/modselect.c`, SPECIFICATION.md F.7). `tests/machine.py`'s fake
@@ -918,6 +920,8 @@ information):
   surfaced 174 `CPY001` findings). **After any merge that touches `uv.lock`, run `uv sync` and
   check the installed `ruff --version`/`mypy --version` against `pyproject.toml`'s pins**, rather
   than trusting `uv lock --check`; re-run `uv lock` to rewrite the file if they disagree.
+  `tests_scripts/test_tool_pins.py` now fails on exactly that disagreement, each pinned tool's
+  manifest specifier against its resolved version.
 - **MicroPython stubs**: `micropython-rp2-rpi_pico_w-stubs` (PyPI, board/version-specific, pulls in
   `micropython-stdlib-stubs`). Published by the same project as
   [`josverl/micropython-stubs`](https://github.com/josverl/micropython-stubs) — PyPI is just its
@@ -1054,7 +1058,8 @@ else
 fi
 
 chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates python3 python3-venv python3-pip sudo libcap2-bin"
-chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv"
+# uv as pyproject.toml's [tool.uv] required-version names it: any other uv refuses to sync.
+chroot "$CHROOT" /bin/bash -c "source /root/proxy-env.sh && pip install --break-system-packages uv==0.8.17"
 # libcap2-bin is missing for the same reason: scripts/test.sh grants CAP_NET_BIND_SERVICE to the
 # Unix-port binary via setcap (the real port-53 DNS-server test needs it) and dies with
 # "setcap: command not found" without it - after having already built the whole toolchain, so the
@@ -1169,6 +1174,9 @@ what a passing run must show and Part B.7 ("Evidence this actually works") for w
   2026-07-13, `dddaafa`); don't re-ask.
 - **Always create a pull request with a meaningful description** when finishing work on a branch —
   summarize what changed and why, not just a file list.
+- **A branch counts green only when CI ran on its head commit** (agent, 2026-09-18): read the run of
+  the head commit, not the latest finished one — a run cancelled by a later push says nothing, and
+  the web filter re-compares from the last commit CI passed.
 - **Automatically subscribe to the pull request's activity** (review comments, CI results) right
   after opening it, so review feedback and CI failures get picked up without being asked again.
 

@@ -328,7 +328,7 @@ class _ReportTap:
 
     def __enter__(self) -> "_ReportTap":
         unix_port_unretrieved_report.print = self._print  # type: ignore[attr-defined]
-        unix_port_unretrieved_report.sys = self  # type: ignore[attr-defined, assignment]
+        unix_port_unretrieved_report.sys = self  # type: ignore[assignment, attr-defined]
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -472,7 +472,7 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
 
         sysfunct._start_task = _tracking_start_task  # type: ignore[method-assign]
         fast = _FastSupervisorAsyncio()
-        asy_system_service.asyncio = fast  # type: ignore[attr-defined, assignment]
+        asy_system_service.asyncio = fast  # type: ignore[assignment, attr-defined]
         supervisor: asyncio.Task[None] | None = None
         try:
             await sysfunct.start_tasks(task_starters)

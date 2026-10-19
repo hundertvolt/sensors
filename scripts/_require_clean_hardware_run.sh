@@ -63,7 +63,12 @@ fi
 
 archive_name="${runner,,}"
 archive_name="${archive_name//[^a-z0-9_]/_}"
-# --no-sync on every uv call: an implicit sync would put a third-party fetch inside a hardware run.
+# One retried sync before the run, then --no-sync on every uv call: an implicit sync would put a third-party fetch
+# inside a hardware run.
+if ! scripts/uv_sync_retried.sh; then
+    echo "error: the retried uv sync failed - its output above names the cause; nothing reached the board" >&2
+    exit 1
+fi
 if ! EVIDENCE_DIR="$(uv run --no-sync scripts/_archive_evidence.py --runner "$archive_name" --new-dir)" || [ ! -d "$EVIDENCE_DIR" ]; then
     echo "error: could not create the evidence directory under build/archive/$archive_name/" >&2
     exit 1

@@ -100,6 +100,32 @@ def _assignments(tree: ast.Module) -> "dict[str, list[ast.expr]]":
     return found
 
 
+def _called_name(call: ast.Call) -> "str | None":
+    func = call.func
+    return func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None
+
+
+def _file_name(node: "ast.expr | None", consts: "dict[str, ast.expr]") -> "str | None":
+    # The config file's base name from a literal path or one built as production builds it - cfg_path plus a literal
+    # tail, or config_filename(<dir>, <name>) (src/asy_config_manager.py) - so neither form escapes the check.
+    if node is None:
+        return None
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _file_name(node.right, consts)
+    if isinstance(node, ast.Call) and _called_name(node) == "config_filename" and len(node.args) == 2:
+        name = _literal(node.args[1], consts)
+        return f"config_{name}.cfg" if isinstance(name, str) else None
+    value = _literal(node, consts)
+    return value.rsplit("/", 1)[-1] if isinstance(value, str) else None
+
+
+def _literal(node: ast.expr, consts: "dict[str, ast.expr]") -> object:
+    try:
+        return _eval_literal(node, consts)
+    except (TypeError, ValueError):
+        return None  # computed at run time: nothing this check can name
+
+
 @cache
 def _parse(source: str) -> ast.Module:
     # One parse per distinct script text: several checks read the same scripts, a bite's rewritten copy parses afresh.
@@ -112,16 +138,12 @@ def findings(scripts: Path, repo_root: Path = REPO_ROOT) -> "list[str]":
         tree = _parse(path.read_text(encoding="utf-8"))
         consts, assigned = _module_consts(tree), _assignments(tree)
         for call in (n for n in ast.walk(tree) if isinstance(n, ast.Call)):
-            func = call.func
-            if (func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else None) != "ConfigManager":
+            if _called_name(call) != "ConfigManager":
                 continue
             where = f"{path.relative_to(scripts)}:{call.lineno}"
             path_node, schema_node = _argument(call, 0, "filename"), _argument(call, 1, "cfg_vals")
-            try:
-                filename = _eval_literal(path_node, consts) if path_node is not None else None
-            except (TypeError, ValueError):
-                filename = None  # a computed path: not a production file this check can name
-            match = _PRODUCTION_RE.match(filename) if isinstance(filename, str) else None
+            filename = _file_name(path_node, consts)
+            match = _PRODUCTION_RE.match(filename) if filename is not None else None
             if match is None:
                 continue
             if schema_node is not None and _is_rendered(schema_node, assigned):
@@ -201,3 +223,14 @@ def test_the_rendered_schema_as_field_tuples_counts_but_a_filtered_one_does_not(
     for body, flagged in ((whole, False), (filtered, True)):
         _write(tmp_path, "zz_probe.py", f'import asy_config_manager as cm\n{body}cm.ConfigManager("config_SYSTEM.cfg", S, "SYSTEM")\n')
         assert any(f.startswith("zz_probe.py") for f in findings(tmp_path)) is flagged, body
+
+
+@pytest.mark.parametrize(
+    "path_expr",
+    ['cfg_path + "config_WIFI.cfg"', 'cm.config_filename(cfg_path, "WIFI")', 'config_filename("", _NAME)', '"/flash/config_WIFI.cfg"'],
+)
+def test_a_computed_production_path_is_checked_too(tmp_path: Path, path_expr: str) -> None:
+    # A path built the way production builds it names the same file, so it must not escape the check.
+    _write(tmp_path, "zz_probe.py", f'import asy_config_manager as cm\n_NAME = "WIFI"\n_S = (("SSID", "str", "", 0, 32, None),)\ncm.ConfigManager({path_expr}, _S, "WIFI")\n')
+    result = findings(tmp_path)
+    assert len(result) == 1 and result[0].startswith("zz_probe.py:4: config_WIFI.cfg") and "'Hostname'" in result[0], result

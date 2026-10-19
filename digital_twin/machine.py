@@ -172,7 +172,7 @@ class Pin:
     _initialized: bool
     id: int
 
-    def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:  # noqa: ARG002 - __new__ resolved the id
+    def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:
         if not self._initialized:
             self.mode: int | None = None
             self.pull: int | None = None
@@ -1041,7 +1041,7 @@ class UART(io.IOBase):
 
     def __init__(
         self,
-        id: int,  # noqa: ARG002 - __new__ resolved the id
+        id: int,
         baudrate: int = -1,
         bits: int = -1,
         parity: "int | None" = -1,

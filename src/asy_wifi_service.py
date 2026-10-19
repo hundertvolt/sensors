@@ -371,7 +371,7 @@ class WifiService(SensorReaderConfig):
         values = await self.cfgmgr.get_str_values(schema)
         if values is not None:
             fields = schema_dict(self._cfg_schema)
-            for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
+            for field, value in zip(schema, values):
                 used = self._value_in_use(fields.get(field[0], field), value)
                 if used != value:
                     overlay[field[0]] = used
@@ -648,7 +648,7 @@ class WifiService(SensorReaderConfig):
         # instead: a config value is never a hardware failure, so it must not feed _hw_op_failed.
         fields = schema_dict(self._cfg_schema)
         safe = []
-        for field, value in zip(schema, values):  # noqa: B905 - MicroPython zip() rejects strict=
+        for field, value in zip(schema, values):
             live = fields.get(field[0], field)
             used = self._value_in_use(live, value)
             if used != value:

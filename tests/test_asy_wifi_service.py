@@ -271,7 +271,7 @@ def _joins(client: WifiService) -> None:
         record(ssid, pw)
         radio._status, radio._connected = network.STAT_GOT_IP, True
 
-    radio.connect = connect  # type: ignore[method-assign, assignment]  # the fake radio joins as a router in range lets it
+    radio.connect = connect  # type: ignore[assignment, method-assign]  # the fake radio joins as a router in range lets it
 
 
 async def _fire_period(client: WifiService) -> None:
@@ -2501,7 +2501,7 @@ def test_start_hotspot_missing_config_logs_in_both_layers() -> None:
     async def fake_select(_mode: int) -> None:
         return None  # skips the real mode-switch dance (and its real asyncio.sleep()s) entirely
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
     run(client._start_hotspot())
     assert client._hotspot_started_once is True
     counter = run(client.get_error_counter())
@@ -2753,7 +2753,7 @@ class _RaisingConnectWLAN:
             wlan.raise_on["connect"] = OSError("simulated join command failure")
             return wlan
 
-        network.WLAN = build  # type: ignore[misc, assignment]  # a module attribute swap, restored on exit
+        network.WLAN = build  # type: ignore[assignment, misc]  # a module attribute swap, restored on exit
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -2987,7 +2987,7 @@ def test_the_wifi_service_never_scans() -> None:
         scans.append(args)
         return []
 
-    network.WLAN.scan = scan  # type: ignore[method-assign, assignment]  # recorded, so no swallowing except hides a call
+    network.WLAN.scan = scan  # type: ignore[assignment, method-assign]  # recorded, so no swallowing except hides a call
     try:
         client = _silent_client()
         _wlan(client)._status = network.STAT_NO_AP_FOUND
@@ -3809,7 +3809,7 @@ class _CountedWLAN:
             built.append(if_id)
             return real(if_id)
 
-        network.WLAN = counted  # type: ignore[misc, assignment]  # a module attribute swap, restored on exit
+        network.WLAN = counted  # type: ignore[assignment, misc]  # a module attribute swap, restored on exit
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -4043,7 +4043,7 @@ def test_integration_sta_connect_succeeds_and_propagates_to_get_data() -> None:
         _wlan(client)._status = network.STAT_GOT_IP
         _wlan(client)._connected = True
 
-    _wlan(client).connect = fake_connect  # type: ignore[method-assign, assignment]  # the fake radio joins at once
+    _wlan(client).connect = fake_connect  # type: ignore[assignment, method-assign]  # the fake radio joins at once
 
     async def scenario() -> "tuple[bool, bool | None]":
         connect_task = asyncio.create_task(client._connect_loop())
@@ -4101,7 +4101,7 @@ class _HotspotRadio:
 
     def __enter__(self) -> "Self":
         self._real = network.WLAN
-        network.WLAN = self._build  # type: ignore[misc, assignment]  # a module attribute swap, restored on exit
+        network.WLAN = self._build  # type: ignore[assignment, misc]  # a module attribute swap, restored on exit
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -4134,7 +4134,7 @@ class _HotspotRadio:
             if self.router_up:
                 wlan._status, wlan._connected = network.STAT_GOT_IP, True
 
-        wlan.connect = connect  # type: ignore[method-assign, assignment]  # joins once the router is up
+        wlan.connect = connect  # type: ignore[assignment, method-assign]  # joins once the router is up
         return wlan
 
     def joins(self, index: int) -> "list[tuple[str | None, str | None]]":
@@ -4643,7 +4643,7 @@ def test_start_hotspot_valid_config_activates_the_ap() -> None:
     async def fake_select(_mode: int) -> None:
         return None  # skips the real mode-switch dance (and its real asyncio.sleep()s) entirely
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def scenario() -> None:
         await client._start_hotspot()
@@ -4668,7 +4668,7 @@ def test_start_hotspot_uses_the_configured_hotspot_password_not_the_default() ->
     async def fake_select(_mode: int) -> None:
         return None
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def scenario() -> None:
         await client._start_hotspot()
@@ -4693,7 +4693,7 @@ def test_start_hotspot_does_not_leak_a_dns_server_task_when_called_again_while_a
     async def fake_select(_mode: int) -> None:
         return None
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def scenario() -> None:
         # Mirrors _run_hotspot_mode() calling _start_hotspot() again on a later loop iteration
@@ -4721,7 +4721,7 @@ def test_start_hotspot_starts_a_fresh_dns_server_task_if_the_previous_one_alread
     async def fake_select(_mode: int) -> None:
         return None
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def scenario() -> None:
         await client._start_hotspot()
@@ -4984,7 +4984,7 @@ def test_a_stored_over_long_hotspot_value_starts_the_hotspot_on_the_default() ->
     async def fake_select(_mode: int) -> None:
         return None
 
-    client._select_wifi_mode = fake_select  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    client._select_wifi_mode = fake_select  # type: ignore[assignment, method-assign]  # mocked by reassignment
     assert (network.country(), network.hostname()) == ("XX", "PicoW")  # the power-on seeds, so the check can fail
     run(client._start_hotspot())
     assert client._hw_op_failed is False

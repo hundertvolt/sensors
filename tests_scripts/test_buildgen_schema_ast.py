@@ -100,7 +100,7 @@ def test_extract_field_schemas_an_unreadable_schema_constant_fails_the_build(tmp
 
 
 @pytest.mark.parametrize(
-    "source,why",
+    ("source", "why"),
     [
         pytest.param('_VAL_BAD = const((("X", "int", 1, None, None),))\n', "5 items", id="five-item-record"),
         pytest.param('_VAL_BAD = const(((1, "int", 1, None, None, None),))\n', "name", id="non-str-name"),

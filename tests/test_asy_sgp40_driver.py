@@ -292,7 +292,7 @@ def test_reset_tolerates_nak_at_general_call_address() -> None:
     attempts: list[tuple[int, bytes]] = []
     real_writeto = fake_bus.writeto
 
-    def recording(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def recording(address: int, buf: object, stop: bool = True) -> int:
         attempts.append((address, bytes(buf)))  # type: ignore[call-overload]  # the bytes-like a write takes
         return real_writeto(address, buf, stop)
 
@@ -1375,7 +1375,7 @@ def test_a_refused_backup_chunk_is_a_console_line_only() -> None:
     def record(self: asy_print_log.PrintLogHistory, *args: object, sep: str = " ", end: str = "\n") -> None:
         lines.append((self.name,) + args)
 
-    asy_print_log.PrintLogHistory.err = record  # type: ignore[method-assign,assignment]  # restored below
+    asy_print_log.PrintLogHistory.err = record  # type: ignore[assignment, method-assign]  # restored below
     try:
         reader = SGP40_Reader(
             _make_i2c(),

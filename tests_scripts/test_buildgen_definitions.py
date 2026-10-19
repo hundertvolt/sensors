@@ -1478,7 +1478,7 @@ def test_cli_never_leaves_a_partial_output(tmp_path: Path, monkeypatch: pytest.M
     def refuse(_src: object, _dst: object) -> None:
         raise PermissionError(13, "injected for the rename")
 
-    monkeypatch.setattr("buildgen.definitions.os.replace", refuse)
+    monkeypatch.setattr("os.replace", refuse)
     assert main([str(device_toml(DEVICE_NAMES[0])), "--out", str(out)]) == 1
     assert "injected for the rename" in _one_line_error(capsys)
     assert out.read_text(encoding="utf-8") == "old"

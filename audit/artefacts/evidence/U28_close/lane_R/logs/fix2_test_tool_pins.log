@@ -1,0 +1,26 @@
+F.F...........                                                           [100%]
+=================================== FAILURES ===================================
+____________________ test_every_dev_tool_is_pinned_exactly _____________________
+
+    def test_every_dev_tool_is_pinned_exactly() -> None:
+        loose = [entry for entry in _group_entries() if _PIN.match(entry) is None]
+>       assert not loose, f"pyproject.toml's dependency groups must pin every tool as name==version, so no `uv sync` brings a rule or check nobody chose: {loose}"
+E       AssertionError: pyproject.toml's dependency groups must pin every tool as name==version, so no `uv sync` brings a rule or check nobody chose: ['pytest', 'mpremote']
+E       assert not ['pytest', 'mpremote']
+
+tests_scripts/test_tool_pins.py:40: AssertionError
+______________ test_uv_itself_is_pinned_exactly_and_nowhere_else _______________
+
+    def test_uv_itself_is_pinned_exactly_and_nowhere_else() -> None:
+        with (REPO_ROOT / "pyproject.toml").open("rb") as f:
+            required = tomllib.load(f).get("tool", {}).get("uv", {}).get("required-version")
+>       assert isinstance(required, str), "pyproject.toml's [tool.uv] has no required-version: any uv may sync this tree"
+E       AssertionError: pyproject.toml's [tool.uv] has no required-version: any uv may sync this tree
+E       assert False
+E        +  where False = isinstance(None, str)
+
+tests_scripts/test_tool_pins.py:64: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tool_pins.py::test_every_dev_tool_is_pinned_exactly
+FAILED tests_scripts/test_tool_pins.py::test_uv_itself_is_pinned_exactly_and_nowhere_else
+2 failed, 12 passed in 0.08s

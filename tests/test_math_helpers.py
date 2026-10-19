@@ -464,7 +464,7 @@ def test_rgb_to_xyz_black_is_zero() -> None:
     assert approx(z_val, 0.0)
 
 
-def test_rgb_to_xyz_pure_red_matches_the_sRGB_matrix_column() -> None:
+def test_rgb_to_xyz_pure_red_matches_the_srgb_matrix_column() -> None:
     result = mh.rgb_to_xyz(1.0, 0.0, 0.0)
     assert result is not None
     x_val, y_val, z_val = result

@@ -1,34 +1,15 @@
 {
+    // Browser-context pass: js/**/*.js, tests_js/**/*.js and the project's own command declarations, except the
+    // Node-context files tsconfig.node.json checks.
+    "extends": "./tsconfig.base.json",
     "compilerOptions": {
-        "target": "ES2022",
-        "module": "ES2022",
-        "moduleResolution": "bundler",
         "lib": ["ES2022", "DOM"],
         // import.meta.glob (tests_js/_generated_definitions.js) and ?raw imports need Vite's client types;
         // naming them also keeps Node's ambient types out of this browser-context pass.
-        "types": ["vite/client"],
-        "allowJs": true,
-        "checkJs": true,
-        "noEmit": true,
-        "strict": true,
-        // Everything TypeScript offers beyond `strict`, mirroring pyproject.toml's mypy settings; each held before it was
-        // switched on, and the two that needed real fixes (exactOptionalPropertyTypes, noUncheckedIndexedAccess) were fixed
-        // in js/, not left off. skipLibCheck stays true: the only findings it hides are in third-party .d.ts files.
-        "noUncheckedIndexedAccess": true,
-        "exactOptionalPropertyTypes": true,
-        "noImplicitOverride": true,
-        "noImplicitReturns": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true,
-        "allowUnreachableCode": false,
-        "allowUnusedLabels": false,
-        "verbatimModuleSyntax": true,
-        "skipLibCheck": true
+        "types": ["vite/client"]
     },
-    "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/**/*.d.ts"],
-    // The Node-context tests_js files (Vitest Commands API modules and their Node-only helpers, the summary reporter) are checked by
-    // tsconfig.node.json instead, so this browser-context pass never sees Node's ambient globals as if a
-    // browser had them - the same two-environment split as digital_twin/typecheck.ini (SPECIFICATION.md H.8).
+    "include": ["js/**/*.js", "tests_js/**/*.js", "tests_js/vitest-commands.ts"],
+    // The Node-context files run in Node (Vitest's Commands API, their helpers, the summary reporter): their Node globals
+    // must not leak into this browser program, the digital_twin/typecheck.ini split's reason (SPECIFICATION.md H.8).
     "exclude": ["tests_js/_live_twin_command.js", "tests_js/_live_matrix_command.js", "tests_js/_lint_command.js", "tests_js/_summary_reporter.js", "tests_js/_port_lock.js", "tests_js/_twin_process.js"]
 }

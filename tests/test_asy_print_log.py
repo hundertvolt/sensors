@@ -513,7 +513,7 @@ class _RaisingDeque:
 
 def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> None:
     original_deque = print_log_module.deque
-    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
+    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment, misc]
     try:
         with record_prints() as rec:
             hist = PrintLogHistory(history_length=10, level=1, name="H")
@@ -530,7 +530,7 @@ def test_a_failed_history_allocation_prints_its_text_and_keeps_a_zero_ring() -> 
 def test_a_failed_history_allocation_prints_its_text_with_logging_off() -> None:
     # The logging layer cannot log into itself: its own caught allocation failure is an ungated console line.
     original_deque = print_log_module.deque
-    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment,misc]
+    print_log_module.deque = _RaisingDeque()  # type: ignore[assignment, misc]
     try:
         with record_prints() as rec:
             hist = PrintLogHistory(history_length=10, name="H")

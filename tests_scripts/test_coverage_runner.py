@@ -32,9 +32,11 @@ def _grew(completed: "subprocess.CompletedProcess[str]") -> list[str]:
 def _outcome_of(fixture: "Callable[[Path], Path]", argument: Path) -> BaseException:
     # Caught as BaseException: a pytest.skip() escaping here would otherwise skip this very test,
     # turning the check for "never a skip" into one more silent skip.
-    with pytest.raises(BaseException) as caught:
+    try:
         fixture(argument)
-    return caught.value
+    except BaseException as exc:
+        return exc
+    pytest.fail(f"{argument} raised nothing")
 
 
 def _probe(tmp_path: Path, body: str) -> Path:

@@ -1313,7 +1313,7 @@ def test_configmanager_non_string_field_name_quirk() -> None:
         assert mgr.valid is True
         with open(path) as f:
             assert json.load(f) == {"123": 5}
-        assert run(mgr.get_dict([123])) == {123: 5}  # type: ignore[list-item, comparison-overlap]  # matches _cache's own int key
+        assert run(mgr.get_dict([123])) == {123: 5}  # type: ignore[comparison-overlap, list-item]  # matches _cache's own int key
         assert run(mgr.get_dict(["123"])) is None  # the on-disk string key was never the cache's key
     finally:
         _remove(path)
@@ -2590,7 +2590,7 @@ def _log_entry(mgr: "cm.ConfigManager") -> "tuple[int, list[int]]":
     entry = run(mgr.pr.get_log())[mgr.name]
     nums, types = entry["ErrNum"], entry["ErrType"]
     assert isinstance(nums, list) and isinstance(types, list)
-    errs = [int(n) for n, t in zip(nums, types) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
+    errs = [int(n) for n, t in zip(nums, types) if t == "E"]
     return len(errs), errs
 
 

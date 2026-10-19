@@ -44,7 +44,7 @@ def _catalogued_codes() -> list[int]:
 def _entries(reader: "SensorReaderConfig") -> "list[tuple[int, str]]":
     # The reader's own history: a raising hook is persisted on the logger of the module it ran against.
     log = run(reader.pr.get_log())[reader.pr.name]
-    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return [(n, t) for n, t in zip(log["ErrNum"], log["ErrType"]) if t != "N"]
 
 
 def _make_reader(name: str, cfg_vals: "cm.ConfigSchema" = _TEST_SCHEMA_SI) -> "tuple[SensorReaderConfig, str]":

@@ -1760,7 +1760,7 @@ def test_a_failed_reapply_after_a_chip_reset_fails_the_cycle() -> None:
     bus = fake(i2c)
     real_writeto = bus.writeto
 
-    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:
         if stop and bytes(buf)[:1] == bytes([_REGISTER_OSR]):  # type: ignore[call-overload]  # the write half only
             raise OSError(errno_mod.EIO, "no ACK on write")
         return real_writeto(address, buf, stop)
@@ -1991,7 +1991,7 @@ def test_set_dict_cfg_pressure_oversampling_write_fails_but_getter_recovers_real
     real_writeto = bus.writeto
     pending = [True]
 
-    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def fail_the_osr_write(address: int, buf: object, stop: bool = True) -> int:
         if pending[0] and stop and bytes(buf)[:1] == bytes([_REGISTER_OSR]):  # type: ignore[call-overload]
             pending[0] = False
             raise OSError(errno_mod.EIO, "no ACK on write")

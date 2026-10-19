@@ -135,7 +135,7 @@ def _make_comm(**kwargs: "Any") -> UARTComm:
     DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     driver._uart.rx_rate = float("inf")  # type: ignore[union-attr]  # fed bytes land at once, not on the fake clock
-    driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart, mask=select.POLLOUT)  # type: ignore[arg-type, assignment]
     params: dict[str, Any] = dict(kwargs)
     fields = {n: params.pop(n) for n in ("payload_size", "timeout", "chunk_bytes", "max_transfer_bytes") if n in params}
     if "limits" not in params:
@@ -165,7 +165,7 @@ def test_payload_size_boundaries_are_accepted_and_refused() -> None:
     # SIZE/CHUNKS are single bytes and a zero-width payload cannot carry the command id.
     for good in (1, 255):
         roomy = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=2048, rx_ring=2048)
-        roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+        roomy.poller = LinkPoller(roomy._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
         comm = _make_comm(payload_size=good, uart=roomy)
         assert comm._init_errno == 0, f"payload_size {good} should be legal"
     for bad in (0, 256, -1):
@@ -191,7 +191,7 @@ def test_timeout_below_the_gc_pause_floor_is_refused() -> None:
     # Below this a routine collection pause reads as a link fault, and the link resyncs
     # continuously under memory pressure for no reason.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=9, poll_idle_ms=9)  # floor 2 x 9 + 9 + 21 = 48
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=30))._init_errno == code("E", "UART_TIMEOUT_PARAM")
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=200))._init_errno == 0
 
@@ -202,7 +202,7 @@ def test_an_idle_poll_rate_the_reply_budget_cannot_cover_is_refused() -> None:
     # within a 1s budget, so a perfectly sound link fails every request and looks dead.
     def bus(idle_ms: int) -> UART:
         driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=2, poll_idle_ms=idle_ms, rxbuf=1024)
-        driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+        driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
         return driver
 
     assert UARTComm(bus(5000), ROLE_INITIATOR, limits=transfer_limits(timeout=1000))._init_errno != 0
@@ -228,7 +228,7 @@ def test_a_none_bus_is_recorded_distinctly_and_never_raises() -> None:
 def test_construction_performs_no_bus_call() -> None:
     # An allocate-only constructor, so construction can never hang outside any supervisor.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     before = len(driver._uart.log)  # type: ignore[union-attr]
     UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits())
     assert len(driver._uart.log) == before  # type: ignore[union-attr]
@@ -239,11 +239,11 @@ def test_maximum_payload_size_against_the_default_rxbuf_is_refused() -> None:
     # legal payload_size overruns it outright - a frame that never completes, indistinguishable
     # from a link fault unless it is caught at construction.
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)  # rxbuf defaults to 256
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     refused = UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(payload_size=255))
     assert refused._init_errno != 0
     roomy = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, rx_ring=2048)  # the ring sized for a 260-byte frame at a 100 ms timeout
-    roomy.poller = LinkPoller(roomy._uart)  # type: ignore[assignment,arg-type]
+    roomy.poller = LinkPoller(roomy._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(roomy, ROLE_INITIATOR, limits=transfer_limits(payload_size=255))._init_errno == 0
 
 
@@ -251,7 +251,7 @@ def test_a_ring_too_small_for_one_poll_interval_is_refused() -> None:
     # A 9ms poll interval plus the module's 5ms of scheduling slack admits ~161 bytes at 115200 baud,
     # so a 64-byte ring loses the tail of anything sustained even though a frame fits.
     driver = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=9, poll_idle_ms=9, rx_ring=64)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(driver, ROLE_INITIATOR, limits=transfer_limits(timeout=TIMEOUT_MS))._init_errno == code("E", "UART_RXBUF")
 
 
@@ -276,7 +276,7 @@ def test_the_ring_floor_covers_a_config_flush() -> None:
         assert (floor > _ring_floor(48, 10**6, 2)) is rises, (timeout, floor)
         for ring, expected in ((floor, 0), (floor // 2, code("E", "UART_RXBUF"))):
             bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=2, poll_idle_ms=2, rx_ring=ring)
-            bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+            bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
             comm = UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits(payload_size=48, timeout=timeout))
             assert comm._init_errno == expected, (timeout, ring)
             assert comm._min_rx_ring() == floor
@@ -287,13 +287,13 @@ def test_a_codec_that_failed_its_allocation_refuses_construction() -> None:
     # A dead codec constructed cleanly, passed setup() and then failed every single write with
     # _ERR_UART_WRITE_FAILED - the link looking broken instead of the configuration being refused.
     dead = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(-1))
-    dead.poller = LinkPoller(dead._uart)  # type: ignore[assignment,arg-type]
+    dead.poller = LinkPoller(dead._uart)  # type: ignore[arg-type, assignment]
     assert dead.framing.ready() is False
     comm = UARTComm(dead, ROLE_INITIATOR, limits=transfer_limits())
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup(), RUN_LIMIT_S) is False
     live = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(128))
-    live.poller = LinkPoller(live._uart)  # type: ignore[assignment,arg-type]
+    live.poller = LinkPoller(live._uart)  # type: ignore[arg-type, assignment]
     assert UARTComm(live, ROLE_INITIATOR, limits=transfer_limits())._init_errno == 0
 
 
@@ -333,7 +333,7 @@ def _on_poll_rounds(test: "Callable[[], None]") -> "Callable[[], None]":
 
 def _poll_bus(poll_ms: int) -> UART:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=poll_ms, poll_idle_ms=poll_ms, rxbuf=2048)
-    driver.poller = LinkPoller(driver._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    driver.poller = LinkPoller(driver._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     return driver
 
 
@@ -398,7 +398,7 @@ def test_a_codec_below_one_frame_is_refused() -> None:
     frame = 5 + PAYLOAD_SIZE + CRC16().length()
     for size, expected in ((frame - 1, code("E", "UART_CODEC_SIZE")), (frame, 0)):
         bus = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, crc=CRC16(), framing=FramingCOBS(size))
-        bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+        bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
         assert UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())._init_errno == expected, size
 
 
@@ -609,7 +609,7 @@ def test_a_delimited_frame_of_the_wrong_length_counts_as_discarded() -> None:
     # A delimited codec hands back a frame that decoded cleanly but is not one frame long; the read
     # fails, and its bytes count toward the mismatch diagnostic like any other dropped frame (J.6).
     bus = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rxbuf=1024, framing=FramingCOBS(64))
-    bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     fake_of(bus).rx_rate = float("inf")  # fed bytes land at once, not on the fake clock
     comm = UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())
     assert run(comm.setup(), RUN_LIMIT_S) is True
@@ -868,7 +868,7 @@ def test_the_backoff_stays_a_valid_tick_delay_at_the_timeout_ceiling() -> None:
             await asyncio.sleep_ms(1)
         task.cancel()
 
-    comm.uart_listen = no_command  # type: ignore[method-assign,assignment]
+    comm.uart_listen = no_command  # type: ignore[assignment, method-assign]
     try:
         run(scenario(), _STEP_BOUND_S)
     finally:
@@ -1291,6 +1291,19 @@ def test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning() 
     pair.fake_a.plant_rx_error(0x08)  # UARTRSR OE: the ACK this side waits for is lost to an overrun
     assert run(pair.initiator.uart_set(1, b"x"), _STEP_BOUND_S) is False
     assert persisted(pair.initiator) == [_w("UART_RX_OVERRUN"), _e("UART_NO_ACK")], persisted(pair.initiator)
+
+
+@_on_poll_rounds
+def test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message() -> None:
+    # A corrupted frame and a silent or cancelled read share the listen's one code; the message names the dropped
+    # frame, so the history's entry is not read as a peer that never spoke (J.6).
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), crc_a=CRC16(), crc_b=CRC16()), RUN_LIMIT_S)
+    pair.link.direction_from(pair.fake_a).corrupt_indices = {_FRAME - 1: 0x01}  # one payload byte of the GET frame
+    pair.responder.pr.set_level(1)
+    with record_prints(pair.responder.pr) as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
+    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
+    assert "UART error: listen read dropped a corrupted or incomplete frame" in recorder.text(), recorder.text()
 
 
 @_on_poll_rounds
@@ -2597,7 +2610,7 @@ def test_a_lapped_ring_is_a_receive_overrun_and_the_link_resyncs() -> None:
 def test_a_ring_below_its_floor_is_refused() -> None:
     floor = _ring_floor(PAYLOAD_SIZE, TIMEOUT_MS, POLL_WAIT_MS)
     bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, rx_ring=floor // 2)
-    bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]  # never a real select.poll()
+    bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]  # never a real select.poll()
     assert UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits())._init_errno == code("E", "UART_RXBUF")
 
 
@@ -3149,7 +3162,7 @@ def test_the_legacy_bsec_bus_parameters_meet_every_floor_but_one() -> None:
     # drain must survive a peer that does not stop (SPECIFICATION.md Part J.1).
     def deployed(rxbuf: int) -> UARTComm:
         bus = UART(0, tx_pin=0, rx_pin=1, baudrate=115200, rxbuf=rxbuf, poll_wait_ms=2, poll_idle_ms=50, crc=CRC16())
-        bus.poller = LinkPoller(bus._uart)  # type: ignore[assignment,arg-type]
+        bus.poller = LinkPoller(bus._uart)  # type: ignore[arg-type, assignment]
         return UARTComm(bus, ROLE_INITIATOR, limits=transfer_limits(payload_size=_BSEC_PAYLOAD_SIZE, timeout=1000))
 
     assert deployed(256)._min_rxbuf() == 80

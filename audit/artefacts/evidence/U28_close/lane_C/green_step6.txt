@@ -1,0 +1,6 @@
+== render anchors
+3 passed in 0.15s
+== test_test_sh render/ci/archive
+7 passed, 162 deselected in 1.86s
+== ruff PTH
+All checks passed!

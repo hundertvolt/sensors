@@ -76,7 +76,7 @@ def _assert_no_link_failure(dut_ip: str) -> None:
 def _build(device: str, toml: "Path", uf2: "Path") -> "dict[str, object]":
     # scripts/build_firmware.py from that copy, into tmp_path: the round's own image and record stay untouched.
     argv = ["uv", "run", "--no-sync", "scripts/build_firmware.py", device, "--device-toml", str(toml), "--output", str(uf2)]
-    proc = subprocess.run(argv, cwd=harness.REPO_ROOT, capture_output=True, text=True, timeout=_BUILD_TIMEOUT_S, check=False)  # noqa: S603 - argv from repo paths, no shell
+    proc = subprocess.run(argv, cwd=harness.REPO_ROOT, capture_output=True, text=True, timeout=_BUILD_TIMEOUT_S, check=False)  # argv from repo paths, no shell
     assert proc.returncode == 0, f"building the CRC16 image failed (exit {proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}"
     record = json.loads(uf2.with_suffix(".json").read_text(encoding="utf-8"))
     crc = record.get("uartCrc") if isinstance(record, dict) else None

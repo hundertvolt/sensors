@@ -3,6 +3,7 @@ fields excluded - derived two independent ways (the buildgen device model, the g
 constructions) must agree; from the release on the map is pinned as a golden fixture (C.5)."""
 
 import ast
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -33,16 +34,25 @@ def _classes(src: Path) -> "dict[str, tuple[Path, ast.ClassDef]]":
     return found
 
 
+def _constructs_store(node: ast.AST, helpers: "frozenset[str]") -> bool:
+    # A ConfigManager call, bare or dotted, or a call to a module-level helper of the same file that makes one.
+    for call in (n for n in ast.walk(node) if isinstance(n, ast.Call)):
+        name = call.func.attr if isinstance(call.func, ast.Attribute) else call.func.id if isinstance(call.func, ast.Name) else None
+        if name == "ConfigManager" or name in helpers:
+            return True
+    return False
+
+
 def _is_store(name: str, classes: "dict[str, tuple[Path, ast.ClassDef]]") -> bool:
-    # A class that (or whose ancestor) constructs a ConfigManager owns a config file.
+    # A class that (or whose ancestor) constructs a ConfigManager, directly or through such a helper, owns a config file.
     todo, seen = [name], set()
     while todo:
         current = todo.pop()
         if current in seen or current not in classes:
             continue
         seen.add(current)
-        node = classes[current][1]
-        if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "ConfigManager" for n in ast.walk(node)):
+        path, node = classes[current]
+        if _constructs_store(node, _store_helpers(path)):
             return True
         todo.extend(b.id for b in node.bases if isinstance(b, ast.Name))
     return False
@@ -50,6 +60,13 @@ def _is_store(name: str, classes: "dict[str, tuple[Path, ast.ClassDef]]") -> boo
 
 def _fields(path: Path) -> Fields:
     return {name: tuple(spec) for name, spec in extract_field_schemas(path).items()}
+
+
+@cache
+def _store_helpers(path: Path) -> "frozenset[str]":
+    # The module-level functions of one file that construct a ConfigManager.
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return frozenset(n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and _constructs_store(n, frozenset()))
 
 
 def _stored_keys(fields: Fields) -> "dict[str, str]":
@@ -138,3 +155,19 @@ def test_special_alone_fields_are_not_stored(device: str) -> None:
         sgp_files = [name for name in stored if name.startswith("config_SGP40")]
         assert sgp_files, sorted(stored)
         assert all("ResetVOC" not in stored[name] for name in sgp_files), {name: stored[name] for name in sgp_files}
+
+
+def test_a_store_built_through_a_module_helper_or_an_attribute_call_is_a_store(tmp_path: Path) -> None:
+    # Both derivations read stores through _is_store, so one it misses drops out of both and they still agree.
+    (tmp_path / "asy_probe.py").write_text(
+        "import asy_config_manager\n"
+        "from asy_config_manager import ConfigManager\n\n\n"
+        "def _make_store(cfg_path, name):\n    return ConfigManager(cfg_path + name, (), name)\n\n\n"
+        "class Helped:\n    def __init__(self, cfg_path):\n        self.cfgmgr = _make_store(cfg_path, 'X')\n\n\n"
+        "class Dotted:\n    def __init__(self):\n        self.cfgmgr = asy_config_manager.ConfigManager('config_Y.cfg', (), 'Y')\n\n\n"
+        "class Inherits(Helped):\n    pass\n\n\n"
+        "class Plain:\n    def __init__(self):\n        self.cfg = None\n",
+        encoding="utf-8",
+    )
+    classes = _classes(tmp_path)
+    assert {name: _is_store(name, classes) for name in classes} == {"Helped": True, "Dotted": True, "Inherits": True, "Plain": False}

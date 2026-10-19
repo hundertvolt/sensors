@@ -24,7 +24,7 @@ _GIT = shutil.which("git") or "git"
 SHARED_EXCLUDED_PREFIXES = ("legacy/", "arduino/", "ext/", "audit/", "datasheets/", "node_modules/")
 SHARED_EXCLUDED_FILES = frozenset({"PROJECT_AUDIT_PLAN.md", "uv.lock", "package-lock.json"})
 
-_HASH_SUFFIXES = frozenset({".sh", ".toml", ".yml", ".yaml", ".ini", ".cfg", ".mk", ".gitignore"})
+_HASH_SUFFIXES = frozenset({".sh", ".toml", ".yml", ".yaml", ".ini", ".cfg", ".mk", ".gitignore", ".gitmodules"})
 _SLASH_SUFFIXES = frozenset({".js", ".mjs", ".cjs", ".ts", ".css"})
 _PLAIN_SUFFIXES = frozenset({".md", ".txt"})
 # Types with no comment syntax to read (tsconfig*.json aside); any other unread type raises in

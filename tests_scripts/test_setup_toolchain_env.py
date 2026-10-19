@@ -123,7 +123,7 @@ def _make_usb_tty(tmp_path: Path, sys_tty_dir: Path, dev_dir: Path, tty_name: st
 
     tty_dir = sys_tty_dir / tty_name
     tty_dir.mkdir(parents=True)
-    os.symlink(usb_interface_dir, tty_dir / "device")
+    (tty_dir / "device").symlink_to(usb_interface_dir)
 
     if create_dev_node:
         dev_dir.mkdir(parents=True, exist_ok=True)
@@ -164,7 +164,7 @@ _MICROPYTHON_BY_ID = "usb-MicroPython_Board_in_FS_mode_e6614c311b7e6f35-if00"
 def _by_id_link(by_id_dir: Path, name: str, target: Path) -> Path:
     by_id_dir.mkdir(parents=True, exist_ok=True)
     link = by_id_dir / name
-    os.symlink(target, link)
+    link.symlink_to(target)
     return link
 
 
@@ -775,6 +775,39 @@ def test_run_project_dependency_install_runs_npm_ci_when_available(setup_toolcha
     setup_toolchain.run_project_dependency_install(tmp_path, tmp_path, skip_npm=False, skip_apt=True)
     # The Node in use is named by its own --version, whichever install it is.
     assert recorded_run == [["uv", "sync"], ["/usr/bin/node", "--version"], ["npm", "ci"], ["npx", "playwright", "install", "chromium"]]
+
+
+_CHROMIUM_INSTALL = ("npx", "playwright", "install", "chromium")
+_CHROMIUM_DEPS = ("npx", "playwright", "install-deps", "chromium")
+
+
+def test_a_failed_chromium_install_stops_env_naming_skip_npm(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")})
+    monkeypatch.setattr(setup_toolchain, "run", fake)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-npm") as raised:
+        setup_toolchain.ensure_playwright_browser(tmp_path, None, skip_apt=False)
+    assert "npx playwright install chromium" in str(raised.value)
+    assert [tuple(argv) for argv in fake.argvs()] == [_CHROMIUM_INSTALL], "install-deps ran after the browser itself failed to install"
+
+
+def test_a_failed_install_deps_stops_env_naming_the_manual_command_and_skip_apt(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRun({_CHROMIUM_DEPS: setup_toolchain.SetupError("command failed (exit 1): npx playwright install-deps chromium")})
+    monkeypatch.setattr(setup_toolchain, "run", fake)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-apt") as raised:
+        setup_toolchain.ensure_playwright_browser(tmp_path, None, skip_apt=False)
+    assert "sudo npx playwright install-deps chromium" in str(raised.value)
+    assert [tuple(argv) for argv in fake.argvs()] == [_CHROMIUM_INSTALL, _CHROMIUM_DEPS]
+
+
+def test_env_reports_the_generic_tier_ready_only_once_the_browser_installed(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(setup_toolchain, "run_setup", lambda args, versions_path, versions, *, tier: 0)
+    monkeypatch.setattr(setup_toolchain, "ensure_node", lambda toolchain_dir, repo_root, *, skip_apt: None)
+    monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(setup_toolchain, "run", _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")}))
+    args = argparse.Namespace(tier="generic", toolchain_dir=tmp_path, skip_npm=False, skip_apt=True, device=None, uplink_iface=None, wifi_iface=None, ssid=None, micropython_ref=None, latest=False, clean=False, jobs=1)
+    with pytest.raises(setup_toolchain.SetupError, match="--skip-npm"):
+        setup_toolchain.run_env(args, setup_toolchain.VERSIONS_PATH, setup_toolchain.load_versions(setup_toolchain.VERSIONS_PATH))
+    assert "environment ready" not in capsys.readouterr().out
 
 
 def _flaky_run(setup_toolchain: ModuleType, monkeypatch: pytest.MonkeyPatch, failures: int) -> "tuple[list[list[str]], list[float]]":
@@ -1915,7 +1948,7 @@ def test_a_leftover_linking_outside_the_toolchain_is_kept(setup_toolchain: Modul
     outside = tmp_path / "someone-elses"
     outside.mkdir()
     (outside / "keep.txt").write_text("x", encoding="utf-8")
-    os.symlink(outside, toolchain_dir / "build_overrides" / "linked_override")
+    (toolchain_dir / "build_overrides" / "linked_override").symlink_to(outside)
     setup_toolchain.remove_outdated_leftovers(toolchain_dir)
     assert (toolchain_dir / "build_overrides" / "linked_override").is_symlink()
     assert (outside / "keep.txt").read_text(encoding="utf-8") == "x"

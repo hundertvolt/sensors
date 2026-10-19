@@ -29,6 +29,11 @@ for ((i = 0; i < ${#args[@]}; i++)); do
         --bench-device=*) export BENCH_DEVICE="${args[i]#--bench-device=}" ;;
     esac
 done
+# One retried sync before the image is built; every uv run after it is --no-sync.
+if ! scripts/uv_sync_retried.sh; then
+    echo "error: the retried uv sync failed - its output above names the cause; nothing reached the board" >&2
+    exit 1
+fi
 # The bench device as the hardware tiers resolve it: an unknown, missing or doubled one fails here, naming why.
 device="$(uv run --no-sync python -c 'import sys
 sys.path.insert(0, "tests_hardware")

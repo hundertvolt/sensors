@@ -1192,7 +1192,7 @@ def test_run_backs_off_on_a_genuinely_unexpected_exception_then_recovers() -> No
     )
 
     async def scenario() -> "tuple[list[tuple[bytes, tuple[str, int]]], int]":
-        asy_captive_dns.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment,misc]
+        asy_captive_dns.DNSQuery = _FlakyDNSQuery  # type: ignore[assignment, misc]
         try:
             server = CaptiveDNS(log=LogConfig(None, 10, 1))
             server._udps = fake  # type: ignore[assignment]

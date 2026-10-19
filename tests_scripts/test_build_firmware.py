@@ -422,7 +422,7 @@ def _build_with_fakes(build_firmware: ModuleType, tmp_path: Path, monkeypatch: p
 
 
 @pytest.mark.parametrize("modlwip_ok", [True, False], ids=["override-compiled", "control-image"])
-def test_main_writes_the_image_record_beside_the_image(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, modlwip_ok: bool) -> None:  # noqa: FBT001
+def test_main_writes_the_image_record_beside_the_image(build_firmware: ModuleType, repo_root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, modlwip_ok: bool) -> None:
     output = tmp_path / "out" / f"firmware-{_A_DEVICE}.uf2"
     built = _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output), modlwip_ok=modlwip_ok)
     assert built.exit == 0
@@ -474,19 +474,36 @@ def test_the_image_and_its_record_are_never_paired_wrongly(build_firmware: Modul
     assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["firmware.json", "firmware.uf2"], "no .tmp file is left"
 
 
-def test_a_failed_image_move_leaves_no_record_and_the_old_image(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_failed_image_move_leaves_no_record_and_the_old_image(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     output = tmp_path / "firmware.uf2"
     output.write_bytes(b"UF2\nold image")
     output.with_suffix(".json").write_text('{"stale": true}', encoding="utf-8")
 
     def failing_replace(*_args: object) -> None:
-        raise OSError("disk full")
+        raise OSError(28, "disk full")
 
     monkeypatch.setattr(build_firmware.os, "replace", failing_replace)
-    with pytest.raises(OSError, match="disk full"):
-        _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output))
+    assert _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output)).exit == 1
+    err = capsys.readouterr().err
+    assert err.startswith("build_firmware: ") and str(output) in err and "disk full" in err, err
     assert output.read_bytes() == b"UF2\nold image"
     assert not output.with_suffix(".json").exists(), "a record must never stand beside an image it does not describe"
+
+
+@pytest.mark.parametrize("shape", ["parent-is-a-file", "output-is-a-directory"])
+def test_an_unwritable_output_is_one_line_naming_it(build_firmware: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], shape: str) -> None:
+    # Two shapes no write permission can lift, so the case holds under root too: a user error, never a traceback.
+    if shape == "parent-is-a-file":
+        (tmp_path / "taken").write_text("a file, not a directory\n", encoding="utf-8")
+        output = tmp_path / "taken" / "firmware.uf2"
+    else:
+        output = tmp_path / "firmware.uf2"
+        output.mkdir()
+    assert _build_with_fakes(build_firmware, tmp_path, monkeypatch, _A_DEVICE, "--output", str(output)).exit == 1
+    err = capsys.readouterr().err
+    assert err.startswith("build_firmware: ") and len(err.strip().splitlines()) == 1, err
+    assert str(output) in err and "Traceback" not in err, err
+    assert not output.with_suffix(".json").exists(), "no record without its image"
 
 
 def test_source_state_names_the_commit_and_a_dirty_tree(build_firmware: ModuleType, tmp_path: Path) -> None:
@@ -692,8 +709,9 @@ def test_an_impossible_image_report_is_a_toolchain_bug(build_firmware: ModuleTyp
 @pytest.mark.parametrize("device", DEVICE_NAMES)
 @pytest.mark.skipif(
     os.environ.get("RUN_SLOW_FIRMWARE_BUILD") != "1",
-    reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 "
-    "(see .github/workflows/ci.yml's firmware-build-verify job, which sets it)",
+    reason="real ARM firmware compile, several minutes - opt in with RUN_SLOW_FIRMWARE_BUILD=1 and run it alone, as "
+    ".github/workflows/ci.yml's firmware-build-verify job does: a session whose micropython_bin fixture holds the "
+    "toolchain lock has the build's own lock refused",
 )
 def test_real_firmware_build_produces_a_valid_uf2(repo_root: Path, tmp_path: Path, device: str) -> None:
     # The end-to-end proof Part B.11 asked for: a real firmware.uf2 from the same script and

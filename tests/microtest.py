@@ -27,7 +27,7 @@ _RETURNED = "returned a value - an async def test_* or a stray return; microtest
 _PARKED = "left a task parked on the scheduler"
 
 
-class Skip(Exception):  # noqa: N818 - the outcome's name, as microtest prints it
+class Skip(Exception):
     """Raised by a test that cannot run here; the message is the reason microtest prints and counts."""
 
 

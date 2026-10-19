@@ -11,8 +11,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tests_hardware"))
 
-import harness  # noqa: E402  (the sys.path line above is what makes these importable)
-import heap_map  # noqa: E402
+import harness  # noqa: E402 - the sys.path line above is what makes this importable
+import heap_map  # noqa: E402 - the sys.path line above is what makes this importable
 
 # A real dump, trimmed to four map lines: 64 blocks per line, 0x800 per line = 32 B per block (the
 # Unix port's size; the rp2 port's is 16, and the parser derives it rather than assuming either).

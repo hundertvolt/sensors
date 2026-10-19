@@ -165,7 +165,7 @@ def test_a_held_product_port_fails_the_suite_at_once_naming_it(ci_suite: ModuleT
     _fresh_summary(ci_suite, monkeypatch)
     passes: list[object] = []
     monkeypatch.setattr(ci_suite, "_run_both_passes", passes.append)
-    holder = subprocess.Popen(["sleep", "60"])  # noqa: S607 - coreutils sleep, the stand-in holder's process
+    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
     lock = own_lock_root / "sensors-port-53.lock"
     lock.mkdir()
     (lock / "runner").write_text("another suite\n", encoding="utf-8")

@@ -107,7 +107,7 @@ async def cycle(chip: "ISL29125Chip", reader: ISL29125_Reader, lux: float, tint:
 def warnings(counters: "ErrorLog") -> "list[int]":
     entry = counters["ISL29125"]
     # No strict= (ruff B905): MicroPython's zip() rejects it; ErrEntry keeps both lists in step.
-    return [number for number, kind in zip(entry["ErrNum"], entry["ErrType"]) if kind == "W"]  # noqa: B905
+    return [number for number, kind in zip(entry["ErrNum"], entry["ErrType"]) if kind == "W"]
 
 
 # ---------------------------------------------------------------------------
@@ -483,7 +483,7 @@ def test_cal_light_reads_too_dark_suitable_and_too_bright_from_the_light_model()
         async def scenario() -> "list[int | None]":
             seen = []
             for lux in (2.0, 300.0, 9500.0):
-                seen.append((await cycle(chip, reader, lux)).CalLight)  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+                seen.append((await cycle(chip, reader, lux)).CalLight)
             return seen
 
         assert await scenario() == [2, 1, 3]
@@ -502,7 +502,7 @@ def test_cal_light_is_not_applicable_on_a_fixed_range() -> None:
         async def scenario() -> "list[int | None]":
             seen = []
             for lux in (2.0, 300.0, 9500.0):
-                seen.append((await cycle(chip, reader, lux)).CalLight)  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+                seen.append((await cycle(chip, reader, lux)).CalLight)
             return seen
 
         assert await scenario() == [0, 0, 0]

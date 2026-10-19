@@ -273,7 +273,7 @@ class SCD30_Reader(SensorReaderConfig):
             current = snapshot
         # TempOffset compares in chip ticks; the primitive applies the rounding only to a value the schema validated as a float.
         resolution = {"TempOffset": _temp_offset_ticks}
-        outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]
+        outcome = compare_before_write(rest, cfg_vals, current, always=("AmbPres", "ForceCalRef"), resolution=resolution)  # type: ignore[arg-type]  # _temp_offset_ticks takes TempOffset's validated float, not any CfgValue
         if outcome is None:
             return False, {}
         write, results = outcome
@@ -288,14 +288,14 @@ class SCD30_Reader(SensorReaderConfig):
             self.set_forced_recalibration_reference,
             self.set_self_calibration_enabled,
         )
-        for key, setter in zip(_APPLY_ORDER, setters):  # noqa: B905 - MicroPython zip() rejects strict=
+        for key, setter in zip(_APPLY_ORDER, setters):
             # write[key] is the value the schema validated and coerced for exactly this key's setter.
             if key not in write:
                 continue
-            if not await setter(write[key]):  # type: ignore[arg-type]
+            if not await setter(write[key]):  # type: ignore[arg-type]  # mypy sees the six setters' union; write[key] has this one's type
                 results[key] = FAILED
             elif key == "MeasInterval":  # a new interval: readiness starts over at it
-                self._frc_interval_s = write[key]  # type: ignore[assignment]
+                self._frc_interval_s = write[key]  # type: ignore[assignment]  # MeasInterval validates as an int
                 self._frc_reset()
             elif key == "AmbPres":  # 0x0010 (re)starts continuous measurement
                 self._frc_reset()

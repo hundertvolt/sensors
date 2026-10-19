@@ -5,6 +5,9 @@ events Runs 9 and 10 end their waits on - the same way test_digital_twin_ci_suit
 import errno
 import functools
 import re
+import signal
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
@@ -206,64 +209,64 @@ def _entry(*history: tuple[int, str], counter: int | None = None) -> dict[str, o
 _READABLE = {"errcount": {"SGP40": {"counter": 0, "history": [{"num": 0, "type": "N"}]}}}
 
 
-def test_errcount_is_tolerant_so_the_polling_helpers_can_retry(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+def test_errcount_is_tolerant_so_the_polling_helpers_can_retry(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
     # The tolerance is deliberate and load-bearing: _wait_for_errcount_above()/
     # _wait_for_error_type_count() call this in a loop during boot, where a transient non-200 must
     # retry rather than abort the whole run.
-    _http_stub(503, None)
+    http_stub(503, None)
     assert ci_suite._errcount("SGP40") == {}
 
 
-def test_errcount_is_also_tolerant_of_a_200_with_an_unusable_body(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
-    _http_stub(200, "not-a-dict")
+def test_errcount_is_also_tolerant_of_a_200_with_an_unusable_body(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
+    http_stub(200, "not-a-dict")
     assert ci_suite._errcount("SGP40") == {}
-    _http_stub(200, {"errcount": {"SGP40": "not-a-dict-either"}})
+    http_stub(200, {"errcount": {"SGP40": "not-a-dict-either"}})
     assert ci_suite._errcount("SGP40") == {}
 
 
-def test_errcount_required_raises_instead_of_answering_an_empty_entry(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+def test_errcount_required_raises_instead_of_answering_an_empty_entry(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
     # THE regression test for the vacuous-pass class. Before the split, Run 4's `counter == 0`,
     # Run 5c's `_error_type_count(...) == 0` and Run 8's `restored in (0, N)` all held here.
-    _http_stub(503, None)
+    http_stub(503, None)
     with pytest.raises(RuntimeError, match="readable errcount entry"):
         ci_suite._errcount_required("SGP40")
 
 
-def test_errcount_required_raises_for_a_source_missing_from_a_readable_status(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+def test_errcount_required_raises_for_a_source_missing_from_a_readable_status(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
     # Every registered error source appears in errcount whether or not it ever logged, so a missing
     # entry is a real failure - never "this module simply has no errors".
-    _http_stub(200, {"errcount": {"SCD30": {"counter": 0, "history": []}}})
+    http_stub(200, {"errcount": {"SCD30": {"counter": 0, "history": []}}})
     with pytest.raises(RuntimeError, match="SGP40"):
         ci_suite._errcount_required("SGP40")
 
 
-def test_errcount_required_returns_the_entry_when_status_is_genuinely_readable(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
-    _http_stub(200, _READABLE)
+def test_errcount_required_returns_the_entry_when_status_is_genuinely_readable(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
+    http_stub(200, _READABLE)
     assert ci_suite._errcount_required("SGP40") == {"counter": 0, "history": [{"num": 0, "type": "N"}]}
 
 
-def test_errcount_all_raises_rather_than_sweeping_an_unreadable_status(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+def test_errcount_all_raises_rather_than_sweeping_an_unreadable_status(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
     # Run 5c's device-wide sweep iterates whatever this returns, so a tolerant {} here would turn
     # "the server answered nothing" into "no source lost anything" - the same vacuous pass the
     # _errcount()/_errcount_required() split exists to prevent, one level up.
-    _http_stub(503, None)
+    http_stub(503, None)
     with pytest.raises(RuntimeError, match="readable body"):
         ci_suite._errcount_all()
-    _http_stub(200, "not-a-dict")
+    http_stub(200, "not-a-dict")
     with pytest.raises(RuntimeError, match="readable body"):
         ci_suite._errcount_all()
 
 
-def test_errcount_all_raises_on_a_200_carrying_no_usable_table(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
+def test_errcount_all_raises_on_a_200_carrying_no_usable_table(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
     bodies: list[object] = [{}, {"errcount": {}}, {"errcount": "not-a-dict"}]
     for body in bodies:
-        _http_stub(200, body)
+        http_stub(200, body)
         with pytest.raises(RuntimeError, match="no usable errcount table"):
             ci_suite._errcount_all()
 
 
-def test_errcount_all_drops_only_the_rows_that_are_not_entries(ci_suite: ModuleType, _http_stub: "Callable[[int, object], None]") -> None:
-    _http_stub(200, {"errcount": {"SGP40": {"counter": 1, "history": []}, "JUNK": "not-a-dict"}})
+def test_errcount_all_drops_only_the_rows_that_are_not_entries(ci_suite: ModuleType, http_stub: "Callable[[int, object], None]") -> None:
+    http_stub(200, {"errcount": {"SGP40": {"counter": 1, "history": []}, "JUNK": "not-a-dict"}})
     assert ci_suite._errcount_all() == {"SGP40": {"counter": 1, "history": []}}
 
 
@@ -415,13 +418,6 @@ def test_the_sgp40_asymmetry_between_the_three_driver_sets_is_deliberate(ci_suit
 # ---------------------------------------------------------------------------
 # _check_no_memory_error_in_log() - Part I.4(e)'s twin half, which had no test of its own at all.
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def _http_stub(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> "Callable[[int, object], None]":
-    def install(status: int, body: object) -> None:
-        monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, body))
-    return install
 
 
 def test_a_caught_and_degraded_allocation_failure_is_caught_though_it_never_says_memoryerror(ci_suite: ModuleType, tmp_path: Path) -> None:
@@ -623,6 +619,26 @@ def test_the_callers_own_kill_and_timeout_are_named_as_theirs() -> None:
     assert twin_process.exit_reason(1) == "exit code 1"
 
 
+_SIGINT_CHILD = "import signal, sys, time; signal.pthread_sigmask(signal.SIG_BLOCK if sys.argv[1] == 'block' else signal.SIG_UNBLOCK, {signal.SIGINT}); print('ready', flush=True); time.sleep(60)"
+
+
+@pytest.mark.parametrize(("mode", "expected"), [("block", r"pending, blocked in (\d+) of \1 threads, caught"), ("unblock", r"blocked in 0 of \d+ threads, caught")])
+def test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint(mode: str, expected: str) -> None:
+    # A twin that ignores SIGINT is described before the kill: a signal the kernel still holds (blocked, pending) must read
+    # apart from one it delivered to the handler, so the next such run says which half failed.
+    child = subprocess.Popen([sys.executable, "-c", _SIGINT_CHILD, mode], stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout is not None and child.stdout.readline() == "ready\n"
+        if mode == "block":
+            child.send_signal(signal.SIGINT)
+        fields = twin_process._proc_diagnostic_fields(child.pid)
+        assert re.fullmatch(expected, fields.get("SIGINT", "")), fields
+        assert {"SigPnd", "ShdPnd", "SigBlk", "SigIgn", "SigCgt", "Threads"} <= fields.keys(), fields
+    finally:
+        child.kill()
+        child.wait(timeout=5)
+
+
 def test_an_empty_log_gives_no_memory_verdict(ci_suite: ModuleType, tmp_path: Path) -> None:
     failures = _memory_error_verdict(ci_suite, tmp_path, "")
     assert len(failures) == 1 and "empty" in failures[0], failures
@@ -695,6 +711,13 @@ def _stub_status(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch, entries:
         monkeypatch.setattr(ci_suite, wait, 0.0)
     monkeypatch.setattr(ci_suite, "_FAILURES", [])
     return ci_suite._FAILURES  # type: ignore[no-any-return]
+
+
+@pytest.fixture
+def http_stub(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> "Callable[[int, object], None]":
+    def install(status: int, body: object) -> None:
+        monkeypatch.setattr(ci_suite, "_http", lambda *_a, **_k: (status, body))
+    return install
 
 
 def test_run_9_fails_closed_on_a_system_entry_without_a_counter(ci_suite: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:

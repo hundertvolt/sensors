@@ -1,6 +1,6 @@
-# zizmor (GitHub Actions security audit) config, run offline by scripts/lint.sh. Only unpinned-uses
-# is configured; every other audit stays at its default, so a new release surfaces new checks to
-# triage (policy: CLAUDE.md).
+# zizmor (GitHub Actions security audit) config, run offline by scripts/lint.sh and CI's zizmor job. Two audits are
+# configured, unpinned-uses's policy and self-repository's disable; every other audit runs at its default, so a zizmor
+# bump surfaces new checks to triage (CLAUDE.md).
 rules:
   unpinned-uses:
     config:
@@ -8,7 +8,7 @@ rules:
         # First-party actions: a tag is enough - a compromised actions/* org compromises the
         # platform itself, and SHA pins would need hand bumps with no Dependabot.
         actions/*: ref-pin
-        # Everything third-party (codecov/, dorny/) is SHA-pinned: a force-pushed tag there is the
+        # Everything third-party (dorny/ today) is pinned to a commit SHA: a force-pushed tag there is the
         # tj-actions/changed-files attack.
         "*": hash-pin
   self-repository:

@@ -56,7 +56,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None"
 
 
 @pytest.mark.parametrize("op", _OPS)
-@pytest.mark.parametrize("raw,expected,expected_type", _VALUES)
+@pytest.mark.parametrize(("raw", "expected", "expected_type"), _VALUES)
 def test_parse_requires_tags_operator_value_cross_product(tmp_path: Path, op: str, raw: str, expected: "int | float", expected_type: type) -> None:
     (tag,) = _parse(tmp_path, f"# @requires bus.timeout{op}{raw}\n")
     assert (tag.field, tag.op, tag.value) == ("timeout", op, expected)
@@ -175,7 +175,7 @@ def test_parse_requires_tags_field_name_shapes(tmp_path: Path, field: str) -> No
 
 
 @pytest.mark.parametrize(
-    "driver,instance,expected",
+    ("driver", "instance", "expected"),
     [
         # Every real tag any src/ driver declares today, each traced to its own datasheet citation
         # in the driver file itself. A driver gaining or losing one is a deliberate change that has
@@ -203,7 +203,7 @@ def test_no_other_src_driver_declares_an_unnoticed_tag(src_dir: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         # D2 wording
         ("# @require bus.timeout>=200000\n", "misspelled @requires tag", "tag.misspelled"),
@@ -289,7 +289,7 @@ def test_parse_requires_tags_leaves_non_tags_alone(tmp_path: Path, source: str) 
 
 
 @pytest.mark.parametrize(
-    "op,actual,value,satisfied",
+    ("op", "actual", "value", "satisfied"),
     [
         (">=", 100, 50, True), (">=", 100, 100, True), (">=", 100, 200, False),
         ("<=", 100, 200, True), ("<=", 100, 100, True), ("<=", 100, 50, False),
@@ -309,7 +309,7 @@ def test_check_requires_tags_every_operator_both_ways(op: str, actual: int, valu
         assert raised.value.rule == "requires.unsatisfied"
 
 
-@pytest.mark.parametrize("actual,value", [(100, 99.5), (100.5, 100), (100.0, 100)])
+@pytest.mark.parametrize(("actual", "value"), [(100, 99.5), (100.5, 100), (100.0, 100)])
 def test_check_requires_tags_mixed_int_float_comparison(actual: "int | float", value: "int | float") -> None:
     # The second call, one unit below the bound, proves the comparison ran.
     tags = (RequiresTag("frequency", ">=", value, "@requires bus.frequency>=x"),)

@@ -1,0 +1,21 @@
+test_decision_vocabulary	2 failed, 4 passed in 10.21s
+    FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+    FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+test_citations	15 passed in 10.89s
+test_comment_block_cap	1 failed, 608 passed in 4.24s
+    FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+test_tunables_register	1 failed, 9 passed, 5 errors in 4.12s
+    FAILED tests_scripts/test_tunables_register.py::test_every_tag_is_well_formed_and_sits_above_its_literal
+    ERROR tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+    ERROR tests_scripts/test_tunables_register.py::test_the_watchdog_timeout_stays_under_the_rp2_cap
+    ERROR tests_scripts/test_tunables_register.py::test_the_reset_delay_ends_before_the_watchdog_would
+    ERROR tests_scripts/test_tunables_register.py::test_the_supervisor_scan_fits_the_watchdog_several_times
+    ERROR tests_scripts/test_tunables_register.py::test_one_page_load_fits_the_largest_shipped_connection_ceiling
+test_legacy_paths	3 passed in 1.73s
+test_import_placement	7 passed in 7.43s
+test_code_conventions	25 passed in 3.32s
+test_error_catalog	40 passed in 6.61s
+test_host_annotations	12 passed in 2.34s
+test_lint_ceilings	19 passed in 10.01s
+test_mypy_any_baseline	7 passed in 0.07s
+test_memory_error_gate_agreement	14 passed in 3.40s

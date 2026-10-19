@@ -214,7 +214,7 @@ def board(request: pytest.FixtureRequest) -> "Iterator[Board | TwinBoard]":
 
 
 @pytest.fixture(scope="session")
-def bench(board: Board, request: pytest.FixtureRequest) -> "Iterator[BenchBridge]":
+def bench(board: Board, request: pytest.FixtureRequest) -> BenchBridge:
     # Depends on `board` - a bench test needs both the real board over USB and the real WiFi bridge.
     if request.config.getoption("--twin"):
         pytest.skip("the twin has no bench bridge")
@@ -226,7 +226,7 @@ def bench(board: Board, request: pytest.FixtureRequest) -> "Iterator[BenchBridge
         )
     for removed in bridge.clear_leftovers():  # a killed earlier run's network state, each removal reported
         record_session_note(request.config, f"removed a leftover: {removed}", source="bench.clear_leftovers")
-    yield bridge
+    return bridge
 
 
 class Deviation(NamedTuple):
@@ -445,7 +445,7 @@ def _vl805_note(config: pytest.Config) -> None:
     # The bench Pi 4's VL805 firmware, read-only; an old one gets a console warning, never a failed session
     # (the firmware carries TinyUSB's RP2040-E15 workaround).
     try:
-        done = subprocess.run(["rpi-eeprom-update"], capture_output=True, text=True, timeout=_VL805_READ_TIMEOUT_S, check=False)  # noqa: S607 - the bench host's own tool, on PATH
+        done = subprocess.run(["rpi-eeprom-update"], capture_output=True, text=True, timeout=_VL805_READ_TIMEOUT_S, check=False)  # the bench host's own tool, on PATH
     except (OSError, subprocess.TimeoutExpired) as exc:
         record_session_note(config, f"vl805_firmware: not read ({exc})", source="standard_state")
         return

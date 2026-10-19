@@ -209,7 +209,7 @@ def test_a_forced_recalibration_reference_outside_400_to_2000_is_ignored() -> No
 
 def test_a_measurement_interval_outside_2_to_1800_is_ignored_and_arms_no_timer() -> None:
     built: list[int] = []
-    chip = SCD30Chip(timer_factory=lambda: _RecordingTimer(built))  # type: ignore[arg-type,return-value]  # a recording stand-in
+    chip = SCD30Chip(timer_factory=lambda: _RecordingTimer(built))  # type: ignore[arg-type, return-value]  # a recording stand-in
     for seconds in (0, 1, 1801):
         _set(chip, 0x46, 0x00, seconds)
         assert _get(chip, 0x46, 0x00) == word(2), seconds
@@ -616,7 +616,7 @@ def test_a_stuck_high_rdy_line_warns_once_after_five_empty_reads_and_new_data_en
 
     async def warnings() -> int:
         log = (await reader.get_error_counter())["SCD30"]
-        return sum(1 for kind, number in zip(log["ErrType"], log["ErrNum"]) if (kind, number) == ("W", code("W", "SCD_NOT_READY")))  # noqa: B905 - MicroPython zip() rejects strict=
+        return sum(1 for kind, number in zip(log["ErrType"], log["ErrNum"]) if (kind, number) == ("W", code("W", "SCD_NOT_READY")))
 
     async def scenario() -> "tuple[list[int], int]":
         assert await reader.setup() is True

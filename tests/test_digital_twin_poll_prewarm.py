@@ -71,7 +71,7 @@ def test_a_port_lost_between_bind_and_listen_is_skipped_too() -> None:
         def __getattr__(self, name: str) -> object:
             return getattr(socket, name)
 
-    unix_port_poll_prewarm.socket = _SocketModule()  # type: ignore[attr-defined, assignment]  # deliberate monkeypatch
+    unix_port_poll_prewarm.socket = _SocketModule()  # type: ignore[assignment, attr-defined]  # mocked by reassignment
     try:
         listener, addr = _bind_free_listener(_TEST_BASE, 4, _TEST_WINDOW)
     finally:

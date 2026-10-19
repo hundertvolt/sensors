@@ -1,4 +1,10 @@
+/**
+ * Vitest in real-browser mode (Playwright + Chromium, not jsdom) - the JS unit-test tier's
+ * "real environment over a shim" equivalent to running Python tests under a real MicroPython
+ * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
+ */
 import { existsSync } from "node:fs";
+import { chromium } from "playwright";
 import { defineConfig } from "vitest/config";
 import { playwright } from "@vitest/browser-playwright";
 
@@ -16,17 +22,11 @@ import {
 import { probeLintRule } from "./tests_js/_lint_command.js";
 import { probePortLock } from "./tests_js/_port_lock.js";
 
-// The dev sandbox pre-installs Chromium at this fixed path; CI runners lack it and run
-// `npx playwright install chromium` first (ci.yml's web-unit-tests job), so Playwright
-// resolves its own install there.
+// The lock-pinned Playwright Chromium runs whenever it is installed; a session sandbox that cannot download it
+// pre-installs one here (agent, 2026-08-21). Remove this fallback once the sandbox can run `npx playwright install chromium`.
 const sandboxChromium = "/opt/pw-browsers/chromium";
-const launchOptions = existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
+const launchOptions = !existsSync(chromium.executablePath()) && existsSync(sandboxChromium) ? { executablePath: sandboxChromium } : {};
 
-/**
- * Vitest in real-browser mode (Playwright + Chromium, not jsdom) - the JS unit-test tier's
- * "real environment over a shim" equivalent to running Python tests under a real MicroPython
- * Unix-port interpreter (SPECIFICATION.md Part E.1). See SPECIFICATION.md Part H.8.
- */
 export default defineConfig({
     test: {
         include: ["tests_js/**/*.test.js"],

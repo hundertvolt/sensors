@@ -1,0 +1,19 @@
+DIAG_KI_CAPTURED True
+digital_twin/run_generic_integration.py starting - device='dev' module='sensortask_dev' host='127.0.0.1' port=21216 state=StatePaths(fram='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_016/fram_state.json', scd30='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_016/scd30_state.json', mem_backup='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_016/mem_backup_state.json') config_dir='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/run3/state_016/config/' online_ntp=False injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+Serving forever at http://127.0.0.1:21216/ - Ctrl+C to stop
+HANG S5reset
+WATCHDOG_WOULD_TRIGGER count=1
+DIAG_KI_ESCAPED:
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_diag.py", line 918, in <module>
+  File "asyncio/core.py", line 1, in run
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+mem: total=14574378, current=6425083, peak=6425353
+stack: 1264 out of 80000
+GC: total: 2072832, used: 1166752, free: 906080
+ No. of 1-blocks: 7084, 2-blocks: 1779, max blk sz: 1025, max free sz: 27404
+digital_twin/run_generic_integration.py [dev] shutdown: would_have_triggered_count=1 feed_count=16 largest_feed_gap_ms=1922 wdt_timeout_ms=8000 mem_backup: r0=0x2a5e0001,0x00000009,0x15a5a5ac,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=239 gc_block_bytes=32 uart=uart_link_init:transfers=10,failures=0,overruns=0 uart=uart_link_resp:transfers=0,failures=0,overruns=0
+digital_twin/run_generic_integration.py: interrupted

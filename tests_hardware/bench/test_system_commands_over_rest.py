@@ -79,7 +79,7 @@ def _newest_saved_set() -> "Path | None":
 
 def _picotool_reboot() -> int:
     # picotool answers only a BOOTSEL device: no load, no flash write.
-    return subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False).returncode  # noqa: S607 - sudo and picotool from the bench host\'s PATH
+    return subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False).returncode  # sudo and picotool from the bench host's PATH
 
 
 def _race(dut_ip: str, words: "tuple[str, ...]") -> "dict[str, str]":

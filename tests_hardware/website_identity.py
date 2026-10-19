@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))  # buildgen lives at the repo root, which pytest does not put on sys.path itself
 
-from buildgen.definitions import definitions_for_toml  # noqa: E402  (the sys.path line above is what makes this importable)
+from buildgen.definitions import definitions_for_toml  # noqa: E402 - the sys.path line above is what makes this importable
 
 if TYPE_CHECKING:
     from http_client import HttpResponse

@@ -37,7 +37,7 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   something to maybe happen", "reproduce in a dedicated way, not full runs"); CLAUDE.md go-ahead rule (:284-293), FRAM rule and its caveat (:367-394), B.13 dead-man's switch
   (:295-301) and `br0` MAC pin (:302-306), WoZi rule (:159-172), wear rule (:249-283); OR2.c (hardware items parked,
   never decided in execution); OR106.a (C findings pass A-C as a delta).
-- **Site**: the rounds A.C.02-A.C.09; each round's record `audit/c/R<n>.md` (audit working file, deleted at phase D,
+- **Site**: the rounds A.C.02-A.C.09; each round's record `audit/c/results/R<n>.md`, written by the bench session (WORK_ORDER.md 5.1) (audit working file, deleted at phase D,
   harmonization 19); the permanent procedure text is A.U36.001's `tests_hardware/README.md` "How a round runs".
 - **Change**: every round, in this order:
   (1) **Go-ahead**: the owner's go-ahead for this round is quoted with its date at the top of the round record; without
@@ -106,7 +106,7 @@ flag names are the ones in force after U26 lands (A.U26.35, A.U26.74): `persiste
   A.U26.22, A.U26.79), the runners (A.U7.18, A.U7.14) · twin every row names its twin parameter; A.C.10 applies the
   corrections · docs A.U36.001's "How a round runs" is this frame's permanent text; the round records are audit files ·
   toml — · uart —.
-- **Depends**: all of U0-U37 executed and A-C's delta list applied; A.U7.14, A.U7.18, A.U26.01-A.U26.03, A.U26.13,
+- **Depends**: session 1 (R0-R6): U0-U35 executed, pushed and green, and HANDOVER.md written (owner, 2026-10-19; WORK_ORDER.md section 5); A.U36.001's permanent "How a round runs" lands in U36, so session 1 reads the frame from this action and HANDOVER.md; R7: all of U0-U37 executed and A-C's delta list applied; A.U7.14, A.U7.18, A.U26.01-A.U26.03, A.U26.13,
   A.U26.22, A.U26.29, A.U26.79, A.U26.81, A.U36.001, A.S0930.06 (2).
 - **Kind**: rule, hardware
 

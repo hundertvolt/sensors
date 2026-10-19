@@ -3,6 +3,7 @@ uplink, and the role-reversal flip where the bridge's radio joins the DUT's own 
 client. Shares connection names with toolchain/setup_toolchain.py's ensure_bench_bridge().
 """
 
+import contextlib
 import re
 import subprocess
 from typing import TYPE_CHECKING
@@ -197,10 +198,8 @@ class BenchBridge:
         # same name first - a stale one makes a retry fail more confusingly (see tests_hardware/README.md).
         iface = self.wifi_iface()
         self.ap_down()
-        try:
+        with contextlib.suppress(HardwareTestFailureError):  # no leftover profile from an earlier call - nothing to clean up
             _nmcli("connection", "delete", ROLE_REVERSAL_CLIENT_CONN)
-        except HardwareTestFailureError:
-            pass  # no leftover profile from an earlier call - fine, nothing to clean up
         _nmcli(
             "device", "wifi", "connect", ssid, "password", password,
             "ifname", iface, "name", ROLE_REVERSAL_CLIENT_CONN,

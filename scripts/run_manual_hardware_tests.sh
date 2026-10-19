@@ -18,5 +18,9 @@ USAGE
     exit 0
 fi
 
-# --no-sync: the environment the bench prepared is used as is, never synced inside a run.
+# One retried sync before the run; inside it the environment is used as is (--no-sync), never synced.
+if ! scripts/uv_sync_retried.sh; then
+    echo "error: the retried uv sync failed - its output above names the cause; nothing reached the board" >&2
+    exit 1
+fi
 uv run --no-sync python tests_hardware/manual/__main__.py "$@"

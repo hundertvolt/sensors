@@ -151,7 +151,7 @@ def port_lock(port: int, runner: str) -> Iterator[None]:
     if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= _PORT_MAX or not runner:
         message = f"port_lock(port, runner) needs a port 1-65535 and a runner name, not {port!r} {runner!r}"
         raise ValueError(message)
-    root = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp")  # noqa: S108 - the shell library's own ${XDG_RUNTIME_DIR:-/tmp}
+    root = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp")  # the shell library's own ${XDG_RUNTIME_DIR:-/tmp}
     if not root.is_dir() or not os.access(root, os.W_OK):
         message = f"port_lock: the lock root {root} is not a writable directory"
         raise ValueError(message)

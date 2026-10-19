@@ -142,6 +142,7 @@ class UDPSocket:
             try:
                 # A datagram longer than buf arrives cut to buf bytes, the rest dropped (extmod/modlwip.c:719-721, v1.29.0).
                 # The 1.29 stub types the address as socket's full _Address union; this AF_INET socket (_connect()) only returns a 2-tuple.
+                # Remove the ignore once the stub narrows it (warn_unused_ignores then flags it).
                 return self._sock.recvfrom(buf)  # type: ignore[return-value]
             except (MemoryError, OSError, TypeError) as e:  # TypeError: a malformed buf (e.g. a str)
                 if isinstance(e, MemoryError):

@@ -1,0 +1,21 @@
+.......................F...................                              [100%]
+=================================== FAILURES ===================================
+____ test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state _____
+
+    def test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state() -> None:
+        text = (_REPO_ROOT / _SMOKE).read_text(encoding="utf-8")
+        problems = _config_dir_problems(_SMOKE, text)
+        problems += [f'{_SMOKE}: its twin launch does not pass `{flag} ""`' for flag in _IN_MEMORY_STATE if not re.search(rf'"{flag}",\s*"",', text)]
+        if not re.search(r'"--config-dir",\s*configDir,', text):
+            problems.append(f"{_SMOKE}: its twin launch does not pass `--config-dir configDir`")
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/cross_browser_smoke.mjs: its twin launch does not pass `--fram-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--scd30-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--mem-backup-state-path ""`
+E         scripts/cross_browser_smoke.mjs: its twin launch does not pass `--config-dir configDir`
+E       assert not ['scripts/cross_browser_smoke.mjs: its twin launch does not pass `--fram-state-path ""`', 'scripts/cross_browser_smoke...-mem-backup-state-path ""`', 'scripts/cross_browser_smoke.mjs: its twin launch does not pass `--config-dir configDir`']
+
+tests_scripts/test_live_command_device_args.py:115: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_live_command_device_args.py::test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state
+1 failed, 42 passed in 3.50s

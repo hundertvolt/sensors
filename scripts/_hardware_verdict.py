@@ -129,7 +129,7 @@ def judge(record_path: Path, pytest_exit: int, runner: str, levels: str, not_cle
 
 
 class _CollectionOnly(Summary):  # type: ignore[misc]
-    def result(self, exit_code: int) -> str:  # noqa: ARG002 - the same verdict whatever the code
+    def result(self, exit_code: int) -> str:
         return "NOT A RUN (collection only)"
 
 

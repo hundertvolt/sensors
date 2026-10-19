@@ -10,7 +10,6 @@ import ast
 import datetime
 import hashlib
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -19,8 +18,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tests_hardware"))
-import twin_board  # noqa: E402  (tests_hardware/ is on the path from the line above)
-from harness import HardwareNotAvailableError, HardwareTestFailureError  # noqa: E402
+import twin_board  # noqa: E402 - tests_hardware/ is on sys.path from the line above
+from harness import HardwareNotAvailableError, HardwareTestFailureError  # noqa: E402 - tests_hardware/ is on sys.path from the line above
 
 TESTS_HARDWARE = REPO_ROOT / "tests_hardware"
 DEVICE_SCRIPTS = TESTS_HARDWARE / "device_scripts"
@@ -40,13 +39,13 @@ def _flash_outcomes() -> "dict[str, list[str]]":
         report = Path(tmp) / "flash.xml"
         # The wear gates' deselecting flags: the twin's flash and SCD30 NVM are files, and a deselected test is no record.
         argv = ["uv", "run", "--no-sync", "pytest", "tests_hardware/flash", "--twin", "--allow-persistence-write", "--allow-scd30-extra-write", "-p", "no:cacheprovider", "-q", f"--junitxml={report}"]
-        proc = subprocess.run(argv, cwd=REPO_ROOT, capture_output=True, text=True, timeout=_FLASH_RUN_TIMEOUT_S, check=False)  # noqa: S603 - a fixed argv, no shell
+        proc = subprocess.run(argv, cwd=REPO_ROOT, capture_output=True, text=True, timeout=_FLASH_RUN_TIMEOUT_S, check=False)
         if not report.is_file():
             raise SystemExit(f"record_twin_instrument_runs: pytest --twin wrote no report (exit {proc.returncode}):\n{proc.stdout[-4000:]}\n{proc.stderr[-4000:]}")
         if " deselected" in proc.stdout:  # a deselected test never reaches the report, so its scripts would read as run
             raise SystemExit(f"record_twin_instrument_runs: pytest --twin deselected tests - every instrument must run:\n{proc.stdout[-2000:]}")
         outcomes: dict[str, list[str]] = {}
-        for case in ET.parse(report).getroot().iter("testcase"):  # noqa: S314 - pytest's own report, written just above
+        for case in ET.parse(report).getroot().iter("testcase"):  # pytest's own report, written just above
             module = "tests_hardware/flash/" + case.get("classname", "").rsplit(".", 1)[-1] + ".py"
             problems = outcomes.setdefault(module, [])
             for kind in ("failure", "error", "skipped"):
@@ -144,7 +143,7 @@ def main(argv: "list[str] | None" = None) -> int:
         return 1
     tmp = RECORD.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, RECORD)
+    tmp.replace(RECORD)
     print(f"record_twin_instrument_runs: {len(record)} instruments recorded in {RECORD.relative_to(REPO_ROOT)}")
     return 0
 

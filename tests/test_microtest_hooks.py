@@ -20,7 +20,7 @@ def _run_child(source: str) -> "tuple[int, list[str]]":
     with open(script, "w") as f:
         f.write(source + _TRAILER)
     binary = sys.executable  # type: ignore[attr-defined]  # the Unix port's sys has it; the rp2 board stub does not
-    status = os.system(binary + " " + script + " > " + out + " 2>&1")  # noqa: S605 - no subprocess module here; this file's own scratch paths
+    status = os.system(binary + " " + script + " > " + out + " 2>&1")
     with open(out) as f:
         lines = f.read().split("\n")
     assert status & 0x7F == 0, f"the child died of signal {status & 0x7F}: {lines}"

@@ -109,7 +109,7 @@ def _run() -> int:
         # A plain dict, not a real module namespace: the MicroPython Unix port doesn't register
         # the executed script in sys.modules["__main__"] the way CPython does (see
         # tests/microtest.py), so there's nothing else to exec() against.
-        exec(code, {"__name__": "__main__", "__file__": test_file})  # noqa: S102
+        exec(code, {"__name__": "__main__", "__file__": test_file})
     except SystemExit as exc:
         # MicroPython's SystemExit has no .code attribute (unlike CPython's) -- .args is what's
         # actually populated, confirmed directly against the built interpreter.

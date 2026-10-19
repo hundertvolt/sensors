@@ -1,6 +1,6 @@
 """scripts/_render_coverage.py reports only the files its anchor set names: a file missing from it
 drops out of the report even when the raw dump recorded its lines. Pins the set to every .py file
-under --src-dir, subdirectories included (digital_twin/unixport/ holds the UDP shim), and the XML-less render."""
+under --src-dir, subdirectories included (digital_twin/unixport/ holds the UDP shim), and HTML plus markdown only."""
 
 import json
 import sys
@@ -34,3 +34,12 @@ def test_a_render_given_no_xml_file_writes_html_and_markdown_only(repo_root: Pat
     rows = [[cell.strip() for cell in line.strip("|").split("|")] for line in (tmp_path / "coverage_summary_generated.md").read_text(encoding="utf-8").splitlines()]
     assert [r"build/generated\_src/sensortask\_fixture\_device.py", "4", "1", "75%"] in rows, rows  # markdown escapes "_"
     assert (tmp_path / "htmlcov_generated" / "index.html").is_file()
+
+
+def test_an_xml_report_is_no_longer_offered(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The Cobertura XML lost its last reader with the Codecov upload: asking for it is a usage error, not a silent file.
+    render = load_script_module(repo_root / "scripts" / "_render_coverage.py", "_render_coverage_under_test")
+    monkeypatch.setattr(sys, "argv", ["_render_coverage.py", "--raw-dir", "raw", "--xml-file", "coverage.xml"])
+    with pytest.raises(SystemExit) as exited:
+        render.main()
+    assert exited.value.code == 2

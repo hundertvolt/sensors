@@ -255,6 +255,7 @@ SPARE_TCP_PCBS = 3
 _PBUF_PROTOCOL_HEADER_BYTES = 74
 _MEM_ALIGNMENT = 4  # extmod/lwip-include/lwipopts_common.h
 _U16_MAX = 0xFFFF
+_MIN_TCP_SND_QUEUELEN = 2  # lwIP's own floor, lib/lwip/src/core/init.c:157
 
 
 def derive_lwip_dependents(macros: dict[str, int]) -> dict[str, int]:
@@ -291,8 +292,8 @@ def check_lwip_ensemble(macros: dict[str, int], max_connections: int | None = No
         problems.append(f"TCP_WND ({wnd}) > 0xFFFF - it must fit in a u16_t without LWIP_WND_SCALE, which this port does not enable")
     if queuelen > _U16_MAX:
         problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) > 0xFFFF - it must fit in a u16_t")
-    if queuelen < 2:  # noqa: PLR2004 - init.c's own literal
-        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) < 2 - lwIP needs at least 2 for no-copy writes")
+    if queuelen < _MIN_TCP_SND_QUEUELEN:
+        problems.append(f"TCP_SND_QUEUELEN ({queuelen}, derived from TCP_SND_BUF/TCP_MSS) < {_MIN_TCP_SND_QUEUELEN} - lwIP needs at least {_MIN_TCP_SND_QUEUELEN} for no-copy writes")
     if pool_buf <= _MEM_ALIGNMENT:
         problems.append(f"PBUF_POOL_BUFSIZE ({pool_buf}) <= MEM_ALIGNMENT ({_MEM_ALIGNMENT})")
     if seg < queuelen:

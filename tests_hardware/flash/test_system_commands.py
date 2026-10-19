@@ -276,7 +276,7 @@ def test_bootloader_command_shuts_down_then_enters_bootsel(board: "Board", reque
         if request.config.getoption("--twin"):
             return
         # picotool answers only a BOOTSEL device: its reboot proves the bootloader was entered; no load, no flash write.
-        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # noqa: S607 - sudo and picotool from the bench host\'s PATH
+        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
         if reboot.returncode != 0:
             raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
         after = _after_boot(board, request, result_note)

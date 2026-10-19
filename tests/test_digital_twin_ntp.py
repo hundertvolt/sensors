@@ -19,29 +19,29 @@ from unix_port_poll_prewarm import prewarm_poll_set
 prewarm_poll_set()  # before any poll object is registered (unix_port_poll_prewarm.py)
 patch_asy_udp_socket_for_unix_port()  # before any UDPSocket exists (_unix_port_udp_addr_shim.py)
 
-import _ntp_responder  # noqa: E402
-import _twin_common  # noqa: E402
-import _unix_port_udp_addr_shim  # noqa: E402
-import _wall_clock  # noqa: E402
-import machine  # noqa: E402
-import microtest  # noqa: E402
-import network  # noqa: E402
-import run_generic_integration as runner  # noqa: E402
-from _async_harness import cancel_all, run_timed  # noqa: E402
-from _digital_twin_construction_scenarios import load_device  # noqa: E402
-from _error_codes import code  # noqa: E402
-from _generated_module import boot_entry_watchdog  # noqa: E402
-from _ntp_responder import NtpResponder  # noqa: E402
-from _offline_ntp_config import write_responder_ntp_config  # noqa: E402
-from _port_bands import PortAllocator  # noqa: E402
-from _src_const import src_const, src_int  # noqa: E402
-from _tmp_scratch import TmpScratch  # noqa: E402
-from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402
-from _udp_port_redirect import redirect_udp_port  # noqa: E402
+import _ntp_responder  # noqa: E402 - imported after the prewarm and the UDP shim
+import _twin_common  # noqa: E402 - imported after the prewarm and the UDP shim
+import _unix_port_udp_addr_shim  # noqa: E402 - imported after the prewarm and the UDP shim
+import _wall_clock  # noqa: E402 - imported after the prewarm and the UDP shim
+import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
+import network  # noqa: E402 - imported after the prewarm and the UDP shim
+import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
+from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim
+from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
+from _offline_ntp_config import write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
+from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim
+from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _udp_port_redirect import redirect_udp_port  # noqa: E402 - imported after the prewarm and the UDP shim
 
-import asy_ntp_client  # noqa: E402
-import asy_udp_socket  # noqa: E402
-from asy_config_manager import config_filename  # noqa: E402
+import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_udp_socket  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_config_manager import config_filename  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING
@@ -121,7 +121,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
 async def _log(module: "ModuleType", name: str = "NTP") -> "tuple[int, list[int]]":
     # (ErrCount, the used ring slots oldest first) of one module's log.
     entry = (await getattr(module, name.lower()).get_error_counter())[name]
-    return entry["ErrCount"], [n for n, kind in zip(entry["ErrNum"], entry["ErrType"]) if kind != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return entry["ErrCount"], [n for n, kind in zip(entry["ErrNum"], entry["ErrType"]) if kind != "N"]
 
 
 # ---------------------------------------------------------------------------

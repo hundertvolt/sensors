@@ -1,6 +1,6 @@
-"""scripts/_unix_port.sh, the one Unix-port probe: each binary is named by the build flavour it reports, `check` fails on
-a mismatch and builds nothing, `ensure` runs one setup on a missing or wrong binary, a missing record or a record built
-from other inputs, the shared toolchain lock refuses a run while a setup holds it, and the two layouts come from one file."""
+"""scripts/_unix_port.sh, the one Unix-port probe: each binary is named by the build flavour it reports within a kill bound,
+`check` fails on a mismatch and builds nothing, `ensure` runs one setup on a missing or wrong binary or a missing or stale
+record, the shared toolchain lock refuses a run while a setup holds it, and the two layouts come from one file."""
 
 import ast
 import json
@@ -149,6 +149,15 @@ def _plant_record(setup_toolchain: ModuleType, toolchain: Path, *, stale: str | 
     return hashes
 
 
+def _probe_bound() -> str:
+    # The probe's bound, the literal under its tag in the script.
+    lines = _LIB.read_text(encoding="utf-8").splitlines()
+    (at,) = [i for i, line in enumerate(lines) if line.startswith("# @tunable runner.unix_port_probe_timeout_s = ")]
+    value = lines[at].rsplit(" = ", 1)[1]
+    assert lines[at + 1] == f"_UNIX_PORT_PROBE_TIMEOUT_S={value}", lines[at + 1]
+    return value
+
+
 def _reasons() -> list[str]:
     return ["missing binary", "wrong flavour", "no record", *(f"stale {name}" for name in _input_names())]
 
@@ -160,6 +169,16 @@ def _run(env: dict[str, str], *args: str, cwd: Path = REPO_ROOT) -> subprocess.C
 def _sourced(env: dict[str, str], *lines: str) -> subprocess.CompletedProcess[str]:
     script = "\n".join(["set -euo pipefail", f"source {shlex.quote(str(_LIB))}", *lines])
     return subprocess.run(["/bin/bash", "-c", script], cwd=REPO_ROOT, env=env, capture_output=True, text=True, check=False, timeout=_TIMEOUT_S)
+
+
+def _timeout_stub(tmp_path: Path, body: str) -> str:
+    # A `timeout` first on PATH that records its arguments up to the probe, then runs body: the bound is seen, never
+    # waited out.
+    stub_dir = tmp_path / "timeout_bin"
+    stub_dir.mkdir()
+    (stub_dir / "timeout").write_text(f'#!/bin/bash\nprintf "%s\\n" "${{*:1:5}}" >>"{tmp_path}/timeout.calls"\n{body}\n', encoding="utf-8")
+    (stub_dir / "timeout").chmod(0o755)
+    return str(stub_dir)
 
 
 def _toolchain(setup_toolchain: ModuleType, root: Path) -> Path:
@@ -239,7 +258,7 @@ def test_a_record_check_without_sha256sum_fails_naming_it(setup_toolchain: Modul
     env = _env(tmp_path, toolchain)
     bare = tmp_path / "bare_bin"
     bare.mkdir()
-    for name in ("bash", "flock", "dirname"):
+    for name in ("bash", "flock", "dirname", "timeout"):
         target = shutil.which(name)
         assert target is not None, name
         (bare / name).symlink_to(target)
@@ -247,6 +266,49 @@ def test_a_record_check_without_sha256sum_fails_naming_it(setup_toolchain: Modul
     done = _run({**env, "PATH": str(bare)}, "ensure", "standard")
     assert (done.returncode, done.stdout) == (1, ""), done
     assert done.stderr.strip() == "error: sha256sum (coreutils) is not on PATH - scripts/_unix_port.sh compares the toolchain record's input hashes with it"
+    assert _calls(tmp_path) == []
+
+
+def test_the_probe_runs_under_its_kill_bound(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+    env = _env(tmp_path, toolchain)
+    passing = _timeout_stub(tmp_path, 'shift 3; exec "$@"')
+    env["PATH"] = f"{passing}:{env['PATH']}"
+    done = _run(env, "check", "settrace")
+    assert (done.returncode, done.stdout) == (0, f"{_binary(toolchain, 'settrace')}\n"), done
+    calls = (tmp_path / "timeout.calls").read_text(encoding="utf-8").splitlines()
+    assert calls and set(calls) == {f"-s KILL {_probe_bound()} {_binary(toolchain, 'settrace')} -c"}, calls
+
+
+def test_a_probe_killed_at_its_bound_reads_unusable_and_check_names_the_kill(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    # A binary that hangs at start: the bound kills it (exit 137), so every caller gets an answer, never a wait.
+    toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+    env = _env(tmp_path, toolchain)
+    env["PATH"] = f"{_timeout_stub(tmp_path, 'exit 137')}:{env['PATH']}"
+    flavour = _sourced(env, f"unix_port_flavour {shlex.quote(str(_binary(toolchain, 'standard')))}")
+    assert (flavour.returncode, flavour.stdout) == (0, "unusable\n"), flavour
+    done = _run(env, "check", "standard")
+    assert (done.returncode, done.stdout) == (1, ""), done
+    killed = f" (the probe was killed, exit 137: it hung past its {_probe_bound()} s bound or died by SIGKILL)"
+    assert done.stderr.strip() == f"error: {_binary(toolchain, 'standard')} reports itself as the 'unusable' build flavour, not 'standard'{killed} - rebuild with: uv run toolchain/setup_toolchain.py setup --clean"
+    assert _calls(tmp_path) == []
+
+
+def test_a_probe_without_timeout_fails_naming_it(setup_toolchain: ModuleType, tmp_path: Path) -> None:
+    # Unbounded or unusable are both wrong answers for a missing bound: the run stops, naming the tool.
+    toolchain = _toolchain(setup_toolchain, tmp_path / "toolchain")
+    env = _env(tmp_path, toolchain)
+    bare = tmp_path / "bare_bin"
+    bare.mkdir()
+    for name in ("bash", "flock", "dirname", "sha256sum"):
+        target = shutil.which(name)
+        assert target is not None, name
+        (bare / name).symlink_to(target)
+    (bare / "uv").symlink_to(tmp_path / "stub_bin" / "uv")
+    for command in ("check", "ensure"):
+        done = _run({**env, "PATH": str(bare)}, command, "standard")
+        assert (done.returncode, done.stdout) == (1, ""), done
+        assert done.stderr.strip() == "error: timeout (coreutils) is not on PATH - scripts/_unix_port.sh bounds the Unix-port probe with it"
     assert _calls(tmp_path) == []
 
 

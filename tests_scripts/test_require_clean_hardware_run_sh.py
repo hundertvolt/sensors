@@ -45,6 +45,9 @@ _json_list() {
     printf '}\n'
 } >>"$STUB_CALLS"
 case "${args[0]-} ${args[1]-}" in
+"sync --locked")
+    exit "${STUB_SYNC_EXIT:-0}"
+    ;;
 "run scripts/_archive_evidence.py")
     mkdir -p "$STUB_EVIDENCE"
     echo "$STUB_EVIDENCE"
@@ -93,12 +96,15 @@ def _record(*tests: "dict[str, object]", exitstatus: int = 0) -> "dict[str, obje
     return {"tests": list(tests), "collection": [], "deselected": [], "options": {}, "markexpr": "", "collect_only": False, "session_notes": [], "exitstatus": exitstatus}
 
 
-def _run(repo_root: Path, tmp_path: Path, *args: str, record: "dict[str, object] | None" = None, pytest_exit: int = 0) -> "tuple[subprocess.CompletedProcess[str], list[tuple[list[str], str]]]":
+def _run(repo_root: Path, tmp_path: Path, *args: str, record: "dict[str, object] | None" = None, pytest_exit: int = 0, sync_exit: int = 0) -> "tuple[subprocess.CompletedProcess[str], list[tuple[list[str], str]]]":
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = bin_dir / "uv"
     stub.write_text(_STUB_UV, encoding="utf-8")
-    stub.chmod(0o755)
+    # The retried sync's pauses are recorded, never waited out.
+    (bin_dir / "sleep").write_text('#!/bin/bash\necho "$*" >>"$STUB_CALLS.sleeps"\n', encoding="utf-8")
+    for written in (stub, bin_dir / "sleep"):
+        written.chmod(0o755)
     (tmp_path / "canned.json").write_text(json.dumps(record if record is not None else _record(_GREEN)), encoding="utf-8")
     calls = tmp_path / "calls.jsonl"
     env = dict(
@@ -109,6 +115,7 @@ def _run(repo_root: Path, tmp_path: Path, *args: str, record: "dict[str, object]
         STUB_RECORD=str(tmp_path / "canned.json"),
         STUB_PYTEST_EXIT=str(pytest_exit),
         STUB_PYTHON=sys.executable,
+        STUB_SYNC_EXIT=str(sync_exit),
     )
     result = subprocess.run(["/bin/bash", str(repo_root / "scripts" / "_require_clean_hardware_run.sh"), *args], capture_output=True, text=True, check=False, env=env, cwd=repo_root)
     logged: list[tuple[list[str], str]] = []
@@ -174,14 +181,23 @@ def test_a_marker_flag_without_its_expression_is_a_usage_error_before_any_run(re
     assert not calls, "a usage error must touch nothing"
 
 
-def test_every_uv_call_runs_without_an_implicit_sync(repo_root: Path, tmp_path: Path) -> None:
+def test_one_retried_sync_runs_first_and_no_later_uv_call_syncs(repo_root: Path, tmp_path: Path) -> None:
     # A plain `uv run` syncs the whole dev group first, so a third-party fetch would sit inside a
-    # hardware run and an outage would read as a hardware failure.
+    # hardware run and an outage would read as a hardware failure: the run syncs once, retried, before it.
     _run(repo_root, tmp_path, *_ARGS)
     raw = [written for _argv, written, _dir in _raw_calls(tmp_path)]
-    assert len(raw) == 3, raw
-    unsynced = [argv for argv in raw if argv[:2] != ["run", "--no-sync"]]
+    assert len(raw) == 4, raw
+    assert raw[0] == ["sync", "--locked"], f"the run's first uv call is scripts/uv_sync_retried.sh's: {raw}"
+    unsynced = [argv for argv in raw[1:] if argv[:2] != ["run", "--no-sync"]]
     assert not unsynced, f"these uv calls may sync: {unsynced}"
+
+
+def test_a_sync_failing_every_attempt_exits_1_before_anything_reaches_the_board(repo_root: Path, tmp_path: Path) -> None:
+    result, calls = _run(repo_root, tmp_path, *_ARGS, sync_exit=2)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert [argv for argv, _ in calls] == [["sync", "--locked"]] * 3, "three attempts, then nothing else"
+    assert (tmp_path / "calls.jsonl.sleeps").read_text(encoding="utf-8").split() == ["10", "20"]
+    assert "error: the retried uv sync failed" in result.stderr, result.stderr
 
 
 def test_pytest_sees_the_evidence_directory_exported(repo_root: Path, tmp_path: Path) -> None:

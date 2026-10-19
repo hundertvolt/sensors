@@ -1,0 +1,15 @@
+....F...                                                                 [100%]
+=================================== FAILURES ===================================
+______________ test_every_python_file_is_checked_by_some_mypy_run ______________
+
+    def test_every_python_file_is_checked_by_some_mypy_run() -> None:
+        runs = _runs()
+        unchecked = [f for f in _scope_files() if not any(f in checked for checked in runs.values())]
+>       assert not unchecked, f"no mypy run checks {unchecked} - name it in a pass's files or check it alone in scripts/typecheck.sh"
+E       AssertionError: no mypy run checks ['src/asy_api_response.py', 'src/asy_base_classes.py', 'src/asy_bmp3xx_driver.py', 'src/asy_captive_dns.py', 'src/asy_config_manager.py', 'src/asy_crc_checks.py', 'src/asy_dns_client.py', 'src/asy_fram_driver.py', 'src/asy_fram_manager.py', 'src/asy_framing_codecs.py', 'src/asy_i2c_driver.py', 'src/asy_isl29125_driver.py', 'src/asy_neopixel_driver.py', 'src/asy_notification_service.py', 'src/asy_ntp_client.py', 'src/asy_print_log.py', 'src/asy_scd30_driver.py', 'src/asy_sgp40_driver.py', 'src/asy_spi_driver.py', 'src/asy_system_service.py', 'src/asy_uart_comm.py', 'src/asy_uart_driver.py', 'src/asy_uart_link_driver.py', 'src/asy_udp_socket.py', 'src/asy_webserver_service.py', 'src/asy_wifi_service.py', 'src/math_helpers.py', 'src/voc_algorithm.py'] - name it in a pass's files or check it alone in scripts/typecheck.sh
+E       assert not ['src/asy_api_response.py', 'src/asy_base_classes.py', 'src/asy_bmp3xx_driver.py', 'src/asy_captive_dns.py', 'src/asy_config_manager.py', 'src/asy_crc_checks.py', ...]
+
+tests_scripts/test_lint_type_scopes.py:157: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_lint_type_scopes.py::test_every_python_file_is_checked_by_some_mypy_run
+1 failed, 7 passed in 0.15s

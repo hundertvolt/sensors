@@ -6,7 +6,6 @@ import argparse
 import contextlib
 import functools
 import json
-import os
 import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
@@ -821,7 +820,7 @@ def _write_replacing(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
     try:
         tmp.write_text(text, encoding="utf-8")
-        os.replace(tmp, path)
+        tmp.replace(path)
     except OSError:
         with contextlib.suppress(OSError):
             tmp.unlink(missing_ok=True)

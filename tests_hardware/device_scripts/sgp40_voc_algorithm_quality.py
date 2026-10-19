@@ -63,7 +63,7 @@ async def _main() -> None:
     reader.stop_timer()
     voc = [v for v, _raw in samples if v is not None]
     fact("samples", samples)
-    fact("max_step_jump", max((abs(b - a) for a, b in zip(voc, voc[1:])), default=0))  # noqa: B905 - MicroPython zip() takes no strict=
+    fact("max_step_jump", max((abs(b - a) for a, b in zip(voc, voc[1:])), default=0))
     fact("max_step_jump_bound", _MAX_SINGLE_STEP_JUMP)
     fact("blackout_s", _BLACKOUT_WAIT_S)
     fact("died", died)

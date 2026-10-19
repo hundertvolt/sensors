@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 _CLASS = "UDPSocket"  # the module global the redirect shadows
 
 
-class redirect_udp_port:  # noqa: N801  # a with-block helper, named like contextlib.redirect_stdout
+class redirect_udp_port:
     def __init__(self, module: object, real_port: object, fake_port: int) -> None:  # real_port: often a src_const() read
         self.constructed = 0
         self._module = module

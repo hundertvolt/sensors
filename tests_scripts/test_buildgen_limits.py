@@ -33,7 +33,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: "str | None"
 
 
 @pytest.mark.parametrize(
-    "payload,low,high",
+    ("payload", "low", "high"),
     [
         ("1..3600", 1, 3600),
         ("0..0", 0, 0),  # min == max is an exact-value requirement
@@ -58,7 +58,7 @@ def test_parse_limits_accepts_every_name_shape(tmp_path: Path, field: str) -> No
 
 
 @pytest.mark.parametrize(
-    "payload,expected",
+    ("payload", "expected"),
     [
         ("in {0x76, 0x77}", {0x76, 0x77}),
         ("in {0x76,0x77}", {0x76, 0x77}),  # no space after the comma
@@ -110,7 +110,7 @@ def test_parse_limits_duplicate_field_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match",
+    ("source", "match"),
     [
         ("# @limts trigger_s 1..3600\n", "misspelled @limits tag"),  # deletion
         ("# @limiits trigger_s 1..3600\n", "misspelled @limits tag"),  # insertion
@@ -133,7 +133,7 @@ def test_parse_limits_leaves_a_word_outside_the_typo_boundary_alone(tmp_path: Pa
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ("# @limits trigger_s\n", "malformed @limits tag", "tag.malformed"),  # the whole domain dropped
         ("# @limits trigger_s 1..\n", "missing one of its bounds", "limits.missing-bound"),  # max dropped

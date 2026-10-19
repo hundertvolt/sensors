@@ -134,9 +134,8 @@ scripts/                 lint.sh/typecheck.sh/test.sh, the build and runner scri
 ## A.3 Refactor status
 
 Targets the latest *stable* MicroPython/pico-sdk/picotool/Microdot, expands error handling/fault
-recovery, adds unit tests/mypy/ruff/CI (ruff, mypy, shellcheck, actionlint and zizmor each as their own
-stage, plus unit-tests, digital-twin-e2e and a real `firmware.uf2` build). Files land in `src/` once
-reviewed against Part D.
+recovery, adds unit tests/mypy/ruff/CI (every tool its own CI job; the job list and why each is
+shaped as it is: B.10). Files land in `src/` once reviewed against Part D.
 
 Originally prototyped as hand-written `src/sensortask_wozi.py` ("wozi", A.7) and
 `src/sensortask_dev.py` (dev bench, physically flashed, B.11/H.5) — not yet `arzi`/`neu`. That
@@ -609,7 +608,9 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
 `datasheets/` (repo root) holds real datasheet PDFs for the chips this codebase drives (`bmp3xx/`,
 `fram/`, `isl29125/`, `pico w/`, `scd30/`, `sgp40/`, `ws2812/`) — read the PDF first for any hardware-interaction claim,
 rather than reconstructing from training memory/web search. If a needed one isn't there and can't
-be fetched, say so explicitly.
+be fetched, say so explicitly. The folder is a git submodule of the private repository
+`hundertvolt/datasheets`, fetched by `git submodule update --init datasheets` with the owner's grant;
+nothing in the build, lint, test or CI needs it.
 
 **Pico W**: `datasheets/pico w/` holds the Pico W *board* datasheet, the RP2040 *silicon* datasheet
 (`RP-008371-DS-1-rp2040-datasheet.pdf`, the source for the GPIO function-mux table) and the board's two
@@ -1502,31 +1503,46 @@ reference-only and never wired (CLAUDE.md).
 
 ## B.10 CI perspective
 
-`.github/workflows/ci.yml` runs **fifteen jobs** (fourteen of them real work plus `web-changes`, a
-path filter the web jobs gate on), each its own stage so a failure names the tool rather than
+`.github/workflows/ci.yml` runs **sixteen jobs** (fourteen of real work plus two that derive
+inputs: `web-changes`, the path filter the web jobs gate on, and `devices`, the device list both
+per-device matrices read), each its own stage so a failure names the tool rather than
 going red under a shared "lint" label. Python side: `lint-and-typecheck`, `shellcheck`,
 `actionlint`, `zizmor`, `unit-tests` (`scripts/test.sh`, building via `setup` on a cache miss),
 `unit-tests-gc-threshold` (the (f) stage, `GC_THRESHOLD=32768`), `unit-tests-coverage`,
-`digital-twin-e2e` and **`firmware-build-verify`, which builds a real `firmware.uf2` for each of
-the six devices and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
+`digital-twin-e2e` and **`firmware-build-verify`, which builds a real `firmware.uf2` for every
+device and verifies it**. Web side: `web-lint-and-typecheck`, `web-unit-tests`, `web-put-matrix` (3 shards),
 `web-coverage`, `web-cross-browser-smoke`. The live PUT matrix is its own sharded job because it
 is the web tier's whole wall clock - 567s of the suite's 578s, measured 2026-09-19 - and kept
-rolling a 20-minute budget while taking three other jobs' signals with it.
+rolling a 20-minute budget while taking three other jobs' signals with it. `devices` globs
+`devices/*.toml` without the `zz_test_` fixtures (the `tests_scripts/_devices.py` rule) and fails
+on an empty set, so no job names a device.
+
+Two composite actions carry the shared steps: `.github/actions/uv-sync` (the pinned uv and the
+retried sync; `lint-and-typecheck`, `shellcheck`, `actionlint`, `zizmor` and
+`web-lint-and-typecheck` call it) and `.github/actions/setup-micropython-toolchain` (that action
+first, then the cached Unix-port toolchain, built through `scripts/_unix_port.sh ensure standard`
+on a miss when a job passes `build-unix-port: 'true'`; the other nine jobs that sync). A matrix
+value reaches a script through `env`, never through the script text.
 
 The cache key hashes every file whose content is compiled into the cached binaries —
-`versions.toml`, `setup_toolchain.py` and `micropython_overrides.py` — since keying on
-`versions.toml` alone once let a stale cached binary (built before `MICROPY_PY_SYS_SETTRACE=1`)
-survive across commits, a real bug (`--coverage` failed in CI while passing locally). Every caller
-of the composite action shares that one key, so the first job in a run builds and the rest hit.
+`versions.toml`, `setup_toolchain.py` and `micropython_overrides.py` — and the runner's identity,
+a hash of its image (`ImageOS`), host GCC and glibc, the inputs of the cached host binaries that
+`runner.os` does not name. Keying on `versions.toml` alone once let a stale cached binary (built
+before `MICROPY_PY_SYS_SETTRACE=1`) survive across commits, a real bug (`--coverage` failed in CI
+while passing locally). Every caller of the composite action shares that one key, so the first job
+in a run builds and the rest hit.
 
-**`uv sync` is retried three times in every job that syncs** — the four lint lanes, and every job
-reaching uv through `.github/actions/setup-micropython-toolchain` — so a third party's build-time
-download failing cannot read as a red test result (CLAUDE.md's "Code quality tooling"):
-`actionlint-py` fetches its binary inside its own build backend. Observed: HTTP 500 on 2026-09-13,
-504 on 2026-09-14, and 500 on 2026-09-21 in `firmware-build-verify`, which turned a docs-only
-commit red while the retry still lived only in the lint lanes and `unit-tests`. `unit-tests` and
-`unit-tests-coverage` keep their own copy too; a second sync against a current environment is a
-no-op, and CLAUDE.md says not to simplify that one away.
+**Every job that syncs runs `scripts/uv_sync_retried.sh`** (`uv sync --locked`, three attempts with
+10 s and 20 s pauses, the last attempt's exit code its own) — the five jobs above through
+`.github/actions/uv-sync`, the nine toolchain jobs as `setup-micropython-toolchain`'s first step —
+so a third party's build-time download failing cannot read as a red test result (CLAUDE.md's "Code
+quality tooling"): `actionlint-py` fetches its binary inside its own build backend. Observed: HTTP
+500 on 2026-09-13, 504 on 2026-09-14, and 500 on 2026-09-21 in `firmware-build-verify`, which
+turned a docs-only commit red while the retry still lived only in the lint lanes and `unit-tests`.
+It is the one retry loop: the uv-sync action first installs the uv `pyproject.toml`'s `[tool.uv]
+required-version` pins (any other uv refuses to run in this tree), every hardware runner calls the
+script once before its hardware step, and `setup_toolchain.py`'s `run_retried()` takes the same
+attempts and pauses (`tests_scripts/test_uv_sync_retried_sh.py`).
 
 **The coverage rerun is its own job**, `unit-tests-coverage`, for the same reason `web-coverage` is
 separate from `web-unit-tests`: `timeout-minutes` gates a whole job, not its real step, so a slow
@@ -1541,71 +1557,125 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 `ci.yml`'s own comments are one-line pointers here; this is the account.
 
 - **Permissions deny by default** (`permissions: {}`, then `contents: read` per job): nothing
-  pushes, comments or calls the API, and the Codecov steps use their own token. zizmor enforces it.
+  pushes or comments, and only `web-changes` calls the API, adding `actions: read` to read this
+  workflow's run list for its filter base. zizmor enforces it.
 - **`web-changes`** feeds the web jobs' `if:`s from one workflow file rather than a second file
   with a trigger-level `paths:` filter, which can leave a PR on a required check that never fires
-  (H.8). It passes `base: ${{ github.ref }}`: without a base, `dorny/paths-filter` compares a push
-  against the default branch, so on a long-lived branch every push matched whatever it had touched
-  weeks ago and the web tier ran on markdown-only commits. A `pull_request` ignores `base` and
-  compares against the PR's base, so a PR still runs the full web tier before merge. Python jobs
-  never consult it.
-- **`web-unit-tests`** builds the Unix-port toolchain too, since `tests_js/live-backend.test.js`
-  drives a real twin (H.7), sharing `unit-tests`' cache key. Playwright's browser is cached keyed
-  on `package-lock.json` (which pins its version); its OS packages are reinstalled every run,
-  Playwright's own documented pattern. `npm test`'s `pretest` hook builds the website first.
+  (H.8). Without a base, `dorny/paths-filter` compares a push against the default branch, so every
+  push on a long-lived branch matched whatever it had touched weeks ago. A push therefore compares
+  against the last commit CI passed on its branch: a first step asks for the head commit of the
+  newest successful run of `ci.yml` there (`gh api -X GET .../actions/workflows/ci.yml/runs` with
+  `branch`, `status=success` and `per_page=1`, bounded by Part N `ci.last_green_lookup_timeout_s`),
+  so a push whose run was cancelled by the next push, or failed, is compared again by the next run.
+  With no green run found, or a failed lookup, the job's `web` output is `'true'` and the whole web
+  tier runs rather than guessing; the default branch alone would not do as the fallback, since
+  there the base equals the head and only the push's own commits are compared. A `pull_request`
+  ignores `base` and lists the whole PR, so a PR still runs the full web tier before merge. The
+  filter's inputs: the site and its tests (`html/`, `js/`, `tests_js/`, `mockdata/`), `scripts/`,
+  everything the definitions and the live twin are built from (`src/`, `buildgen/`, `devices/`,
+  `digital_twin/`, `toolchain/`, `ext/`), the Python environment (`pyproject.toml`, `uv.lock`),
+  the web tooling's config (`package.json`, `package-lock.json`, `eslint.config.js`,
+  `tsconfig*.json`, `vitest.config.js`, `.htmlvalidate.json`, `.stylelintrc.json`, `.nvmrc`) and
+  the CI definition itself (`.github/workflows/ci.yml`, `.github/actions/**`).
+  `dorny/paths-filter` is pinned to the commit of `v4.0.3`, the newest v4 tag on 2026-10-19 (a
+  commit, not a tag object), with that version in its comment. Python jobs never consult it.
+- **`devices`** lists the device set for both per-device matrices (B.10), so a device exists for
+  CI by its TOML alone.
+- **`web-lint-and-typecheck`** runs ESLint, both `tsc` passes, html-validate over `html/` and
+  Stylelint, syncs the Python environment (`.github/actions/uv-sync`, after `npm ci`),
+  validates every device's built page (`npm run lint:html:built`, H.8) and runs html-validate's
+  config check (`tests_scripts/test_html_validate_config.py`) with `HTML_VALIDATE_REQUIRED=1`: the
+  unit-test jobs install no `node_modules` and skip it, naming why.
+- **`web-unit-tests`** builds the Unix-port toolchain too, through the toolchain action's
+  `build-unix-port` input, since `tests_js/live-backend.test.js` drives a real twin (H.7), sharing
+  `unit-tests`' cache key; the build step grants the binary `cap_net_bind_service` on a hit as on a
+  miss, since every twin boot binds the local NTP responder's port 123 and a restored cache carries
+  no file capabilities. It `needs: web-lint-and-typecheck` for order only, with `!cancelled()`, so
+  a red web lint does not skip the web tests (CLAUDE.md). Playwright's browser is cached keyed on
+  `package-lock.json` (which pins its version); its OS packages are reinstalled every run,
+  Playwright's own documented pattern. Before either install an apt drop-in bounds and retries
+  apt's fetches as `setup_toolchain.py`'s `apt_options()` does (`Acquire::Retries` one under Part N
+  `tool.uv_sync_attempts`, `Acquire::http(s)::Timeout` `tool.apt_acquire_timeout_s`), and each
+  install step is bounded by `ci.playwright_install_timeout_min`; the four web jobs that test share
+  these steps. `npm run test:unit`'s `pretest:unit` hook builds every device's website first.
 - **`web-put-matrix`** is split out and sharded because the live PUT matrix IS the web tier's wall
   clock — 567 s of the suite's 578 s, 243 of 778 tests (2026-09-19) — and kept rolling a 20-minute
   budget, taking the other tests, coverage and the smoke with it. Each shard is its own runner, so
   the harness's fixed twin port never collides; `tests_js/mock-server-put-matrix.test.js` proves
-  the partition. It `needs: web-unit-tests`: no three runners on the slow matrix if the fast suite
-  already failed.
+  the partition. It `needs: web-unit-tests`, success-gated on purpose: no three runners on the
+  slow matrix if the fast suite already failed.
 - **`web-coverage`** is its own job because `timeout-minutes` gates a whole job: on PR #50 (run
   `33856690559`) the instrumented rerun killed a job whose real test step had already passed. It
   excludes the live matrix at almost no cost to the number, since the mock-server matrix drives
-  the same `js/` paths.
+  the same `js/` paths. Its test step gates (`set -o pipefail` through the `tee`, no
+  `continue-on-error`) and its report steps (`always() && hashFiles(...)`, `continue-on-error`) do
+  not; it is success-gated on `web-unit-tests` on purpose: nothing to measure if the plain suite
+  failed.
 - **`web-cross-browser-smoke`** runs the production site through WebKitGTK, Firefox and Edge —
   engines Vitest's Playwright mode cannot reach — plus Chromium as a baseline, one field edit per
-  engine and viewport (H.7 "Cross-browser coverage"). It installs Playwright's Chromium itself:
-  each job is a fresh VM, and a version without that step failed with "Executable doesn't exist".
-  Firefox/geckodriver come from conda-forge via micromamba (~106 MB, no version file to key on),
-  cached under a fixed key whose suffix is bumped to force a refresh; WebKit and Edge reinstall
-  every run. `needs: web-unit-tests`, fail-fast.
+  engine and viewport (H.7 "Cross-browser coverage"), with `--require-all-engines`: a missing
+  engine fails in CI instead of being skipped. It installs Playwright's Chromium itself: each job
+  is a fresh VM, and a version without that step failed with "Executable doesn't exist". It builds
+  every device's site in a step of its own (`npm run build:site`). Firefox/geckodriver come from
+  conda-forge via micromamba (~106 MB, no version file to key on), cached under a key that rolls
+  monthly and with the installer (`cross-browser-firefox-<os>-<installer hash>-<YYYY-MM>`), so the
+  floating engine stays current; WebKit and Edge reinstall every run. Each Xvfb reports its own
+  display (H.7). `needs: web-unit-tests`, success-gated on purpose: no browser installs if the fast
+  suite already failed.
 - **`lint-and-typecheck`** names every ruff scope explicitly, `build/generated_src` included after
-  a generation step, so the generated modules are linted with `src/`'s rules; for mypy it names
-  exactly the main pass's `files`, checked by `tests_scripts/test_lint_type_scopes.py` (B.15), since
-  `scripts/typecheck.sh` always runs the twin and host passes. A local run may narrow the main pass
-  with arguments; CI's equals the full scope. **`shellcheck`**,
-  **`actionlint`** (the workflow, the composite action and, through shellcheck, every `run:` block)
+  a generation step, so the generated modules are linted under the MicroPython-run group's
+  exemptions (D.6, L.5); mypy runs `scripts/typecheck.sh` with no arguments, so its main pass
+  checks `[tool.mypy]`'s `files` as a local run does and the twin and host passes run too (B.15);
+  `tests_scripts/test_lint_type_scopes.py` pins both. **`shellcheck`**,
+  **`actionlint`** (the workflow, the composite actions and, through shellcheck, every `run:` block)
   and **`zizmor`** (`--offline`, skipping the two API audits so it behaves the same everywhere) are
   each their own stage so each tool has its own check run. shellcheck covers `scripts/` only: the
   legacy `legacy/firmware/build-*.sh` are never in scope (CLAUDE.md).
 - **`unit-tests`** keeps `needs: lint-and-typecheck` purely for sequencing, the standing hang
   backstop, with `if: !cancelled()` so a red lint never skips the tests (CLAUDE.md). The per-file
-  timeout in `scripts/test.sh` is the real hang defence; `timeout-minutes: 45` is for many files
-  hanging at once: a ~17-minute warm run plus one file's full 12-minute retry budget (240 s x 3,
-  `PER_FILE_TIMEOUT_S`), after a tighter cap cancelled a healthy run (`34755468619`). Cold-cache runs measured 16m58s and
-  16m42s including the toolchain build. The minutes are `ci.unit_tests_timeout_min` (Part N), every
-  job's `timeout-minutes` a `ci.*` row there. Its own retried `uv sync` is B.10's.
+  timeout in `scripts/test.sh` is the real hang defence; `timeout-minutes` is for many files
+  hanging at once: a warm run plus one file's full 12-minute retry budget (240 s x 3,
+  `PER_FILE_TIMEOUT_S`), after a tighter cap cancelled a healthy run (`34755468619`). The minutes
+  are `ci.unit_tests_timeout_min` (Part N, with the measured runs behind them), every job's
+  `timeout-minutes` a `ci.*` row there. The retried sync is the toolchain action's first step,
+  ahead of `scripts/test.sh`.
 - **`unit-tests-gc-threshold`** is CLAUDE.md's (f) stage — the same suite at the boot entry's
   `gc.threshold(32768)`, on a design already passing at `-1` — in its own job so a second full run
-  never sits on the critical path.
+  never sits on the critical path; like `unit-tests` it follows `lint-and-typecheck` with
+  `!cancelled()`.
 - **`unit-tests-coverage`** `needs: unit-tests` to reuse its toolchain cache rather than rebuild it
   in parallel on a cold cache, and is success-gated (nothing to measure if the plain suite failed).
-  45 minutes over the measured 14m01s and 16m56s instrumented reruns. Its test step gates and its
-  report steps (`always() && hashFiles(...)`, `continue-on-error`) do not (E.5.3); the Codecov
-  upload needs the repo registered and a `CODECOV_TOKEN`, and `fail_ci_if_error` stays off.
+  Its minutes, `ci.unit_tests_coverage_timeout_min` (Part N), sit over the measured 14m01s and
+  16m56s instrumented reruns. Its test step gates and its report steps (`always() &&
+  hashFiles(...)`, `continue-on-error`) do not (E.5.3): four job summaries (`src/`,
+  `digital_twin/`, the generated modules, the host build chain) and four HTML artifacts
+  (`coverage-html`, `coverage-html-digital-twin`, `coverage-html-generated`, `coverage-html-host`).
 - **`digital-twin-e2e`** is the automated twin walkthrough (fresh boot, every endpoint, fault
   injection, persistence across a real process restart, soak; `digital_twin/README.md`), a
-  heavier check than the unit tier. A six-device matrix, `fail-fast: false`, because each device's
-  suite spends tens of seconds waiting on real state transitions that parallelize across jobs.
-  `needs: unit-tests` and stays success-gated: fail-fast is its stated intent.
-- **`firmware-build-verify`** builds a real `firmware.uf2` per device (B.11) — the check that the
-  assembly actually links, beyond `tests_scripts/test_build_firmware.py`'s fast tests. `needs:
-  unit-tests` for the toolchain cache only, so `if: !cancelled()`: a cache dependency must not
-  gate an independent finding. It installs the ARM compiler through `setup_toolchain.py`'s
-  `ensure_apt_packages()` against `versions.toml`, since apt packages never survive between jobs;
-  a version without that failed with "Compiler 'arm-none-eabi-gcc' not found". A cache miss fails
-  on `build_firmware.py`'s own "no toolchain found" rather than skipping the build.
+  heavier check than the unit tier. One job per device from `devices`, by GC stage (`-1`,
+  `32768`) by part (the suite, the scenario harness), `fail-fast: false`, because each device's
+  suite spends tens of seconds waiting on real state transitions that parallelize across jobs;
+  every matrix value reaches `scripts/run_digital_twin_ci.sh` through `env:`.
+  `needs: [unit-tests, devices]` and stays success-gated: fail-fast is its stated intent.
+- **`firmware-build-verify`** builds a real `firmware.uf2` per device of `devices` (B.11) — the
+  check that the assembly actually links, beyond `tests_scripts/test_build_firmware.py`'s fast
+  tests. `needs: unit-tests` for the toolchain cache only, so `if: !cancelled()`: a cache
+  dependency must not gate an independent finding; the device list is a real input, so the job
+  also requires `needs.devices.result == 'success'`. It installs the ARM compiler through
+  `setup_toolchain.py`'s `ensure_apt_packages()` against `versions.toml`, since apt packages never
+  survive between jobs; a version without that failed with "Compiler 'arm-none-eabi-gcc' not
+  found". It then installs the cached picotool: picotool lives in `/usr/local`, outside the cache,
+  while its build tree is inside it, so `sudo make install` from that tree installs the very binary
+  `setup` built, and `picotool version` proves it. Without an installed picotool the pinned
+  pico-sdk (2.3.0, `tools/Findpicotool.cmake`) warns "No installed picotool with version … found -
+  building from source" and clones and builds picotool from GitHub inside the firmware build. A
+  cache miss fails the picotool step by name (no cached build tree), never skipping the build.
+
+`tests_scripts/test_ci_workflow.py` pins these rules: the gating, the filter's inputs and base,
+the commit pins, the shallow checkout without submodules, no hidden test result, values through
+`env`, the toolchain action's key, callers and build, the sync first, the derived matrices, the
+smoke's flag and Firefox key, the built-page lint, the tagged budgets and the bounded Playwright
+installs.
 
 ## B.11 Building this project's firmware
 
@@ -2485,8 +2555,13 @@ and `tests_scripts/conftest.py` alone under `host_typecheck.ini` and `tests/netw
 the main config: each is a second file of a module name another file of its pass holds, so it is
 checked where nothing else of that name is in the run.
 
-**CI and local runs agree.** CI passes exactly the main pass's `files`; a local run may narrow the
-main pass with arguments. `tests_scripts/test_lint_type_scopes.py` pins the three configs against
+**CI and local runs agree.** CI runs `scripts/typecheck.sh` with no arguments, so its main pass
+checks `[tool.mypy]`'s `files` as a local run does; a local run may narrow the main pass with
+arguments. `tests_scripts/test_config_paths_resolve.py` resolves every path a config file names
+(ruff's per-file globs, each pass's `files`, `mypy_path` and `exclude`, the `tsconfig*.json` lists,
+the scripts `package.json`, the workflow and its actions name), since a dead path silently checks
+nothing.
+`tests_scripts/test_lint_type_scopes.py` pins the three configs against
 each other and every lint scope: the same strictness in all three passes, ruff and CI naming the
 eight scopes plus the generated tree, every Python file checked by some mypy run, and a file two runs
 check only with its named reason.
@@ -3607,7 +3682,11 @@ concurrent sibling reads.
 2. **Digital twin** (`tests/test_digital_twin_bus_hazard_concurrency.py`) — the real object graph
    against higher-fidelity chip fakes under genuine concurrent task load. Its shared
    `_run_real_task_graph_and_assert_healthy()` helper also runs one TOML-driven generic pass over the
-   same already-booted graph, alongside its hand-written checks.
+   same already-booted graph, alongside its hand-written checks. It runs the cancelled-session hazard
+   too: on every shared bus carrying an SGP40, that sensor's setup and measurement cancelled at each
+   turn leave both locks free, the measure command restored and every occupant's next read valid
+   (`test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable`, the twin pair of the
+   mock case above).
 3. **Flash tier** (`tests_hardware/flash/test_bus_concurrency.py`) — real hardware, dev bench only.
    **Real-hardware write-safety constraints, project-owner-mandated** (owner, 2026-09-03, `7c8dbbc`,
    paraphrase; (a) generalised by the owner's wear rule of 2026-09-17): (a) respect any real
@@ -4250,6 +4329,38 @@ imported under `TYPE_CHECKING`, or a class defined later in the module that ruff
 otherwise reject; leave every other annotation bare. MicroPython never evaluates annotations, so both
 forms are runtime-safe; every file follows it (owner, 2026-09-25).
 
+**Suppressions.** Every `# type: ignore` and `# noqa` names its codes, ascending and `, `-separated;
+an inline `# noqa: CODES - <reason>` states its reason; `src/` carries no `# noqa`, and each of its
+`type: ignore`s gives a one-line reason beside it or on the comment line directly above; a typing
+workaround names its external defect and its removal trigger (F.5.5). Checked by
+`tests_scripts/test_suppression_form.py`.
+
+**Ruff's per-file exemptions** (`pyproject.toml`'s `[tool.ruff.lint.per-file-ignores]`, each entry
+with its reason) fall in two scope groups. *MicroPython-run code* — `src/`, `build/generated_src/`,
+`tests/`, `digital_twin/`, `tests_hardware/device_scripts/` — runs on the board or the Unix port and
+carries the rules whose reasons hold only there: no `pathlib`, no async file I/O, no `contextlib` in
+the frozen build, no PEP 448 unpacking in displays, `zip()` without keywords (B905; `py/objzip.c`),
+no `await` inside a MicroPython comprehension (PERF401), the error path's SRAM (TRY003/EM101/EM102,
+D.4), and in the test scopes microtest rather than pytest (PT) and doubles taking `machine.I2C`'s
+positional `stop` (FBT001/FBT002). *Host code* — `buildgen/`, `scripts/`, `toolchain/`,
+`tests_scripts/`, the rest of `tests_hardware/` — runs under CPython: a host tool prints a user
+error's message alone, with no traceback to duplicate it (EM101/EM102/TRY003, L.5). A rule whose
+reason holds at a few sites stays per file, naming them: the runners that `exec` the file they run
+(S102), `eval` of one repository literal (S307), `os.system` where MicroPython has no `subprocess`
+(S605), names kept as they read in use (N801/N818), `setattr` on a run-time module (B010), and
+`raise … from e`, which makes MicroPython print "exception chaining not supported" (B904;
+`py/vm.c`'s `MP_BC_RAISE_FROM`). An inline `# noqa: E402` names why its import follows a statement.
+`tests_scripts/test_ruff_exemptions_live.py` fails on a global or per-file entry that no longer
+fires.
+
+The host test suites (`tests_scripts/`, `tests_hardware/`) keep composite asserts, whose pytest
+rewrite reports each operand (PT018), and literal raise messages, which are a test's failure text
+(EM101/EM102/TRY003), exempt with that reason in `pyproject.toml` (owner, 2026-10-19). Asked "fix the
+composite asserts and literal raise messages in the host-side test suites?", with the options (a)
+keep them exempt with the reason (the default), (b) fix all in an extra lane, about 590 edits in
+about 140 files, or (c) PT018 only, about 418 edits in 115 files, the owner answered "Default is ok",
+and, after the consequences were shown, "(a) is still the choice."
+
 ## D.7 Always-defined return values
 
 Every code path returns explicitly, matching the declared type — no implicit `None`, no
@@ -4439,7 +4550,10 @@ over the generated devices; a fixed row (the prewarm scan, the CI suite's 18080,
 cross-browser smoke) is listed so no other row can take it. An allocator past its band's end fails
 naming it, and `tests_scripts/test_port_bands.py` checks the table and that every test file binding
 a port draws it from its band. **A new test file that binds a socket claims a row of its own** —
-never a neighbour's, never inside the ephemeral range.
+never a neighbour's, never inside the ephemeral range. No unit file relies on 127.0.0.1:123 or :53
+being closed (agent, 2026-10-19): the scenario harness's twins hold those ports while the loop runs,
+so a test that needs a silent NTP or DNS server redirects its client into its own file's band
+(`tests/_udp_port_redirect.py`).
 
 **Fixed ports** the product itself binds — 53 for the captive DNS, 18080 for the CI suite's twin —
 are held by one runner at a time through a per-port lock, `scripts/_port_lock.sh` (and
@@ -4815,21 +4929,21 @@ Unix port, so collection and reporting are two stages: `tests/_coverage_runner.p
 MicroPython via `sys.settrace`, recording every executed line under its traced prefixes and dumping
 JSON on every path — a file that never reaches microtest's exit fails the run, as under
 `tests/_threshold_runner.py` (E.3.1); `scripts/_render_coverage.py` (CPython) merges the dumps,
-feeds them into `coverage.py` via `CoverageData.add_lines()`, and renders HTML and markdown, and
-XML when given `--xml-file`. Under `--coverage` the backgrounded pytest tier runs as `coverage run
+feeds them into `coverage.py` via `CoverageData.add_lines()`, and renders HTML and markdown only
+(`--xml-file` is a usage error). Under `--coverage` the backgrounded pytest tier runs as `coverage run
 --data-file=<results>/host.coverage --source=buildgen,scripts,toolchain -m pytest tests_scripts`
 (the dev group's pinned `coverage`), rendered by `coverage html` and `coverage report
 --format=markdown`; its report is report-only like the rest. Measured once on 2026-10-13, that
 traced tier took 964.6 s against the plain tier's 579 s, inside `runner.tests_scripts_timeout_s`,
 so it runs as the one pytest step (agent, 2026-10-13). Produces four reports (gitignored, at repo
-root): `src/`'s `htmlcov/index.html`, `coverage.xml` and `coverage_summary.md`; `digital_twin/`'s
-`htmlcov_digital_twin/`, `coverage_digital_twin.xml` and `coverage_summary_digital_twin.md`; the
-generated modules' `htmlcov_generated/` and `coverage_summary_generated.md`, without XML; and the
-host chain's `htmlcov_host/` and `coverage_summary_host.md`. A `--coverage` run first moves the
-previous run's coverage outputs into the evidence archive (E.1). Locally nothing opens
-automatically. On GitHub: `coverage_summary.md` appends to the run's Job Summary; `htmlcov/` uploads
-as a downloadable artifact; `coverage.xml` uploads to Codecov, but that account-linking hasn't been
-done, so it currently no-ops silently. Runs in its own `unit-tests-coverage` CI job (Session 8's
+root), each an HTML tree and a markdown summary: `src/`'s `htmlcov/index.html` and
+`coverage_summary.md`; `digital_twin/`'s `htmlcov_digital_twin/` and
+`coverage_summary_digital_twin.md`; the generated modules' `htmlcov_generated/` and
+`coverage_summary_generated.md`; and the host chain's `htmlcov_host/` and `coverage_summary_host.md`.
+A `--coverage` run first moves the previous run's coverage outputs into the evidence archive (E.1).
+Locally nothing opens automatically. On GitHub every summary appends to the run's Job Summary and
+every HTML tree uploads as a downloadable artifact (B.10.1); there is no Cobertura XML and no
+Codecov upload. Runs in its own `unit-tests-coverage` CI job (Session 8's
 closing-consistency-pass PR split it out of `unit-tests` proper) — this pass re-runs the whole
 real-interpreter suite a second time under `sys.settrace`, so keeping it off `unit-tests`' own
 critical path means `digital-twin-e2e`/`firmware-build-verify` (which only need `unit-tests`' own
@@ -4924,7 +5038,9 @@ Consequences worth keeping in mind:
   again. The same probe imports `asyncio`: a `setup` interrupted between its frozen-verification
   build and the vanilla rebuild leaves an executable binary with no frozen `asyncio`, on which every
   test file dies with `ImportError` — that too reads as unusable and triggers the rebuild. The probe
-  has no time bound of its own: a binary that hangs at start hangs every caller.
+  runs under `timeout -s KILL` for Part N `runner.unix_port_probe_timeout_s`: a binary that hangs at
+  start reads `unusable`, `check` naming the kill, and a host without `timeout` stops `check` and
+  `ensure` naming it.
 - **`--coverage`'s own figures stay inflated**, inherently — it cannot run without the flag. Read
   coverage as line coverage only, never as an allocation measurement. The per-node conversion table
   is in HEAP_FRAGMENTATION_MEASUREMENTS.md §M3.7 (archive §1.2 item 7 and §3A).
@@ -6207,7 +6323,8 @@ this. A `type: ignore` in `src/` or `digital_twin/` is right only where the code
 correct stub — e.g. `asy_udp_socket.py`'s `recvfrom()`, whose 1.29 stub types the address as
 socket's full `_Address` union while this project is AF_INET-only — or where mypy cannot see a
 runtime fact (a mutation it does not track); each must name its reason and, for a stub gap, its
-removal trigger. A stub defect that can be repaired at install is repaired here, not suppressed.
+removal trigger — in `src/` beside it or on the comment line directly above, which
+`tests_scripts/test_suppression_form.py` checks (D.6). A stub defect that can be repaired at install is repaired here, not suppressed.
 
 ### F.5.6 Smaller 1.29 facts, and the non-events
 
@@ -7004,9 +7121,11 @@ build/generated_src/definitions/
 ```
 
 `package.json` mirrors `pyproject.toml`'s role (dev-tooling only, shipped code stays hand-written).
-`npm run preview` generates every device's definitions, then serves the repo root —
-`localhost:8000/html/index.html` for the manifest's first device (`?device=<name>` picks another)
-— against `js/mock-server.js`'s fake backend.
+`npm run preview` generates every device's definitions, then serves the site's own directories
+from the repo layout through `scripts/preview_server.py` — `html/`, `js/`, `mockdata/` and
+`build/generated_src/definitions/` only, links resolved, on 127.0.0.1 alone (`--port`, default
+8000; a taken port is one line naming `--port`, exit 1) — `127.0.0.1:8000/html/index.html` for the
+manifest's first device (`?device=<name>` picks another), against `js/mock-server.js`'s fake backend.
 
 **JS modules**: `app.js` (prototype-only: the device manifest, the mock install), `main.js` (real
 production entry — no mock, staged as `app.js` in the real build), `shell.js` (the one page shell
@@ -7029,8 +7148,8 @@ three-line banner naming the derived order, then each module under `// ---- js/<
 `--stage-only` stages into `output` and freezes nothing. Staging the production entry under the
 name `app.js` means `index.html`'s import path never needs a build-time rewrite.
 `js/mock-server.js` is deliberately never staged at all — its `fetch` patching has no business near
-production. That same path also stays identical under `npm run preview`, which serves the repo
-layout where `js/app.js` is the prototype-only entry file. The drift rule: every file under `html/`
+production. That same path also stays identical under `npm run preview`, which serves the site's
+own directories from the repo layout, where `js/app.js` is the prototype-only entry file. The drift rule: every file under `html/`
 and `js/` is `index.html`, a file it links, or a module of `js/main.js`'s or `js/app.js`'s import
 closure, else the build fails; it and every other refusal are pinned by
 `tests_scripts/test_stage_website.py`. `scripts/build_device_websites.sh [--stage-only] [out_root]`
@@ -7587,7 +7706,8 @@ and the pytest tier that pins them: `tests_hardware/README.md`, "Holding a ceili
 
 Vitest's browser mode only automates Chromium-family browsers via Playwright.
 `scripts/cross_browser_smoke.mjs` closes this gap: boots the real twin of every device of
-`devices/*.toml`, one at a time, and drives that device's real website
+`devices/*.toml` (through `tests_js/_twin_process.js`, the live tier's own launch), one at a time,
+and drives that device's real website
 through **WebKitGTK** (real WebKit), **real Firefox** (`geckodriver` via `micromamba`, since
 Ubuntu's `firefox` apt package is a snap-only stub), and **real Microsoft Edge** — plus Playwright's
 own Chromium. Each engine, desktop and mobile viewport: nav → drawer → the probe field's
@@ -7602,23 +7722,36 @@ and single-session: concurrency is covered by
 `max_connections` of parallel Chromium tabs against one twin, every tab loading on the first pass
 or on one reload of its own).
 `scripts/setup_cross_browser_toolchain.sh` installs the
-three non-Chromium toolchains (idempotent), shared between CI and local dev; CI always installs all
-three (a skip there is the bug to chase).
+three non-Chromium toolchains (idempotent), shared between CI and local dev. CI runs the smoke with
+`--require-all-engines`, so an engine whose binary is missing fails there, naming the binary; run
+without it, a missing engine is skipped with a warning and counted, the closing line reading
+"N/M cross-browser smoke checks passed; engines skipped: K." The Chromium leg takes the lock-pinned
+Playwright Chromium, falling back to a sandbox's `/opt/pw-browsers/chromium` only when that build is
+absent (H.8). WebKitGTK and Firefox run on an Xvfb this process starts with `-displayfd`: Xvfb picks
+a free display itself and the run waits for the number it writes back (Part N
+`l0.smoke_display_ready_timeout_ms`), never for a lock file, so a display another Xvfb holds cannot
+pass for this run's own.
 
 **Why each engine comes from the channel it does** — none is the obvious one, and the script only
 points here. WebKitGTK: `webkit2gtk-driver` is a plain apt package shipping `/usr/bin/
-WebKitWebDriver`, a real W3C WebDriver server, so nothing else is needed (plus `xvfb`, since
-headless WebKitGTK still wants a display). Edge: Microsoft's own apt repo
-(`packages.microsoft.com`) ships a real Linux build, and Playwright drives it directly through
+WebKitWebDriver`, a real W3C WebDriver server, so nothing else is needed, plus `xvfb`, which
+WebKitGTK and Firefox both need and the installer provisions on its own check. Edge: Microsoft's own
+apt repo (`packages.microsoft.com`) ships a real Linux build, its signing key checked against the
+fingerprint Microsoft publishes for it (https://learn.microsoft.com/en-us/linux/packages) before the
+keyring is written, and Playwright drives it directly through
 `chromium.launch({executablePath})` — same Blink/CDP protocol — so it needs no separate WebDriver
 server. Firefox is the awkward one: Ubuntu's `firefox` package is a snap-only stub that fails
 outright without working snapd (which CI runners and most containers lack), and every other usual
 source — Mozilla's CDN, the `mozillateam` PPA, Playwright's own bundled build — is blocked by the
 outbound network policy this was first verified under. conda-forge, reached through a standalone
 `micromamba` binary, packages a real current Firefox plus Mozilla's own `geckodriver` and was
-reachable. That install is **unpinned** (agent, 2026-08-26, `7ff3c3c`), unlike
-`toolchain/versions.toml`'s MicroPython pin: whatever conda-forge publishes today is acceptable for
-an engine-diversity smoke check, and deleting `$CROSS_BROWSER_TOOLCHAIN_DIR` forces a fresh pull.
+reachable. The `micromamba` binary itself is a pinned release checked by SHA-256 (one an older run
+left is checked again), but the packages it pulls are **unpinned** (agent, 2026-08-26, `7ff3c3c`),
+unlike `toolchain/versions.toml`'s MicroPython pin: whatever conda-forge publishes today is
+acceptable for an engine-diversity smoke check, and deleting `$CROSS_BROWSER_TOOLCHAIN_DIR` forces a
+fresh pull. Every apt fetch the installer makes is bounded and retried as `setup_toolchain.py`'s
+`apt_options()` (Part N `tool.apt_acquire_timeout_s`, `tool.uv_sync_attempts`), and a failed download
+leaves no keyring and no executable behind.
 
 ## H.8 CI / tooling stack
 
@@ -7626,7 +7759,13 @@ Mirrors Python's role split: **ESLint** (flat config, beyond `eslint:recommended
 `tests_js/`, `scripts/*.mjs`, and via `eslint-plugin-html` the inline script) for ruff;
 **TypeScript `checkJS` mode** (`tsc --noEmit` reading JSDoc, two invocations — browser-context
 `tsconfig.json` with DOM lib, Node-context `tsconfig.node.json` without, since the two contexts
-can't share one `tsc` program's ambient globals, H.8.1) for mypy; **Vitest in real-browser mode**
+can't share one `tsc` program's ambient globals, H.8.1 — both extending `tsconfig.base.json`, which
+holds the shared options: `strict` plus every further check TypeScript offers, each switched on
+after a clean trial, `isolatedModules` and `erasableSyntaxOnly` among them; off are
+`isolatedDeclarations`, which needs declaration emit that `allowJs` excludes, and
+`noPropertyAccessFromIndexSignature`, which contradicts ESLint's `dot-notation` at 344 sites;
+`skipLibCheck` stays on for third-party declarations in `node_modules` that fail checking, so the
+project's own command declarations are a checked `tests_js/vitest-commands.ts`) for mypy; **Vitest in real-browser mode**
 (`@vitest/browser-playwright`, real Chromium, deliberately not jsdom — same "real engine over a
 shim" principle as E.1; `testTimeout: 20000` mirrors "hanging tests never allowed") for the
 real-interpreter test principle — `npm test` ends with the runner summary block (E.10), and no spy
@@ -7638,9 +7777,16 @@ and which therefore shadowed the real `coverage` distribution `scripts/_render_c
 `exclude: ["**/*.json"]` because the provider re-parses every file V8 reported as JavaScript, so
 the JSON the site fetches at runtime threw a rolldown parse stack per run before being dropped
 anyway - `tests_scripts/test_js_coverage_excludes_json.py` keeps every JSON out of that set)
-for `--coverage`; **html-validate** for `html/` and, through `npm run lint:html:built`, for every
-device's staged `index.html` (`scripts/build_device_websites.sh --stage-only build/staged_html`; a
-local check until CI runs it), **Stylelint** for CSS.
+for `--coverage`, its test result gating in CI while its report does not (B.10.1);
+**html-validate** for `html/` and, through `npm run lint:html:built`, for every device's staged
+`index.html` (`scripts/build_device_websites.sh --stage-only build/staged_html`; CI's
+`web-lint-and-typecheck` runs both), with `no-unknown-attributes` on beyond its presets
+(`.htmlvalidate.json`; `tests_scripts/test_html_validate_config.py` proves it fails planted
+misspellings, skipping where html-validate is not installed unless `HTML_VALIDATE_REQUIRED` is
+set, as CI's `web-lint-and-typecheck` sets it); **Stylelint** for CSS. Vitest runs the lock-pinned Playwright Chromium
+whenever it is installed; a session sandbox that cannot download it pre-installs one at
+`/opt/pw-browsers/chromium`, used only when the pinned build is absent (agent, 2026-08-21), a
+fallback that goes once the sandbox can run `npx playwright install chromium`.
 Vitest reads every device's generated definitions from `build/generated_src/definitions/` and its
 REST reference from `build/generated_src/api/` (`API_REFERENCES`) through one loader,
 `tests_js/_generated_definitions.js`, which fails at import when either tree is missing, its
@@ -7680,11 +7826,16 @@ below each, none at it, through ESLint's Node API in a Commands API module,
 `npm run preview` and in a device build.
 
 **CI mechanism**: `.github/workflows/ci.yml` carries a `dorny/paths-filter` gate job feeding `if:`
-conditions on `web-lint-and-typecheck`/`web-unit-tests` — deliberately not a second workflow file
+conditions on every web job — deliberately not a second workflow file
 with its own trigger-level filter (which can leave a PR stuck on a required check that never
-fires). Web CI runs only against `html/`, `js/`, `tests_js/`, `scripts/`, `mockdata/`, the
-definitions' sources (`src/`, `buildgen/`, `devices/`), and its
-own config files — `eslint.config.js`/`vitest.config.js` are not just trigger paths but are
+fires). Web CI runs only when a push changed, since the last commit CI passed on its branch (a
+`pull_request`: anywhere in the PR), `html/`, `js/`, `tests_js/`, `scripts/`, `mockdata/`,
+everything the definitions and the live twin are built from (`src/`, `buildgen/`, `devices/`,
+`digital_twin/`, `toolchain/`, `ext/`), the Python environment (`pyproject.toml`, `uv.lock`), the
+CI definition itself (`.github/workflows/ci.yml`, `.github/actions/**`) or its own config files
+(`package.json`, `package-lock.json`, `eslint.config.js`, `tsconfig*.json`, `vitest.config.js`,
+`.htmlvalidate.json`, `.stylelintrc.json`, `.nvmrc`); with no green commit to compare against, it
+runs (B.10.1). `eslint.config.js`/`vitest.config.js` are not just trigger paths but are
 themselves linted (their own `files` block in `eslint.config.js`, Node globals, the same
 `BUG_CATCHING_RULES` as `scripts/**/*.mjs`), so the linter is not held to a weaker standard than
 the code it checks. Root `.nvmrc` pins the Node version.
@@ -9854,7 +10005,8 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   prints as one stderr line (`buildgen: ` first) before it exits 1. A generator bug is a
   `BuildInternalError`, which keeps its traceback. Each CLI writes its files through `<file>.tmp`
   and `os.replace()`, so a refused or interrupted run leaves no partial output; an unwritable output
-  directory is a `BuildError` too. `tests_scripts/test_buildgen_error_contract.py` drives one
+  directory is a `BuildError` too, as is `scripts/build_firmware.py`'s unwritable `--output`
+  (`firmware.output-unwritable`: one line, exit 1). `tests_scripts/test_buildgen_error_contract.py` drives one
   malformed input per rule id through the CLI and asserts the one line, its place and its
   ` - fix: `, with no traceback; its AST scan of `buildgen/` fails on a `rule=` id the table lacks,
   a row whose id no raise carries, and a `rule=` that is not a literal. Every host tool family has
@@ -9937,8 +10089,10 @@ could be wrong and refusing to proceed, rather than degrading (owner, 2026-09-09
   function's abort conditions are themselves testable units.
 - Newly-built generator/validator modules join `pyproject.toml`'s ruff/mypy scope alongside
   `src/`/`tests/`/`digital_twin/` from day one, and so does their generated output
-  (`build/generated_src/`, linted with `src/`'s rules; a finding there is fixed in the generator,
-  never suppressed in the output, B.15), and every boot entry they generate is executed at
+  (`build/generated_src/`, in the MicroPython-run group of D.6, whose entry exempts only what the
+  template's shape needs: the module globals `build_system()` binds (PLW0603) and the all-interfaces
+  web host (S104), plus the boot entries' import order (E402; F401/T20 for the no-autostart one); any
+  other finding is fixed in the generator, never suppressed in the output, B.15), and every boot entry they generate is executed at
   L1: `tests/test_generated_boot_entry.py` runs each device's `sensortask_<device>_main.py` and its
   no-autostart variant with the device module and the reset record stubbed.
 - Host code evaluates annotations natively (no `from __future__ import annotations`); a
@@ -10807,9 +10961,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `lwip.mem_size_per_connection_floor` | 2000 B | `toolchain/micropython_overrides.py` — `2000` | `MEM_SIZE` (derived per `max_connections`, `toolchain/versions.toml`) | estimated (agent, `31da2b3`) — measurement owed: a connection's arena share at the ceiling, L4 | unknown until measured | the pin moves or the serving piece size changes |
 | `lwip.spare_tcp_pcbs` | 3 | `toolchain/micropython_overrides.py` — `3` | `MEMP_NUM_TCP_PCB` and `MEMP_NUM_TCP_SEG` (derived per `max_connections`) | estimated (agent, `58b14ac`) — measurement owed: pcbs in TIME_WAIT at the ceiling, L4 | unknown until measured | the pin moves or the close linger changes |
 | `tool.preprocess_timeout_s` | 120 s | `toolchain/micropython_overrides.py` — `120` | each post-build proof that runs a subprocess: the lwIP options' and the tick-offset sentinel's `-E` readbacks, the SIGINT readback's `make <build>/unix_mphal.pp`, and the host lwIP binary's runtime probe, which sleeps 2.5 s (B.14) | estimated (agent, `bcea110`) — measurement owed: the readback's wall clock on the bench Pi4 | unknown until measured | the toolchain or the host class changes |
-| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4) | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
-| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `.github/workflows/ci.yml` — `3`; `.github/actions/setup-micropython-toolchain/action.yml` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; and CI's own retried `uv sync` | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
-| `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `.github/workflows/ci.yml` — `10`; `.github/actions/setup-micropython-toolchain/action.yml` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
+| `tool.apt_acquire_timeout_s` | 30 s | `toolchain/setup_toolchain.py` — `30`; `.github/workflows/ci.yml` — `30`; `scripts/setup_cross_browser_toolchain.sh` — `30` | every apt fetch `ensure_apt_packages()` makes (`Acquire::http(s)::Timeout`, with `Acquire::Retries` one under `tool.uv_sync_attempts`): a mirror silent this long is stalled; the list `update` runs once, non-fatal, and the package download is the step retried (B.4); the same bound on the four web jobs' apt drop-in before each Playwright install (CI, B.10.1) and on every apt fetch `scripts/setup_cross_browser_toolchain.sh` makes (H.7), each with `Acquire::Retries` one under `tool.uv_sync_attempts` | estimated (agent, 2026-10-08) — measurement owed: a healthy mirror's longest silent gap, L0 | three 30 s attempts fit the firmware job's 15-minute limit 10x over | a mirror's failure pattern changes |
+| `tool.uv_sync_attempts` | 3 | `toolchain/setup_toolchain.py` — `3`; `scripts/uv_sync_retried.sh` — `3`; `.github/workflows/ci.yml` — `3`; `scripts/setup_cross_browser_toolchain.sh` — `3` | `NETWORK_ATTEMPTS`, every retried network step of the installer (B.4): the clones, the fetches, both `git ls-remote` tag queries, the pico-sdk `lib/mbedtls` and both ports' submodule updates, `uv sync`, apt's package download and both Node `curl` calls; `scripts/uv_sync_retried.sh`, the one retried `uv sync --locked` every CI job that syncs and every hardware runner calls (B.10), pinned equal by `tests_scripts/test_uv_sync_retried_sh.py`; and, one under it, `Acquire::Retries` of CI's apt drop-in and of `scripts/setup_cross_browser_toolchain.sh`'s apt fetches | owner decision (owner, 2026-09-26: the three-attempt retry stays) | two transient failures absorbed | a third party's failure pattern changes |
+| `tool.uv_sync_backoff_step_s` | 10 s | `toolchain/setup_toolchain.py` — `10.0`; `scripts/uv_sync_retried.sh` — `10` | the pause before each retry of every step `tool.uv_sync_attempts` lists, growing by one step per attempt, in the installer and in `scripts/uv_sync_retried.sh` alike | owner decision (owner, 2026-09-26: the three-attempt retry stays) | 10 s, then 20 s | a third party's failure pattern changes |
 | `tool.remote_query_timeout_s` | 120 s | `toolchain/setup_toolchain.py` — `120` | every short query or probe `run()` makes: `git` queries and checkouts, both `git ls-remote` tag queries (per attempt), the built binaries' version and frozen-module probes, `picotool version`, the `nmcli`/`ip`/`systemctl` calls and bridge changes, the sudo probe; `node_on_path_matches()`'s own `node --version` | estimated (agent, `65088de`) — measurement owed: the longest probe on a loaded CI runner and on the bench Pi4, L0 | unknown until measured | a probe's work or the host class changes |
 | `tool.network_step_timeout_s` | 1800 s | `toolchain/setup_toolchain.py` — `1800` | one attempt of a third-party download: clones, fetches, submodule updates, `uv sync`, `npm ci`, the Playwright `install`/`install-deps`; × `tool.uv_sync_attempts` for a retried one | estimated (agent, `65088de`) — measurement owed: a cold MicroPython/pico-sdk clone with submodules on CI and over the bench Pi4's uplink, L0 | unknown until measured | a source's size or the uplink changes |
 | `tool.build_step_timeout_s` | 3600 s | `toolchain/setup_toolchain.py` — `3600` | every compile or install: each `make`/`cmake`, `sudo make install`, `mpy-cross`, the apt install from the local cache, the Node unpack | estimated (agent, `65088de`) — measurement owed: the longest build step on the bench Pi4, L0; a whole `test` run took 161-169 s at `-j2` on this host (2026-10-08) | unknown until measured on the Pi4 | a build's size or the host class changes |
@@ -10854,8 +11008,9 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l0.request_timeout_ceiling_hammer_join_timeout_s` | 2.0 s | `tests_scripts/test_request_timeout_ceiling.py` — `2.0` | — | estimated (agent, `45af8eb`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the code under test or the host class changes |
 | `l0.fram_less_boot_timeout_s` | 60 s | `tests_scripts/test_fram_less_boot.py` — `60` | — | estimated (agent, 2026-10-13): one construction and setup list on the Unix port takes a few seconds — measurement owed: elapsed of the boot at both GC stages on the slowest host that runs it, L0 | against that measurement, once taken | the boot's construction or setup list grows |
 | `l0.vitest_test_timeout_ms` | 20000 ms | `vitest.config.js` — `20000` | — | estimated (agent, `803ffaf`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_twin_ready_timeout_ms` | 20000 ms | `tests_js/_twin_process.js` — `20000`; `scripts/cross_browser_smoke.mjs` — `20000` | — | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
-| `l0.live_twin_shutdown_timeout_ms` | 15000 ms | `tests_js/_twin_process.js` — `15000`; `scripts/cross_browser_smoke.mjs` — `15000` | each live twin check ends its own waits this long before its test's timeout, the time kept for stopping its twin (H.7) | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_twin_ready_timeout_ms` | 20000 ms | `tests_js/_twin_process.js` — `20000` | the live tier's twins and the cross-browser smoke's, which imports it from `tests_js/_twin_process.js` | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.live_twin_shutdown_timeout_ms` | 15000 ms | `tests_js/_twin_process.js` — `15000` | each live twin check ends its own waits this long before its test's timeout, the time kept for stopping its twin (H.7); the cross-browser smoke imports it from `tests_js/_twin_process.js` | estimated (agent, `197d04e`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
+| `l0.smoke_display_ready_timeout_ms` | 20000 ms | `scripts/cross_browser_smoke.mjs` — `20000` | `startVirtualDisplay()`: the wait for the Xvfb it starts to write its display number to fd 3 (`-displayfd`, H.7) | estimated (agent, 2026-10-19): the bound it shared with `l0.live_twin_ready_timeout_ms` before it had its own; 25-443 ms per start measured in the session sandbox (7 starts, 3 of them concurrent, Xvfb 2:21.1.12) — measurement owed: Xvfb's start on the GitHub runner, L0 | about 45× the sandbox's slowest start | the Xvfb build or the runner class changes |
 | `l0.put_matrix_apply_status_timeout_ms` | 5000 ms | `tests_js/_live_matrix_command.js` — `5000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_caption_poll_timeout_ms` | 3000 ms | `tests_js/_live_matrix_command.js` — `3000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
 | `l0.put_matrix_case_timeout_ms` | 15000 ms | `tests_js/live-backend-put-matrix.test.js` — `15000` | — | estimated (agent, `b373034`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L0 (the JS tier) | against that measurement, once taken | the code under test or the host class changes |
@@ -11785,11 +11940,14 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | ID | Value | Sites (file — literal) | Dependants | Basis | Margin | Re-check trigger |
 |---|---|---|---|---|---|---|
 | `ci.web_changes_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | estimated (agent, `bdf8b3f`) — measurement owed: wall clock of `web-changes` on GitHub runners | unknown until measured | the job's steps or its tier grows |
+| `ci.last_green_lookup_timeout_s` | 60 s | `.github/workflows/ci.yml` — `60` | `web-changes`' base step (`timeout` around one `gh api` call), inside `ci.web_changes_timeout_min`; a timeout leaves the base empty, so the whole web tier runs rather than the job failing (B.10.1) | estimated (agent, 2026-10-19): one REST call — measurement owed: the lookup's time on GitHub runners, at the next CI run | 5× inside the job's 5 minutes | the lookup grows beyond one call |
+| `ci.devices_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | estimated (agent, 2026-10-19): a checkout and a glob over `devices/` — measurement owed: wall clock of `devices` on GitHub runners, at the next CI run | unknown until measured | the job's steps grow |
 | `ci.web_lint_and_typecheck_timeout_min` | 10 min | `.github/workflows/ci.yml` — `10` | — | estimated (agent, `bdf8b3f`) — measurement owed: wall clock of `web-lint-and-typecheck` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.web_unit_tests_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | estimated (agent, `197d04e`, 10 → 20) — measurement owed: wall clock of `web-unit-tests` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.web_put_matrix_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | estimated (agent, `00eb44d`) — measurement owed: wall clock of `web-put-matrix` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.web_coverage_timeout_min` | 20 min | `.github/workflows/ci.yml` — `20` | — | estimated (agent, `00eb44d`) — measurement owed: wall clock of `web-coverage` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.web_cross_browser_smoke_timeout_min` | 25 min | `.github/workflows/ci.yml` — `25` | — | estimated (agent, `7ff3c3c`) — measurement owed: wall clock of `web-cross-browser-smoke` on GitHub runners | unknown until measured | the job's steps or its tier grows |
+| `ci.playwright_install_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | each of the eight Playwright install steps of `web-unit-tests`, `web-put-matrix`, `web-coverage` and `web-cross-browser-smoke` (the cold `npx playwright install --with-deps chromium`, the cache-hit `npx playwright install-deps chromium`), under its job's `ci.web_unit_tests_timeout_min`, `ci.web_put_matrix_timeout_min`, `ci.web_coverage_timeout_min` or `ci.web_cross_browser_smoke_timeout_min` | measured (agent, 2026-10-19) from CI logs on GitHub's ubuntu-latest runners, five runs: the longest cold install 30 s (run 37421540220; 21-23 s on runs 37439055590, 37764306450 and 37799699030), the cache-hit `install-deps` 12-24 s (run 38777834467) | 10× the longest install | Playwright's dependency list or the runner image changes |
 | `ci.lint_and_typecheck_timeout_min` | 15 min | `.github/workflows/ci.yml` — `15` | — | estimated (agent, `e578f12`) — measurement owed: wall clock of `lint-and-typecheck` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.shellcheck_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | estimated (agent, `bdf8b3f`) — measurement owed: wall clock of `shellcheck` on GitHub runners | unknown until measured | the job's steps or its tier grows |
 | `ci.actionlint_timeout_min` | 5 min | `.github/workflows/ci.yml` — `5` | — | estimated (agent, `bdf8b3f`) — measurement owed: wall clock of `actionlint` on GitHub runners | unknown until measured | the job's steps or its tier grows |
@@ -11815,6 +11973,7 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `runner.mult_fast` | 4 | `scripts/test.sh` — `4` | oversubscription on a fast host | estimated (agent, `d370413`) — measurement owed: full-suite wall clock and failures at 4× on a fast host, L0 | unknown until measured | the host class changes |
 | `runner.mult_mid` | 2 | `scripts/test.sh` — `2` | oversubscription on a mid host | estimated (agent, `d370413`) — measurement owed: full-suite wall clock and failures at 2× on the bench Pi4, L0 | unknown until measured | the host class changes |
 | `runner.nproc_fallback` | 4 | `scripts/test.sh` — `4` | the core count when `nproc` fails | estimated (agent, `cbe07a6`) — measurement owed: none: a fallback when the host cannot report its cores | unknown until measured | the host class changes |
+| `runner.unix_port_probe_timeout_s` | 60 s | `scripts/_unix_port.sh` — `60` | the `timeout -s KILL` around every probe of a Unix-port binary (E.5.2), so every caller of `unix_port_check`/`unix_port_ensure` waits at most this long on a hung binary: `scripts/test.sh`, `scripts/run_digital_twin_ci.sh`, `scripts/run_unix_port_integration.sh`, the CI toolchain action's build step and `tests_js/_twin_process.js`; `tests_scripts/conftest.py` and `tests_hardware/twin_board.py` bound their own calls at the same 60 s, which fire first | estimated (agent, 2026-10-19): the bound the pytest tier and the twin board already put on the same probe — measurement owed: a probe's wall time on the bench Pi4, L0 | unknown until measured | an interpreter start grows |
 
 ## N.4 Rule rows
 

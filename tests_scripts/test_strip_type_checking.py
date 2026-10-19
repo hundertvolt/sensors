@@ -29,7 +29,7 @@ def _loads(source: "str | ast.Module") -> "list[int]":
 def _run(source: str, **names: object) -> "dict[str, object]":
     # Executes stripped output with TYPE_CHECKING undefined, as on the board once the guard is gone.
     namespace: dict[str, object] = dict(names)
-    exec(compile(source, "<stripped>", "exec"), namespace)  # noqa: S102 - the test's own fixture text
+    exec(compile(source, "<stripped>", "exec"), namespace)  # the test's own fixture text
     return namespace
 
 

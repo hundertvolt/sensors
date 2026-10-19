@@ -143,7 +143,7 @@ async def _h1a(wdt: "machine.WDT", pair: _Pair) -> None:
 async def _h1b(wdt: "machine.WDT", pair: _Pair) -> None:
     races = []
     for point in ("clear_before_first_frame", "clear_mid_train", "clear_after_last_ack", "cancel_read_timeout_mid_train"):
-        races.append(await _race(wdt, pair, point))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+        races.append(await _race(wdt, pair, point))
     fact("h1b", races)
 
 

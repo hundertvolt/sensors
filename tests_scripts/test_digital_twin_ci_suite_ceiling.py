@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import ModuleType
+from typing import ClassVar
 
 import pytest
 from _devices import DEVICE_NAMES, device_toml
@@ -24,7 +25,7 @@ _ROUTES = ("/measurements", "/status", "/system")  # a fixture device's GET rout
 class _JsonHandler(BaseHTTPRequestHandler):
     body = json.dumps({"ok": True}).encode()
     content_type = "application/json"
-    paths: "list[str]" = []  # every path served, in arrival order
+    paths: ClassVar[list[str]] = []  # every path served, in arrival order, shared by every handler instance
 
     def do_GET(self) -> None:
         self.paths.append(self.path)
@@ -34,7 +35,7 @@ class _JsonHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(self.body)
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - the base class's own signature
+    def log_message(self, format: str, *args: object) -> None:  # the base class's own signature
         pass
 
 

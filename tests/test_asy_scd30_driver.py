@@ -487,7 +487,7 @@ def test_reader_turns_a_non_finite_measurement_into_a_logged_failed_read_and_sto
     assert results[:3] == (None, None, None)
     assert new_data is False
     assert data.CO2 is None and data.Temp is None and data.Hum is None
-    entries = [n for n, t in zip(log["SCD30"]["ErrNum"], log["SCD30"]["ErrType"]) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
+    entries = [n for n, t in zip(log["SCD30"]["ErrNum"], log["SCD30"]["ErrType"]) if t == "E"]
     assert code("E", "READ_RANGE") in entries and code("E", "READ") not in entries
     assert streak == 1
 
@@ -497,13 +497,13 @@ def test_read_measurement_accepts_each_range_boundary_and_rejects_just_outside()
     accepted = ((0.0, 20.0, 50.0), (40000.0, 20.0, 50.0), (400.0, -40.0, 50.0), (400.0, 70.0, 50.0), (400.0, 20.0, 0.0), (400.0, 20.0, 100.0))
     rejected = ((-1.0, 20.0, 50.0), (40001.0, 20.0, 50.0), (400.0, -40.5, 50.0), (400.0, 70.5, 50.0), (400.0, 20.0, -0.5), (400.0, 20.0, 100.5))
     frames = [data_frame(*values) for values in accepted + rejected]
-    for values, frame in zip(accepted, frames[: len(accepted)]):  # noqa: B905 - MicroPython zip() rejects strict=
+    for values, frame in zip(accepted, frames[: len(accepted)]):
         scd, i2c = _make_scd()
         i2c.read_queue.append(register_frame(1))
         i2c.read_queue.append(frame)
         assert run(scd.read_measurement()) is True, values
         assert (scd._co2, scd._temperature, scd._relative_humidity) == values
-    for values, frame in zip(rejected, frames[len(accepted) :]):  # noqa: B905 - MicroPython zip() rejects strict=
+    for values, frame in zip(rejected, frames[len(accepted) :]):
         scd, i2c = _make_scd()
         scd._co2, scd._temperature, scd._relative_humidity = 1.0, 2.0, 3.0
         i2c.read_queue.append(register_frame(1))
@@ -526,7 +526,7 @@ def test_the_reader_logs_an_out_of_range_frame_as_a_failed_read_and_stores_nothi
     assert results[:3] == (None, None, None)
     assert new_data is False
     assert data.CO2 is None
-    entries = [n for n, t in zip(log["SCD30"]["ErrNum"], log["SCD30"]["ErrType"]) if t == "E"]  # noqa: B905 - MicroPython zip() rejects strict=
+    entries = [n for n, t in zip(log["SCD30"]["ErrNum"], log["SCD30"]["ErrType"]) if t == "E"]
     assert code("E", "READ_RANGE") in entries and code("E", "READ") not in entries
     assert streak == 1
 
@@ -1601,7 +1601,7 @@ def _fake_init(reader: SCD30_Reader) -> None:
 def _entries(reader: SCD30_Reader) -> "list[tuple[str, int]]":
     # The module's persisted history, oldest first, as (kind, code) without the empty slots.
     log = run(reader.get_error_counter())["SCD30"]
-    return [(t, n) for t, n in zip(log["ErrType"], log["ErrNum"]) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    return [(t, n) for t, n in zip(log["ErrType"], log["ErrNum"]) if t != "N"]
 
 
 def test_init_scd_returns_false_immediately_when_probe_fails_no_reset_reached() -> None:
@@ -2069,7 +2069,7 @@ def test_a_store_interleaved_with_a_republish_keeps_the_fresh_sample() -> None:
         await asyncio.sleep(0)  # a read-then-write republish would interleave here
         return await real_get()
 
-    reader._get_meas_data = yielding_get  # type: ignore[method-assign, assignment]
+    reader._get_meas_data = yielding_get  # type: ignore[assignment, method-assign]
     _queue_snapshot(_reader_fake_i2c(reader))
 
     async def scenario() -> None:

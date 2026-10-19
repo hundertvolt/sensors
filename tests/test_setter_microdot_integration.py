@@ -142,7 +142,7 @@ def _fault_i2c_write(i2c: I2C, exc: Exception) -> None:
     assert isinstance(real_i2c, _MachineI2C)
     real_writeto = real_i2c.writeto
 
-    def fail_the_next_register_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def fail_the_next_register_write(address: int, buf: object, stop: bool = True) -> int:
         if stop:
             real_i2c.writeto = real_writeto  # type: ignore[method-assign]  # once only
             raise exc
@@ -264,7 +264,7 @@ def _settings_rows() -> "list[tuple[str, str, tuple[str, ...], str | None]]":
             rows = f.read().split("SETTINGS_GROUPS: ", 1)[1].split("\n)\n", 1)[0].split("\n")[1:]
         for row in rows:
             literal = row.split("#", 1)[0].strip().rstrip(",")  # no string in the table holds a "#"
-            _SETTINGS_ROWS.append(eval(literal, {}))  # noqa: S307 - one tuple literal of the repository's own table
+            _SETTINGS_ROWS.append(eval(literal, {}))
     return _SETTINGS_ROWS
 
 

@@ -89,7 +89,7 @@ def test_a_bootloader_reboot_is_attributed(board: "Board", bench: "BenchBridge",
         bound = _TASK_CHECK_TIME + _RESET_DELAY + _LOSS_MARGIN_S
         wait_until(lambda: not board.is_device_present(), timeout_s=bound, description="the board leaving USB after the bootloader command")
         result_note(f"reply to USB loss: {time.monotonic() - replied:.1f} s (bound {bound} s, watchdog {_WDT_TIMEOUT_MS} ms)")
-        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # noqa: S607 - sudo and picotool from the bench host\'s PATH
+        reboot = subprocess.run(["sudo", "picotool", "reboot"], capture_output=True, text=True, timeout=_PICOTOOL_TIMEOUT_S, check=False)  # sudo and picotool from the bench host's PATH
         if reboot.returncode != 0:
             raise HardwareTestFailureError(f"picotool reboot found no BOOTSEL device (exit {reboot.returncode}):\n{reboot.stdout}\n{reboot.stderr}")
         system = _system_status(dut_ip)

@@ -142,18 +142,30 @@ def _int_field(fields: dict[str, str], name: str) -> int:
 
 
 def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
-    # Best-effort /proc read of a process that ignored SIGINT (its state, RSS and the kernel wait it sits in);
-    # never raises, since it only adds detail to a failure already being reported.
+    # Best-effort /proc read of a process that ignored SIGINT (its state, RSS, the kernel wait it sits in and where the
+    # kernel holds SIGINT); never raises, since it only adds detail to a failure already being reported.
     fields: dict[str, str] = {}
     proc_dir = Path(f"/proc/{pid}")
     with contextlib.suppress(OSError):
         for line in (proc_dir / "status").read_text(encoding="utf-8").splitlines():
-            if line.startswith(("State:", "VmRSS:")):
+            if line.startswith(("State:", "VmRSS:", "Threads:", "SigPnd:", "ShdPnd:", "SigBlk:", "SigIgn:", "SigCgt:")):
                 key, _, value = line.partition(":")
                 fields[key] = value.strip()
     with contextlib.suppress(OSError):
         fields["wchan"] = (proc_dir / "wchan").read_text(encoding="utf-8").strip() or "(running)"
+    with contextlib.suppress(OSError, KeyError, ValueError):
+        fields["SIGINT"] = _sigint_state(fields, proc_dir)
     return fields
+
+
+def _sigint_state(fields: dict[str, str], proc_dir: Path) -> str:
+    # Pending (to a thread or the process), blocked in how many threads, ignored, caught: a signal the kernel still
+    # holds reads apart from one it delivered to the interpreter's handler.
+    bit = 1 << (signal.SIGINT - 1)
+    states = [name for name, keys in (("pending", ("SigPnd", "ShdPnd")), ("ignored", ("SigIgn",)), ("caught", ("SigCgt",))) if any(int(fields[key], 16) & bit for key in keys)]
+    masks = [int(line.partition(":")[2], 16) for status in sorted(proc_dir.glob("task/*/status")) for line in status.read_text(encoding="utf-8").splitlines() if line.startswith("SigBlk:")]
+    states.insert(int(states[:1] == ["pending"]), f"blocked in {sum(1 for mask in masks if mask & bit)} of {len(masks)} threads")
+    return ", ".join(states)
 
 
 def _uart_counts(tokens: list[str]) -> dict[str, UartCounts]:
@@ -347,7 +359,7 @@ def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[s
     ]
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
-    proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)  # noqa: S603 - argv from repo paths and the caller's own flags, no shell
+    proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
     return TwinRun(proc=proc, log_path=log_path, log_file=log_file, device=launch.device, state_dir=state_dir)
 
 

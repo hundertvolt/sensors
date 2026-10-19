@@ -17,7 +17,7 @@ def _run() -> int:
             source = f.read()
         # A plain dict, not a real module namespace, and __name__ == "__main__" so the file's own
         # microtest.run() entry point fires - the same shape tests/_coverage_runner.py uses.
-        exec(compile(source, test_file, "exec"), {"__name__": "__main__", "__file__": test_file})  # noqa: S102
+        exec(compile(source, test_file, "exec"), {"__name__": "__main__", "__file__": test_file})
     except SystemExit as exc:
         # MicroPython's SystemExit carries .args, not CPython's .code (see _coverage_runner.py).
         code = exc.args[0] if exc.args else 0

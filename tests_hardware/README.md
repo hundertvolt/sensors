@@ -22,7 +22,10 @@ fallback in "The hotspot role reversal", `BENCH_AP_PASSWORD` handling in "Enviro
    packages; the table of commands and packages is `_TIER_COMMANDS` in
    `toolchain/setup_toolchain.py`. Flash adds the `dialout` group and resolves the board (USB vendor
    `2e8a` plus its MicroPython `/dev/serial/by-id` name, SPECIFICATION.md Part B.12); bench creates
-   the `br0-wifi-ap` bridge through `ensure_bench_bridge()` ("Host network" below).
+   the `br0-wifi-ap` bridge through `ensure_bench_bridge()` ("Host network" below). After `npm ci`
+   every tier installs Playwright's Chromium, and a failed install stops `env` by name; a failed
+   `install-deps` stops it too unless `--skip-apt` skips that step (pass it where the libraries are
+   present).
 2. **Passwordless sudo for every command the bench tier runs unattended.** `env --tier bench`
    writes no sudoers file: it probes each command with `sudo -k -n <path> <version argument>` and
    names every one refused, including one whose rule allows only other arguments (the probe fails
@@ -72,6 +75,12 @@ fallback in "The hotspot role reversal", `BENCH_AP_PASSWORD` handling in "Enviro
    than working around it.
 7. **The NeoPixel sweep rig**, only for `--allow-neopixel-sweep`: physical, so no
    `setup_toolchain.py` tier provisions it ("The NeoPixel sweep rig" below).
+8. **The bench host's `uv` is the version `pyproject.toml`'s `[tool.uv] required-version` names.**
+   Any other uv refuses to run in this tree with its own message. Before it touches the board, every
+   runner runs the one retried sync, `scripts/uv_sync_retried.sh` (`uv sync --locked`, three
+   attempts; the flash and bench runners after their lower levels); a sync that still fails ends the
+   run with "error: the retried uv sync failed - its output above names the cause; nothing reached
+   the board" (exit 1).
 
 ## The dev bench
 
@@ -355,9 +364,10 @@ GC stages, `npm test`, and `scripts/run_digital_twin_ci.sh` for every device), s
 failure before the board is touched; `--skip-lower-levels` is for debugging only and is never
 reported clean (`NOT CLEAN`, exit 4). The soak and rollover runners run no lower level: each sits on
 top of a clean bench run. Otherwise they are pytest wrappers - any pytest flag works (`-k <substring>`,
-`-m role_reversal`, `-v`, `--tb=short`, ...). Nothing inside a hardware run syncs the environment:
-every `uv run` of the runners and the harness is `uv run --no-sync`, so a run uses the venv as
-`uv sync` left it and a third-party outage never reads as a hardware failure. `--collect-only` works
+`-m role_reversal`, `-v`, `--tb=short`, ...). A runner syncs the environment once before its
+hardware step, through the retried `scripts/uv_sync_retried.sh` (Prerequisites); nothing inside the
+hardware run syncs again: every `uv run` of the runners and the harness is `uv run --no-sync`, so a
+third-party outage never reads as a hardware failure. `--collect-only` works
 with nothing attached at all (every fixture skips cleanly, never errors, when the hardware it needs
 isn't reachable), under every option (`tests_scripts/test_tests_hardware_collect_matrix.py`).
 `--twin` runs the flash tier and its device scripts against the Unix-port twin instead of a board

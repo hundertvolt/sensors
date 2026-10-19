@@ -1,13 +1,13 @@
-import comments from "@eslint-community/eslint-plugin-eslint-comments";
-import js from "@eslint/js";
-import globals from "globals";
-import html from "eslint-plugin-html";
-
 /**
  * ESLint flat config for js/ and tests_js/ - the JS/HTML/CSS website's ruff-equivalent lint
  * pass (see CLAUDE.md's "Code quality tooling" / SPECIFICATION.md Part H.8). Shipped JS stays plain,
  * hand-written ES modules; this is dev-tooling only, mirroring pyproject.toml's [tool.ruff] role.
  */
+import comments from "@eslint-community/eslint-plugin-eslint-comments";
+import js from "@eslint/js";
+import globals from "globals";
+import html from "eslint-plugin-html";
+
 // Beyond eslint:recommended: the curated counterpart of ruff's select = ["ALL"] - every core rule
 // that catches a real defect or enforces a decision, style-preference bans left out
 // (SPECIFICATION.md H.8).

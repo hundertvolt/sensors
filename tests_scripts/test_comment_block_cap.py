@@ -40,7 +40,7 @@ _SLASH_HEADED = (".js", ".mjs", ".ts", ".css")
 _HASH_HEADED = (".yml", ".toml", ".ini")
 _PAGE = "html/index.html"  # its header is an HTML comment directly after the doctype
 # Config files whose header is still to be written; a row goes once its file has one (the pending test fails on it).
-_HEADER_PENDING = frozenset({"eslint.config.js", "vitest.config.js", ".github/workflows/ci.yml", ".github/actions/setup-micropython-toolchain/action.yml"})
+_HEADER_PENDING: frozenset[str] = frozenset()
 _COUNTED = (".py", ".sh")
 # The generator runs in a child interpreter: its caches (every src/ module's tree) never join this heap, where each
 # collection the per-file parses set off would walk them again. It prints {path: source} for every device it is given.
@@ -72,6 +72,7 @@ _REVIEW_ENFORCED = {
     ".ico": "binary",
     ".nvmrc": "one version string the Node tooling reads",
     ".gitignore": "ignore patterns: their comments",
+    ".gitmodules": "the submodule's path and URL as git writes them: their comments",
     "LICENSE": "license text, verbatim",
 }
 

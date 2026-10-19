@@ -63,7 +63,7 @@ def _boot(device: str, entry: str, stub: _Stub) -> "tuple[_MicropythonStub, list
     asyncio.new_event_loop = new_event_loop  # type: ignore[assignment]  # the entry's finally, recorded
     raised = None
     try:
-        exec(code, {"__name__": "__main__", "print": lambda *args: printed.append(args)})  # noqa: S102 - the generated entry itself
+        exec(code, {"__name__": "__main__", "print": lambda *args: printed.append(args)})
     except BaseException as e:  # what escapes the entry is the observation
         if isinstance(e, KeyboardInterrupt) and e is not stub._raises:
             raise  # an interrupt the stub did not plant is the per-file timeout's: it ends the run

@@ -65,7 +65,7 @@ async def _main() -> None:
         if command == "resetconfig":
             store.delete_file = _hang  # type: ignore[method-assign]  # the step the shutdown runs fifth
         else:
-            store.flush_pending = _hang  # type: ignore[method-assign, assignment]  # the step the shutdown runs second
+            store.flush_pending = _hang  # type: ignore[assignment, method-assign]  # the step the shutdown runs second
         await sysfunct.start_tasks(device._collect_task_starters())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))  # the shutdown's first step waits for it to park
         answer = await webserver._dispatch_system_cmd(command)

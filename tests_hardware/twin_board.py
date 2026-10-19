@@ -43,7 +43,7 @@ def _refused(done: "subprocess.CompletedProcess[str]", what: str) -> FileNotFoun
 
 
 def _unix_port(*args: str) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run(["/bin/bash", str(REPO_ROOT / "scripts" / "_unix_port.sh"), *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_PROBE_TIMEOUT_S, check=False)  # noqa: S603 - argv from repo paths, no shell
+    return subprocess.run(["/bin/bash", str(REPO_ROOT / "scripts" / "_unix_port.sh"), *args], cwd=REPO_ROOT, capture_output=True, text=True, timeout=_PROBE_TIMEOUT_S, check=False)  # argv from repo paths, no shell
 
 
 class TwinBoard:
@@ -71,7 +71,7 @@ class TwinBoard:
         env = dict(os.environ, MICROPYPATH=twin_micropypath(), TZ="UTC")
         timeout = timeout_s or self.default_timeout_s
         try:
-            proc = subprocess.run(argv, cwd=filesystem, env=env, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603 - argv from repo paths, no shell
+            proc = subprocess.run(argv, cwd=filesystem, env=env, capture_output=True, text=True, timeout=timeout, check=False)  # argv from repo paths, no shell
         except subprocess.TimeoutExpired as exc:
             raise HardwareTestFailureError(f"twin run of {script.name} timed out after {timeout}s") from exc
         output = proc.stdout + proc.stderr

@@ -27,7 +27,7 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None
     assert raised.value.rule == rule
 
 
-@pytest.mark.parametrize("word,required", [("required", True), ("optional", False)])
+@pytest.mark.parametrize(("word", "required"), [("required", True), ("optional", False)])
 def test_parse_value_wiring_both_requiredness_words(tmp_path: Path, word: str, *, required: bool) -> None:
     (field,) = _parse(tmp_path, f"# @value-wiring temperature_source temperature {word}\n")
     assert field == ValueWiringField("temperature_source", "temperature", required)
@@ -41,7 +41,7 @@ def test_parse_value_wiring_kwarg_may_differ_from_the_toml_field(tmp_path: Path)
 
 
 @pytest.mark.parametrize(
-    "toml_field,kwarg",
+    ("toml_field", "kwarg"),
     [
         ("temperature_source", "temperature"),
         ("x", "y"),  # single-character names are still names
@@ -93,7 +93,7 @@ def test_parse_value_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ("# @value-wirng a b required\n", "misspelled @value-wiring tag", "tag.misspelled"),
         ("# @value-wiiring a b required\n", "misspelled @value-wiring tag", "tag.misspelled"),

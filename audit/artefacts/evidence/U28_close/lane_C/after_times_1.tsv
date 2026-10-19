@@ -1,0 +1,15 @@
+test_ci_workflow	0.31	15 passed in 0.09s
+test_uv_sync_retried_sh	0.35	7 passed in 0.12s
+test_mpremote_connect_sh	0.50	5 passed in 0.27s
+test_require_clean_hardware_run_sh	2.42	20 passed in 2.18s
+test_hardware_runners	7.03	58 passed in 6.81s
+test_manual_runner_summary	2.33	14 passed in 2.07s
+test_tool_help	3.66	21 passed in 3.43s
+test_render_coverage_anchors	0.65	3 passed in 0.43s
+test_test_sh	31.24	170 passed in 31.00s
+test_unix_port_sh	6.43	55 passed in 6.20s
+test_typecheck_sh	2.01	28 passed in 1.78s
+test_device_tomls	1.08	36 passed in 0.70s
+test_lint_type_scopes	2.23	8 passed in 1.92s
+test_shell_conventions	0.80	77 passed in 0.57s
+test_js_coverage_report_dir	3.21	3 passed in 2.97s

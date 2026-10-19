@@ -201,7 +201,7 @@ async def main() -> None:
     )
     fact("ring_setup", drv.setup_rx_ring())
     timer = _CopyTimer(drv._rx_copy)
-    drv._rx_copy = timer  # type: ignore[method-assign]
+    drv._rx_copy = timer  # type: ignore[method-assign]  # a timing wrapper stands in for the ring copy (test double)
     levels, copies, gaps, intact = [], [], [], []
     for _ in range(_TRIALS):
         level, txcopy, gap, ok = await _trial(wdt, writer, drv, frame)

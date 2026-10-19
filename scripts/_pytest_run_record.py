@@ -6,7 +6,6 @@ the effective -m and session notes; scripts/_summary_block.py reads it (SPECIFIC
 # collection, deselected, options, markexpr, collect_only, session_notes, exitstatus (pytest's exit).
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -14,6 +13,7 @@ import pytest
 JSONValue = None | bool | int | float | str | list["JSONValue"] | dict[str, "JSONValue"]
 
 _NOTES = pytest.StashKey[list[JSONValue]]()
+_SKIP_LONGREPR_LEN = 3  # a skip's (path, lineno, message)
 
 
 def _json_safe(value: object) -> JSONValue:
@@ -46,7 +46,7 @@ def _reason(report: pytest.TestReport | pytest.CollectReport) -> str:
     if wasxfail is not None:
         return f"xfail: {wasxfail}"
     longrepr = report.longrepr
-    if isinstance(longrepr, tuple) and len(longrepr) == 3:  # noqa: PLR2004 - a skip's (path, lineno, message)
+    if isinstance(longrepr, tuple) and len(longrepr) == _SKIP_LONGREPR_LEN:
         return str(longrepr[2]).removeprefix("Skipped: ")
     crash = getattr(longrepr, "reprcrash", None)
     text = str(getattr(crash, "message", "") or report.longreprtext).strip()
@@ -121,4 +121,4 @@ class _Recorder:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
+        tmp.replace(path)

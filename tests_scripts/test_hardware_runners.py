@@ -22,6 +22,7 @@ _COPIED = (
     "scripts/_run_lower_levels.sh",
     "scripts/_devices.sh",
     "scripts/_require_clean_hardware_run.sh",
+    "scripts/uv_sync_retried.sh",
     "scripts/_hardware_verdict.py",
     "scripts/_archive_evidence.py",
     "scripts/_summary_block.py",
@@ -43,6 +44,7 @@ if [ "$name" != uv ]; then
 fi
 args=("$@")
 [ "${2-}" != --no-sync ] || args=("$1" "${@:3}")
+[ "${args[0]-}" != sync ] || exit "${STUB_FAIL_SYNC-0}"
 [ "${args[0]-}" = run ] || exit 0
 case "${args[1]-}" in
     pytest)
@@ -72,6 +74,13 @@ def _archives(tree: Path) -> "dict[str, list[str]]":
     # build/archive/<name>/ -> the evidence each run directory holds, oldest run first.
     root = tree / "build" / "archive"
     return {d.name: [",".join(sorted(f.name for f in run.iterdir())) for run in sorted(d.iterdir())] for d in sorted(root.iterdir())} if root.is_dir() else {}
+
+
+def _assert_synced_first(uv_calls: "list[list[str]]") -> None:
+    # The retried sync (scripts/uv_sync_retried.sh) before any uv run, and no uv run that may sync on its own.
+    assert uv_calls and uv_calls[0] == ["sync", "--locked"], f"the run's first uv call is the retried sync: {uv_calls}"
+    stray = [argv for argv in uv_calls if argv != ["sync", "--locked"] and argv[:2] != ["run", "--no-sync"]]
+    assert not stray, f"these uv calls may sync: {stray}"
 
 
 def _block(stdout: str) -> str:
@@ -143,7 +152,7 @@ def runner_template(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -
     shutil.copytree(repo_root / "devices", root / "devices")
     (root / "devices" / "zz_test_leaked.toml").write_text("# a leaked test fixture, never a device\n", encoding="utf-8")
     stub = _STUB.replace("@PYTHON@", shlex.quote(sys.executable))
-    for rel in ("scripts/test.sh", "scripts/run_digital_twin_ci.sh", "bin/npm", "bin/uv"):
+    for rel in ("scripts/test.sh", "scripts/run_digital_twin_ci.sh", "bin/npm", "bin/uv", "bin/sleep"):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(stub, encoding="utf-8")
         (root / rel).chmod(0o755)
@@ -171,9 +180,8 @@ def test_the_flash_runner_runs_every_lower_level_first_in_order(tree: Path) -> N
     assert _pytest_targets(calls) == [["tests_hardware/flash"]]
     assert "Levels: L0 L1 L2 L3" in _block(result.stdout)
     # A plain `uv run` builds the whole dev group first, so a third-party outage would read as a
-    # board fault: every uv call inside a hardware run passes --no-sync.
-    uv_calls = _uv_calls_written(tree)
-    assert uv_calls and all(argv[:2] == ["run", "--no-sync"] for argv in uv_calls), uv_calls
+    # board fault: the run syncs first, retried, and every uv run inside it passes --no-sync.
+    _assert_synced_first(_uv_calls_written(tree))
 
 
 def test_the_device_loop_is_derived_and_skips_leaked_test_fixtures(tree: Path) -> None:
@@ -354,8 +362,7 @@ def test_the_rollover_runner_builds_its_image_then_runs_only_the_rollover_round_
     assert {"--allow-multi-day-rollover", "--allow-flash-cycle"} <= set(argv), argv
     assert argv[argv.index("--rollover-image") + 1] == _rollover_image(_BENCH), argv
     assert "Levels: rollover (not a level)" in _block(result.stdout)
-    uv_calls = _uv_calls_written(tree)
-    assert uv_calls and all(argv[:2] == ["run", "--no-sync"] for argv in uv_calls), uv_calls
+    _assert_synced_first(_uv_calls_written(tree))
 
 
 @pytest.mark.parametrize("args", [("--bench-device", "fixture-other-device"), ("--bench-device=fixture-other-device",)], ids=["separate", "attached"])
@@ -375,6 +382,25 @@ def test_a_failed_rollover_preparation_exits_1_before_the_board_is_touched(tree:
     assert len([c for c in calls if c[1][:2] == ["run", "scripts/build_firmware.py"]]) == builds, calls
     assert not _pytest_targets(calls) and not [c for c in calls if c[1][:2] == ["run", "scripts/_archive_evidence.py"]], calls
     assert "error: " in result.stderr, result.stderr
+
+
+def test_the_manual_runner_syncs_first_then_starts_the_runner_unsynced(tree: Path) -> None:
+    manual = tree / "tests_hardware" / "manual" / "__main__.py"
+    manual.parent.mkdir(parents=True, exist_ok=True)
+    manual.write_text("import sys\nprint('manual runner', *sys.argv[1:])\n", encoding="utf-8")
+    result, _ = _run(tree, "run_manual_hardware_tests.sh", "--list")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "manual runner --list" in result.stdout
+    assert _uv_calls_written(tree) == [["sync", "--locked"], ["run", "--no-sync", "python", "tests_hardware/manual/__main__.py", "--list"]]
+
+
+@pytest.mark.parametrize(("script", "args"), [("run_manual_hardware_tests.sh", ("--list",)), ("run_bench_rollover_test.sh", ())], ids=["manual", "rollover"])
+def test_a_sync_failing_every_attempt_exits_1_before_anything_else(tree: Path, script: str, args: "tuple[str, ...]") -> None:
+    # uv's own failure code is 2, which these runners' exit codes reserve for a usage error.
+    result, calls = _run(tree, script, *args, STUB_FAIL_SYNC="2")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert [cmd for cmd, _, _ in calls if cmd != "sleep"] == ["uv"] * 3 and _uv_calls_written(tree) == [["sync", "--locked"]] * 3, calls
+    assert "error: the retried uv sync failed" in result.stderr, result.stderr
 
 
 @pytest.mark.parametrize(("args", "named"), [((), "a hardware level is required"), (("L5",), "unknown level 'L5'"), (("L3", "L4"), "one level only")], ids=["none", "unknown", "two"])

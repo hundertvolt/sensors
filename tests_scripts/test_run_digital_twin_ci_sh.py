@@ -170,7 +170,7 @@ def test_the_ci_runner_builds_the_site_each_part_boots_from(sandbox: Path, args:
 
 @pytest.mark.parametrize(("runner", "args"), [(_RUNNER, (DEVICE_NAMES[0],)), ("scripts/run_unix_port_integration.sh", ("--device", DEVICE_NAMES[0]))])
 def test_a_held_port_53_fails_a_twin_runner_at_once_naming_it_before_any_tool_runs(sandbox: Path, runner: str, args: "tuple[str, ...]") -> None:
-    holder = subprocess.Popen(["sleep", "60"])  # noqa: S607 - coreutils sleep, the stand-in holder's process
+    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
     lock = sandbox / "runtime" / "sensors-port-53.lock"
     lock.mkdir()
     (lock / "runner").write_text("another suite\n", encoding="utf-8")

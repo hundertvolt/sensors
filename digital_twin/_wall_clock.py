@@ -64,7 +64,7 @@ def install(modules: "Iterable[object]") -> WallClock:
         _clock = WallClock()
     for module in modules:
         if getattr(module, "time", None) is _time:
-            setattr(module, "time", _clock)  # noqa: B010 - `module` is any object with a `time` global
+            setattr(module, "time", _clock)
             _rebound.append(module)
     return _clock
 
@@ -77,6 +77,6 @@ def reset_test_state() -> None:
     # Test-only: every rebound module gets the built-in time back and the clock is dropped (machine.reset_test_state()).
     global _clock
     for module in _rebound:
-        setattr(module, "time", _time)  # noqa: B010 - as install()
+        setattr(module, "time", _time)
     _rebound.clear()
     _clock = None

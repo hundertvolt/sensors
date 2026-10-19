@@ -1,0 +1,73 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+___________ test_a_failed_chromium_install_stops_env_naming_skip_npm ___________
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10564/test_a_failed_chromium_install0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f22de616610>
+
+    def test_a_failed_chromium_install_stops_env_naming_skip_npm(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")})
+        monkeypatch.setattr(setup_toolchain, "run", fake)
+>       with pytest.raises(setup_toolchain.SetupError, match="--skip-npm") as raised:
+E       Failed: DID NOT RAISE SetupError
+
+tests_scripts/test_setup_toolchain_env.py:787: Failed
+----------------------------- Captured stdout call -----------------------------
+
+== Installing the Playwright Chromium build vitest runs against
+
+== Playwright browser install failed (command failed (exit 1): npx playwright install chromium) - `npm test` will not run until it succeeds
+_ test_a_failed_install_deps_stops_env_naming_the_manual_command_and_skip_apt __
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10564/test_a_failed_install_deps_sto0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f22de55ed10>
+
+    def test_a_failed_install_deps_stops_env_naming_the_manual_command_and_skip_apt(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeRun({_CHROMIUM_DEPS: setup_toolchain.SetupError("command failed (exit 1): npx playwright install-deps chromium")})
+        monkeypatch.setattr(setup_toolchain, "run", fake)
+>       with pytest.raises(setup_toolchain.SetupError, match="--skip-apt") as raised:
+E       Failed: DID NOT RAISE SetupError
+
+tests_scripts/test_setup_toolchain_env.py:796: Failed
+----------------------------- Captured stdout call -----------------------------
+
+== Installing the Playwright Chromium build vitest runs against
+
+== Playwright OS dependencies not installed (command failed (exit 1): npx playwright install-deps chromium) - install them by hand if `npm test` cannot start
+___ test_env_reports_the_generic_tier_ready_only_once_the_browser_installed ____
+
+setup_toolchain = <module 'setup_toolchain' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w/toolchain/setup_toolchain.py'>
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-10564/test_env_reports_the_generic_t0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f22de6140d0>
+capsys = <_pytest.capture.CaptureFixture object at 0x7f22de615a90>
+
+    def test_env_reports_the_generic_tier_ready_only_once_the_browser_installed(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        monkeypatch.setattr(setup_toolchain, "run_setup", lambda args, versions_path, versions, *, tier: 0)
+        monkeypatch.setattr(setup_toolchain, "ensure_node", lambda toolchain_dir, repo_root, *, skip_apt: None)
+        monkeypatch.setattr(setup_toolchain.shutil, "which", lambda name: f"/usr/bin/{name}")
+        monkeypatch.setattr(setup_toolchain, "run", _FakeRun({_CHROMIUM_INSTALL: setup_toolchain.SetupError("command failed (exit 1): npx playwright install chromium")}))
+        args = argparse.Namespace(tier="generic", toolchain_dir=tmp_path, skip_npm=False, skip_apt=True, device=None, uplink_iface=None, wifi_iface=None, ssid=None, micropython_ref=None, latest=False, clean=False, jobs=1)
+>       with pytest.raises(setup_toolchain.SetupError, match="--skip-npm"):
+E       Failed: DID NOT RAISE SetupError
+
+tests_scripts/test_setup_toolchain_env.py:808: Failed
+----------------------------- Captured stdout call -----------------------------
+
+== Installing Python project dependencies (uv sync)
+
+== Node in use: /usr/bin/node 
+
+== Installing website tooling dependencies (npm ci)
+
+== Installing the Playwright Chromium build vitest runs against
+
+== Playwright browser install failed (command failed (exit 1): npx playwright install chromium) - `npm test` will not run until it succeeds
+
+== Generic environment ready: Python/Node deps installed, firmware/Unix-port toolchain verified
+=========================== short test summary info ============================
+FAILED tests_scripts/test_setup_toolchain_env.py::test_a_failed_chromium_install_stops_env_naming_skip_npm
+FAILED tests_scripts/test_setup_toolchain_env.py::test_a_failed_install_deps_stops_env_naming_the_manual_command_and_skip_apt
+FAILED tests_scripts/test_setup_toolchain_env.py::test_env_reports_the_generic_tier_ready_only_once_the_browser_installed
+3 failed, 156 deselected in 0.47s

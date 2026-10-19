@@ -126,7 +126,7 @@ def test_a_mutated_device_builds_or_fails_with_a_build_error(tmp_path: Path, rep
     # Every case rewrites the one fixture file (no per-case file or directory): about 2,000 small rewrites of one inode.
     src_dir = repo_root / "src"
     bases: list[TomlDoc] = [base_doc(), *(tomllib.loads(device_toml(d).read_text(encoding="utf-8")) for d in DEVICE_NAMES)]
-    rng = random.Random(_SEED)  # noqa: S311 - a seeded case generator, no secret
+    rng = random.Random(_SEED)  # a seeded case generator, no secret
     built = refused = 0
     for case in range(_CASES):
         doc = copy.deepcopy(rng.choice(bases))
@@ -175,7 +175,7 @@ _REWRITES = ("reverse-instances", "shuffle-instances", "reverse-buses", "reverse
 def test_a_real_device_rewritten_only_in_order_or_name_builds(tmp_path: Path, repo_root: Path) -> None:
     # The mutation corpus above reaches generation by chance; here every case is valid by construction and must generate.
     src_dir = repo_root / "src"
-    rng = random.Random(_SEED)  # noqa: S311 - a seeded case generator, no secret
+    rng = random.Random(_SEED)  # a seeded case generator, no secret
     built = 0
     for case in range(_VALID_CASES):
         device = DEVICE_NAMES[case % len(DEVICE_NAMES)]

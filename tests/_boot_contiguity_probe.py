@@ -61,11 +61,11 @@ def _keep_nothing(_log: object, _entry: object) -> None:
 # nothing, so the maps hold the firmware's own survivors. Each fake still builds its entry, as garbage.
 _NO_CALL_LOG = machine._CallLog()
 _NO_WIRE_LOG = machine._WireLog(0)
-machine._CallLog.append = _keep_nothing  # type: ignore[method-assign, assignment]
-machine._WireLog.append = _keep_nothing  # type: ignore[method-assign, assignment]
+machine._CallLog.append = _keep_nothing  # type: ignore[assignment, method-assign]
+machine._WireLog.append = _keep_nothing  # type: ignore[assignment, method-assign]
 machine._CallLog = lambda _maxlen=0: _NO_CALL_LOG  # type: ignore[assignment, misc]
 machine._WireLog = lambda _maxlen=0: _NO_WIRE_LOG  # type: ignore[assignment, misc]
-machine.Pin.value_log = staticmethod(lambda _id: _NO_CALL_LOG)  # type: ignore[method-assign, assignment]
+machine.Pin.value_log = staticmethod(lambda _id: _NO_CALL_LOG)  # type: ignore[assignment, method-assign]
 
 
 def _dump(label: str) -> None:

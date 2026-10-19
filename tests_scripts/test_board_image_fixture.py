@@ -2,6 +2,7 @@
 a different date or device, an lwIP ensemble finding, a missing record and the tick-offset test image outside the
 rollover run each stop the session naming the cause."""
 
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -72,10 +73,8 @@ def _board_image(tmp_path: Path, record: "dict[str, object] | None", *, rollover
         assert source == "board_image" and not recovery
         notes.append(text)
 
-    try:
+    with contextlib.suppress(_StoppedError):
         _bench_conftest().board_image.__wrapped__(_DUT_IP, bench_device(), _Request(_Config(path, rollover=rollover)), _exit, _note)
-    except _StoppedError:
-        pass
     return stopped, notes
 
 

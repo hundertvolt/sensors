@@ -529,7 +529,7 @@ def _scenario_fram_chunk_layout(device: str) -> None:
 
 def _chip_holding(base: "type[FakeMB85RS64V]", image: bytes) -> "type[FakeMB85RS64V]":
     # The device's own part, powered up holding `image`: what the next boot finds on the chip.
-    class _Holding(base):  # type: ignore[valid-type,misc]
+    class _Holding(base):  # type: ignore[misc, valid-type]
         def __init__(self, *args: object, **kwargs: object) -> None:
             super().__init__(*args, **kwargs)
             self.memory[:] = image
@@ -2014,7 +2014,7 @@ async def _every_error_log(module: "Any") -> "list[object]":
     webserver = module.webserver
     logs: list[object] = [await webserver.get_error_counter(), await webserver.get_dropped_count()]
     for source in webserver._error_sources.values():
-        logs.append(await source.get_error_counter())  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+        logs.append(await source.get_error_counter())
     return logs
 
 

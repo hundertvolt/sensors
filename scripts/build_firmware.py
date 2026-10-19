@@ -185,10 +185,10 @@ def _overrides_in_build(build_dir: Path, micropython_dir: Path, toolchain_dir: P
 
 
 def _replace_written(path: Path, data: bytes) -> None:
-    # Same-dir tmp plus os.replace, so `path` is either its old content or the whole new one.
+    # Same-dir tmp plus a rename over it, so `path` is either its old content or the whole new one.
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(data)
-    os.replace(tmp, path)
+    tmp.replace(path)
 
 
 def write_image(uf2: Path, output: Path, record: "dict[str, object]") -> None:
@@ -239,6 +239,11 @@ def _checked_toml(device: str, given: "Path | None") -> Path:
     return device_toml
 
 
+def _unwritable_output(device: str, output: Path, error: OSError) -> BuildError:
+    # An --output the build cannot write is the caller's to fix: one line naming it (L.5), never a traceback.
+    return BuildError(device, f"cannot write {output}: {error.strerror or error}", rule="firmware.output-unwritable", fix="name an --output path in a writable directory")
+
+
 def _build(args: argparse.Namespace, work_dir: "list[Path]") -> int:
     # One absolute path for the lock, the record and every path the build writes into generated files.
     toolchain_dir = args.toolchain_dir.expanduser().resolve()
@@ -249,7 +254,10 @@ def _build(args: argparse.Namespace, work_dir: "list[Path]") -> int:
         raise st.SetupError(f"no MicroPython checkout at {micropython_dir} - run `uv run toolchain/setup_toolchain.py setup` first")
     suffix = (_NO_AUTOSTART_SUFFIX if args.no_autostart else "") + (micropython_overrides.TICK_OFFSET_BUILD_SUFFIX if args.tick_offset_test else "")
     output = args.output or (REPO_ROOT / "build" / f"firmware-{args.device}{suffix}.uf2")
-    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise _unwritable_output(args.device, output, e) from e
     # One date for the staged module, its website and the image record, so a board's /system names this build.
     build_date = current_build_date()
     test_overrides = (micropython_overrides.TICK_OFFSET_DIR_NAME,) if args.tick_offset_test else ()
@@ -307,7 +315,10 @@ def _build(args: argparse.Namespace, work_dir: "list[Path]") -> int:
             "imageFreeBytes": report.free,
             "autostart": not args.no_autostart,
         }
-        write_image(uf2, output, image_record)
+        try:
+            write_image(uf2, output, image_record)
+        except OSError as e:
+            raise _unwritable_output(args.device, output, e) from e
 
     print(f"\nWrote {output} and its image record {output.with_suffix('.json')}")
     if args.no_autostart:

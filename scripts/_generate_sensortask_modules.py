@@ -15,19 +15,18 @@ import argparse
 import contextlib
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from buildgen.api_reference import api_reference_json, generate_api_reference  # noqa: E402
-from buildgen.definitions import generate_definitions  # noqa: E402
-from buildgen.errors import BuildError  # noqa: E402
-from buildgen.generate import generate_device  # noqa: E402
-from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402
-from buildgen.version import current_build_date  # noqa: E402
+from buildgen.api_reference import api_reference_json, generate_api_reference  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.definitions import generate_definitions  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.errors import BuildError  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.generate import generate_device  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.twin_wiring import compute_twin_wiring  # noqa: E402 - the repo root is on sys.path from the line above
+from buildgen.version import current_build_date  # noqa: E402 - the repo root is on sys.path from the line above
 
 # Every file a generation reads besides the device TOMLs: the catalog and lwIP table (buildgen/definitions.py,
 # model.py), the overrides validate.py loads by path, this script, and the ext/ modules the frozen closure parses.
@@ -110,7 +109,7 @@ def _write_through_rename(files: "dict[Path, str]") -> bool:
             written.append(path.with_name(f"{path.name}.tmp"))
             written[-1].write_text(text, encoding="utf-8")
         for tmp in written:
-            os.replace(tmp, tmp.with_name(tmp.name.removesuffix(".tmp")))
+            tmp.replace(tmp.with_name(tmp.name.removesuffix(".tmp")))
     except OSError as e:
         for tmp in written:
             with contextlib.suppress(OSError):  # the write error below is the one reported

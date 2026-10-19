@@ -31,7 +31,7 @@
     "lint:css": "stylelint \"html/**/*.css\"",
     "lint:html:built": "scripts/build_device_websites.sh --stage-only build/staged_html && html-validate \"build/staged_html/*/index.html\"",
     "prepreview": "npm run build:definitions",
-    "preview": "python3 -m http.server 8000"
+    "preview": "uv run scripts/preview_server.py"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",

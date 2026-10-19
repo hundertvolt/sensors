@@ -1,0 +1,87 @@
+FF....F................................................................. [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 27%]
+........................................................................ [ 37%]
+........................................................................ [ 46%]
+........................................................................ [ 55%]
+........................................................................ [ 65%]
+........................................................................ [ 74%]
+........................................F..............F................ [ 83%]
+........................................................................ [ 93%]
+....................................................                     [100%]
+=================================== FAILURES ===================================
+_________ test_decision_vocabulary_names_its_actor_or_is_allow_listed __________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_decision_vocabulary_names_its_actor_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:\n" + "\n".join(f"  {p}: {s}" for p, s in new)
+E       AssertionError: decision vocabulary with no '(owner|agent, YYYY-MM-DD)' tag or source - tag the sentence:
+E           tests_scripts/test_preview_server.py: A link inside a served directory that leads out of it, to a file the preview mus
+E           tests_scripts/test_preview_server.py: Every file a fixture root holds: the ones the preview serves, and the ones besid
+E       assert not [('tests_scripts/test_preview_server.py', 'A link inside a served directory that leads out of it, to a file the previe...s_scripts/test_preview_server.py', 'Every file a fixture root holds: the ones the preview serves, and the ones besid')]
+
+tests_scripts/test_decision_vocabulary.py:89: AssertionError
+_______________________ test_the_allowlist_only_shrinks ________________________
+
+findings = Counter({('tests/test_asy_wifi_service.py', 'type: ignore[method-assign] # deliberate monkeypatch'): 20, ('tests/test_...toolchain/setup_toolchain.py', 'Deliberately touches neither apt, git remotes, nor the pico-sdk/picotool derivat'): 1})
+
+    def test_the_allowlist_only_shrinks(findings: Counter[tuple[str, str]]) -> None:
+        stale = sorted((read_allowlist(ALLOWLIST) - findings).elements())
+>       assert not stale, "allow-list entries that no longer occur - delete these lines (or --regenerate):\n" + "\n".join(f"  {p}\t{s}" for p, s in stale)
+E       AssertionError: allow-list entries that no longer occur - delete these lines (or --regenerate):
+E           scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
+E       assert not [('scripts/cross_browser_smoke.mjs', 'eslint-disable-next-line no-await-in-loop -- deliberate sequential polling')]
+
+tests_scripts/test_decision_vocabulary.py:94: AssertionError
+_______________ test_every_citation_resolves_or_is_allow_listed ________________
+
+findings = Counter({('README.md', 'src/README.md'): 4, ('README.md', 'tests/README.md'): 4, ('README.md', 'toolchain/README.md'):...test_digital_twin_generated_boot.py', 'Session 3'): 1, ('tests_scripts/test_test_sh.py', 'devices/zz_test_*.toml'): 1})
+
+    def test_every_citation_resolves_or_is_allow_listed(findings: Counter[tuple[str, str]]) -> None:
+        new = sorted((findings - read_allowlist(ALLOWLIST)).elements())
+>       assert not new, "unresolved citations (path, token) - point at what exists, or state the fact in place:\n" + "\n".join(f"  {p}: {t}" for p, t in new)
+E       AssertionError: unresolved citations (path, token) - point at what exists, or state the fact in place:
+E           BACKLOG.md: tests_js/vitest-commands.d.ts
+E           BACKLOG.md: tests_js/vitest-commands.d.ts
+E       assert not [('BACKLOG.md', 'tests_js/vitest-commands.d.ts'), ('BACKLOG.md', 'tests_js/vitest-commands.d.ts')]
+
+tests_scripts/test_citations.py:251: AssertionError
+__________________ test_each_pending_header_is_still_missing ___________________
+
+    def test_each_pending_header_is_still_missing() -> None:
+        # The pending set only shrinks: a file that has gained its header leaves it.
+        gained = sorted(p for p in _HEADER_PENDING if _has_header(p, (REPO_ROOT / p).read_text(encoding="utf-8")))
+>       assert gained == [], f"these now open with a header - delete their _HEADER_PENDING rows: {gained}"
+E       AssertionError: these now open with a header - delete their _HEADER_PENDING rows: ['eslint.config.js', 'vitest.config.js']
+E       assert ['eslint.conf...st.config.js'] == []
+E         
+E         Left contains 2 more items, first extra item: 'eslint.config.js'
+E         Use -v to get more diff
+
+tests_scripts/test_comment_block_cap.py:273: AssertionError
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u28w')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='src/asy_base_classe...odule.max_error', literal='5'), Tag(path='src/asy_base_classes.py', line=763, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/cross_browser_smoke.mjs:33: l0.smoke_display_ready_timeout_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:10810: tool.apt_acquire_timeout_s: Sites list [('toolchain/setup_toolchain.py', '30')], the tags say [('scripts/setup_cross_browser_toolchain.sh', '30'), ('toolchain/setup_toolchain.py', '30')]
+E         SPECIFICATION.md:10811: tool.uv_sync_attempts: Sites list [('.github/actions/setup-micropython-toolchain/action.yml', '3'), ('.github/workflows/ci.yml', '3'), ('toolchain/setup_toolchain.py', '3')], the tags say [('.github/actions/setup-micropython-toolchain/action.yml', '3'), ('.github/workflows/ci.yml', '3'), ('scripts/setup_cross_browser_toolchain.sh', '3'), ('toolchain/setup_toolchain.py', '3')]
+E         SPECIFICATION.md:10857: l0.live_twin_ready_timeout_ms: Sites list [('scripts/cross_browser_smoke.mjs', '20000'), ('tests_js/_twin_process.js', '20000')], the tags say [('tests_js/_twin_process.js', '20000')]
+E         SPECIFICATION.md:10858: l0.live_twin_shutdown_timeout_ms: Sites list [('scripts/cross_browser_smoke.mjs', '15000'), ('tests_js/_twin_process.js', '15000')], the tags say [('tests_js/_twin_process.js', '15000')]
+E       assert not ['scripts/cross_browser_smoke.mjs:33: l0.smoke_display_ready_timeout_ms is tagged but has no SPECIFICATION.md Part N r..._smoke.mjs', '15000'), ('tests_js/_twin_process.js', '15000')], the tags say [('tests_js/_twin_process.js', '15000')]"]
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_decision_vocabulary.py::test_decision_vocabulary_names_its_actor_or_is_allow_listed
+FAILED tests_scripts/test_decision_vocabulary.py::test_the_allowlist_only_shrinks
+FAILED tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+FAILED tests_scripts/test_comment_block_cap.py::test_each_pending_header_is_still_missing
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+5 failed, 767 passed in 65.13s (0:01:05)

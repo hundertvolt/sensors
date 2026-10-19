@@ -255,18 +255,20 @@ def _make_client(
     cfg_path: "str | None" = None,
     dns_fallback: "str | None" = "",
 ) -> NTPClient:
+    def network_ok() -> bool:
+        return True
+
+    def no_dns_server() -> "str | None":
+        return None
+
     if wifi_mode_lock is None:
         wifi_mode_lock = asyncio.Lock()
-    if network_available_locked is None:
-        network_available_locked = lambda: True  # noqa: E731
-    if get_dns_server is None:
-        get_dns_server = lambda: None  # noqa: E731
     if cfg_path is None:
         cfg_path = _tmp_cfg_dir()
     client = NTPClient(
         wifi_mode_lock,
-        network_available_locked,
-        get_dns_server,
+        network_ok if network_available_locked is None else network_available_locked,
+        no_dns_server if get_dns_server is None else get_dns_server,
         _timing() if timing is None else timing,
         cfg_path=cfg_path,
         log=log,
@@ -487,7 +489,7 @@ def _twice_one_slot(client: NTPClient, make_call: "Callable[[], Coroutine[object
     entry = run(scenario())["NTP"]
     nums, types = entry["ErrNum"], entry["ErrType"]
     assert isinstance(nums, list) and isinstance(types, list)
-    kept = [(n, t) for n, t in zip(nums, types) if t != "N"]  # noqa: B905 - MicroPython zip() rejects strict=
+    kept = [(n, t) for n, t in zip(nums, types) if t != "N"]
     return int(entry["ErrCount"]), [n for n, _ in kept], [t for _, t in kept]
 
 

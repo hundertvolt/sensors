@@ -408,7 +408,7 @@ class UARTComm:
             # here - `send` is what distinguishes one from a plain returned value. mypy sees only
             # `object` at this point, which is the honest type of an arbitrary callback's result.
             if result is not None and hasattr(result, "send"):
-                result = await result  # type: ignore[misc]
+                result = await result  # type: ignore[misc]  # awaitable: `send` checked above
         except Exception as e:  # caller-supplied code; its runtime behaviour is not statically known
             await self._err(_ERR_CALLBACK, "callback raised:", e)
             return None
@@ -555,8 +555,11 @@ class UARTComm:
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
 
     async def _listen_unlocked(self, device: "UART", get_cb: "_GetCallback", set_cb: "_SetCallback") -> ListenResult:
+        pending = device.discarded_bytes - self._discarded_seen
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait
-            await self._fault(device, _ERR_TIMEOUT, "listen read failed or was cancelled")
+            # A frame dropped inside the read (its CRC, framing or length) is named apart from a silence or a cancel (J.6).
+            dropped = device.discarded_bytes - self._discarded_seen != pending
+            await self._fault(device, _ERR_TIMEOUT, "listen read dropped a corrupted or incomplete frame" if dropped else "listen read failed or was cancelled")
             return _LISTEN_FAILED
         rx = self._rx.get_buf()
         if rx is None:
@@ -629,10 +632,11 @@ class UARTComm:
         if result is None:
             return None
         try:
+            # An arbitrary callback's result: `len()`/indexing are tried, and TypeError/IndexError below is the real check.
             if len(result) != _CALLBACK_PAIR_LEN:  # type: ignore[arg-type]
                 return None
-            valid = result[0]  # type: ignore[index]
-            payload = result[1]  # type: ignore[index]
+            valid = result[0]  # type: ignore[index]  # tried, as len() above
+            payload = result[1]  # type: ignore[index]  # tried, as len() above
         except (IndexError, TypeError):
             return None
         if not isinstance(valid, bool):

@@ -2,7 +2,6 @@
 venv, another venv, a venv uv.lock no longer matches and a tool resolving outside the venv each refuse with the fix,
 before any check runs; the project venv with its tools passes. Run in a copy of the helper beside a fake .venv."""
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -50,7 +49,7 @@ def test_the_project_venv_with_its_tools_passes_and_checks_the_lock_offline(repo
 def test_no_venv_or_another_venv_is_refused_naming_the_activation(repo: Path, tmp_path: Path, venv: "str | None") -> None:
     other = None if venv is None else str(tmp_path / venv)
     if other is not None:
-        os.makedirs(other)
+        Path(other).mkdir(parents=True)
     done = _check(repo, venv=other)
     assert done.returncode == 1
     assert "error: activate the project venv first (uv sync && source .venv/bin/activate), or run through uv run" in done.stderr

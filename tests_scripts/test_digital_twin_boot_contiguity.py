@@ -385,10 +385,14 @@ def test_the_control_arm_devices_are_real_devices() -> None:
 def test_a_missing_generated_tree_fails_rather_than_skipping(repo_root: Path, tmp_path: Path) -> None:
     # A skip reads as a pass: every placement bound above would report green while measuring nothing.
     this_file = load_script_module(repo_root / "tests_scripts" / "test_digital_twin_boot_contiguity.py", "_boot_contiguity_tests_under_test")
-    with pytest.raises(BaseException) as caught:  # BaseException: an escaping skip would skip this test too
+    try:
         this_file.generated_src.__wrapped__(tmp_path)
-    assert isinstance(caught.value, pytest.fail.Exception), f"a missing generated tree must fail, not {type(caught.value).__name__}: {caught.value}"
-    assert "scripts/test.sh" in str(caught.value)
+    except BaseException as exc:  # BaseException: an escaping skip would skip this test too
+        caught = exc
+    else:
+        pytest.fail("a missing generated tree raised nothing")
+    assert isinstance(caught, pytest.fail.Exception), f"a missing generated tree must fail, not {type(caught).__name__}: {caught}"
+    assert "scripts/test.sh" in str(caught)
 
 
 def test_a_probe_that_logged_an_allocation_failure_fails_even_when_it_passed() -> None:

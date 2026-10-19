@@ -106,12 +106,14 @@ def test_every_booting_command_takes_and_passes_its_device(module: str) -> None:
     assert not problems, "\n".join(problems)
 
 
-def test_the_smoke_boots_in_its_own_config_directory_with_in_memory_state() -> None:
+def test_the_smoke_boots_through_the_one_launch_in_its_own_config_directory() -> None:
+    # The smoke's in-memory state comes from spawnTwin(), which the launch check above pins; here: it uses that launch.
     text = (_REPO_ROOT / _SMOKE).read_text(encoding="utf-8")
     problems = _config_dir_problems(_SMOKE, text)
-    problems += [f'{_SMOKE}: its twin launch does not pass `{flag} ""`' for flag in _IN_MEMORY_STATE if not re.search(rf'"{flag}",\s*"",', text)]
-    if not re.search(r'"--config-dir",\s*configDir,', text):
-        problems.append(f"{_SMOKE}: its twin launch does not pass `--config-dir configDir`")
+    if not re.search(r"spawnTwin\(\{\s*device\b[^}]*\bconfigDir\b", text):
+        problems.append(f"{_SMOKE}: does not boot through spawnTwin({{ device, ..., configDir }}) - {_LAUNCH} holds the one launch")
+    if re.search(r"^(?:export )?(?:async )?function spawnTwin\(", text, re.MULTILINE):
+        problems.append(f"{_SMOKE}: defines its own spawnTwin() - the launch lives in {_LAUNCH} alone")
     assert not problems, "\n".join(problems)
 
 

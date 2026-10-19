@@ -1,0 +1,501 @@
+DIAG_KI_CAPTURED True
+digital_twin/run_generic_integration.py starting - device='dev' module='sensortask_dev' host='127.0.0.1' port=21309 state=StatePaths(fram='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/storm2/state_009/fram_state.json', scd30='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/storm2/state_009/scd30_state.json', mem_backup='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/storm2/state_009/mem_backup_state.json') config_dir='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/storm2/state_009/config/' online_ntp=False injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=32768, mem_sample_interval_ms=None, stop_file=None)
+Serving forever at http://127.0.0.1:21309/ - Ctrl+C to stop
+HANG S5reset
+WATCHDOG_WOULD_TRIGGER count=1
+DIAG_KI_ESCAPED 1
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_base_classes.py", line 705, in _trigger_loop
+  File "src/asy_base_classes.py", line 691, in _timer_fault
+KeyboardInterrupt: 
+DIAG_KI_END 1
+DIAG_KI_ESCAPED 2
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 2
+DIAG_KI_ESCAPED 3
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 3
+DIAG_KI_ESCAPED 4
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 4
+DIAG_KI_ESCAPED 5
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 5
+DIAG_KI_ESCAPED 6
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 6
+DIAG_KI_ESCAPED 7
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 7
+DIAG_KI_ESCAPED 8
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+KeyboardInterrupt: 
+DIAG_KI_END 8
+DIAG_KI_ESCAPED 9
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 9
+DIAG_KI_ESCAPED 10
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 10
+DIAG_KI_ESCAPED 11
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 11
+DIAG_KI_ESCAPED 12
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 12
+DIAG_KI_ESCAPED 13
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+KeyboardInterrupt: 
+DIAG_KI_END 13
+DIAG_KI_ESCAPED 14
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "digital_twin/unixport/_ntp_responder.py", line 99, in serve
+  File "digital_twin/unixport/_ntp_responder.py", line 105, in serve_one
+KeyboardInterrupt: 
+DIAG_KI_END 14
+DIAG_KI_ESCAPED 15
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 15
+DIAG_KI_ESCAPED 16
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 16
+DIAG_KI_ESCAPED 17
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 17
+DIAG_KI_ESCAPED 18
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 18
+DIAG_KI_ESCAPED 19
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 19
+DIAG_KI_ESCAPED 20
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 20
+DIAG_KI_ESCAPED 21
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 21
+DIAG_KI_ESCAPED 22
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 22
+DIAG_KI_ESCAPED 23
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 23
+DIAG_KI_ESCAPED 24
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 24
+DIAG_KI_ESCAPED 25
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 25
+DIAG_KI_ESCAPED 26
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 26
+DIAG_KI_ESCAPED 27
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 27
+DIAG_KI_ESCAPED 28
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 28
+DIAG_KI_ESCAPED 29
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 29
+DIAG_KI_ESCAPED 30
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 30
+DIAG_KI_ESCAPED 31
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 31
+DIAG_KI_ESCAPED 32
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 32
+DIAG_KI_ESCAPED 33
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 33
+DIAG_KI_ESCAPED 34
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 34
+DIAG_KI_ESCAPED 35
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 35
+DIAG_KI_ESCAPED 36
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 36
+WATCHDOG_WOULD_TRIGGER count=2
+DIAG_KI_ESCAPED 37
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 37
+DIAG_KI_ESCAPED 38
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 38
+DIAG_KI_ESCAPED 39
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 39
+DIAG_KI_ESCAPED 40
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 40
+DIAG_KI_ESCAPED 41
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 41
+DIAG_KI_ESCAPED 42
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 42
+DIAG_KI_ESCAPED 43
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+KeyboardInterrupt: 
+DIAG_KI_END 43
+DIAG_KI_ESCAPED 44
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 44
+DIAG_KI_ESCAPED 45
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 45
+DIAG_KI_ESCAPED 46
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_uart_comm.py", line 541, in _listen_loop
+  File "src/asy_uart_comm.py", line 1136, in uart_listen
+  File "src/asy_uart_comm.py", line 578, in _listen_unlocked
+  File "src/asy_uart_comm.py", line 371, in _answer_get
+  File "src/asy_uart_comm.py", line 855, in _send_train
+  File "src/asy_uart_comm.py", line 994, in _write_frame_with_ack
+  File "src/asy_uart_comm.py", line 711, in _read_frame
+  File "src/asy_uart_driver.py", line 595, in readinto_until_complete
+  File "src/asy_uart_driver.py", line 697, in ready
+  File "src/asy_uart_driver.py", line 339, in _rx_level
+  File "digital_twin/machine.py", line 1552, in __getitem__
+  File "digital_twin/machine.py", line 1119, in _register
+  File "digital_twin/machine.py", line 1156, in _update
+  File "digital_twin/machine.py", line 1115, in _pump
+KeyboardInterrupt: 
+DIAG_KI_END 46
+DIAG_KI_ESCAPED 47
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 47
+DIAG_KI_ESCAPED 48
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 48
+DIAG_KI_ESCAPED 49
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 49
+DIAG_KI_ESCAPED 50
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 50
+DIAG_KI_ESCAPED 51
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 51
+DIAG_KI_ESCAPED 52
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 52
+DIAG_KI_ESCAPED 53
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 53
+DIAG_KI_ESCAPED 54
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 54
+DIAG_KI_ESCAPED 55
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 55
+DIAG_KI_ESCAPED 56
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 56
+DIAG_KI_ESCAPED 57
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 57
+DIAG_KI_ESCAPED 58
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "digital_twin/machine.py", line 1410, in _run
+KeyboardInterrupt: 
+DIAG_KI_END 58
+DIAG_KI_ESCAPED 59
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "asyncio/core.py", line 1, in wait_io_event
+  File "asyncio/event.py", line 1, in ioctl
+KeyboardInterrupt: 
+DIAG_KI_END 59
+DIAG_KI_ESCAPED 60
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u28/hang/scratch/diag/run_generic_integration_reentry.py", line 925, in <module>
+  File "asyncio/core.py", line 1, in run_until_complete
+  File "src/asy_bmp3xx_driver.py", line 290, in _read_loop
+  File "src/asy_bmp3xx_driver.py", line 273, in _read_bmp
+  File "src/asy_bmp3xx_driver.py", line 644, in get_pressure_and_temperature
+  File "src/asy_bmp3xx_driver.py", line 491, in _read
+  File "src/asy_i2c_driver.py", line 506, in set_register_struct
+  File "src/asy_i2c_driver.py", line 317, in set_register_struct
+  File "src/asy_i2c_driver.py", line 197, in _write_all
+  File "digital_twin/machine.py", line 564, in writeto
+  File "digital_twin/_bmp3xx_chip.py", line 198, in handle_writeto_mem
+  File "digital_twin/_bmp3xx_chip.py", line 150, in _trigger_measurement
+  File "digital_twin/_bmp3xx_chip.py", line 84, in _invert_pressure
+KeyboardInterrupt: 
+DIAG_KI_END 60

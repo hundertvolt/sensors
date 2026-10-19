@@ -1206,7 +1206,7 @@ def count_bus_lock_holds(fram: FRAM_SPI) -> "list[int]":
         holds[0] += 1
         return bool(await original())
 
-    bus_lock.acquire = counting_acquire  # type: ignore[method-assign,assignment]
+    bus_lock.acquire = counting_acquire  # type: ignore[assignment, method-assign]
     return holds
 
 
@@ -1755,7 +1755,7 @@ def test_aenter_releases_its_own_lock_if_the_bus_lock_cannot_be_acquired() -> No
     async def boom() -> None:
         raise OSError(5)
 
-    fram._bus_lock.acquire = boom  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    fram._bus_lock.acquire = boom  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def scenario() -> bool:
         try:
@@ -1784,7 +1784,7 @@ def test_a_later_operation_still_works_after_a_failed_bus_lock_acquisition() -> 
             raise OSError(5)
         await real_acquire()
 
-    fram._bus_lock.acquire = fail_once  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    fram._bus_lock.acquire = fail_once  # type: ignore[assignment, method-assign]  # mocked by reassignment
 
     async def first() -> None:
         async with fram:

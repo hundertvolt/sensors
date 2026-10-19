@@ -178,7 +178,7 @@ port_lock_take 53 scripts/test.sh
 # The previous coverage reports are evidence too: moved into build/archive/test_sh_coverage/ (the
 # newest three runs kept), never overwritten in place.
 if [ "$coverage" = "1" ]; then
-    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin htmlcov_generated htmlcov_host coverage.xml coverage_digital_twin.xml coverage_summary.md coverage_summary_digital_twin.md coverage_summary_generated.md coverage_summary_host.md
+    uv run scripts/_archive_evidence.py --runner test_sh_coverage htmlcov htmlcov_digital_twin htmlcov_generated htmlcov_host coverage_summary.md coverage_summary_digital_twin.md coverage_summary_generated.md coverage_summary_host.md
 fi
 
 # One bounded sweep of the whole tests/_tmp tree before any test file runs, not a per-file one -
@@ -851,18 +851,32 @@ l0_reasons=()
 if [ "$tests_scripts_result" != "PASS" ]; then
     l0_reasons+=("pytest exited nonzero or timed out")
 fi
+# One helper start reads the record for every listing below (a uv start costs about 0.3 s of environment lookup),
+# each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict.
+l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
+import sys
+sys.path.insert(0, "scripts")
+import _summary_block
+for listing in ("failed", "skipped", "deselected", "recovered", "notes", "counts"):
+    print(f"\x1e{listing}", flush=True)
+    _summary_block.main(["--from-run-record", sys.argv[1], *(["--counts-only"] if listing == "counts" else ["--list", listing])])
+PYEOF
+)" || l0_listings=""
+_l0_listing() {
+    printf '%s\n' "$l0_listings" | awk -v want=$'\x1e'"$1" 'index($0, "\036") == 1 { on = ($0 == want); next } on'
+}
 # Its failed, skipped, deselected and recovered tests are named here, each with its reason, since the
 # block counts files: a skip is counted and named, never only a dot in pytest's -q line.
 l0_recovered=0
 for kind in failed skipped deselected recovered; do
-    listing="$(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --list "$kind" 2>/dev/null)" || listing=""
+    listing="$(_l0_listing "$kind")"
     if [ -n "$listing" ]; then
         echo "tests_scripts/ $kind:"
         printf '%s\n' "$listing" | sed -e 's/\t/: /' -e 's/^/  - /'
         [ "$kind" != "recovered" ] || l0_recovered="$(printf '%s\n' "$listing" | wc -l)"
     fi
 done
-l0_counts="$(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --counts-only 2>/dev/null)" || l0_counts=""
+l0_counts="$(_l0_listing counts)"
 if [[ "$l0_counts" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
     summary_counts_line "tests_scripts tests" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}" 0 "$l0_recovered" 0
     if [ "${BASH_REMATCH[2]}" -ne 0 ]; then
@@ -874,7 +888,7 @@ fi
 # Its result and session notes go into the block's Notes: list.
 while IFS=$'\t' read -r note_name note_text; do
     summary_note "$note_name" "$note_text"
-done < <(uv run scripts/_summary_block.py --from-run-record "$tests_scripts_record" --list notes 2>/dev/null || true)
+done < <(_l0_listing notes)
 if [ "${#l0_reasons[@]}" -gt 0 ]; then
     tests_scripts_result="FAIL"
     failed=1
@@ -899,9 +913,9 @@ fi
 coverage_render_failed=0
 if [ "$coverage" = "1" ]; then
     echo "== Rendering coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --xml-file coverage.xml --markdown-file coverage_summary.md || coverage_render_failed=1
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir src --html-dir htmlcov --markdown-file coverage_summary.md || coverage_render_failed=1
     echo "== Rendering digital_twin/ coverage report"
-    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --xml-file coverage_digital_twin.xml --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
+    uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir digital_twin --html-dir htmlcov_digital_twin --markdown-file coverage_summary_digital_twin.md || coverage_render_failed=1
     echo "== Rendering the generated modules' coverage report"
     uv run scripts/_render_coverage.py --raw-dir "$raw_dir" --src-dir build/generated_src --html-dir htmlcov_generated --markdown-file coverage_summary_generated.md || coverage_render_failed=1
     echo "== Rendering the host build chain's coverage report (buildgen/, scripts/, toolchain/)"

@@ -459,7 +459,7 @@ def test_a_save_leaves_no_temporary_file_and_a_cut_save_keeps_the_previous_image
     _wren(chip)
     _write_mem(chip, 0x0000, b"\xa5")
     real_os = _fram_chip.os  # type: ignore[attr-defined]  # the module's own os import, patched below
-    _fram_chip.os = _RenameFailsOs()  # type: ignore[attr-defined,assignment]  # the process dies between the stream and the rename
+    _fram_chip.os = _RenameFailsOs()  # type: ignore[assignment, attr-defined]  # the process dies between the stream and the rename
     try:
         chip.save_state()
         raise AssertionError("expected the planted rename failure")

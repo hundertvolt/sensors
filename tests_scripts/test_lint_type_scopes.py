@@ -1,6 +1,6 @@
 """The three mypy configs and every lint scope, pinned against each other: the same strictness in all three passes,
 ruff and CI naming the eight scopes plus the generated tree, every Python file checked by some mypy run and by two
-runs only where a named reason says why, and CI's mypy paths equal to the main pass's files (SPECIFICATION.md B.15)."""
+runs only where a named reason says why, and CI's typecheck.sh given no paths, so it checks a local run's files (B.15)."""
 
 import configparser
 import fnmatch
@@ -99,9 +99,10 @@ def test_ruff_and_ci_name_the_eight_scopes_and_the_generated_tree() -> None:
     assert "shellcheck scripts/*.sh || status=1" in (_REPO / "scripts" / "lint.sh").read_text(encoding="utf-8")
 
 
-def test_ci_s_mypy_step_names_exactly_the_main_pass_s_files() -> None:
+def test_ci_s_mypy_step_runs_typecheck_sh_with_no_arguments() -> None:
+    # One scope for CI and a local run: with no paths the main pass checks exactly [tool.mypy]'s files, as locally.
     words = _ci_run("scripts/typecheck.sh")
-    assert sorted(words[words.index("scripts/typecheck.sh") + 1 :]) == sorted(str(f) for f in _main_files()), "ci.yml's mypy paths are the main pass's files"
+    assert words[words.index("scripts/typecheck.sh") + 1 :] == [], "ci.yml's mypy step passes paths - run scripts/typecheck.sh bare, so it checks pyproject.toml's files"
 
 
 def _main_files() -> "list[str]":
@@ -134,13 +135,14 @@ def _runs() -> "dict[str, set[str]]":
     # Each mypy run's checked files among the scopes: the three passes (files minus exclude) and the single-file runs.
     files = _scope_files()
     main = _main()
+    main_files = _main_files()  # parsed once: inside the comprehension it re-read pyproject.toml for every file
     exclude = main.get("exclude", [])
     main_exclude = [str(p) for p in exclude] if isinstance(exclude, list) else []
     host = _ini("host_typecheck.ini")
     host_exclude = host.get("exclude", "")
     twin = _ini("digital_twin/typecheck.ini")
     runs = {
-        "main pass": {f for f in files if _covered(f, _main_files()) and not any(_excluded(f, p) for p in main_exclude)},
+        "main pass": {f for f in files if _covered(f, main_files) and not any(_excluded(f, p) for p in main_exclude)},
         "twin pass": {f for f in files if _covered(f, _ini_list(twin.get("files", "")))},
         "host pass": {f for f in files if _covered(f, _ini_list(host.get("files", ""))) and not (host_exclude and _excluded(f, host_exclude))},
     }

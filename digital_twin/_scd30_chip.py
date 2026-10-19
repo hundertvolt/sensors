@@ -188,7 +188,7 @@ class SCD30Chip:
             self._not_loaded("shape")
             return
         current = (self._measurement_interval_s, self._ambient_pressure, self._altitude, self._temp_offset_raw, self._asc_enabled)
-        settings = [data.get(key, value) for key, value in zip(_STATE_SETTINGS, current)]  # noqa: B905 - MicroPython zip() rejects strict=
+        settings = [data.get(key, value) for key, value in zip(_STATE_SETTINGS, current)]
         measuring = data.get("measuring", self._measuring)
         if not all(isinstance(value, int) and not isinstance(value, bool) for value in settings) or not isinstance(measuring, bool):
             self._not_loaded("type")

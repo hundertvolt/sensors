@@ -101,7 +101,7 @@ _STOP_GRACE_S = 5.0  # a stopped command's time to exit on SIGTERM before SIGKIL
 
 
 # @tunable tool.uv_sync_attempts = 3
-NETWORK_ATTEMPTS = 3  # mirrors the retried uv sync of ci.yml and the toolchain action: a momentary outage is not a failed install
+NETWORK_ATTEMPTS = 3  # mirrors scripts/uv_sync_retried.sh, the one retried uv sync: a momentary outage is not a failed install
 
 
 class MicropythonPin(TypedDict):
@@ -574,7 +574,7 @@ def _write_json(path: Path, data: object) -> None:
     # toolchain lock makes the one temporary name safe.
     temporary = path.with_name(f"{path.name}.tmp")
     temporary.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
+    temporary.replace(path)
 
 
 def get_interface_mac(iface: str) -> str:
@@ -1166,7 +1166,7 @@ def ensure_node(toolchain_dir: Path, repo_root: Path, *, skip_apt: bool) -> Path
         raise SetupError(f"Node install did not produce {target.name}/bin/node (unpacked in {staging})")
     if target.exists():
         shutil.rmtree(target)  # an earlier run's half-made tree: it never reached bin/node
-    os.replace(unpacked, target)
+    unpacked.replace(target)
     shutil.rmtree(staging)
     _write_json(node_root / NODE_RECORD, record)
     log(f"Node installed: {bindir}")
@@ -1174,17 +1174,13 @@ def ensure_node(toolchain_dir: Path, repo_root: Path, *, skip_apt: bool) -> Path
 
 
 def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, skip_apt: bool) -> None:
-    # Vitest drives a real Chromium, not jsdom (SPECIFICATION.md Part H), so `npm ci` alone leaves
-    # `npm test` unable to start. Only the OS-level libraries need root, hence the separate
-    # `install-deps` call; non-fatal throughout, so a Python-only machine still finishes `env`.
+    # Vitest drives a real Chromium (SPECIFICATION.md Part H), so a machine that ran `npm ci` needs it: a failure stops
+    # `env` by name. Only the OS-level libraries need root, hence the separate `install-deps` call, which --skip-apt skips.
     log("Installing the Playwright Chromium build vitest runs against")
-    # try/except rather than check=False: run() returns stdout either way, so an exception is the
-    # only signal it gives - and this must stay non-fatal without silently swallowing a failure.
     try:
         run(["npx", "playwright", "install", "chromium"], cwd=repo_root, env=env, timeout_s=_NETWORK_STEP_TIMEOUT_S)
     except SetupError as exc:
-        log(f"Playwright browser install failed ({exc}) - `npm test` will not run until it succeeds")
-        return
+        raise SetupError(f"Playwright's Chromium did not install ({exc}) - `npm test` cannot run. Re-run `env`, or pass --skip-npm to set up without the web tier") from exc
     if skip_apt:
         log("Skipping Playwright OS dependencies (--skip-apt) - already present on a normal desktop/CI image")
         return
@@ -1192,7 +1188,7 @@ def ensure_playwright_browser(repo_root: Path, env: dict[str, str] | None, *, sk
         # terminal=True: as a non-root user, playwright runs sudo itself, which asks on the terminal.
         run(["npx", "playwright", "install-deps", "chromium"], cwd=repo_root, env=env, timeout_s=_NETWORK_STEP_TIMEOUT_S, terminal=True)
     except SetupError as exc:
-        log(f"Playwright OS dependencies not installed ({exc}) - install them by hand if `npm test` cannot start")
+        raise SetupError(f"Playwright's OS libraries did not install ({exc}) - install them with `sudo npx playwright install-deps chromium`, or pass --skip-apt on a desktop image that has them") from exc
 
 
 def ensure_repo_at_ref(url: str, dest: Path, ref: str) -> None:
@@ -1842,7 +1838,7 @@ def write_micropython_ref(path: Path, ref: str) -> None:
     if written != ref:
         candidate.unlink()
         raise SetupError(f'{path}: its one `ref = "…"` line is not the [micropython] ref - nothing was written; move it under [micropython] (see SPECIFICATION.md B.3) and re-run')
-    os.replace(candidate, path)
+    candidate.replace(path)
 
 
 def write_toolchain_record(toolchain_dir: Path, record: ToolchainRecord) -> None:

@@ -14,6 +14,9 @@ try:
 except ImportError:
     lwip = None
 print("settrace" if hasattr(sys, "settrace") else "lwip" if lwip else "standard")'
+# A binary that hangs at start is killed at this bound and reads as unusable, so no caller waits on it.
+# @tunable runner.unix_port_probe_timeout_s = 60
+_UNIX_PORT_PROBE_TIMEOUT_S=60
 _UNIX_PORT_USAGE="Usage: scripts/_unix_port.sh check|ensure|unix_port_bin <standard|settrace|lwip> | micropypath <unit|twin>"
 
 _unix_port_flavour_valid() {
@@ -93,10 +96,21 @@ _unix_port_main() {
     esac
 }
 
+_unix_port_need_timeout() {
+    if ! command -v timeout >/dev/null 2>&1; then
+        echo "error: timeout (coreutils) is not on PATH - scripts/_unix_port.sh bounds the Unix-port probe with it" >&2
+        exit 1
+    fi
+}
+
 _unix_port_probe_said() {
     # " (the probe said: <its last line>)" for a binary the probe found unusable, or nothing: the cause to rebuild for.
-    local out line last=""
-    out="$("$1" -c "$_UNIX_PORT_PROBE" 2>&1)" || true
+    local out line last="" rc=0
+    out="$(timeout -s KILL "$_UNIX_PORT_PROBE_TIMEOUT_S" "$1" -c "$_UNIX_PORT_PROBE" 2>&1)" || rc=$?
+    if [ "$rc" -eq 137 ]; then
+        printf ' (the probe was killed, exit 137: it hung past its %s s bound or died by SIGKILL)' "$_UNIX_PORT_PROBE_TIMEOUT_S"
+        return 0
+    fi
     while IFS= read -r line; do
         if [ -n "$line" ]; then
             last="$line"
@@ -204,6 +218,7 @@ unix_port_check() {
     local flavour="${1:-}" bin found
     _unix_port_flavour_valid "$flavour"
     _unix_port_lock_shared
+    _unix_port_need_timeout
     bin="$(unix_port_bin "$flavour")"
     if [ ! -f "$bin" ] || [ ! -x "$bin" ]; then
         echo "error: no MicroPython Unix port at $bin - build it with: uv run toolchain/setup_toolchain.py setup" >&2
@@ -225,6 +240,7 @@ unix_port_ensure() {
         _unix_port_flavour_valid "$flavour"
     done
     _unix_port_lock_shared
+    _unix_port_need_timeout
     for flavour in "$@"; do
         why="$(_unix_port_why_rebuild "$flavour")" || exit 1
         [ -z "$why" ] || break
@@ -267,12 +283,12 @@ unix_port_ensure() {
     fi
 }
 
-# unix_port_flavour <binary>: the build flavour the binary reports (standard, settrace or lwip), or unusable. Always
-# returns 0, so set -e never fires inside the caller's substitution.
+# unix_port_flavour <binary>: the build flavour the binary reports (standard, settrace or lwip) within the probe's
+# bound, or unusable. Always returns 0, so set -e never fires inside the caller's substitution.
 unix_port_flavour() {
     local probe=""
     if [ -f "${1:-}" ] && [ -x "$1" ]; then
-        probe="$("$1" -c "$_UNIX_PORT_PROBE" 2>/dev/null)" || probe=""
+        probe="$(timeout -s KILL "$_UNIX_PORT_PROBE_TIMEOUT_S" "$1" -c "$_UNIX_PORT_PROBE" 2>/dev/null)" || probe=""
     fi
     case "$probe" in
         standard | settrace | lwip) printf '%s\n' "$probe" ;;

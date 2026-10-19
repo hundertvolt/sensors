@@ -89,6 +89,7 @@ _COMMAND_WAIT_S = 20.0
 _SEED = bytes(range(5, 45))  # 40 bytes: over rp2's 32-byte DMA threshold, the only SPI reads that can raise
 _DROPPED_WRENS = 8  # more WRENs than one write's retry sends: the write fails rather than recovering inside the driver
 _RUNG_OFFSETS = 6  # as many offsets as each loop has reads, the recovery case's own count
+_CANCEL_TURNS = 40  # scheduler turns into the SGP40's setup and measurement, which end well before
 _POLL_S = 0.1  # how often the ladder runs and the command waits look again
 _ERASE_UNIT: int = src_int("src/asy_fram_manager.py", "_ERASE_UNIT")
 _ERASE_US_PER_BYTE = 8  # the erase's real wire time at the 1 MHz bus (asy_fram_manager.py's _ERASE_UNIT comment)
@@ -348,10 +349,10 @@ def _sibling_read(device: str, sibling: str, bus: "asy_i2c_driver.I2C") -> "Call
     return reads[sibling]
 
 
-async def _sibling_reads(device: str, sibling: str, bus: "asy_i2c_driver.I2C", failures: "list[str]") -> None:
+async def _sibling_reads(device: str, sibling: str, bus: "asy_i2c_driver.I2C", failures: "list[str]", rounds: int = _RUNG_OFFSETS) -> None:
     # One valid read per round from a protocol instance of `sibling`; any raise or None is a failure.
     read = _sibling_read(device, sibling, bus)
-    for _ in range(_RUNG_OFFSETS):
+    for _ in range(rounds):
         try:
             value = await read()
         except Exception as e:  # recorded with its class: the assertion names it
@@ -821,6 +822,59 @@ def test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid() -> 
         if "isl29125" in occupants:
             _rung_across_offsets(device, bus_name, tuple(s for s in occupants if s != "isl29125"), rung, check)
     assert ran, "no generated device shares a bus with an ISL29125 - the case covers nothing"
+
+
+def test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable() -> None:
+    # The shutdown cancels each supervised task where it waits (Part C.8): the SGP40's setup and measurement on every
+    # shared bus carrying one, cancelled at each turn, its bus and its device session among them. Both locks are free
+    # after, the measure command restored, and each sibling's next read and the SGP40's own are valid.
+    ran = [(d, b) for d, b, o in _SHARED if "sgp40" in o]
+    for device, bus_name, occupants in _SHARED:
+        if "sgp40" not in occupants:
+            continue
+        held = set()
+        for turns in range(_CANCEL_TURNS):
+            failures: list[str] = []
+            state: list[object] = []
+
+            async def scenario(turns: int = turns, failures: "list[str]" = failures, state: "list[object]" = state, device: str = device, bus_name: str = bus_name, occupants: "list[str]" = occupants) -> None:
+                bus = _shared_bus(device, bus_name)  # inside the run: an SCD30 chip's refresh timer is a task, ended with it
+                sgp = SGP40_I2C(bus)
+
+                async def setup_and_measure() -> "int | None":
+                    await sgp.setup()
+                    return await sgp.measure_raw()
+
+                cycle = asyncio.create_task(setup_and_measure())
+                for _ in range(turns):
+                    await asyncio.sleep(0)
+                device_lock = sgp._i2c_sgp40.session_lock
+                state.extend((bus.bus_lock.locked(), device_lock.locked(), cycle.done()))
+                await cancel(cycle)
+                where = f"{device} {bus_name}: the SGP40 cancelled {turns} turns in"
+                assert not bus.bus_lock.locked(), f"{where}: the bus lock outlived the cancelled session"  # before a sibling waits on it
+                assert not device_lock.locked(), f"{where}: the SGP40's session lock outlived its cancel"
+                state.append(sgp._command_buffer is sgp._default_command_buffer)
+                for sibling in occupants:
+                    if sibling != "sgp40":
+                        await _sibling_reads(device, sibling, bus, failures, rounds=1)
+                state.append(await sgp.measure_raw())
+
+            with _FastSleep():
+                run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+            held_bus, held_device, ended, restored, again = state
+            where = f"{device} {bus_name}: the SGP40 cancelled {turns} turns in"
+            assert restored, f"{where}: the measure command stayed staged"
+            assert not failures, f"{where}: a sibling's next read failed: {failures}"
+            assert again is not None, f"{where}: its own next measurement failed"
+            if ended:
+                break
+            held.add((held_bus, held_device))
+        else:
+            raise AssertionError(f"{device} {bus_name}: the SGP40's cycle was still running after {_CANCEL_TURNS} turns")
+        assert (True, True) in held, f"{device} {bus_name}: no cancel landed inside the SGP40's bus session: {held}"
+        assert (False, True) in held, f"{device} {bus_name}: no cancel landed inside its device session alone: {held}"
+    assert ran, "no generated device shares a bus with an SGP40 - the case covers nothing"
 
 
 # ---------------------------------------------------------------------------

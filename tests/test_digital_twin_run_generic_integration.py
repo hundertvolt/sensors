@@ -37,24 +37,24 @@ from unix_port_poll_prewarm import prewarm_poll_set
 prewarm_poll_set()  # before any poll object is registered (unix_port_poll_prewarm.py)
 patch_asy_udp_socket_for_unix_port()  # before any UDPSocket exists (_unix_port_udp_addr_shim.py)
 
-import _flash_stall  # noqa: E402
-import _unix_port_udp_addr_shim  # noqa: E402
-import _wall_clock  # noqa: E402
-import launch  # noqa: E402
-import machine  # noqa: E402
-import microtest  # noqa: E402
-import network  # noqa: E402
-import run_generic_integration as runner  # noqa: E402
-from _async_harness import cancel_all, run_timed  # noqa: E402
-from _generated_tree import require_fresh  # noqa: E402
-from _port_bands import PortAllocator  # noqa: E402
-from _strict_json import strict_loads  # noqa: E402
-from _tmp_scratch import TmpScratch  # noqa: E402
-from _twin_common import Injections, StatePaths  # noqa: E402
-from _twin_devices import generated_devices, wiring_plan  # noqa: E402
+import _flash_stall  # noqa: E402 - imported after the prewarm and the UDP shim
+import _unix_port_udp_addr_shim  # noqa: E402 - imported after the prewarm and the UDP shim
+import _wall_clock  # noqa: E402 - imported after the prewarm and the UDP shim
+import launch  # noqa: E402 - imported after the prewarm and the UDP shim
+import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
+import network  # noqa: E402 - imported after the prewarm and the UDP shim
+import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_tree import require_fresh  # noqa: E402 - imported after the prewarm and the UDP shim
+from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
+from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
+from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
-import asy_config_manager  # noqa: E402
-import asy_ntp_client  # noqa: E402
+import asy_config_manager  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_ntp_client  # noqa: E402 - imported after the prewarm and the UDP shim
 
 require_fresh()  # the smoke boot loads a generated module and its plan
 microtest.after_each(machine.reset_test_state)
@@ -730,7 +730,7 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
     # state): the drain takes only the cancel's own end for its own.
     device = generated_devices()[0]
     sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
-    runner.asyncio = _InterruptingAsyncio()  # type: ignore[attr-defined, assignment]  # the runner's module global, rebound from outside
+    runner.asyncio = _InterruptingAsyncio()  # type: ignore[assignment, attr-defined]  # the runner's module global, rebound from outside
     config = runner.RunConfig(
         "sensortask_idle",
         f"build/generated_src/sensortask_{device}_wiring_plan.json",

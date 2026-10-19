@@ -21,16 +21,16 @@ prewarm_poll_set()
 # (host, port) tuple in bind()/connect()/sendto() (SPECIFICATION.md Part A.10).
 patch_asy_udp_socket_for_unix_port()
 
-import machine  # noqa: E402
-import microtest  # noqa: E402
-import network  # noqa: E402
-import run_generic_integration  # noqa: E402
-from _async_harness import cancel, run_timed  # noqa: E402
-from _error_codes import code  # noqa: E402
-from _tmp_scratch import TmpScratch  # noqa: E402
-from network import STAT_GOT_IP, set_access_point_up  # noqa: E402
+import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
+import network  # noqa: E402 - imported after the prewarm and the UDP shim
+import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
+from network import STAT_GOT_IP, set_access_point_up  # noqa: E402 - imported after the prewarm and the UDP shim
 
-import asy_wifi_service  # noqa: E402
+import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING
@@ -144,7 +144,7 @@ async def _first_attempt(conn: "WifiService") -> None:
 
 def _run_scaled(scenario: "Coroutine[object, object, None]") -> None:
     # The scenario with the WiFi service's sleeps scaled down; the real asyncio restored after it.
-    asy_wifi_service.asyncio = _ScaledAsyncio()  # type: ignore[attr-defined, assignment]
+    asy_wifi_service.asyncio = _ScaledAsyncio()  # type: ignore[assignment, attr-defined]
     try:
         run_timed(scenario, timeout_s=_RUN_BOUND_S)
     finally:
@@ -209,7 +209,7 @@ def _wifi_const(name: str) -> int:
 async def _wifi_log(conn: "WifiService") -> "tuple[int, list[tuple[str, int]]]":
     # WIFI's persisted history as (type, number) pairs, beside its count of every logged call.
     entry = (await conn.get_error_counter())["WIFI"]
-    return entry["ErrCount"], list(zip(entry["ErrType"], entry["ErrNum"]))  # noqa: B905 - MicroPython zip() rejects strict=
+    return entry["ErrCount"], list(zip(entry["ErrType"], entry["ErrNum"]))
 
 
 def test_stations_rule_settings_change_and_silent_mode_in_one_boot() -> None:

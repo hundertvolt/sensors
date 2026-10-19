@@ -156,7 +156,7 @@ async def _refusals(webserver: "WebserverService", fram: "FRAMManager") -> None:
     # The near misses answer "Invalid"; an erase of a write-protected chip "Failed"; neither stops the feed.
     answers = []
     for word in _NEAR_MISSES:  # one at a time: MicroPython has no await inside a comprehension
-        answers.append([repr(word), await webserver._dispatch_system_cmd(word)])  # noqa: PERF401 - see the loop's comment
+        answers.append([repr(word), await webserver._dispatch_system_cmd(word)])
     fact("near_misses", answers)
     fact("protect", await fram.fram.set_write_protected(value=True))
     try:

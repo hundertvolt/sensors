@@ -751,7 +751,7 @@ def test_instance_bus_field_wrong_type_rejected(tmp_path: Path, src_dir: Path) -
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", "8192"), ("trigger_s", "3")])
+@pytest.mark.parametrize(("field", "bad_value"), [("max_size", "8192"), ("trigger_s", "3")])
 def test_instance_int_field_wrong_type_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: str) -> None:
     doc = base_doc()
     if field == "max_size":
@@ -769,7 +769,7 @@ def test_instance_address_field_wrong_type_rejected(tmp_path: Path, src_dir: Pat
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,bad_value", [("max_size", True), ("max_size", 8192.0), ("trigger_s", True), ("trigger_s", 3.0)])
+@pytest.mark.parametrize(("field", "bad_value"), [("max_size", True), ("max_size", 8192.0), ("trigger_s", True), ("trigger_s", 3.0)])
 def test_instance_int_field_bool_or_float_rejected(tmp_path: Path, src_dir: Path, field: str, bad_value: "TomlValue") -> None:
     # The same isinstance guard as test_instance_int_field_wrong_type_rejected above,
     # but for bool/float (both plausible copy-paste mistakes) rather than a quoted string.
@@ -1473,7 +1473,7 @@ def test_device_wiring_fram_target_reference_wrong_class(tmp_path: Path, src_dir
 
 
 @pytest.mark.parametrize(
-    "filename,tag",
+    ("filename", "tag"),
     [
         ("asy_system_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
         ("asy_wifi_service.py", "# @wiring fram_target FRAMManager log optional kwarg"),
@@ -1560,7 +1560,7 @@ def _staged_src_with_scd30_tag(tmp_path: Path, src_dir: Path, replacement: str) 
 
 
 @pytest.mark.parametrize(
-    "replacement,match",
+    ("replacement", "match"),
     [
         ("# @require bus.timeout>=200000", "misspelled @requires tag"),  # typo'd tag word
         ("# requires bus.timeout>=200000", "leading '@' missing"),  # sigil dropped

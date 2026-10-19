@@ -543,7 +543,7 @@ def test_parse_web_group_tags_rejects_locations_inside_a_body(tmp_path: Path, so
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ('# web X section=sensors submitGroup=self label="L"\n', "leading '@' missing", "tag.missing-sigil"),
         ('# @wb X section=sensors submitGroup=self label="L"\n', "misspelled @web tag", "tag.misspelled"),
@@ -578,7 +578,7 @@ def test_parse_web_group_tags_a_real_web_tag_is_not_a_near_miss_of_web_group(tmp
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ('# web-group section=sensors submitGroup=self label="L"\n', "leading '@' missing", "tag.missing-sigil"),
         ('# @wbe-group section=sensors submitGroup=self label="L"\n', "misspelled @web-group tag", "tag.misspelled"),

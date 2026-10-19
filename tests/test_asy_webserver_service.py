@@ -2552,7 +2552,7 @@ def test_an_eoferror_from_handle_request_is_an_unexpected_error() -> None:
     async def _raise_eof(_reader: object, _writer: object) -> None:
         raise EOFError
 
-    app.handle_request = _raise_eof  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
+    app.handle_request = _raise_eof  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
     assert run(service._open_conns.get_value()) == 0
     assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
@@ -2567,7 +2567,7 @@ def test_serve_absorbs_an_oserror_raised_directly_by_handle_request() -> None:
     async def _raise_os(_reader: object, _writer: object) -> None:
         raise OSError("simulated socket failure")
 
-    app.handle_request = _raise_os  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
+    app.handle_request = _raise_os  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
     assert run(service._open_conns.get_value()) == 0
 
@@ -2578,7 +2578,7 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
     async def _raise_boom(_reader: object, _writer: object) -> None:
         raise RuntimeError("simulated unexpected bug")
 
-    app.handle_request = _raise_boom  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
+    app.handle_request = _raise_boom  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     run_timed(service._serve(_ScriptedReader([]), _ScriptedWriter()), _RUN_BOUND_S)
     assert run(service._open_conns.get_value()) == 0
     log = run(service.get_error_counter())
@@ -4116,7 +4116,7 @@ def test_serve_never_swallows_its_own_tasks_cancellation_and_still_frees_the_slo
     async def _hang(_reader: object, _writer: object) -> None:
         await asyncio.Event().wait()
 
-    app.handle_request = _hang  # type: ignore[method-assign, assignment]  # the tests mock by reassignment; the stub now types this method
+    app.handle_request = _hang  # type: ignore[assignment, method-assign]  # the tests mock by reassignment; the stub now types this method
     writer = _ScriptedWriter()
 
     async def scenario() -> bool:

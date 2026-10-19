@@ -55,10 +55,8 @@ __pycache__/
 # scripts/test.sh --coverage output (see SPECIFICATION.md Part E.5) - regenerated every run, not meant to
 # be committed.
 htmlcov/
-coverage.xml
 coverage_summary.md
 htmlcov_digital_twin/
-coverage_digital_twin.xml
 coverage_summary_digital_twin.md
 htmlcov_generated/
 coverage_summary_generated.md
@@ -78,8 +76,8 @@ digital_twin/mem_backup_state.json
 digital_twin/config/
 
 # config_*.cfg spilled into the repo root when a device script runs host-side against the twin's
-# fakes (cfg_path=""): config_WIFI.cfg can hold a real SSID/password, which `git add -A` would otherwise
-# pick up.
+# fakes (cfg_path=""): config_WIFI.cfg can hold a real SSID/password, so `git add -A` must not pick
+# one up.
 /config_*.cfg
 
 # scripts/run_digital_twin_ci.sh's own per-run subprocess log files (scripts/_digital_twin_ci_suite.py's

@@ -17,6 +17,11 @@ USAGE
     exit 0
 fi
 
+# The one retried sync (scripts/uv_sync_retried.sh) first: every uv run below is --no-sync.
+if ! scripts/uv_sync_retried.sh; then
+    echo "error: the retried uv sync failed - its output above names the cause; nothing reached the board" >&2
+    exit 1
+fi
 # No board or several: the resolver's own error reaches the user unchanged, and set -e exits with its code.
 device="${MPREMOTE_DEVICE:-$(uv run --no-sync toolchain/setup_toolchain.py board)}"
 # --no-sync: talking to a board never triggers an implicit sync of the dev group.

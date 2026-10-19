@@ -205,7 +205,7 @@ class _RaisingOs(_RecordingOs):
         super().rmdir(path)
 
 
-class _recording:  # noqa: N801 - read as a statement: `with _recording(os_stand_in):`
+class _recording:
     # Installs a stand-in as _tmp_scratch's own `os` for the block.
     def __init__(self, stand_in: _RecordingOs) -> None:
         self._stand_in = stand_in

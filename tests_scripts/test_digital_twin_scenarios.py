@@ -47,7 +47,7 @@ def _item(harness: ModuleType, name: str, *, shared: bool = True, moves: "tuple[
 
 def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
     # Another runner's live lock on `port`, as scripts/_port_lock.sh leaves it: its pid alive, outside this chain.
-    holder = subprocess.Popen(["sleep", "60"])  # noqa: S607 - coreutils sleep, the stand-in holder's process
+    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
     lock = runtime / f"sensors-port-{port}.lock"
     lock.mkdir(parents=True)
     (lock / "runner").write_text("another suite\n", encoding="utf-8")

@@ -84,7 +84,7 @@ def resolve_instance_key(model: DeviceModel, value: str) -> "tuple[str, str]":
 def load_device(path: Path) -> DeviceModel:
     device = path.stem
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             doc = tomllib.load(f)
     except tomllib.TOMLDecodeError as e:
         raise BuildError(device, f"{path} is not valid TOML: {e}", rule="toml.syntax", fix="correct the TOML at the line and column named") from e

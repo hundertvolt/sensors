@@ -24,7 +24,12 @@ _NO_RECORD = "no verdict (run record missing or unreadable)"
 # pytest's own exit codes for a session that did not run to a verdict (pytest.ExitCode).
 _ABORTED_EXITS = {2: "interrupted", 3: "internal error", 4: "usage error"}
 _NO_TESTS_COLLECTED = 5
-_PASSING_EXITS = (0, 3, 4)  # E.10: pass, pass with the coverage render failed, NOT CLEAN
+# E.10's exit codes beyond pass (0) and fail (1).
+_USAGE_ERROR_EXIT = 2
+_COVERAGE_NOT_RENDERED_EXIT = 3
+_NOT_CLEAN_EXIT = 4
+_PASSING_EXITS = (0, _COVERAGE_NOT_RENDERED_EXIT, _NOT_CLEAN_EXIT)
+_PAIR_LEN = 2  # a user_properties (key, value) pair
 
 
 @dataclass(frozen=True)
@@ -87,15 +92,15 @@ class Summary:
 
     def result(self, exit_code: int) -> str:
         counts = self.counts()
-        if exit_code == 2:  # noqa: PLR2004 - E.10's usage-error code
+        if exit_code == _USAGE_ERROR_EXIT:
             return "USAGE ERROR"
         if counts.failed or counts.vacuous:
             return "FAIL"
         if exit_code == 0:
             return "PASS"
-        if exit_code == 3:  # noqa: PLR2004 - E.10's coverage-render-only code
+        if exit_code == _COVERAGE_NOT_RENDERED_EXIT:
             return "PASS (coverage report not rendered)"
-        if exit_code == 4:  # noqa: PLR2004 - E.10's NOT CLEAN code
+        if exit_code == _NOT_CLEAN_EXIT:
             return f"NOT CLEAN ({self.not_clean_reason})" if self.not_clean_reason else "NOT CLEAN"
         return "FAIL"
 
@@ -140,7 +145,7 @@ def _git(*args: str) -> str | None:
     if git is None:
         return None
     try:
-        done = subprocess.run([git, *args], capture_output=True, text=True, check=False)  # noqa: S603 - fixed git subcommands
+        done = subprocess.run([git, *args], capture_output=True, text=True, check=False)
     except OSError:
         return None
     return done.stdout if done.returncode == 0 else None
@@ -158,7 +163,7 @@ def _commit() -> str:
 def _props(props: object) -> list[tuple[str, str]]:
     # Every user_properties (key, value) pair, the value as text.
     pairs = props if isinstance(props, list) else []
-    return [(str(p[0]), str(p[1])) for p in pairs if isinstance(p, list) and len(p) == 2]  # noqa: PLR2004 - a (key, value) pair
+    return [(str(p[0]), str(p[1])) for p in pairs if isinstance(p, list) and len(p) == _PAIR_LEN]
 
 
 def _add_test(summary: Summary, entry: dict[str, object]) -> None:

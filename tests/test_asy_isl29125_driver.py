@@ -162,7 +162,7 @@ def fail_register_writes(i2c: I2C, times: int = 1) -> None:
     real_writeto = bus.writeto
     remaining = [times]
 
-    def failing(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def failing(address: int, buf: object, stop: bool = True) -> int:
         if remaining[0] and stop and len(buf) > 1:  # type: ignore[arg-type]
             remaining[0] -= 1
             if not remaining[0]:
@@ -180,7 +180,7 @@ def logged(counters: "ErrorLog", kind: str, name: str = "ISL29125") -> "list[int
     entry = counters[name]
     # No strict= (ruff B905): MicroPython's zip() rejects it (CPython 3.10+-only), and ErrEntry
     # keeps both lists in step by construction - the same note src/asy_webserver_service.py carries.
-    return [number for number, entry_kind in zip(entry["ErrNum"], entry["ErrType"]) if entry_kind == kind]  # noqa: B905
+    return [number for number, entry_kind in zip(entry["ErrNum"], entry["ErrType"]) if entry_kind == kind]
 
 
 def err_count(counters: "ErrorLog", name: str = "ISL29125") -> int:
@@ -1051,7 +1051,7 @@ def test_read_loop_calls_error_check_exactly_once_per_cycle() -> None:
         calls.append(results)
         return await real_error_check(results, condition=condition)
 
-    reader._error_check = counting  # type: ignore[method-assign, assignment]
+    reader._error_check = counting  # type: ignore[assignment, method-assign]
 
     async def scenario() -> None:
         with FastAsyncSleep():
@@ -1078,7 +1078,7 @@ def test_read_loop_climbs_the_ladder_then_gives_up() -> None:
             fake(i2c).nak_addresses.add(_ADDR)  # every later transaction fails
             verdicts = []
             for _ in range(4):
-                verdicts.append(await reader._error_check(await reader._read_isl()))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+                verdicts.append(await reader._error_check(await reader._read_isl()))
             return verdicts
 
     before = i2c.recoveries
@@ -1294,7 +1294,7 @@ def test_cal_light_marks_the_calibration_band_at_its_edges() -> None:
         with FastAsyncSleep():
             seen = []
             for green in (lo, lo + 1, hi - 1, hi):  # the dwell holds the range on all four
-                seen.append(await code_for(green))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+                seen.append(await code_for(green))
             assert await reader.set_range_auto(flag=False) is True
             seen.append(await code_for(2000))
             assert await reader.set_range_auto(flag=True) is True
@@ -1313,7 +1313,7 @@ def test_cal_light_marks_the_calibration_band_at_its_edges() -> None:
         accepted.append(1)
         return None
 
-    cal._read_on = recording_leg  # type: ignore[method-assign, assignment]
+    cal._read_on = recording_leg  # type: ignore[assignment, method-assign]
     for green in (lo, lo + 1, hi - 1, hi):
         accepted.clear()
         cal._isl._settle_until_ms = time.ticks_ms()
@@ -2076,7 +2076,7 @@ def test_read_sensor_dict_returns_none_when_the_snapshot_cannot_be_decoded() -> 
     # GET's unavailable marker) rather than a raise from the tuple unpack or an empty map.
     _i2c, reader = ready_reader("sensor_dict_undecodable")
     reader._range_auto = False
-    reader._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    reader._isl.decode_config = lambda _raw: None  # type: ignore[assignment, method-assign]  # mocked by reassignment
     with FastAsyncSleep():
         assert run(reader._read_sensor_dict()) is None
 
@@ -2084,7 +2084,7 @@ def test_read_sensor_dict_returns_none_when_the_snapshot_cannot_be_decoded() -> 
 def test_a_snapshot_field_read_degrades_to_none_when_the_snapshot_cannot_be_decoded() -> None:
     # Same guard on the single-field path, which every per-field getter goes through.
     _i2c, reader = ready_reader("snapshot_field_undecodable")
-    reader._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # deliberate monkeypatch
+    reader._isl.decode_config = lambda _raw: None  # type: ignore[assignment, method-assign]  # mocked by reassignment
     with FastAsyncSleep():
         assert run(reader._snapshot_field(0, "resolution")) is None
 
@@ -2152,7 +2152,7 @@ def test_get_dict_cfg_is_the_unavailable_marker_after_a_bus_fault_or_an_undecoda
     assert code("E", "CFG_CALLBACK_RAISED") not in errors(counters)
 
     _i2c, undecodable = ready_reader("dict_cfg_undecodable")
-    undecodable._isl.decode_config = lambda _raw: None  # type: ignore[method-assign, assignment]  # a planted undecodable snapshot
+    undecodable._isl.decode_config = lambda _raw: None  # type: ignore[assignment, method-assign]  # a planted undecodable snapshot
     with FastAsyncSleep():
         assert run(undecodable.get_dict_cfg()) == {"ISL29125": {"error": "unavailable"}}
 
@@ -2398,7 +2398,7 @@ def test_a_write_that_fails_during_the_reconciling_re_read_is_not_lost() -> None
     reader._isl._write_failures = 1  # one failure already outstanding
     real_read = chip.readfrom_into
 
-    def _fail_a_write_during_the_re_read(address: int, buf: object, stop: bool = True) -> None:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def _fail_a_write_during_the_re_read(address: int, buf: object, stop: bool = True) -> None:
         chip.readfrom_into = real_read  # type: ignore[method-assign]  # once only
         reader._isl._write_failures += 1  # a second write fails while this read is in flight
         real_read(address, buf, stop)
@@ -2419,7 +2419,7 @@ def test_a_config_burst_that_lands_only_partly_is_reconciled_by_the_next_read_cy
     chip = fake(i2c)
     real_write = chip.writeto
 
-    def _land_config1_only(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def _land_config1_only(address: int, buf: object, stop: bool = True) -> int:
         data = bytes(buf)  # type: ignore[call-overload]
         if not stop or len(data) <= 2:
             return real_write(address, buf, stop)
@@ -2538,7 +2538,7 @@ def test_set_resolution_reports_failure_when_the_derived_window_cannot_be_re_app
     real_write = chip.writeto
     calls = [0]
 
-    def _fail_the_second_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def _fail_the_second_write(address: int, buf: object, stop: bool = True) -> int:
         if stop and len(buf) > 1:  # type: ignore[arg-type]  # a register write, not a read's pointer
             calls[0] += 1
             if calls[0] == 2:
@@ -4039,6 +4039,8 @@ def test_two_concurrent_threshold_pushes_end_on_the_later_one() -> None:
 
 
 def test_never_touches_any_address_but_its_own() -> None:
+    # Each call reads what the chip would answer (a reset the CONFIG1-3 its 0x46 command clears, which the register
+    # fake does not model), so only the bus layer's own refusal may end one early.
     i2c, isl = ready_protocol()
     seed(i2c, _REG_DATA, counts_burst(0x2000, 0x1800, 0x1000))
 
@@ -4054,9 +4056,11 @@ def test_never_touches_any_address_but_its_own() -> None:
             lambda: isl.configure(mode=0x05, range_fs=375, resolution=12),
             lambda: isl.set_thresholds(983, 55705),
         ):
+            if call == isl.reset:
+                seed(i2c, _REG_CONFIG1, bytes(3))
             try:
                 await call()
-            except Exception:  # only the addresses *touched* matter for this sweep, not success
+            except OSError:  # the bus layer's own refusal: only the addresses touched matter, not success
                 pass
 
     with FastAsyncSleep():

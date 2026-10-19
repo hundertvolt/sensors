@@ -1,6 +1,6 @@
-"""scripts/_cross_browser_probe.mjs's pickProbe(), run under Node without a browser: every device's
-generated definitions yield the first in-range integer field of a submitting group, the field the
-cross-browser smoke edits (SPECIFICATION.md H.7), and a device with none fails naming itself."""
+"""scripts/_cross_browser_probe.mjs run under Node without a browser: pickProbe() yields every device's field the
+cross-browser smoke edits (SPECIFICATION.md H.7) or fails naming the device, and engineVerdict() fails a missing
+engine under --require-all-engines and skips it, counted, without; the smoke reads that flag and nothing else."""
 
 import json
 import math
@@ -116,3 +116,76 @@ def test_every_webdriver_command_in_the_smoke_checks_its_reply() -> None:
     assert "webDriverFailure(res.status, body)" in body("wdCommand")
     for name in ("wdNavigate", "wdSetWindowRect", "wdExecute"):
         assert "wdCommand(" in body(name) and "fetch(" not in body(name), f"{name}() does not check the WebDriver reply"
+
+
+_WEBKIT_BIN = "/usr/bin/WebKitWebDriver"
+_FIREFOX_BINS = ["/fixture/ff/bin/firefox", "/fixture/ff/bin/geckodriver"]
+_PRESENT = [{"name": "WebKit", "missing": []}, {"name": "Chromium", "missing": []}]
+_WEBKIT_MISSING = [{"name": "WebKit", "missing": [_WEBKIT_BIN]}, {"name": "Chromium", "missing": []}]
+_CHROMIUM_PASSED = [{"label": "fixture-device Chromium (desktop)", "ok": True}, {"label": "fixture-device Chromium (mobile)", "ok": True}]
+_ONE_FAILED = [*_CHROMIUM_PASSED, {"label": "fixture-device WebKit (desktop)", "ok": False, "detail": "x"}]
+# Every engineVerdict() case as (available, results, requireAllEngines), all answered by one Node process.
+_VERDICT_CASES = {
+    "missing, required": (_WEBKIT_MISSING, _CHROMIUM_PASSED, True),
+    "missing, not required": (_WEBKIT_MISSING, _CHROMIUM_PASSED, False),
+    "two binaries missing": ([{"name": "Firefox", "missing": _FIREFOX_BINS}], [], True),
+    "present, required": (_PRESENT, _ONE_FAILED, True),
+    "present, not required": (_PRESENT, _ONE_FAILED, False),
+}
+
+
+@pytest.fixture(scope="module")
+def verdicts() -> "dict[str, dict[str, Any]]":
+    node = shutil.which("node")
+    assert node is not None, "node is not on PATH"
+    cases = {name: [available, results, {"requireAllEngines": required}] for name, (available, results, required) in _VERDICT_CASES.items()}
+    script = (
+        f"import {{ engineVerdict }} from {json.dumps(_MODULE_URL)};\n"
+        f"const cases = {json.dumps(cases)};\n"
+        "console.log(JSON.stringify(Object.fromEntries(Object.entries(cases).map(([name, args]) => [name, engineVerdict(...args)]))));"
+    )
+    done = subprocess.run([node, "--input-type=module", "-e", script], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stderr
+    answered: dict[str, dict[str, Any]] = json.loads(done.stdout.strip().splitlines()[-1])
+    return answered
+
+
+def test_with_the_flag_a_missing_engine_fails_naming_its_binary_and_the_installer(verdicts: "dict[str, dict[str, Any]]") -> None:
+    verdict = verdicts["missing, required"]
+    failed = [result for result in verdict["results"] if not result["ok"]]
+    assert [result["label"] for result in failed] == ["WebKit"], verdict
+    assert _WEBKIT_BIN in failed[0]["detail"]
+    assert "CI requires every engine" in failed[0]["detail"]
+    assert "scripts/setup_cross_browser_toolchain.sh" in failed[0]["detail"]
+    assert (verdict["passed"], verdict["ran"], verdict["skipped"], verdict["skips"]) == (2, 3, 0, [])
+
+
+def test_without_the_flag_a_missing_engine_is_skipped_and_counted(verdicts: "dict[str, dict[str, Any]]") -> None:
+    verdict = verdicts["missing, not required"]
+    assert verdict["results"] == _CHROMIUM_PASSED
+    assert [skip["label"] for skip in verdict["skips"]] == ["WebKit"]
+    assert _WEBKIT_BIN in verdict["skips"][0]["detail"]
+    assert "scripts/setup_cross_browser_toolchain.sh" in verdict["skips"][0]["detail"]
+    assert (verdict["passed"], verdict["ran"], verdict["skipped"]) == (2, 2, 1)
+
+
+def test_an_engine_missing_two_binaries_names_both(verdicts: "dict[str, dict[str, Any]]") -> None:
+    verdict = verdicts["two binaries missing"]
+    assert all(path in verdict["results"][0]["detail"] for path in _FIREFOX_BINS), verdict
+
+
+@pytest.mark.parametrize("case", ["present, required", "present, not required"])
+def test_with_every_engine_present_only_the_checks_decide(verdicts: "dict[str, dict[str, Any]]", case: str) -> None:
+    verdict = verdicts[case]
+    assert verdict["results"] == _ONE_FAILED
+    assert (verdict["passed"], verdict["ran"], verdict["skipped"], verdict["skips"]) == (2, 3, 0, [])
+
+
+def test_the_smoke_takes_the_engine_flag_and_rejects_any_other_argument() -> None:
+    # Only argument handling runs: a usage error exits before Playwright loads or a twin boots; its usage names the flag.
+    node = shutil.which("node")
+    assert node is not None, "node is not on PATH"
+    done = subprocess.run([node, "scripts/cross_browser_smoke.mjs", "--require-all-engines", "--frobnicate"], cwd=_REPO_ROOT, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 2, done.stderr
+    assert 'unknown argument "--frobnicate"' in done.stderr and 'unknown argument "--require-all-engines"' not in done.stderr
+    assert "[--require-all-engines]" in done.stderr, "the usage block does not name --require-all-engines"

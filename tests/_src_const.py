@@ -47,7 +47,7 @@ def py_value(path: str, name: str) -> object:
         for line in f:
             head, mark, rest = line.partition(" = ")
             if mark and head == name:
-                return eval(rest, {})  # noqa: S307 - one literal of a repository file; eval() skips its comment
+                return eval(rest, {})
     raise KeyError(f"{name} is not a module-level binding in {path}")
 
 
@@ -75,7 +75,7 @@ def src_consts(path: str) -> "dict[str, object]":
                 name, mark, rest = line.partition(_MARK)
                 if mark and _is_name(name):
                     expr = rest[: _call_end(rest, 0)]
-                    values[name] = eval(expr, dict(values))  # noqa: S307 - the expression of a src/ const() line
+                    values[name] = eval(expr, dict(values))
         _cache[path] = values
     return values
 

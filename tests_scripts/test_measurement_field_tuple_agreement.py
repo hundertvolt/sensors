@@ -29,9 +29,12 @@ def _literal_tuple(node: ast.AST) -> tuple[str, ...] | None:
         node = node.args[0]
     if not isinstance(node, ast.Tuple):
         return None
-    if not all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in node.elts):
-        return None
-    return tuple(e.value for e in node.elts)  # type: ignore[attr-defined]
+    names: list[str] = []
+    for element in node.elts:
+        if not (isinstance(element, ast.Constant) and isinstance(element.value, str)):
+            return None
+        names.append(element.value)
+    return tuple(names)
 
 
 def _declarations(path: Path) -> tuple[dict[str, tuple[str, ...]], tuple[str, ...] | None]:

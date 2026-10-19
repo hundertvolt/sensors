@@ -1273,7 +1273,7 @@ def test_set_override_led_answers_true_for_every_value_it_clamps() -> None:
     async def scenario() -> "list[object]":
         answers: list[object] = []
         for secs in (9999, 3600, 1, 0, -5):
-            answers.append(await coordinator.set_override_led(secs))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+            answers.append(await coordinator.set_override_led(secs))
         return answers
 
     answers = run(scenario())

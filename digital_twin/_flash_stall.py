@@ -71,7 +71,7 @@ class _StallingFile:
 
 def install(module: object) -> None:
     # Rebinds the open() the given module's code calls (the config manager's): every write it closes stalls the twin.
-    setattr(module, "open", _open)  # noqa: B010 - `module` is any module object
+    setattr(module, "open", _open)
 
 
 def irqs_were_off(at_us: int) -> bool:

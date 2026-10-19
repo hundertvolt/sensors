@@ -281,7 +281,7 @@ def test_a_wrapped_wlan_constructor_still_counts_its_constructions() -> None:
     def wrapper(if_id: int) -> object:
         return real(if_id)
 
-    network.WLAN = wrapper  # type: ignore[misc, assignment]  # a module attribute swap, restored below
+    network.WLAN = wrapper  # type: ignore[assignment, misc]  # a module attribute swap, restored below
     try:
         network.WLAN(network.AP_IF)
     finally:

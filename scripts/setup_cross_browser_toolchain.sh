@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Installs the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, real
-# Microsoft Edge, real Firefox) - idempotent, safe to re-run. Playwright's own Chromium comes from
-# `npx playwright install chromium` instead and is unrelated to this script.
+# Installs Xvfb and the three non-Chromium engines scripts/cross_browser_smoke.mjs drives (WebKitGTK, real Microsoft
+# Edge, real Firefox) - idempotent, safe to re-run, every download verified before use. Playwright's own Chromium comes
+# from `npx playwright install chromium` instead and is unrelated to this script.
 #
 # None of the three channels below is the obvious one for its engine; SPECIFICATION.md Part H.7's
 # "Why each engine comes from the channel it does" has the investigation trail for all three.
@@ -22,30 +22,85 @@ if [ "$#" -gt 0 ]; then
     exit 2
 fi
 
+# Every apt fetch gives up past the timeout and is retried, as toolchain/setup_toolchain.py's apt_options() has it: a
+# stalled mirror fails the step naming the package rather than holding it to the CI job's own limit.
+# @tunable tool.uv_sync_attempts = 3
+NETWORK_ATTEMPTS=3
+# @tunable tool.apt_acquire_timeout_s = 30
+APT_ACQUIRE_TIMEOUT_S=30
+APT_OPTIONS=(-o "Acquire::Retries=$((NETWORK_ATTEMPTS - 1))" -o "Acquire::http::Timeout=$APT_ACQUIRE_TIMEOUT_S" -o "Acquire::https::Timeout=$APT_ACQUIRE_TIMEOUT_S")
+# Microsoft's package-signing key ("Microsoft (Release signing)"): the fingerprint gpg --show-keys reads from the key
+# served at https://packages.microsoft.com/keys/microsoft.asc (agent, 2026-10-19).
+EDGE_KEY_FINGERPRINT=BC528686B50D79E339D3721CEB3E94ADBE1229CF
+# micromamba only bootstraps the Firefox env, so it is pinned (agent, 2026-10-19): the SHA-256 is the release's own
+# https://github.com/mamba-org/micromamba-releases/releases/download/2.9.0-0/micromamba-linux-64.sha256, re-hashed here.
+MICROMAMBA_VERSION=2.9.0-0
+MICROMAMBA_SHA256=366cd9cd8be14df1ab8ed50352a82111082a36686b2d389fdb79a92c3fafb3e3
+
+# The one trap removes every temporary file, set before the first is made: a failed or interrupted run leaves none.
+tmp=""
+partial=""
+cleanup() {
+    if [ -n "$tmp" ]; then rm -rf "$tmp"; fi
+    if [ -n "$partial" ]; then rm -f "$partial"; fi
+}
+trap cleanup EXIT
+tmp=$(mktemp -d)
+
 # Non-fatal, like toolchain/setup_toolchain.py's own ensure_apt_packages(): an unrelated
 # third-party source (a PPA that 403s or whose key expired) must not stop an install from the main
 # archive. Every apt-get install below stays fatal, so a package we really need still fails loudly.
 apt_update() {
-    sudo apt-get update || echo "== apt-get update reported errors - continuing, the install below still gates"
+    sudo apt-get "${APT_OPTIONS[@]}" update || echo "== apt-get update reported errors - continuing, the install below still gates"
 }
 
-# --- WebKit: webkit2gtk-driver + xvfb (headless WebKitGTK needs a virtual display) ---
-if ! command -v WebKitWebDriver >/dev/null 2>&1; then
-    echo "== Installing webkit2gtk-driver + xvfb"
+# The one primary key a key file holds, or nothing: a file carrying any second key is refused with the rest.
+primary_fingerprint() {
+    local listing kind value previous="" found=""
+    listing=$(GNUPGHOME="$tmp/gnupg" gpg --batch --show-keys --with-colons "$1")
+    while IFS=: read -r kind _ _ _ _ _ _ _ _ value _; do
+        if [ "$kind" = "fpr" ] && [ "$previous" = "pub" ]; then
+            if [ -n "$found" ]; then return 0; fi
+            found="$value"
+        fi
+        previous="$kind"
+    done <<<"$listing"
+    echo "$found"
+}
+
+# --- Xvfb: the virtual display WebKitGTK and Firefox run on, even headless ---
+if ! command -v Xvfb >/dev/null 2>&1; then
+    echo "== Installing xvfb"
     apt_update
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends webkit2gtk-driver xvfb
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends xvfb
+else
+    echo "== Xvfb already installed, skipping"
+fi
+
+# --- WebKit: webkit2gtk-driver ---
+if ! command -v WebKitWebDriver >/dev/null 2>&1; then
+    echo "== Installing webkit2gtk-driver"
+    apt_update
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends webkit2gtk-driver
 else
     echo "== webkit2gtk-driver already installed, skipping"
 fi
 
-# --- Microsoft Edge: Microsoft's own apt repo ---
+# --- Microsoft Edge: Microsoft's own apt repo, its key checked by fingerprint before apt trusts it ---
 if ! command -v microsoft-edge-stable >/dev/null 2>&1; then
     echo "== Installing Microsoft Edge"
-    curl -sS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-edge.gpg >/dev/null
+    mkdir -m 700 "$tmp/gnupg"
+    curl -fsS -o "$tmp/microsoft.asc" https://packages.microsoft.com/keys/microsoft.asc
+    fingerprint=$(primary_fingerprint "$tmp/microsoft.asc")
+    if [ "$fingerprint" != "$EDGE_KEY_FINGERPRINT" ]; then
+        echo "error: https://packages.microsoft.com/keys/microsoft.asc holds key ${fingerprint:-(none, or more than one)}, not Microsoft's $EDGE_KEY_FINGERPRINT - no keyring or apt source was written" >&2
+        exit 1
+    fi
+    GNUPGHOME="$tmp/gnupg" gpg --batch --dearmor <"$tmp/microsoft.asc" | sudo tee /usr/share/keyrings/microsoft-edge.gpg >/dev/null
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" \
         | sudo tee /etc/apt/sources.list.d/microsoft-edge.list >/dev/null
     apt_update
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends microsoft-edge-stable
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends microsoft-edge-stable
 else
     echo "== Microsoft Edge already installed, skipping"
 fi
@@ -61,9 +116,17 @@ if [ ! -x "$FIREFOX_BIN" ] || [ ! -x "$GECKODRIVER_BIN" ]; then
     echo "== Installing real Firefox + geckodriver from conda-forge (via micromamba)"
     mkdir -p "$CROSS_BROWSER_DIR/bin"
     micromamba_bin="$CROSS_BROWSER_DIR/bin/micromamba"
-    if [ ! -x "$micromamba_bin" ]; then
-        curl -sSL -o "$micromamba_bin" "https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-linux-64"
-        chmod +x "$micromamba_bin"
+    # A binary an older, unchecked run left is checked too, and fetched again unless it is the pinned release.
+    if ! { [ -x "$micromamba_bin" ] && echo "$MICROMAMBA_SHA256  $micromamba_bin" | sha256sum -c --status -; }; then
+        partial="$micromamba_bin.part"
+        curl -fsSL -o "$partial" "https://github.com/mamba-org/micromamba-releases/releases/download/$MICROMAMBA_VERSION/micromamba-linux-64"
+        if ! echo "$MICROMAMBA_SHA256  $partial" | sha256sum -c --status -; then
+            echo "error: micromamba $MICROMAMBA_VERSION's download does not have the pinned SHA-256 $MICROMAMBA_SHA256 - nothing was installed" >&2
+            exit 1
+        fi
+        chmod +x "$partial"
+        mv -f "$partial" "$micromamba_bin"
+        partial=""
     fi
     MAMBA_ROOT_PREFIX="$CROSS_BROWSER_DIR/mamba_root" "$micromamba_bin" create -y -n ff -c conda-forge firefox geckodriver
 else
@@ -71,6 +134,7 @@ else
 fi
 
 echo "== Cross-browser toolchain ready:"
+echo "   Xvfb:            $(command -v Xvfb)"
 echo "   WebKitWebDriver: $(command -v WebKitWebDriver)"
 echo "   Microsoft Edge:  $(command -v microsoft-edge-stable)"
 echo "   Firefox:         $FIREFOX_BIN"

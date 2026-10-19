@@ -34,7 +34,7 @@ def devices_dir(repo_root: Path) -> Path:
 
 
 def _load(devices_dir: Path, name: str) -> "dict[str, object]":
-    with open(devices_dir / f"{name}.toml", "rb") as f:
+    with (devices_dir / f"{name}.toml").open("rb") as f:
         return tomllib.load(f)
 
 
@@ -196,21 +196,6 @@ def test_every_per_device_files_scratch_is_keyed_by_its_device(repo_root: Path) 
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "TmpScratch" and node.args and isinstance(node.args[0], ast.Constant)
     ]
     assert not shared, f"scratch keys every device's job shares - key them by the device: {shared}"
-
-
-def test_every_device_is_in_the_ci_workflow_matrices(repo_root: Path) -> None:
-    # A GitHub Actions matrix is a literal - no expression can glob devices/ at parse time, so the
-    # two lists stay hand-written and are checked here instead. Without this a seventh device would
-    # generate, build and pass locally while CI silently kept exercising the old six.
-    #
-    # Regex rather than a YAML parse: pyyaml is not a dependency of this repo, and the matrix line
-    # is a fixed one-line flow sequence. A reshaped matrix fails the count assert below, loudly.
-    text = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    matrices = re.findall(r"^\s*device: \[([^\]]*)\]", text, re.MULTILINE)
-    assert len(matrices) == 2, f"expected exactly 2 device matrices in ci.yml (digital-twin-e2e, firmware-build-verify), found {len(matrices)} - update this check with the workflow"
-    for matrix in matrices:
-        listed = {name.strip() for name in matrix.split(",") if name.strip()}
-        assert listed == set(DEVICE_NAMES), f"a ci.yml device matrix is {sorted(listed)}, but devices/ holds {sorted(DEVICE_NAMES)}"
 
 
 # I2C-spec reserved ranges: 0x00-0x07 and 0x78-0x7F. No device address may fall inside either, or

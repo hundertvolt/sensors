@@ -181,7 +181,7 @@ def test_iter_comment_tokens_line_break_lookalike_does_not_shift_later_lines(tmp
 
 
 @pytest.mark.parametrize(
-    "source,expected",
+    ("source", "expected"),
     [
         pytest.param("def f():\n    x = 1\n# @requires bus.timeout>=200000\n    y = 2\n", True, id="inside-a-function-body"),
         pytest.param("class A:\n    def f(self):\n        pass\n# @requires bus.timeout>=200000\n    def g(self):\n        pass\n", True, id="between-two-methods"),
@@ -258,7 +258,7 @@ def test_a_broken_file_raises_for_each_caller_with_its_own_device_and_instance(t
 
 
 @pytest.mark.parametrize(
-    "text,expected",
+    ("text", "expected"),
     [
         ("# @requires bus.timeout>=200000", ("requires", True)),
         ("#@requires bus.timeout>=200000", ("requires", True)),  # no space after the "#"
@@ -282,7 +282,7 @@ def test_find_leading_word(text: str, expected: "tuple[str | None, bool]") -> No
 
 
 @pytest.mark.parametrize(
-    "a,b,expected",
+    ("a", "b", "expected"),
     [
         ("requires", "requires", 0),
         ("", "requires", 8),
@@ -312,7 +312,7 @@ def test_looks_like_requires_payload_every_operator(op: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "text,expected",
+    ("text", "expected"),
     [
         ("# @requires bus.timeout >= 200000", True),  # spaced operator
         ("# @requires bus.timeout>=", True),  # operator present, value truncated away
@@ -437,7 +437,7 @@ def test_known_tag_names_mirrors_the_registry() -> None:
 
 
 @pytest.mark.parametrize(
-    "text,family,expected",
+    ("text", "family", "expected"),
     [
         ("# @wiring fram_target FRAMManager fram optional kwarg", "wiring", True),
         # With the sigil, any bare-word payload counts - that is what catches a tag whose elements

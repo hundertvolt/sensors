@@ -74,7 +74,7 @@ async def _main() -> None:
                 count[0] += 1
             return await inner_read(*args, **kwargs)  # type: ignore[arg-type]
 
-        sgp40._read_sgp = counting_read  # type: ignore[method-assign,assignment]
+        sgp40._read_sgp = counting_read  # type: ignore[assignment, method-assign]
         sysfunct.boot_phase(BOOT_TASKS)
         await sysfunct.start_tasks(device._collect_task_starters())
         sysfunct.boot_phase(BOOT_TIMERS)

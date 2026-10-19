@@ -66,7 +66,7 @@ def _value(node: ast.expr, names: "dict[str, object]") -> object:
     for sub in ast.walk(node):
         if isinstance(sub, (ast.Call, ast.Attribute, ast.Lambda, ast.Subscript, ast.NamedExpr)):
             raise TypeError(f"not a constant expression: {ast.unparse(node)}")
-    return eval(compile(ast.Expression(node), "<const>", "eval"), {"__builtins__": {}}, dict(names))  # noqa: S307 - literals and earlier const() names only, checked above
+    return eval(compile(ast.Expression(node), "<const>", "eval"), {"__builtins__": {}}, dict(names))  # literals and earlier const() names only, checked above
 
 
 def mirror_problems(src_dir: Path, tests_dir: Path) -> "tuple[list[str], int, int]":

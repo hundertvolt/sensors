@@ -86,7 +86,7 @@ def test_cycle_detection_raises(tmp_path: Path, src_dir: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "driver,toml_field",
+    ("driver", "toml_field"),
     [
         pytest.param("scd30", "stray", id="a-sub-table-no-tag-declares"),
         pytest.param("scd30", "warn_co2", id="a-warn-key-off-the-notification"),

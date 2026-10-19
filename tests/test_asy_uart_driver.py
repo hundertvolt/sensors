@@ -2391,7 +2391,7 @@ def test_a_misaligned_ring_or_no_free_channel_is_refused_with_nothing_armed() ->
     def busy() -> "Any":
         raise OSError(16)  # EBUSY: rp2.DMA() with every channel claimed
 
-    asy_uart_driver.DMA = busy  # type: ignore[assignment,misc]
+    asy_uart_driver.DMA = busy  # type: ignore[assignment, misc]
     try:
         uart = UART(0, tx_pin=0, rx_pin=1)
         assert uart.setup_rx_ring() is False
@@ -2433,7 +2433,7 @@ def test_a_refused_ring_names_its_cause() -> None:
     def busy() -> "Any":
         raise OSError(16)  # EBUSY: rp2.DMA() with every channel claimed
 
-    asy_uart_driver.DMA = busy  # type: ignore[assignment,misc]
+    asy_uart_driver.DMA = busy  # type: ignore[assignment, misc]
     try:
         assert uart.setup_rx_ring() is False
     finally:
@@ -2495,7 +2495,7 @@ def test_a_read_retains_nothing() -> None:
     for _ in range(128):  # 8,192 reads: a 4,096-entry log wraps within them at one entry per read
         before = [(len(log), log.dropped) for log in logs]
         assert run(reads(64), _RUN_BOUND_S) == 64
-        if all(log.dropped >= log.maxlen or (len(log), log.dropped) == b for log, b in zip(logs, before)):  # noqa: B905 - MicroPython zip() rejects strict=
+        if all(log.dropped >= log.maxlen or (len(log), log.dropped) == b for log, b in zip(logs, before)):
             break
     else:
         raise AssertionError("a fake log still grew after 8,192 reads")

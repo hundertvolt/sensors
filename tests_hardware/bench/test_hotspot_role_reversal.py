@@ -2,6 +2,7 @@
 role from a real external client (untestable in the digital twin). The credential stage runs last by destructive_last,
 the flip back is a test of its own, and the fixture's teardown repeats it only when that test did not get it done."""
 
+import contextlib
 import dataclasses
 import os
 import socket
@@ -206,8 +207,8 @@ def test_spoofed_off_subnet_source_address_is_ignored(bench: "BenchBridge", join
     # A well-formed query forged from an off-subnet documentation address: the radio sees no packet from the DUT to it
     # over the capture window, and a legitimate query from the bench radio is still answered.
     query = dns_probe.build_query("www.example.com")[0]
-    capture = subprocess.Popen(  # noqa: S603 - argv from constants and the bridge's own interface name, no shell
-        ["sudo", "-n", "timeout", str(_SPOOF_CAPTURE_S), "tcpdump", "-i", bench.wifi_iface(), "-nn", "-l", "src", "host", joined_hotspot, "and", "dst", "host", _SPOOF_SOURCE],  # noqa: S607 - sudo from PATH, as bench_control runs it
+    capture = subprocess.Popen(  # argv from constants and the bridge's own interface name, no shell
+        ["sudo", "-n", "timeout", str(_SPOOF_CAPTURE_S), "tcpdump", "-i", bench.wifi_iface(), "-nn", "-l", "src", "host", joined_hotspot, "and", "dst", "host", _SPOOF_SOURCE],  # sudo from PATH, as bench_control runs it
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -216,8 +217,8 @@ def test_spoofed_off_subnet_source_address_is_ignored(bench: "BenchBridge", join
         # tcpdump says "listening on" once attached: a spoof sent before that would be answered unseen.
         listening = capture.stderr.readline() if capture.stderr is not None else ""
         assert "listening on" in listening, f"the capture never started: {listening!r}"
-        sent = subprocess.run(  # noqa: S603 - argv from constants and this interpreter, no shell
-            ["sudo", "-n", sys.executable, str(REPO_ROOT / "tests_hardware" / "spoof_udp.py"), "--src", _SPOOF_SOURCE, "--dst", joined_hotspot, "--sport", str(_SPOOF_SOURCE_PORT), "--dport", "53", "--payload-hex", query.hex()],  # noqa: S607 - sudo from PATH
+        sent = subprocess.run(  # argv from constants and this interpreter, no shell
+            ["sudo", "-n", sys.executable, str(REPO_ROOT / "tests_hardware" / "spoof_udp.py"), "--src", _SPOOF_SOURCE, "--dst", joined_hotspot, "--sport", str(_SPOOF_SOURCE_PORT), "--dport", "53", "--payload-hex", query.hex()],  # sudo from PATH
             capture_output=True,
             text=True,
             timeout=_RAW_SOCKET_TIMEOUT_S,
@@ -529,10 +530,8 @@ def _join_dut_hotspot_with_reverify_retry(bench: "BenchBridge", ssid: str, passw
             if attempt == attempts:
                 raise
             note(f"join attempt {attempt} of {ssid!r} failed ({exc}); re-verified its visibility and retried", recovery=True)
-            try:
+            with contextlib.suppress(TimeoutError):  # the next join's own failure or success is the real signal either way
                 wait_until(lambda: bench.is_ssid_visible(ssid), timeout_s=_HOTSPOT_SCAN_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description=f"DUT's own hotspot ({ssid!r}) to be freshly scannable again before retrying the join")
-            except TimeoutError:
-                pass  # the next join's own failure or success is the real signal either way
             continue
         return time.monotonic() - started
     raise HardwareTestFailureError(f"no join of {ssid!r} in {attempts} attempts")  # unreachable: the last failure re-raises

@@ -100,7 +100,7 @@ async def _exchange(reader: "_Stream", writer: "_Stream", host: str, method: str
             raise  # nothing listening: the non-blocking connect's failure surfaces at the first write
         # A reset before any response byte is the same refusal as a close without one (no `from e`: MicroPython
         # prints "exception chaining not supported" for it).
-        raise CeilingRefusedError(e.errno, "connection refused without a response (reject-when-full)")  # noqa: B904
+        raise CeilingRefusedError(e.errno, "connection refused without a response (reject-when-full)")
     try:
         headers: dict[str, str] = {}
         while True:
@@ -124,7 +124,8 @@ async def _exchange(reader: "_Stream", writer: "_Stream", host: str, method: str
     except IncompleteResponseError:
         raise
     except OSError as e:  # the response began: any later failure leaves it incomplete
-        raise IncompleteResponseError(e.errno, "connection failed inside the response")  # noqa: B904
+        # No `from e`: MicroPython prints "exception chaining not supported" for it (py/vm.c, v1.29.0).
+        raise IncompleteResponseError(e.errno, "connection failed inside the response")
     return HttpResponse(status_code, headers, body, drained=not read_body)
 
 

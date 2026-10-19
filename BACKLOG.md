@@ -437,6 +437,37 @@ gates, traps).
   `AmbPres` 0, a stepped `Altitude`, both restored; the answer goes into SPECIFICATION.md M.2.
   Wear: 4 SCD30 NVM writes (`--allow-persistence-write` and `--allow-scd30-extra-write`). Twin row:
   none (a silicon question).
+- **`env --tier bench` on the bench Pi4 once more, after the tooling pins** — `uv run
+  toolchain/setup_toolchain.py env --tier bench`, a host step that writes nothing to the board: the
+  bench host's `uv` must be the version `pyproject.toml`'s `[tool.uv] required-version` names (any
+  other uv refuses to run in this tree), and the Playwright step is now fatal — a failed `npx
+  playwright install chromium` stops `env` by name, and so does a failed `install-deps` unless
+  `--skip-apt` skips it (pass it where the libraries are present). Expected: `env` completes, its
+  Playwright step included. Wear: none (host only). Twin row: none.
+- **The default and the gated bench round over the files the tooling consolidation touched** — on
+  `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). Every hardware runner
+  (`scripts/_require_clean_hardware_run.sh` and so the flash, bench and soak runners,
+  `scripts/run_bench_rollover_test.sh`, `scripts/run_manual_hardware_tests.sh`,
+  `scripts/mpremote_connect.sh`) now runs `scripts/uv_sync_retried.sh` before its hardware step, a
+  failed sync exiting 1 before anything reaches the board. The default flash and bench tiers run: the device scripts
+  whose suppression comments moved (`isl29125_mechanism_envelope.py`, `sgp40_sample_cadence.py`,
+  `sgp40_voc_algorithm_quality.py`, `system_command_fram_erase.py`, `system_command_hang.py`,
+  `uart_comm_hazards.py`, `uart_dma_ring_interrupts_off.py`,
+  `uart_driver_read_never_blocks_the_loop.py`, comments only) through the flash and bench tests
+  that run them; the host files edited (`bench/test_hotspot_role_reversal.py`,
+  `bench/test_reset_reasons.py`, `bench/test_system_commands_over_rest.py`,
+  `flash/test_system_commands.py`, `conftest.py`'s `bench`
+  fixture, now a plain return, and its VL805 read, `bench_control.py`'s two `contextlib.suppress`
+  forms, `twin_board.py`, `website_identity.py`); and `dev`'s UART link, whose listen now names a
+  frame its read dropped ("listen read dropped a corrupted or incomplete frame") apart from a
+  silence. Then the gated run, `--allow-persistence-write`, for the persistence-gated tests among
+  them (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,
+  `flash/test_system_commands.py`, and the ISL29125 envelope behind `--allow-neopixel-sweep`), and
+  `bench/test_uart_link_crc16.py` behind `--allow-flash-cycle` (its CRC16 image flashed, the
+  standard one flashed back). Expected: clean verdicts on all three runs. Wear: the gated run's own
+  budget ("Persistence-write gating", `tests_hardware/README.md`) plus that test's two flash cycles;
+  none in the default run. Twin row: none new
+  (`tests_hardware/twin_board.py` runs the same device scripts under `--twin`).
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
   segfault fix" below); G6, the tick rollover on the tick-offset test image (`bench/test_ticks_ms_rollover.py`:
@@ -568,7 +599,7 @@ gates, traps).
   `src/asy_isl29125_driver.py`, `tests/machine.py`, `digital_twin/machine.py`; `eslint.config.js`
   `max-classes-per-file` 2 → 1, pinned by `tests_js/lint-ceilings.test.js` through a new
   Node-context Commands API module, `tests_js/_lint_command.js` (registered in `vitest.config.js`,
-  `tests_js/vitest-commands.d.ts`, `tsconfig.json`/`tsconfig.node.json`) — no build impact and no
+  the command declarations, a checked `tests_js/vitest-commands.ts` today, `tsconfig.json`/`tsconfig.node.json`) — no build impact and no
   new dependency; the lint leg and the web tier run them with what is already installed.
   **2026-10-06, website definitions from one source**: `scripts/build_website.sh` always generates
   the device's definitions from `devices/<device>.toml`; the new `scripts/build_device_websites.sh`
@@ -741,7 +772,7 @@ gates, traps).
   `tests_scripts/test_js_api_mirrors.py`, `test_stage_website.py`, `test_website_layering.py` and
   `test_website_tokens.py`. The web tier's config follows: `vitest.config.js` registers two more
   Commands API functions (`runLiveBackendRestartRecovery`, `archiveErrcount`), typed in
-  `tests_js/vitest-commands.d.ts`, and `eslint.config.js`'s `complexity` ceiling drops 41 → 22, its
+  the command declarations (a checked `tests_js/vitest-commands.ts` today), and `eslint.config.js`'s `complexity` ceiling drops 41 → 22, its
   measured maximum (`max-depth` 4, `max-nested-callbacks` 4 and `max-classes-per-file` 1 already
   sat at theirs). No dependency, pin, lock or toolchain change: the chroot legs' lint,
   typecheck and `scripts/test.sh` runs cover it, and `env --tier generic` installs nothing new.
@@ -846,6 +877,33 @@ gates, traps).
   The chroot legs' lint, typecheck and `scripts/test.sh` runs cover all of it except the
   installer-only lines (`[stubs]` read by every tier, the spoof probe), which only the installer
   leg runs.
+  **2026-10-19, CI and tooling consolidation, by the leg that covers each change**:
+  - installer leg: `toolchain/setup_toolchain.py`'s Playwright step stops `env` by name when
+    `npx playwright install chromium` fails, and when `install-deps` fails unless `--skip-apt`
+    skips it;
+  - every leg: `pyproject.toml` pins `pytest`/`mpremote` and uv itself (`[tool.uv]
+    required-version = "==0.8.17"`; any other uv refuses to run in this tree, so the chroot needs
+    `pip install --break-system-packages "uv==0.8.17"` in place of the recipe's unpinned
+    `pip install ... uv`), and `uv.lock` is re-locked to match;
+  - lint and typecheck legs: the ruff exemptions regrouped into a MicroPython-run and a host scope
+    group (the generated device modules in the first), checked by the new
+    `tests_scripts/test_ruff_exemptions_live.py` and `test_suppression_form.py`;
+    `tsconfig.base.json` holds both `tsc` passes' shared options and the command declarations are
+    a checked `tests_js/vitest-commands.ts`; `.htmlvalidate.json` enables `no-unknown-attributes`;
+    `package.json`'s `preview` runs `scripts/preview_server.py` (127.0.0.1, the site's own
+    directories only); host Python and shell, no new dependency;
+  - `scripts/test.sh` leg: `test.sh` renders no Cobertura XML; the Unix-port probe in
+    `scripts/_unix_port.sh` runs under `timeout -s KILL` (coreutils' `timeout`, present on both
+    targets);
+  - no leg runs them: `scripts/uv_sync_retried.sh`, the one retried `uv sync --locked`, which the
+    hardware runners call before their hardware step; `scripts/setup_cross_browser_toolchain.sh` (Xvfb on its own check,
+    the Edge key checked by fingerprint, micromamba pinned by SHA-256, bounded and retried apt) and
+    `scripts/cross_browser_smoke.mjs` (`--require-all-engines`, `-displayfd`), the chroot recipe
+    running neither;
+  - CI only: the workflow and its two composite actions — one retried sync through
+    `.github/actions/uv-sync`, the toolchain action keyed on runner image, GCC and glibc and
+    building through `scripts/_unix_port.sh ensure standard`, both device matrices derived from
+    `devices/*.toml`, the cached picotool installed in `firmware-build-verify`, Codecov gone.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

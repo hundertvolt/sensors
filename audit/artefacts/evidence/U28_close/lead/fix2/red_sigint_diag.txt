@@ -1,0 +1,52 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_ test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint[block-pending, blocked in (\\d+) of \\1 threads, caught] _
+
+mode = 'block', expected = 'pending, blocked in (\\d+) of \\1 threads, caught'
+
+    @pytest.mark.parametrize(("mode", "expected"), [("block", r"pending, blocked in (\d+) of \1 threads, caught"), ("unblock", r"blocked in 0 of \d+ threads, caught")])
+    def test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint(mode: str, expected: str) -> None:
+        # A twin that ignores SIGINT is described before the kill: a signal the kernel still holds (blocked, pending) must read
+        # apart from one it delivered to the handler, so the next such run says which half failed.
+        child = subprocess.Popen([sys.executable, "-c", _SIGINT_CHILD, mode], stdout=subprocess.PIPE, text=True)
+        try:
+            assert child.stdout is not None and child.stdout.readline() == "ready\n"
+            if mode == "block":
+                child.send_signal(signal.SIGINT)
+            fields = twin_process._proc_diagnostic_fields(child.pid)
+>           assert re.fullmatch(expected, fields.get("SIGINT", "")), fields
+E           AssertionError: {'State': 'S (sleeping)', 'VmRSS': '8656 kB', 'wchan': 'hrtimer_nanosleep'}
+E           assert None
+E            +  where None = <function fullmatch at 0x7fa2787419e0>('pending, blocked in (\\d+) of \\1 threads, caught', '')
+E            +    where <function fullmatch at 0x7fa2787419e0> = re.fullmatch
+E            +    and   '' = <built-in method get of dict object at 0x7fa2776e99c0>('SIGINT', '')
+E            +      where <built-in method get of dict object at 0x7fa2776e99c0> = {'State': 'S (sleeping)', 'VmRSS': '8656 kB', 'wchan': 'hrtimer_nanosleep'}.get
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:635: AssertionError
+_ test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint[unblock-blocked in 0 of \\d+ threads, caught] _
+
+mode = 'unblock', expected = 'blocked in 0 of \\d+ threads, caught'
+
+    @pytest.mark.parametrize(("mode", "expected"), [("block", r"pending, blocked in (\d+) of \1 threads, caught"), ("unblock", r"blocked in 0 of \d+ threads, caught")])
+    def test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint(mode: str, expected: str) -> None:
+        # A twin that ignores SIGINT is described before the kill: a signal the kernel still holds (blocked, pending) must read
+        # apart from one it delivered to the handler, so the next such run says which half failed.
+        child = subprocess.Popen([sys.executable, "-c", _SIGINT_CHILD, mode], stdout=subprocess.PIPE, text=True)
+        try:
+            assert child.stdout is not None and child.stdout.readline() == "ready\n"
+            if mode == "block":
+                child.send_signal(signal.SIGINT)
+            fields = twin_process._proc_diagnostic_fields(child.pid)
+>           assert re.fullmatch(expected, fields.get("SIGINT", "")), fields
+E           AssertionError: {'State': 'S (sleeping)', 'VmRSS': '8664 kB', 'wchan': 'hrtimer_nanosleep'}
+E           assert None
+E            +  where None = <function fullmatch at 0x7fa2787419e0>('blocked in 0 of \\d+ threads, caught', '')
+E            +    where <function fullmatch at 0x7fa2787419e0> = re.fullmatch
+E            +    and   '' = <built-in method get of dict object at 0x7fa27775a5c0>('SIGINT', '')
+E            +      where <built-in method get of dict object at 0x7fa27775a5c0> = {'State': 'S (sleeping)', 'VmRSS': '8664 kB', 'wchan': 'hrtimer_nanosleep'}.get
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:635: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint[block-pending, blocked in (\\d+) of \\1 threads, caught]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint[unblock-blocked in 0 of \\d+ threads, caught]
+2 failed, 89 deselected in 0.31s

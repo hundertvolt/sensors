@@ -77,7 +77,7 @@ superset of the one before it:
 
 | Tier | Adds on top of the previous tier | Command |
 |---|---|---|
-| generic | Python (`uv sync`) + website (`npm ci`) deps, the toolchain above: firmware, `mpy-cross` and the Unix-port build flavours `standard`, `settrace` and `lwip` | `uv run toolchain/setup_toolchain.py env --tier generic` |
+| generic | Python (`uv sync`) + website (`npm ci`) deps and Playwright's Chromium, or `env` fails; the toolchain above: firmware, `mpy-cross` and the Unix-port build flavours `standard`, `settrace` and `lwip` | `uv run toolchain/setup_toolchain.py env --tier generic` |
 | flash | Non-root USB serial access (`dialout` group) + a real board, resolved by USB vendor ID `2e8a` and its MicroPython `/dev/serial/by-id` name (SPECIFICATION.md B.12) | `uv run toolchain/setup_toolchain.py env --tier flash` |
 | bench | A real WiFi bridge/AP on this host (NetworkManager), so a flashed board reaches genuine internet/NTP; the commands it installs and the passwordless-sudo rules it checks: `tests_hardware/README.md` Prerequisites | `uv run toolchain/setup_toolchain.py env --tier bench` |
 
@@ -89,6 +89,14 @@ turns into an error naming them. `bench` is idempotent: re-running it against an
 bridge reports the existing AP's SSID rather than recreating (and re-randomizing) it — see
 `tests_hardware/README.md`'s 'Host network' section for the manual `nmcli` recipe this automates,
 including the Pico W `cyw43439`-specific WPA2/PMF tuning it applies.
+
+`uv` itself is pinned: install the version `pyproject.toml`'s `[tool.uv] required-version` names, since
+any other uv refuses to run in this tree with its own message. A machine that ran `npm ci` needs
+Playwright's Chromium, so a failed `npx playwright install chromium` stops `env` by name (`--skip-npm`
+sets up without the web tier), and so does a failed `install-deps` unless `--skip-apt` skips it. The
+datasheets are the private submodule `datasheets/` (access by the owner's grant): `git submodule
+update --init datasheets` fetches them, and nothing in the build, lint, test or CI needs them
+(SPECIFICATION.md A.6).
 
 Full `env` flag reference (in addition to `setup`'s `--micropython-ref`/`--latest`/`--clean`/
 `--toolchain-dir`/`--jobs` above, all of which `env` also accepts):
@@ -222,8 +230,10 @@ All three (`lint.sh`/`typecheck.sh`/`test.sh`) run in GitHub Actions CI
 `unit-tests-coverage` job — its coverage number advisory, its test result gating (SPECIFICATION.md
 Part E.5.3) — and `GC_THRESHOLD=32768 scripts/test.sh` as a gating
 `unit-tests-gc-threshold` one (both split out from the main test job so their own wall-clock cost
-never sits on the critical path other jobs wait on). Config lives in the root `pyproject.toml`;
-`lint.sh` and `typecheck.sh` refuse an inactive venv, one `uv sync --locked` would change, and a tool
+never sits on the critical path other jobs wait on). The per-device jobs (`digital-twin-e2e`,
+`firmware-build-verify`) take their devices from CI's `devices` job, which reads `devices/*.toml`, so
+CI names no device. Config lives in the root `pyproject.toml`; every tool is pinned there, uv itself
+by `[tool.uv] required-version`; `lint.sh` and `typecheck.sh` refuse an inactive venv, one `uv sync --locked` would change, and a tool
 resolving outside it (`scripts/_require_venv.sh`). See CLAUDE.md's "Code quality tooling" section
 for the full rationale (why `ruff format` isn't used, why the MicroPython stubs install into a
 separate `typings/` directory instead of the main dev venv, why tests don't run under
@@ -237,8 +247,9 @@ scripts/test.sh --coverage
 
 Reports line coverage of `src/`, `digital_twin/`, the generated device modules
 (`build/generated_src/`) and the host build chain (`buildgen/`, `scripts/`, `toolchain/`, traced
-through the pytest tier); non-gating, never fails the build. Full pipeline, output paths,
-and CI behavior (Job Summary, build artifact, Codecov status): **moved to
+through the pytest tier); non-gating, never fails the build. Full pipeline, output paths (an HTML
+tree and a markdown summary per report, no XML), and CI behavior (Job Summary, build artifacts):
+**moved to
 [`SPECIFICATION.md`](SPECIFICATION.md) Part E.5, "Coverage"**.
 
 ## Website tooling (JS/HTML/CSS)
@@ -252,7 +263,7 @@ tests under a real MicroPython Unix-port interpreter), html-validate, and Stylel
 
 **`toolchain/setup_toolchain.py env --tier generic` sets all of this up for you** — it installs the
 `.nvmrc`-pinned Node into `$PICO_TOOLCHAIN_DIR/node` when the host has none, then runs `npm ci` and
-downloads the Playwright Chromium build Vitest needs. Node comes from nodejs.org (checksum-verified
+downloads the Playwright Chromium build Vitest needs, failing by name when that download fails. Node comes from nodejs.org (checksum-verified
 against the release SHASUMS), deliberately **not** from apt: Debian trixie ships Node 20 while this
 repo pins 24, so `apt install nodejs` would silently install a version the repo says not to use.
 The release's SHASUMS256.txt is fetched once per install and the tarball checked against it before
@@ -272,10 +283,11 @@ npm run lint              # ESLint (js/, tests_js/, scripts/*.mjs, the inline sc
 npm run typecheck         # tsc --noEmit (checkJS over js/, tests_js/)
 npm run lint:html         # html-validate (html/*.html)
 npm run lint:html:built   # html-validate over every device's staged page (it stages each into
-                          # build/staged_html/<device>/ first) - a local check, not a CI step yet
+                          # build/staged_html/<device>/ first) - CI's web-lint-and-typecheck runs it too
 npm run lint:css          # Stylelint (html/*.css)
 npm test                  # Vitest, real-browser mode (Playwright/Chromium) - tests_js/*.test.js
-npm run preview           # serves the repo root locally (python3 -m http.server 8000)
+npm run preview           # serves the website prototype on 127.0.0.1:8000 (html/, js/, mockdata/ and
+                          # the generated definitions only; `npm run preview -- --port N` picks another)
 ```
 
 `npm test` includes the live tier (`tests_js/live-backend.test.js`,
@@ -291,12 +303,14 @@ browser install:
 ```sh
 uv run toolchain/setup_toolchain.py        # one-time - builds the MicroPython Unix port (see above)
 npm run build:site                         # every device's real website, into build/generated_html/<device>/
-scripts/setup_cross_browser_toolchain.sh   # one-time - installs real WebKit/Firefox/Edge
-node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile
+scripts/setup_cross_browser_toolchain.sh   # one-time - installs Xvfb and real WebKit/Firefox/Edge
+node scripts/cross_browser_smoke.mjs       # drives the real site through all of them, desktop + mobile;
+                                           # a missing engine is a counted warning here, in CI
+                                           # (--require-all-engines) a failure
 ```
 
-`npm run preview` (it generates every device's definitions first), then open
-`http://localhost:8000/html/index.html` — the real `html/`+`js/` tree against a fake in-browser
+`npm run preview` (it generates every device's definitions first, then serves only the site's own
+directories, on 127.0.0.1), then open `http://127.0.0.1:8000/html/index.html` — the real `html/`+`js/` tree against a fake in-browser
 backend (`js/mock-server.js`, data composed from `mockdata/samples.json`), for the first device of
 the generated manifest; `?device=<name>` picks another device of `devices/*.toml`. The `?device=`
 switch is a prototype-only convenience (see `js/app.js`'s own docstring) — real firmware always
@@ -305,12 +319,13 @@ serves exactly one definitions.json, never branches on a query param.
 All five CI-covered checks run in GitHub Actions CI (`.github/workflows/ci.yml`'s `web-lint-and-typecheck`/
 `web-unit-tests` jobs, plus `web-put-matrix` for the live PUT matrix, which is sharded three ways
 because that one file is the web tier's whole wall clock), gated by a `dorny/paths-filter` job so
-they only run when this push changed the website (`html/`, `js/`, `tests_js/`, `mockdata/`), the
-sources its definitions are generated from (`src/`, `buildgen/`, `devices/`), or their own
-tooling — alongside, not replacing, the Python jobs above, which keep gating on Python paths
-exactly as before. Config lives at the repo root
-(`eslint.config.js`, `tsconfig.json`, `vitest.config.js`, `.htmlvalidate.json`,
-`.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
+they only run when the changes since the last commit CI passed on the branch touch the website
+(`html/`, `js/`, `tests_js/`, `mockdata/`), everything its definitions and the live twin are built
+from (`src/`, `buildgen/`, `devices/`, `digital_twin/`, `toolchain/`, `ext/`), the Python
+environment, the CI definition, or their own tooling — alongside, not replacing, the Python jobs
+above. Config lives at the repo root
+(`eslint.config.js`, `tsconfig.base.json` with `tsconfig.json`/`tsconfig.node.json`,
+`vitest.config.js`, `.htmlvalidate.json`, `.stylelintrc.json`); see `SPECIFICATION.md` Part H.8 for the full role mapping and rationale. Vitest's
 browser mode needs an actual Chromium install — CI installs its own via `playwright install`; see
 the `npx playwright install chromium` line above if `npm test` reports a missing browser executable
 locally.
@@ -318,7 +333,8 @@ locally.
 A separate CI job, `web-cross-browser-smoke`, drives the real site through real WebKit, real
 Firefox, and real Microsoft Edge too (not just Vitest's own Playwright/Chromium) — one field
 edit+apply per engine, at both a desktop and a mobile-sized viewport, against a real booted digital
-twin of every device in turn. Vitest's browser mode can't reach any of these itself (it's wired to
+twin of every device in turn; in CI a missing engine fails it (`--require-all-engines`). Vitest's
+browser mode can't reach any of these itself (it's wired to
 a single Playwright provider, which can only automate Chromium-family browsers), so this runs as a
 standalone script, `scripts/cross_browser_smoke.mjs`, rather than a Vitest test file — see
 `SPECIFICATION.md` Part H.7's "Cross-browser coverage" for the full account of why and how.

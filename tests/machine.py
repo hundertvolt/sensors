@@ -527,7 +527,7 @@ class I2C:
     def readfrom_mem_into(self, address: int, memaddr: int, buf: object, *, addrsize: int = 8) -> None:
         # Delegates, so the fault hook, the log entry and the stored-register semantics stay one
         # implementation - a test faulting "readfrom_mem" keeps working whichever form the driver calls.
-        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[index,arg-type]
+        buf[:] = self.readfrom_mem(address, memaddr, len(buf), addrsize=addrsize)  # type: ignore[arg-type, index]
 
     def register_device(self, address: int, addrsize: int = 8) -> None:
         # Test-only: `address` is register-addressed - writeto() of address bytes plus payload is a register

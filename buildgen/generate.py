@@ -6,7 +6,6 @@ import argparse
 import ast
 import contextlib
 import functools
-import os
 import sys
 from pathlib import Path
 
@@ -127,7 +126,7 @@ def _write_outputs(device: str, out_dir: Path, outputs: "dict[str, str]") -> Non
             written.append(out_dir / f"{name}.tmp")
             written[-1].write_text(text, encoding="utf-8")
         for tmp in written:
-            os.replace(tmp, tmp.with_suffix(""))
+            tmp.replace(tmp.with_suffix(""))
     except OSError as e:
         for tmp in written:
             with contextlib.suppress(OSError):  # the write error below is the one reported

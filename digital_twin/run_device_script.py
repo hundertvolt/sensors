@@ -75,7 +75,7 @@ def _one_watchdog(armed: "machine.WDT") -> None:
         armed.feed()
         return armed
 
-    machine.WDT = construct  # type: ignore[misc, assignment]
+    machine.WDT = construct  # type: ignore[assignment, misc]
 
 
 def _parse(argv: "list[str]") -> "_Args | None":
@@ -126,7 +126,7 @@ def main(argv: "list[str]") -> int:
     gc.threshold(args.gc_threshold)
     try:
         # runs the device script by path, as the board runs it; no module is imported
-        exec(compile(source, args.script, "exec"), {"__name__": "__main__", "__file__": args.script})  # noqa: S102 - the device script itself
+        exec(compile(source, args.script, "exec"), {"__name__": "__main__", "__file__": args.script})
     except SystemExit as e:
         return _exit_status(e)
     except machine.SimulatedRebootError as e:

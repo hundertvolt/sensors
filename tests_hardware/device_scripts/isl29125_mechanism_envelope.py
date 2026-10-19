@@ -130,7 +130,7 @@ def _sample(level: int, data: "ISL29125 | None") -> "dict[str, object] | None":
 async def _sweep(pixel: NeopixelDriver, reader: ISL29125_Reader, wdt: "machine.WDT", levels: "tuple[int, ...]") -> "list[dict[str, object] | None]":
     samples = []
     for level in levels:
-        samples.append(_sample(level, await _hold(pixel, reader, wdt, level)))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+        samples.append(_sample(level, await _hold(pixel, reader, wdt, level)))
     return samples
 
 

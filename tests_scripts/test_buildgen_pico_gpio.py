@@ -110,7 +110,7 @@ def test_uart_pin_role_transposed_rejected(tmp_path: Path, src_dir: Path) -> Non
         _build(tmp_path, src_dir, doc)
 
 
-@pytest.mark.parametrize("field,value", [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
+@pytest.mark.parametrize(("field", "value"), [("irq_pin", 24), ("pin", 25), ("cs_pin", 23)])
 def test_wireless_reserved_gpio_rejected_on_any_pin_field(tmp_path: Path, src_dir: Path, field: str, value: int) -> None:
     # GP23/24/25/29 - SPECIFICATION.md Part L.6.5 applies to every claimed pin device-wide, not just
     # bus wire pins (irq_pin/pin/cs_pin here have no peripheral role to check, only existence).

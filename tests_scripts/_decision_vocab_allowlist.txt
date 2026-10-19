@@ -11,7 +11,6 @@ BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no B
 BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
 BACKLOG.md	structurally incompatible.** It validates that every `root_packages` entry is a
 CLAUDE.md	**That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided an
-CLAUDE.md	- **A third party's momentary outage must never read as a red test result.** `sc
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
 CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr
 CLAUDE.md	- **mypy runs full `--strict`, minus exactly one flag.** All three configs set `
@@ -125,15 +124,11 @@ digital_twin/machine.py	Spelled out rather than **kwargs-forwarded so the accept
 digital_twin/unix_port_poll_prewarm.py	A fresh socket per attempt, because a bind that failed leaves nothing worth reus
 digital_twin/unix_port_poll_prewarm.py	Only the accepted server-side socket has to stay registered to force pollfds gro
 js/templates.js	See SPECIFICATION.md Part H.3's "One deliberate exception" note for why this ret
-pyproject.toml	---- Contradicts CLAUDE.md's own documentation rule (continued) ---- CPY001: no
-pyproject.toml	---- Deliberate, documented idiom ---- `x != x` is asy_scd30_driver.py's NaN tes
 pyproject.toml	---- Layout the frozen build requires ---- src/ and ext/ are frozen flat into on
 pyproject.toml	Bump deliberately, re-running lint.sh and typecheck.sh.
 pyproject.toml	S110 wants a log call at sites that are deliberately silent;
 pyproject.toml	The RPI_PICO_W MicroPython stubs are deliberately NOT a dependency group: they r
 pyproject.toml	`assignment` is deliberately not disabled.
-pyproject.toml	asy_api_response.py calls a reader's `_set_dict_cfg` across objects by design: P
-scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate sequential polling
 scripts/cross_browser_smoke.mjs	eslint-disable-next-line no-await-in-loop -- deliberate: one browser/engine at a
@@ -200,8 +195,6 @@ tests/test_asy_dns_client.py	The target offset is never followed, so any 0xC1-0x
 tests/test_asy_fram_driver.py	0xF0..0xFF - deliberately distinct from the seed
 tests/test_asy_fram_driver.py	Detection boundary - what this layer cannot catch, by design (not a bug)
 tests/test_asy_fram_driver.py	Without it the double release would raise out of __aexit__ and the driver's own
-tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_fram_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_fram_manager.py	...and is refused anyway, deliberately
 tests/test_asy_fram_manager.py	A READ fault deliberately - machine.SPI's fake makes write() non-injectable on p
 tests/test_asy_fram_manager.py	Asserting on ErrType rather than ErrCount is deliberate: ErrCount counts "W" ent
@@ -228,8 +221,6 @@ tests/test_asy_isl29125_driver.py	Without the re-arm the recovery leaves a corre
 tests/test_asy_isl29125_driver.py	deliberately out of contract
 tests/test_asy_isl29125_driver.py	the registers are compared against the RAW ADC value, so at 12 bits an unscaled
 tests/test_asy_isl29125_driver.py	type: ignore[arg-type] # 375.0 is deliberately the wrong type
-tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_isl29125_driver.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_notification_service.py	An int is always accepted and coerced for a float field (Part A.8) - a blanket a
 tests/test_asy_notification_service.py	An integral float is accepted and coerced (Part A.8);
 tests/test_asy_notification_service.py	exactly _MAX_OVERRIDE_TIME - accepted, not clamped further
@@ -283,12 +274,6 @@ tests/test_asy_webserver_service.py	writer.close() raising is real Stream-caller
 tests/test_asy_wifi_service.py	(field, largest accepted, smallest refused) - each pair within the schema's char
 tests/test_asy_wifi_service.py	Proves the give-up decision is a genuine streak, not a monotonic lifetime counte
 tests/test_asy_wifi_service.py	The boundary value itself (32 chars) must be accepted, not rejected.
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
-tests/test_asy_wifi_service.py	type: ignore[method-assign, assignment] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
 tests/test_asy_wifi_service.py	type: ignore[method-assign] # deliberate monkeypatch
@@ -319,7 +304,6 @@ tests/test_digital_twin_isl29125_autorange.py	BOUTF is HIGH at power-up by desig
 tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never flip to connected
 tests/test_digital_twin_network_neopixel.py	longer than _CONNECT_DELAY_S - must never resolve at all
 tests/test_digital_twin_poll_prewarm.py	Twin-tier coverage for digital_twin/unix_port_poll_prewarm.py's own port handlin
-tests/test_digital_twin_poll_prewarm.py	type: ignore[attr-defined, assignment] # deliberate monkeypatch
 tests/test_digital_twin_scd30.py	_FixedRandom itself asserts a <= value <= b for every uniform() call - if _produ
 tests/test_digital_twin_sgp40.py	CRC trailer deliberately wrong
 tests/test_digital_twin_uart_link.py	Drives the responder's own UARTComm.uart_listen() directly rather than UARTLinkD
@@ -410,7 +394,6 @@ tests_scripts/test_persistence_write_marker_completeness.py	Raw `socket` is deli
 tests_scripts/test_request_body_cap_headroom.py	Deliberately an upper bound rather than the field's own min/max: a client may se
 tests_scripts/test_request_body_cap_headroom.py	Pinned so each step is deliberate, the same way the persistence-write guard pins
 tests_scripts/test_request_timeout_ceiling.py	A constant turned into a string/None keeps the name alive while making every com
-tests_scripts/test_test_sh.py	Anchored inside the unit-tests-coverage JOB, not on the step name: the web tier
 tests_scripts/test_test_sh.py	That wording is deliberately not the interpreter's, so the widened pattern still
 tests_scripts/test_test_sh.py	`set -e` plus a failing command substitution would kill the run before it printe
 tests_scripts/test_tests_hardware_persistence_write_gating.py	The AND-gate itself: --allow-scd30-extra-write must never substitute for --allow

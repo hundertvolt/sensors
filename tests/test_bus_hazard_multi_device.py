@@ -401,7 +401,7 @@ async def _recover_between_halves(i2c: I2C, target: int, trigger: bytes, read: "
     real_writeto = bus.writeto
     fired = asyncio.Event()
 
-    def watching(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def watching(address: int, buf: object, stop: bool = True) -> int:
         n = real_writeto(address, buf, stop)
         if address == target and bytes(buf) == trigger:  # type: ignore[call-overload]
             fired.set()

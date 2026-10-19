@@ -22,27 +22,27 @@ prewarm_poll_set()
 # Unix-port build rejects a plain (host, port) tuple in bind()/connect()/sendto().
 patch_asy_udp_socket_for_unix_port()
 
-import machine  # noqa: E402
-import microtest  # noqa: E402
-import network  # noqa: E402
-import rp2  # noqa: E402
-import run_generic_integration  # noqa: E402
-from _async_harness import cancel_all, run  # noqa: E402
-from _digital_twin_construction_scenarios import load_device  # noqa: E402
-from _error_codes import code  # noqa: E402
-from _offline_ntp_config import write_offline_ntp_config  # noqa: E402
-from _src_const import src_bytes  # noqa: E402
-from _tmp_scratch import TmpScratch  # noqa: E402
-from _twin_devices import device_with, wiring_plan  # noqa: E402
-from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402
-from machine import WDT, LinkPoller, UARTLink  # noqa: E402
+import machine  # noqa: E402 - imported after the prewarm and the UDP shim
+import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
+import network  # noqa: E402 - imported after the prewarm and the UDP shim
+import rp2  # noqa: E402 - imported after the prewarm and the UDP shim
+import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
+from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
+from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
+from _src_const import src_bytes  # noqa: E402 - imported after the prewarm and the UDP shim
+from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
+from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
+from _uart_comm_harness import PollRoundClock, accept_set, copied_out, echo_get, transfer_limits  # noqa: E402 - imported after the prewarm and the UDP shim
+from machine import WDT, LinkPoller, UARTLink  # noqa: E402 - imported after the prewarm and the UDP shim
 
-import asy_uart_comm  # noqa: E402
-import asy_uart_driver  # noqa: E402
-import asy_uart_link_driver  # noqa: E402
-from asy_crc_checks import CRC16  # noqa: E402
-from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm  # noqa: E402
-from asy_uart_link_driver import UARTLinkDriver  # noqa: E402
+import asy_uart_comm  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_uart_driver  # noqa: E402 - imported after the prewarm and the UDP shim
+import asy_uart_link_driver  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_crc_checks import CRC16  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_uart_link_driver import UARTLinkDriver  # noqa: E402 - imported after the prewarm and the UDP shim
 
 try:
     from typing import TYPE_CHECKING, cast
@@ -511,7 +511,7 @@ def test_a_crc16_exerciser_pair_completes_its_rounds() -> None:
     # The device's own link parameters with CRC16 on both buses: the exerciser's rounds land, none fails, nothing logged.
     # Its period sleep a bare yield, the rounds back to back: the period is not under test.
     initiator, responder, _link_pair = _crc16_pair()
-    asy_uart_link_driver.asyncio = _BackToBack()  # type: ignore[attr-defined, assignment]
+    asy_uart_link_driver.asyncio = _BackToBack()  # type: ignore[assignment, attr-defined]
     try:
         _run(_exercised(initiator, responder, lambda: initiator._transfers + initiator._failures >= _CRC16_ROUNDS), limit=_EXCHANGE_LIMIT_S)
     finally:
@@ -707,7 +707,7 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
             for _ in range(_CHURN_TRANSFERS):
                 # The suppression below: MicroPython has no `await` inside a comprehension, so
                 # ruff's suggested rewrite does not compile on the target interpreter at all.
-                out.append(await exchange(initiator.uart_set(0x02, bytes(200))))  # noqa: PERF401
+                out.append(await exchange(initiator.uart_set(0x02, bytes(200))))
             return out
         finally:
             stop.append(True)

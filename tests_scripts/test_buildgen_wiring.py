@@ -38,14 +38,14 @@ def _parse_expecting(tmp_path: Path, source: str, match: str, rule: str) -> None
 
 
 @pytest.mark.parametrize("mode", _MODES)
-@pytest.mark.parametrize("word,required", _REQUIREDNESS)
+@pytest.mark.parametrize(("word", "required"), _REQUIREDNESS)
 def test_parse_wiring_requiredness_mode_cross_product(tmp_path: Path, word: str, *, required: bool, mode: str) -> None:
     (field,) = _parse(tmp_path, f"# @wiring fram_target FRAMManager fram {word} {mode}\n")
     assert field == WiringField("fram_target", "FRAMManager", "fram", required, mode)
 
 
 @pytest.mark.parametrize(
-    "toml_field,producer,target",
+    ("toml_field", "producer", "target"),
     [
         ("fram_target", "FRAMManager", "fram"),
         ("fram_target", "FRAMManager", "fram_storage"),
@@ -130,7 +130,7 @@ def test_parse_wiring_duplicate_toml_field_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "source,match,rule",
+    ("source", "match", "rule"),
     [
         ("# @wirng fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # deletion
         ("# @wiiring fram_target FRAMManager fram optional kwarg\n", "misspelled @wiring tag", "tag.misspelled"),  # insertion
@@ -226,7 +226,7 @@ def test_parse_wiring_leaves_non_tags_alone(tmp_path: Path, source: str) -> None
 
 
 @pytest.mark.parametrize(
-    "driver,expected",
+    ("driver", "expected"),
     [
         ("asy_bmp3xx_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),
         ("asy_isl29125_driver.py", (WiringField("fram_target", "FRAMManager", "log", False, "kwarg"),)),

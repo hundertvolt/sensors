@@ -370,7 +370,7 @@ async def _sweep(wdt: "machine.WDT") -> None:
     try:
         records = []
         for window_us in windows:
-            records.append(await _window(wdt, sender, driver, recv_bus, window_us))  # noqa: PERF401 - await is a SyntaxError in a MicroPython comprehension
+            records.append(await _window(wdt, sender, driver, recv_bus, window_us))
         fact("windows", records)
     finally:
         sender.dma.close()

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     class _Holder(Protocol):
         def hold(self, closable: object) -> None: ...
 
-    class _RequestLike(Protocol):  # noqa: PYI046  # asy_webserver_service.py imports it for its routes
+    class _RequestLike(Protocol):
         # Structural stand-in for microdot.Request: typed via the vendored upstream stub (ext/typings/microdot/),
         # which leaves get/put/route unannotated (v2.7.0).
         @property

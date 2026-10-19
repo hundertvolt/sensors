@@ -1,0 +1,8 @@
+ruff 0.16.10
+mypy 2.4.0 (compiled: yes)
+zizmor 1.30.1
+1.7.12
+version: 0.11.0
+pytest 9.1.1
+mpremote 1.29.0
+uv 0.8.17

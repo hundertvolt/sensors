@@ -580,7 +580,7 @@ def test_set_bits_write_half_can_fail_after_read_half_succeeds() -> None:
     mock = _fake(i2c)
     real_writeto = mock.writeto
 
-    def fail_the_register_write(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def fail_the_register_write(address: int, buf: object, stop: bool = True) -> int:
         if stop:  # the pointer write of the read half is no-stop; the register write is the one with a stop
             raise OSError(errno.EIO, "no ACK")
         return real_writeto(address, buf, stop)
@@ -1110,7 +1110,7 @@ def test_register_access_writes_the_address_then_reads_into_the_scratch_never_a_
         mem_calls.append("mem")
 
     mock.readfrom_mem_into = no_mem_call  # type: ignore[method-assign]
-    mock.readfrom_mem = no_mem_call  # type: ignore[method-assign, assignment]
+    mock.readfrom_mem = no_mem_call  # type: ignore[assignment, method-assign]
     mock.writeto_mem = no_mem_call  # type: ignore[method-assign]
     mock.registers[(0x42, 0x10)] = bytearray(b"\x01\x02\x03")
     assert i2c.get_register_struct(0x42, 0x10, "3s") == b"\x01\x02\x03"
@@ -1202,7 +1202,7 @@ def test_a_short_no_stop_write_raises_eio_even_when_its_stop_is_refused() -> Non
     mock = _fake(i2c)
     real_writeto = mock.writeto
 
-    def refuse_the_stop(address: int, buf: object, stop: bool = True) -> int:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def refuse_the_stop(address: int, buf: object, stop: bool = True) -> int:
         if not len(buf):  # type: ignore[arg-type]
             raise OSError(errno.ENODEV, "zero-length write NACKed")
         return real_writeto(address, buf, stop)
@@ -1228,7 +1228,7 @@ def test_a_nacked_data_byte_in_a_register_write_raises_eio_and_stores_nothing() 
     mock = _fake(i2c)
     real_read = mock.readfrom_into
 
-    def nack_the_following_write(address: int, buf: object, stop: bool = True) -> None:  # noqa: FBT001, FBT002  # machine.I2C's own positional stop
+    def nack_the_following_write(address: int, buf: object, stop: bool = True) -> None:
         real_read(address, buf, stop)
         mock.short_ack(address, 1)  # set_bits()'s read half done: its register write is NACKed
 
@@ -1456,7 +1456,7 @@ class _PinSpy(Pin):
     # back to the controller.
     made: "ClassVar[list[tuple[object, ...]]]" = []
 
-    def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:  # noqa: A002  # machine.Pin's own parameter name
+    def __init__(self, id: "int | str | Pin", mode: "int | None" = _OMITTED, pull: "int | None" = _OMITTED, *, value: object = _OMITTED, alt: int = _OMITTED) -> None:
         super().__init__(id, mode, pull, value=value, alt=alt)
         _PinSpy.made.append((id, mode, pull, alt))
 
