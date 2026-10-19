@@ -12,10 +12,12 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
-from _devices import DEVICE_NAMES
+import tomllib
+from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
 
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
+from buildgen.validate import module_int_const
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _HARNESS = _REPO_ROOT / "scripts" / "_digital_twin_scenarios.py"
@@ -75,6 +77,48 @@ def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(harness, "_accept_queue", lambda _port: 0)
     monkeypatch.setattr(harness.Twin, "drained", lambda _self, _timeout_s=0: True)
     return spawned
+
+
+def _clocked_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first_move_s: float) -> "tuple[list[float], list[float]]":
+    # _shared_stub's twins on a fake clock (the first list, advanced by the test; the second, each spawn's time), each
+    # reading SGP40 as a fresh hotspot boot does: its untimestamped-backup warning once the twin is first_move_s old.
+    clock = [0.0]
+    spawned: list[float] = []
+    log_path = tmp_path / "twin.log"
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
+
+    def spawn(_launch: object, **_kw: object) -> object:
+        spawned.append(clock[0])
+        return SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=tmp_path)
+
+    def error_table(_port: int) -> "dict[str, dict[str, object]]":
+        moved = clock[0] - spawned[-1] >= first_move_s
+        return {"SGP40": {"counter": int(moved), "history": [{"type": "W", "num": 35}] if moved else []}}
+
+    monkeypatch.setattr(harness, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda _s: None))
+    monkeypatch.setattr(harness, "spawn", spawn)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
+    monkeypatch.setattr(harness, "_error_table", error_table)
+    monkeypatch.setattr(harness, "_accept_queue", lambda _port: 0)
+    monkeypatch.setattr(harness.Twin, "drained", lambda _self, _timeout_s=0: True)
+    return clock, spawned
+
+
+def _sgp40_default(tree: ast.Module, name: str) -> int:
+    # The default of one `NAME = const(((field, type, default, ...),))` schema of src/asy_sgp40_driver.py.
+    node = next(n for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+    assert isinstance(node.value, ast.Call) and isinstance(node.value.args[0], ast.Tuple), ast.unparse(node)
+    field = node.value.args[0].elts[0]
+    assert isinstance(field, ast.Tuple) and isinstance(field.elts[2], ast.Constant) and isinstance(field.elts[2].value, int), ast.unparse(field)
+    return field.elts[2].value
+
+
+def _toml_keys(node: object) -> "set[str]":
+    # Every key at any depth of a parsed TOML document.
+    if isinstance(node, dict):
+        return set(node) | {k for v in node.values() for k in _toml_keys(v)}
+    return {k for v in node for k in _toml_keys(v)} if isinstance(node, list) else set()
 
 
 def test_every_scenario_states_its_goal_and_a_known_device_filter(harness: ModuleType) -> None:
@@ -338,6 +382,50 @@ def test_a_sharing_scenario_asking_for_its_own_arguments_is_refused(harness: Mod
     with pytest.raises(RuntimeError, match="boots once"), ctx.boot("--test-hold-closing-slot"):
         pass
     assert spawned == []
+
+
+def test_a_group_reaching_the_sgp40_backup_deadline_goes_on_on_a_fresh_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Three 40 s scenarios on a twin whose own background moves SGP40 at 94 s, as dev's measured: the twin is retired
+    # before its deadline, so no scenario's window holds that move and every idle check passes.
+    clock, spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+    shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+    results = []
+    for name, last in (("a", False), ("b", False), ("c", True)):
+        with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+            clock[0] += 40.0
+        results.append(shared.release(_item(harness, name), failed=False, last=last))
+    assert results == [[], [], []], results
+    assert len(spawned) >= 2 and all(later - earlier < 89.0 for earlier, later in zip(spawned, [*spawned[1:], clock[0]], strict=True)), spawned
+
+
+@pytest.mark.parametrize("age_s", [90.0, 100.0], ids=["before the twin's first move", "after it"])
+def test_a_count_moved_past_the_sgp40_backup_deadline_fails_as_the_boots_overrun(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, age_s: float) -> None:
+    # One scenario longer than the deadline: a count its window saw move fails naming the overrun, never blaming the
+    # scenario for the background's move; with nothing moved yet there is nothing to tell apart, so it passes.
+    clock, _spawned = _clocked_stub(harness, tmp_path, monkeypatch, first_move_s=94.0)
+    shared = harness.SharedBoot(harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter(range(20000, 20010)), "fixture"))
+    with harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([]), "fixture", shared=shared).boot():
+        clock[0] += age_s
+    problems = shared.release(_item(harness, "slow"), failed=False, last=True)
+    if age_s < 94.0:
+        assert problems == [], problems
+        return
+    assert len(problems) == 1 and problems[0].startswith(f"idle check after slow: the shared boot outlived its SGP40 backup deadline ({age_s:.1f} s > 89 s)"), problems
+    assert "SGP40" in problems[0] and "does not state" not in problems[0], problems
+
+
+def test_the_shared_boot_deadline_is_sgp40s_first_untimestamped_backup(harness: ModuleType) -> None:
+    # 60 x BackupPeriod read cycles to the first backup, then WaitTimeNTP - 1 retries waiting for NTP, each one read
+    # period (asy_sgp40_driver.py _check_storage()/_run_backup()); no device overrides either default.
+    tree = ast.parse((_REPO_ROOT / "src" / "asy_sgp40_driver.py").read_text(encoding="utf-8"))
+    period = _sgp40_default(tree, "_VAL_BACKUP_PERIOD")
+    wait = min(_sgp40_default(tree, "_VAL_WAIT_TIME_NTP"), module_int_const(_REPO_ROOT / "src", "asy_sgp40_driver.py", "_MAX_NTP_WAITTIME"))
+    starter = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "start_timer")
+    read_ms = [k.value.value for c in ast.walk(starter) if isinstance(c, ast.Call) for k in c.keywords if k.arg == "period" and isinstance(k.value, ast.Constant) and isinstance(k.value.value, int)]
+    assert len(read_ms) == 1, read_ms
+    assert (60 * period + max(wait - 1, 0)) * read_ms[0] / 1000 == harness._SHARED_BOOT_DEADLINE_S, (period, wait, read_ms)
+    overrides = {device: sorted(_toml_keys(tomllib.loads(device_toml(device).read_text(encoding="utf-8"))) & {"BackupPeriod", "WaitTimeNTP"}) for device in DEVICE_NAMES}
+    assert overrides and not any(overrides.values()), overrides
 
 
 def test_the_accept_queue_is_read_from_the_listening_row(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

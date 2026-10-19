@@ -818,7 +818,10 @@ website, bus hazards, system commands, webserver requests, UART load), the drive
 device without them skips it) and whether it may share a boot. The sharing ones run first on one twin
 per group, with an idle check between two of them — the twin alive, every slot drained, the kernel's
 accept queue empty, the error counts after the drain, the memory gate — and a failure names its
-scenario and sends the next to a fresh boot. The hung-step scenario ends on the runner's
+scenario and sends the next to a fresh boot. A shared twin is retired before
+`l2.scenario_shared_boot_deadline_s`, the earliest its own SGP40 untimestamped-backup warning can
+land with no NTP sync in the hotspot, and a count an idle check reads moved past it fails by name
+(agent, 2026-10-19). The hung-step scenario ends on the runner's
 `WATCHDOG_WOULD_TRIGGER` line (S1 on its `HUNG S1` line); the UART-load scenario
 (`uart_ring_under_concurrent_load`) drives both links of a device that wires a pair through a
 webserver hammer at the ceiling, FRAM log writes and config flushes, each flush stalling the loop as
