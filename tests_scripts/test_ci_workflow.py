@@ -1,9 +1,11 @@
 """The workflow's standing rules over .github/workflows/ci.yml and its two composite actions, read as text (pyyaml is no
 dependency here): gating, the web filter, pins, the composite actions, the derived device matrices, values reaching a
-`run:` only through `env:` and the bounded installs. Each failure names the job and the fix (SPECIFICATION.md B.10.1)."""
+`run:` only through `env:`, executable scripts and the bounded installs. Each failure names the job and the fix (SPECIFICATION.md B.10.1)."""
 
 import re
 from pathlib import Path
+
+from _repo_scan import git_lines
 
 _REPO = Path(__file__).resolve().parent.parent
 _CI = _REPO / ".github" / "workflows" / "ci.yml"
@@ -30,6 +32,8 @@ _SHA_PIN = re.compile(r"@[0-9a-f]{40} # v\d+\.\d+\.\d+$")
 _JOB_KEY = re.compile(r"^  ([a-z][\w-]*):$", re.MULTILINE)
 _ENV_PREFIX = re.compile(r"^(?:[A-Z_][A-Z0-9_]*=\S*\s+)+")
 _HTML_VALIDATE_CHECK = "tests_scripts/test_html_validate_config.py"
+# A repo script a `run:` line runs as a command: at a line start, after `$(`, `;`, `&`, `|`, `(` or `sudo`, past any VAR=value.
+_SCRIPT_COMMAND = re.compile(r"(?:^|[;&|(]|\$\(|\bsudo\s)\s*(?:[A-Z_][A-Z0-9_]*=\S*\s+)*(?:\./)?(scripts/[\w./-]+)")
 
 
 def _action_steps(path: Path) -> "list[str]":
@@ -251,6 +255,21 @@ def test_the_web_lint_job_runs_the_html_validate_config_check_required() -> None
     install = next((i for i, run in enumerate(runs) if run == "npm ci"), len(steps))
     checks = [i for i, step in enumerate(steps) if _HTML_VALIDATE_CHECK in runs[i] and re.search(r'^\s+HTML_VALIDATE_REQUIRED: "1"$', step, re.MULTILINE)]
     assert checks and checks[0] > install, f'web-lint-and-typecheck: after npm ci, run {_HTML_VALIDATE_CHECK} with env: HTML_VALIDATE_REQUIRED: "1"'
+
+
+def test_every_script_a_run_calls_as_a_command_is_executable_in_git() -> None:
+    # CI's checkout takes each file's mode from git, so a script a step runs as a command needs 100755 in the index there.
+    called = set()
+    for path in (_CI, *_ACTIONS.glob("*/action.yml")):
+        steps = [step for job in _jobs().values() for step in _steps(job, 6)] if path == _CI else _action_steps(path)
+        called |= {(path.name if path == _CI else path.parent.name, found) for step in steps for line in _run_lines(step) for found in _SCRIPT_COMMAND.findall(line)}
+    assert any(script == "scripts/test.sh" for _, script in called), f"the command scan found no `scripts/test.sh` call - it reads nothing: {sorted(called)}"
+    modes = {}
+    for script in {script for _, script in called}:
+        entry = git_lines("ls-files", "-s", "--", script)
+        modes[script] = entry[0].split()[0] if entry else "untracked"
+    wrong = sorted(f"{where}: {script} ({modes[script]})" for where, script in called if modes[script] != "100755")
+    assert not wrong, f"these steps run a script as a command that git does not mark executable - `git update-index --chmod=+x` it, or run it through its interpreter: {wrong}"
 
 
 def test_every_job_budget_is_tagged() -> None:

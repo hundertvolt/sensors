@@ -1674,8 +1674,9 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
 `tests_scripts/test_ci_workflow.py` pins these rules: the gating, the filter's inputs and base,
 the commit pins, the shallow checkout without submodules, no hidden test result, values through
 `env`, the toolchain action's key, callers and build, the sync first, the derived matrices, the
-smoke's flag and Firefox key, the built-page lint, the tagged budgets and the bounded Playwright
-installs.
+smoke's flag and Firefox key, the built-page lint, the html-validate config check run required,
+every repo script a step runs as a command marked executable in git (CI's checkout takes the
+mode from git), the tagged budgets and the bounded Playwright installs.
 
 ## B.11 Building this project's firmware
 
