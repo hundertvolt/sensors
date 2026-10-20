@@ -40,6 +40,14 @@ export default defineConfig({
         // are never allowed); covers the longest explicit wait (5000ms, render.test.js) with margin.
         // @tunable l0.vitest_test_timeout_ms = 20000
         testTimeout: 20000,
+        // A test that ran into its timeout, its beforeEach/afterEach included, is retried twice, and nothing else; a suite's
+        // beforeAll/afterAll runs once (SPECIFICATION.md E.3.1). The condition is the start of the pinned vitest's own
+        // timeout message ("Test|Hook timed out in <n>ms", makeTimeoutError()).
+        retry: {
+            // @tunable l0.vitest_timeout_retries = 2
+            count: 2,
+            condition: /^(?:Test|Hook) timed out in \d+ms/u,
+        },
         coverage: {
             // A `coverage/` directory at the repo root is importable as a namespace package and
             // shadows the real `coverage` distribution scripts/_render_coverage.py imports, so a

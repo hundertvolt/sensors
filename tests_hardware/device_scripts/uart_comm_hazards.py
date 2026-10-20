@@ -57,6 +57,7 @@ _H3_FIELDS = (
     ("cur_chunk", 4, (0, 1, 2, 255)),
     ("uid", 0, (0x00, 0xFE, 0xFF)),
 )
+# @tunable l3.uart_comm_hazards_recovery_attempts = 2
 _RECOVERY_ATTEMPTS = 2  # after H2 or the stalled TX, both ends recover within this many attempts
 # The stalled TX: the initiator's line re-initialised this slow, so a filler is still draining when the frame is due.
 _STALL_BAUD = 300

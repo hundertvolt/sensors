@@ -1,6 +1,6 @@
-"""Every ruff exemption in pyproject.toml still fires: one ruff run with every exemption lifted, over the eight lint scopes
-and a device tree generated here, must show each global code, each per-file code in a file its glob matches and each
-allowed confusable - else the entry goes (SPECIFICATION.md D.6). A policy entry with no site is listed with its reason."""
+"""Every ruff exemption in pyproject.toml still fires: one ruff run with every exemption lifted, over the eight lint scopes and a
+device tree generated here, must show each global code, each per-file code in a file its glob matches, each allowed confusable
+and an F401 naming each allowed-unused-imports module - else the entry goes (SPECIFICATION.md D.6). A policy entry with no site is listed with its reason."""
 
 import fnmatch
 import json
@@ -76,6 +76,12 @@ def _selects(selector: str, code: str) -> bool:
     return code.startswith(selector) and (not rest or rest[0].isdigit())
 
 
+def _unused_import_of(module: str, message: str) -> bool:
+    # An F401 message names the import's qualified name first; ruff's allowance covers a module and its submodules.
+    name = message.partition("`")[2].partition("`")[0]
+    return name == module or name.startswith(module + ".")
+
+
 @pytest.fixture(scope="module")
 def lifted(tmp_path_factory: pytest.TempPathFactory) -> "list[Finding]":
     # Every device's three generated files under <tmp>/build/generated_src, then one ruff run over them and the scopes
@@ -88,7 +94,8 @@ def lifted(tmp_path_factory: pytest.TempPathFactory) -> "list[Finding]":
         for name, text in zip(_output_names(device), (result.module_source, result.boot_entry_source, result.boot_entry_noautostart_source), strict=True):
             (generated / name).write_text(text, encoding="utf-8")
     cmd = [_ruff(), "check", "--no-cache", "--ignore-noqa", "--exit-zero", "--output-format", "json", "--config", str(_REPO_ROOT / "pyproject.toml"),
-           "--config", 'lint.select = ["ALL"]', "--config", "lint.per-file-ignores = {}", "--config", "lint.allowed-confusables = []", *_SCOPES, str(generated)]
+           "--config", 'lint.select = ["ALL"]', "--config", "lint.per-file-ignores = {}", "--config", "lint.allowed-confusables = []",
+           "--config", "lint.pyflakes.allowed-unused-imports = []", *_SCOPES, str(generated)]
     done = subprocess.run(cmd, cwd=_REPO_ROOT, capture_output=True, text=True, check=False)
     assert done.returncode == 0, f"ruff itself failed: {done.stderr}"
     findings: list[Finding] = []
@@ -125,6 +132,15 @@ def test_every_allowed_confusable_still_appears_in_a_finding(lifted: "list[Findi
     assert not dead, f"pyproject.toml allowed-confusables {dead}: no RUF001-RUF003 finding names them - remove them"
 
 
+def test_every_allowed_unused_import_is_still_imported_unused(lifted: "list[Finding]") -> None:
+    pyflakes = _lint_table().get("pyflakes", {})
+    assert isinstance(pyflakes, dict)
+    allowed = pyflakes.get("allowed-unused-imports", [])
+    assert isinstance(allowed, list)
+    dead = [module for module in allowed if not any(code == "F401" and _unused_import_of(str(module), message) for _, code, message in lifted)]
+    assert not dead, "\n".join(f"pyproject.toml [tool.ruff.lint.pyflakes] allowed-unused-imports: {module!r} is imported unused nowhere - remove it" for module in dead)
+
+
 def test_every_policy_entry_names_a_listed_exemption_that_has_no_site(lifted: "list[Finding]") -> None:
     listed = set(_entries())
     stale = [entry for entry in _POLICY if entry not in listed]
@@ -139,6 +155,14 @@ def test_every_policy_entry_names_a_listed_exemption_that_has_no_site(lifted: "l
 )
 def test_a_selector_names_a_rule_or_a_code_prefix(selector: str, code: str, *, selected: bool) -> None:
     assert _selects(selector, code) is selected
+
+
+@pytest.mark.parametrize(
+    ("module", "imported", "covered"),
+    [("frozen_html", "frozen_html", True), ("a.b", "a.b.c", True), ("manual_wifi", "pkg.manual_wifi", False), ("a", "ab", False), ("a.b", "a", False)],
+)
+def test_an_allowed_module_covers_its_submodules_as_ruffs_does(module: str, imported: str, *, covered: bool) -> None:
+    assert _unused_import_of(module, f"`{imported}` imported but unused") is covered
 
 
 def test_a_glob_crosses_directories_as_ruffs_does() -> None:

@@ -72,7 +72,7 @@ _COUNTRY_CODE_LEN = const(2)  # alpha-2: the shape _country_ok() checks, inside 
 _VAL_HOSTNAME = const((("Hostname", "str", "SensorNode", 1, 32, None),))  # 32 = network.hostname()'s real cap
 _VAL_LED_WIFI_ON = const((("LEDWifiOn", "bool", True, None, None, None),))
 # Hotspot AP password - real WPA2-PSK length (8-63), defaulting to the hardcoded "12345678": accepted
-# permanently as a known limitation (owner, 2026-09-26; CLAUDE.md), made per-device configurable.
+# permanently as a known limitation (owner, 2026-09-26; SPECIFICATION.md A.11), made per-device configurable.
 # Masked like _VAL_PW.
 _VAL_HOTSPOT_PW = const((("HotspotPW", "str", "12345678", 8, 63, None),))
 

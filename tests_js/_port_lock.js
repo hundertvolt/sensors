@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+// @tunable runner.port_lock_attempts = 10
 const ATTEMPTS = 10;
 // A holder writes its pid right after its mkdir: a lock without one is waited for this long before it reads as dead.
 const PID_WAITS = 20;

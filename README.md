@@ -7,6 +7,9 @@ data to an external FRAM chip, and persists configuration to a JSON file on the 
 filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware, not loaded from
 the device filesystem at runtime.
 
+The REST API and web UI have no authentication: the firmware is built for a trusted home LAN, and
+SPECIFICATION.md A.11 lists what that accepts.
+
 **Five legacy units are in service**, all the owner's own and within reach at any time (owner,
 2026-09-26: 'I build all sensors and still own all of them - full access anytime'): `arzi`, `wozi`
 and three arzi-identical units sharing the `neu` build (same sensors, different GPIO wiring), running

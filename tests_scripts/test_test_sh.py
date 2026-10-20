@@ -258,28 +258,10 @@ def _kill_all(pids: "list[int]") -> None:
 
 
 def _launched_tier(repo_root: Path, tmp_path: Path, *, coverage: bool) -> list[str]:
-    # Runs scripts/test.sh's own launch block with uv stubbed to record its arguments, one per line.
-    text = _test_sh_text(repo_root)
-    marker = 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"\n'
-    start = text.index(marker) + len(marker)
-    end = text.index("tests_scripts_pid=$!\n", start) + len("tests_scripts_pid=$!\n")
-    record = tmp_path / "uv.args"
-    stub_bin = tmp_path / "stub_bin"
-    stub_bin.mkdir()
-    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\nprintf "%s\\n" "PYTHONPATH=$PYTHONPATH" "$@" >"{record}"\n', encoding="utf-8")
-    (stub_bin / "uv").chmod(0o755)
-    script = tmp_path / "launch.sh"
-    script.write_text(
-        "#!/usr/bin/env bash\nset -euo pipefail\n"
-        f'coverage={int(coverage)}\nresults_dir="{tmp_path}"\ntests_scripts_timeout_s=30\n'
-        f'tests_scripts_status_file="{tmp_path}/status"\ntests_scripts_inner_pidfile="{tmp_path}/pid"\n'
-        + text[start:end]
-        + 'wait "$tests_scripts_pid"\n', encoding="utf-8",
-    )
-    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
-    subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
-    assert (tmp_path / "status").read_text(encoding="utf-8") == "PASS\n"
-    return record.read_text(encoding="utf-8").splitlines()
+    # The tier's launch block with uv stubbed to record its arguments, one per line, and pass.
+    status, _, stderr = _run_tier(repo_root, tmp_path, coverage=coverage)
+    assert status == "PASS\n", stderr
+    return (tmp_path / "uv.args").read_text(encoding="utf-8").splitlines()
 
 
 def _live_device_fixtures(text: str) -> "list[tuple[str, str]]":
@@ -705,6 +687,34 @@ def _run_tail(repo_root: Path, tmp_path: Path, jobs: dict[str, tuple[str | None,
     return done.returncode, done.stdout, root
 
 
+def _run_tier(repo_root: Path, tmp_path: Path, *, coverage: bool = False, first_attempt: str = "", later_attempts: str = "", timeout_s: float = 30) -> tuple[str, int, str]:
+    # scripts/test.sh's own tier launch block, its hard stop 1 s, over a stub uv that records its arguments, then runs
+    # `first_attempt` on its first call and `later_attempts` on every later one (bash); returns the status, calls, stderr.
+    text = _test_sh_text(repo_root).replace("--kill-after=10 ", "--kill-after=1 ")
+    marker = 'tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"\n'
+    start = text.index(marker) + len(marker)
+    end = text.index("tests_scripts_pid=$!\n", start) + len("tests_scripts_pid=$!\n")
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    record, calls, stub_bin = tmp_path / "uv.args", tmp_path / "uv.calls", tmp_path / "stub_bin"
+    stub_bin.mkdir()
+    (stub_bin / "uv").write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "PYTHONPATH=$PYTHONPATH" "$@" >"{record}"\necho x >>"{calls}"\n'
+        f'if [ "$(wc -l <"{calls}")" -eq 1 ]; then\n{first_attempt or ":"}\nelse\n{later_attempts or ":"}\nfi\n', encoding="utf-8",
+    )
+    (stub_bin / "uv").chmod(0o755)
+    script = tmp_path / "launch.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        f'coverage={int(coverage)}\nresults_dir="{tmp_path}"\ntests_scripts_timeout_s={timeout_s:g}\nmax_attempts=3\n'
+        f'tests_scripts_status_file="{tmp_path}/status"\ntests_scripts_inner_pidfile="{tmp_path}/pid"\n'
+        + text[start:end]
+        + 'wait "$tests_scripts_pid"\n', encoding="utf-8",
+    )
+    env = {**os.environ, "PATH": f"{stub_bin}:{os.environ['PATH']}"}
+    done = subprocess.run(["/bin/bash", str(script)], env=env, capture_output=True, text=True, check=True, timeout=_SNIPPET_TIMEOUT_S)
+    return (tmp_path / "status").read_text(encoding="utf-8"), len(calls.read_text(encoding="utf-8").splitlines()), done.stderr
+
+
 def _scenario_log(tag: str) -> str:
     return f"[{tag}] == attempt 1/3\n[{tag}] == Summary: scripts/_digital_twin_scenarios.py ==\n"
 
@@ -1017,6 +1027,31 @@ def test_a_coverage_run_traces_the_host_build_chain_through_the_pytest_tier(repo
     record = f"--run-record={tmp_path}/tests_scripts.json"
     traced = ["run", "coverage", "run", f"--data-file={tmp_path}/host.coverage", "--source=buildgen,scripts,toolchain", "-m", "pytest"]
     assert _launched_tier(repo_root, tmp_path, coverage=True) == ["PYTHONPATH=scripts", *traced, "tests_scripts", "-q", "-p", "_pytest_run_record", record]
+
+
+def test_a_tier_that_hangs_once_and_then_passes_is_reported_as_retried(repo_root: Path, tmp_path: Path) -> None:
+    # A timeout is retried (E.3.1), and the pass it buys is a root-cause item in the block and the L0 verdict, never a PASS.
+    status, calls, stderr = _run_tier(repo_root, tmp_path / "tier", first_attempt="sleep 30", later_attempts="exit 0", timeout_s=0.5)
+    assert (status, calls) == ("RETRIED-PASS 2/3\n", 2), stderr
+    assert "== tests_scripts/ exceeded 0.5s on attempt 1/3 - retrying in case of transient runner contention\n" in stderr
+    code, out, _ = _run_tail(repo_root, tmp_path / "tail", {"tests/test_ok.py": _passing("test_ok")}, pytest_status=status.strip())
+    block = _block(out)
+    assert code == 0, out
+    assert "Passed only on retry:\n  - tests_scripts/ (pytest) (attempt 2/3)\n" in block, block
+    assert "Levels: L0 PASS (retried 1) · L1 PASS · L2 PASS" in block, block
+    assert "root-cause item: tests_scripts/ needed attempt 2/3 - record it as a root-cause item" in out[: out.index(block)]
+
+
+def test_a_tier_that_always_hangs_fails_after_three_attempts(repo_root: Path, tmp_path: Path) -> None:
+    status, calls, stderr = _run_tier(repo_root, tmp_path, first_attempt="sleep 30", later_attempts="sleep 30", timeout_s=0.2)
+    assert (status, calls) == ("FAIL\n", 3), stderr
+    assert "== tests_scripts/ exceeded 0.2s on all 3 attempts - treating as a real failure instead of hanging the job\n" in stderr
+
+
+def test_a_tier_that_fails_is_not_retried(repo_root: Path, tmp_path: Path) -> None:
+    status, calls, stderr = _run_tier(repo_root, tmp_path, first_attempt="exit 1", later_attempts="exit 0")
+    assert (status, calls) == ("FAIL\n", 1), stderr
+    assert "exceeded" not in stderr, stderr
 
 
 # ---------------------------------------------------------------------------

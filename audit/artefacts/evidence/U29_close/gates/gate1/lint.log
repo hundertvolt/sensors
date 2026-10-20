@@ -1,0 +1,22 @@
+warning: `--no-sync` is a no-op for Python scripts with inline metadata, which always run in isolation
+Generated 6 device module(s) + boot entries + expected facts + wiring plan(s) + definitions + API reference(s) into /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-lint/build/generated_src
+All checks passed!
+ INFO zizmor: 🌈 zizmor v1.30.1
+ INFO audit: zizmor: 🌈 completed .github/actions/setup-micropython-toolchain/action.yml
+ INFO audit: zizmor: 🌈 completed .github/actions/uv-sync/action.yml
+ INFO audit: zizmor: 🌈 completed .github/workflows/ci.yml
+No findings to report. Good job! (15 suppressed)
+gc.collect() sites: 2 allowed, 0 outside the table; generated modules checked: 18
+not checked yet: tests/, digital_twin/, tests_hardware/ (their measurement rows are not in the table)
+== Summary: scripts/lint.sh ==
+Commit: 4ac9a7f
+Counts (checks): passed 7 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0

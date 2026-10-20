@@ -36,14 +36,15 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _src_const import src_const, src_float, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_readiness import wait_for_value  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 
 import asy_base_classes  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import asy_system_service  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+import asy_wifi_service  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from asy_scd30_driver import SCD30  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from asy_sgp40_driver import SGP40  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from asy_uart_comm import ROLE_INITIATOR, UARTComm  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -101,6 +102,8 @@ _WDT_OVERRUN_WAIT_S = 9.0
 _IDLE_WINDOW_S = 3.0
 _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
+_RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
+_WIFI_STEP_S = src_float("src/asy_wifi_service.py", "_STA_CONNECT_POLL_S")  # the connect poll's step: _SteppedWifiAsyncio's cap
 _WAIT_TIMEOUT_MS = int(_WAIT_TIMEOUT_S * 1000)
 _STATUS_DEATHS = 10
 _DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
@@ -224,6 +227,14 @@ def _fill_wire_logs() -> None:
             log.extend(bytes(log.maxlen))
 
 
+def _first_device_only() -> None:
+    # A scenario of seconds of wall clock through a mechanism every device shares runs once, on the first generated
+    # device, as the driver-specific ones run on the device picked for them (SPECIFICATION.md E.2.1).
+    first = generated_devices()[0]
+    if device != first:
+        raise microtest.Skip(f"runs on {first}, the first generated device: every device runs the same mechanism")
+
+
 async def _heap_floor(watchdog: "machine.WDT") -> int:
     # The collected heap with no task caught mid-call, read between UART link exchanges: the least of a few readings (a
     # frame held mid-await is transient, a retained object is in every one). The harness's own finished tasks and the
@@ -269,6 +280,18 @@ async def _one_backup(sgp: "SGP40_Reader", then: "Callable[[], Coroutine[object,
             await then()
     finally:
         await cancel(task)
+
+
+def _radio_rung_bound_s(conn: "WifiService") -> float:
+    # The fault to the link back at the service's own waits as _SteppedWifiAsyncio caps them: each failed iteration and
+    # the one that joins at most a refresh, a join polled to its budget and the retry wait, the rung's three settles, a tick.
+    def stepped(name: str) -> float:
+        return min(src_float("src/asy_wifi_service.py", name), _WIFI_STEP_S)
+
+    poll_budget = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS") * _WIFI_STEP_S
+    iteration = stepped("_WIFI_REFRESH_S") + poll_budget + stepped("_STA_RETRY_AFTER_LOSS_S")
+    settles = stepped("_WLAN_DOWN_SETTLE_S") + stepped("_WLAN_DEINIT_SETTLE_S") + stepped("_WLAN_MODE_SETTLE_S")
+    return (_RUNG_AT + 1) * iteration + settles + conn._counter_timer.period / 1000  # the uptime tick, armed in ms
 
 
 def _red_frames(frames: "list[list[tuple[int, ...]]]") -> "list[list[tuple[int, ...]]]":
@@ -354,6 +377,16 @@ class _StatusFault:
     # Stands in for SystemService._uptime: every read raises, so the status task dies at its next wake-up.
     def read(self) -> int:
         raise RuntimeError("injected status fault")
+
+
+class _SteppedWifiAsyncio:
+    # asy_wifi_service's view of asyncio, each sleep at most one connect-poll step: its periods, settles and retry wait
+    # are not under test, its transitions are; the poll keeps its real step, so the twin's join reads as unstepped.
+    def __getattr__(self, name: str) -> object:
+        return getattr(asyncio, name)
+
+    async def sleep(self, seconds: float) -> None:
+        await asyncio.sleep(min(seconds, _WIFI_STEP_S))
 
 
 def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> None:
@@ -550,6 +583,51 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
                 await cancel(task)
             if conn._dns_server_task is not None:
                 await cancel(conn._dns_server_task)
+
+    run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
+
+
+def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
+    # A linked station loses its link and each next join raises EIO, a failed hardware call, up to the rung's threshold:
+    # the radio is re-selected once (one deinit, one new STA interface, one W), then the link comes back.
+    _first_device_only()
+
+    async def scenario() -> None:
+        await _boot(_ports.next())
+        conn: WifiService = module.conn
+        persisted, _results = await conn.cfgmgr.write_config({"SSID": "TestNet"})
+        assert persisted
+        conn.start_uptime_timer()
+        asy_wifi_service.asyncio = _SteppedWifiAsyncio()  # type: ignore[assignment, attr-defined]
+        tasks = [conn.start_asy_connect(), conn.start_asy_uptime()]
+        station = conn._wlan  # the STA singleton, which a re-selection constructs again (one per interface, as on rp2)
+        deinits = [0]
+        real_deinit = station.deinit
+
+        def counted_deinit() -> None:
+            deinits[0] += 1
+            real_deinit()
+
+        station.deinit = counted_deinit  # type: ignore[method-assign]  # the instance's own, deleted in finally
+        try:
+            assert await _wait_until(lambda: conn._wifi_connected, timeout_s=_HOTSPOT_WAIT_TIMEOUT_S), "the station never linked before the fault"
+            built = network.constructions[network.STA_IF]
+            station.raise_on["connect"] = (OSError, (5,), _RUNG_AT)  # EIO
+            station.disconnect()  # the link lost: LINK_DOWN, as the bus-hazard file's single flap leaves it
+            back = await _wait_until(lambda: conn._wifi_connected and conn._wlan.isconnected(), timeout_s=_radio_rung_bound_s(conn))
+            assert network.constructions[network.STA_IF] == built + 1, f"{_RUNG_AT} failed joins re-selected the radio {network.constructions[network.STA_IF] - built} times, not once"
+            assert deinits[0] == 1, f"the re-selection powered the radio down {deinits[0]} times, not once"
+            assert back, "the link never came back after the radio was re-selected"
+            entry = (await conn.get_error_counter())["WIFI"]
+            recovered = [i for i in range(len(entry["ErrNum"])) if entry["ErrType"][i] == "W" and entry["ErrNum"][i] == code("W", "DEVICE_RECOVERY")]
+            assert len(recovered) == 1, f"the re-selection persisted {len(recovered)} W DEVICE_RECOVERY slots, not one: {entry}"
+        finally:
+            for task in tasks:
+                await cancel(task)
+            if conn._dns_server_task is not None:
+                await cancel(conn._dns_server_task)
+            del station.deinit
+            asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
 
     run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
 

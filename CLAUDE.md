@@ -212,11 +212,12 @@ information):
   the legacy code (`legacy/`)", not "defer all tests".
 - **Don't touch `sensors/config.json`-equivalent files or commit any real credentials.** A
   `.gitignore` covers per-device config/build artifacts, but still be deliberate about what you
-  stage. **The one known real credential already in this repo**: a hardcoded hotspot fallback
-  password, present in both `legacy/firmware/python/CommonDrivers/async_connect.py` (deployed,
-  pre-refactor) and `src/asy_wifi_service.py` (promoted) — accepted permanently as a known
-  limitation under the trusted-home-LAN threat model (owner, 2026-09-26; first accepted 'for now',
-  owner 2026-07-13, `b64857d`). `improved-quality/async_connect.py` itself was removed once its
+  stage. **The one known real credential already in this repo** is the hotspot fallback password: the default of
+  `HotspotPW` in `src/asy_wifi_service.py` and of every `devices/*.toml`'s `hotspot_password`,
+  copied into the reference-only legacy tree and into tests pinned to that default; accepted
+  permanently as a known limitation under the trusted-home-LAN threat model (owner, 2026-09-26;
+  first accepted 'for now', owner 2026-07-13, `b64857d`). SPECIFICATION.md A.11 lists every place
+  and the history-scan result. `improved-quality/async_connect.py` itself was removed once its
   functionality was fully promoted to
   `src/asy_wifi_service.py`/`asy_ntp_client.py`/`asy_dns_client.py` — no import in the repo
   referenced it anymore.
@@ -696,7 +697,10 @@ information):
   sequencing regardless of any specific hang's root cause — keep all three even after a specific
   hang is fixed. The per-file `timeout` sends SIGINT first, which microtest turns into an `ABORT`
   line naming the hung test with its traceback; `--kill-after` stays the hard stop, and a file it
-  kills past its timeout (exit 137) is retried like a timeout (124). **The `needs:` edge is for
+  kills past its timeout (exit 137) is retried like a timeout (124). Only a timeout is retried, twice,
+  in every test runner (owner, 2026-10-20: "Simply put, do the consistent rule adaptation to tests
+  only and only for those running into timeout."); an event retry keeps its own recorded count
+  (SPECIFICATION.md E.3.1's timeout retry rule). **The `needs:` edge is for
   SEQUENCING only — `unit-tests`, `unit-tests-gc-threshold`, `firmware-build-verify` and
   `web-unit-tests` carry `if: ${{ !cancelled() }}` so they still run when the job they follow
   fails.** (agent, 2026-09-10, `6564ccd`) `needs:` alone also

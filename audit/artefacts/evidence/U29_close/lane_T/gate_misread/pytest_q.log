@@ -1,0 +1,17 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_the_block_names_the_allocation_failure __________________
+
+    def test_the_block_names_the_allocation_failure() -> None:
+        # Planted failure: a tests_scripts/ check whose own text names the gate's marker, as test_summary_block.py's _ITEMS does.
+        line = "  - test_c.py: MemoryError seen"
+>       assert line == "  - test_c.py: 1 of 3 tests failed"
+E       AssertionError: assert '  - test_c.p...oryError seen' == '  - test_c.p... tests failed'
+E         
+E         -   - test_c.py: 1 of 3 tests failed
+E         +   - test_c.py: MemoryError seen
+
+test_wording.py:4: AssertionError
+=========================== short test summary info ============================
+FAILED test_wording.py::test_the_block_names_the_allocation_failure - Asserti...
+1 failed in 0.01s

@@ -904,6 +904,16 @@ gates, traps).
     `.github/actions/uv-sync`, the toolchain action keyed on runner image, GCC and glibc and
     building through `scripts/_unix_port.sh ensure standard`, both device matrices derived from
     `devices/*.toml`, the cached picotool installed in `firmware-build-verify`, Codecov gone.
+  **2026-10-20, a timed-out test retried in every runner tier, by the leg that covers each change**:
+  - `scripts/test.sh` leg: the backgrounded `tests_scripts/` pytest tier retries a run that times out, up to
+    `runner.per_file_attempts` (three attempts) in all, a pass after a retry reported apart;
+  - lint and typecheck legs: `pyproject.toml` comments only; the new host checks
+    `tests_scripts/test_threat_model_statement.py` and `tests_scripts/test_retry_counts.py`, host Python, no new
+    dependency;
+  - no leg runs it: `vitest.config.js` retries a timed-out test, its `beforeEach`/`afterEach` included, twice on
+    vitest's own timeout message, a failed assertion never, the chroot recipe running no `npm` step;
+  - CI only: `ci.yml`'s `unit-tests-coverage` time limit 35 → 95 minutes, `web-unit-tests` and `web-coverage` 15 → 20
+    minutes (agent, 2026-10-20).
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

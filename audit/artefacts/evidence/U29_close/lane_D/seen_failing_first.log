@@ -1,0 +1,68 @@
+FFF.                                                                     [100%]
+=================================== FAILURES ===================================
+________________________ test_a11_names_every_put_route ________________________
+
+    def test_a11_names_every_put_route() -> None:
+        paths = _put_paths()
+        assert len(paths) >= _MIN_PUT_ROUTES and "/system" in paths, f"ROUTES yielded the PUT paths {paths}: the derivation broke"
+>       missing = _missing(_a11_text(), paths)
+                           ^^^^^^^^^^^
+
+tests_scripts/test_threat_model_statement.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _a11_text() -> str:
+        # A.11 from its heading to the next `## ` or `---` line; a section with no such end would read the whole rest of SPEC.
+        lines = _SPEC.read_text(encoding="utf-8").splitlines()
+        start = next((i for i, line in enumerate(lines) if line.startswith(_HEADING)), None)
+        if start is None:
+>           pytest.fail(f"{_SPEC.name} has no '{_HEADING.strip()}' heading: the threat model's section is missing")
+E           Failed: SPECIFICATION.md has no '## A.11' heading: the threat model's section is missing
+
+tests_scripts/test_threat_model_statement.py:31: Failed
+___________________ test_a11_names_every_system_command_word ___________________
+
+    def test_a11_names_every_system_command_word() -> None:
+        words = _system_cmd_words()
+        assert sorted(words) == list(_SYSTEM_CMD_FLOOR), f"_SYSTEM_CMDS yielded {words}: a new word joins this floor and A.11 in one change"
+>       missing = _missing(_a11_text(), words)
+                           ^^^^^^^^^^^
+
+tests_scripts/test_threat_model_statement.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _a11_text() -> str:
+        # A.11 from its heading to the next `## ` or `---` line; a section with no such end would read the whole rest of SPEC.
+        lines = _SPEC.read_text(encoding="utf-8").splitlines()
+        start = next((i for i, line in enumerate(lines) if line.startswith(_HEADING)), None)
+        if start is None:
+>           pytest.fail(f"{_SPEC.name} has no '{_HEADING.strip()}' heading: the threat model's section is missing")
+E           Failed: SPECIFICATION.md has no '## A.11' heading: the threat model's section is missing
+
+tests_scripts/test_threat_model_statement.py:31: Failed
+_____________________ test_a11_names_every_dispatch_field ______________________
+
+    def test_a11_names_every_dispatch_field() -> None:
+        fields = _dispatch_fields()
+        assert set(_DISPATCH_FLOOR) <= set(fields), f"the generated definitions yielded the dispatch fields {list(fields)}: the derivation broke"
+>       missing = _missing(_a11_text(), fields)
+                           ^^^^^^^^^^^
+
+tests_scripts/test_threat_model_statement.py:111: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    def _a11_text() -> str:
+        # A.11 from its heading to the next `## ` or `---` line; a section with no such end would read the whole rest of SPEC.
+        lines = _SPEC.read_text(encoding="utf-8").splitlines()
+        start = next((i for i, line in enumerate(lines) if line.startswith(_HEADING)), None)
+        if start is None:
+>           pytest.fail(f"{_SPEC.name} has no '{_HEADING.strip()}' heading: the threat model's section is missing")
+E           Failed: SPECIFICATION.md has no '## A.11' heading: the threat model's section is missing
+
+tests_scripts/test_threat_model_statement.py:31: Failed
+=========================== short test summary info ============================
+FAILED tests_scripts/test_threat_model_statement.py::test_a11_names_every_put_route
+FAILED tests_scripts/test_threat_model_statement.py::test_a11_names_every_system_command_word
+FAILED tests_scripts/test_threat_model_statement.py::test_a11_names_every_dispatch_field
+3 failed, 1 passed in 0.45s
+rc=1

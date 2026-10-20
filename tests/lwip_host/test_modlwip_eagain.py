@@ -50,6 +50,7 @@ _SETTLE_MS = 100
 _REFUSED = -1
 _MAX_WRITES = 400
 _ARENA_FULL_WRITES = 20
+# @tunable l1.lwip_host_fill_attempts = 10
 _FILL_ATTEMPTS = 10
 
 

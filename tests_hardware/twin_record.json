@@ -1,7 +1,7 @@
 {
  "tests_hardware/bench/test_boot_order_and_triggers.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -10,7 +10,7 @@
  },
  "tests_hardware/bench/test_bus_concurrency_under_api_load.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -19,7 +19,7 @@
  },
  "tests_hardware/bench/test_end_to_end_timing.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -28,7 +28,7 @@
  },
  "tests_hardware/bench/test_heap_under_connection_ceiling.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -37,7 +37,7 @@
  },
  "tests_hardware/bench/test_hotspot_role_reversal.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -46,7 +46,7 @@
  },
  "tests_hardware/bench/test_memory_stress_bench.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -55,7 +55,7 @@
  },
  "tests_hardware/bench/test_modlwip_send_stall.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -64,7 +64,7 @@
  },
  "tests_hardware/bench/test_network_resilience.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -73,7 +73,7 @@
  },
  "tests_hardware/bench/test_reset_reasons.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -82,7 +82,7 @@
  },
  "tests_hardware/bench/test_rest_endpoints_over_sta.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -91,7 +91,7 @@
  },
  "tests_hardware/bench/test_scd30_frc_readiness_baseline.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -100,7 +100,7 @@
  },
  "tests_hardware/bench/test_sensor_config_push_over_real_hardware.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -109,7 +109,7 @@
  },
  "tests_hardware/bench/test_serving_heap_at_default_gc.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -118,7 +118,7 @@
  },
  "tests_hardware/bench/test_system_commands_over_rest.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -127,7 +127,7 @@
  },
  "tests_hardware/bench/test_ticks_ms_rollover.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -136,7 +136,7 @@
  },
  "tests_hardware/bench/test_uart_link_crc16.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -145,7 +145,7 @@
  },
  "tests_hardware/bench/test_uart_link_under_api_load.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -154,7 +154,7 @@
  },
  "tests_hardware/bench/test_wifi_networking.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -163,7 +163,7 @@
  },
  "tests_hardware/bench/test_wifi_radio_reinit.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the bench bridge (network, WLAN role-reversal)",
   "result": "exception",
@@ -172,7 +172,7 @@
  },
  "tests_hardware/device_scripts/allocation_need_per_source.py": {
   "api_sha256": "80cbf315a34dca700d30d57861e12810375170650abe487ff87515b57d6aec5f",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -181,7 +181,7 @@
  },
  "tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -190,7 +190,7 @@
  },
  "tests_hardware/device_scripts/bmp3xx_conformance_probe.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -199,7 +199,7 @@
  },
  "tests_hardware/device_scripts/bmp3xx_plausibility_read.py": {
   "api_sha256": "7b645288d74bf10a0dbea24835902a23c46ca8793c05490ea217c5215cb3b09e",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -208,7 +208,7 @@
  },
  "tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -217,7 +217,7 @@
  },
  "tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -226,7 +226,7 @@
  },
  "tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -235,7 +235,7 @@
  },
  "tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -244,7 +244,7 @@
  },
  "tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -253,7 +253,7 @@
  },
  "tests_hardware/device_scripts/bus_deinit_is_a_noop_on_real_hardware.py": {
   "api_sha256": "3b68dc1f490cac32264eac79172c5f0611fb6b2fe26b93fad68988e4b248e4c2",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -262,7 +262,7 @@
  },
  "tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -271,7 +271,7 @@
  },
  "tests_hardware/device_scripts/c_stack_budget.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_memory_stress.py; its silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
   "result": "exception",
@@ -280,7 +280,7 @@
  },
  "tests_hardware/device_scripts/config_files_dump.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_system_commands.py; its silicon-only cases: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it) and a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
   "result": "exception",
@@ -289,7 +289,7 @@
  },
  "tests_hardware/device_scripts/config_files_restore.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -298,7 +298,7 @@
  },
  "tests_hardware/device_scripts/config_float_round_trip.py": {
   "api_sha256": "459512b2dc973471023e6600e701917056f09ce0bfa98943e22639584f3f6283",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -307,7 +307,7 @@
  },
  "tests_hardware/device_scripts/float_boundary_2pow24.py": {
   "api_sha256": "459512b2dc973471023e6600e701917056f09ce0bfa98943e22639584f3f6283",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_electrical_timing.py; its silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -316,7 +316,7 @@
  },
  "tests_hardware/device_scripts/fram_busy_status_lockout.py": {
   "api_sha256": "3b68dc1f490cac32264eac79172c5f0611fb6b2fe26b93fad68988e4b248e4c2",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -325,7 +325,7 @@
  },
  "tests_hardware/device_scripts/fram_capacity_after_full_system_build.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -334,7 +334,7 @@
  },
  "tests_hardware/device_scripts/fram_command_hold_timing.py": {
   "api_sha256": "b79355b9894e614b9cbd58ce2e7a03783f4990ada6e8a4455430a15969c262be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -343,7 +343,7 @@
  },
  "tests_hardware/device_scripts/fram_conformance_probe.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -352,7 +352,7 @@
  },
  "tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py": {
   "api_sha256": "ae143392a59b5a32fac5ba29745fb7299ed9f8247ccccd092c342812913656be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -361,7 +361,7 @@
  },
  "tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py": {
   "api_sha256": "3f0f2d1cdfe6bb8109ea59d3a513a5b77a04e5438611023c1de98a79b91b6b24",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -370,7 +370,7 @@
  },
  "tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py": {
   "api_sha256": "3f0f2d1cdfe6bb8109ea59d3a513a5b77a04e5438611023c1de98a79b91b6b24",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -379,7 +379,7 @@
  },
  "tests_hardware/device_scripts/fram_error_log_reset_race_verify.py": {
   "api_sha256": "3f0f2d1cdfe6bb8109ea59d3a513a5b77a04e5438611023c1de98a79b91b6b24",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -388,7 +388,7 @@
  },
  "tests_hardware/device_scripts/fram_error_log_roundtrip.py": {
   "api_sha256": "3f0f2d1cdfe6bb8109ea59d3a513a5b77a04e5438611023c1de98a79b91b6b24",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -397,7 +397,7 @@
  },
  "tests_hardware/device_scripts/fram_manager_roundtrip.py": {
   "api_sha256": "3b68dc1f490cac32264eac79172c5f0611fb6b2fe26b93fad68988e4b248e4c2",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -406,7 +406,7 @@
  },
  "tests_hardware/device_scripts/fram_pause_unpause_and_gating.py": {
   "api_sha256": "f40c365cdc993e9976760d1e263fe006a4a8c704398164f5d89aba4b446b95bb",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -415,7 +415,7 @@
  },
  "tests_hardware/device_scripts/fram_raw_dump.py": {
   "api_sha256": "ae143392a59b5a32fac5ba29745fb7299ed9f8247ccccd092c342812913656be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -424,7 +424,7 @@
  },
  "tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py": {
   "api_sha256": "ae143392a59b5a32fac5ba29745fb7299ed9f8247ccccd092c342812913656be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -433,7 +433,7 @@
  },
  "tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py": {
   "api_sha256": "ae143392a59b5a32fac5ba29745fb7299ed9f8247ccccd092c342812913656be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -442,7 +442,7 @@
  },
  "tests_hardware/device_scripts/fram_same_device_rw_concurrency.py": {
   "api_sha256": "ae143392a59b5a32fac5ba29745fb7299ed9f8247ccccd092c342812913656be",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -451,7 +451,7 @@
  },
  "tests_hardware/device_scripts/fram_write_protect_roundtrip.py": {
   "api_sha256": "3b68dc1f490cac32264eac79172c5f0611fb6b2fe26b93fad68988e4b248e4c2",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -460,7 +460,7 @@
  },
  "tests_hardware/device_scripts/heap_headroom_after_full_system_build.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_memory_stress.py; its silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
   "result": "exception",
@@ -469,7 +469,7 @@
  },
  "tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py": {
   "api_sha256": "5ff58704c4d826d590ffb0773d3de95a32fd23badc2bfcc942a4a9d4b6531931",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_heap_layout.py; its silicon-only case: the suppressed arm breaking the high band (in the twin it runs after the state load in one session, on the Unix port's heap, not the RP2040's)",
   "result": "exception",
@@ -478,7 +478,7 @@
  },
  "tests_hardware/device_scripts/heap_under_connection_ceiling.py": {
   "api_sha256": "65828c59fc45aba5d6756b471add3f8b18469bb6025f1d96d0f726e9a7163832",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "a bench serving script: it boots main() and holds its maps while the host's bench test drives the connection load, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 112 s each, READY once, zero allocation failures)",
   "result": "exception",
@@ -487,7 +487,7 @@
  },
  "tests_hardware/device_scripts/i2c_held_sda_recovery.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -496,7 +496,7 @@
  },
  "tests_hardware/device_scripts/isl29125_cross_device_concurrency.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -505,7 +505,7 @@
  },
  "tests_hardware/device_scripts/isl29125_lighting_scenarios.py": {
   "api_sha256": "f608945d5985a4957a2d2616b3620efbe875d3791c7f2918552c66b79e43314d",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -514,7 +514,7 @@
  },
  "tests_hardware/device_scripts/isl29125_mechanism_envelope.py": {
   "api_sha256": "046151c54079fe6be724c864d8400a6f9432189c2b755d9f5baf4aa0763625de",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -523,7 +523,7 @@
  },
  "tests_hardware/device_scripts/isl29125_mock_conformance_probe.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -532,7 +532,7 @@
  },
  "tests_hardware/device_scripts/isl29125_plausibility_read.py": {
   "api_sha256": "001afe216b6b01ebcff1026e73a2c3ea702ee8f8dbf95b9cbecc1c93ca99dbb9",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -541,7 +541,7 @@
  },
  "tests_hardware/device_scripts/isl29125_real_irq_edge.py": {
   "api_sha256": "001afe216b6b01ebcff1026e73a2c3ea702ee8f8dbf95b9cbecc1c93ca99dbb9",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -550,7 +550,7 @@
  },
  "tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -559,7 +559,7 @@
  },
  "tests_hardware/device_scripts/loop_lag_under_combined_load.py": {
   "api_sha256": "65828c59fc45aba5d6756b471add3f8b18469bb6025f1d96d0f726e9a7163832",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_memory_stress.py; its silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
   "result": "exception",
@@ -568,7 +568,7 @@
  },
  "tests_hardware/device_scripts/loop_stretch_timing.py": {
   "api_sha256": "7d5ed35b9f3babbf9712cea47fd82352e6f5d335ab7d0b7baf82776ce9c4d9da",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_memory_stress.py; its silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
   "result": "exception",
@@ -577,7 +577,7 @@
  },
  "tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py": {
   "api_sha256": "f9c3b4e9d2f47fa5df7bc09f96de83057415be942ade87ddbccaa29b91628a64",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_watchdog_starvation.py; its silicon-only cases: a blocking watchdog starvation and the reboot's starvation fallback (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
   "result": "exception",
@@ -586,7 +586,7 @@
  },
  "tests_hardware/device_scripts/reboot_persist_read.py": {
   "api_sha256": "459512b2dc973471023e6600e701917056f09ce0bfa98943e22639584f3f6283",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_reboot_persistence.py; its silicon-only case: the boot import after a genuine hard reset (the twin boots no production image, so no boot lines arrive)",
   "result": "exception",
@@ -595,7 +595,7 @@
  },
  "tests_hardware/device_scripts/reboot_persist_write.py": {
   "api_sha256": "459512b2dc973471023e6600e701917056f09ce0bfa98943e22639584f3f6283",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_reboot_persistence.py; its silicon-only case: the boot import after a genuine hard reset (the twin boots no production image, so no boot lines arrive)",
   "result": "exception",
@@ -604,7 +604,7 @@
  },
  "tests_hardware/device_scripts/reset_code_boot_phase_hang.py": {
   "api_sha256": "19c3da92ee755ce0c820bcf7ccc6e0cd1da8654bc9878f77130cab3880324637",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -613,7 +613,7 @@
  },
  "tests_hardware/device_scripts/reset_code_command_incomplete.py": {
   "api_sha256": "aa644984a34ccfee3474462466ee0fc3b298ff817c1684ffbd6bd42710d25d83",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only: the watchdog takeover after an accepted command - the twin reports it as 'starved the watchdog', its form of the reset",
   "result": "exception",
@@ -622,7 +622,7 @@
  },
  "tests_hardware/device_scripts/reset_code_invalid_record.py": {
   "api_sha256": "f9c3b4e9d2f47fa5df7bc09f96de83057415be942ade87ddbccaa29b91628a64",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "ends in the reset it exists to provoke (exit 3, the twin's simulated reset); its after-boot half reads the reset reason a production boot reports, and the twin boots no production image (bench/test_reset_reasons.py runs both halves on silicon)",
   "result": "exception",
@@ -631,7 +631,7 @@
  },
  "tests_hardware/device_scripts/reset_code_stack_exhausted.py": {
   "api_sha256": "f9c3b4e9d2f47fa5df7bc09f96de83057415be942ade87ddbccaa29b91628a64",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "ends in the reset it exists to provoke (exit 3, the twin's simulated reset); its after-boot half reads the reset reason a production boot reports, and the twin boots no production image (bench/test_reset_reasons.py runs both halves on silicon)",
   "result": "exception",
@@ -640,7 +640,7 @@
  },
  "tests_hardware/device_scripts/scd30_argument_reaction.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -649,7 +649,7 @@
  },
  "tests_hardware/device_scripts/scd30_conformance_probe.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -658,7 +658,7 @@
  },
  "tests_hardware/device_scripts/scd30_data_ready_wait.py": {
   "api_sha256": "b0e4ee0afea71f4f129892613b1e8cf00927de85d73a5168e575a01a99a9914a",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -667,7 +667,7 @@
  },
  "tests_hardware/device_scripts/scd30_measurement_interval_read.py": {
   "api_sha256": "b0e4ee0afea71f4f129892613b1e8cf00927de85d73a5168e575a01a99a9914a",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -676,7 +676,7 @@
  },
  "tests_hardware/device_scripts/scd30_plausibility_read.py": {
   "api_sha256": "b0e4ee0afea71f4f129892613b1e8cf00927de85d73a5168e575a01a99a9914a",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -685,7 +685,7 @@
  },
  "tests_hardware/device_scripts/scd30_real_irq_edge.py": {
   "api_sha256": "b0e4ee0afea71f4f129892613b1e8cf00927de85d73a5168e575a01a99a9914a",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_electrical_timing.py; its silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -694,7 +694,7 @@
  },
  "tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -703,7 +703,7 @@
  },
  "tests_hardware/device_scripts/scd30_start_continuous_measurement.py": {
   "api_sha256": "b0e4ee0afea71f4f129892613b1e8cf00927de85d73a5168e575a01a99a9914a",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -712,7 +712,7 @@
  },
  "tests_hardware/device_scripts/scheduler_saturation_drop.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_electrical_timing.py; its silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -721,7 +721,7 @@
  },
  "tests_hardware/device_scripts/serving_at_default_gc.py": {
   "api_sha256": "4a0a40b6bb51da008c768739ec3fbb95d35e6285db1d19ce9808d0e765c455a0",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "a bench serving script: it boots main() and waits for the host's request sweep, which only the bench tier sends, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 622 s each, webserver built, phases incomplete without the sweep, zero allocation failures)",
   "result": "exception",
@@ -730,7 +730,7 @@
  },
  "tests_hardware/device_scripts/sgp40_conformance_probe.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -739,7 +739,7 @@
  },
  "tests_hardware/device_scripts/sgp40_fram_backup_restore.py": {
   "api_sha256": "fd68a98c5fbdb9badbfb89bdbfd53c246d537c08f6c3d3cfd0a8bf8fe49a2977",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_fram_storage.py; its silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -748,7 +748,7 @@
  },
  "tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py": {
   "api_sha256": "9ef789c6d35341982392a6d3c30c3b6ac8d461a2c19cd83107cabba53e0b075b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -757,7 +757,7 @@
  },
  "tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py": {
   "api_sha256": "b9c2524bf9c29f16fe215b390d6887bb4d008705de1ec65024f2faa65d9c4b09",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -766,7 +766,7 @@
  },
  "tests_hardware/device_scripts/sgp40_sample_cadence.py": {
   "api_sha256": "f9c3b4e9d2f47fa5df7bc09f96de83057415be942ade87ddbccaa29b91628a64",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -775,7 +775,7 @@
  },
  "tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py": {
   "api_sha256": "b6401dd719cdc54add1c1080e76ebee3519e4fb0a33fae7dddb5de753fa5b0c5",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_sensor_accuracy.py; its silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -784,7 +784,7 @@
  },
  "tests_hardware/device_scripts/system_command_config_reset.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_system_commands.py; its silicon-only cases: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it) and a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
   "result": "exception",
@@ -793,7 +793,7 @@
  },
  "tests_hardware/device_scripts/system_command_fram_erase.py": {
   "api_sha256": "7d771c74a42a24dc8c57ed35f70a56ea1a0dd414d4ce5710209e04a48f94e7f9",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -802,7 +802,7 @@
  },
  "tests_hardware/device_scripts/system_command_hang.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_system_commands.py; its silicon-only cases: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it) and a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
   "result": "exception",
@@ -811,7 +811,7 @@
  },
  "tests_hardware/device_scripts/system_command_reboot.py": {
   "api_sha256": "71105e88973aa6017b742877116406b32e4025f6bbc72e448b15ca1936396b0b",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_concurrency.py; its silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -820,7 +820,7 @@
  },
  "tests_hardware/device_scripts/system_debug_level_set_standard.py": {
   "api_sha256": "459512b2dc973471023e6600e701917056f09ce0bfa98943e22639584f3f6283",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "needs the per-run extra standard_debug_level that tests_hardware/conftest.py's standard-state repair passes; run alone it has none (KeyError). With it the twin run writes DebugLevel and reports valid (checked 2026-10-14)",
   "result": "exception",
@@ -829,7 +829,7 @@
  },
  "tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py": {
   "api_sha256": "5ff58704c4d826d590ffb0773d3de95a32fd23badc2bfcc942a4a9d4b6531931",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -838,7 +838,7 @@
  },
  "tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_electrical_timing.py; its silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -847,16 +847,16 @@
  },
  "tests_hardware/device_scripts/uart_comm_hazards.py": {
   "api_sha256": "abfafbf334723e68863e8d85d60878deccdc634f693f14d8a98f400d3d1e24c9",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
   "runner_sha256": "8f2887c50eea13fbed2f80c4606b6333f509fcd6fa81f12c5f8806e9dd3c1b4e",
-  "sha256": "08cb796cfb0bd6556e2aa32c7a427a89a12d4f102cd6c376f8adca15ff256839"
+  "sha256": "c22aaa3ef7d07c80475c64e38c4a0d188caa2435e04870dcfbd15a73d8bbef58"
  },
  "tests_hardware/device_scripts/uart_crossover_exchange.py": {
   "api_sha256": "f32b3729510d2e461cf75ba7856a543b40808c004f0f7f423d753595a41190f1",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -865,7 +865,7 @@
  },
  "tests_hardware/device_scripts/uart_crossover_recovery.py": {
   "api_sha256": "abfafbf334723e68863e8d85d60878deccdc634f693f14d8a98f400d3d1e24c9",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -874,7 +874,7 @@
  },
  "tests_hardware/device_scripts/uart_dma_ring_interrupts_off.py": {
   "api_sha256": "c8f0da44807f44f646bdbfd1c70cdf8e2051fe7eac6fc5522e6c3ce0e6b6b4b5",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -883,7 +883,7 @@
  },
  "tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py": {
   "api_sha256": "131deef059c1e93c8f8a28ddef29e713222676c5c40bad1ef3a82675a602844c",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -892,7 +892,7 @@
  },
  "tests_hardware/device_scripts/uart_idle_poll_rate.py": {
   "api_sha256": "3a0989f116c70869ce8437be30518d7cd24fda0bf74b0a428dca8a380890c7cc",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -901,7 +901,7 @@
  },
  "tests_hardware/device_scripts/uart_link_echo_under_serving_load.py": {
   "api_sha256": "454451e62fa089e656898bb752f77ec68d9ae9a879c07193df1ac99c16359a5c",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "a bench serving script: the multi-chunk echo needs the bench board's UART jumper under main()'s own link and the host's reader load, so alone in the twin it runs past the record's 60 s bound (its twin runs at -1 and 32768: about 192 s each, the initiator found, zero allocation failures)",
   "result": "exception",
@@ -910,7 +910,7 @@
  },
  "tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py": {
   "api_sha256": "8d5929e6bcbd7220d7db817af2262f9436c25b0e6b8344f1ecdc8bbefadd38eb",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_uart_crossover.py; its silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -919,7 +919,7 @@
  },
  "tests_hardware/device_scripts/unretrieved_task_exception_handler.py": {
   "api_sha256": "f9c3b4e9d2f47fa5df7bc09f96de83057415be942ade87ddbccaa29b91628a64",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -928,7 +928,7 @@
  },
  "tests_hardware/device_scripts/watchdog_starvation_reset.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_watchdog_starvation.py; its silicon-only cases: a blocking watchdog starvation and the reboot's starvation fallback (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
   "result": "exception",
@@ -937,7 +937,7 @@
  },
  "tests_hardware/device_scripts/wifi_country_code_reaction.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "run by tests_hardware/flash/test_bus_electrical_timing.py; its silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -945,8 +945,8 @@
   "sha256": "f4e7fe1d989e548432c790e05457493c757362cb9a783c536087d8b915f9c5b6"
  },
  "tests_hardware/device_scripts/wifi_radio_reinit_recovery.py": {
-  "api_sha256": "c8b2ca1dab92239e8ed2c416e8a28f298384d5039e681156dacde821b396fb96",
-  "date": "2026-10-19T19:44:24Z",
+  "api_sha256": "ebdfd1580f2d359b06fec35e7acbef4f07019cdad1f542583a48c67b37181540",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -955,7 +955,7 @@
  },
  "tests_hardware/flash/test_bus_concurrency.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: the ISL29125's real INT edge (the twin drives no INT edge into the reader's IRQ), the held-SDA recovery (bit-banged pins hold no SDA in the twin) and the FRAM CS hijack (the FRAM fake frames by write() pairing, ignoring CS)",
   "result": "exception",
@@ -964,7 +964,7 @@
  },
  "tests_hardware/flash/test_bus_electrical_timing.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: the 2^24 single-precision float boundary (the Unix port's float is double), the malformed country-code reaction (the twin WLAN has no scan()), and the timer-callback drop under scheduler saturation (twin Timers are asyncio tasks: no scheduler queue, a synchronous script gives them no turn); and the SCD30 clock-stretch watch is a soak (--soak-duration: a real stretch comes about once a day)",
   "result": "exception",
@@ -973,7 +973,7 @@
  },
  "tests_hardware/flash/test_chip_conformance.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -982,7 +982,7 @@
  },
  "tests_hardware/flash/test_config_float_round_trip.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -991,7 +991,7 @@
  },
  "tests_hardware/flash/test_fram_storage.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only case: write protection gating a real write and read (the twin's FRAM fake keeps the data a WP-gated write would not reach on silicon)",
   "result": "exception",
@@ -1000,7 +1000,7 @@
  },
  "tests_hardware/flash/test_heap_layout.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only case: the suppressed arm breaking the high band (in the twin it runs after the state load in one session, on the Unix port's heap, not the RP2040's)",
   "result": "exception",
@@ -1009,7 +1009,7 @@
  },
  "tests_hardware/flash/test_memory_stress.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only case: the used-heap bound after a full system build (the twin's heap is the Unix port's, not the RP2040's 264 KB); and the single-core timing headroom is a passive soak (--soak-duration)",
   "result": "exception",
@@ -1018,7 +1018,7 @@
  },
  "tests_hardware/flash/test_reboot_persistence.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only case: the boot import after a genuine hard reset (the twin boots no production image, so no boot lines arrive)",
   "result": "exception",
@@ -1027,7 +1027,7 @@
  },
  "tests_hardware/flash/test_sensor_accuracy.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: the two NeoPixel sweeps need the rig aiming the NeoPixel at the ISL29125 (--allow-neopixel-sweep; the twin's ISL29125 fake is not optically coupled to the NeoPixel) and the SGP40 cadence is a 600 s soak (--soak-duration); twin fidelity: the SGP40 fake's raw walk (1000 ticks a sample, not datasheet-derived) drives the real VOC algorithm's index to its floor of 1 for all 8 post-blackout samples in about 7% of runs (21 of 300 simulated), which the frozen-algorithm check reads as frozen",
   "result": "exception",
@@ -1036,7 +1036,7 @@
  },
  "tests_hardware/flash/test_system_commands.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: the 1.0/2.0 s mid-erase resets (the twin erases 256 KB in about 1.0 s, silicon about 2.2 s at 1 MHz, so they land after it) and a hung shutdown step's watchdog takeover (the twin reports 'starved the watchdog', its form of the reset)",
   "result": "exception",
@@ -1045,7 +1045,7 @@
  },
  "tests_hardware/flash/test_task_supervisor.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -1054,7 +1054,7 @@
  },
  "tests_hardware/flash/test_toolchain_flash_boot.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "gated, never run in the twin: the UF2 reflash is a real flash cycle (--allow-flash-cycle) and the toolchain re-verification fetches over the network and builds for about 8 min (--allow-toolchain-reverify)",
   "result": "exception",
@@ -1063,7 +1063,7 @@
  },
  "tests_hardware/flash/test_uart_crossover.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: interrupts-off windows, the UART break, the DMA ring's soft reset and the config-write window (the twin has no machine.disable_irq()/enable_irq(), no UART.sendbreak() and no rp2.DMA paced by a UART TX DREQ: streamed False), and the driver read's control arm (the twin UART serves min(nbytes, queued), so the control span stays about 10 us)",
   "result": "exception",
@@ -1072,7 +1072,7 @@
  },
  "tests_hardware/flash/test_unretrieved_task_exception_handler.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "",
   "result": "pass",
@@ -1081,7 +1081,7 @@
  },
  "tests_hardware/flash/test_watchdog_starvation.py": {
   "api_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "date": "2026-10-19T19:44:24Z",
+  "date": "2026-10-20T06:35:50Z",
   "gc_threshold": -1,
   "reason": "silicon-only cases: a blocking watchdog starvation and the reboot's starvation fallback (a blocking starvation never reaches the twin's asyncio watchdog: the run times out)",
   "result": "exception",

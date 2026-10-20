@@ -160,8 +160,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_unit_tests_timeout_min = 15
-    timeout-minutes: 15
+    # @tunable ci.web_unit_tests_timeout_min = 20
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -276,8 +276,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_coverage_timeout_min = 15
-    timeout-minutes: 15
+    # @tunable ci.web_coverage_timeout_min = 20
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
@@ -546,8 +546,8 @@ jobs:
   # Split from unit-tests for the same reason web-coverage is; needs: unit-tests only to reuse its
   # toolchain cache, running in parallel with the two jobs below (B.10.1).
   #
-  # Its budget covers the instrumented rerun with margin (Part N): a tighter cap once cancelled a
-  # passed suite and digital-twin-e2e with it.
+  # Its budget: a warm run plus the pytest tier's full timeout-retry budget, plus 25% (Part N); a
+  # tighter cap once cancelled a passed suite and digital-twin-e2e with it.
   unit-tests-coverage:
     # Success-gated on purpose (no `if: !cancelled()`): there is nothing to measure if the plain
     # suite did not pass. Its own test step gates; only the reports are advisory (Part E.5.3).
@@ -555,8 +555,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.unit_tests_coverage_timeout_min = 35
-    timeout-minutes: 35
+    # @tunable ci.unit_tests_coverage_timeout_min = 95
+    timeout-minutes: 95
     steps:
       - uses: actions/checkout@v7
         with:

@@ -156,6 +156,7 @@ convention = "google"
 
 [tool.ruff.lint.pyflakes]
 # Imported for their side effect: frozen_html mounts the website; each manual step module registers its steps.
+# Every entry is still imported unused somewhere (tests_scripts/test_ruff_exemptions_live.py).
 allowed-unused-imports = ["frozen_html", "manual_bus_electrical", "manual_persistence", "manual_sensor_accuracy", "manual_toolchain", "manual_wifi"]
 
 # Ceilings sit at the measured maximum and only go down, enforced by
@@ -245,8 +246,8 @@ max-returns = 10
 "src/asy_base_classes.py" = ["PLW0603"]
 "src/asy_system_service.py" = ["PLW0603"]
 # S104: the webserver (web_host's generated default) and the captive DNS bind every interface on a trusted home LAN
-# (owner, 2026-09-26); asy_dns_client.py and the twin's network.py and UDP shim only compare with or name the unset
-# address; the rogue responder binds the bench host's responder on the bench LAN.
+# (owner, 2026-09-26; SPECIFICATION.md A.11); asy_dns_client.py and the twin's network.py and UDP shim only compare with
+# or name the unset address; the rogue responder binds the bench host's responder on the bench LAN.
 "src/asy_captive_dns.py" = ["S104"]
 "src/asy_dns_client.py" = ["S104"]
 "digital_twin/network.py" = ["S104"]
@@ -342,8 +343,8 @@ max-returns = 10
 # S310: a fixed `http://` URL this module builds from a bench-LAN host/port pair; no attacker-supplied scheme exists.
 "tests_hardware/http_client.py" = ["S310"]
 # S105/S106 stay on everywhere else, so a new credential in keyword or assignment form is caught. The hotspot fallback
-# password is accepted permanently (owner, 2026-09-26); it lives in `_VAL_HOTSPOT_PW` and devices/*.toml, a shape these
-# rules do not see.
+# password is accepted permanently (owner, 2026-09-26; SPECIFICATION.md A.11); it lives in `_VAL_HOTSPOT_PW` and
+# devices/*.toml, a shape these rules do not see.
 #
 # Literal passwords of test doubles and bound checks (the twin's own AP, length limits) - not credentials.
 "digital_twin/launch.py" = ["S105"]

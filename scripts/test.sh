@@ -87,6 +87,9 @@ fi
 per_file_timeout_s="${PER_FILE_TIMEOUT_S:-240}"
 # @tunable runner.tests_scripts_timeout_s = 1200
 tests_scripts_timeout_s="${TESTS_SCRIPTS_TIMEOUT_S:-1200}"
+# A timeout is retried twice, every per-file job, scenario job and the pytest tier alike, and nothing else (E.3.1).
+# @tunable runner.per_file_attempts = 3
+max_attempts=3
 _require_seconds() {
     if [[ ! "$2" =~ ^[1-9][0-9]{0,5}$ ]]; then
         echo "error: $1 must be a positive integer number of seconds, not '$2'" >&2
@@ -338,8 +341,8 @@ done
 # open forever. Its 1200 s is a hang backstop over the tier's measured 698 s (2026-10-15, either GC stage, beside the
 # MicroPython tier; CI's figure: Part N, runner.tests_scripts_timeout_s); CI's timeout-minutes stays the outer one.
 #
-# No retry, unlike the per-file loop - that one absorbs transient contention on a single file's
-# budget, whereas a whole-suite pytest timeout is a real failure worth reporting as one.
+# The timeout retry rule (E.3.1): a timed-out run is retried like a timed-out file, up to max_attempts in all, and a
+# pass after a retry is RETRIED-PASS; any other exit fails at once.
 #
 # MUST stay behind the generation step above, which globs devices/*.toml - Part E.1's reserved
 # zz_test_ namespace has the race: the tier writes its live-tree fixtures there for the length of one test.
@@ -355,26 +358,45 @@ results_dir="$(mktemp -d)"
 tests_scripts_status_file="$results_dir/tests_scripts.status"
 tests_scripts_inner_pidfile="$results_dir/tests_scripts.pid"
 (
-    # --coverage runs this same tier under coverage.py over the host build chain, report-only: its data
-    # stays in results_dir for the render step at the end, and the test result is the tier's own.
-    if [ "$coverage" = "1" ]; then
-        # @tunable runner.kill_after_s = 10
-        PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run coverage run --data-file="$results_dir/host.coverage" "--source=buildgen,scripts,toolchain" -m pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
-    else
-        # @tunable runner.kill_after_s = 10
-        PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
-    fi
-    inner_pid=$!
-    echo "$inner_pid" >"$tests_scripts_inner_pidfile"
-    if wait "$inner_pid"; then
-        echo "PASS" >"$tests_scripts_status_file"
-    else
-        ec=$?
-        if [ "$ec" -eq 124 ]; then
-            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s - treating as a real failure instead of hanging the job" >&2
+    # _run_with_retries' attempts without its memory gate: this tier is CPython, and a failing check whose own text names
+    # a marker, as test_summary_block.py's do, prints it in its traceback. Each attempt's timeout pid is the one the EXIT
+    # trap kills; the record is removed first, so the summary reads the last attempt's.
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        rm -f "$results_dir/tests_scripts.json"
+        attempt_start=$SECONDS
+        # --coverage runs this same tier under coverage.py over the host build chain, report-only: its data
+        # stays in results_dir for the render step at the end, and the test result is the tier's own.
+        if [ "$coverage" = "1" ]; then
+            # @tunable runner.kill_after_s = 10
+            PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run coverage run --data-file="$results_dir/host.coverage" "--source=buildgen,scripts,toolchain" -m pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
+        else
+            # @tunable runner.kill_after_s = 10
+            PYTHONPATH=scripts timeout --kill-after=10 "$tests_scripts_timeout_s" uv run pytest tests_scripts -q -p _pytest_run_record --run-record="$results_dir/tests_scripts.json" &
         fi
-        echo "FAIL" >"$tests_scripts_status_file"
-    fi
+        inner_pid=$!
+        echo "$inner_pid" >"$tests_scripts_inner_pidfile"
+        ec=0
+        wait "$inner_pid" || ec=$?
+        rm -f "$tests_scripts_inner_pidfile"
+        if [ "$ec" -eq 0 ]; then
+            if [ "$attempt" -eq 1 ]; then
+                echo "PASS" >"$tests_scripts_status_file"
+            else
+                echo "RETRIED-PASS $attempt/$max_attempts" >"$tests_scripts_status_file"
+            fi
+            exit 0
+        fi
+        # 124, or --kill-after's SIGKILL (137) past the bound, is a timeout, exactly as _run_with_retries reads it.
+        if [ "$ec" -ne 124 ] && { [ "$ec" -ne 137 ] || [ $((SECONDS - attempt_start)) -lt "$tests_scripts_timeout_s" ]; }; then
+            break
+        fi
+        if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s on attempt $attempt/$max_attempts - retrying in case of transient runner contention" >&2
+        else
+            echo "== tests_scripts/ exceeded ${tests_scripts_timeout_s}s on all $max_attempts attempts - treating as a real failure instead of hanging the job" >&2
+        fi
+    done
+    echo "FAIL" >"$tests_scripts_status_file"
 ) &
 tests_scripts_pid=$!
 
@@ -410,8 +432,6 @@ fi
 declare -A per_file_timeout_overrides_s=()
 # @tunable runner.scenarios_timeout_s = 2555
 per_file_timeout_overrides_s[scenarios]=2555
-# @tunable runner.per_file_attempts = 3
-max_attempts=3
 
 # SPECIFICATION.md Part I.4(e): zero MemoryErrors, caught-and-logged included - a caught
 # allocation failure is a design defect, not a passing result. The twin tier already asserts this
@@ -848,9 +868,10 @@ fi
 tests_scripts_record="$results_dir/tests_scripts.json"
 tests_scripts_result="$(cat "$tests_scripts_status_file" 2>/dev/null || true)"
 l0_reasons=()
-if [ "$tests_scripts_result" != "PASS" ]; then
-    l0_reasons+=("pytest exited nonzero or timed out")
-fi
+case "$tests_scripts_result" in
+    PASS | "RETRIED-PASS "*) ;;
+    *) l0_reasons+=("pytest exited nonzero or timed out") ;;
+esac
 # One helper start reads the record for every listing below (a uv start costs about 0.3 s of environment lookup),
 # each listing opened by a "<RS><name>" line; an unreadable record leaves them all empty, which is no verdict.
 l0_listings="$(uv run python - "$tests_scripts_record" 2>/dev/null <<'PYEOF'
@@ -889,16 +910,24 @@ fi
 while IFS=$'\t' read -r note_name note_text; do
     summary_note "$note_name" "$note_text"
 done < <(_l0_listing notes)
+# A pass that needed a retry is reported apart, as a retried file is: a root-cause item, never a plain PASS.
+l0_retried=0
 if [ "${#l0_reasons[@]}" -gt 0 ]; then
+    [[ "$tests_scripts_result" != "RETRIED-PASS "* ]] || l0_reasons+=("passed on attempt ${tests_scripts_result#RETRIED-PASS }")
     tests_scripts_result="FAIL"
     failed=1
     evidence_files+=("$tests_scripts_record")
     summary_add failed "tests_scripts/ (pytest)" "$(_join_reasons "${l0_reasons[@]}")"
+elif [ "$tests_scripts_result" != "PASS" ]; then
+    l0_retried=1
+    evidence_files+=("$tests_scripts_record")
+    summary_add retried "tests_scripts/ (pytest)" "${tests_scripts_result#RETRIED-PASS }"
+    echo "root-cause item: tests_scripts/ needed attempt ${tests_scripts_result#RETRIED-PASS } - record it as a root-cause item"
 fi
 summary_counts_line tests "$tests_passed" "$tests_failed" "$tests_skipped" "$tests_deselected" 0 0 0
 l2_scope="tests/test_digital_twin_*.py and the scenario harness"
 [ "$coverage" = "0" ] || l2_scope="tests/test_digital_twin_*.py only"
-summary_levels "L0 $([ "$tests_scripts_result" = "PASS" ] && printf 'PASS' || printf 'FAIL') · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
+summary_levels "L0 $(_level_verdict "$([ "$tests_scripts_result" = "FAIL" ] && printf 1 || printf 0)" "$l0_retried") · L1 $(_level_verdict "${level_failed[L1]}" "${level_retried[L1]}") · L2 $(_level_verdict "${level_failed[L2]}" "${level_retried[L2]}") ($l2_scope; run_digital_twin_ci.sh not run)"
 if [ "$coverage" = "1" ]; then
     summary_gc_stage "coverage run (settrace)"
 elif [ -n "${GC_THRESHOLD:-}" ]; then
@@ -936,7 +965,7 @@ fi
 if [ -n "${GITHUB_ACTIONS:-}" ]; then
     # GitHub keeps only 10 error annotations per step: the pytest tier's goes first, per-file ones
     # stop at 8, and a last one counts the rest, so nothing past the cap vanishes without a trace.
-    if [ "$tests_scripts_result" != "PASS" ]; then
+    if [ "$tests_scripts_result" = "FAIL" ]; then
         echo "::error title=tests_scripts/ (CPython/pytest)::the pytest tier failed - its own output is in this step's log, above the summary"
     fi
     annotations_left=8

@@ -1572,13 +1572,12 @@ sees it a moment later - an isolated repro (2026-09-08) showed this can persist 
 consecutive attempts, not just one. `_join_dut_hotspot_with_reverify_retry()`'s reverify window is
 30s/2s (widened from an original 15s/1s that let a `TimeoutError` escape uncaught, crashing the
 retry loop on attempt 1 instead of exhausting all attempts) and catches `TimeoutError` alongside
-`HardwareTestFailureError`. A repro with both fixes in place still occasionally exhausted 3 attempts once;
-tracing into `src/asy_wifi_service.py` found a plausible (not confirmed) explanation:
-`_configure_hotspot_ap()` re-runs `wlan.config()`+`wlan.active(True)` on every `_run_hotspot_mode()`
-loop iteration for as long as no client is connected (every `_WIFI_REFRESH_S`, 5s) - a real,
-code-confirmed periodic reconfiguration cadence that could plausibly cause a brief beacon gap
-(unconfirmed on real CYW43 firmware, out of scope for a bench-test stability fix). Widening
-`attempts` (not touching `src/` on an unconfirmed hypothesis) was the chosen response.
+`HardwareTestFailureError`. A repro with both fixes in place once exhausted 3 attempts; its cause is
+still open, and the next hardware round investigates it. The join keeps its five attempts
+(`l4.hotspot_role_reversal_join_attempts`) on that nmcli race, each retry a recovery note (owner,
+2026-10-20: 'The Hotspot remains untouched.'). An AP-reconfiguration theory recorded the same day was
+ruled out against the pinned source: an AP that is up reports `STAT_GOT_IP`, so `_run_hotspot_mode()`
+only manages its stations, and `_configure_hotspot_ap()` configures only an inactive AP.
 
 **The manual-test runner's duplicate-module-instance bug**: running `python3
 tests_hardware/manual/runner.py` directly makes Python load that file as the `__main__` module,

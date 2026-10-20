@@ -1,0 +1,133 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u29/laneT/vitest_proof/root
+
+stdout | tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+always attempt 1
+ ❯ |chromium| tests_js/zz_retry_proof.test.js (4 tests | 4 failed) 1290ms
+   × times out on its first run and passes on its second 489ms
+   × fails an assertion, never retried 70ms
+   ❯ a beforeEach hook (1)
+     × times out once, then passes 362ms
+   × times out on every run: three attempts, then failed 368ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > times out on its first run and passes on its second
+Error: Test timed out in 300ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/times-out-on-its-first-run-and-passes-on-its-second.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4317:14
+ ❯ tests_js/zz_retry_proof.test.js:6:1
+      4| const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, m…
+      5| let slow = 0;
+      6| test("times out on its first run and passes on its second", async () =…
+       | ^
+      7|     slow += 1;
+      8|     if (slow === 1) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > fails an assertion, never retried
+AssertionError: expected 1 to be 100 // Object.is equality
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/fails-an-assertion--never-retried.png
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 100[39m
+[31m+ 1[39m
+
+ ❯ tests_js/zz_retry_proof.test.js:15:19
+     13| test("fails an assertion, never retried", () => {
+     14|     wrong += 1;
+     15|     expect(wrong).toBe(100);
+       |                   ^
+     16| });
+     17| describe("a beforeEach hook", () => {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4108:35
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5211:26
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5700:20
+ ❯ runWithCancel node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5695:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5684:20
+ ❯ runWithTimeout node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5648:10
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:6216:64
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > a beforeEach hook > times out once, then passes
+Error: Hook timed out in 300ms.
+If this is a long-running hook, pass a timeout value as the last argument or configure it globally with "hookTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/a-beforeEach-hook---times-out-once--then-passes.png
+
+ ❯ beforeEach node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4428:42
+ ❯ tests_js/zz_retry_proof.test.js:19:5
+     17| describe("a beforeEach hook", () => {
+     18|     let hook = 0;
+     19|     beforeEach(async () => {
+       |     ^
+     20|         hook += 1;
+     21|         if (hook === 1) {
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5191:52
+ ❯ runWithSuite node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5640:8
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5191:22
+ ❯ Object.collect node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5196:51
+ ❯ node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5825:26
+ ❯ collectTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5798:3
+ ❯ startTests node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:6480:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  |chromium| tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed
+Error: Test timed out in 300ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+
+Failure screenshot:
+  - .vitest/attachments/failure-screenshots/zz_retry_proof.test.js/times-out-on-every-run--three-attempts--then-failed.png
+
+ ❯ task node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5109:43
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:5126:16
+ ❯ Object.<anonymous> node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4916:28
+ ❯ chain node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/deps/plugins.D2ut1V9b-DIoxtf9U.js?v=fac4a803:4317:14
+ ❯ tests_js/zz_retry_proof.test.js:30:1
+     28| });
+     29| let always = 0;
+     30| test("times out on every run: three attempts, then failed", async () =…
+       | ^
+     31|     always += 1;
+     32|     console.log(`always attempt ${always}`);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  05:41:33
+   Duration  2.58s (tests 87%, worker 12%, setup 1%)
+
+== Summary: npm test ==
+Commit: unknown
+Levels: L0
+Counts (tests): passed 0 · failed 4 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed:
+  - tests_js/zz_retry_proof.test.js > times out on its first run and passes on its second: Test timed out in 300ms.
+  - tests_js/zz_retry_proof.test.js > fails an assertion, never retried: expected 1 to be 100 // Object.is equality
+  - tests_js/zz_retry_proof.test.js > a beforeEach hook > times out once, then passes: Hook timed out in 300ms.
+  - tests_js/zz_retry_proof.test.js > times out on every run: three attempts, then failed: Test timed out in 300ms.
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: FAIL
+Exit code: 1

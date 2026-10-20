@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+# @tunable runner.port_lock_attempts = 10
 _ATTEMPTS = 10
 _PORT_MAX = 65535
 # A holder writes its pid right after its mkdir: a lock without one is waited for this long before it reads as dead.

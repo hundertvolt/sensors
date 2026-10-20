@@ -1,5 +1,5 @@
-// npm test's closing block (SPECIFICATION.md E.10) through its pure layout, tests_js/_summary_layout.js;
-// byte equality with the shell and Python emitters is tests_scripts/test_summary_block.py's.
+// npm test's closing block (SPECIFICATION.md E.10) through its pure layout, tests_js/_summary_layout.js, and the retry
+// whose passes it lists apart; byte equality with the shell and Python emitters is tests_scripts/test_summary_block.py's.
 import { describe, expect, test } from "vitest";
 import { createSummary, renderSummary, summaryExitCode } from "./_summary_layout.js";
 
@@ -79,5 +79,23 @@ describe("renderSummary", () => {
     test("refuses a kind the block does not know", () => {
         const summary = createSummary("npm test", "abc1234");
         expect(() => summary.add("flaky", "x")).toThrow(/unknown summary kind "flaky"/u);
+    });
+});
+
+// The retry this tier resolves from vitest.config.js, as a test receives it: two retries on vitest's own timeout message
+// for a test or a hook (the pinned vitest's makeTimeoutError()), never on another failure (SPECIFICATION.md E.3.1).
+describe("the JS tier's timeout retry", () => {
+    test("retries a timed-out test or hook twice and nothing else", ({ task }) => {
+        const { count, condition: resolved } = /** @type {{ count?: number, condition?: unknown }} */ (task.retry ?? {});
+        expect(count).toBe(2);
+        expect(resolved).toBeInstanceOf(RegExp);
+        const condition = /** @type {RegExp} */ (resolved);
+        const help = (/** @type {string} */ kind, /** @type {string} */ option) => `.\nIf this is a long-running ${kind}, pass a timeout value as the last argument or configure it globally with "${option}".`;
+        for (const message of [`Test timed out in 20000ms${help("test", "testTimeout")}`, `Hook timed out in 10000ms${help("hook", "hookTimeout")}`, `Test timed out in 5000ms while waiting for page.click${help("test", "testTimeout")}`]) {
+            expect(condition.test(message), message).toBe(true);
+        }
+        for (const message of ["expected 1 to be 2 // Object.is equality", "expected 'Test timed out in 5ms' to be 'x' // Object.is equality", "still booting when its test's 45000ms were up"]) {
+            expect(condition.test(message), message).toBe(false);
+        }
     });
 });

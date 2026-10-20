@@ -1,0 +1,6 @@
+group 0: 46 files rc=0 wall=116s heavy_at_start=2 3597 passed, 6 skipped, 1 warning in 113.11s (0:01:53)
+group 1: 46 files rc=0 wall=132s heavy_at_start=2 862 passed in 130.72s (0:02:10)
+group 2: 46 files rc=0 wall=115s heavy_at_start=2 848 passed in 111.31s (0:01:51)
+group 3: 46 files rc=1 wall=152s heavy_at_start=2 1 failed, 1061 passed in 151.46s (0:02:31)
+mem markers: 0 logs
+DONE

@@ -77,6 +77,7 @@ port_lock_take() {
         exit 2
     fi
     dir="$root/sensors-port-$port.lock"
+    # @tunable runner.port_lock_attempts = 10
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
         if mkdir "$dir" 2>/dev/null; then
             if { printf '%s\n' "$runner" >"$dir/runner" && printf '%s\n' "$$" >"$dir/pid"; } 2>/dev/null && [ "$(cat "$dir/pid" 2>/dev/null)" = "$$" ]; then
