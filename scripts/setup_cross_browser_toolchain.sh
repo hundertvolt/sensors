@@ -54,6 +54,14 @@ apt_update() {
     sudo apt-get "${APT_OPTIONS[@]}" update || echo "== apt-get update reported errors - continuing, the install below still gates"
 }
 
+# The version apt would install for package $1, or nothing: a renamed package's old name reads "Candidate: (none)".
+apt_candidate() {
+    local line
+    apt-cache policy "$1" 2>/dev/null | while read -r line; do
+        case "$line" in "Candidate: (none)") ;; "Candidate: "*) echo "${line#Candidate: }" ;; esac
+    done || true
+}
+
 # The one primary key a key file holds, or nothing: a file carrying any second key is refused with the rest.
 primary_fingerprint() {
     local listing kind value previous="" found=""
@@ -77,13 +85,22 @@ else
     echo "== Xvfb already installed, skipping"
 fi
 
-# --- WebKit: webkit2gtk-driver ---
+# --- WebKit: its WebDriver package, webkitgtk-webdriver since WebKitGTK 2.45.5 (Ubuntu 25.04 on), webkit2gtk-driver
+# before (Ubuntu 24.04); both ship /usr/bin/WebKitWebDriver, and the newer name wins where apt offers both ---
 if ! command -v WebKitWebDriver >/dev/null 2>&1; then
-    echo "== Installing webkit2gtk-driver"
     apt_update
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends webkit2gtk-driver
+    webkit_package=""
+    for name in webkitgtk-webdriver webkit2gtk-driver; do
+        if [ -n "$(apt_candidate "$name")" ]; then webkit_package=$name; break; fi
+    done
+    if [ -z "$webkit_package" ]; then
+        echo "error: apt offers neither webkitgtk-webdriver nor webkit2gtk-driver, the two packages WebKitWebDriver ships in" >&2
+        exit 1
+    fi
+    echo "== Installing $webkit_package"
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends "$webkit_package"
 else
-    echo "== webkit2gtk-driver already installed, skipping"
+    echo "== WebKitWebDriver already installed, skipping"
 fi
 
 # --- Microsoft Edge: Microsoft's own apt repo, its key checked by fingerprint before apt trusts it ---

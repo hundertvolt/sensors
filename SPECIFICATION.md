@@ -7999,9 +7999,13 @@ a free display itself and the run waits for the number it writes back (Part N
 pass for this run's own.
 
 **Why each engine comes from the channel it does** — none is the obvious one, and the script only
-points here. WebKitGTK: `webkit2gtk-driver` is a plain apt package shipping `/usr/bin/
-WebKitWebDriver`, a real W3C WebDriver server, so nothing else is needed, plus `xvfb`, which
-WebKitGTK and Firefox both need and the installer provisions on its own check. Edge: Microsoft's own
+points here. WebKitGTK: its driver package is a plain apt package shipping `/usr/bin/
+WebKitWebDriver`, a real W3C WebDriver server, so nothing else is needed. WebKitGTK 2.45.5 renamed
+it from `webkit2gtk-driver` (Ubuntu 24.04) to `webkitgtk-webdriver` (Ubuntu 25.04 on, so the 26.04
+`ubuntu-latest`), the new package declaring `Replaces: webkit2gtk-driver (<< 2.45.5~)`; the
+installer reads `apt-cache policy` and takes the name apt offers, the newer first (agent,
+2026-10-20). Plus `xvfb`, which WebKitGTK and Firefox both need and the installer provisions on its
+own check. Edge: Microsoft's own
 apt repo (`packages.microsoft.com`) ships a real Linux build, its signing key checked against the
 fingerprint Microsoft publishes for it (https://learn.microsoft.com/en-us/linux/packages) before the
 keyring is written, and Playwright drives it directly through

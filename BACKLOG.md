@@ -931,6 +931,12 @@ gates, traps).
     modules, reading a current `build/generated_src/` or generating in memory, and exits 2 on anything
     it cannot read (SPECIFICATION.md I.4(f.1)); `pyproject.toml`'s `src/asy_print_log.py` ruff entry
     gains `PLW0603`, lint config only; host Python only, no new dependency.
+  **2026-10-20, the cross-browser installer on Ubuntu 26.04, web tier only, no build impact**:
+  `scripts/setup_cross_browser_toolchain.sh` installs WebKitGTK's driver under the name apt offers,
+  `webkitgtk-webdriver` (WebKitGTK 2.45.5 on: Ubuntu 25.04 and later, Debian since the rename) or
+  `webkit2gtk-driver` (Ubuntu 24.04), read from `apt-cache policy`, the newer name first, and exits 1
+  naming both when apt offers neither; `ubuntu-latest` moved to 26.04, where the old name has no
+  installation candidate. A chroot run does not reach this script (CI's cross-browser job only).
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

@@ -32,7 +32,7 @@ def _real(tool: str) -> str:
     return found
 
 
-def _stub_tree(tmp_path: Path, *, update_rc: int = 0, install_rc: int = 0, present: "tuple[str, ...]" = ("microsoft-edge-stable", "firefox"), key_fingerprints: "tuple[str, ...]" = (), http_error: bool = False) -> "tuple[Path, Path]":
+def _stub_tree(tmp_path: Path, *, update_rc: int = 0, install_rc: int = 0, present: "tuple[str, ...]" = ("microsoft-edge-stable", "firefox"), key_fingerprints: "tuple[str, ...]" = (), http_error: bool = False, offered: "tuple[str, ...]" = ("webkitgtk-webdriver",)) -> "tuple[Path, Path]":
     # A PATH holding only the stubs and the real tools the script runs: a host's own WebKitWebDriver, Xvfb or Edge can
     # never skip a block and pass a test for the wrong reason, and nothing touches real system state (tee writes here).
     stub_bin = tmp_path / "bin"
@@ -48,6 +48,15 @@ def _stub_tree(tmp_path: Path, *, update_rc: int = 0, install_rc: int = 0, prese
         f'echo "apt-get $*" >> {log}\n'
         f'if [[ " $* " == *" update "* ]]; then echo "E: Failed to fetch a PPA" >&2; exit {update_rc}; fi\n'
         f"exit {install_rc}\n"
+    ))
+    # apt-cache policy: a candidate version for each offered package, "(none)" for any other name, as apt prints for a
+    # name another package still refers to (Ubuntu 26.04's webkit2gtk-driver).
+    _write_stub(stub_bin / "apt-cache", (
+        "#!/bin/bash\n"
+        f'echo "apt-cache $*" >> {log}\n'
+        'pkg="${*: -1}"\n'
+        f'case " {" ".join(offered)} " in *" $pkg "*) candidate=2.52.6 ;; *) candidate="(none)" ;; esac\n'
+        'printf "%s:\\n  Installed: (none)\\n  Candidate: %s\\n" "$pkg" "$candidate"\n'
     ))
     (tmp_path / "tee").mkdir()
     _write_stub(stub_bin / "tee", f'#!/bin/bash\necho "tee $*" >> {log}\n{_real("cat")} > "{tmp_path}/tee/${{1##*/}}"\n')
@@ -125,7 +134,7 @@ def test_an_unrelated_apt_source_that_fails_update_does_not_stop_the_install(scr
     stub_bin, log = _stub_tree(tmp_path, update_rc=100)
     result = _run(script, tmp_path, stub_bin)
     assert result.returncode == 0, f"the installer aborted on a failed apt-get update: {result.stdout}{result.stderr}"
-    assert any("webkit2gtk-driver" in call for call in _calls(log, "apt-get")), "apt-get install never ran, so the update failure still stopped it"
+    assert any(call.endswith(" install -y --no-install-recommends webkitgtk-webdriver") for call in _calls(log, "apt-get")), "apt-get install never ran, so the update failure still stopped it"
 
 
 def test_removing_the_tolerance_is_what_brings_the_abort_back(script: Path, tmp_path: Path) -> None:
@@ -179,11 +188,25 @@ def test_webkit_present_without_xvfb_installs_only_xvfb(script: Path, tmp_path: 
     assert len(installs) == 1 and installs[0].endswith(" xvfb"), installs
 
 
-def test_xvfb_present_without_webkit_installs_only_the_driver(script: Path, tmp_path: Path) -> None:
-    stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "Xvfb"))
+# WebKitGTK 2.45.5 renamed the driver package; both names ship /usr/bin/WebKitWebDriver, and the newer is taken first.
+@pytest.mark.parametrize(("offered", "installed"), [
+    (("webkitgtk-webdriver",), "webkitgtk-webdriver"),  # Ubuntu 25.04 on, the CI runner's 26.04
+    (("webkit2gtk-driver",), "webkit2gtk-driver"),  # Ubuntu 24.04
+    (("webkitgtk-webdriver", "webkit2gtk-driver"), "webkitgtk-webdriver"),
+])
+def test_xvfb_present_without_webkit_installs_only_the_driver_apt_offers(script: Path, tmp_path: Path, offered: "tuple[str, ...]", installed: str) -> None:
+    stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "Xvfb"), offered=offered)
     assert _run(script, tmp_path, stub_bin).returncode == 0
     installs = [call for call in _calls(log, "apt-get") if " install " in call]
-    assert len(installs) == 1 and installs[0].endswith(" webkit2gtk-driver"), installs
+    assert len(installs) == 1 and installs[0].endswith(f" {installed}"), installs
+
+
+def test_a_driver_apt_offers_under_neither_name_exits_1_naming_both_and_installs_nothing(script: Path, tmp_path: Path) -> None:
+    stub_bin, log = _stub_tree(tmp_path, present=("microsoft-edge-stable", "firefox", "Xvfb"), offered=())
+    result = _run(script, tmp_path, stub_bin)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "webkitgtk-webdriver" in result.stderr and "webkit2gtk-driver" in result.stderr, result.stderr
+    assert not [call for call in _calls(log, "apt-get") if " install " in call]
 
 
 def test_a_key_with_another_fingerprint_exits_1_and_writes_no_keyring(script: Path, tmp_path: Path) -> None:
