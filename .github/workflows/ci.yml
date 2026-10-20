@@ -1,5 +1,6 @@
 # CI: every lint, type, test and build check as its own job; web jobs gate on web-changes, the per-device jobs read
-# devices. Why each job is shaped as it is: SPECIFICATION.md B.10.1.
+# devices; every job runs on ubuntu-24.04, never a floating label. Why each job is shaped as it is:
+# SPECIFICATION.md B.10.1.
 name: CI
 
 # Two triggers on purpose, and `push` is the load-bearing one: a PR conflicted with its base has no
@@ -27,7 +28,7 @@ jobs:
     permissions:
       contents: read
       actions: read  # reads this workflow's run list to find the base below; nothing else
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_changes_timeout_min = 5
     timeout-minutes: 5
     outputs:
@@ -89,7 +90,7 @@ jobs:
     # named here (CLAUDE.md).
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.devices_timeout_min = 5
     timeout-minutes: 5
     outputs:
@@ -118,7 +119,7 @@ jobs:
     if: needs.web-changes.outputs.web == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_lint_and_typecheck_timeout_min = 5
     timeout-minutes: 5
     steps:
@@ -159,7 +160,7 @@ jobs:
     if: ${{ !cancelled() && needs.web-changes.outputs.web == 'true' }}
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_unit_tests_timeout_min = 20
     timeout-minutes: 20
     steps:
@@ -218,7 +219,7 @@ jobs:
     if: needs.web-changes.outputs.web == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_put_matrix_timeout_min = 15
     timeout-minutes: 15
     strategy:
@@ -275,7 +276,7 @@ jobs:
     if: needs.web-changes.outputs.web == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_coverage_timeout_min = 20
     timeout-minutes: 20
     steps:
@@ -359,7 +360,7 @@ jobs:
     if: needs.web-changes.outputs.web == 'true'
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.web_cross_browser_smoke_timeout_min = 15
     timeout-minutes: 15
     steps:
@@ -424,7 +425,7 @@ jobs:
     # [tool.mypy]'s files as a local run does, and it always runs the twin and host passes too (B.15).
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.lint_and_typecheck_timeout_min = 5
     timeout-minutes: 5
     steps:
@@ -444,7 +445,7 @@ jobs:
     # scope (CLAUDE.md).
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.shellcheck_timeout_min = 5
     timeout-minutes: 5
     steps:
@@ -461,7 +462,7 @@ jobs:
     # shellcheck-py is on PATH here too (both come from the same `uv sync`).
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.actionlint_timeout_min = 5
     timeout-minutes: 5
     steps:
@@ -477,7 +478,7 @@ jobs:
     # two API audits, so it behaves the same everywhere; policy in .github/zizmor.yml.
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.zizmor_timeout_min = 5
     timeout-minutes: 5
     steps:
@@ -500,7 +501,7 @@ jobs:
     if: ${{ !cancelled() }}
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.unit_tests_timeout_min = 175
     timeout-minutes: 175
     steps:
@@ -526,7 +527,7 @@ jobs:
     if: ${{ !cancelled() }}
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.unit_tests_gc_threshold_timeout_min = 175
     timeout-minutes: 175
     steps:
@@ -554,7 +555,7 @@ jobs:
     needs: unit-tests
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.unit_tests_coverage_timeout_min = 95
     timeout-minutes: 95
     steps:
@@ -641,7 +642,7 @@ jobs:
     needs: [unit-tests, devices]
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.digital_twin_e2e_timeout_min = 20
     timeout-minutes: 20
     strategy:
@@ -681,7 +682,7 @@ jobs:
     if: ${{ !cancelled() && needs.devices.result == 'success' }}
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # @tunable ci.firmware_build_verify_timeout_min = 20
     timeout-minutes: 20
     strategy:

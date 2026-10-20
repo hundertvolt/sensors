@@ -935,8 +935,10 @@ gates, traps).
   `scripts/setup_cross_browser_toolchain.sh` installs WebKitGTK's driver under the name apt offers,
   `webkitgtk-webdriver` (WebKitGTK 2.45.5 on: Ubuntu 25.04 and later, Debian since the rename) or
   `webkit2gtk-driver` (Ubuntu 24.04), read from `apt-cache policy`, the newer name first, and exits 1
-  naming both when apt offers neither; `ubuntu-latest` moved to 26.04, where the old name has no
-  installation candidate. A chroot run does not reach this script (CI's cross-browser job only).
+  naming both when apt offers neither (`ubuntu-latest` moved to 26.04, where the old name has no
+  installation candidate); and every CI job now runs on `ubuntu-24.04`, the docs' target OS (the
+  deferred Ubuntu 26.04 entry). A chroot run does not reach this script (CI's cross-browser job
+  only).
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -1181,6 +1183,21 @@ gates, traps).
   the stall stays. The `modlwip_eagain` build override (SPECIFICATION.md B.14.4) stays until the pin
   carries a real fix; the override's anchor check fails the build when upstream changes the loop
   (owner, 2026-09-30).
+- **Moving CI (and a dev box) to Ubuntu 26.04 is its own step** (agent, 2026-10-20): CI is pinned to
+  `ubuntu-24.04` (SPECIFICATION.md B.10.1) since `ubuntu-latest` became 26.04 and broke runs from
+  outside the tree. Found on run `39512651550` and reproduced here with 26.04's own
+  `rust-coreutils` 0.10.0 (`timeout`, checked from the signed archive index): (1) a background job
+  (`cmd &`, no job control) starts with SIGINT and SIGQUIT ignored; GNU `timeout`'s handler undoes
+  that at exec, uutils' does not, so `scripts/test.sh`'s pytest tier and per-file jobs pass an
+  ignored SIGINT to everything they start (8 `tests_scripts` reds: the SIGINT diagnostic, the port
+  lock, the installer's signal test, three of `test_test_sh.py`'s timeout tests); `(trap - INT QUIT
+  && exec timeout ...) &` restores it (verified: 5 of the 8 pass with it); (2) uutils `timeout
+  --kill-after=N` sends SIGKILL to its child about 1 ms after the first signal instead of N s
+  later (strace: `kill(child, SIGINT)`, `kill(0, SIGINT)`, then `kill(child, SIGKILL)`, exit 137),
+  and only to the child, so a command that ignores the interrupt outlives its wrapper, holds the
+  job's pipe and hangs the run: the per-file interrupt-then-hard-stop needs its own escalation, or
+  GNU's `timeout` named explicitly. Also new there: Python 3.14 as the system Python, GCC and glibc
+  2.43 (the Unix-port and firmware caches rebuild), and the CI budgets' measured basis.
 
 ## Owner questions
 
