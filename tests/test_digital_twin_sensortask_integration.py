@@ -30,10 +30,10 @@ import microtest  # noqa: E402 - imported after the prewarm and the UDP shim (C4
 import network  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _async_harness import cancel, release_finished, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _async_harness import cancel, release_finished, run  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _src_const import src_const, src_float, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -73,27 +73,19 @@ if TYPE_CHECKING:
 
     T = TypeVar("T")
 
+# Each wait counts its polls or loop yields, so no scenario carries a wall-clock bound a slow host would trip (agent,
+# 2026-10-20); a hang is the per-file timeout's (scripts/test.sh), whose abort line names the test.
 # @tunable l2.sensortask_integration_wait_poll_s = 0.25
 _WAIT_POLL_S = 0.25
-# @tunable l2.sensortask_integration_run_bound_s = 10.0
-_RUN_BOUND_S = 10.0
-# @tunable l2.sensortask_integration_long_run_bound_s = 15.0
-_LONG_RUN_BOUND_S = 15.0
 # @tunable l2.sensortask_integration_wait_timeout_s = 5.0
 _WAIT_TIMEOUT_S = 5.0
 # @tunable l2.sensortask_integration_restart_wait_timeout_s = 6.0
 _RESTART_WAIT_TIMEOUT_S = 6.0
-# @tunable l2.sensortask_integration_supervisor_run_bound_s = 20.0
-_SUPERVISOR_RUN_BOUND_S = 20.0
 # Five real failure cycles at the WiFi loop's 5 s period, then the hotspot's own settles.
 # @tunable l2.sensortask_integration_hotspot_wait_timeout_s = 40.0
 _HOTSPOT_WAIT_TIMEOUT_S = 40.0
 # @tunable l2.sensortask_integration_bind_poll_s = 0.01
 _BIND_POLL_S = 0.01
-# @tunable l2.sensortask_integration_hotspot_run_bound_s = 60.0
-_HOTSPOT_RUN_BOUND_S = 60.0
-# @tunable l2.sensortask_integration_reboot_run_bound_s = 30.0
-_REBOOT_RUN_BOUND_S = 30.0
 # @tunable l2.sensortask_integration_window_wait_s = 10.0
 _WINDOW_WAIT_S = 10.0
 # @tunable l2.wdt_overrun_wait_s = 9.0
@@ -111,6 +103,10 @@ _PASS_YIELD_BOUND = 20000  # loop yields allowed for one wait below; a pass cost
 # The collected heap across the deaths, in-loop with every real task live: measured within 64 B at both GC stages,
 # while keeping each dead task and its exception measured 2.4 KB over the nine after the baseline (2026-10-14).
 _HEAP_DRIFT_BYTES = 2048
+# Per death between the least of three settled readings and the least of the last three: 0 B on every device at both
+# stages, 72 B with a planted 16-byte bytearray per death (agent, 2026-10-20); the bound leaves two GC blocks of slack.
+_DRIFT_SLOPE_BYTES = 32
+_SETTLED_DEATH = 3  # the readings before it still settle: the second and third hold up to 0.8 KB the fourth does not
 # @tunable l2.sensortask_integration_heap_floor_reads = 3
 _FLOOR_READS = 3
 # A seeded SCD30 reading: the compensation the SGP40 reads before it measures.
@@ -153,14 +149,15 @@ async def _backup_now(sgp: "SGP40_Reader") -> None:
 
 async def _boot(port: int, cfg_path: "str | None" = None) -> "machine.WDT":
     # A new board on the device's plan, then the generated main()'s first steps: build_system() with the watchdog the
-    # boot entry arms (offline NTP config first), the runner's UART pollers, the setup list. Returns that watchdog.
+    # boot entry arms (the offline NTP config and ERROR_LEVEL first), the runner's UART pollers, the setup list.
     machine.reset_peripherals()
     network.reset_interfaces()
     machine.configure_wiring(plan)
     cfg = cfg_path if cfg_path is not None else _scratch.dir()
     write_offline_ntp_config(cfg)
+    write_error_level_config(cfg)
     watchdog = boot_entry_watchdog(module, device)
-    await module.build_system(watchdog=watchdog, cfg_path=cfg, web_host="127.0.0.1", web_port=port)
+    await module.build_system(watchdog=watchdog, cfg_path=cfg, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port)
     runner_plan: _Plan = cast("_Plan", plan)
     link = run_generic_integration._wire_uart_crossover(module, runner_plan)  # before the setups (CLAUDE.md "Known hang cause")
     _links[:] = [] if link is None else [link]
@@ -407,7 +404,7 @@ def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> No
         log = await sgp.get_error_counter()
         assert log["SGP40"]["ErrCount"] == 0, f"expected startup jitter must not log any E/W entry ({log!r})"
 
-    run_timed(scenario(), timeout_s=_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> None:
@@ -431,7 +428,7 @@ def test_watchdog_is_never_starved_while_every_real_task_runs_concurrently() -> 
             if module.conn._dns_server_task is not None:  # started inside the WiFi service, never by this test
                 await cancel(module.conn._dns_server_task)
 
-    run_timed(scenario(), timeout_s=_LONG_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_the_supervisor_restarts_a_real_dead_task() -> None:
@@ -474,9 +471,8 @@ def test_the_supervisor_restarts_a_real_dead_task() -> None:
                         await cancel(task)
             if module.conn._dns_server_task is not None:  # started inside the WiFi service, never by the supervisor
                 await cancel(module.conn._dns_server_task)
-            gc.collect()  # the full task list ran twice for the restarted one, on this file's shared heap
 
-    run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_level_0() -> None:
@@ -545,14 +541,15 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
                     await cancel(task)
             if module.conn._dns_server_task is not None:
                 await cancel(module.conn._dns_server_task)
-            gc.collect()  # same reason as the restart test above: the full task list ran
 
-    run_timed(scenario(), timeout_s=_SUPERVISOR_RUN_BOUND_S)
+    run(scenario())
     assert (tap.reported, tap.traced, tap.wrong) == (_STATUS_DEATHS, _STATUS_DEATHS, []), (tap.reported, tap.traced, tap.wrong)
     assert machine.reset_count == resets  # the restart budget never escalated to a reset
     # The first reading still holds 0.9 KB the second no longer does (measured at both GC stages, 2026-10-14): the
     # baseline is the reading after it.
     assert max(drift[1:]) - drift[1] <= _HEAP_DRIFT_BYTES, drift
+    slope = (min(drift[-3:]) - min(drift[_SETTLED_DEATH : _SETTLED_DEATH + 3])) / (_STATUS_DEATHS - 3 - _SETTLED_DEATH)
+    assert slope < _DRIFT_SLOPE_BYTES, f"{slope:.0f} B retained per supervised death: {drift}"
 
 
 def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick() -> None:
@@ -584,7 +581,7 @@ def test_a_failing_wlan_status_keeps_the_link_and_warns_once_per_unreadable_tick
             if conn._dns_server_task is not None:
                 await cancel(conn._dns_server_task)
 
-    run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> None:
@@ -629,7 +626,7 @@ def test_two_failed_joins_re_select_the_radio_once_and_the_link_comes_back() -> 
             del station.deinit
             asy_wifi_service.asyncio = asyncio  # type: ignore[attr-defined]
 
-    run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> None:
@@ -647,7 +644,7 @@ def test_hotspot_fallback_drives_the_status_led_and_binds_the_dns_server() -> No
         finally:
             await _stop_hotspot(conn, tasks)
 
-    run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
@@ -674,7 +671,7 @@ def test_the_captive_dns_listener_idles_at_its_idle_rate() -> None:
         print(f"MEASURE udp.idle_wakeups_per_s={woke * 1000 / elapsed_ms:.2f}")
         assert expected - 1 <= woke <= expected + 1, f"{woke} listener wake-ups in {elapsed_ms} ms, not {expected} +-1 at {_POLL_IDLE_MS} ms"
 
-    run_timed(scenario(), timeout_s=_HOTSPOT_RUN_BOUND_S)
+    run(scenario())
 
 
 async def _stop_hotspot(conn: "WifiService", tasks: "list[asyncio.Task[None]]") -> None:
@@ -727,9 +724,8 @@ def test_sgp40_voc_backup_survives_a_simulated_reboot_through_the_real_fram_chun
         assert module.sgp40 is not sgp1  # a fresh object: the persisted bytes, not Python state, carry the backup
         await _seed_compensation()
         await _restore(module.sgp40, "after the simulated reboot")
-        gc.collect()  # this test builds the whole real object graph twice in one run
 
-    run_timed(scenario(), timeout_s=_REBOOT_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanly_to_the_last_flushed_state() -> None:
@@ -762,9 +758,8 @@ def test_sgp40_voc_backup_unflushed_write_is_lost_but_the_system_recovers_cleanl
         assert module.sgp40 is not sgp1
         await _seed_compensation()
         await _restore(module.sgp40, "after the simulated crash-reboot")
-        gc.collect()  # this test builds the whole real object graph twice in one run
 
-    run_timed(scenario(), timeout_s=_REBOOT_RUN_BOUND_S)
+    run(scenario())
 
 
 def test_a_restored_backup_reports_its_timestamp_without_ntp() -> None:
@@ -792,9 +787,8 @@ def test_a_restored_backup_reports_its_timestamp_without_ntp() -> None:
         await _restore(module.sgp40, "without NTP")
         status = await module._sgp_maintenance_status_sgp40()
         assert status["RestoreTS"] == written, f"RestoreTS {status['RestoreTS']} is not the backup's own {written}"
-        gc.collect()  # this test builds the whole real object graph twice in one run
 
-    run_timed(scenario(), timeout_s=_REBOOT_RUN_BOUND_S)
+    run(scenario())
 
 
 async def _yield_until(predicate: "Callable[[], bool]") -> bool:
@@ -866,7 +860,7 @@ def test_the_notification_window_spanning_midnight_flashes_red() -> None:
                 await cancel(task)
             asy_base_classes.set_utc_valid(valid=False)
 
-    run_timed(scenario(), timeout_s=3 * _WINDOW_WAIT_S)
+    run(scenario())
 
 
 async def _yield_until_above(read: "Callable[[], int]", floor: int) -> bool:

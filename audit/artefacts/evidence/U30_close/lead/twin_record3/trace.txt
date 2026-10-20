@@ -1,0 +1,37 @@
+changed src modules since the last record (7ab7dd2): asy_base_classes asy_dns_client asy_fram_driver asy_notification_service asy_print_log asy_system_service asy_webserver_service
+API tests_hardware/device_scripts/allocation_need_per_source.py imports changed: asy_system_service,asy_webserver_service
+API tests_hardware/device_scripts/fram_cs_hijack_fault_injection_and_recovery.py imports changed: asy_fram_driver,asy_print_log
+API tests_hardware/device_scripts/fram_error_log_reset_during_boot_window.py imports changed: asy_print_log
+API tests_hardware/device_scripts/fram_error_log_reset_race_seed_and_race.py imports changed: asy_print_log
+API tests_hardware/device_scripts/fram_error_log_reset_race_verify.py imports changed: asy_print_log
+API tests_hardware/device_scripts/fram_error_log_roundtrip.py imports changed: asy_print_log
+API tests_hardware/device_scripts/fram_pause_unpause_and_gating.py imports changed: asy_system_service
+API tests_hardware/device_scripts/fram_raw_dump.py imports changed: asy_fram_driver,asy_print_log
+API tests_hardware/device_scripts/fram_reset_race_during_write_seed_and_race.py imports changed: asy_fram_driver,asy_print_log
+API tests_hardware/device_scripts/fram_reset_race_during_write_verify_recovery.py imports changed: asy_fram_driver,asy_print_log
+API tests_hardware/device_scripts/fram_same_device_rw_concurrency.py imports changed: asy_fram_driver,asy_print_log
+API tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py imports changed: asy_print_log,asy_system_service
+API tests_hardware/device_scripts/heap_under_connection_ceiling.py imports changed: asy_print_log
+API tests_hardware/device_scripts/isl29125_lighting_scenarios.py imports changed: asy_print_log
+API tests_hardware/device_scripts/isl29125_mechanism_envelope.py imports changed: asy_base_classes,asy_print_log
+API tests_hardware/device_scripts/loop_lag_under_combined_load.py imports changed: asy_print_log
+API tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py imports changed: asy_system_service
+API tests_hardware/device_scripts/reset_code_boot_phase_hang.py imports changed: asy_print_log
+API tests_hardware/device_scripts/reset_code_command_incomplete.py imports changed: asy_fram_driver
+API tests_hardware/device_scripts/reset_code_invalid_record.py imports changed: asy_system_service
+API tests_hardware/device_scripts/reset_code_stack_exhausted.py imports changed: asy_system_service
+API tests_hardware/device_scripts/serving_at_default_gc.py imports changed: asy_print_log,asy_webserver_service
+API tests_hardware/device_scripts/sgp40_fram_backup_restore.py imports changed: asy_base_classes,asy_print_log
+API tests_hardware/device_scripts/sgp40_sample_cadence.py imports changed: asy_system_service
+API tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py imports changed: asy_base_classes
+API tests_hardware/device_scripts/system_command_fram_erase.py imports changed: asy_system_service,asy_webserver_service
+API tests_hardware/device_scripts/system_command_reboot.py imports changed: asy_system_service
+API tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py imports changed: asy_print_log,asy_system_service
+API tests_hardware/device_scripts/uart_comm_hazards.py imports changed: asy_print_log
+API tests_hardware/device_scripts/uart_crossover_exchange.py imports changed: asy_base_classes,asy_print_log
+API tests_hardware/device_scripts/uart_crossover_recovery.py imports changed: asy_print_log
+API tests_hardware/device_scripts/uart_driver_read_never_blocks_the_loop.py imports changed: asy_print_log
+API tests_hardware/device_scripts/uart_link_echo_under_serving_load.py imports changed: asy_print_log,asy_system_service
+API tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py imports changed: asy_base_classes,asy_print_log
+API tests_hardware/device_scripts/unretrieved_task_exception_handler.py imports changed: asy_system_service
+121 entries, 121 before; result and reason unchanged 121; api moved 35: traced 35, untraced 0; other hash changes 0

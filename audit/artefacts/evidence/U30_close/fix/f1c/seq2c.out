@@ -1,0 +1,2 @@
+bite.hazard_arm_last_window_only rc=1 1.66s mem=0 0/1 passed, 1 failed, 0 skipped
+bite.hazard_wall_clock_clean_checks rc=1 4.95s mem=0 0/2 passed, 2 failed, 0 skipped

@@ -174,6 +174,95 @@ _cleanup() {
 }
 trap _cleanup EXIT
 
+# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
+# the intern check, the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
+devices_text="$(derived_devices)"
+mapfile -t devices <<<"$devices_text"
+site_device="${devices[0]}"
+unit_micropypath="$(micropypath unit)"
+# --coverage's data directory, made here for the intern check: the one EXIT trap above removes it, as it does results_dir
+# (bash replaces an EXIT handler rather than stacking, so every cleanup has to live in that one trap).
+if [ "$coverage" = "1" ]; then
+    raw_dir="$(mktemp -d)"
+fi
+
+# Past this many bytes the Unix port cannot intern a string as a qstr: scripts/_twin_process.py's _QSTR_MAX_BYTES, read
+# against the interpreter there and pinned to this copy by tests_scripts/test_test_sh.py.
+qstr_max_bytes=255
+# _uninternable: each string run_test_file's launches hand the interpreter to intern before a file starts and that it
+# cannot, "<what> <string> (<bytes> bytes)" per line, once each: the script's real directory, every MICROPYPATH entry but
+# a ~/ one it builds from $HOME, every argument from the script on (ports/unix/main.c:412, :560, :688).
+_uninternable() {
+    local LC_ALL=C file tag device value i files=() scripts=() resolved=() entries=() strings=()
+    local -A per_device=() seen=()
+    for file in tests/test_*.py tests/lwip_host/test_*.py; do
+        if [ -f "$file" ] && { [ "$coverage" = "0" ] || [[ "$file" != tests/lwip_host/* ]]; }; then
+            files+=("$file")
+        fi
+    done
+    if [ "$coverage" = "1" ]; then
+        scripts=(tests/_coverage_runner.py)
+    elif [ -n "${GC_THRESHOLD:-}" ]; then
+        scripts=(tests/_threshold_runner.py)
+    else
+        scripts=("${files[@]}")
+    fi
+    if [ "${#scripts[@]}" -gt 0 ]; then
+        mapfile -t resolved < <(realpath -m -- "${scripts[@]}")
+    fi
+    for value in "${resolved[@]}"; do
+        strings+=("the script's directory" "${value%/*}")
+    done
+    IFS=: read -ra entries <<<"$unit_micropypath"
+    for i in "${!entries[@]}"; do
+        if [[ "${entries[i]}" != \~/* || -z "${HOME+set}" ]]; then
+            strings+=("MICROPYPATH entry $((i + 1))" "${entries[i]}")
+        fi
+    done
+    # The PER_DEVICE files, whose --coverage data files carry the device; an unreadable one stops the job list, before any job.
+    if [ "$coverage" = "1" ] && [ "${#files[@]}" -gt 0 ]; then
+        while IFS= read -r file; do
+            per_device[$file]=1
+        done < <(grep -lx 'PER_DEVICE = True' -- "${files[@]}" 2>/dev/null || true)
+    fi
+    for file in "${files[@]}"; do
+        if [ "$coverage" = "1" ]; then
+            tag="${file##*/}"
+            tag="${tag%.py}"
+            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file")
+            if [ -n "${per_device[$file]:-}" ]; then
+                for device in "${devices[@]}"; do
+                    strings+=("argument 2" "$raw_dir/${tag}[$device].json")
+                done
+            else
+                strings+=("argument 2" "$raw_dir/$tag.json")
+            fi
+        elif [ -n "${GC_THRESHOLD:-}" ]; then
+            strings+=("argument 0" "${scripts[0]}" "argument 1" "$file" "argument 2" "$GC_THRESHOLD")
+        else
+            strings+=("argument 0" "$file")
+        fi
+    done
+    for ((i = 0; i < ${#strings[@]}; i += 2)); do
+        value="${strings[i + 1]}"
+        if [ "${#value}" -gt "$qstr_max_bytes" ] && [ -z "${seen[$value]:-}" ]; then
+            seen[$value]=1
+            printf '%s %s (%s bytes)\n' "${strings[i]}" "$value" "${#value}"
+        fi
+    done
+}
+# Refused once, before the lock, a sweep or a build: each such string kills every file at start ("FATAL: uncaught NLR",
+# exit 1), which reads as a broken suite. The first five are named, the rest counted.
+uninternable="$(_uninternable)"
+if [ -n "$uninternable" ]; then
+    mapfile -t refused <<<"$uninternable"
+    shown="$(printf '%s, ' "${refused[@]:0:5}")"
+    shown="${shown%, }"
+    [ "${#refused[@]}" -le 5 ] || shown+=", +$((${#refused[@]} - 5)) more"
+    echo "error: no test file was started: $shown - the Unix port interns each as a qstr of at most $qstr_max_bytes bytes and dies before a file starts" >&2
+    exit 2
+fi
+
 # Port 53 is the product's, bound by the twin tests: one suite holds it at a time and a second exits 1
 # here, before anything is swept or built (CLAUDE.md); the EXIT trap above releases it.
 port_lock_take 53 scripts/test.sh
@@ -207,7 +296,6 @@ else
     micropython_bin="$(unix_port_bin standard)"
     lwip_bin="$(unix_port_bin lwip)"
 fi
-unit_micropypath="$(micropypath unit)"
 
 # TEST_PARALLELISM: how many test_*.py files run at once. Each file is its own Unix-port process
 # with its own heap and its own fake-hardware state, so concurrency changes wall clock only - as
@@ -302,12 +390,6 @@ if ! [ "$max_parallel" -ge 1 ] 2>/dev/null; then
     echo "== TEST_PARALLELISM=${TEST_PARALLELISM:-} is not a positive integer - falling back to 1 (sequential)" >&2
     max_parallel=1
 fi
-
-# The derived devices (scripts/_devices.sh), read once, before the tests_scripts/ tier can plant its zz_test_ fixtures:
-# the PER_DEVICE jobs, the scenario harness jobs and the site build all take this one list.
-devices_text="$(derived_devices)"
-mapfile -t devices <<<"$devices_text"
-site_device="${devices[0]}"
 
 # Generated fresh into build/generated_src/ (SPECIFICATION.md L.2), which the unit MICROPYPATH puts first.
 # It runs before tests_scripts/ is backgrounded: that tier creates and deletes zz_test_ device fixtures, and the
@@ -415,12 +497,6 @@ _build_sites
 
 # tests_scripts/ was backgrounded after the generation step above; RUN_SLOW_FIRMWARE_BUILD stays unset for it,
 # keeping the one real ARM firmware compile opt-in for local iteration; ci.yml's firmware-build-verify job sets it.
-
-if [ "$coverage" = "1" ]; then
-    raw_dir="$(mktemp -d)"
-fi
-# Both dirs are cleaned by the one EXIT trap armed before the port lock - bash replaces an EXIT handler
-# rather than stacking, so every cleanup has to live in that one trap.
 
 # Per-file timeout with two retries, plus stdbuf line buffering and -X heapsize=16M below. All
 # three are standing backstops rather than fixes for any specific hang, and the heap value is a

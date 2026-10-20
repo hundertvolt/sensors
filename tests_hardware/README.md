@@ -781,6 +781,19 @@ the normal way (a reset is handled as well, SPECIFICATION.md Part H.7.1).
 - **Both instruments that wait for a device script's own server** first let main.py's go quiet
   (`harness.wait_for_script_server()`), so main.py can never answer the readiness probe.
 
+**The C-stack budget** (`flash/test_memory_stress.py::test_c_stack_peak_is_within_half_the_limit`,
+`device_scripts/c_stack_budget.py`, L3, ungated) boots the bench device's generated system over the
+scratch config directory `hwtest-scratch/`, wraps every I2C bus leaf and the FRAM driver's two sync
+leaves from outside to record `micropython.stack_use()`, runs the started tasks and timers for a fed
+10 s window (`l3.c_stack_budget_window_ms`), then dispatches one `GET /status` in-process through the
+app's own `dispatch_request()`: the top of the longest static await chain
+`tests_scripts/test_await_depth.py` pins (SPECIFICATION.md Part F.1), which must answer 200, since
+Microdot answers a raising handler with a 500. The host holds the peak to half
+the 7,936 B limit; the twin's figure (`twin_c_stack_peak`) is reported, never compared. No flash
+cycle and no production config file: each setup writes its defaults once into the scratch
+directory, removed afterwards; the booted modules' logs go into FRAM, which the session start saved
+first.
+
 ## Chip conformance probes
 
 Every bus chip - the ISL29125, SCD30, SGP40, BMP3xx and FRAM - has a probe script that talks raw
@@ -814,12 +827,13 @@ raw flags each reset kind leaves.
 | 2 | `bench/test_reset_reasons.py::test_a_harness_hard_reset_reads_as_watchdog_without_a_record` | L4 | not yet run |
 | 3 | `bench/test_end_to_end_timing.py::test_real_reboot_sequencing_via_rest_completes_cleanly`; `flash/test_system_commands.py::test_a_reboot_with_storage_paused_still_resets_attributed` | L4, L3 | not yet run |
 | 4 | `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` (the way back is `sudo picotool reboot`, no load); `flash/test_system_commands.py::test_bootloader_command_shuts_down_then_enters_bootsel` | L4, L3 | not yet run |
-| 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) and `::test_a_c_stack_exhaustion_is_attributed` (`src/` has no code of its own for a stack exhaustion: the reader's deaths spend the same budget) | L4 | not yet run |
+| 5 | `bench/test_reset_reasons.py::test_the_supervisor_escalation_reboot_is_attributed` (a task dying until the budget reboots, also with a console host holding the port unread) | L4 | not yet run |
 | 6 | `bench/test_reset_reasons.py::test_the_starved_watchdog_fallback_is_attributed`; the fallback itself on L3: `flash/test_watchdog_starvation.py::test_reboot_falls_back_to_starving_the_watchdog_when_its_timer_cannot_arm` (`reboot_fallback_starves_the_watchdog.py`) | L4, L3 | not yet run |
 | 7 | `flash/test_system_commands.py::test_config_reset_deletes_every_config_file_and_reboots`; `bench/test_system_commands_over_rest.py::test_config_reset_over_rest_brings_back_the_defaults` | L3, L4 | not yet run |
 | 8 | `flash/test_system_commands.py::test_fram_erase_blanks_the_chip_and_every_logger_restarts_empty`; `bench/test_system_commands_over_rest.py::test_fram_erase_over_rest_blanks_every_error_log` | L3, L4 | not yet run |
 | 9 | `bench/test_reset_reasons.py::test_an_incomplete_command_is_attributed`; `flash/test_system_commands.py::test_a_hung_shutdown_step_ends_in_a_watchdog_reset` | L4, L3 | not yet run |
 | 11-15 | `bench/test_reset_reasons.py::test_a_hang_in_boot_phase_p_is_attributed`, one case per boot phase 1-5 | L4 | not yet run |
+| 20 | `bench/test_reset_reasons.py::test_a_c_stack_exhaustion_is_attributed` (`reset_code_stack_exhausted.py`: a reader recursing until the stack check raises; the handler that catches it records the overflow and the supervisor's next pass reboots with the stack code) | L4 | not yet run |
 | 21 | `bench/test_reset_reasons.py::test_a_console_interrupt_is_attributed` | L4 | not yet run |
 
 ## System commands

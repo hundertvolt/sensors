@@ -463,6 +463,9 @@ class _FakeFramManager:
             return None  # the real allocator's refusal: no room left on the chip
         return self._chunk
 
+    def get_pause(self) -> bool:
+        return False
+
 
 def test_a_fram_log_config_lands_entries_in_the_managers_chunk() -> None:
     async def go() -> None:

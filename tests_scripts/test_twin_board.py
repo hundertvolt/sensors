@@ -1,11 +1,12 @@
 """tests_hardware/twin_board.py keeps harness.Board's shape (ast) and runs a device script under the real Unix-port twin
-through digital_twin/run_device_script.py: output back, a raising or starving script failing, a reset's output kept, both
-GC stages, the twin layout and the probe's binary (scripts/micropypath.toml, _unix_port.sh), the conformance probes."""
+through digital_twin/run_device_script.py: output back, a raising or starving script or one it cannot intern failing, a
+reset's output kept, both GC stages, the twin layout and the probe's binary (micropypath.toml, _unix_port.sh), conformance."""
 
 import ast
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,12 @@ import conformance
 import harness
 import twin_board
 
+import scripts._twin_process as twin_process
+
 TESTS_HARDWARE = Path(__file__).resolve().parent.parent / "tests_hardware"
 _TWIN_LAYOUT = tomllib.loads((TESTS_HARDWARE.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["twin"]
+_LIMIT = twin_process._QSTR_MAX_BYTES
+_REFUSED = f"- the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before the runner starts"
 
 
 def _plant_binary(toolchain: Path, *, reports: str) -> Path:
@@ -145,6 +150,67 @@ def test_a_binary_of_another_build_flavour_is_refused_naming_it(tmp_path: Path, 
     monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / "twin")
     with pytest.raises(FileNotFoundError, match=r"reports itself as the 'settrace' build flavour, not 'standard'"):
         twin_board.TwinBoard().run_isolated(_script(tmp_path, "print(1)\n"))
+
+
+@pytest.mark.parametrize("case", ["wiring plan", "script", "multibyte state directory", "runner's directory", "micropypath entry"])
+def test_a_string_the_interpreter_cannot_intern_fails_the_run_before_anything_starts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    # Each kills the interpreter before the runner's first line ("FATAL: uncaught NLR", exit 1): the run fails naming it,
+    # its size in bytes (as the interpreter measures) and the limit, before the probe or the interpreter runs.
+    calls: list[list[str]] = []
+
+    def run(argv: "list[str]", **_kw: object) -> "subprocess.CompletedProcess[str]":
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+
+    plan_dir, script_dir = tmp_path / ("p" * 250 if case == "wiring plan" else "twin"), tmp_path / ("s" * 250 if case == "script" else "scripts")
+    script_dir.mkdir()
+    if case == "multibyte state directory":
+        (tmp_path / ("\u00e9" * 100)).mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / ("\u00e9" * 100)))
+    elif case == "runner's directory":
+        monkeypatch.setattr(twin_board, "RUNNER", f"{'r' * 250}/run_device_script.py")
+    elif case == "micropypath entry":
+        monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * _LIMIT}:{_TWIN_LAYOUT}")
+    monkeypatch.setattr(twin_board, "PLAN_DIR", plan_dir)
+    monkeypatch.setattr(subprocess, "run", run)
+    board, script = twin_board.TwinBoard(), _script(script_dir, "print('ok')\n")
+    name, value = {
+        "wiring plan": ("argument 1", plan_dir / f"{board.device}_plan.json"),
+        "script": ("argument 2", script),
+        "multibyte state directory": ("--state-dir's value", board._state.name),
+        "runner's directory": ("the runner's directory", (harness.REPO_ROOT / twin_board.RUNNER).resolve().parent),
+        "micropypath entry": ("MICROPYPATH entry 1", f"/{'m' * _LIMIT}"),
+    }[case]
+    with pytest.raises(harness.HardwareTestFailureError, match=r"^twin run of probe\.py was not started: ") as failed:
+        board.run_isolated(script)
+    assert f"{name} ({len(os.fsencode(str(value)))} bytes)" in str(failed.value) and str(failed.value).endswith(_REFUSED), failed.value
+    assert calls == [], f"the twin probed or ran the interpreter before refusing: {calls}"
+
+
+def test_the_refusal_is_the_twin_launchs_own_check() -> None:
+    # One check for every Python launcher of the Unix port: twin_board keeps no copy of scripts/_twin_process.py's.
+    assert vars(twin_board)["_uninternable"] is twin_process._uninternable
+
+
+def test_a_string_at_the_limit_still_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The boundary's other side: a wiring plan path and a MICROPYPATH entry of 255 bytes each run.
+    binary = _plant_binary(tmp_path, reports="standard")
+    seen: list[list[str]] = []
+    real_run = subprocess.run
+
+    def run(argv: "list[str]", **kwargs: object) -> "subprocess.CompletedProcess[str]":
+        if argv[0] == "/bin/bash":  # the shared probe itself runs for real
+            return real_run(argv, **kwargs)  # type: ignore[call-overload, no-any-return]
+        seen.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "ok\n", "")
+
+    pad = _LIMIT - len(os.fsencode(str(tmp_path))) - len(f"//{harness.bench_device()}_plan.json")
+    monkeypatch.setenv("PICO_TOOLCHAIN_DIR", str(tmp_path))
+    monkeypatch.setattr(twin_board, "PLAN_DIR", tmp_path / ("p" * pad))
+    monkeypatch.setattr(twin_board, "_TWIN_LAYOUT", f"/{'m' * (_LIMIT - 1)}:{_TWIN_LAYOUT}")
+    monkeypatch.setattr(subprocess, "run", run)
+    assert twin_board.TwinBoard().run_isolated(_script(tmp_path, "print('ok')\n")) == "ok\n"
+    assert seen[0][0] == str(binary) and len(os.fsencode(seen[0][4])) == _LIMIT, seen
 
 
 def test_the_runner_prints_its_usage_and_refuses_a_malformed_call(micropython_bin: Path, repo_root: Path) -> None:

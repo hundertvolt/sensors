@@ -718,6 +718,9 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
     overrides = f', "TestOverrides": {_lit(sorted(ctx.test_overrides))}' if ctx.test_overrides else ""
     lines.append(f'            build_info={{"FirmwareVersion": _FIRMWARE_VERSION, "WebsiteVersion": _WEBSITE_VERSION, "BuildDate": _BUILD_DATE{overrides}}},')
     lines.append("            system_cmd=_system_cmd_callback,")
+    # Read where each lives: the system's reset decision, and the FRAM manager's own pause on a device with one.
+    refusals = ["sysfunct.is_reset_decided", *([_singleton_var(ctx, "fram") + ".get_pause"] if "fram" in have else [])]
+    lines.append(f"            reset_refusals=({', '.join(refusals)}{',' if len(refusals) == 1 else ''}),")
     lines.append(f"            notification_led={'_notification_led_callback' if 'neopixel' in have else None},")
     lines.append(f"            notification_pause={'_notification_pause_callback' if 'notification' in have else None},")
     status_sources = ['"networking": _networking_status', '"system": _system_status']

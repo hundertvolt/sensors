@@ -3,7 +3,9 @@ through (SPECIFICATION.md Part G.2). Covers the pass-through default's byte-iden
 round-trips including every shape the protocol can emit, and each malformed-input rejection."""
 
 from _async_harness import run
+from _recording_print import record_prints
 
+import asy_framing_codecs
 from asy_framing_codecs import COBS_DELIMITER, FramingCOBS, FramingPass
 
 # @tunable l1.framing_codecs_run_bound_s = 5
@@ -202,10 +204,41 @@ def test_cobs_scratch_too_large_for_the_heap_degrades_the_same_way() -> None:
     # The other half of ready(). A negative bound never reaches the allocation at all, so the except
     # clause that catches a real MemoryError/OverflowError - the case that actually happens on a
     # fragmented heap, rather than a caller typo - had no test of its own.
-    codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
+    with record_prints() as rec:  # recorded, never printed: the interpreter's own text would trip the memory gates
+        codec = FramingCOBS(1 << 40)  # well-formed, and far past what any heap here can serve
+        huge = FramingCOBS(1 << 63)  # past the machine word: bytearray() raises OverflowError instead
     assert codec._scratch is None
     assert codec.ready() is False
     assert run(codec.encode_into(bytearray(8), 4), _RUN_BOUND_S) is None
+    assert huge.ready() is False
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [
+        (("FramingCOBS", "scratch allocation failed:"), MemoryError),
+        (("FramingCOBS", "scratch allocation failed:"), OverflowError),
+    ]
+
+
+def test_a_failed_cobs_scratch_allocation_prints_its_own_text_once() -> None:
+    # No logger in the codec: a caught allocation failure prints one console line with its own text, so the memory
+    # gates read it, while a bound that never allocates (a caller mistake) prints nothing.
+    err = MemoryError("injected for the codec scratch")  # worded clear of the memory gates' markers
+
+    def failing(*_args: object) -> bytearray:
+        raise err
+
+    asy_framing_codecs.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            codec = FramingCOBS(64)
+    finally:
+        del asy_framing_codecs.bytearray  # type: ignore[attr-defined]
+    assert codec.ready() is False
+    assert rec.lines == [("FramingCOBS", "scratch allocation failed:", err)]
+    assert rec.text() == "FramingCOBS scratch allocation failed: injected for the codec scratch"
+    with record_prints() as rec:
+        guarded = [FramingCOBS(0), FramingCOBS(-1)]
+    assert [c.ready() for c in guarded] == [False, False]
+    assert rec.lines == []
+    assert FramingCOBS(64).ready() is True  # the module's own bytearray is back
 
 
 def test_cobs_reports_itself_as_delimited() -> None:

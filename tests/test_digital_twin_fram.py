@@ -836,7 +836,7 @@ def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_o
     machine.configure_wiring(wiring_plan(device))
 
     async def scenario() -> None:
-        await boot_generated(module, device, cfg_path=_scratch.dir())
+        await boot_generated(module, device, cfg_path=_scratch.dir(), log_errors=True)
         (spi_name,) = wiring_plan(device)["spi"]
         bus = machine.peripheral(spi_name)
         assert isinstance(bus, machine.SPI)

@@ -27,6 +27,7 @@ import machine
 import microtest
 import network
 from _async_harness import run
+from _src_const import src_const
 from _twin_common import Injections, StatePaths
 from _twin_devices import device_with
 
@@ -63,18 +64,6 @@ def _config(seed: int, faults: "list[launch.FaultSpec]", wifi: "list[int]", *, n
 
 def _in_memory() -> "StatePaths":
     return StatePaths(None, None, None)  # no chip persists: every main() run here starts fresh
-
-
-def _recursion_message() -> str:
-    # The interpreter's own message for an exhausted C stack, from a real one (py/runtime.c:1786).
-    def dive(depth: int) -> int:
-        return dive(depth + 1)
-
-    try:
-        dive(0)
-    except RuntimeError as e:
-        return str(e)
-    raise AssertionError("no recursion limit reached")
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +279,7 @@ def test_a_stack_fault_raises_one_stack_exhaustion_on_the_chips_next_read() -> N
     try:
         bus.readfrom_into(0x59, buf)
     except RuntimeError as e:
-        assert str(e) == _recursion_message(), e
+        assert str(e) == src_const("src/asy_print_log.py", "_STACK_EXHAUSTED"), e  # test_asy_print_log.py pins it to the real text
     else:
         raise AssertionError("the queued stack fault never raised")
     bus.readfrom_into(0x59, buf)  # one fault, spent

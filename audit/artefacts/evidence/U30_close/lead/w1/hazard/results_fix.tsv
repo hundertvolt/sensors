@@ -1,0 +1,2 @@
+tests/test_digital_twin_bus_hazard_concurrency.py	-1	150.48	rc=0	markers=0	22/22 passed, 0 failed, 0 skipped
+tests/test_digital_twin_bus_hazard_concurrency.py	32768	152.04	rc=0	markers=0	22/22 passed, 0 failed, 0 skipped

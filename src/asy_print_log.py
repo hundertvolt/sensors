@@ -1,4 +1,4 @@
-"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore).
+"""Leveled console logging (PrintLog), the one ungated line of a layer with no logger (console()), a bounded error/warning history (PrintLogHistory) with optional FRAM-backed persistence (PrintLogHistoryStore), and the C-stack fatal flag the supervisor reads.
 A code equal to the history's newest entry is counted and written through but spends no new slot; the console prints every call at its level.
 Never raises: a FRAM chunk operation raises only by allocation, which reads as unreadable or fails the write; this layer cannot log into itself, so its caught allocation failures print through console().
 """
@@ -48,6 +48,8 @@ if TYPE_CHECKING:
             self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str,
         ) -> "_FramChunk | None": ...
 
+        def get_pause(self) -> bool: ...
+
 
 # defs for PrintLog
 _LOG_OFF = const(0)
@@ -63,10 +65,15 @@ _MAX_ERR = const(0x7F)
 _NO_WRN = const(0x80)
 _MAX_WRN = const(0xFF)
 _MAX_CNT = const(0xFFFF)
-_WRITE_GEN_MAX = const(0x3FFFFFFF)  # wraps inside the small-int range; compared only for equality
+_WRAP_MAX = const(0x3FFFFFFF)  # the wrapping counters' top, inside the small-int range: compared for equality or by masked difference
 
 # Code from the global catalog (buildgen/error_catalog.json): a shared one.
 _ERR_LOG_RAM_ONLY = const(28)
+
+# A C-stack overflow is a design defect, never a routine failure: any handler that catches it records it here, and the
+# supervisor reboots at its next pass (SPECIFICATION.md F.1). The text is the interpreter's own (py/runtime.c:1786, v1.29.0).
+_STACK_EXHAUSTED = const("maximum recursion depth exceeded")
+_fatal = False  # one-way until the reboot: a handler caught a C-stack overflow
 
 
 class PrintLog:
@@ -139,8 +146,21 @@ class PrintLogHistory(PrintLog):
         self._write_failing = False  # a write after setup() failed and none has landed since: one LOG_RAM_ONLY per run
         self.initialized = False
         self.restored = False  # True once setup() loaded what an earlier boot stored; a RAM-only history never does
+        self._kept = 0  # wrapping counts of _keep()'s appends and _count()'s calls: a reset keeps what arrived since it began
+        self._counted = 0
+        self._reset_mark = -1  # _kept when a store's latest reset() began
+        self._reset_repeat = 0  # 1: the newest code repeated during that reset before anything was kept, its slot kept too
+
+    def _clear(self, kept: int, counted: int) -> None:
+        # A reset's clear, in place and allocation-free (deque item assignment): what arrived since it began stays newest.
+        since = self._since_kept(kept)
+        for i in range(len(self.history) - since):
+            self.history[i] = _NO_ERR
+        self._err_count = self._since_counted(counted)
+        self._pre_setup_slots = min(self._pre_setup_slots, since)
 
     def _count(self) -> None:
+        self._counted = self._counted + 1 if self._counted < _WRAP_MAX else 0
         if self._err_count < _MAX_CNT:
             self._err_count += 1
         else:
@@ -151,13 +171,24 @@ class PrintLogHistory(PrintLog):
             print(self.name, *args)
 
     def _keep(self, code: int) -> None:
-        if not (len(self.history) and self.history[-1] == code):  # the newest-entry rule, SPECIFICATION.md Part C.7.1
+        # The newest-entry rule, SPECIFICATION.md Part C.7.1. A repeat while a reset is in flight with nothing kept since
+        # is marked rather than appended: a reset that clears keeps the slot it repeats, a refused one leaves the ring as is.
+        if not (len(self.history) and self.history[-1] == code):
             self.history.append(code)
+            self._kept = self._kept + 1 if self._kept < _WRAP_MAX else 0
             if not self.initialized and self._pre_setup_slots < len(self.history):
                 self._pre_setup_slots += 1
+        elif self._kept == self._reset_mark:
+            self._reset_repeat = 1
 
     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         return True
+
+    def _since_counted(self, counted: int) -> int:  # the count a reset begun at `counted` leaves: its calls since, less once a later reset cleared
+        return min((self._counted - counted) & _WRAP_MAX, self._err_count)
+
+    def _since_kept(self, kept: int) -> int:  # how many of the newest slots a reset begun at `kept` keeps
+        return min((self._kept - kept) & _WRAP_MAX, len(self.history) - self._reset_repeat) + self._reset_repeat
 
     async def _store_err(self, min_e: int, max_e: int, errno: int) -> None:
         # errno == _NO_ERR (0) is the shared "nothing to record" sentinel for err_s()/wrn_s() alike; a
@@ -216,19 +247,9 @@ class PrintLogHistory(PrintLog):
         if self.level >= _LOG_ERR:
             print(self.name, *args, sep=sep, end=end)
 
-    async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
-        # No `not self.initialized` guard here, unlike _store_err(): a cleared ring is exactly what
-        # the caller asked to persist, and claiming initialization once the write succeeds stops a
-        # later setup() restoring over it (SPECIFICATION.md Part C.7). A failed write leaves it False.
-        self.history.extend([_NO_ERR] * len(self.history))
-        self._err_count = 0
-        self._pre_setup_slots = 0
+    async def reset(self) -> bool:  # RAM only: nothing to write, so it clears at once and answers True
+        self._clear(self._kept, self._counted)
         self._write_failing = False  # the cleared ring holds no run's entry: the next failed write records one
-        if not await self._write():
-            # Same "regardless of self.level" reasoning as _store_err() above.
-            self._diag("PrintLog: History reset write failed!")
-            return False
-        self._write_failing = False  # a write that failed meanwhile left its entry in what this write landed
         self.initialized = True
         return True
 
@@ -253,6 +274,7 @@ class PrintLogHistoryStore(PrintLogHistory):
         self._history_fmt = "<" + "B" * len(self.history)
         size = self._HDR_SIZE + len(self.history)  # each "B" is exactly 1 byte
         self._heap_failed = False  # the chunk's heap allocation raised; an allocator refusal (None) is not counted
+        self._paused = fram.get_pause  # the manager's pause, which refuses every chunk write while it holds
         try:
             self.fram: _FramChunk | None = fram.get_chunk(size, crc=CRC8(), owner=name)
         except MemoryError as e:
@@ -262,8 +284,16 @@ class PrintLogHistoryStore(PrintLogHistory):
         if self.fram is None and not self._heap_failed:
             self._diag("PrintLog: FRAM allocation failed!")
         self._write_lock = asyncio.Lock()
-        self._write_gen = 0  # one step per _write() call
+        self._write_gen = 0  # one step per _write() call and per reset() write
         self._written_gen = 0  # the _write_gen whose state the last successful write packed
+
+    def _pack_reset(self, dbuf: memoryview, kept: int, counted: int) -> None:
+        # The image reset() writes, byte by byte into the chunk's buffer (no tuple, no list): the entries since it began
+        # (kept, counted) in the newest slots with their count, every other byte cleared.
+        struct.pack_into(self._HDR_FMT, dbuf, 0, self._since_counted(counted))
+        start = len(self.history) - self._since_kept(kept)
+        for i in range(len(self.history)):
+            dbuf[self._HDR_SIZE + i] = self.history[i] if i >= start else _NO_ERR
 
     async def _read(self) -> tuple[int, tuple[int, ...]] | bool | None:
         # Applies nothing: (count, entries) when stored, False for a blank or invalid chunk, None when nothing was read.
@@ -286,15 +316,15 @@ class PrintLogHistoryStore(PrintLogHistory):
             return None
         return count, entries
 
-    async def _write(self) -> bool:
+    async def _write(self, kept: int = -1, counted: int = 0) -> bool:  # kept >= 0: reset()'s image, never skipped
         if self.fram is None:
             return False
         # The live state is packed and written under one lock, and a call whose state an earlier write already landed
         # skips, so the newest state lands last without relying on asyncio's lock hand-off order; a cancelled or failed
         # write leaves the next queued call to write (ConfigManager._flush_staged()'s rule, by count).
-        self._write_gen = self._write_gen + 1 if self._write_gen < _WRITE_GEN_MAX else 0
+        self._write_gen = self._write_gen + 1 if self._write_gen < _WRAP_MAX else 0
         async with self._write_lock:
-            if self._written_gen == self._write_gen:
+            if kept < 0 and self._written_gen == self._write_gen:
                 return True
             gen = self._write_gen
             try:  # a chunk operation fails only by allocation (the module docstring)
@@ -302,8 +332,11 @@ class PrintLogHistoryStore(PrintLogHistory):
                 dbuf = buf.get_data_buf()
                 if dbuf is None:  # the buffer's own allocation failed
                     return False
-                struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
-                struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
+                if kept < 0:
+                    struct.pack_into(self._HDR_FMT, dbuf, 0, self._err_count)
+                    struct.pack_into(self._history_fmt, dbuf, self._HDR_SIZE, *self.history)
+                else:
+                    self._pack_reset(dbuf, kept, counted)
                 ok = bool(await self.fram.write_into(buf))
             except MemoryError as e:
                 console(self.name, "PrintLog: FRAM history write failed:", e)
@@ -311,6 +344,32 @@ class PrintLogHistoryStore(PrintLogHistory):
             if ok:
                 self._written_gen = gen
             return ok
+
+    async def reset(self) -> bool:  # False when the cleared state could not be written (ResetErrors then answers "Failed")
+        # The state it leaves is written before RAM clears: a pause refusing that write, up front or at the chunk, clears
+        # nothing, as "Failed" says (owner, 2026-10-13, paraphrase); any other failure clears RAM all the same. No setup()
+        # guard: what it writes is what the caller asked to persist, and it stops setup() restoring over it (SPECIFICATION.md Part C.7).
+        if self._paused():
+            self._diag("PrintLog: History reset refused - storage paused")
+            return False
+        kept = self._kept
+        counted = self._counted
+        failing = self._write_failing
+        self._reset_mark = kept
+        self._reset_repeat = 0
+        ok = await self._write(kept, counted)
+        if not ok and self._paused():  # no await since the write: the chunk refused it under the pause
+            self._diag("PrintLog: History reset refused - storage paused")
+            return False
+        self._clear(kept, counted)  # no await since the write returned either: a queued write packs the cleared ring
+        if not ok:
+            if failing:  # that run's entry went with the ring; one failing since the reset began kept its own
+                self._write_failing = False
+            self._diag("PrintLog: History reset write failed!")
+            return False
+        self._write_failing = False  # a write that failed meanwhile left its entry in what this write landed
+        self.initialized = True
+        return True
 
     async def setup(self) -> bool:  # False: RAM-only until reboot, with one entry saying so in this module's own ring
         if self.initialized:
@@ -380,6 +439,10 @@ def console(name: str, what: object, err: object = None) -> None:
         print(name, what, err)
 
 
+def fatal_reported() -> bool:
+    return _fatal
+
+
 def make_logger(log: LogConfig, name: str) -> PrintLogHistory:
     # Shared fram-vs-memory PrintLogHistory(Store) selection - every direct constructor (as opposed
     # to a logger= reach-through onto an already-built sibling instance) goes through this one place.
@@ -390,3 +453,11 @@ def make_logger(log: LogConfig, name: str) -> PrintLogHistory:
         pr = PrintLogHistoryStore(log.fram, log.history_length, log.debug, name=name)
         pr.one("Init with FRAM logging.")
     return pr
+
+
+def report_if_fatal(e: BaseException) -> None:
+    # Every broad handler's first statement: it allocates nothing and prints nothing, since it may run with the C stack
+    # nearly spent; a call that re-trips the check raises afresh, and the next handler up records it.
+    global _fatal
+    if isinstance(e, RuntimeError) and e.args and e.args[0] == _STACK_EXHAUSTED:
+        _fatal = True

@@ -71,7 +71,7 @@ class SPI:
     def init(self, port_id: int, sck_pin: int, mosi_pin: int, miso_pin: int) -> None:
         # deinit() first so a re-init always goes through the same "bus unavailable" state a
         # caller-visible deinit() produces, rather than swapping self._spi under live readers.
-        self.deinit()
+        self.deinit()  # always True (see deinit()), so a re-init has no teardown failure to report
         self._spi = _SPI(port_id, sck=Pin(sck_pin), mosi=Pin(mosi_pin), miso=Pin(miso_pin))
 
     def readinto(self, buf: bytearray | memoryview, write_value: int = 0x00) -> bool:

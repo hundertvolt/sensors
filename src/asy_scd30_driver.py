@@ -10,7 +10,7 @@ Source: Sensirion CO2 Sensors SCD30 Interface Description & Datasheet (datasheet
 import asyncio
 import math
 from collections import namedtuple
-from struct import unpack, unpack_from
+from struct import unpack_from
 
 from machine import Pin, Timer
 from micropython import const
@@ -20,7 +20,7 @@ from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import FAILED, INVALID, VALID, compare_before_write, make_dict, name_cfg, schema_names, type_or_range_error
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C, I2CDevice
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -323,8 +323,10 @@ class SCD30_Reader(SensorReaderConfig):
     async def _capture_frc_config(self) -> None:
         # The cycle's FRC settings, read before its measurement (the capture rule, C.4.2); a failed read
         # keeps the last values and publishes the cycle as settling.
+        if not self._frc_cfg_ok and not self.cfgmgr.valid:
+            return  # the store logged this episode's one entry: no read, and no repeat of it, until it is valid again
         floats = await self.cfgmgr.get_float_values(_VAL_FRC_NOISE + _VAL_FRC_RATE)
-        ints = await self.cfgmgr.get_int_values(_VAL_FRC_WINDOW)
+        ints = None if floats is None else await self.cfgmgr.get_int_values(_VAL_FRC_WINDOW)  # one refusal, one entry
         self._frc_cfg_ok = floats is not None and ints is not None
         if floats is not None and ints is not None:
             self._frc_noise, self._frc_rate = floats
@@ -336,6 +338,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             snap = await self._scd.get_config_snapshot()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading the config snapshot:", e, errno=_ERR_CHIP_GET)
             return None
         return _snapshot_dict(snap)
@@ -426,6 +429,7 @@ class SCD30_Reader(SensorReaderConfig):
             await self._scd.setup()
             interval = await self._scd.get_measurement_interval()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             await self._init_failed()
             return False
@@ -439,9 +443,7 @@ class SCD30_Reader(SensorReaderConfig):
     # Trigger the CO2 sensor IRQ if it isn't running (pin stays HIGH if not read!); the same 500 ms tick
     # counts the time since the last measurement for the FRC readiness.
     async def _irq_loop(self) -> None:
-        if self._timer_error is not None:  # a restart after a failed arm re-arms first
-            self._timer_error = None
-            self.start_timer()
+        await self._rearm_timer()  # a failed arm is persisted once and re-armed first
         while True:
             await self._base_trigger_event.wait()
             if await self._timer_fault():
@@ -488,6 +490,7 @@ class SCD30_Reader(SensorReaderConfig):
             new_data = False
             await self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)
         except Exception as e:
+            report_if_fatal(e)
             co2 = temperature = humidity = None
             new_data = False
             await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
@@ -507,6 +510,7 @@ class SCD30_Reader(SensorReaderConfig):
             try:
                 await self._scd.reset()
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Soft reset failed:", e, errno=_ERR_CHIP_SET)
                 return False
         self._frc_reset()  # the soft reset restarted the measurement, as at _init_scd()
@@ -565,6 +569,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_altitude()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading altitude:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -572,6 +577,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_ambient_pressure()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading ambient pressure:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -597,6 +603,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_forced_recalibration_reference()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading forced recalibration reference:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -604,6 +611,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_measurement_interval()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading measurement interval:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -611,6 +619,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_self_calibration_enabled()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading self calibration enabled:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -618,6 +627,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             return await self._scd.get_temperature_offset()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading temperature offset:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -625,6 +635,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_altitude(altitude)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting altitude:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -634,6 +645,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_ambient_pressure(pressure_mbar)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting ambient pressure:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -643,6 +655,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_forced_recalibration_reference(reference_value)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting forced recalibration reference:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -652,6 +665,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_measurement_interval(value)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting measurement interval:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -661,6 +675,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_self_calibration_enabled(enabled)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting self calibration enabled:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -670,6 +685,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.set_temperature_offset(offset)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting temperature offset:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -685,6 +701,7 @@ class SCD30_Reader(SensorReaderConfig):
         try:
             await self._scd.stop_continuous_measurement()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error stopping continuous measurement:", e, errno=_ERR_CHIP_SET)
             return False
         else:
@@ -695,6 +712,7 @@ class SCD30_I2C:
     def __init__(self, i2c_bus: I2C) -> None:
         self._i2c_scd30 = DeviceSession(I2CDevice(i2c_bus, _SCD30_ADDR))  # its lock also guards self._buffer
         self._buffer = bytearray(18)
+        self._words = bytearray(12)  # the six data words without their CRC bytes
         self.crc = CRC8()
 
         # cached readings
@@ -858,9 +876,16 @@ class SCD30_I2C:
             if not crcs_good:
                 raise RuntimeError("CRC check failed while reading data")
 
-            co2: float = unpack(">f", self._buffer[0:2] + self._buffer[3:5])[0]
-            temperature: float = unpack(">f", self._buffer[6:8] + self._buffer[9:11])[0]
-            humidity: float = unpack(">f", self._buffer[12:14] + self._buffer[15:17])[0]
+            # Drop each word's CRC byte in place: one tuple and the three floats are the only allocations per read.
+            b = self._buffer
+            w = self._words
+            for i in range(6):
+                w[2 * i] = b[3 * i]
+                w[2 * i + 1] = b[3 * i + 1]
+            co2: float
+            temperature: float
+            humidity: float
+            co2, temperature, humidity = unpack_from(">fff", w)
             # The words are raw IEEE-754 and CRC-valid NaN/inf still decode; MicroPython's json.dumps()
             # would ship them as bare nan/inf, breaking the whole page (Part F.1). A failed read instead,
             # and a finite value outside the datasheet ranges is rejected the same way.

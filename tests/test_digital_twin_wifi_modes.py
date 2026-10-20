@@ -27,6 +27,7 @@ import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration  # noqa: E402 - imported after the prewarm and the UDP shim
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from network import STAT_GOT_IP, set_access_point_up  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -111,7 +112,9 @@ async def _boot() -> "ModuleType":
     machine.configure_wiring(plan)
     module = run_generic_integration.load_module("sensortask_" + str(plan["device"]))
     watchdog = machine.WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS)
-    await module.build_system(watchdog=watchdog, cfg_path=_scratch.dir(), web_host="127.0.0.1", web_port=_WEB_PORT)
+    cfg_path = _scratch.dir()
+    write_error_level_config(cfg_path)
+    await module.build_system(watchdog=watchdog, cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=_WEB_PORT)
     await module.sysfunct.run_setups(module._collect_setups())
     return module
 

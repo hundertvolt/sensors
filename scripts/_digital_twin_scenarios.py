@@ -245,10 +245,10 @@ class Context:
     shared: "SharedBoot | None" = None
 
     @contextlib.contextmanager
-    def boot(self, *args: str, state_dir: "Path | None" = None) -> "Iterator[Twin]":
-        # A twin on a fresh port of this device's band, fresh state unless given, shut down in finally; its log
-        # passes the memory gate and refused no public destination, or the scenario fails naming why. A sharing
-        # scenario's one boot is the shared twin instead, which outlives it.
+    def boot(self, *args: str, state_dir: "Path | None" = None, logged: bool = True) -> "Iterator[Twin]":
+        # A twin on a fresh port of this device's band, fresh state unless given, logging at error level unless not `logged`
+        # (_log_at_error_level()), shut down in finally; its log passes the memory gate and refused no public destination,
+        # or the scenario fails naming why. A sharing scenario's one boot is the shared twin instead, which outlives it.
         self.boots += 1
         if self.shared is not None:
             if args not in ((), _CONN) or state_dir is not None or self.boots > 1:
@@ -257,8 +257,10 @@ class Context:
             return
         port = next(self.ports)
         state = state_dir or self.logs_dir / f"state_{self.boots:02d}"
+        level = _log_at_error_level(state) if logged else ()
         launch = TwinLaunch(self.micropython_bin, f"sensortask_{self.device}", GENERATED_SRC_DIR / f"sensortask_{self.device}_wiring_plan.json", self.device, HOST, port, self.gc_threshold, _micropypath(self.device))
-        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=args)
+        # Armed on every boot, so a shutdown() meeting an ignored SIGINT can print where that interrupt was raised.
+        run = spawn(launch, state_dir=state, log_path=self.logs_dir / f"twin_{self.boots:02d}.log", args=(*level, "--test-kbd-traceback", *args))
         twin = Twin(run, port)
         try:
             wait_until_serving(run, HOST, port, _SERVING_TIMEOUT_S)
@@ -698,10 +700,10 @@ def _error_table(port: int) -> "dict[str, JSONObject]":
     return errcount_table(HTTPStatus.OK, _status(port))
 
 
-@scenario("every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", family="sensortask_integration", shared=True)
+@scenario("every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly", family="sensortask_integration")
 def _every_get_endpoint(ctx: Context) -> None:
     """Every GET route answers 200 in its published shape, the settings routes with the device's own defaults."""
-    with ctx.boot() as twin:
+    with ctx.boot(logged=False) as twin:  # its own boot with nothing planted: DebugLevel reads the device's default too
         for path in ("/measurements", "/sensors"):
             answer = _request(twin.port, "GET", path)
             _expect(answer.status == HTTPStatus.OK, f"GET {path} answered {answer.status}")
@@ -755,6 +757,12 @@ def _expect(condition: object, msg: str) -> None:
     # One assertion of a scenario: the first that fails ends it, named.
     if not condition:
         raise AssertionError(msg)
+
+
+def _first_instance(ctx: Context, driver: str) -> "tuple[str, str]":
+    # The device's first instance of a sensor driver by key: its --fault key and its error source's name.
+    key, ext = next((key, ext) for key, d, ext in ctx.instances if d == driver)
+    return key, f"{_SENSOR_NAMES[driver]}_{ext}" if ext else _SENSOR_NAMES[driver]
 
 
 def _flaky(port: int) -> None:
@@ -811,6 +819,12 @@ def _group(body: JSONObject, name: str) -> JSONObject:
 def _gunzip(answer: Answer) -> bytes:
     _expect(answer.headers.get("Content-Encoding") == "gzip", f"the site answered with encoding {answer.headers.get('Content-Encoding')!r}")
     return gzip.decompress(answer.body)
+
+
+def _has_entry(entry: JSONValue, kind: str, num: "int | None" = None) -> bool:
+    # One error source's history holds an entry of this type ("E" or "W"), with this number when one is given.
+    history = entry.get("history") if isinstance(entry, dict) else None
+    return any(isinstance(h, dict) and h.get("type") == kind and num in (None, h.get("num")) for h in (history if isinstance(history, list) else []))
 
 
 @scenario("high_concurrency_burst_at_historical_segfault_repro_scale_survives", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
@@ -957,6 +971,19 @@ def _link_roles(device: str) -> "dict[str, str]":
     # Each uart_link instance's role by its key, as its TOML states it.
     model = load_device(REPO_ROOT / "devices" / f"{device}.toml")
     return {instance_label(spec.key): str(spec.fields.get("role", "")) for spec in model.instances.values() if spec.driver == "uart_link"}
+
+
+def _log_at_error_level(state: Path) -> "tuple[str, ...]":
+    # A boot's loggers at error level, so a caught allocation failure's line reaches the memory gate (agent, 2026-10-20,
+    # extending the owner's option 1 for the unit tests, owner, 2026-10-20: "Option 1 is good"): built so by the
+    # runner's flag and kept by a stored DebugLevel, planted unless one is stored.
+    level = _src_int("asy_print_log.py", "_LOG_ERR")
+    config = state_paths(state).config_dir
+    config.mkdir(parents=True, exist_ok=True)
+    stored = config / "config_SYSTEM.cfg"
+    if not stored.exists():
+        stored.write_text(json.dumps({"DebugLevel": level}), encoding="utf-8")
+    return ("--debug-level", str(level))
 
 
 @scenario("get_measurements_and_sensors_are_reachable_and_shaped_correctly", family="sensortask_integration", shared=True)
@@ -1187,6 +1214,16 @@ def _refusal_counted(ctx: Context) -> None:
         _expect(isinstance(before, int) and after == before + refused, f"HTTPDropped {before!r} -> {after!r} after {refused} refusal(s)")
 
 
+def _refused_reset_errors(port: int, before: "dict[str, JSONObject]", when: str) -> None:
+    # One ResetErrors answering Failed, then no error count below what `before` read: nothing was cleared.
+    answer = _request(port, "PUT", "/status", {"ResetErrors": True})
+    word = _result(answer, "ResetErrors")
+    _expect(answer.status == HTTPStatus.OK and word == "Failed", f"ResetErrors {when} answered {answer.status} {word!r}")
+    after = _error_table(port)
+    lowered = {name: (_counter(entry), _counter(after.get(name))) for name, entry in before.items() if _counter(after.get(name)) < _counter(entry)}
+    _expect(not lowered, f"ResetErrors {when} lowered error counts (before, after): {lowered}")
+
+
 _INLINED_OPEN = '<script type="application/json" id="inlined-definitions">'  # scripts/_stage_website.py's own marker
 
 
@@ -1217,10 +1254,7 @@ def _reset_errors_not_undone(ctx: Context) -> None:
     state = ctx.logs_dir / "state_shared"
     sgp40 = next(key for key, driver, _ext in ctx.instances if driver == "sgp40")
     with ctx.boot("--fault", f"{sgp40}:writeto:1", state_dir=state) as twin:
-        deadline = time.monotonic() + _SERVING_TIMEOUT_S
-        while time.monotonic() < deadline and not (logged := any(h.get("type") == "E" for h in _errcount(twin.port, "SGP40").get("history", []) if isinstance(h, dict))):  # type: ignore[union-attr]
-            time.sleep(0.25)
-        _expect(logged, "the injected write fault never logged an SGP40 error, so there is no history to reset")
+        _expect(_wait_entry(twin.port, "SGP40"), "the injected write fault never logged an SGP40 error, so there is no history to reset")
     with ctx.boot(state_dir=state) as twin:
         answer = _request(twin.port, "PUT", "/status", {"ResetErrors": True}, timeout_s=30.0)
         _expect(answer.status == HTTPStatus.OK, f"ResetErrors at the first answer answered {answer.status}")
@@ -1228,6 +1262,56 @@ def _reset_errors_not_undone(ctx: Context) -> None:
         entry = _errcount(twin.port, "SGP40")
         errors = [h for h in entry.get("history", []) if isinstance(h, dict) and h.get("type") == "E"]  # type: ignore[union-attr]
         _expect(_counter(entry) == 0 and not errors, f"the restore brought the pre-reset history back over a reset that answered 200: {entry!r}")
+
+
+@scenario("reset_errors_while_a_command_owns_the_reset_is_refused_and_clears_nothing", family="system_commands", drivers=("sgp40",))
+def _reset_errors_under_a_command(ctx: Context) -> None:
+    """A ResetErrors while a reboot's controlled shutdown holds the reset answers Failed and lowers no error count."""
+    key, name = _first_instance(ctx, "sgp40")
+    with ctx.boot("--fault", f"{key}:writeto:1", "--test-shutdown-hang", "S2") as twin:
+        twin.starves_watchdog = True  # the hung store step stops the feed; whether the watchdog then engages is another scenario's
+        _expect(twin.wait_line("HANG S2", 0, _DRAIN_WAIT_S) is not None, "the runner never armed the hang")
+        _expect(_wait_entry(twin.port, name), f"the injected write fault never logged a {name} error, so there is nothing to clear")
+        before = _error_table(twin.port)
+        _expect(_system_cmd(twin.port, "reboot") == "Valid", "reboot did not answer Valid")
+        _refused_reset_errors(twin.port, before, "while the reboot owns the reset")
+
+
+@scenario("reset_errors_while_the_escalation_logs_is_refused_and_clears_nothing", family="system_commands", drivers=("scd30",))
+def _reset_errors_under_the_escalation(ctx: Context) -> None:
+    """A ResetErrors while the supervisor writes its stack-exhaustion entry answers Failed; the reboot keeps every entry, code 20."""
+    key, name = _first_instance(ctx, "scd30")
+    state = ctx.logs_dir / "state_escalation"
+    errno = _src_int(_SYSTEM, "_ERR_STACK_EXHAUSTED")
+    with ctx.boot("--fault", f"{key}:readfrom_into:stack", "--test-hold-system-entry", str(errno), state_dir=state) as twin:
+        held = twin.wait_line("ENTRY_HELD", 0, _src_int(_SYSTEM, "_TASK_CHECK_TIME") + _COMMANDED_RESET_MARGIN_S)
+        _expect(held is not None, "the supervisor's escalation never reached its entry write")
+        before = _error_table(twin.port)
+        _expect(_counter(before.get(name)) > 0, f"the stack fault logged no {name} entry, so there is nothing to clear ({before.get(name)!r})")
+        _refused_reset_errors(twin.port, before, "while the escalation writes its entry")
+        twin.trigger("ENTRY_RELEASE")
+        _exits_with(twin, 3, "the escalation after a refused ResetErrors")
+    with ctx.boot(state_dir=state) as twin:
+        status = _status(twin.port)
+        reason = _group(status, "system").get("ResetReason")
+        _expect(reason == _src_int(_SYSTEM, "_RR_STACK_EXHAUSTED"), f"the relaunch reads ResetReason {reason!r}")
+        after = errcount_table(HTTPStatus.OK, status)
+        _expect(_counter(after.get(name)) >= _counter(before[name]), f"{name}'s entries did not survive into the reboot ({before[name]!r} -> {after.get(name)!r})")
+        _expect(_has_entry(after.get("SYSTEM"), "E", errno), f"SYSTEM's history holds no stack-exhaustion entry ({after.get('SYSTEM')!r})")
+
+
+@scenario("reset_errors_while_storage_is_paused_is_refused_and_clears_nothing", family="system_commands", drivers=("fram", "sgp40"))
+def _reset_errors_under_mempause(ctx: Context) -> None:
+    """A ResetErrors while mempause holds answers Failed and lowers no error count, the FRAM manager's RAM-only log included."""
+    key, name = _first_instance(ctx, "sgp40")
+    fram = next(key for key, driver, _ext in ctx.instances if driver == "fram")
+    with ctx.boot("--fault", f"{key}:writeto:1", "--fault", f"{fram}:wren:2") as twin:
+        _expect(_wait_entry(twin.port, name), f"the injected write fault never logged a {name} error, so there is nothing to clear")
+        wel = _src_int("asy_fram_driver.py", "_WRN_FRAM_WEL_NOT_SET")
+        _expect(_wait_entry(twin.port, "FRAM", kind="W", num=wel), "the dropped write-enables never logged a FRAM warning, so its RAM-only log holds nothing")
+        before = _error_table(twin.port)
+        _expect(_system_cmd(twin.port, "mempause") == "Valid", "mempause did not answer Valid")
+        _refused_reset_errors(twin.port, before, "while storage is paused")
 
 
 def _responder_host() -> str:
@@ -1654,6 +1738,16 @@ def _uart_ring_under_load(ctx: Context) -> None:
     typical = _uart_load_round(ctx, hold, stall_max=False)
     longest = _uart_load_round(ctx, hold, stall_max=True)
     _expect(longest > typical, f"the maximum stall's longest flush {longest} ms is no longer than the typical {typical} ms: the flag did not reach the stall")
+
+
+def _wait_entry(port: int, name: str, timeout_s: float = _SERVING_TIMEOUT_S, *, kind: str = "E", num: "int | None" = None) -> bool:
+    # An entry of this type (and number) in `name`'s history by the deadline: the fault planted for it has logged.
+    deadline = time.monotonic() + timeout_s
+    while not _has_entry(_errcount(port, name), kind, num):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.25)
+    return True
 
 
 def _wait_reading(port: int, name: str, timeout_s: float = _SERVING_TIMEOUT_S) -> bool:

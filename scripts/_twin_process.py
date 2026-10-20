@@ -35,6 +35,11 @@ _EXIT_NAMES = {0: "a clean exit", EXIT_SIMULATED_RESET: "a simulated reset", EXI
 
 # @tunable l2.kill_reap_timeout_s = 5.0
 _KILL_REAP_TIMEOUT_S = 5.0  # the wait for a SIGKILLed twin to be reaped
+# A twin that ignored its SIGINT: the wait for its interrupt's traceback (--test-kbd-traceback), then for a second SIGINT.
+# @tunable l2.kbd_traceback_wait_s = 1.0
+_KBD_TRACEBACK_WAIT_S = 1.0
+# @tunable l2.second_sigint_wait_s = 2.0
+_SECOND_SIGINT_WAIT_S = 2.0
 # A feed gap above this share of the armed watchdog timeout is a near reset; a run that starves it on purpose skips the check.
 # @tunable l2.feed_gap_share_max = 0.75
 FEED_GAP_SHARE_MAX = 0.75
@@ -43,6 +48,10 @@ _SERVING_POLL_S = 0.25
 # @tunable l2.serving_probe_timeout_s = 1.0
 _SERVING_PROBE_TIMEOUT_S = 1.0
 _LOG_TAIL_LINES = 20
+# Past this many bytes the Unix port cannot intern an argument (from the script on), the script's directory or a
+# MICROPYPATH entry as a qstr, and dies before the runner starts: "FATAL: uncaught NLR", exit 1 (ports/unix/main.c:412,
+# :560, :688, :768; py/qstr.c:319-321; MICROPY_QSTR_BYTES_IN_LEN 1, py/mpconfig.h:369; v1.29.0).
+_QSTR_MAX_BYTES = 255
 
 
 def _twin_layout() -> str:
@@ -158,6 +167,23 @@ def _proc_diagnostic_fields(pid: int) -> dict[str, str]:
     return fields
 
 
+def _second_sigint(run: TwinRun) -> str:
+    # What a second SIGINT says about the first: the runtime exits 1 at once, printing nothing, while the first is still
+    # pending (ports/unix/unix_mphal.c:65-69, v1.29.0); a traceback or a clean exit means the first was raised and absorbed.
+    with contextlib.suppress(OSError, RuntimeError):
+        send_line(run, "KBD_TRACEBACK")  # a twin spawned with --test-kbd-traceback prints its interrupt's traceback
+    time.sleep(_KBD_TRACEBACK_WAIT_S)
+    offset = len(read_log(run.log_path))
+    run.proc.send_signal(signal.SIGINT)
+    try:
+        code = run.proc.wait(timeout=_SECOND_SIGINT_WAIT_S)
+    except subprocess.TimeoutExpired:
+        return "still running: neither SIGINT was acted on"
+    if code == 1 and "KeyboardInterrupt" not in log_from(run.log_path, offset):
+        return "exit 1 at once, nothing printed: the first was never consumed"
+    return f"{exit_reason(code)}: the first was raised and absorbed"
+
+
 def _sigint_state(fields: dict[str, str], proc_dir: Path) -> str:
     # Pending (to a thread or the process), blocked in how many threads, ignored, caught: a signal the kernel still
     # holds reads apart from one it delivered to the interpreter's handler.
@@ -179,6 +205,15 @@ def _uart_counts(tokens: list[str]) -> dict[str, UartCounts]:
             raise ValueError(f"the shutdown line names uart instance {key} twice")
         found[key] = UartCounts(int(match.group(2)), int(match.group(3)), int(match.group(4)))
     return found
+
+
+def _uninternable(argv: "list[str]", env: "dict[str, str]") -> "list[str]":
+    # Each string the interpreter would intern before the runner argv[0] (absolute, or from the checkout) starts and cannot,
+    # named with its size in bytes; a ~/ MICROPYPATH entry it builds from $HOME instead, never interning it, is not one.
+    named = [(f"{argv[i - 1]}'s value" if i and argv[i - 1].startswith("--") and not value.startswith("--") else f"argument {i}", value) for i, value in enumerate(argv)]
+    named.append(("the runner's directory", str((REPO_ROOT / argv[0]).resolve().parent)))
+    named += [(f"MICROPYPATH entry {n}", entry) for n, entry in enumerate(env["MICROPYPATH"].split(":"), 1) if not (entry.startswith("~/") and "HOME" in env)]
+    return [f"{name} ({size} bytes)" for name, value in named if (size := len(os.fsencode(value))) > _QSTR_MAX_BYTES]
 
 
 def errcount_entry(status: int, body: JSONValue, name: str) -> JSONObject:
@@ -329,8 +364,9 @@ def send_line(run: TwinRun, line: str) -> None:
 
 
 def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
-    # SIGINT, never SIGTERM: only the runner's KeyboardInterrupt path flushes its persisted state. A twin
-    # that ignores it is described (/proc fields, log tail), then killed, and run.killed says so.
+    # SIGINT, never SIGTERM: only the runner's KeyboardInterrupt path flushes its persisted state. A twin that ignores it
+    # is described (/proc fields, a second SIGINT's outcome, the log tail), then killed if still running; run.killed and
+    # the SIGKILL code say so however the second SIGINT ended it, so the verdict is the ignored first one's.
     if run.proc.poll() is None:
         run.proc.send_signal(signal.SIGINT)
         start = time.monotonic()
@@ -339,24 +375,32 @@ def shutdown(run: TwinRun, label: str, timeout_s: float = 15.0) -> int:
         except subprocess.TimeoutExpired:
             elapsed = time.monotonic() - start
             print(f"DIAG: {label}: SIGINT ignored for {elapsed:.1f}s (timeout={timeout_s}s), about to SIGKILL pid={run.proc.pid} - /proc fields: {_proc_diagnostic_fields(run.proc.pid) or '(unavailable)'}")
+            print(f"DIAG: {label}: a second SIGINT: {_second_sigint(run)}")
             print(f"DIAG: {label}: last {_LOG_TAIL_LINES} log lines before SIGKILL:\n{log_tail(run)}")
-            run.proc.kill()
+            if run.proc.poll() is None:
+                run.proc.kill()
             run.killed = True
             run.proc.wait(timeout=_KILL_REAP_TIMEOUT_S)
     _close(run)
+    if run.killed:
+        return -signal.SIGKILL
     return run.proc.returncode if run.proc.returncode is not None else EXIT_SUITE_TIMEOUT
 
 
 def spawn(launch: TwinLaunch, *, state_dir: Path, log_path: Path, args: "tuple[str, ...] | list[str]" = ()) -> TwinRun:
-    # Every state path goes inside state_dir, so a launch never writes the manual run's defaults in digital_twin/.
+    # Every state path goes inside state_dir, so a launch never writes the manual run's defaults in digital_twin/; one the
+    # interpreter would die on before the runner starts is refused before anything is created.
     paths = state_paths(state_dir)
-    paths.config_dir.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, MICROPYPATH=launch.micropypath, TZ="UTC")
     cmd = [
         launch.micropython_bin, RUNNER, "--module", launch.module, "--wiring-plan", str(launch.wiring_plan), "--device", launch.device,
         "--host", launch.host, "--port", str(launch.port), "--fram-state-path", str(paths.fram), "--scd30-state-path", str(paths.scd30),
         "--mem-backup-state-path", str(paths.mem_backup), "--config-dir", str(paths.config_dir) + "/", "--gc-threshold", str(launch.gc_threshold), *args,
     ]
+    refused = _uninternable(cmd[1:], env)
+    if refused:
+        raise ValueError(f"the twin was not started: {', '.join(refused)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
+    paths.config_dir.mkdir(parents=True, exist_ok=True)
     print(f"== Launching: {' '.join(cmd)} (log: {log_path})")
     log_file = log_path.open("w", encoding="utf-8")  # closed by shutdown()/wait_exit(), which end the process first
     proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env, stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)

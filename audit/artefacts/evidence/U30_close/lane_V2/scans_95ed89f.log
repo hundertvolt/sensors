@@ -1,0 +1,37 @@
+........................................................................ [  7%]
+........................................................................ [ 15%]
+........................................................................ [ 23%]
+........................................................................ [ 31%]
+........................................................................ [ 38%]
+........................................................................ [ 46%]
+........................................................................ [ 54%]
+........................................................................ [ 62%]
+........................................................................ [ 69%]
+............................................F........................... [ 77%]
+........................................................................ [ 85%]
+........................................................................ [ 93%]
+...............................................................          [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='vitest.config.js', ...r_controller_at', literal='4'), Tag(path='src/asy_base_classes.py', line=403, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: scripts/_twin_process.py:39: l2.kbd_traceback_wait_s is tagged but has no SPECIFICATION.md Part N row
+E         scripts/_twin_process.py:41: l2.second_sigint_wait_s is tagged but has no SPECIFICATION.md Part N row
+E       assert not ['scripts/_twin_process.py:39: l2.kbd_traceback_wait_s is tagged but has no SPECIFICATION.md Part N row', 'scripts/_twin_process.py:41: l2.second_sigint_wait_s is tagged but has no SPECIFICATION.md Part N row']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+=============================== warnings summary ===============================
+tests_scripts/test_citations.py::test_every_citation_resolves_or_is_allow_listed
+  /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/tests_scripts/test_citations.py:236: UserWarning: datasheets/ submodule not initialised - paths under it are not checked
+    datasheets=_datasheets_checked(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+1 failed, 926 passed, 1 warning in 85.71s (0:01:25)

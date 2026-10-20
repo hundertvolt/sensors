@@ -14,7 +14,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_float
+from _src_const import src_const, src_float
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C as FakeI2C
@@ -22,6 +22,7 @@ from machine import Pin as FakePin
 from machine import Timer as FakeTimer
 
 import asy_config_manager as cm
+import asy_print_log
 import asy_scd30_driver
 from asy_crc_checks import CRC8
 from asy_i2c_driver import I2C
@@ -34,7 +35,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine, Sequence
+    from collections.abc import Callable, Coroutine, Sequence
 
     from _async_harness import CoroutineOf
 
@@ -46,6 +47,7 @@ _ADDR = 0x61  # Interface Description 1.1.1: the address is fixed
 # @tunable scd30.start_trigger_period_ms = 500
 _START_TRIGGER_PERIOD_MS = 500  # pins src/asy_scd30_driver.py _START_TRIGGER_PERIOD_MS
 _SOFT_RESET_WAIT_S: float = src_float("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_S")
+_STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 # @tunable l1.asy_scd30_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
 
@@ -197,6 +199,36 @@ def test_read_measurement_data_matches_datasheet_worked_example() -> None:
     assert abs((scd._co2 or 0) - 439.09) < 0.01
     assert abs((scd._temperature or 0) - 27.2) < 0.05
     assert abs((scd._relative_humidity or 0) - 48.8) < 0.05
+
+
+_SUBNORMAL: float = struct.unpack(">f", b"\x00\x00\x00\x01")[0]  # the smallest positive single-precision value
+
+
+def test_read_measurement_decodes_every_word_like_struct_unpack() -> None:
+    # Each float compared with this test's own decode of its frame's two words (MMSB, MLSB, LMSB, LLSB; Table 2).
+    example = bytes([0x43, 0xDB, 0xCB, 0x8C, 0x2E, 0x8F, 0x41, 0xD9, 0x70, 0xE7, 0xFF, 0xF5, 0x42, 0x43, 0xBF, 0x3A, 0x1B, 0x74])
+    frames = [data_frame(0.0, -12.5, 1e-3), data_frame(400.0, 0.0, _SUBNORMAL), data_frame(_SUBNORMAL, 1e-3, 0.0), example]
+    for frame in frames:
+        scd, i2c = _make_scd()
+        i2c.read_queue.append(register_frame(1))
+        i2c.read_queue.append(frame)
+        assert run(scd.read_measurement()) is True
+        expected = [struct.unpack(">f", frame[6 * k : 6 * k + 2] + frame[6 * k + 3 : 6 * k + 5])[0] for k in range(3)]
+        assert [scd._co2, scd._temperature, scd._relative_humidity] == expected, frame
+
+
+def test_read_measurement_drops_the_crc_bytes_into_one_reused_word_buffer() -> None:
+    # The six data words land in place in the reader's own buffer, the same one every read: no slice copies per read.
+    scd, i2c = _make_scd()
+    words = scd._words
+    for values in ((400.0, 20.0, 50.0), (512.5, -3.25, 99.5)):
+        frame = data_frame(*values)
+        i2c.read_queue.append(register_frame(1))
+        i2c.read_queue.append(frame)
+        assert run(scd.read_measurement()) is True
+        assert scd._words is words
+        assert bytes(words) == bytes(frame[i] for i in range(18) if i % 3 != 2)
+        assert (scd._co2, scd._temperature, scd._relative_humidity) == values
 
 
 def test_asc_deactivate_matches_datasheet_example() -> None:
@@ -857,6 +889,28 @@ def test_a_failed_trigger_arm_ends_the_irq_task_with_one_timer_entry_and_a_resta
     # TIMER entry and ends; its restart re-arms first, and a tick then drives the stuck-pin read.
     for exc in (OSError, MemoryError):
         _arm_failure_then_restart(exc)
+
+
+def test_an_arm_failure_stored_before_the_irq_task_starts_is_persisted_once_then_re_armed() -> None:
+    reader = _make_reader()
+    with RaiseOnArm(OSError):
+        reader.start_timer()
+    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 0  # the starter only stores it
+
+    async def run_briefly() -> bool:
+        task = asyncio.create_task(reader._irq_loop())
+        await _settle(3)
+        ended = task.done()
+        await cancel(task)
+        return ended
+
+    assert run(run_briefly()) is False
+    log = run(reader.get_error_counter())["SCD30"]
+    assert log["ErrCount"] == 1 and log["ErrNum"][-1] == code("E", "TIMER")
+    assert [arm[1] for arm in reader._start_trigger_timer.arms] == [_START_TRIGGER_PERIOD_MS]  # one arm, at the start
+    assert run(run_briefly()) is False  # a later start with nothing stored persists and arms nothing
+    assert run(reader.get_error_counter())["SCD30"]["ErrCount"] == 1
+    assert len(reader._start_trigger_timer.arms) == 1
 
 
 def test_reader_stop_timer_deinits_the_periodic_timer_only() -> None:
@@ -1976,6 +2030,31 @@ def test_five_not_ready_reads_warn_once_and_new_data_clears() -> None:
     assert reader._not_ready_reads == 0
 
 
+def test_an_unreadable_frc_config_is_logged_once_per_episode() -> None:
+    # The store refuses every read while it is invalid: one entry and its console line, not one per cycle; each cycle
+    # still publishes settling, and the next good read ends the episode.
+    reader = _make_reader()
+    store = reader.cfgmgr
+
+    def store_errors() -> int:
+        count = run(store.get_error_counter())[store.name]["ErrCount"]
+        assert isinstance(count, int)
+        return count
+
+    store.valid = False
+    for _ in range(5):
+        run(reader._capture_frc_config())
+        assert reader._frc_cfg_ok is False
+    assert store_errors() == 1
+    store.valid = True
+    run(reader._capture_frc_config())
+    assert reader._frc_cfg_ok is True
+    store.valid = False
+    for _ in range(3):
+        run(reader._capture_frc_config())
+    assert store_errors() == 2
+
+
 def _frc_reader(interval: int = 2) -> SCD30_Reader:
     reader = _make_reader()
     reader._frc_interval_s = interval
@@ -2096,6 +2175,47 @@ def test_a_full_length_frc_window_keeps_every_stored_sum_a_small_float() -> None
 # _on_invalid_range above only ever exercise the failure branches; only set_altitude has its own
 # success-path round-trip test.
 # ---------------------------------------------------------------------------
+
+
+async def _overflow(*_args: object, **_kwargs: object) -> None:
+    raise RuntimeError(_STACK_EXHAUSTED)
+
+
+def test_every_broad_handler_records_a_c_stack_overflow_for_the_supervisor() -> None:
+    # Each still answers its failure value and runs on; first it records the overflow, which the supervisor reboots on.
+    reader = _make_reader()
+    cases: list[tuple[str, Callable[[], Coroutine[object, object, object]], object]] = [
+        ("get_config_snapshot", reader._config_snapshot, None),
+        ("setup", reader._init_scd, False),
+        ("reset", reader._recover_device, False),
+        ("get_altitude", reader.get_altitude, None),
+        ("get_ambient_pressure", reader.get_ambient_pressure, None),
+        ("get_forced_recalibration_reference", reader.get_forced_recalibration_reference, None),
+        ("get_measurement_interval", reader.get_measurement_interval, None),
+        ("get_self_calibration_enabled", reader.get_self_calibration_enabled, None),
+        ("get_temperature_offset", reader.get_temperature_offset, None),
+        ("set_altitude", lambda: reader.set_altitude(100), False),
+        ("set_ambient_pressure", lambda: reader.set_ambient_pressure(1013), False),
+        ("set_forced_recalibration_reference", lambda: reader.set_forced_recalibration_reference(400), False),
+        ("set_measurement_interval", lambda: reader.set_measurement_interval(2), False),
+        ("set_self_calibration_enabled", lambda: reader.set_self_calibration_enabled(True), False),
+        ("set_temperature_offset", lambda: reader.set_temperature_offset(1.0), False),
+        ("stop_continuous_measurement", lambda: reader.stop_continuous_measurement(value=False), False),
+    ]
+    for name, call, failed in cases:
+        real = getattr(reader._scd, name)
+        setattr(reader._scd, name, _overflow)
+        try:
+            assert run(call()) == failed, name
+        finally:
+            setattr(reader._scd, name, real)
+        assert asy_print_log.fatal_reported() is True, name
+        asy_print_log._fatal = False  # as at boot, for the next handler
+    reader._scd.read_measurement = _overflow  # type: ignore[assignment, method-assign]
+    results, new_data = run(reader._read_scd())
+    assert (results[0], new_data) == (None, False)
+    assert asy_print_log.fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_reader_setters_return_true_on_success() -> None:

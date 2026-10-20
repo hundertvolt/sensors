@@ -308,7 +308,7 @@ async def _uptime_s() -> int:  # the drop window's clock; no connection is serve
 def test_a_neopixel_driver_is_an_error_source_of_the_webserver() -> None:
     pixel = NeopixelDriver(0)
     app = Microdot()
-    routes = RouteSources((), None, None, None, None, None, None, (), [pixel])
+    routes = RouteSources((), None, None, None, None, None, None, None, (), [pixel])
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
     WebserverService(app, routes, serving, uptime_s=_uptime_s)
 

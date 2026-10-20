@@ -1,0 +1,6 @@
+base ONEOFF: AssertionError: 768 bytes over 30 failures = 25.6 B/failure
+base ONEOFF: 0/1 passed, 1 failed, 0 skipped
+new ONEOFF: 1/1 passed, 0 failed, 0 skipped
+new LEAK: AssertionError: [2208, 2432, 1984] bytes over 30 failures a window = 66.1 B/failure at the least
+new LEAK: 0/1 passed, 1 failed, 0 skipped
+new NONE: 1/1 passed, 0 failed, 0 skipped

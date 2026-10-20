@@ -53,9 +53,9 @@ class _CountingLevel:
         return self._inner()
 
 
-async def _count_rounds(wdt: "machine.WDT", bus: "BusFacts", idle_ms: int) -> "tuple[bool, int]":
+async def _count_rounds(wdt: "machine.WDT", bus: "BusFacts", idle_ms: int) -> "tuple[bool, int, bool]":
     # The responder's UART alone: nothing drives the other end, so the line is genuinely silent and the listener
-    # parks in the one deadline-less wait this protocol issues.
+    # parks in the one deadline-less wait this protocol issues. The third value: the listener outlived comm.clear().
     gc.collect()
     uart = asy_uart_driver.UART(
         bus["id"], bus["tx_pin"], bus["rx_pin"], baudrate=bus["baudrate"], rxbuf=bus["rxbuf"], txbuf=bus["txbuf"], rx_ring=bus["rx_ring"],
@@ -71,11 +71,12 @@ async def _count_rounds(wdt: "machine.WDT", bus: "BusFacts", idle_ms: int) -> "t
     await fed_sleep_ms(wdt, _SAMPLE_MS)
     rounds = counter.rounds
     await comm.clear()
-    if not await _until(wdt, listener.done, _CANCEL_SETTLE_MS):
+    outlived = not await _until(wdt, listener.done, _CANCEL_SETTLE_MS)
+    if outlived:
         listener.cancel()
         await _until(wdt, listener.done, _CANCEL_SETTLE_MS)
     uart.deinit()
-    return ready, rounds
+    return ready, rounds, outlived
 
 
 async def _until(wdt: "machine.WDT", check: "Callable[[], bool]", bound_ms: int) -> bool:
@@ -106,6 +107,7 @@ async def _main() -> None:
     fact("setup", [arm_result[0] for arm_result in (fast_a, idle_a, fast_b, idle_b)])
     fact("fast_rounds", [fast_a[1], fast_b[1]])
     fact("idle_rounds", [idle_a[1], idle_b[1]])
+    fact("listener_cancelled", [arm_result[2] for arm_result in (fast_a, idle_a, fast_b, idle_b)])
     fact("sample_ms", _SAMPLE_MS)
     fact("expected_idle_rounds", _SAMPLE_MS // bus["poll_idle_ms"])
     fact("expected_rounds_factor", _EXPECTED_ROUNDS_FACTOR)

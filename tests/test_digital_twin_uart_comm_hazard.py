@@ -12,7 +12,7 @@ import microtest
 from _async_harness import run
 from _error_codes import code
 from _src_const import src_const, src_int
-from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get, frames
+from _uart_comm_harness import ERROR_LEVEL, Pair, PollRoundClock, accept_set, echo_get, frames
 from _uart_comm_hazard_common import register_both_crc_modes
 
 try:
@@ -187,7 +187,7 @@ def _pair(crc: "CrcMaker") -> Pair:
     # Built at synchronous scope on a new board: the twin's UARTs are static per id, so each pair needs it.
     machine.reset_peripherals()
     maker = (lambda: None) if crc is None else crc
-    pair = Pair(payload_size=_PAYLOAD, timeout=_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(), crc_a=maker(), crc_b=maker())
+    pair = Pair(payload_size=_PAYLOAD, timeout=_TIMEOUT_MS, get_callback=echo_get(b"v"), set_callback=accept_set(), crc_a=maker(), crc_b=maker(), debug=ERROR_LEVEL)
     # The twin wire takes real time, and Pair's default 9600 baud spends a full frame's wire time twice inside the reply
     # budget: both ends and both wire directions at J.6's line rate (attributes, as an init() would undo the DMA routing).
     pair.fake_a.baudrate = pair.fake_b.baudrate = pair.driver_a.baudrate = pair.driver_b.baudrate = _BAUD

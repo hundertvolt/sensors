@@ -6,6 +6,7 @@
 from micropython import const
 
 from asy_config_manager import FAILED, VALID
+from asy_print_log import report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -68,6 +69,7 @@ async def handle_set_cmd(
             if post_asy_fct is not None:
                 await post_asy_fct()
         except Exception as e:
+            report_if_fatal(e)
             await reader.pr.err_s("Post-write hook failed:", e, errno=_ERR_CALLBACK)
             results = dict.fromkeys(results, FAILED)
     return results

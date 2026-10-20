@@ -12,7 +12,7 @@ from collections import namedtuple
 from micropython import const
 
 from asy_base_classes import COUNTER_CAP, PieceBuffer, RegionBuffer
-from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -336,7 +336,8 @@ class UARTComm:
             ack = bytearray(room)
             zero = bytearray(max(size - _HEADER_LEN, 0))
             cmd_buf = bytearray(1)
-        except (MemoryError, OverflowError):
+        except (MemoryError, OverflowError) as e:
+            self.pr.err("Scratch buffer allocation failed:", e)  # its own text for the memory gates; __init__ adds the errno
             return tx, rx, bytearray(0), bytearray(0), bytearray(0)
         # An ACK's shape is fixed, so only its UID is ever written again.
         if len(ack) >= _HEADER_LEN:
@@ -410,6 +411,7 @@ class UARTComm:
             if result is not None and hasattr(result, "send"):
                 result = await result  # type: ignore[misc]  # awaitable: `send` checked above
         except Exception as e:  # caller-supplied code; its runtime behaviour is not statically known
+            report_if_fatal(e)
             await self._err(_ERR_CALLBACK, "callback raised:", e)
             return None
         return result
@@ -550,6 +552,7 @@ class UARTComm:
                     backoff = self._backoff_initial_ms
                     continue
             except Exception as e:  # uart_listen() is contracted never to raise; a contract is not an enforcement
+                report_if_fatal(e)
                 await self._err(_ERR_UNEXPECTED, "listen loop caught:", e)
             await asyncio.sleep_ms(backoff)  # cancellable, and never a zero-delay retry
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)

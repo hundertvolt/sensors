@@ -8,6 +8,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
+from _recording_print import record_prints
 from _src_const import src_int
 
 import asy_base_classes
@@ -44,6 +45,13 @@ _INJECTED_FAILURE = 1 << 20
 
 # @tunable l1.asy_fram_manager_read_wait_s = 5
 _READ_WAIT_S = 5
+
+
+def _assert_one_check_buffer_failure(lines: "list[tuple[object, ...]]") -> None:
+    # A recorded get_chunk() printed its check buffer's one failure line and nothing else: any other caught failure shows.
+    heads = [line[:2] for line in lines]  # never the exception in a message: its text and class name trip the memory gates
+    assert heads == [("FRAM", "check buffer allocation failed:")], heads
+    assert len(lines[0]) == 3 and type(lines[0][2]) is MemoryError, len(lines[0])
 
 
 def _degraded_buffer() -> FRAMChunkBuffer:
@@ -660,22 +668,42 @@ def test_a_verify_pass_whose_block_read_fails_the_crc_logs_fram_data_crc() -> No
     assert _entries(run(manager.get_error_counter())) == [(code("E", "FRAM_DATA_CRC"), "E"), (code("E", "FRAM_VERIFY"), "E")]
 
 
-def test_an_unallocatable_check_length_logs_alloc_on_read_and_write() -> None:
-    # The cross-check's scratch could not be allocated: the read cannot verify block 1 (an ALLOC entry, then
-    # the block's own warning and its rewrite) and a verified write cannot verify at all.
+def test_an_unallocatable_check_length_logs_alloc_once_and_rewrites_nothing() -> None:
+    # The cross-check's scratch could not be allocated, and it never comes back: every read returns block 0's data
+    # unchecked, block 1 is never rewritten for it, and the one ALLOC entry stands for the whole run; a verified
+    # write still cannot verify, so each one fails with its own entry.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
+    with record_prints() as rec:  # recorded, never printed: the interpreter's own text would trip the memory gates
+        chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
     assert chunk is not None
+    _assert_one_check_buffer_failure(rec.lines)
     assert run(chunk.write(b"data")) is True
-    assert run(chunk.read()) == bytearray(b"data")
-    assert _entries(run(manager.get_error_counter())) == [(code("E", "ALLOC"), "E"), (code("W", "FRAM_BLOCK_INVALID"), "W")]
+    rewrites = [0]
+    original_write_chunk = chunk._write_chunk
+
+    async def counting_write_chunk(buf: bytearray, addr: int) -> bool:
+        rewrites[0] += 1
+        return await original_write_chunk(buf, addr)
+
+    chunk._write_chunk = counting_write_chunk  # type: ignore[method-assign]
+    for _read in range(3):
+        assert run(chunk.read()) == bytearray(b"data")
+    errs = run(manager.get_error_counter())
+    assert rewrites[0] == 0
+    assert _entries(errs) == [(code("E", "ALLOC"), "E")]
+    assert errs["FRAM"]["ErrCount"] == 1
     verified, _chip = _make_manager()
     run(_setup_manager(verified))
-    vchunk = verified.get_chunk(4, crc=CRCPass(), check_length=-1, verify=1, owner="T1")
+    with record_prints() as vrec:
+        vchunk = verified.get_chunk(4, crc=CRCPass(), check_length=-1, verify=1, owner="T1")
+    _assert_one_check_buffer_failure(vrec.lines)
     assert vchunk is not None
     assert run(vchunk.write(b"data")) is False
-    assert _entries(run(verified.get_error_counter())) == [(code("E", "ALLOC"), "E"), (code("E", "FRAM_VERIFY"), "E")]
+    assert run(vchunk.write(b"data")) is False
+    verrs = run(verified.get_error_counter())
+    assert _entries(verrs) == [(code("E", "ALLOC"), "E"), (code("E", "FRAM_VERIFY"), "E")]
+    assert verrs["FRAM"]["ErrCount"] == 3  # one ALLOC, then one FRAM_VERIFY per write
 
 
 # ---------------------------------------------------------------------------
@@ -1112,17 +1140,17 @@ def test_ntp_callback_raising_degrades_to_not_synced_instead_of_propagating() ->
     assert _entries(run(manager.get_error_counter())) == [(code("E", "CALLBACK"), "E")]  # its console line names the write path
 
 
-def test_compare_with_huge_check_length_self_heals_instead_of_crashing() -> None:
+def test_compare_with_huge_check_length_reads_block_0_instead_of_crashing() -> None:
     # _compare_with's `bytearray(self.check_length)` was unguarded against MemoryError/
     # OverflowError - check_length is caller-supplied, not hardware-bounded like the allocation
     # asy_fram_driver.py guards. Magnitude matches test_asy_base_classes.py's confirmed boundary.
 
-    # The allocation failure makes _compare_with report block 1 "not verifiably valid", which
-    # _read() heals from block 0 like any other block-1 problem - so the fix integrates with the
-    # existing self-healing rather than merely avoiding a crash.
+    # The allocation failure leaves block 1 uncheckable, so _read() returns block 0's valid data.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, owner="T1")
+    with record_prints() as rec:  # the interpreter's own allocation text stays off this file's output
+        chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, owner="T1")
+    _assert_one_check_buffer_failure(rec.lines)
     assert chunk is not None
     run(chunk.write(b"data"))
 
@@ -1157,7 +1185,9 @@ def test_compare_with_huge_check_length_during_write_verification_degrades_safel
     # False (real data was physically written, but that can't be confirmed) rather than crashing.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, verify=1, owner="T1")
+    with record_prints() as rec:  # the interpreter's own allocation text stays off this file's output
+        chunk = manager.get_chunk(4, crc=CRCPass(), check_length=2**62, verify=1, owner="T1")
+    _assert_one_check_buffer_failure(rec.lines)
     assert chunk is not None
 
     async def scenario() -> bool:
@@ -1858,13 +1888,15 @@ def test_get_chunk_negative_verify_triggers_verification_on_every_single_write()
     assert chunk._verify_counter == 0  # verification ran and reset the counter, not left at 1
 
 
-def test_get_chunk_negative_check_length_self_heals_instead_of_crashing() -> None:
-    # The same MemoryError-degrades-to-"not verifiably valid" guard as the huge-check_length
-    # regression test, reached from a different input class: bytearray(negative_int) raises
-    # MemoryError here too, the negative count being reinterpreted as a huge unsigned request.
+def test_get_chunk_negative_check_length_reads_block_0_instead_of_crashing() -> None:
+    # The same MemoryError guard as the huge-check_length regression test, reached from a different
+    # input class: bytearray(negative_int) raises MemoryError here too, the negative count being
+    # reinterpreted as a huge unsigned request.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
+    with record_prints() as rec:  # the interpreter's own allocation text stays off this file's output
+        chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
+    _assert_one_check_buffer_failure(rec.lines)
     assert chunk is not None
     run(chunk.write(b"data"))
 
@@ -1885,7 +1917,9 @@ def test_multiple_invalid_parameters_combined_still_degrade_safely() -> None:
     # of these interact to produce anything worse than each one's own individual degradation.
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(-4, crc=CRCPass(), verify=-1, check_length=-1, owner="T1")
+    with record_prints() as rec:  # the interpreter's own allocation text stays off this file's output
+        chunk = manager.get_chunk(-4, crc=CRCPass(), verify=-1, check_length=-1, owner="T1")
+    _assert_one_check_buffer_failure(rec.lines)
     assert chunk is not None
 
     async def scenario() -> tuple[bool, bytearray | None]:
@@ -2822,21 +2856,33 @@ def test_the_compare_with_scratch_buffer_belongs_to_the_chunk_not_the_call() -> 
     assert id(chunk._check_buf) == before
 
 
-def test_a_chunk_whose_scratch_buffer_cannot_be_allocated_still_reads() -> None:
-    # The (MemoryError, OverflowError) guard moves to construction with the allocation, but the
-    # degradation must not change: _compare_with() reports "not verifiably valid", so a read
-    # rewrites block 1 from block 0 and still returns the data (the self-heals test pins it).
+def test_a_failed_check_buffer_allocation_prints_its_own_text_once() -> None:
+    # The (MemoryError, OverflowError) guard sits at construction with the allocation: one ungated console line with
+    # the failure's own text (the memory gates read it), and the chunk still reads its data.
+    err = MemoryError("injected for the check buffer")  # worded clear of the memory gates' markers
+    real = bytearray
+
+    def failing(*args: int) -> bytearray:
+        if args == (7,):  # the check buffer's own size: every other allocation of the chunk succeeds
+            raise err
+        return real(*args)
+
     manager, _chip = _make_manager()
     run(_setup_manager(manager))
-    chunk = manager.get_chunk(4, crc=CRCPass(), check_length=-1, owner="T1")
+    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            chunk = manager.get_chunk(4, crc=CRCPass(), check_length=7, owner="T1")
+    finally:
+        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
     assert chunk is not None
     assert chunk._check_buf is None  # the allocation failed at construction, once, not per call
+    assert rec.lines == [("FRAM", "check buffer allocation failed:", err)]
+    assert rec.text() == "FRAM check buffer allocation failed: injected for the check buffer"
     run(chunk.write(b"data"))
-
-    async def scenario() -> bytearray | None:
-        return await chunk.read()
-
-    assert run(scenario()) == bytearray(b"data")
+    with record_prints() as rec:
+        assert run(chunk.read()) == bytearray(b"data")
+    assert rec.lines == []  # the read's own entry is persisted, not a second console line
 
 
 # ---------------------------------------------------------------------------
@@ -3097,6 +3143,29 @@ def test_erase_refuses_a_write_protected_or_uninitialised_chip() -> None:
     assert run(manager.erase_ready()) is False
     manager.fram.lost.clear()
     assert run(manager.erase_ready()) is True
+
+
+def test_an_erase_without_its_unit_buffer_prints_its_own_text() -> None:
+    # The unit buffer's allocation failed: the chunks stay blanked, nothing is zeroed, and the failure's own text
+    # reaches the console at every level, where the memory gates read it.
+    manager, chip, _stores = _filled_system(FakeMB85RS64V)
+    err = MemoryError("injected for the erase unit")  # worded clear of the memory gates' markers
+    real = bytearray
+
+    def failing(*args: int) -> bytearray:
+        if args == (256,):
+            raise err
+        return real(*args)
+
+    tail = bytearray(chip.memory[manager._allocated_size :])
+    asy_fram_manager.bytearray = failing  # type: ignore[attr-defined]
+    try:
+        with record_prints() as rec:
+            assert run(manager.erase_chip(lambda: None)) is False
+    finally:
+        del asy_fram_manager.bytearray  # type: ignore[attr-defined]
+    assert chip.memory[manager._allocated_size :] == tail  # nothing zeroed past the blanked chunks
+    assert ("FRAM", "FRAM erase: no buffer, chunks blanked only:", err) in rec.lines
 
 
 def test_a_failed_invalidate_stops_before_pass_2() -> None:

@@ -1,0 +1,58 @@
+F.....F..F.......F....                                                   [100%]
+=================================== FAILURES ===================================
+________________ test_no_await_chain_is_deeper_than_the_budget _________________
+
+chains = [Chain(depth=30, path=('sensortask_arzi.main', 'SystemService.run_setups', 'NotificationService.setup', 'NotificationS...rintLogHistory.err_s', 'PrintLogHistory._store_err', 'PrintLogHistory._write_through', 'PrintLogHistory._write')), ...]
+
+    def test_no_await_chain_is_deeper_than_the_budget(chains: "list[Chain]") -> None:
+        deeper = _over_budget(chains)
+>       assert not deeper, f"{len(deeper)} chain(s) past the {_MAX_AWAIT_DEPTH}-level budget or recursive; the first, {deeper[0].depth} levels: " + " -> ".join(deeper[0].path)
+E       AssertionError: 6 chain(s) past the 28-level budget or recursive; the first, 30 levels: sensortask_arzi.main -> SystemService.run_setups -> NotificationService.setup -> NotificationService(SensorReaderConfig).setup -> ConfigManager.setup -> PrintLogHistoryStore.setup -> PrintLogHistoryStore._read -> FRAMChunk.read_into -> FRAMChunk(_FRAMBaseChunk)._read -> FRAMChunk(_FRAMBaseChunk)._compare_with -> FRAMChunk(_FRAMBaseChunk)._read_chunk -> FRAMChunk(_FRAMBaseChunk)._handle_status_bytes -> FRAMChunk(_FRAMBaseChunk)._set_check_sb -> FRAM_SPI.report_get_values -> PrintLogHistoryStore(PrintLogHistory).err_s -> PrintLogHistoryStore(PrintLogHistory)._store_err -> PrintLogHistoryStore(PrintLogHistory)._write_through -> PrintLogHistoryStore._write -> FRAMTimestampedChunk.write_into -> FRAMTimestampedChunk(_FRAMBaseChunk)._write -> FRAMTimestampedChunk(_FRAMBaseChunk)._compare_with -> FRAMTimestampedChunk(_FRAMBaseChunk)._read_chunk -> FRAMTimestampedChunk(_FRAMBaseChunk)._handle_status_bytes -> FRAMTimestampedChunk(_FRAMBaseChunk)._set_check_sb -> FRAM_SPI.report_set_values -> FRAM_SPI._report_chip_lost -> PrintLogHistory.err_s -> PrintLogHistory._store_err -> PrintLogHistory._write_through -> PrintLogHistory._write
+E       assert not [Chain(depth=30, path=('sensortask_arzi.main', 'SystemService.run_setups', 'NotificationService.setup', 'NotificationS...', 'PrintLogHistory.err_s', 'PrintLogHistory._store_err', 'PrintLogHistory._write_through', 'PrintLogHistory._write'))]
+
+tests_scripts/test_await_depth.py:50: AssertionError
+______________ test_a_construction_is_exactly_the_class_it_names _______________
+
+    def test_a_construction_is_exactly_the_class_it_names() -> None:
+        # Base() is a Base: its step is Base's own, never the override of Deep, though Deep is constructed too.
+        source = _FAMILY + "async def top():\n    plain = Base()\n    await plain.step()\n\n\n_SPARE = Deep()\nasyncio.create_task(top())\n"
+>       assert _solved({"m": source}) == {"m.top": 2}
+E       AssertionError: assert {'m.top': 4} == {'m.top': 2}
+E         
+E         Differing items:
+E         {'m.top': 4} != {'m.top': 2}
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:113: AssertionError
+_____ test_a_parameter_every_call_resolves_takes_only_what_the_calls_pass ______
+
+    def test_a_parameter_every_call_resolves_takes_only_what_the_calls_pass() -> None:
+        # run() is only ever handed a Shallow: its Base annotation does not bring in the constructed Deep.
+        source = _FAMILY + "async def run(worker: Base):\n    await worker.step()\n\n\nasync def top():\n    await run(Shallow())\n\n\n_SPARE = Deep()\nasyncio.create_task(top())\n"
+>       assert _solved({"m": source}) == {"m.top": 3}
+E       AssertionError: assert {'m.top': 5} == {'m.top': 3}
+E         
+E         Differing items:
+E         {'m.top': 5} != {'m.top': 3}
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:135: AssertionError
+__ test_a_construction_whose_value_is_dropped_still_makes_its_class_concrete ___
+
+    def test_a_construction_whose_value_is_dropped_still_makes_its_class_concrete() -> None:
+        # Soundness: the bare Deep() runs Deep's __init__ all the same, so an annotated Base can be a Deep.
+        source = _FAMILY + "import store\n\n\nasync def top():\n    worker: Base = store.pick()\n    await worker.step()\n\n\n_SPARE = Shallow()\nDeep()\nasyncio.create_task(top())\n"
+>       assert _solved({"m": source}) == {"m.top": 4}
+E       AssertionError: assert {'m.top': 2} == {'m.top': 4}
+E         
+E         Differing items:
+E         {'m.top': 2} != {'m.top': 4}
+E         Use -v to get more diff
+
+tests_scripts/test_await_depth.py:165: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_await_depth.py::test_no_await_chain_is_deeper_than_the_budget
+FAILED tests_scripts/test_await_depth.py::test_a_construction_is_exactly_the_class_it_names
+FAILED tests_scripts/test_await_depth.py::test_a_parameter_every_call_resolves_takes_only_what_the_calls_pass
+FAILED tests_scripts/test_await_depth.py::test_a_construction_whose_value_is_dropped_still_makes_its_class_concrete
+4 failed, 18 passed in 4.43s

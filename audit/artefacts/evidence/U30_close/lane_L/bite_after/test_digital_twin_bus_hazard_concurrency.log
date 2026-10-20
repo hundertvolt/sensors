@@ -1,0 +1,126 @@
+PASS test_a_bus_recovery_does_not_disturb_concurrent_sibling_reads
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+FRAM CRC error in _read_chunk!
+FRAM CRC error in _read_chunk!
+FRAM CRC error in _read_chunk!
+FRAM CRC error in _read_chunk!
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_a_chunk_another_owner_wrote_reads_blank_after_a_simulated_reboot
+PASS test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 1
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 2
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 3
+SGP40 Error counter back to 2
+SGP40 Error counter back to 1
+SGP40 Error counter back to 0
+PASS test_a_sustained_fault_on_one_twin_chip_climbs_to_the_bus_clear_and_recovers_once_cleared
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+SYSTEM PrintLog: History write failed!
+SYSTEM dropped while paused
+SYSTEM lands after the pause
+PASS test_a_timed_storage_pause_ends_by_itself_on_the_next_uptime_pass
+PASS test_an_isl29125_reapply_mid_read_leaves_every_twin_sibling_read_valid
+PASS test_an_scd30_soft_reset_mid_read_leaves_every_twin_sibling_read_valid
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+FRAM General read error in _read_chunk: [Errno 5] EIO: SPI RX overrun
+FRAM General read error in _read_chunk: [Errno 5] EIO: SPI RX overrun
+FRAM General read error in _read_chunk: [Errno 5] EIO: SPI RX overrun
+FRAM Read status byte is not 1 but 2
+FRAM Read status byte is not 1 but 2
+PASS test_fram_chunk_loop_absorbs_a_transient_spi_rx_overrun
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_fram_recovers_after_a_write_its_chip_never_enabled
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_fram_recovers_after_an_injected_spi_read_fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_no_scd30_write_reaches_the_chip_while_a_system_command_runs
+PASS test_sgp40_heater_off_mid_read_leaves_every_twin_sibling_read_valid
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_storage_pause_does_not_survive_a_simulated_reboot
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_storage_pause_gates_the_real_twin_chip
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+FRAM General read error in _read_chunk: [Errno 5] EIO: SPI RX overrun
+PASS test_storage_pause_short_circuits_before_the_bus_so_an_injected_fault_survives
+UART_init Planted: planted fault
+UART_resp Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_the_erase_feeds_the_watchdog_at_bus_speed
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+SYSTEM in flight at the erase
+SYSTEM PrintLog: History write failed!
+SYSTEM after the erase
+PASS test_the_erase_racing_a_logger_write_never_tears_a_chunk
+UART_init Planted: planted fault
+UART_resp Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+PASS test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call
+UART_init Planted: planted fault
+UART_resp Planted: planted fault
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+NTP NTP request not sent to 192.0.2.1
+NTP NTP request not sent to 192.0.2.1
+NTP NTP request not sent to 192.0.2.1
+PASS test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_disconnect
+PASS test_three_concurrent_sgp40_measurements_each_send_and_read_their_own_words
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 1
+BMP3XX Read failed: [Errno 5] EIO: no ACK
+BMP3XX Error counter increased to 1
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 2
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 3
+BMP3XX Read failed: [Errno 5] EIO: no ACK
+BMP3XX Error counter increased to 2
+BMP3XX Soft reset failed: [Errno 5] EIO: no ACK
+SGP40 Read failed: [Errno 5] EIO: no ACK
+SGP40 Error counter increased to 4
+SGP40 Error counter back to 3
+BMP3XX Error counter back to 1
+SGP40 Error counter back to 2
+SGP40 Error counter back to 1
+BMP3XX Error counter back to 0
+SGP40 Error counter back to 0
+PASS test_two_failing_readers_on_one_bus_run_each_bus_rung_once
+WEBSERVER Planted: planted fault
+SYSTEM Planted: planted fault
+FRAM Write status byte failed!
+FRAM Writing block 0 failed!
+FRAM Write status byte failed!
+FRAM Write status byte failed!
+PASS test_write_protect_blocks_reads_too_and_the_data_survives_it
+22/22 passed, 0 failed, 0 skipped

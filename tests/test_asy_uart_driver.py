@@ -8,6 +8,7 @@ import time
 
 from _async_harness import run
 from _error_codes import code
+from _recording_print import record_prints
 from _src_const import src_int
 from _twin_random import FixedRandom
 from _uart_comm_harness import Pair, PollRoundClock, accept_set, echo_get
@@ -30,7 +31,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, SupportsIndex
 
     from asy_base_classes import PieceBuffer
 
@@ -380,21 +381,48 @@ def test_deinit_calls_real_hardware_deinit_and_clears_poller() -> None:
     assert ok is True
 
 
-class _RaisingUnregisterPoller:
+class _RaisingPoller:
+    # Every call the driver makes on its poller raises err: a poll round or a teardown failing underneath it.
+    def __init__(self, err: Exception) -> None:
+        self._err = err
+
+    def ipoll(self, _timeout_ms: int) -> "Any":  # ready() calls ipoll(0) positionally
+        raise self._err
+
     def unregister(self, _obj: "object") -> None:  # asy_uart_driver.py calls unregister() positionally
-        raise OSError("simulated poller unregister failure")
+        raise self._err
 
 
 def test_deinit_swallows_poller_unregister_failure() -> None:
     uart = _make_uart()
-    uart.poller = _RaisingUnregisterPoller()  # type: ignore[assignment]
-    ok = uart.deinit()  # must not raise despite the poller's own unregister() failing
+    uart.poller = _RaisingPoller(OSError("simulated poller unregister failure"))  # type: ignore[assignment]
+    with record_prints() as rec:
+        ok = uart.deinit()  # must not raise despite the poller's own unregister() failing
     assert uart._uart is None
     assert uart.poller is None
     # Step 6 (silent-failure-masking finding): a failed unregister() must be reported via the
     # return value, not just silently swallowed - see asy_udp_socket.py's disconnect() for the
     # identical pattern applied to its own logger-less class.
     assert ok is False
+    assert rec.lines == []  # an OSError is the caller's to log, with its own teardown line
+
+
+def test_a_caught_allocation_failure_in_a_poll_or_teardown_prints_its_own_text() -> None:
+    # No logger in this class: a caught MemoryError's text goes out once through console(), so the memory gates read
+    # it, and the sentinel stays the same; an OSError in the same poll round prints nothing.
+    err = MemoryError("injected for the poller")  # worded clear of the memory gates' markers
+    uart = _make_uart()
+    uart.poller = _RaisingPoller(err)  # type: ignore[assignment]
+    with record_prints() as rec:
+        polled = run(uart.ready(select.POLLOUT, timeout_ms=_READY_TIMEOUT_MS), _RUN_BOUND_S)
+        ok = uart.deinit()
+    assert (polled, ok) == (False, False)
+    assert rec.lines == [("UART", "readiness poll failed:", err), ("UART", "poller unregister failed:", err)]
+    quiet = _make_uart()
+    quiet.poller = _RaisingPoller(OSError(5))  # type: ignore[assignment]
+    with record_prints() as rec:
+        assert run(quiet.ready(select.POLLOUT, timeout_ms=_READY_TIMEOUT_MS), _RUN_BOUND_S) is False
+    assert rec.lines == []
 
 
 def test_double_deinit_is_idempotent() -> None:
@@ -411,6 +439,43 @@ def test_reinit_deinits_the_previous_bus_first() -> None:
     uart.init(0, tx_pin=0, rx_pin=1)
     assert first.deinit_called is True
     assert fake(uart) is not first
+
+
+def test_a_reinit_whose_teardown_fails_says_so_once_and_still_reinits() -> None:
+    # init() is deinit()'s caller here, so it logs the False once with its own line, and the re-init goes on;
+    # a MemoryError keeps its own text line before it, and a clean teardown prints nothing.
+    err = MemoryError("injected for the poller")  # worded clear of the memory gates' markers
+    clean = _make_uart()
+    with record_prints() as rec:
+        clean.init(0, tx_pin=0, rx_pin=1)
+    assert rec.lines == []
+    for fault, before in ((OSError(5), []), (err, [("UART", "poller unregister failed:", err)])):
+        uart = _make_uart()
+        first = fake(uart)
+        uart.poller = _RaisingPoller(fault)  # type: ignore[assignment]
+        with record_prints() as rec:
+            uart.init(0, tx_pin=0, rx_pin=1)
+        assert rec.lines == before + [("UART", "re-init teardown failed")], rec.lines
+        assert first.deinit_called is True
+        assert fake(uart) is not first
+        assert uart.poller is not None
+
+
+def test_a_reinit_over_a_closed_dma_channel_says_so_before_it_raises() -> None:
+    # A closed channel is the teardown failure rp2 itself raises ("channel closed", rp2_dma.c): the line comes first,
+    # then the re-init raises from re-arming that channel, as it did before the line existed.
+    uart = _make_uart()
+    data = uart._rx_dma
+    assert data is not None
+    data.close()
+    raised = False
+    with record_prints() as rec:
+        try:
+            uart.init(0, tx_pin=0, rx_pin=1)
+        except ValueError:
+            raised = True
+    assert raised
+    assert rec.lines == [("UART", "re-init teardown failed")], rec.lines
 
 
 def test_operations_outside_async_with_return_none_or_false() -> None:
@@ -1563,29 +1628,33 @@ class _MemoryErrorCRC:
     # Wraps a real CRCBase so length(), which read_until_complete() needs, keeps working while
     # add()/check() raise MemoryError instead of doing real work - the UDP socket suite's own technique,
     # proving asy_uart_driver.py's try/except around these two calls actually catches it.
-    def __init__(self, real: "CRCBase") -> None:
+    def __init__(self, real: "CRCBase", err: MemoryError) -> None:
         self._real = real
+        self._err = err
 
     def length(self) -> int:
         return self._real.length()
 
     async def add(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:  # both called positionally
-        raise MemoryError("simulated allocation failure")
+        raise self._err
 
     async def check(self, _bytearr: bytearray, _init: "int | None" = None) -> bytearray | None:
-        raise MemoryError("simulated allocation failure")
+        raise self._err
 
 
 def test_write_returns_false_on_crc_add_memoryerror() -> None:
     uart = _make_uart(crc=CRC16())
-    uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+    err = MemoryError("injected for the CRC frame")  # worded clear of the memory gates' markers
+    uart.crc = _MemoryErrorCRC(CRC16(), err)  # type: ignore[assignment]
 
     async def scenario() -> bool:
         async with uart:
             return await uart.write(bytearray(b"x"))
 
-    assert run(scenario(), _RUN_BOUND_S) is False
+    with record_prints() as rec:
+        assert run(scenario(), _RUN_BOUND_S) is False
     assert fake(uart).log == []  # rejected before ever touching the bus
+    assert rec.lines == [("UART", "CRC frame allocation failed:", err)]  # its own text, once: no logger here
 
 
 class _NoneCRC:
@@ -1616,18 +1685,96 @@ def test_read_until_complete_returns_none_on_crc_check_memoryerror() -> None:
     framed = run(CRC16().add(bytearray(b"hello")), _RUN_BOUND_S)
     assert framed is not None
     fake(uart).feed_rx(bytes(framed))
-    uart.crc = _MemoryErrorCRC(CRC16())  # type: ignore[assignment]
+    err = MemoryError("injected for the CRC check")  # worded clear of the memory gates' markers
+    uart.crc = _MemoryErrorCRC(CRC16(), err)  # type: ignore[assignment]
 
     async def scenario() -> bytearray | None:
         async with uart:
             return await uart.read_until_complete(5)
 
-    assert run(scenario(), _RUN_BOUND_S) is None
+    with record_prints() as rec:
+        assert run(scenario(), _RUN_BOUND_S) is None
+    assert rec.lines == [("UART", "CRC check allocation failed:", err)]
 
 
-# The frame buffer's own MemoryError guard is not fault-injected: unlike self.crc, the
-# bytearray has no substitutable object and no hook to force the raise deterministically.
-# A documented gap (SPECIFICATION.md Part E); the multi-round assembly tests still cover the line.
+class _FailingAlloc:
+    # Shadows the driver's module-global `bytearray` (SPECIFICATION.md Part E.4's reassign-a-module-name mocking):
+    # every call raises err while the block runs.
+    def __init__(self, err: Exception) -> None:
+        self._err = err
+
+    def __call__(self, *_args: "Any") -> bytearray:
+        raise self._err
+
+    def __enter__(self) -> "_FailingAlloc":
+        asy_uart_driver.bytearray = self  # type: ignore[attr-defined]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        asy_uart_driver.bytearray = bytearray  # type: ignore[attr-defined]
+
+
+def test_an_allocating_read_whose_buffer_fails_prints_its_own_text() -> None:
+    # read(), readline() and read_until_complete() allocate what they return: a heap that cannot serve it returns the
+    # sentinel before any byte is copied, and prints the error's own text once (no logger here) for the memory gates.
+    err = MemoryError("injected for the read buffer")  # worded clear of the memory gates' markers
+    uart = _make_uart()
+    fake(uart).feed_rx(b"ab\n")
+
+    async def scenario() -> list[object]:
+        async with uart:
+            got: list[object] = [await uart.read(timeout_ms=_DATA_TIMEOUT_MS), await uart.readline(timeout_ms=_DATA_TIMEOUT_MS)]
+            got.append(await uart.read_until_complete(2, start_timeout_ms=_DATA_TIMEOUT_MS, timeout_ms=_DATA_TIMEOUT_MS))
+            return got
+
+    with _FailingAlloc(err), record_prints() as rec:
+        got = run(scenario(), _RUN_BOUND_S)
+    assert got == [None, None, None]
+    whats = ["read buffer allocation failed:", "line buffer allocation failed:", "frame buffer allocation failed:"]
+    assert rec.lines == [("UART", what, err) for what in whats]
+    assert uart._rx_level() == 3, uart._rx_level()
+
+
+class _UnsliceableFrame(bytearray):
+    # A frame buffer whose slice raises err; indexing, slice assignment and its buffer stay a bytearray's own.
+    err: Exception = MemoryError()
+
+    def __getitem__(self, i: "SupportsIndex | slice") -> "Any":
+        if isinstance(i, slice):
+            raise self.err
+        return memoryview(self)[i]  # MicroPython's super() reaches no native __getitem__
+
+
+class _UnsliceableFrames:
+    # Shadows the driver's module-global `bytearray` so the frame buffers it allocates are _UnsliceableFrame.
+    def __init__(self, err: Exception) -> None:
+        _UnsliceableFrame.err = err
+
+    def __enter__(self) -> "_UnsliceableFrames":
+        asy_uart_driver.bytearray = _UnsliceableFrame  # type: ignore[attr-defined]
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        asy_uart_driver.bytearray = bytearray  # type: ignore[attr-defined]
+
+
+def test_a_delimited_read_whose_copy_fails_drops_the_frame_counted() -> None:
+    # The delimited read copies its frame out once, after the frame left the ring: a heap that cannot serve the
+    # copy returns the sentinel, prints the error's own text once and counts the frame; the next frame reads whole.
+    err = MemoryError("injected for the frame copy")  # worded clear of the memory gates' markers
+    sender = cobs_uart()
+    assert run(locked_write(sender, bytearray(b"hello")), _RUN_BOUND_S) is True
+    frame = written(sender)
+    uart = cobs_uart()
+    fake(uart).feed_rx(frame + frame)
+    timeouts = {"start_timeout_ms": _DATA_TIMEOUT_MS, "timeout_ms": _DATA_TIMEOUT_MS}
+    with _UnsliceableFrames(err), record_prints() as rec:
+        got = run(locked_read_until_complete(uart, 5, **timeouts), _RUN_BOUND_S)
+    assert got is None
+    assert rec.lines == [("UART", "frame copy allocation failed:", err)]
+    assert uart.discarded_bytes == len(frame), (uart.discarded_bytes, len(frame))
+    assert run(locked_read_until_complete(uart, 5, **timeouts), _RUN_BOUND_S) == bytearray(b"hello")
+    assert uart.discarded_bytes == len(frame)
 
 
 # ---------------------------------------------------------------------------
@@ -1926,8 +2073,12 @@ def test_a_delimited_read_whose_worst_case_buffer_will_not_fit_fails_cleanly() -
     # read_until_complete() sizes its own buffer from the codec's worst case, so a length
     # the heap cannot serve has to come back as the sentinel - not as a MemoryError out of a driver
     # contracted never to raise, and not as a read against a buffer that was never allocated.
-    uart = cobs_uart(max_frame=1 << 30)
-    assert run(locked_read_until_complete(uart, 1 << 30, start_timeout_ms=10, timeout_ms=10), _RUN_BOUND_S) is None
+    with record_prints() as rec:  # the codec's genuine allocation failure, asserted below and never printed
+        uart = cobs_uart(max_frame=1 << 30)
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("FramingCOBS", "scratch allocation failed:"), MemoryError)]
+    with record_prints() as rec:  # the frame buffer's genuine one, likewise
+        assert run(locked_read_until_complete(uart, 1 << 30, start_timeout_ms=10, timeout_ms=10), _RUN_BOUND_S) is None
+    assert [(line[:2], type(line[2])) for line in rec.lines] == [(("UART", "frame buffer allocation failed:"), MemoryError)]
 
 
 def test_a_delimited_frame_longer_than_the_yield_interval_still_yields() -> None:
@@ -2400,19 +2551,6 @@ def test_a_misaligned_ring_or_no_free_channel_is_refused_with_nothing_armed() ->
         asy_uart_driver.DMA = real_dma  # type: ignore[misc]
 
 
-class _StarvedRing:
-    # Shadows the driver's module-global `bytearray` for one setup_rx_ring() call: the ring allocation fails.
-    def __call__(self, *args: "Any") -> bytearray:
-        raise MemoryError("starved")
-
-    def __enter__(self) -> "_StarvedRing":
-        asy_uart_driver.bytearray = self  # type: ignore[attr-defined]
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        asy_uart_driver.bytearray = bytearray  # type: ignore[attr-defined]
-
-
 def test_a_refused_ring_names_its_cause() -> None:
     # setup_rx_ring() stays a bool; its cause is kept for the link's setup() to report, one word per cause.
     DMA.reset_registry()
@@ -2425,9 +2563,11 @@ def test_a_refused_ring_names_its_cause() -> None:
     assert uart.setup_rx_ring() is False
     assert uart.rx_ring_refusal == "no bus"
     uart = UART(0, tx_pin=0, rx_pin=1)
-    with _StarvedRing():
+    err = MemoryError("injected for the ring")  # worded clear of the memory gates' markers
+    with _FailingAlloc(err), record_prints() as rec:
         assert uart.setup_rx_ring() is False
     assert uart.rx_ring_refusal == "allocation"
+    assert rec.lines == [("UART", "receive ring allocation failed:", err)]  # the word above, and the text it stands for
     real_dma = asy_uart_driver.DMA
 
     def busy() -> "Any":
@@ -2435,10 +2575,12 @@ def test_a_refused_ring_names_its_cause() -> None:
 
     asy_uart_driver.DMA = busy  # type: ignore[assignment, misc]
     try:
-        assert uart.setup_rx_ring() is False
+        with record_prints() as rec:
+            assert uart.setup_rx_ring() is False
     finally:
         asy_uart_driver.DMA = real_dma  # type: ignore[misc]
     assert uart.rx_ring_refusal == "DMA channel"
+    assert rec.lines == []  # an OSError keeps its one word: the link's setup() logs it
     assert uart.setup_rx_ring() is True
     assert uart.rx_ring_refusal == ""
 

@@ -1,0 +1,33 @@
+FF                                                                       [100%]
+=================================== FAILURES ===================================
+_________ test_the_check_names_the_directory_of_the_script_it_is_given _________
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11380/test_the_check_names_the_direc0')
+
+    def test_the_check_names_the_directory_of_the_script_it_is_given(tmp_path: Path) -> None:
+        # Any launcher's own script, not only spawn()'s runner: an absolute one taken as given, its real directory named.
+        base = os.path.realpath(tmp_path)
+        script = Path(base, "d" * (_LIMIT - len(os.fsencode(base))), "run.py")
+        named = twin_process._uninternable([str(script), "--x", "1"], {"MICROPYPATH": "src"})
+>       assert named == [f"argument 0 ({len(os.fsencode(str(script)))} bytes)", f"the runner's directory ({_LIMIT + 1} bytes)"], named
+E       AssertionError: ['argument 0 (263 bytes)']
+E       assert ['argument 0 (263 bytes)'] == ['argument 0 ... (256 bytes)"]
+E         
+E         Right contains one more item: "the runner's directory (256 bytes)"
+E         Use -v to get more diff
+
+tests_scripts/test_twin_process_spawn.py:91: AssertionError
+________________ test_the_refusal_is_the_twin_launchs_own_check ________________
+
+    def test_the_refusal_is_the_twin_launchs_own_check() -> None:
+        # One check for every Python launcher of the Unix port: twin_board keeps no copy of scripts/_twin_process.py's.
+>       assert twin_board._uninternable is twin_process._uninternable
+E       assert <function _uninternable at 0x7f6cbfc30f40> is <function _uninternable at 0x7f6cc0542f20>
+E        +  where <function _uninternable at 0x7f6cbfc30f40> = twin_board._uninternable
+E        +  and   <function _uninternable at 0x7f6cc0542f20> = twin_process._uninternable
+
+tests_scripts/test_twin_board.py:192: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_process_spawn.py::test_the_check_names_the_directory_of_the_script_it_is_given
+FAILED tests_scripts/test_twin_board.py::test_the_refusal_is_the_twin_launchs_own_check
+2 failed, 32 deselected in 0.16s

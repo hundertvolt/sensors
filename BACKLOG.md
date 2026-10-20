@@ -914,6 +914,23 @@ gates, traps).
     vitest's own timeout message, a failed assertion never, the chroot recipe running no `npm` step;
   - CI only: `ci.yml`'s `unit-tests-coverage` time limit 35 → 95 minutes, `web-unit-tests` and `web-coverage` 15 → 20
     minutes (agent, 2026-10-20).
+  **2026-10-20, the C-stack report, the gc policy checker and the Unix-port rig's GC mark stack, by
+  the leg that covers each change**:
+  - installer leg: `toolchain/micropython_overrides.py`'s generated Unix variant header, which
+    `build-standard`, `build-settrace` and `build-lwip` all compile with, also defines
+    `MICROPY_ALLOC_GC_STACK_SIZE (1024)` (SPECIFICATION.md B.14.6), and `toolchain/setup_toolchain.py`
+    proves it after each Unix build with a second `make <build>/unix_mphal.pp`; the firmware build is
+    unchanged and nothing new is installed;
+  - `scripts/test.sh` leg: the changed `micropython_overrides.py` hash makes a reused chroot's
+    `scripts/_unix_port.sh ensure` rebuild the three Unix binaries once; every result is unchanged,
+    and the `GC_THRESHOLD=32768` stage runs faster; the backgrounded pytest tier gains
+    `tests_scripts/test_fatal_report_sites.py`, `test_memory_catalog.py` and `test_await_depth.py`
+    (with its helper `tests_scripts/_await_depth.py`), each generating every device in memory;
+  - lint and typecheck legs: `scripts/_check_gc_collect_sites.py`, which `scripts/lint.sh` runs, is one
+    gc policy checker over `src/`, `tests/`, `digital_twin/`, `tests_hardware/` and the generated
+    modules, reading a current `build/generated_src/` or generating in memory, and exits 2 on anything
+    it cannot read (SPECIFICATION.md I.4(f.1)); `pyproject.toml`'s `src/asy_print_log.py` ruff entry
+    gains `PLW0603`, lint config only; host Python only, no new dependency.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -1136,16 +1153,6 @@ gates, traps).
   adding bus load to that run is the obvious extension; not chased yet. The other two recombinations that matter (FRAM write vs. a real hardware reset;
   repeated WiFi flapping x concurrent bus load) already have coverage across every tier where they
   are meaningful.
-- **Part I.2's hotspot catalog has never been re-walked with a *placement* lens.** I.2 scanned
-  every `src/` file for *how much* each function allocates, which is the question that matters for
-  exhaustion; the heap-fragmentation defect (Part I.4(f.1)) was about *where* long-lived objects land, and only its known instance (the FRAM logging path, plus
-  the two boot lists) was addressed. A second walk would ask a different question of the same files:
-  which of them still allocate something long-lived while bus or network churn is in flight?
-  Measures A and B removed the one confirmed case, and `tests_scripts/test_digital_twin_boot_contiguity.py`
-  would catch a new one *in the boot lists* — so this is a genuine open question about the run phase,
-  not a known gap, and no measurement points at one. Worth a pass if a future session has the budget;
-  SPECIFICATION.md Part I.1's prior-art note explains why the `__init__`/`setup()` split is the
-  structural answer wherever such a case is found.
 - **SystemService's settings store grows with device-wide settings** — the timezone offsets
   (`GMTOffset`/`DSTOffset`) now held by `NTPClient`'s config, future rsyslog settings;
   `config_SYSTEM.cfg` holds only `DebugLevel` today (`src/asy_system_service.py:59, :101`).

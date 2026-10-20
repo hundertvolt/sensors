@@ -97,6 +97,8 @@ _BOUNDED_FAULT = {"scd30": "writeto", "sgp40": "writeto", "bmp3xx": "readfrom_me
 # Run 5: SGP40's measure-raw read only (the read after the 0x260F command), so setup and the heater-off rung stay healthy.
 _RUN_5_FAULT_OP = "readfrom_into"
 _SGP40_MEASURE_RAW = 0x260F
+# Run 12's stack-exhaustion cell: one read op per driver, each a queued fault the twin raises a C-stack overflow from.
+_STACK_FAULT_READ_OP = {"scd30": "readfrom_into", "sgp40": "readfrom_into", "bmp3xx": "readfrom_mem", "isl29125": "readfrom_mem", "fram": "readinto"}
 _READ_CYCLES = 2  # Run 5's observed SGP40 read cycles past the spent fault
 # Each failed read cycle logs the driver's READ and the base class's STREAK (asy_base_classes.py _error_check()),
 # two counter steps per injected fault, and nothing else an E: those two are Run 5's only E codes.
@@ -223,7 +225,7 @@ _FIRST_FAULT_WAIT_S = 45.0  # a faulted driver's first "E" entry after its boot
 # @tunable l2.long_wait_s = 90.0
 _LONG_WAIT_S = 90.0  # a bounded fault settling, and WiFi falling back to the hotspot and its DNS
 # @tunable l2.escalation_wait_s = 120.0
-_ESCALATION_WAIT_S = 120.0  # Run 3: sustained faults spend the supervisor's restart budget, then the reset
+_ESCALATION_WAIT_S = 120.0  # the supervisor's escalation, then its reset: Run 3's restart budget spent, Run 12's stack overflow
 # @tunable l2.ntp_first_sync_wait_s = 60.0
 _NTP_FIRST_SYNC_WAIT_S = 60.0  # a station link's first sync against the twin's local NTP responder
 # @tunable l2.read_cycle_wait_s = 30.0
@@ -715,13 +717,17 @@ def _record(kind: str, full_msg: str) -> None:
     _CHECKS_PER_PASS[_CURRENT_PASS_LABEL] = _CHECKS_PER_PASS.get(_CURRENT_PASS_LABEL, 0) + 1
 
 
-def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int) -> None:
-    # Boots on the same state and checks the reset reason the product read at boot, then shuts down by SIGINT.
+def _relaunch_reason(ctx: RunContext, log_name: str, label: str, expected: int, *, system_entry: str | None = None) -> None:
+    # Boots on the same state and checks the reset reason the product read at boot (and, given its catalog name, the one
+    # SYSTEM entry that reset logged), then shuts down by SIGINT.
     proc = _spawn(ctx, [], ctx.logs_dir / log_name)
     try:
         _wait_until_serving(proc)
         reason = _status_field("system", "ResetReason")
         _check(condition=reason == expected, msg=f"{label}: ResetReason reads {expected} ({reason!r})")
+        if system_entry is not None:
+            codes = _error_codes(_errcount_required("SYSTEM"))
+            _check(condition=codes.count(("E", code("E", system_entry))) == 1, msg=f"{label}: SYSTEM's history holds one {system_entry} entry ({codes!r})")
     except Exception as exc:
         _fail(f"{label}: {exc!r}")
     finally:
@@ -872,9 +878,9 @@ def _run_11b_full_ceiling_concurrency(ctx: RunContext) -> None:
 
 
 def _run_12_reset_reasons(ctx: RunContext) -> None:
-    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a simulated
-    # bootloader entry and the relaunch reads its code with the record cleared at boot; a SIGINT relaunch then reads
-    # power-on, the twin's non-reset launch. Escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
+    # ---- Run 12: the reset reasons reachable at L2. A fresh boot reads power-on; bootloader exits as a bootloader entry, its
+    # relaunch reads its code and clears the record; a SIGINT relaunch reads power-on; a C-stack overflow reboots with 20. The
+    # task budget's escalation is Run 4's, the REST reboot Run 5c's, 7 and 8 Run 13's. ----
     _archive_state(ctx, "run12")
     proc = _spawn(ctx, [], ctx.logs_dir / "run12_a_power_on_then_bootloader.log")
     try:
@@ -891,6 +897,23 @@ def _run_12_reset_reasons(ctx: RunContext) -> None:
     line = _shutdown_line(log_b, "Run 12 (after bootloader)")
     _check(condition=line is not None and line.mem_backup_r0 == (0, 0, 0, 0), msg=f"Run 12: the boot that read the bootloader record cleared it (mem_backup r0 {line.mem_backup_r0 if line else None!r})")
     _relaunch_reason(ctx, "run12_c_sigint_relaunch.log", "Run 12 (SIGINT relaunch)", _reset_code("_RR_POWER_ON"))
+    _run_12_stack_exhaustion(ctx)
+
+
+def _run_12_stack_exhaustion(ctx: RunContext) -> None:
+    # A C-stack overflow raised in one read of the plan's first bus device: the handler that catches it records it, the
+    # supervisor reboots at its next pass with the watchdog fed, and the relaunch reads code 20 and SYSTEM's one entry.
+    inst = _stack_fault_instance(json.loads(ctx.wiring_plan_path.read_text(encoding="utf-8")))
+    if inst is None:
+        _SUMMARY.add("skipped", f"{_CURRENT_PASS_LABEL}Run 12 (stack exhaustion)", f"{ctx.device} wires no bus driver")
+        return
+    label = f"Run 12 (stack exhaustion in {inst.key})"
+    proc = _spawn(ctx, ["--fault", f"{inst.key}:{_STACK_FAULT_READ_OP[inst.driver]}:stack"], ctx.logs_dir / "run12_d_stack_exhaustion.log")
+    ec = _wait_exit(proc, label, timeout_s=_ESCALATION_WAIT_S)
+    _check(condition=ec == EXIT_SIMULATED_RESET, msg=f"{label}: the supervisor reset the device ({exit_reason(ec, killed=proc.killed)}, exit code {ec})")
+    wdt = _would_have_triggered_count(proc.log_path, label)
+    _check(condition=wdt == 0, msg=f"{label}: the watchdog never starved before the reset (would_have_triggered_count={wdt!r})")
+    _relaunch_reason(ctx, "run12_e_after_stack_exhaustion.log", f"{label} relaunch", _reset_code("_RR_STACK_EXHAUSTED"), system_entry="STACK_EXHAUSTED")
 
 
 def _run_13_config_reset(ctx: RunContext) -> dict[str, str]:
@@ -1557,6 +1580,18 @@ def _spawn(ctx: RunContext, extra_args: list[str], log_path: Path) -> TwinRun:
 def _src_int(filename: str, name: str) -> int:
     # A product constant read from its source by buildgen's own reader, never a copy that could drift.
     return module_int_const(SRC_DIR, filename, name)
+
+
+def _stack_fault_instance(plan: "dict[str, JSONValue]") -> Instance | None:
+    # Run 12's stack subject: the plan's first attachment, I2C buses in plan order before SPI, whose driver has a read op.
+    buses = plan.get("buses")
+    spi = plan.get("spi")
+    attached = [*(a for bus in (buses.values() if isinstance(buses, dict) else ()) if isinstance(bus, list) for a in bus), *(spi.values() if isinstance(spi, dict) else ())]
+    for a in attached:
+        if isinstance(a, dict) and a.get("driver") in _STACK_FAULT_READ_OP:
+            driver, name_ext = str(a["driver"]), str(a.get("name_ext") or "")
+            return Instance(instance_label((driver, name_ext)), driver, name_ext)
+    return None
 
 
 def _status_field(group: str, key: str) -> object:

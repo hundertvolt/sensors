@@ -11,6 +11,7 @@ from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
+from _recording_print import record_prints
 from _src_const import src_float, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
@@ -18,9 +19,10 @@ from _write_counters import WriteCountingOpen
 from machine import I2C as FakeI2C
 from machine import Timer as FakeTimer
 
+import asy_print_log
 from asy_bmp3xx_driver import BMP3XX, BMP3XX_I2C, BMP3XX_Reader
 from asy_i2c_driver import I2C
-from asy_print_log import LogConfig, PrintLogHistoryStore
+from asy_print_log import LogConfig, PrintLogHistoryStore, fatal_reported
 
 try:
     from typing import TYPE_CHECKING
@@ -198,24 +200,24 @@ def ready_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
 
 
 class _BadBurstRead:
-    # The burst read reports no bus (get_register_bytes() -> None) for the burst from ERR_REG only; every
+    # The burst read reports no bus (get_register_into() -> False) for the burst from ERR_REG only; every
     # other register read still goes to the fake bus, so _read() gets past its trigger and data-ready poll.
     def __init__(self, bmp: BMP3XX_I2C) -> None:
         self._device = bmp._i2c_bmp3xx.i2c_device
 
     def __enter__(self) -> "Self":
-        self._real = self._device.get_register_bytes
+        self._real = self._device.get_register_into
 
-        async def _patched(reg_addr: int, length: int, addrsize: "int | None" = None) -> "bytes | None":
+        async def _patched(reg_addr: int, buf: bytearray, addrsize: "int | None" = None) -> bool:
             if reg_addr == _REGISTER_ERR:
-                return None
-            return await self._real(reg_addr, length, addrsize)
+                return False
+            return await self._real(reg_addr, buf, addrsize)
 
-        self._device.get_register_bytes = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
+        self._device.get_register_into = _patched  # type: ignore[method-assign]  # deliberate monkeypatch, not a real caller mismatch
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        self._device.get_register_bytes = self._real  # type: ignore[method-assign]
+        self._device.get_register_into = self._real  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +567,30 @@ def test_read_takes_one_8_byte_burst_from_err_reg_per_conversion() -> None:
     assert len(bursts) == 1
 
 
+def test_the_data_burst_fills_the_drivers_own_buffer_in_place() -> None:
+    # One 8-byte buffer per driver, built at construction: each conversion's burst lands in it, handed to the bus
+    # as that object itself, so a read makes no copy and no view of its data.
+    i2c, bmp = ready_bmp()
+    seed_calibration(i2c)
+    run(bmp._read_coefficients())
+    burst = bmp._pt_burst
+    assert type(burst) is bytearray and len(burst) == 8
+    received: list[object] = []
+    real_read = fake(i2c).readfrom_into
+
+    def recording(address: int, buf: object, stop: bool = True) -> None:
+        received.append(buf)
+        real_read(address, buf, stop)
+
+    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
+    for adc_p in (_ADC_P, _ADC_P + 4096):
+        seed_data(i2c, _adc_to_data6(adc_p, _ADC_T))
+        run(bmp._read())
+        assert burst[2:] == _adc_to_data6(adc_p, _ADC_T)  # this conversion's bytes, filled in place
+    assert bmp._pt_burst is burst
+    assert [buf is burst for buf in received if len(buf) == 8] == [True, True]  # type: ignore[arg-type]
+
+
 def test_read_raises_runtime_error_when_err_reg_reports_fatal_err() -> None:
     i2c, bmp = ready_bmp()
     seed_calibration(i2c)
@@ -668,6 +694,37 @@ def test_read_bmp_logs_and_degrades_when_the_data_burst_read_fails() -> None:
     assert counters["BMP3XX"]["ErrNum"][-1] == code("E", "READ")  # "Read failed:"
     assert counters["BMP3XX"]["ErrType"][-1] == "E"
     assert run(reader.get_data()) == BMP3XX(None, None, None, None)  # nothing corrupted got stored
+
+
+def _stack_overflow() -> RuntimeError:
+    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
+    def dive(depth: int) -> int:
+        return dive(depth + 1)
+
+    try:
+        dive(0)
+    except RuntimeError as e:
+        return e
+    raise AssertionError("no recursion limit reached")
+
+
+def test_a_stack_overflow_caught_by_the_read_cycle_is_reported_for_the_supervisor() -> None:
+    # The cycle's broad handler logs and degrades as for any failed read, so the loop runs on; a C-stack overflow
+    # is also recorded for the supervisor's reboot, where a routine RuntimeError is not.
+    _i2c, reader = _healthy_reader("stack_overflow_read")
+
+    def cycle_raising(error: BaseException) -> bool:
+        async def raising() -> "tuple[float, float]":
+            raise error
+
+        reader._bmp.get_pressure_and_temperature = raising  # type: ignore[method-assign]
+        assert run(reader._read_bmp()) == (None, None, None)
+        assert _used(reader)[-1] == code("E", "READ")
+        return fatal_reported()
+
+    assert cycle_raising(RuntimeError("CRC check failed while reading data")) is False
+    assert cycle_raising(_stack_overflow()) is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_read_rejects_pressure_above_datasheet_operating_range() -> None:
@@ -1512,6 +1569,33 @@ def test_read_bmp_captures_the_default_compensation_values_when_config_unreadabl
     assert fallback.SLPres == results[0]
     assert fallback.SLPres != compensated.SLPres  # the stored 100.0 offset really did change it
     assert results[2] == fallback.TS  # timestamp is passed through untouched either way
+
+
+def test_an_unreadable_compensation_config_logs_one_entry_and_one_line_per_episode() -> None:
+    # A stored float of the wrong type passes init (the int batch reads) and fails every cycle's capture. The read
+    # still runs each cycle, on the fallback, but the reader persists and prints CFG_READ once per run of failed
+    # captures: a good capture ends the episode, and so does a task restart.
+    _i2c, reader = _healthy_reader("cfg_read_episode")
+    reader.pr.level = 1  # the error level: the reader's console lines print
+
+    def cycles(n: int) -> "tuple[int, int]":
+        with record_prints(reader.pr) as recorder:
+            for _ in range(n):
+                assert run(reader._read_bmp())[0] is not None  # measured on the fallback compensation
+        entries = run(reader.get_error_counter())["BMP3XX"]["ErrCount"]
+        assert isinstance(entries, int)
+        return entries, sum(1 for line in recorder.lines if "Error reading config data!" in line)
+
+    base, _ = cycles(0)
+    reader.cfgmgr._cache["PresOffset"] = "damaged"
+    assert cycles(3) == (base + 1, 1)
+    assert _used(reader)[-1] == code("E", "CFG_READ")
+    reader.cfgmgr._cache["PresOffset"] = 0.0
+    assert cycles(1) == (base + 1, 0)  # the good capture ends the episode, silently
+    reader.cfgmgr._cache["PresOffset"] = "damaged"
+    assert cycles(2) == (base + 2, 1)  # a new episode: one more
+    assert run(reader._init_bmp()) is True  # a task restart
+    assert cycles(2) == (base + 3, 1)
 
 
 def test_reader_read_error_check_threshold_and_self_heal() -> None:

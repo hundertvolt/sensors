@@ -284,7 +284,7 @@ def _armed_recovery(uplink_iface: str, restore_profile: str | None, window_s: in
 
 def _build_unix_variant(micropython_dir: Path, jobs: int, *, make_vars: dict[str, str], build_dir_name: str, label: str, frozen_manifest: Path | None = None) -> Path:
     # The build body every Unix-port build flavour shares: a clean build dir, the build and its
-    # diagnostics, then the proof that the safe SIGINT path was compiled in (Part B.14.1).
+    # diagnostics, then the proofs that the safe SIGINT path (B.14.1) and the mark stack (B.14.6) were compiled in.
     log(f"Building the MicroPython Unix port ({label})")
     unix_dir = micropython_dir / "ports" / "unix"
     build_dir = unix_dir / build_dir_name
@@ -300,6 +300,7 @@ def _build_unix_variant(micropython_dir: Path, jobs: int, *, make_vars: dict[str
     if not binary.exists():
         raise SetupError(f"Unix port build did not produce {binary}")
     micropython_overrides.verify_unix_kbd_intr_in_build(unix_dir, make_vars, build_dir_name, env=build_env())
+    micropython_overrides.verify_unix_gc_stack_in_build(unix_dir, make_vars, build_dir_name, env=build_env())
     version_out = run([str(binary), "-c", "import sys; print(sys.implementation)"], env=build_env(), timeout_s=_REMOTE_QUERY_TIMEOUT_S)
     print(f"Built: {version_out.strip()}")
     return binary

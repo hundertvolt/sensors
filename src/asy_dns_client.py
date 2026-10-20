@@ -3,14 +3,15 @@
 # Inspired by github.com/vshymanskyy/aiodns, not a port - THIRD_PARTY_LICENSES.md compares the two.
 
 """Async, non-blocking IPv4 DNS resolver (A records only) built on asy_udp_socket.py's UDPSocket."""
-# resolve_ipv4() never raises: it tries the caller's servers in order (no built-in server) and returns
-# the dotted-quad str or None; a name RFC 1035 cannot encode resolves to None. Only bare compression-pointer
+# resolve_ipv4() never raises: it tries the caller's servers in order (no built-in server) and returns (the dotted-quad
+# str, DNS_RESOLVED) or (None, its cause); a name RFC 1035 cannot encode is never sent. Only bare compression-pointer
 # answer names (RFC 1035 SS4.1.4) are followed, matching asy_captive_dns.py's precedent.
 
 import os
 
 from micropython import const
 
+from asy_print_log import console
 from asy_udp_socket import UDPSocket
 
 try:
@@ -41,6 +42,13 @@ DNS_LABEL_MAX = const(63)  # RFC 1035 SS3.1's single-length-byte ceiling
 DNS_NAME_MAX = const(255)  # RFC 1035 SS3.1: a name is at most 255 octets on the wire
 _HEADER_LEN = const(12)  # RFC 1035 SS4.1.1 fixed message header
 _PTR_MASK = const(0xC0)  # RFC 1035 SS4.1.4 compression-pointer top-two-bits marker
+_RCODE_NXDOMAIN = const(3)  # RFC 1035 SS4.1.1 "Name Error": the queried name does not exist
+
+# resolve_ipv4()'s cause beside the address, one per failure its caller tells apart.
+DNS_RESOLVED = const(0)
+DNS_NOT_SENT = const(1)  # no query left this device: no usable server, the query not built, or every send failed
+DNS_NXDOMAIN = const(2)  # a server answered that the name does not exist
+DNS_FAILED = const(3)  # sent, but no A record came back: no reply, another error, a cut or unusable answer
 
 
 def _build_query(host: bytes, txn_id: bytes) -> bytearray:
@@ -74,12 +82,8 @@ def _build_query(host: bytes, txn_id: bytes) -> bytearray:
 
 def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | None:
     # See module docstring for the compression-pointer-only limitation.
-    if len(rsp) < _HEADER_LEN or rsp[0:2] != query[0:2]:
-        return None  # too short to be a real header, or a stale/spoofed reply (wrong transaction ID)
-    if not (rsp[2] & 0x80):
-        return None  # QR=0 - not actually a response
-    if rsp[3] & 0x0F:
-        return None  # RCODE != 0 (NXDOMAIN, SERVFAIL, ...) - a real error, not a usable answer
+    if _reply_rcode(rsp, query) != 0:
+        return None  # not this query's reply, or RCODE != 0 (NXDOMAIN, SERVFAIL, ...): no usable answer
     answer_count = (rsp[6] << 8) | rsp[7]
     # Response's Question section mirrors the query's own (RFC 1035), so len(query) is the exact
     # answer-section offset.
@@ -98,6 +102,15 @@ def _parse_response(rsp: bytes | bytearray, query: bytes | bytearray) -> str | N
             return f"{ip[0]}.{ip[1]}.{ip[2]}.{ip[3]}"
         pos = data_start + rdlength
     return None
+
+
+def _reply_rcode(rsp: bytes | bytearray, query: bytes | bytearray) -> int | None:
+    # RFC 1035 SS4.1.1: the reply's RCODE, or None when it is no reply to this query.
+    if len(rsp) < _HEADER_LEN or rsp[0:2] != query[0:2]:
+        return None  # too short to be a real header, or a stale/spoofed reply (wrong transaction ID)
+    if not (rsp[2] & 0x80):
+        return None  # QR=0 - not actually a response
+    return rsp[3] & 0x0F
 
 
 def host_label_ok(label: str) -> bool:
@@ -128,19 +141,36 @@ async def resolve_ipv4(
     tries: int = _DNS_TRIES,
     *,
     pr: "PrintLogHistory",
-) -> str | None:
+) -> tuple[str | None, int]:
     if ipv4_to_int(host) is not None:
-        return host
+        return host, DNS_RESOLVED
+    try:
+        tries_range = range(tries)
+    except (OverflowError, TypeError):  # a malformed tries: a non-int, or an int past a machine word
+        return None, DNS_NOT_SENT
     try:
         query = _build_query(host.lower().encode(), os.urandom(2))  # DNS names are case-insensitive (RFC 1035 SS2.3.3)
-    except (MemoryError, ValueError):  # ValueError: a name RFC 1035 cannot encode - nothing to resolve
-        return None
+    except MemoryError as e:
+        console(pr.name, "DNS query not built:", e)  # the memory gates read its text at every level (CLAUDE.md)
+        return None, DNS_NOT_SENT
+    except ValueError:  # a name RFC 1035 cannot encode - nothing to resolve
+        return None, DNS_NOT_SENT
+    cause = DNS_NOT_SENT
     for server in dns_servers:
         if server == "0.0.0.0" or ipv4_to_int(server) is None:
             continue  # an unset/placeholder or malformed DNS server value - not worth a network attempt
         cli = UDPSocket((server, _DNS_PORT), mode="client")
+        rsp = None
         try:
-            rsp, _addr = await cli.write_and_recvfrom(query, DNS_UDP_MAX + 1, timeout_ms=timeout_ms, tries=tries)
+            # write() is checked itself, as NTP's fetch does: a try whose send failed waits for no reply.
+            for _ in tries_range:
+                if await cli.write(query, timeout_ms=timeout_ms) is None:
+                    continue
+                if cause == DNS_NOT_SENT:
+                    cause = DNS_FAILED  # a query left: from here an empty result is the servers', not this device's
+                rsp, _addr = await cli.recvfrom(DNS_UDP_MAX + 1, timeout_ms=timeout_ms)
+                if rsp is not None:
+                    break
         finally:
             if not await cli.disconnect():
                 await pr.wrn_s("DNS socket teardown did not complete cleanly.", wrnno=_WRN_SOCKET_TEARDOWN)
@@ -152,8 +182,10 @@ async def resolve_ipv4(
             continue
         try:
             ip = _parse_response(rsp, query)
+            if ip is None and _reply_rcode(rsp, query) == _RCODE_NXDOMAIN:
+                cause = DNS_NXDOMAIN
         except (IndexError, ValueError):  # residual bounds-math edge case against untrusted network bytes
             ip = None
         if ip is not None:
-            return ip
-    return None
+            return ip, DNS_RESOLVED
+    return None, cause

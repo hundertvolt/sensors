@@ -1,0 +1,16 @@
+14:05:27 after sweep done
+14:18:06 before bites done
+14:30:41 after bites done
+14:31:26 optout rc=0
+14:31:29 heap bus_hazard_multi_device 2M rc=0 22/23 passed, 1 failed, 0 skipped
+14:31:32 heap bus_hazard_multi_device 1M rc=0 22/23 passed, 1 failed, 0 skipped
+14:31:33 heap bus_hazard_multi_device 512K rc=0 20/23 passed, 3 failed, 0 skipped
+14:31:33 heap bus_hazard_multi_device 256K rc=0 MemoryError: memory allocation failed, allocating 64 bytes
+14:31:33 heap bus_hazard_multi_device 128K rc=0 MemoryError: memory allocation failed, allocating 680 bytes
+14:31:36 heap neopixel_wifi_integration 8M rc=0 8/8 passed, 0 failed, 0 skipped
+14:31:39 heap neopixel_wifi_integration 4M rc=0 8/8 passed, 0 failed, 0 skipped
+14:31:42 heap neopixel_wifi_integration 2M rc=0 8/8 passed, 0 failed, 0 skipped
+14:31:42 chain done
+14:35:19 uart_link re-timed
+14:36:15 uart_link re-bitten
+14:37:55 paired done

@@ -46,6 +46,7 @@
       "22": {"owner": "shared", "name": "TIMEOUT", "text": "an operation did not complete in time"},
       "23": {"owner": "shared", "name": "UNEXPECTED", "text": "an unexpected exception reached a never-raise boundary"},
       "24": {"owner": "shared", "name": "CONTRACT", "text": "an internal contract was violated (a code defect)"},
+      "25": {"owner": "shared", "name": "STACK_EXHAUSTED", "text": "a C-stack overflow was recorded; rebooting"},
       "26": {"owner": "shared", "name": "CFG_READ", "text": "the module's own config read failed; it runs on its fallback"},
       "27": {"owner": "shared", "name": "READ_RANGE", "text": "a reading outside the chip's datasheet range (or not finite) was rejected; it counts as a failed read"},
       "28": {"owner": "shared", "name": "LOG_RAM_ONLY", "text": "this module's FRAM-backed error log is not persisting: its chunk was unreadable, its first write failed or its heap allocation failed (RAM-only until the next boot), or a later write failed or was refused (RAM-only until the next write that lands, which persists this entry)"},
@@ -86,6 +87,8 @@
       "70": {"owner": "ntp", "name": "NTP_RETRIES", "text": "a synced device's resync retries are exhausted"},
       "71": {"owner": "ntp", "name": "NTP_NO_REPLY", "text": "no reply within the fetch timeout"},
       "72": {"owner": "ntp", "name": "NTP_NOT_SENT", "text": "the NTP request could not be sent (the socket did not connect or the send failed)"},
+      "73": {"owner": "ntp", "name": "NTP_DNS_NOT_SENT", "text": "the DNS query for the NTP server name never left the device (no usable DNS server, the query could not be built, or every send failed)"},
+      "74": {"owner": "ntp", "name": "NTP_DNS_NXDOMAIN", "text": "a DNS server answered that the NTP server name does not exist (NXDOMAIN)"},
       "75": {"owner": "uart", "name": "UART_PAYLOAD_SIZE", "text": "the payload_size parameter was refused at construction"},
       "76": {"owner": "uart", "name": "UART_TIMEOUT_PARAM", "text": "the timeout parameter was refused at construction"},
       "77": {"owner": "uart", "name": "UART_NO_BUS", "text": "no usable bus handle at construction"},
@@ -199,6 +202,7 @@
       "13": {"text": "boot failure in phase 3 (task starts)"},
       "14": {"text": "boot failure in phase 4 (timer starts)"},
       "15": {"text": "boot failure in phase 5 (first NTP sync)"},
+      "20": {"text": "supervisor escalation (a handler recorded a C-stack overflow)"},
       "21": {"text": "interrupted: Ctrl-C on the console ended the run, the watchdog reset followed"}
     },
     "VOCState": {

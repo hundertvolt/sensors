@@ -24,7 +24,7 @@ from _bus_hazard_catalog import adapter_for, scd_data_frame, scd_register_frame
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep
 from _fram_chip_fake import FakeMB85RS64V
-from _generated_module import boot_entry_watchdog, boot_generated, fram_fake_class, write_offline_ntp_config
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, fram_fake_class, write_error_level_config, write_offline_ntp_config
 from _generated_tree import require_fresh
 from _port_bands import PortAllocator
 from _shared_rest_roundtrip import (
@@ -185,15 +185,16 @@ class _BoundedUartPolls:
         asy_uart_driver.select = select
 
 
-async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "tuple[Any, Any]":
-    # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and
-    # several devices' own modules get booted in this one process across this file's full run.
+async def _boot(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, *, log_errors: bool = True, **kwargs: "Any") -> "tuple[Any, Any]":
+    # Per-call, not module-level: different devices need different FRAM fakes (max_size/RDID), and several devices'
+    # modules boot in this one process. Each boots at ERROR_LEVEL (a system build can run out of memory), but for the
+    # scenarios pinning a fresh store's DebugLevel 0 or its write list.
     asy_spi_driver._SPI = fram_fake_class(device) if chip is None else chip  # type: ignore[misc]
     _reset_peripherals()
     seed_occupants(device)
     module = __import__(f"sensortask_{device}")
     with _BoundedUartPolls():
-        return await boot_generated(module, device, cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), **kwargs)
+        return await boot_generated(module, device, cfg_path=cfg_path if cfg_path is not None else _tmp_cfg_dir(), log_errors=log_errors, **kwargs)
 
 
 def build(device: str, cfg_path: "str | None" = None, chip: "type[FakeMB85RS64V] | None" = None, **kwargs: "Any") -> "Any":
@@ -489,7 +490,9 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
         asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
         port = _PORTS.next()
-        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port))
+        cfg_path = _tmp_cfg_dir()
+        write_error_level_config(cfg_path)
+        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port))
     finally:
         SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
         SystemService.start_timers = real_start_timers  # type: ignore[method-assign]
@@ -765,8 +768,9 @@ async def _main_until_supervised(module: "Any", device: str, recorder: "BootReco
     seed_occupants(device)
     cfg_path = _tmp_cfg_dir()
     write_offline_ntp_config(cfg_path)
+    write_error_level_config(cfg_path)
     with _BoundedUartPolls():
-        main = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0))
+        main = asyncio.create_task(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0))
         try:
             for _ in range(100000):
                 if main.done():
@@ -859,12 +863,12 @@ def _scenario_fresh_filesystem_writes_once(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
     first, second = _DirWrites(cfg_path), _DirWrites(cfg_path)
     with first:
-        module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: truly empty, NTP's store included
+        module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: truly empty, NTP's store included
     owners = [obj for obj in _module_objects(module).values() if getattr(obj, "cfgmgr", None) is not None]
     storing = [obj.cfgmgr for obj in owners if any(asy_config_manager.check_cfg_get_default(field)[0] for field in obj.get_cfg_schema())]
     assert sorted(first.paths) == sorted(cfg_path + "config_" + store.name[len("CFGMGR_") :] + ".cfg" for store in storing), first.paths
     with second:
-        build(device, cfg_path=cfg_path, offline_ntp=False)
+        build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)
     assert second.paths == []
     # A config reset cut by a power loss after k removals: the rebuild writes each removed file once, with its
     # defaults, and no other.
@@ -873,7 +877,7 @@ def _scenario_fresh_filesystem_writes_once(device: str) -> None:
         os.remove(path)
     third = _DirWrites(cfg_path)
     with third:
-        build(device, cfg_path=cfg_path, offline_ntp=False)
+        build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)
     assert sorted(third.paths) == removed
 
 
@@ -919,7 +923,7 @@ def _system_debug_level(module: "Any") -> object:
 
 @_register("debug_seed_value_is_the_starting_level_before_setup_resolves_the_persisted_one")
 def _scenario_debug_seed_value(device: str) -> None:
-    module = build(device, debug=2)
+    module = build(device, debug=2, log_errors=False)
     # First boot - no persisted value yet, so sysfunct.setup() writes and resolves the schema default (0),
     # then pushes it through the registry, overriding the debug= seed each logger was constructed with.
     assert _system_debug_level(module) == 0
@@ -931,7 +935,7 @@ def _scenario_debug_seed_value(device: str) -> None:
 def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
     # The whole observable effect of the /system setting: every logger's own set_level() called, no shared
     # mutable value anywhere.
-    module = build(device)
+    module = build(device, log_errors=False)
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
     assert _strict(res.body)["result"]["DebugLevel"] == "Valid"
     for pr in _all_loggers(module):
@@ -941,11 +945,11 @@ def _scenario_set_debug_level_updates_every_logger(device: str) -> None:
 @_register("debug_level_survives_a_simulated_reboot_through_build_system")
 def _scenario_debug_level_survives_reboot(device: str) -> None:
     cfg_path = _tmp_cfg_dir()
-    module = build(device, cfg_path=cfg_path)
+    module = build(device, cfg_path=cfg_path, log_errors=False)
     assert _strict(_dispatch(module, "PUT", "/system", {"DebugLevel": 1}).body)["result"]["DebugLevel"] == "Valid"
     run(module.sysfunct.cfgmgr.flush_pending())
 
-    module = build(device, cfg_path=cfg_path)  # simulated reboot - same cfg_path, fresh objects
+    module = build(device, cfg_path=cfg_path, log_errors=False)  # simulated reboot - same cfg_path, fresh objects
     assert _system_debug_level(module) == 1
     for pr in _all_loggers(module):
         assert pr.level == 1, f"{pr.name!r} did not get the persisted level on reboot"
@@ -1550,7 +1554,9 @@ def _scenario_main_call_order(device: str) -> None:
     try:
         asy_spi_driver._SPI = fram_fake_class(device)  # type: ignore[misc]
         module = __import__(f"sensortask_{device}")
-        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=_tmp_cfg_dir()))
+        cfg_path = _tmp_cfg_dir()
+        write_error_level_config(cfg_path)
+        run(module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL))
     finally:
         SystemService.run_setups = real_run_setups  # type: ignore[method-assign]
         SystemService.start_tasks = real_start_tasks  # type: ignore[method-assign]
@@ -1788,7 +1794,7 @@ def _scenario_networking_put_mask_string(device: str) -> None:
 
 @_register("webserver_system_put_debug_level_propagates_to_every_logger")
 def _scenario_system_put_debug_level(device: str) -> None:
-    module = build(device)
+    module = build(device, log_errors=False)
     assert module.sysfunct is not None and module.conn is not None
     res = _dispatch(module, "PUT", "/system", {"DebugLevel": 1})
     assert _strict(res.body)["result"]["DebugLevel"] == "Valid"
@@ -1966,7 +1972,7 @@ def _scenario_system_put_reboot_flushes_pending_write(device: str) -> None:
     answers: list[object] = []
 
     async def scenario() -> None:
-        module, sup = await _boot_supervised(device, gate)
+        module, sup = await _boot_supervised(device, gate, log_errors=False)
         _hold_each_step(module, gate)
         wifi = module.conn.cfgmgr
         wifi.commit = lambda: None  # its flush waits on a commit no one sends: still staged when the command comes
@@ -2201,7 +2207,7 @@ def _scenario_resetconfig_over_a_damaged_file(device: str) -> None:
     assert faults == [ntp_name], faults
     assert machine.mem_backup(0)[1] == _system_const("_RR_CONFIG_RESET")
     assert [name for name in os.listdir(cfg_path) if name.startswith("config_")] == [], os.listdir(cfg_path)
-    module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: the defaults alone, NTP's included
+    module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: the defaults alone, NTP's included
     stores = _storing_stores(module)
     assert sorted(os.listdir(cfg_path)) == sorted(asy_config_manager.config_filename("", store.module_name) for store in stores)
     for store in stores:
@@ -2553,7 +2559,7 @@ def _scenario_status_config_unpersisted(device: str) -> None:
     # ConfigUnpersisted (not ConfigFaults: no file was damaged); a module's next good write takes it off the list.
     cfg_path = _tmp_cfg_dir()
     with WriteCountingOpen(asy_config_manager, fail_writes=True):
-        module = build(device, cfg_path=cfg_path, offline_ntp=False)  # no task runs: a fresh boot, NTP's store included
+        module = build(device, cfg_path=cfg_path, offline_ntp=False, log_errors=False)  # no task runs: a fresh boot, NTP's store included
     names = [store.module_name for store in _storing_stores(module)]
     system = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]
     assert (system["ConfigUnpersisted"], system["ConfigFaults"]) == (names, []), system
@@ -2734,6 +2740,40 @@ def _scenario_http_dropped_counts_a_refusal(device: str) -> None:
     assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 1
     assert _strict(_dispatch(module, "PUT", "/status", {"ResetErrors": True}).body)["result"] == {"ResetErrors": "Valid"}
     assert _strict(status_body(_dispatch(module, "GET", "/status")))["networking"]["HTTPDropped"] == 0
+
+
+@_register("webserver_status_put_reset_errors_clears_nothing_while_storage_is_paused")
+def _scenario_reset_errors_while_storage_is_paused(device: str) -> None:
+    # While mempause holds, ResetErrors answers "Failed" and keeps every log (the RAM-only ones too), the drop window,
+    # each reader's give-up streak and every log chunk's bytes; once the pause ends, it clears them all.
+    module = build(device)
+    readers = [source for source in module.webserver._error_sources.values() if isinstance(source, SensorReader)]
+
+    async def state() -> "tuple[list[object], list[bytes], list[int]]":
+        return await _every_error_log(module), _log_chunk_bytes(module), [reader._err_cnt_internal for reader in readers]
+
+    async def put(path: str, body: "dict[str, Any]") -> object:
+        return _strict((await _dispatch_async(module, "PUT", path, body)).body)["result"]
+
+    async def scenario() -> "tuple[list[object], bool, tuple[list[object], list[bytes], list[int]]]":
+        for logger in _all_loggers(module):
+            await logger.err_s("seeded", errno=code("E", "INIT"))
+        await module.webserver._note_drop(code("W", "HTTP_REFUSED"), "seeded")
+        for reader in readers:
+            reader._err_cnt_internal = 1
+        answers = [await put("/system", {"SystemCmd": "mempause"})]
+        kept = await state()
+        answers.append(await put("/status", {"ResetErrors": True}))
+        unchanged = kept == await state()
+        assert module.sysfunct.pause_permanent_storage(0) is True
+        answers.append(await put("/status", {"ResetErrors": True}))
+        return answers, unchanged, await state()
+
+    answers, unchanged, (logs, _chunks, streaks) = run(scenario())
+    assert answers == [{"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}, {"ResetErrors": "Valid"}], answers
+    assert unchanged, "a ResetErrors answering Failed while storage was paused cleared something"
+    counts = [entry["ErrCount"] for log in logs if isinstance(log, dict) for entry in log.values()]
+    assert readers and logs[1] == 0 and streaks == [0] * len(readers) and counts == [0] * len(counts), (logs, streaks)
 
 
 # ---------------------------------------------------------------------------

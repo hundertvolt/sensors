@@ -1,0 +1,6 @@
+..........                                                               [100%]
+============================= slowest 3 durations ==============================
+0.02s setup    tests_scripts/test_twin_process_spawn.py::test_the_limit_is_the_pinned_interpreters_own
+
+(2 durations < 0.005s hidden.  Use -vv to show these durations.)
+10 passed in 0.08s

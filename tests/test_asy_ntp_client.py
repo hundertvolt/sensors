@@ -31,6 +31,7 @@ from machine import RTC, Timer
 
 import asy_base_classes
 import asy_ntp_client as ntpmod
+from asy_dns_client import DNS_FAILED, DNS_NOT_SENT, DNS_NXDOMAIN, DNS_RESOLVED
 from asy_ntp_client import NTPClient, NtpTiming
 from asy_print_log import DEFAULT_LOG, LogConfig, PrintLogHistoryStore
 
@@ -1168,17 +1169,18 @@ class _RecordingResolver:
     # Stands in for asy_dns_client.resolve_ipv4() - proves _resolve_ntp_server()'s orchestration
     # (server order, tuple building, error handling, timeout_ms/tries/pr forwarding) independent of
     # resolve_ipv4()'s own network behavior, which tests/test_asy_dns_client.py covers exhaustively.
-    def __init__(self, return_value: "str | None") -> None:
+    def __init__(self, return_value: "str | None", cause: int = DNS_FAILED) -> None:
         self.calls: list[tuple[str, tuple[str, ...], int, int]] = []
         self.loggers: list[object] = []
         self.return_value = return_value
+        self.cause = DNS_RESOLVED if return_value is not None else cause
 
     async def __call__(
         self, host: str, dns_servers: "tuple[str, ...]" = (), timeout_ms: int = 0, tries: int = 0, *, pr: object = None,
-    ) -> "str | None":
+    ) -> "tuple[str | None, int]":
         self.calls.append((host, dns_servers, timeout_ms, tries))
         self.loggers.append(pr)
-        return self.return_value
+        return self.return_value, self.cause
 
 
 def test_resolve_ntp_server_passes_the_given_dns_server_through() -> None:
@@ -1233,6 +1235,17 @@ def test_resolve_ntp_server_dns_failure_persists_an_error() -> None:
     counter = run(client.get_error_counter())
     assert _last_err(counter, "ErrNum") == code("E", "NTP_DNS")
     assert _last_err(counter, "ErrType") == "E"
+
+
+def test_the_resolvers_cause_picks_the_persisted_code() -> None:
+    # A query that never left the device and a name the server says does not exist each keep their own code; every
+    # other failure keeps the generic one. One entry per failed resolution.
+    for cause, name in ((DNS_NOT_SENT, "NTP_DNS_NOT_SENT"), (DNS_NXDOMAIN, "NTP_DNS_NXDOMAIN"), (DNS_FAILED, "NTP_DNS")):
+        client = _make_client()
+        assert _resolve_with(_RecordingResolver(None, cause), client, "bogus.invalid", "192.0.2.53", "") is None
+        counter = run(client.get_error_counter())
+        assert counter["NTP"]["ErrCount"] == 1, name
+        assert _last_err(counter, "ErrNum") == code("E", name), name
 
 
 # No real-network end-to-end test through _resolve_ntp_server() itself: resolve_ipv4()'s `port`
@@ -2939,7 +2952,7 @@ def test_missing_config_failure_logs_in_both_layers_one_slot_each() -> None:
     before = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]["ErrCount"]
     assert _twice_one_slot(client, lambda: client._run_ntp_sync_attempt(None)) == (2, [code("E", "CFG_READ")], ["E"])
     store = run(client.cfgmgr.get_error_counter())["CFGMGR_NTP"]
-    assert store["ErrCount"] - before == 4  # each attempt reads the store twice (host, then offset)
+    assert store["ErrCount"] - before == 1  # four failed reads (two per attempt: host, then offset), one run: one entry
     kept = [store["ErrNum"][i] for i in range(len(store["ErrNum"])) if store["ErrType"][i] != "N"]
     assert kept[-1] == code("E", "CFG_NOT_VALID") and kept.count(code("E", "CFG_NOT_VALID")) == 1, kept
 

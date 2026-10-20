@@ -5,7 +5,7 @@ case among it, is test_uart_comm_hazard.py; both share _uart_comm_hazard_common.
 import asyncio
 
 from _async_harness import run
-from _uart_comm_harness import RUN_LIMIT_S, Pair, PollRoundClock, copied_out
+from _uart_comm_harness import ERROR_LEVEL, RUN_LIMIT_S, Pair, PollRoundClock, copied_out
 from _uart_comm_hazard_common import _EXCHANGE_LIMIT_S, _PAYLOAD, _STEP_BOUND_S, hazard_pair, register_both_crc_modes
 
 import asy_uart_comm
@@ -176,7 +176,7 @@ def _sweep(
         while True:
             # timeout_for(), never a bare _TIMEOUT_MS: on a slow host a waiter gains a poll round at each per-byte CRC
             # yield of its peer, 79 virtual ms for one CRC16 reply at that limit, which 30 ms does not cover (Part J.7).
-            pair = hazard_pair(crc, answer=_SWEEP_PAYLOAD)
+            pair = hazard_pair(crc, answer=_SWEEP_PAYLOAD, debug=ERROR_LEVEL)
             delivered: list[bytes | None] = []
             work, peer = make_work(pair, delivered)
             stepper = _Stepper(k)

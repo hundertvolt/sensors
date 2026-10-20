@@ -234,11 +234,15 @@ information):
   through the REST PUT path, so a device whose API is unreachable structurally cannot have a write
   in flight. Full reasoning and real bench-hardware timing data are in SPECIFICATION.md Part F.2
   (BACKLOG.md keeps only a closed pointer, open question 6).
-- **Don't wrap every `asyncio` primitive call in `try`/`except` against a theoretical internal
-  `MemoryError` as a blanket policy** — worth closing only where a real graceful-degradation
-  alternative exists (owner, 2026-09-25: 'if the function has a true alternative flow for graceful
-  degradation on expectable memory errors, this indeed shall be implemented'); see
-  SPECIFICATION.md Part F.2 for the full rule and its narrow exception.
+- **`MemoryError` handling follows one criterion** — a function with a true graceful-degradation
+  alternative catches and degrades; one that is doomed without memory lets the task end for the
+  supervisor to restart; `asyncio` primitives are never blanket-wrapped (owner, 2026-09-25, asked,
+  paraphrase, to confirm an audit method that caught a theoretical `MemoryError` only against a
+  concrete threat and never blanket-wrapped `asyncio` primitives: 'This is only true if the function
+  experiencing the MemoryError is doomed to fail on memory error (restarting the task or stalling
+  the system into a watchdog reset is the only remedy then anyway) - but if the function has a true
+  alternative flow for graceful degradation on expectable memory errors, this indeed shall be
+  implemented'). SPECIFICATION.md Part I.4(a).
 - **Adafruit-derived driver code is fair game to restructure/rewrite** (keeping attribution)
   (owner, 2026-07-13, `b64857d`) — unlike `legacy/firmware/python/CommonDrivers/microdot.py`/
   `ext/microdot.py`, which stay hands-off/vendored (see above). Full note: SPECIFICATION.md
@@ -400,14 +404,31 @@ information):
   devices and asserts the survivors still land low, with a suppressed control arm asserting the
   bound would otherwise break); it is placement
   discipline for the survivors those lists create, not a threshold and not a fix for a failing
-  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Both stages are
+  allocation. Full account and its measured effect: `SPECIFICATION.md` Part I.4(f.1). **Outside
+  the firmware** — tests, the twin, device scripts and tools — `gc.collect()` sets a baseline for a
+  memory measurement or keeps an automatic collection out of a timing window about to be measured,
+  nothing else: never inside a timed window or a watchdog-sensitive stretch, never as a recovery
+  step, never to keep a test green (owner, 2026-09-26 and 2026-09-29, the rule a paraphrase; asked,
+  paraphrase, where `gc.collect()` may still stand: "gc.collect is allowed IN TESTS for getting a
+  clean baseline for memory measurement tests"; asked, paraphrase, whether to remove the three test
+  collects that set no baseline: "a (and be sure they don't do it to get an actual memory baseline
+  or something different which makes sense technically!)"). The one collection inside a timed window is the one being timed:
+  `tests_hardware/device_scripts/loop_stretch_timing.py` measures `gc.collect()` itself, the pause
+  F.3 bounds (SPECIFICATION.md I.4). The collection is complete when the call returns, so the
+  reading may follow in the next statement (owner, 2026-09-26, on the finding that `gc.collect()`
+  completes before it returns: "interesting, if that holds a real verification, my assumption that
+  it needs time was wrong and you can replace it with the facts you found"; verified at v1.29.0,
+  SPECIFICATION.md I.4(f.1)). The twin's Run 11 memory sampler is the one twin exception. `scripts/_check_gc_collect_sites.py` names
+  every allowed site, a `gc.threshold()` set, `gc.disable()` and `gc.enable()` included. **Both stages are
   runnable and both are run**: `scripts/test.sh` is the (e) stage at MicroPython's own reactive
   `-1`, and `GC_THRESHOLD=32768 scripts/test.sh` is the (f) stage with the value the firmware's boot
-  entry sets — every file, with zero `MemoryError`s at each (86/86 on 2026-09-24), plus CI's own `unit-tests` and
+  entry sets (set once, checked) — every file, with zero `MemoryError`s at each (86/86 on 2026-09-24), plus CI's own `unit-tests` and
   `unit-tests-gc-threshold` jobs. The (e) run is what proves the design stands on its own; the
   threshold is defence in depth on top of it, never a substitute for it. It is also not redundant:
-  on silicon it is what carries the boot placement gain into the run phase (80% held against 12% at
-  the reactive default), so keep it — but that is a layout benefit, not what makes the system
+  on silicon it is what carries the boot placement gain into the run phase (largest free block 80 % of
+  free four seconds after the task-starter list with `gc.threshold(32768)` set, against 12 % at the
+  reactive default — `dev` board, MicroPython v1.29.0, 2026-09-19; HEAP_FRAGMENTATION_MEASUREMENTS.md
+  archive §7H.3), so keep it — but that is a layout benefit, not what makes the system
   stable. A threshold (or a
   `gc.collect()` call) is defense in depth on top of an already-safe design, lifting an anyhow-stable
   system further from a stability threshold — it is forbidden as the fix itself for a design that
@@ -417,8 +438,9 @@ information):
   whose response dict can grow with device configuration/registration count (not a small, fixed
   handful of keys) streams it via `asy_webserver_service.py`'s `_stream_dict_response()` instead of
   returning the dict directly for Microdot to `json.dumps()` in one shot — the canonical example of
-  this "relieve the pressure, don't paper over it" fix. Full research findings, the complete hotspot
-  catalog (what needed fixing vs. what was reviewed and found already safe), and the full scheme:
+  this "relieve the pressure, don't paper over it" fix. Full research findings, the allocation-site
+  catalog every `src/` and generated module is classified in (I.2; `tests_scripts/test_memory_catalog.py`
+  keeps every module in it and every run-phase long-lived allocation listed), and the full scheme:
   SPECIFICATION.md Part I (I.4 for the standing scheme itself).
 - **When investigating any unexpected real-hardware error or reset — read the FRAM-persisted
   per-module error logs (`GET /status`'s `errcount`, the FRAM-backed subset: SGP40/BMP3XX/SCD30/
@@ -541,6 +563,21 @@ information):
   Such cases always mean that there is a topic to be fine tuned'); a CI failure is a flake only if
   the provider confirms an outage and one re-run with no code change passes (owner, 2026-09-25: 'Do
   not ignore any test or run failures').
+- **Work split across subagents: small blocks, fresh agents** (owner, 2026-10-20). The question
+  (agent, 2026-10-20): a week's measured cost was about 81 % agents re-reading their own long
+  conversations, mostly from single assignments of 100-320 turns; proposed smaller blocks, each a
+  fresh agent. The owner's answers: '81% of re-reading really is much, try to improve here as you
+  suggested. But don't cut back on quality or depth ever.'; 'Generally, only (if at all) reuse
+  agents if their history is directly relevant for their upcoming work. If you decide to reuse an
+  agent for such reasons, tell it to compact their context window before starting.'; 'And yes, do
+  smaller packing and try to use fresh agents in most cases.'; 'Apply that as a standing rule for
+  future work.' So work is packed into blocks of roughly 60-80 tool calls at file-group seams, each
+  a fresh agent starting from the previous block's written record and the tree; an agent is reused
+  only where its history directly serves the next block, and is told to compact first; a follow-up
+  goes to a fresh agent by default. Agents batch independent calls, read a run's exit code and
+  summary and every part of its log that is not green in full, read files by site, and wait for a
+  run in one blocking call. Nothing here drops a check, a run, a read a step needs or evidence: the
+  last block of a piece of work runs its complete checks over all of its files.
 
 ## Code quality tooling
 

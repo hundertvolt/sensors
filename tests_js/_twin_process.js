@@ -3,7 +3,7 @@
 // twin holds while it runs, and the verdict read from a stopped twin's output.
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,10 @@ let interpreter;
 const DNS_PORT = 53;
 const LOCK_RUNNER = "the vitest live tier";
 const CONFIG_DIR_PREFIX = path.join(tmpdir(), "sensors-live-");
+const RUNNER = "digital_twin/run_generic_integration.py";
+// Past this many bytes the Unix port cannot intern a string as a qstr and dies before the runner starts: scripts/
+// _twin_process.py's _QSTR_MAX_BYTES, read against the interpreter there and pinned to this copy by a tests_scripts test.
+const QSTR_MAX_BYTES = 255;
 /** @type {WeakMap<import("node:child_process").ChildProcess, Error>} */
 const spawnErrors = new WeakMap();
 /** @type {WeakMap<import("node:child_process").ChildProcess, () => void>} */
@@ -83,6 +87,31 @@ async function stopProcess(proc) {
 }
 
 /**
+ * Each string the interpreter would intern before the runner starts and cannot, named with its size in bytes: the
+ * arguments from the runner on, the runner's real directory, every MICROPYPATH entry but a ~/ one it builds from $HOME.
+ * @param {string[]} args
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+function uninternable(args, env) {
+    /** @type {[string, string][]} */
+    const named = args.map((value, i) => {
+        const before = args[i - 1] ?? "";
+        return [before.startsWith("--") && !value.startsWith("--") ? `${before}'s value` : `argument ${i}`, value];
+    });
+    named.push(["the runner's directory", path.dirname(realpathSync(path.join(REPO_ROOT, RUNNER)))]);
+    (env.MICROPYPATH ?? "").split(":").forEach((entry, i) => {
+        if (!entry.startsWith("~/") || env.HOME === undefined) {
+            named.push([`MICROPYPATH entry ${i + 1}`, entry]);
+        }
+    });
+    return named.flatMap(([name, value]) => {
+        const size = Buffer.byteLength(value, "utf8");
+        return size > QSTR_MAX_BYTES ? [`${name} (${size} bytes)`] : [];
+    });
+}
+
+/**
  * Holds the captive-DNS port for one stretch that boots twins more than once (a restart): twins the stretch spawns
  * take it again within this process, so another runner cannot take it between them.
  * @returns {() => void} the release
@@ -136,48 +165,48 @@ export function sleep(ms) {
 }
 
 /**
- * Boots `device`'s twin on `port` once its runner holds the captive-DNS lock; build/generated_src first, since
- * sensortask_<device>.py exists only there (SPECIFICATION.md Part L.2), and its own site, build/generated_html/<device>,
- * written with it by package.json's "pretest" hooks, so a twin never serves another device's site. Its config directory is
- * the caller's (makeConfigDir()); every other state path is in memory, so nothing persists past the command.
+ * Boots `device`'s twin on `port` under the captive-DNS lock: build/generated_src first, sensortask_<device>.py's one home
+ * (SPECIFICATION.md Part L.2), its own site (build/generated_html/<device>, package.json's "pretest" hooks), the caller's
+ * config directory (makeConfigDir()), the rest in memory; a string the interpreter cannot intern throws before any of it.
  * @param {{device: string, port: number, configDir: string}} twin
  * @returns {import("node:child_process").ChildProcess}
  */
 export function spawnTwin({ device, port, configDir }) {
+    const args = [
+        RUNNER,
+        "--module",
+        `sensortask_${device}`,
+        "--wiring-plan",
+        path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
+        "--device",
+        device,
+        "--host",
+        HOST,
+        "--port",
+        String(port),
+        "--fram-state-path",
+        "", // in-memory only - see digital_twin/README.md's "FRAM persistence" section for this convention
+        "--scd30-state-path",
+        "", // same convention, "SCD30 persistence" section
+        "--mem-backup-state-path",
+        "", // the watchdog scratch registers, likewise
+        "--config-dir",
+        configDir,
+    ];
+    // The device's own built site in place of the unit tier's shared copy, so a twin never serves another device's site.
+    const env = { ...process.env, MICROPYPATH: withSite(MICROPYPATH, `build/generated_html/${device}`), TZ: "UTC" };
+    const refused = uninternable(args, env);
+    if (refused.length > 0) {
+        throw new Error(`the twin was not started: ${refused.join(", ")} - the Unix port interns each as a qstr of at most ${QSTR_MAX_BYTES} bytes and dies before the runner starts`);
+    }
     const bin = requireInterpreter();
     const release = acquirePortLock(DNS_PORT, LOCK_RUNNER);
-    // The device's own built site in place of the unit tier's shared copy, so a twin never serves another device's site.
-    const micropypath = withSite(MICROPYPATH, `build/generated_html/${device}`);
-    const proc = spawnOrRelease(release, () => spawn(
-        bin,
-        [
-            "digital_twin/run_generic_integration.py",
-            "--module",
-            `sensortask_${device}`,
-            "--wiring-plan",
-            path.join(REPO_ROOT, "build", "generated_src", `sensortask_${device}_wiring_plan.json`),
-            "--device",
-            device,
-            "--host",
-            HOST,
-            "--port",
-            String(port),
-            "--fram-state-path",
-            "", // in-memory only - see digital_twin/README.md's "FRAM persistence" section for this convention
-            "--scd30-state-path",
-            "", // same convention, "SCD30 persistence" section
-            "--mem-backup-state-path",
-            "", // the watchdog scratch registers, likewise
-            "--config-dir",
-            configDir,
-        ],
-        {
-            cwd: REPO_ROOT,
-            env: { ...process.env, MICROPYPATH: micropypath, TZ: "UTC" },
-            // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
-            stdio: ["ignore", "pipe", "pipe"],
-        },
-    ));
+    const proc = spawnOrRelease(release, () => spawn(bin, args, {
+        cwd: REPO_ROOT,
+        env,
+        // Both streams are drained: an undrained pipe blocks the child; the drained text is scanned for the memory markers.
+        stdio: ["ignore", "pipe", "pipe"],
+    }));
     lockReleases.set(proc, release);
     // An unhandled ChildProcess 'error' event crashes the whole Node/Vitest process, skipping the
     // caller's try/finally: the listener keeps the error for waitUntilServing() to name.

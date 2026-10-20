@@ -10,13 +10,17 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 import pytest
+import tomllib
 from _script_loader import load_script_module
+
+import scripts._twin_process as twin_process
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,6 +74,11 @@ _SIGNAL_COUNTER = (
 _PER_DEVICE_DEVICES = ("fixture-device-b", "fixture-device-a")
 
 _PER_DEVICE_REFUSAL = "RuntimeError: run through scripts/test.sh, or set TEST_DEVICE to one of devices/*.toml"
+
+# The qstr limit the intern check refuses past (checked against the interpreter there) and the unit layout it reads.
+_LIMIT = twin_process._QSTR_MAX_BYTES
+_UNIT_LAYOUT = tomllib.loads((Path(__file__).resolve().parent.parent / "scripts" / "micropypath.toml").read_text(encoding="utf-8"))["unit"]
+_INTERN_REFUSAL = f" - the Unix port interns each as a qstr of at most {_LIMIT} bytes and dies before a file starts\n"
 
 _ENV_PROBE = 'echo "TEST_DEVICE=${TEST_DEVICE-<unset>}"\necho "1/1 passed, 0 failed, 0 skipped"'
 
@@ -312,6 +321,12 @@ def _nested_run_with_sentinels(repo_root: Path, tmp_path: Path, args: list[str],
         # teardown would raise FileNotFoundError and bury the assertion that explains why.
         fixture.unlink(missing_ok=True)
         shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _padded_root(tmp_path: Path, under: str, size: int) -> Path:
+    # A checkout root below tmp_path's real path whose `under` directory is `size` bytes long.
+    base = os.path.realpath(tmp_path)
+    return Path(base, "r" * (size - len(os.fsencode(f"{base}/")) - len(f"/repo/{under}")), "repo")
 
 
 def _passing(tag: str, count: str = "3/3 passed, 0 failed, 0 skipped") -> tuple[str, str, None]:
@@ -562,6 +577,20 @@ def _run_file_job(repo_root: Path, tmp_path: Path, first_attempt: str, later_att
     (tmp_path / "stderr").write_text(done.stderr, encoding="utf-8")
     assert done.returncode == 0, done.stderr
     return results
+
+
+def _run_intern_check(repo_root: Path, tmp_path: Path, root: Path, *, coverage: bool = False, layout: str = _UNIT_LAYOUT, raw_dir: str = "/raw", files: "tuple[str, ...] | None" = (), env: "dict[str, str | None] | None" = None) -> "subprocess.CompletedProcess[str]":
+    # scripts/test.sh's own intern check run in `root` (files planted there, test_p.py PER_DEVICE; None plants nothing) on
+    # the fixture devices and the given unit layout, under a UTF-8 locale and $HOME, `env` adding (None: removing) more.
+    text = _test_sh_text(repo_root)
+    block = text[text.index("\nqstr_max_bytes=") + 1 : text.index("\nfi\n", text.index('uninternable="$(_uninternable)"')) + len("\nfi\n")]
+    for name in () if files is None else ("tests/test_a.py", "tests/test_p.py", "tests/lwip_host/test_l.py", *files):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text("PER_DEVICE = True\n" if name.endswith("/test_p.py") else "", encoding="utf-8")
+    script = tmp_path / "intern_check.sh"
+    script.write_text(f'#!/usr/bin/env bash\nset -euo pipefail\ncoverage={int(coverage)}\nraw_dir="{raw_dir}"\ndevices=({" ".join(_PER_DEVICE_DEVICES)})\nunit_micropypath="{layout}"\n{block}echo PASSED\n', encoding="utf-8")
+    merged = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": "/home/fixture", **(env or {})}
+    return subprocess.run(["/bin/bash", str(script)], cwd=root, capture_output=True, text=True, env={k: v for k, v in merged.items() if v is not None}, check=False, timeout=_SNIPPET_TIMEOUT_S)
 
 
 def _run_memerr_detail(repo_root: Path, tmp_path: Path) -> tuple[int, str]:
@@ -1319,6 +1348,107 @@ def test_help_prints_every_option_and_variable_and_touches_nothing(repo_root: Pa
         assert default in line, f"--help gives no default for {name}: {line!r}"
     assert scratch_kept, "--help swept tests/_tmp"
     assert fixture_kept, "--help swept devices/zz_test_*.toml"
+
+
+# ---------------------------------------------------------------------------
+# The intern check. A string the Unix port cannot intern as a qstr kills every file before it starts ("FATAL: uncaught
+# NLR", exit 1, read as a broken suite), so the run refuses it first, naming it (ports/unix/main.c:412, :560, :688).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("case", ["lwip script directory", "micropypath entry", "multibyte micropypath entry", "home-relative entry without HOME", "test file", "coverage data file"])
+def test_a_string_no_test_file_could_intern_exits_2_naming_it_before_any_file_starts(repo_root: Path, tmp_path: Path, case: str) -> None:
+    # Each one the interpreter interns before the file's first line, in bytes as it measures them: the script's real
+    # directory, a MICROPYPATH entry (a ~/ one too once $HOME is unset), an argument from the script on.
+    root, layout, coverage, raw_dir = _padded_root(tmp_path, "tests/lwip_host", 200), _UNIT_LAYOUT, False, "/raw"
+    files: tuple[str, ...] = ()
+    env: dict[str, str | None] = {}
+    if case == "lwip script directory":
+        root = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1)
+        named = f"the script's directory {root}/tests/lwip_host ({_LIMIT + 1} bytes)"
+    elif case == "micropypath entry":
+        layout = f"src:{'m' * (_LIMIT + 1)}"
+        named = f"MICROPYPATH entry 2 {'m' * (_LIMIT + 1)} ({_LIMIT + 1} bytes)"
+    elif case == "multibyte micropypath entry":
+        layout = f"{chr(0xE9) * ((_LIMIT + 1) // 2)}:src"
+        named = f"MICROPYPATH entry 1 {chr(0xE9) * ((_LIMIT + 1) // 2)} ({_LIMIT + 1} bytes)"
+    elif case == "home-relative entry without HOME":
+        layout, env = f"src:~/{'m' * (_LIMIT - 1)}", {"HOME": None}
+        named = f"MICROPYPATH entry 2 ~/{'m' * (_LIMIT - 1)} ({_LIMIT + 1} bytes)"
+    elif case == "test file":
+        files = (f"tests/test_{'t' * (_LIMIT - 13)}.py",)
+        named = f"argument 0 {files[0]} ({_LIMIT + 1} bytes)"
+    else:
+        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json"))
+        named = ", ".join(f"argument 2 {raw_dir}/test_p[{device}].json ({_LIMIT + 1} bytes)" for device in _PER_DEVICE_DEVICES)
+    done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}{_INTERN_REFUSAL}"), done
+
+
+@pytest.mark.parametrize("case", ["plain at the limit", "coverage at the limit", "home-relative entry", "threshold runs lwip through its runner", "coverage runs no lwip file"])
+def test_strings_at_the_limit_or_never_interned_by_the_runs_mode_still_run(repo_root: Path, tmp_path: Path, case: str) -> None:
+    # The boundary's other side: 255 bytes everywhere, a ~/ entry the interpreter builds from $HOME, and what no launch of
+    # the mode passes (the GC stage and --coverage start every file from tests/'s own runner; --coverage runs no lwip file).
+    root, layout, coverage, raw_dir = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1), _UNIT_LAYOUT, False, "/raw"
+    files: tuple[str, ...] = ()
+    env: dict[str, str | None] = {}
+    if case == "plain at the limit":
+        root, layout, files = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:{'m' * _LIMIT}", (f"tests/test_{'t' * (_LIMIT - 14)}.py",)
+    elif case == "coverage at the limit":
+        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
+    elif case == "home-relative entry":
+        root, layout = _padded_root(tmp_path, "tests/lwip_host", _LIMIT), f"src:~/{'m' * _LIMIT}"
+    elif case == "threshold runs lwip through its runner":
+        env = {"GC_THRESHOLD": "32768"}
+    else:
+        coverage, raw_dir = True, "/" + "r" * (_LIMIT - len("/test_p[fixture-device-b].json") - 1)
+        files = ("tests/lwip_host/test_lwip_host_files_are_skipped.py",)
+    done = _run_intern_check(repo_root, tmp_path, root, coverage=coverage, layout=layout, raw_dir=raw_dir, files=files, env=env)
+    assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
+
+
+def test_more_than_five_strings_are_named_five_and_the_rest_counted(repo_root: Path, tmp_path: Path) -> None:
+    # A long TMPDIR under --coverage would name every file's data file: the first five carry the cause.
+    layout = ":".join(chr(ord("a") + n) * (_LIMIT + 1) for n in range(7))
+    done = _run_intern_check(repo_root, tmp_path, _padded_root(tmp_path, "tests/lwip_host", 200), layout=layout)
+    named = ", ".join(f"MICROPYPATH entry {n + 1} {chr(ord('a') + n) * (_LIMIT + 1)} ({_LIMIT + 1} bytes)" for n in range(5))
+    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}, +2 more{_INTERN_REFUSAL}"), done
+
+
+@pytest.mark.parametrize(("coverage", "env"), [(False, {}), (False, {"GC_THRESHOLD": "32768"}), (True, {})], ids=["plain", "gc stage", "coverage"])
+def test_this_checkout_passes_the_intern_check_in_every_mode(repo_root: Path, tmp_path: Path, *, coverage: bool, env: "dict[str, str | None]") -> None:
+    # The false-positive direction on a real tree: this checkout, its own files and layout and a mktemp-length data
+    # directory pass in every mode, on a path longer than CI's checkout and the documented ones.
+    done = _run_intern_check(repo_root, tmp_path, repo_root, coverage=coverage, raw_dir=str(Path(tempfile.gettempdir()) / "tmp.XXXXXXXXXX"), files=None, env=env)
+    assert (done.returncode, done.stdout, done.stderr) == (0, "PASSED\n", ""), done
+
+
+def test_a_checkout_too_deep_to_intern_is_refused_before_the_lock_a_sweep_or_a_build(repo_root: Path, tmp_path: Path) -> None:
+    # End to end on a copy of the runner and its libraries, a stub uv recording any build: exit 2 naming the directory,
+    # with port 53's lock never taken, tests/_tmp never swept and nothing built.
+    root = _padded_root(tmp_path, "tests/lwip_host", _LIMIT + 1)
+    for name in ("test.sh", "_port_lock.sh", "_devices.sh", "_unix_port.sh", "micropypath.toml"):
+        (root / "scripts").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo_root / "scripts" / name, root / "scripts" / name)
+    for name in ("devices/fixture-device-a.toml", "tests/test_a.py", "tests/lwip_host/test_l.py", "tests/_tmp/held.txt"):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text("", encoding="utf-8")
+    stub_bin, run_dir, calls = tmp_path / "stub_bin", tmp_path / "run", tmp_path / "uv_calls"
+    stub_bin.mkdir()
+    run_dir.mkdir()
+    (stub_bin / "uv").write_text(f'#!/usr/bin/env bash\necho "$*" >>"{calls}"\nexit 1\n', encoding="utf-8")
+    (stub_bin / "uv").chmod(0o755)
+    env = {"PATH": f"{stub_bin}:/usr/bin:/bin", "HOME": str(tmp_path), "LANG": "C.UTF-8", "XDG_RUNTIME_DIR": str(run_dir), "PICO_TOOLCHAIN_DIR": str(tmp_path / "toolchain")}
+    done = subprocess.run(["/bin/bash", str(root / "scripts" / "test.sh")], cwd=tmp_path, capture_output=True, text=True, env=env, check=False, timeout=_NESTED_RUN_TIMEOUT_S)
+    named = f"the script's directory {root}/tests/lwip_host ({_LIMIT + 1} bytes)"
+    assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}{_INTERN_REFUSAL}"), done
+    assert (calls.exists(), sorted(run_dir.iterdir()), (root / "tests" / "_tmp" / "held.txt").is_file()) == (False, [], True)
+
+
+def test_the_runs_limit_is_the_twin_launchs_own(repo_root: Path) -> None:
+    # The runner's copy of the qstr limit is scripts/_twin_process.py's, which is checked against the interpreter itself.
+    copies = re.findall(r"^qstr_max_bytes=(\d+)$", _test_sh_text(repo_root), re.MULTILINE)
+    assert copies == [str(_LIMIT)], f"scripts/test.sh holds the qstr limit {copies}, scripts/_twin_process.py {_LIMIT}"
 
 
 # ---------------------------------------------------------------------------

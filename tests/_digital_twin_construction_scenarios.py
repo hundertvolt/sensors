@@ -15,7 +15,7 @@ import network
 import run_generic_integration
 from _async_harness import cancel, run_timed
 from _boot_recorder import BootRecorder, expected_entries
-from _generated_module import boot_entry_watchdog, boot_generated
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, write_error_level_config
 from _generated_tree import require_fresh
 from _offline_ntp_config import write_offline_ntp_config  # _generated_module's import put its directory on the path
 from _port_bands import PortAllocator
@@ -70,7 +70,7 @@ def _register_param(name: str) -> "Callable[[Callable[[str], None]], Callable[[s
 
 async def _boot_device(port: int, device: str) -> "ModuleType":
     module = _fresh_board(device)
-    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), web_host="127.0.0.1", web_port=port)
+    module, _watchdog = await boot_generated(module, device, cfg_path=_tmp_cfg_dir(), log_errors=True, web_host="127.0.0.1", web_port=port)
     return module
 
 
@@ -106,13 +106,14 @@ def _scenario_boot_sequence(device: str) -> None:
     async def scenario() -> None:
         cfg_path = _tmp_cfg_dir()
         write_offline_ntp_config(cfg_path)
+        write_error_level_config(cfg_path)
         module = _fresh_board(device)
-        await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
+        await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
         recorder = BootRecorder(module)  # it names its classes from a built module
         module = _fresh_board(device)
         module.__dict__["webserver"] = None  # the global the runner's wait reads: this boot's, not the build's above
         watchdog = boot_entry_watchdog(module, device)
-        main_task = asyncio.get_event_loop().create_task(module.main(watchdog=watchdog, cfg_path=cfg_path, web_host="127.0.0.1", web_port=_next_test_port()))
+        main_task = asyncio.get_event_loop().create_task(module.main(watchdog=watchdog, cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=_next_test_port()))
         try:
             # The runner's own steps between build_system() and the setups: a UART link's bounded pollers, as on CI.
             await run_generic_integration._wait_until_built(module)

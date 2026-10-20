@@ -11,7 +11,7 @@ from collections import namedtuple
 from micropython import const
 
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, check_cfg_get_default, config_filename, instance_name, schema_dict, schema_names, type_or_range_error
-from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -122,8 +122,8 @@ class Lockable:
         # trailing return on every caller (SPECIFICATION.md Part D.7).
         try:
             self.session_lock.release()
-        except RuntimeError:  # in case it's already released somehow
-            pass
+        except RuntimeError as e:  # already released somehow; a C-stack overflow on the call is recorded for the reboot
+            report_if_fatal(e)
         return False
 
 
@@ -379,7 +379,10 @@ def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHi
     # the alarm pool refuses the arm (Part F.1), reported here in one wording; the caller degrades.
     try:
         timer.init(period=1000, mode=timer.PERIODIC, callback=lambda _b: flag.set())
-    except (MemoryError, OSError) as e:
+    except MemoryError as e:  # its text reaches the console at every level, the line the memory gates read (CLAUDE.md)
+        console(pr.name, "Could not arm a 1 s tick timer:", e)
+        return False
+    except OSError as e:
         pr.err("Could not arm", what, "timer:", e)
         return False
     return True
@@ -422,7 +425,8 @@ class SensorReader:
         self._rungs = 0  # the _RUNG_* bits this failure episode already ran
         self._bus_mark = 0  # _recovery_bus.recoveries when this episode began
         self._recovery_bus: I2C | None = None  # set by a driver whose chip sits on I2C
-        self._timer_error: Exception | None = None  # a failed read-trigger arm, until its task reports it
+        self._timer_error: Exception | None = None  # a failed read-trigger arm, until its task's restart re-arms
+        self._timer_reported = False  # _timer_error is persisted already: a re-arm does not persist it again
 
     async def _get_dict_cfg(
         self,
@@ -443,6 +447,7 @@ class SensorReader:
                         await self.pr.wrn_s("Warning: Sensor config manager adds unknown keys to config dict!", wrnno=_WRN_CFG_KEYS)
                     values.update(sensor_conf)
             except Exception as e:  # subclass override could legitimately misbehave; not statically ruled out
+                report_if_fatal(e)
                 await self.pr.err_s("Error updating config dict:", e, errno=_ERR_CFG_GET_RAISED)
                 return {name: {"error": UNAVAILABLE}}
             if sensor_conf is None:
@@ -457,6 +462,7 @@ class SensorReader:
                         await self.pr.wrn_s("Warning: Sensor callback adds unknown keys to config dict!", wrnno=_WRN_CALLBACK_KEYS)
                     values.update(sensor_callback)
                 except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                    report_if_fatal(e)
                     await self.pr.err_s("Error reading config from sensor:", e, errno=_ERR_CFG_CALLBACK_RAISED)
                     return {name: {"error": UNAVAILABLE}}
 
@@ -487,6 +493,7 @@ class SensorReader:
             try:  # _get_mgr_cfg is an overridable extension point, same defense as _get_dict_cfg's own use of it
                 old_values = await self._get_mgr_cfg(persisted_keys) if persisted_keys else {}
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Error reading previous config for fallback:", e, errno=_ERR_CFG_SNAPSHOT_RAISED)
                 old_values = None
             if old_values is None:
@@ -498,6 +505,7 @@ class SensorReader:
                 persisted, results = await self._set_mgr_cfg(data, cfg_vals)
                 results = _checked_write_results(results)
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Error writing config dict:", e, errno=_ERR_CFG_SET_RAISED)
                 persisted, results = False, {}
 
@@ -525,6 +533,7 @@ class SensorReader:
                     try:
                         pushed = await callback(push_value)
                     except Exception as e:  # callback is caller-supplied; its runtime behavior isn't statically known
+                        report_if_fatal(e)
                         await self.pr.err_s("Error pushing", key, "to sensor:", e, errno=_ERR_PUSH_RAISED)
                         pushed = False
                     if not pushed:
@@ -550,6 +559,7 @@ class SensorReader:
             try:
                 ok = await self._recover_device()
             except Exception as e:  # an overridable extension point, guarded like this file's others
+                report_if_fatal(e)
                 await self.pr.err_s("Device recovery raised:", e, errno=_ERR_CALLBACK)
                 return  # a failed rung: its one entry is this error
             if ok is True:  # a failed hook has logged its own error; None means no participant rung
@@ -604,6 +614,16 @@ class SensorReader:
         self._rungs |= _RUNG_BUS
         await self._recover_bus(_RUNG_CONTROLLER)
 
+    async def _rearm_timer(self) -> None:
+        # A task start's first step after a failed read-trigger arm: persisted once, then re-armed. The generated main()
+        # starts the tasks before the timers, so the woken task usually persisted it already; an arm that failed while
+        # the task was down is persisted here.
+        if self._timer_error is None:
+            return
+        await self._timer_fault()
+        self._timer_error = None
+        self.start_timer()
+
     async def _recover_bus(self, rung: int) -> None:
         # One bus rung per bus per episode: a reader that sees the bus already recovered since its episode
         # began (another reader on it ran the rung) only marks its own rung as spent.
@@ -651,6 +671,7 @@ class SensorReader:
             try:
                 recovered = await getter()
             except Exception as e:  # getter is caller-supplied; its runtime behavior isn't statically known
+                report_if_fatal(e)
                 await self.pr.err_s("Error reading", key, "back from sensor:", e, errno=_ERR_RECOVERY_READ_RAISED)
                 recovered = None
             # A getter reads live, possibly-adversarial hardware state - a value outside this
@@ -666,6 +687,7 @@ class SensorReader:
             persisted, res = await self._set_mgr_cfg({key: recovered}, cfg_vals)
             res = _checked_write_results(res)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error correcting", key, "after failed push:", e, errno=_ERR_RECOVERY_WRITE_RAISED)
             return
         if not persisted or res.get(key) not in (VALID, UNCHANGED):
@@ -683,22 +705,24 @@ class SensorReader:
     def _timer_failed(self, e: Exception, waiter: asyncio.ThreadSafeFlag) -> None:
         # A read-trigger arm failed in a sync starter: keep it for the waiting task and wake that task.
         self._timer_error = e
+        self._timer_reported = False
         self.pr.err("Could not start timer:", e)
         waiter.set()
 
     async def _timer_fault(self) -> bool:
-        # True once a failed arm is persisted: the woken task then ends, and its restart re-arms.
+        # True once a failed arm is persisted, which happens once per failure: the woken task then ends, and its restart
+        # re-arms through _rearm_timer().
         if self._timer_error is None:
             return False
-        await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
+        if not self._timer_reported:
+            self._timer_reported = True
+            await self.pr.err_s("Read trigger timer not armed:", self._timer_error, errno=_ERR_TIMER)
         return True
 
     async def _trigger_loop(self) -> None:
         # The shared divider (Part C.9): every n-th base tick sets the read event, n the trigger period; a
-        # failed arm is retried first, and a fault seen after a wake ends the task.
-        if self._timer_error is not None:
-            self._timer_error = None
-            self.start_timer()
+        # failed arm is persisted and retried first, and a fault seen after a wake ends the task.
+        await self._rearm_timer()
         self._trigger_counter = 0
         while True:
             await self._base_trigger_event.wait()

@@ -19,8 +19,8 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, arm_tick_timer, set_utc_valid, utc_now
 from asy_config_manager import INVALID, make_dict
-from asy_dns_client import DNS_LABEL_MAX, host_label_ok, ipv4_to_int, resolve_ipv4
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_dns_client import DNS_LABEL_MAX, DNS_NOT_SENT, DNS_NXDOMAIN, host_label_ok, ipv4_to_int, resolve_ipv4
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 from asy_udp_socket import UDPSocket
 
 try:
@@ -48,6 +48,8 @@ _ERR_NTP_MALFORMED = const(69)
 _ERR_NTP_RETRIES = const(70)
 _ERR_NTP_NO_REPLY = const(71)
 _ERR_NTP_NOT_SENT = const(72)
+_ERR_NTP_DNS_NOT_SENT = const(73)
+_ERR_NTP_DNS_NXDOMAIN = const(74)
 _WRN_STORED_DEFAULT = const(10)
 _WRN_SOCKET_TEARDOWN = const(12)
 _WRN_NTP_UNSYNC_REPLY = const(40)
@@ -391,16 +393,23 @@ class NTPClient(SensorReaderConfig):
 
     async def _resolve_ntp_server(self, ntp_host: str, dns_server: str | None, fallback: str) -> tuple[str, int] | None:
         servers = (() if dns_server is None else (dns_server,)) + tuple(s for s in fallback.split(",") if s)
-        ip = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, pr=self.pr)
-        if ip is None:
+        ip, cause = await resolve_ipv4(ntp_host, servers, timeout_ms=self._dns_timeout_ms, tries=self._dns_tries, pr=self.pr)
+        if ip is not None:
+            return ip, _NTP_UDP_PORT
+        # The resolver's cause names what failed: this device's send, the name itself, or the servers (no reply or answer).
+        if cause == DNS_NOT_SENT:
+            await self.pr.err_s("NTP server name not looked up - DNS query not sent:", ntp_host, errno=_ERR_NTP_DNS_NOT_SENT)
+        elif cause == DNS_NXDOMAIN:
+            await self.pr.err_s("NTP server name does not exist (NXDOMAIN):", ntp_host, errno=_ERR_NTP_DNS_NXDOMAIN)
+        else:
             await self.pr.err_s("No valid NTP server:", ntp_host, errno=_ERR_NTP_DNS)
-            return None
-        return ip, _NTP_UDP_PORT
+        return None
 
     async def _run_ntp_sync_attempt(self, dns_server: str | None) -> tuple[tuple[int, ...] | None, bool]:
         try:
             network_ok = self._network_available_locked()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
+            report_if_fatal(e)
             await self.pr.err_s("network_available_locked() callback failed:", e, errno=_ERR_CALLBACK)
             network_ok = False
         if not network_ok:
@@ -433,6 +442,7 @@ class NTPClient(SensorReaderConfig):
         try:
             return self._get_dns_server()
         except Exception as e:  # caller-supplied callback - could legitimately misbehave
+            report_if_fatal(e)
             await self.pr.err_s("get_dns_server() callback failed:", e, errno=_ERR_CALLBACK)
             return None
 

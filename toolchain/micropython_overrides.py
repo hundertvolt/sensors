@@ -118,8 +118,8 @@ def verify_unix_kbd_intr_anchor(micropython_dir: Path) -> Path:
 
 
 def _unix_kbd_intr_header(real_variant_dir: Path) -> str:
-    # The generated mpconfigvariant.h text: the real one first, then the safe SIGINT path and the
-    # sentinel the post-build readback looks for. The host lwIP build starts from the same text.
+    # The generated mpconfigvariant.h's first part: the real one, then the safe SIGINT path and the
+    # sentinel the post-build readback looks for; _unix_variant_header() adds the mark stack.
     return (
         f'#include "{real_variant_dir / "mpconfigvariant.h"}"\n'
         "// SPECIFICATION.md Part B.14.1: force MicroPython's own safe,\n"
@@ -131,15 +131,16 @@ def _unix_kbd_intr_header(real_variant_dir: Path) -> str:
 
 
 def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> dict[str, str]:
-    # Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the
-    # real variant files and forces MICROPY_ASYNC_KBD_INTR to 0; paths are resolved and refused
-    # when unembeddable. Returns build_unix_port()'s extra `make` variables; see Part B.14.1.
+    # Points the Unix standard variant's VARIANT_DIR at an external directory that #includes the real
+    # variant files, forces MICROPY_ASYNC_KBD_INTR to 0 and sets the mark stack (B.14.6); paths are
+    # resolved and refused when unembeddable. Returns build_unix_port()'s extra `make` variables; B.14.1.
     micropython_dir = _embeddable(micropython_dir, "unix_kbd_intr")
     overrides_dir = _embeddable(overrides_dir, "unix_kbd_intr")
     verify_unix_kbd_intr_anchor(micropython_dir)
+    verify_unix_gc_stack_anchor(micropython_dir)
     real_variant_dir = micropython_dir / "ports" / "unix" / "variants" / "standard"
     override_dir = _fresh_dir(overrides_dir / UNIX_KBD_INTR_DIR_NAME)
-    (override_dir / "mpconfigvariant.h").write_text(_unix_kbd_intr_header(real_variant_dir), encoding="utf-8")
+    (override_dir / "mpconfigvariant.h").write_text(_unix_variant_header(real_variant_dir), encoding="utf-8")
     # mpconfigvariant.mk/manifest.py both relay to the real files rather than copying their
     # content, so neither can silently drift out of sync with a future pinned-version change -
     # `include()` is the freeze-manifest DSL's own primitive for exactly this (tools/manifestfile.py).
@@ -150,6 +151,46 @@ def apply_unix_kbd_intr_override(micropython_dir: Path, overrides_dir: Path) -> 
     if real_manifest.exists():
         (override_dir / "manifest.py").write_text(f"include({str(real_manifest)!r})\n", encoding="utf-8")
     return {"VARIANT": "standard", "VARIANT_DIR": str(override_dir)}
+
+
+# ---------------------------------------------------------------------------------------------
+# unix_gc_stack: every Unix-port build marks with a larger GC stack than MicroPython's 64, so a
+# collection on the test heap never re-scans the whole heap after a stack overflow. Time only; the
+# firmware keeps 64. No make variable or directory of its own. Full account: SPECIFICATION.md B.14.6.
+# ---------------------------------------------------------------------------------------------
+
+# @tunable l1.unix_gc_stack_entries = 1024
+UNIX_GC_STACK_ENTRIES = 1024
+# What the override relies on, file by file and in order: the #ifndef-guarded default (so the variant
+# header's plain #define is the only one, and any other warns), the array the readback reads, and
+# the overflow path that re-scans every block of the heap.
+_UNIX_GC_STACK_ANCHORS = (
+    ("py/mpconfig.h", ("#ifndef MICROPY_ALLOC_GC_STACK_SIZE\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\n#endif\n",)),
+    ("py/mpstate.h", ("    MICROPY_GC_STACK_ENTRY_TYPE gc_block_stack[MICROPY_ALLOC_GC_STACK_SIZE];\n",)),
+    ("py/gc.c", (
+        "            if (sp < MICROPY_ALLOC_GC_STACK_SIZE) {\n",
+        "                MP_STATE_MEM(gc_stack_overflow) = 1;\n",
+        "static void gc_deal_with_stack_overflow(void) {\n",
+        "            for (size_t block = 0; block < area->gc_alloc_table_byte_len * BLOCKS_PER_ATB; block++) {\n",
+    )),
+)
+_UNIX_GC_STACK_REVERIFY = "the GC mark stack's default or its overflow path changed upstream - re-derive the rig's mark stack, or retire it if the overflow no longer re-scans the heap (SPECIFICATION.md B.14.6)"
+
+
+def verify_unix_gc_stack_anchor(micropython_dir: Path) -> None:
+    for relative, anchors in _UNIX_GC_STACK_ANCHORS:
+        _require_in_order(micropython_dir, "unix_gc_stack", relative, anchors, _UNIX_GC_STACK_REVERIFY)
+
+
+def _unix_variant_header(real_variant_dir: Path) -> str:
+    # The generated mpconfigvariant.h of the standard and settrace builds, which the host lwIP build
+    # starts from: the SIGINT part (B.14.1), then the mark stack (B.14.6).
+    return (
+        f"{_unix_kbd_intr_header(real_variant_dir)}"
+        "// SPECIFICATION.md Part B.14.6: a mark stack deep enough that a collection never\n"
+        "// re-scans the whole test heap; time only, the firmware keeps 64.\n"
+        f"#define MICROPY_ALLOC_GC_STACK_SIZE ({UNIX_GC_STACK_ENTRIES})\n"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -604,7 +645,7 @@ def _lwip_host_files(micropython_dir: Path, variant_dir: Path, lwip_macros: dict
     alignment = struct.calcsize("P")  # the host's own pointer alignment, a literal lwIP may test in #if
     settings = "\n".join(_RP2_LWIP_HOST_SETTINGS)
     files = {
-        "mpconfigvariant.h": _unix_kbd_intr_header(real_variant_dir) + "void mp_lwip_host_poll(void);\n#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()\n",
+        "mpconfigvariant.h": _unix_variant_header(real_variant_dir) + "void mp_lwip_host_poll(void);\n#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()\n",
         "mpconfigvariant.mk": (
             f"include {real_variant_dir / 'mpconfigvariant.mk'}\n"
             f"INC += -I{variant_dir / 'lwip_inc'}\n"
@@ -653,8 +694,9 @@ def _lwip_host_files(micropython_dir: Path, variant_dir: Path, lwip_macros: dict
 
 
 def _verify_unix_lwip_host_anchors(micropython_dir: Path) -> None:
-    # The SIGINT override's anchor, modlwip's, and every fact the host build relies on (above).
+    # The SIGINT and mark-stack anchors, modlwip's, and every fact the host build relies on (above).
     verify_unix_kbd_intr_anchor(micropython_dir)
+    verify_unix_gc_stack_anchor(micropython_dir)
     _verify_modlwip_source(micropython_dir, "unix_lwip_host")
     for relative, anchors in _LWIP_HOST_ANCHORS:
         _require_in_order(micropython_dir, "unix_lwip_host", relative, anchors, _LWIP_HOST_REVERIFY)
@@ -749,10 +791,13 @@ _TICK_PROBE_MARK = "TICKPROBE"
 # and run by the event hook while it sleeps, outlive two 1 s IPv6 reassembly ticks.
 _LWIP_HOST_TIMERS_OK = "lwip timers ok"
 _LWIP_HOST_PROBE = f"import lwip, socket, time; print(socket is lwip); lwip.reset(); time.sleep_ms(2500); lwip.callback(); print({_LWIP_HOST_TIMERS_OK!r})"
-# ports/unix/unix_mphal.c, whose sighandler() takes SIGINT; the body runs to the next function.
-_KBD_INTR_PP_SOURCE = "unix_mphal"
+# ports/unix/unix_mphal.c, which both Unix readbacks preprocess: its sighandler() takes SIGINT (the
+# body runs to the next function), and its mp_state_mem_t (py/mpstate.h) holds the mark stack.
+_UNIX_MPHAL_PP_SOURCE = "unix_mphal"
 _SIGHANDLER_START = "static void sighandler(int signum)"
 _SIGHANDLER_END = "void mp_hal_set_interrupt_char"
+_MEM_STATE_STRUCT_START = "typedef struct _mp_state_mem_t {"
+_MEM_STATE_STRUCT_END = "} mp_state_mem_t;"
 
 # Every directory the apply_*() functions write under build_overrides/; setup removes any other it finds there.
 CURRENT_OVERRIDE_DIRS = (UNIX_KBD_INTR_DIR_NAME, LWIP_OVERRIDE_BOARD_DIR_NAME, MODLWIP_OVERRIDE_DIR_NAME, UNIX_LWIP_HOST_DIR_NAME, TICK_OFFSET_DIR_NAME)
@@ -895,31 +940,53 @@ def _check_unix_kbd_intr_pp(pp_text: str, pp_path: Path) -> None:
         raise OverrideError(f"unix_kbd_intr: the immediate nlr_raise() path was compiled - sighandler() in {pp_path} calls nlr_jump() or never mp_sched_keyboard_interrupt() (SPECIFICATION.md B.14.1)")
 
 
-def verify_unix_kbd_intr_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
-    # Re-preprocesses unix_mphal.c with this build's own make variables, so with the very flags it
-    # was compiled with (py/mkrules.mk's $(BUILD)/%.pp rule), checks it, and removes the .pp.
+def _unix_mphal_pp(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, env: dict[str, str], name: str) -> tuple[str, Path]:
+    # unix_mphal.c re-preprocessed with this build's own make variables, so with the very flags it was
+    # compiled with (py/mkrules.mk's $(BUILD)/%.pp rule): its text and path; the .pp is removed before and after.
     variables = dict(make_vars)
     if variables.setdefault("BUILD", build_dir_name) != build_dir_name:
-        raise OverrideError(f"unix_kbd_intr: the make variables name BUILD={variables['BUILD']}, not the build being proven ({build_dir_name})")
+        raise OverrideError(f"{name}: the make variables name BUILD={variables['BUILD']}, not the build being proven ({build_dir_name})")
     search_path = env.get("PATH")
     make = shutil.which("make", path=search_path) if search_path else None
     if make is None:
-        raise OverrideError(f"unix_kbd_intr: no `make` on the build's PATH ({search_path!r}) to preprocess unix_mphal.c with")
-    pp_path = unix_dir / build_dir_name / f"{_KBD_INTR_PP_SOURCE}.pp"
-    argv = [make, *(f"{key}={value}" for key, value in variables.items()), f"{build_dir_name}/{_KBD_INTR_PP_SOURCE}.pp"]
+        raise OverrideError(f"{name}: no `make` on the build's PATH ({search_path!r}) to preprocess unix_mphal.c with")
+    pp_path = unix_dir / build_dir_name / f"{_UNIX_MPHAL_PP_SOURCE}.pp"
+    argv = [make, *(f"{key}={value}" for key, value in variables.items()), f"{build_dir_name}/{_UNIX_MPHAL_PP_SOURCE}.pp"]
     pp_path.unlink(missing_ok=True)  # else a .pp an interrupted run left behind could vouch for this build
     try:
         try:
             result = subprocess.run(argv, cwd=unix_dir, env=env, capture_output=True, text=True, check=False, timeout=_PREPROCESS_TIMEOUT_S)
         except subprocess.TimeoutExpired as exc:
-            raise OverrideError(f"unix_kbd_intr: preprocessing unix_mphal.c for {build_dir_name} did not finish within {_PREPROCESS_TIMEOUT_S} s") from exc
+            raise OverrideError(f"{name}: preprocessing unix_mphal.c for {build_dir_name} did not finish within {_PREPROCESS_TIMEOUT_S} s") from exc
         except OSError as exc:
-            raise OverrideError(f"unix_kbd_intr: cannot run {make!r} to preprocess unix_mphal.c ({exc})") from exc
+            raise OverrideError(f"{name}: cannot run {make!r} to preprocess unix_mphal.c ({exc})") from exc
         if result.returncode != 0 or not pp_path.is_file():
-            raise OverrideError(f"unix_kbd_intr: `{' '.join(argv)}` did not produce {pp_path} (exit {result.returncode}):\n{(result.stdout + result.stderr).strip()[-2000:]}")
-        _check_unix_kbd_intr_pp(pp_path.read_text(errors="replace", encoding="utf-8"), pp_path)
+            raise OverrideError(f"{name}: `{' '.join(argv)}` did not produce {pp_path} (exit {result.returncode}):\n{(result.stdout + result.stderr).strip()[-2000:]}")
+        return pp_path.read_text(errors="replace", encoding="utf-8"), pp_path
     finally:
         pp_path.unlink(missing_ok=True)
+
+
+def verify_unix_kbd_intr_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
+    # The SIGINT path as this build compiled it, read from its own preprocessed unix_mphal.c.
+    _check_unix_kbd_intr_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_kbd_intr"))
+
+
+def _check_unix_gc_stack_pp(pp_text: str, pp_path: Path) -> None:
+    # One build's preprocessed unix_mphal.c: mp_state_mem_t's gc_block_stack, the array py/gc.c marks
+    # with, has exactly UNIX_GC_STACK_ENTRIES entries.
+    start = pp_text.find(_MEM_STATE_STRUCT_START)
+    end = pp_text.find(_MEM_STATE_STRUCT_END, start) if start >= 0 else -1
+    if end < 0:
+        raise OverrideError(f"unix_gc_stack: {pp_path.name} has no mp_state_mem_t: the pinned source changed - re-verify SPECIFICATION.md B.14.6 ({pp_path})")
+    found = re.findall(r"\bgc_block_stack\[(.*?)\];", pp_text[start:end])
+    if found != [f"({UNIX_GC_STACK_ENTRIES})"]:
+        raise OverrideError(f"unix_gc_stack: this build's GC mark stack is not the rig's {UNIX_GC_STACK_ENTRIES} entries - mp_state_mem_t in {pp_path} declares gc_block_stack {found!r}: it never reached the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE, or was built for another value (SPECIFICATION.md B.14.6)")
+
+
+def verify_unix_gc_stack_in_build(unix_dir: Path, make_vars: dict[str, str], build_dir_name: str, *, env: dict[str, str]) -> None:
+    # The mark stack as this build compiled it, read from its own preprocessed unix_mphal.c.
+    _check_unix_gc_stack_pp(*_unix_mphal_pp(unix_dir, make_vars, build_dir_name, env, "unix_gc_stack"))
 
 
 def verify_modlwip_eagain_in_build(build_dir: Path, micropython_dir: Path, copy_path: Path) -> None:

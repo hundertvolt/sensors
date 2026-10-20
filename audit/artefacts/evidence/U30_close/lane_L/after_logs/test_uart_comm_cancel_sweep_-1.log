@@ -1,0 +1,280 @@
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+PASS test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_crc16
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 2
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_A UART error: a data frame arrived where an ACK was due
+UART_B UART error: no ACK for frame 1
+UART_B UART error: no ACK for frame 3
+UART_B UART error: no ACK for frame 3
+PASS test_cancelling_a_get_at_every_await_leaves_both_ends_consistent_nocrc
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 2
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+PASS test_cancelling_a_listener_at_every_await_leaves_it_restartable_crc16
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 2
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 2
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+UART_A UART error: no ACK for frame 3
+UART_B UART error: unexpected frame while listening
+UART_A UART error: no ACK for frame 1
+PASS test_cancelling_a_listener_at_every_await_leaves_it_restartable_nocrc
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+PASS test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_crc16
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+PASS test_cancelling_a_set_at_every_await_leaves_both_ends_consistent_nocrc
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+PASS test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_crc16
+UART_B UART error: listen read failed or was cancelled
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: invalid ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+PASS test_cancelling_a_set_stream_at_every_await_leaves_both_ends_consistent_nocrc
+UART_B UART error: listen read failed or was cancelled
+UART_A UART error: no ACK for frame 1
+UART_B UART error: listen read failed or was cancelled
+UART_A UART error: no ACK for frame 1
+UART_B UART error: ACK for SET failed
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: ACK write failed at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+UART_B UART error: final ACK write failed
+UART_A UART error: no ACK for frame 3
+PASS test_clear_at_every_await_leaves_the_transaction_whole_or_failed_crc16
+UART_B UART error: listen read failed or was cancelled
+UART_A UART error: no ACK for frame 1
+UART_B UART error: listen read failed or was cancelled
+UART_A UART error: no ACK for frame 1
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 2
+UART_A UART error: no ACK for frame 2
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+UART_B UART error: train stalled at chunk 3
+UART_A UART error: no ACK for frame 3
+PASS test_clear_at_every_await_leaves_the_transaction_whole_or_failed_nocrc
+10/10 passed, 0 failed, 0 skipped

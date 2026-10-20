@@ -350,7 +350,7 @@ def test_a_dropped_escalation_feed_fails(src_copy: Path) -> None:
 
 
 def test_an_escalation_through_a_command_path_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", '                await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)\n', "                await self.reboot_system()\n")
+    _edit(src_copy / "asy_system_service.py", "                await self._reboot(escalate, message, system_reset)\n", "                await self.reboot_system()\n")
     findings = src_findings(src_copy)
     assert findings == [
         "SystemService._supervise() references reboot_system",
@@ -359,7 +359,7 @@ def test_an_escalation_through_a_command_path_fails(src_copy: Path) -> None:
 
 
 def test_a_fed_escalation_reset_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)', 'await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset, fed=True)')
+    _edit(src_copy / "asy_system_service.py", "await self._reboot(escalate, message, system_reset)", "await self._reboot(escalate, message, system_reset, fed=True)")
     findings = src_findings(src_copy)
     assert findings == ["SystemService._supervise(): 1 `_reboot(` calls where the pinned set has one, without fed="], findings
 

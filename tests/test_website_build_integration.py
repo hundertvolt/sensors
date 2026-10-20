@@ -67,7 +67,7 @@ def _make_app() -> "tuple[WebserverService, Microdot]":
         int(_src_const("_DEFAULT_MAX_CONTENT_LENGTH")), int(_src_const("_DEFAULT_CHUNK_BYTES")), int(_src_const("_DEFAULT_MAX_CONNECTIONS")),
         None, float(_src_const("_DEFAULT_PER_CALL_TIMEOUT_S")), float(_src_const("_DEFAULT_OUTER_CAP_S")), "0.0.0.0", 80,
     )
-    routes = RouteSources([], None, None, None, None, None, None, [], [])
+    routes = RouteSources([], None, None, None, None, None, None, None, [], [])
     service = WebserverService(app, routes, serving, uptime_s=_uptime_s, static=StaticSite("/html", "index.html", None))
     return service, app
 

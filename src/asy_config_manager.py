@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     # `# @wiring`/`# @value-wiring`/`# @limits` comment tags, so nothing the firmware reads becomes
     # frozen bytecode just to serve the generator (SPECIFICATION.md Part L.6.4).
 
-from asy_print_log import DEFAULT_LOG, make_logger
+from asy_print_log import DEFAULT_LOG, make_logger, report_if_fatal
 
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and CFGMGR's band.
 _ERR_ALLOC = const(20)
@@ -324,6 +324,7 @@ class ConfigManager:
         self.faulted = False  # setup() met a file it could not read or a damaged one (repaired, still listed)
         self.absent_at_boot = False  # setup() found no file and wrote the defaults (a fresh filesystem)
         self.unpersisted = False  # the latest file write failed: the store runs on values the flash lacks
+        self._read_failing = False  # a run of failed reads, persisted once: the next good read or a cleared history ends it
         self.module_name = name  # the module name a config-fault report lists
         self._closed = False  # close_writes() before a commanded reset; one-way
         # The owning module's PUT lock, set once by that module after construction: a commanded reset takes it
@@ -349,21 +350,25 @@ class ConfigManager:
         for i, value in enumerate(values):
             checked = coerce(value)
             if checked is None:
-                await self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
+                if self._read_run_starts():
+                    await self.pr.err_s(self._config_file, "- stored value has the wrong type:", names[i], errno=_ERR_CONTRACT)
                 return None
             typed.append(checked)
+        self._read_failing = False
         return typed
 
     async def _get_values(self, keys: "ConfigSchema") -> "list[CfgValue] | None":
         if not self.valid:
-            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            if self._read_run_starts():
+                await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into list.")
         try:
             current = self._current()
             return [current[key] for key in schema_names(keys)]
         except KeyError as e:  # unknown key
-            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            if self._read_run_starts():
+                await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
 
     def _closed_for_reset(self) -> bool:
@@ -409,8 +414,16 @@ class ConfigManager:
                     if self._pending_flush is asyncio.current_task():
                         self._pending_flush = None
         except Exception as e:  # an unsupervised task's top: its end is persisted, never left unretrieved
+            report_if_fatal(e)
             self.unpersisted = True  # the finally above already made the unwritten snapshot the cache
             await self.pr.err_s(self._config_file, "- flush task failed:", e, errno=_ERR_UNEXPECTED)
+
+    def _read_run_starts(self) -> bool:
+        # True for a run's first failed read, which alone persists and prints: a store invalid for the boot fails every
+        # read, and a reader on a fixed cycle would otherwise log each cycle.
+        starts = not self._read_failing
+        self._read_failing = True
+        return starts
 
     async def get_bool_values(self, keys: "ConfigSchema") -> list[bool] | None:
         return await self._get_typed_values(keys, _as_bool)
@@ -420,15 +433,19 @@ class ConfigManager:
         # (read-your-write). No lock needed: neither write_config() nor _flush_staged() awaits
         # mid-mutation of the field this reads, so no partial state is observable.
         if not self.valid:
-            await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
+            if self._read_run_starts():
+                await self.pr.err_s(self._config_file, "- Config is not valid, cannot read!", errno=_ERR_CFG_NOT_VALID)
             return None
         self.pr.all(self._config_file, "- Reading config data into dict.")
         try:
             current = self._current()
-            return {key: current[key] for key in keys}
+            values = {key: current[key] for key in keys}
         except KeyError as e:  # unknown key
-            await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
+            if self._read_run_starts():
+                await self.pr.err_s(self._config_file, "- Config read error:", e, errno=_ERR_CONTRACT)
             return None
+        self._read_failing = False
+        return values
 
     async def get_error_counter(self) -> "ErrorLog":
         return await self.pr.get_log()
@@ -480,7 +497,11 @@ class ConfigManager:
             await pending
 
     async def reset_error_counter(self) -> bool:
-        return await self.pr.reset()
+        # A cleared history ends the run of failed reads, so a store still failing shows again once.
+        if not await self.pr.reset():
+            return False
+        self._read_failing = False
+        return True
 
     async def setup(self) -> bool:  # True when the store is valid (the self.valid gate)
         await self.pr.setup()  # required for every logged warning and error, like every other

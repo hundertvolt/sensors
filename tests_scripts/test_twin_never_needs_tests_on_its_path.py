@@ -20,9 +20,9 @@ _READER_SUFFIXES = (".py", ".js", ".mjs")
 # A quoted run of colon-separated path segments: a MICROPYPATH value, in any of the four forms (Python, f-string, shell,
 # JS template), when it holds both the twin's directory and the frozen-module sentinel.
 _PATH_VALUE = re.compile(r"[\"'`]((?:[^\"'`\s:]+:)+[^\"'`\s:]+)[\"'`]")
-# A twin runner as a process argument: an array element or a named constant on its own line, or a shell word after the
-# interpreter.
-_SPAWN = re.compile(r'^(?:\w+\s*=\s*)?["\']digital_twin/run_(?:generic_integration|device_script)\.py["\'],?$|micropython_bin\}?"?\s+digital_twin/run_(?:generic_integration|device_script)\.py')
+# A twin runner as a process argument: an array element or a named constant on its own line (a Python or JS constant, a
+# shell variable), or a shell word after the interpreter.
+_SPAWN = re.compile(r'^(?:(?:const|let|var)\s+)?(?:\w+\s*=\s*)?["\']digital_twin/run_(?:generic_integration|device_script)\.py["\'][,;]?$|^\w+=digital_twin/run_(?:generic_integration|device_script)\.py$|micropython_bin\}?"?\s+digital_twin/run_(?:generic_integration|device_script)\.py')
 # The layout file's twin read directly (tomllib's ["twin"], a JS regex over its twin line), or through the shell reader.
 _DIRECT_READ = re.compile(r"[\"']twin[\"']|\^twin = ")
 _SHELL_READ = re.compile(r"\bmicropypath[\"']?,?\s*[\"']?twin\b")

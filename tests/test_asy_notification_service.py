@@ -8,6 +8,7 @@ from _async_harness import cancel, run
 from _error_codes import code
 from _fake_time import DrivenTime, FakeTime, UTCValid
 from _fast_sleep import FastAsyncSleep
+from _recording_print import record_prints
 from _src_const import src_int
 from _tmp_scratch import TmpScratch
 
@@ -574,6 +575,9 @@ def test_fram_backed_variant_survives_a_reboot() -> None:
 
         def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk":
             return self.chunk
+
+        def get_pause(self) -> bool:
+            return False
 
     chunk = _FakeFramChunk()
     fram = _FakeFramManager(chunk)
@@ -1371,9 +1375,9 @@ def test_request_signal_cb_raising_is_caught_and_the_loop_continues() -> None:
     assert list(coordinator.pr.history).count(code("E", "CALLBACK")) == 1  # one slot for the repeat
 
 
-def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persists_one_slot() -> None:
+def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_logs_once() -> None:
     # A restart re-reads the same config the loop already re-reads every cycle, so giving up would
-    # only spend the supervisor's reboot budget (Part C.7.2). Every failure still counts.
+    # only spend the supervisor's reboot budget (Part C.7.2). The whole run of failures logs one entry.
     cb = _FakeSignalCb()
     clock = _FakeClock()
     coordinator = NotificationService(cb, clock.get, (), cfg_path=_tmp_cfg_dir())
@@ -1396,12 +1400,53 @@ def test_monitor_loop_keeps_running_on_persistent_config_read_failures_and_persi
         still_running, log = run(scenario())
     assert still_running is True
     entry = log["NOTIFY"]
-    assert entry["ErrCount"] > 5  # well past the old give-up streak, each failure counted
-    assert entry["ErrNum"][-2:] == [0, code("W", "CFG_READ")]  # but one ring slot for the whole run
+    assert entry["ErrCount"] == 1  # one entry for the whole run, well past the old give-up streak
+    assert entry["ErrNum"][-2:] == [0, code("W", "CFG_READ")]
     # The store keeps its own entry for each failed read, in one slot too.
     store = run(coordinator.cfgmgr.pr.get_log())[coordinator.cfgmgr.name]
     assert store["ErrNum"][-1] == code("E", "CONTRACT")
     assert store["ErrNum"].count(code("E", "CONTRACT")) == 1
+
+
+def test_an_unreadable_own_config_logs_one_entry_and_one_line_per_episode() -> None:
+    # The loop meets an unreadable own config every cycle: it persists and prints CFG_READ once per run of such cycles,
+    # as BMP3XX's compensation capture does. The next good read ends the episode, silently, and so does a task restart.
+    coordinator, _clock, _cb = _make_coordinator(debug=2)  # the warning level: the service's console lines print
+    run(coordinator.setup())
+    cache = coordinator.cfgmgr._cache
+    saved = cache.pop("FlashBri")  # every own-config read now fails
+    stored = [0]
+    real_store = coordinator._store_notif_data
+
+    async def counting_store(*, any_triggered: bool, state: int) -> None:  # one call per cycle
+        stored[0] += 1
+        await real_store(any_triggered=any_triggered, state=state)
+
+    coordinator._store_notif_data = counting_store  # type: ignore[method-assign]
+    base = coordinator.pr._err_count
+
+    async def cycles(n: int) -> "tuple[int, int]":
+        # (entries, console lines) since the start, once n more cycles have stored their sample.
+        target = stored[0] + n
+        assert await _rounds_until(lambda: stored[0] >= target), "the monitor loop stopped cycling"
+        return coordinator.pr._err_count - base, sum(1 for line in recorder.lines if "Error reading own configuration!" in line)
+
+    async def scenario() -> "list[tuple[int, int]]":
+        task = coordinator.start_asy_monitor()
+        seen = [await cycles(3)]
+        cache["FlashBri"] = saved
+        seen.append(await cycles(2))
+        cache.pop("FlashBri")
+        seen.append(await cycles(3))
+        await cancel(task)
+        task = coordinator.start_asy_monitor()  # a task restart, the config still unreadable
+        seen.append(await cycles(3))
+        await cancel(task)
+        return seen
+
+    with record_prints(coordinator.pr) as recorder, FastAsyncSleep():
+        seen = run(scenario())
+    assert seen == [(1, 1), (1, 1), (2, 2), (3, 3)], seen
 
 
 def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slot() -> None:
@@ -1434,7 +1479,7 @@ def test_monitor_loop_config_failures_before_and_after_a_good_read_share_one_slo
     with FastAsyncSleep():
         log, first_run = run(scenario())
     assert log["NOTIFY"]["ErrNum"][-2:] == [0, code("W", "CFG_READ")]
-    assert log["NOTIFY"]["ErrCount"] > first_run > 0  # both runs counted
+    assert (first_run, log["NOTIFY"]["ErrCount"]) == (1, 2)  # one entry per run
     store = run(coordinator.cfgmgr.pr.get_log())[coordinator.cfgmgr.name]
     assert store["ErrNum"][-1] == code("E", "CONTRACT")
     assert store["ErrNum"].count(code("E", "CONTRACT")) == 1

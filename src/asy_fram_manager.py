@@ -11,7 +11,7 @@ from micropython import const
 from asy_base_classes import RegionBuffer, utc_now
 from asy_crc_checks import CRCBase, CRCPass
 from asy_fram_driver import FRAM_SPI
-from asy_print_log import DEFAULT_LOG, PrintLogHistory
+from asy_print_log import DEFAULT_LOG, PrintLogHistory, console, report_if_fatal
 from asy_spi_driver import SPI
 
 try:
@@ -101,11 +101,13 @@ class _FRAMBaseChunk:
         self._sb_buf = bytearray(1)  # one status byte, read back and written through
         try:  # check_length is a caller-supplied int (get_chunk's own param), not hardware-bounded
             self._check_buf: bytearray | None = bytearray(self._check_length)
-        except (MemoryError, OverflowError):
-            # Degrades exactly as the per-call allocation did: _compare_with() then reports the
-            # block as "not verifiably valid", and a read falls back to rewriting it.
+        except (MemoryError, OverflowError) as e:
+            # Synchronous, so no persisted entry here: one ungated line keeps the failure visible to the memory gates
+            # (CLAUDE.md memory rule); a read then returns block 0 unchecked, a verified write fails (_compare_with()).
+            console(_NAME, "check buffer allocation failed:", e)
             self._check_buf = None
         self._check_mv = None if self._check_buf is None else memoryview(self._check_buf)
+        self._no_check_logged = False  # True once a missing check buffer's one ALLOC entry is persisted: it never comes back
         # What _read_into()'s and _compare_with()'s per-iteration closures used to hold in cells.
         self._read_valid = True
         self._read_match = True
@@ -153,13 +155,16 @@ class _FRAMBaseChunk:
                     await self.pr.err_s("FRAM write failed in _clear_chunk!", errno=_ERR_FRAM_CLEAR_WRITE)
                     return False
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("General write error in _clear_chunk:", e, errno=_ERR_UNEXPECTED)
                 return False
         return True
 
     async def _compare_with(self, buf: bytearray, addr: int) -> tuple[bool, bool, bool, bool]:
-        if self._check_buf is None:  # the scratch allocation failed at construction
-            await self.pr.err_s("No scratch buffer to check block at", addr, errno=_ERR_ALLOC)
+        if self._check_buf is None:  # allocated once, at construction: its absence lasts the run, so one entry
+            if not self._no_check_logged:
+                self._no_check_logged = True
+                await self.pr.err_s("No scratch buffer to check block at", addr, errno=_ERR_ALLOC)
             return False, False, False, True
         self._read_valid = True
         self._read_match = True
@@ -227,15 +232,16 @@ class _FRAMBaseChunk:
             self.pr.all("Data read successfully from block 0")
             valid, uninit, match, fault = await self._compare_with(buf, self._block_addr[1])
             if not valid:  # check block 1 even if block 0 is valid
-                if uninit:
-                    self.pr.evt("Uninitialized data in block 1, writing block 0 data")
-                elif fault:
-                    await self.pr.wrn_s("Read fault in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
-                else:
-                    await self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
-                if not await self._write_chunk(buf, self._block_addr[1]):
-                    await self.pr.err_s("Writing block 1 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
-                    return None  # writing failed, means something is really wrong, better do not use data
+                if self._check_buf is not None:  # without its check buffer block 1 cannot be judged: left as it is
+                    if uninit:
+                        self.pr.evt("Uninitialized data in block 1, writing block 0 data")
+                    elif fault:
+                        await self.pr.wrn_s("Read fault in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
+                    else:
+                        await self.pr.wrn_s("Invalid data in block 1, overwriting with block 0 data", wrnno=_WRN_FRAM_BLOCK_INVALID)
+                    if not await self._write_chunk(buf, self._block_addr[1]):
+                        await self.pr.err_s("Writing block 1 failed!", errno=_ERR_FRAM_BLOCK_WRITE)
+                        return None  # writing failed, means something is really wrong, better do not use data
                 self.pr.all("Data read successfully from block 0")
                 return True
             if not match:
@@ -308,6 +314,7 @@ class _FRAMBaseChunk:
                     return False, 0
                 self._read_progress(last_position, last_span, num_iterations)
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("General read error in _read_chunk:", e, errno=_ERR_UNEXPECTED)
                 self._read_fault = True
                 self._read_progress(0, -1, 0)
@@ -393,6 +400,7 @@ class _FRAMBaseChunk:
                 if await self._handle_status_bytes(fram, addr, _STATUS_IDLE, check_idle=False) is None:
                     return False
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("General write error in _write_chunk:", e, errno=_ERR_UNEXPECTED)
                 return False
         return True
@@ -551,6 +559,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self._ntp_sync_callback()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             ntp_synced = False
         now = utc_now() if ntp_synced else None
@@ -585,6 +594,7 @@ class FRAMTimestampedChunk(_FRAMBaseChunk):
             # guaranteed to be a specific, known-safe implementation
             ntp_synced = await self._ntp_sync_callback()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             ntp_synced = False
         now = utc_now() if ntp_synced else None
@@ -750,8 +760,8 @@ class FRAMManager:
             return False
         try:
             unit = bytearray(_ERASE_UNIT)
-        except MemoryError:
-            self.pr.err("FRAM erase: no buffer, chunks blanked only")
+        except MemoryError as e:
+            console(_NAME, "FRAM erase: no buffer, chunks blanked only:", e)  # ungated: the memory gates read this text (CLAUDE.md)
             return False
         size = await self.fram.get_size()
         for addr in range(0, size, _ERASE_UNIT):
@@ -784,6 +794,7 @@ class FRAMManager:
         try:
             await self.fram.setup()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("FRAM Setup failed:", e, errno=_ERR_INIT)
             return False
         self.initialized = True

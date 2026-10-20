@@ -1,0 +1,12 @@
+U30 lane X silent-failure scan, 2026-10-20, over the files of 0c09556, da4eb2f, c1e3e5f
+Docs (7 files): no code; every new fact re-read from the code at f594679 (the relay lines' landed names located by text).
+tests_scripts/_await_depth.py, test_await_depth.py (class 3): an await the analysis resolves to nothing counts one level,
+  so a missed resolution under-counts. Recorded in SPEC F.1 (da4eb2f) and guarded by the walk-reach test (every named
+  task top must be reached); the fabricated 29-level chain and the three rule tests bite.
+tests_scripts/test_memory_catalog.py (class 3): sees only `self.<attr> = <allocating expr>` in a method other than
+  __init__/setup; a run-phase allocation kept elsewhere is out of its scope. Scope stated in I.2's opening block.
+tests_hardware/device_scripts/c_stack_budget.py (class 4, FOUND AND FIXED c1e3e5f): Microdot's dispatch_request()
+  (ext/microdot.py:1457-1589) catches a raising handler and returns a 500 Response; the script discarded it, so a peak
+  over a part-run chain read as a pass. It now asserts status_code == 200. Swept: every other dispatch_request() caller
+  in src/ tests/ digital_twin/ tests_hardware/ keeps and checks the response; no other site of the class.
+Classes 1, 2, 5, 6, 7: nothing in these files (host checks and one device script; no status source, buffer or mode).

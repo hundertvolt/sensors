@@ -361,7 +361,8 @@ def test_garbage_ntp_host_via_rest_config_degrades_and_recovers_cleanly(board: B
         # _VAL_NTP_HOST bounds the length and the RFC 1035 label shape, so this host is "Valid"; the failure is the DNS
         # resolution its post function triggers.
         assert _load.as_object(res.json().get("result"), "result").get("NTPHost") == "Valid", f"garbage NTPHost was rejected at the schema level, not what this test exercises: {res.body!r}"
-        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS (No valid NTP server) for the garbage NTPHost")
+        # A resolver answers NXDOMAIN for .invalid (RFC 6761 section 6.4), which NTP persists as its own code.
+        wait_until(lambda: _load._ntp_error_log_contains(dut_ip, code("E", "NTP_DNS_NXDOMAIN")), timeout_s=_WAIT_TIMEOUT_S, poll_interval_s=_WAIT_POLL_S, description="NTP to log NTP_DNS_NXDOMAIN for the garbage NTPHost")
         # Degrading cleanly means the rest stays healthy, not merely that the error got logged.
         assert _load.serving(dut_ip), "webserver unresponsive while NTPHost was garbage"
         assert_no_task_ended(dut_ip, "a garbage NTPHost")

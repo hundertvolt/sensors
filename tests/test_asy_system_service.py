@@ -24,7 +24,7 @@ from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _recording_print import record_prints
-from _src_const import src_int
+from _src_const import src_const, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from asy_base_classes import SetupFct
+    from asy_print_log import ErrorLog
 
     class _ErrS(Protocol):
         # PrintLogHistory.err_s()'s own signature, for a stand-in that forwards to the real one.
@@ -1939,6 +1940,91 @@ def test_a_command_accepted_while_the_escalation_logs_keeps_its_own_reset() -> N
             assert _all_zero(rig.chip.memory)
 
 
+def test_a_commands_acceptance_decides_the_reset_before_the_sequence_runs() -> None:
+    # False before the gate passes, after a refused command too; True at the answer, before the sequence's first feed.
+    rig = _Rig(stores=0)
+    seen: list[object] = []
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        seen.append(rig.svc.is_reset_decided())
+        assert await rig.svc.reset_to_defaults() is False  # no config store
+        seen.append(rig.svc.is_reset_decided())
+        fed = rig.wdt.feed_count
+        assert await rig.svc.reboot_system() is True
+        seen.extend((rig.svc.is_reset_decided(), rig.wdt.feed_count - fed))
+        await rig.settle()
+        seen.append(rig.svc.is_reset_decided())
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert seen == [False, False, True, 0, True], seen
+
+
+def test_the_escalation_decides_the_reset_before_its_entry_write() -> None:
+    # Every task end charged before the escalation reads False; its own entry write starts True, and it stays True.
+    rig = _Rig(tasks=0)
+    rig.starters = [_dead_starter([0])]
+    seen: list[tuple[int, bool]] = []
+    real_err_s = rig.svc.pr.err_s
+
+    async def recording_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        seen.append((errno, rig.svc.is_reset_decided()))
+        await real(*args, errno=errno, sep=sep, end=end)
+
+    rig.svc.pr.err_s = recording_err_s  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        for _ in range(_RUN_BOUND_S * 100):
+            if _armed(rig.svc):
+                break
+            await _real_time(10)
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    codes = [errno for errno, _ in seen]
+    assert code("E", "TASK_BUDGET_REBOOT") in codes, seen
+    at = codes.index(code("E", "TASK_BUDGET_REBOOT"))
+    assert at > 0 and not any(decided for _, decided in seen[:at]), seen
+    assert all(decided for _, decided in seen[at:]), seen
+
+
+def test_the_systems_own_log_reset_is_refused_from_the_reset_decision_on() -> None:
+    # A ResetErrors whose SYSTEM reset runs after the escalation's entry write answers False and clears nothing, so the
+    # entry that explains the reboot survives; before the decision the same reset clears the log.
+    rig = _Rig(tasks=0)
+    rig.starters = [_dead_starter([0])]
+    run(rig.svc.pr.err_s("seeded", errno=code("E", "CALLBACK")))
+    assert run(rig.svc.reset_error_counter()) is True
+    assert run(rig.svc.get_error_counter())["SYSTEM"]["ErrCount"] == 0
+    answers: list[bool] = []
+    real_err_s = rig.svc.pr.err_s
+
+    async def err_s_then_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        await real(*args, errno=errno, sep=sep, end=end)
+        if errno == code("E", "TASK_BUDGET_REBOOT"):
+            answers.append(await rig.svc.reset_error_counter())
+
+    rig.svc.pr.err_s = err_s_then_reset  # type: ignore[method-assign]
+
+    async def scenario() -> "ErrorLog":
+        sup = await rig.start()
+        for _ in range(_RUN_BOUND_S * 100):
+            if _armed(rig.svc):
+                break
+            await _real_time(10)
+        await rig.stop(sup)
+        return await rig.svc.get_error_counter()
+
+    with FastAsyncSleep():
+        log = run(scenario())["SYSTEM"]
+    assert answers == [False], answers
+    assert code("E", "TASK_BUDGET_REBOOT") in log["ErrNum"], log
+
+
 def test_after_the_takeover_no_other_site_feeds() -> None:
     for purpose in _PURPOSES:
         rig = _Rig()
@@ -3040,7 +3126,8 @@ def _rest_rig() -> "tuple[_Rig, Microdot, SensorReaderConfig, str]":
     app = Microdot()
     # A bare SensorReaderConfig has no get_dict_data(), which _ModuleLike asks of a registered sensor; no route here reads it.
     groups: dict[str, Sequence[SettingsGroup]] = {"system": [SettingsGroup(svc, ("DebugLevel",))]}
-    routes = RouteSources([module], groups, None, system_cmd, None, None, None, (), ())  # type: ignore[list-item]
+    assert rig.manager is not None
+    routes = RouteSources([module], groups, None, system_cmd, (svc.is_reset_decided, rig.manager.get_pause), None, None, None, (), ())  # type: ignore[list-item]
     serving = ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80)
     WebserverService(app, routes, serving, svc.get_uptime, None, LogConfig(None, 10, None))
     return rig, app, module, path
@@ -3184,6 +3271,114 @@ def test_the_supervisor_escalation_decodes_to_code_5() -> None:
     with FastAsyncSleep():
         _run_into_reset(scenario())
     assert begin_boot() == _const("_RR_TASK_BUDGET")
+
+
+def _stack_error() -> RuntimeError:
+    # A C-stack overflow's exception: the firmware's text, which test_asy_print_log.py pins to the interpreter's own.
+    return RuntimeError(src_const(_LOG_SRC, "_STACK_EXHAUSTED"))
+
+
+def test_a_recorded_stack_overflow_reboots_with_code_20_at_the_next_pass() -> None:
+    # Healthy tasks, the flag recorded by a handler: the next pass persists one E25, feeds once, starves and arms code
+    # 20 with no scan; nothing feeds after it, and the fired reset decodes as 20 at the next boot.
+    machine.power_on()
+    begin_boot()
+    machine.reset_count = 0
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt)
+    events: list[str] = []
+    seen: list[object] = []
+    calls = [0]
+    sleeping = _sleeping(events, "t0")
+
+    def starter() -> "asyncio.Task[None]":
+        calls[0] += 1
+        return sleeping()
+
+    async def scenario() -> None:
+        await svc.start_tasks([starter])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _yields(5)  # its first pass ran, healthy
+        fed = wdt.feed_count
+        asy_print_log.report_if_fatal(_stack_error())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._reset_armed:
+                break
+        seen.extend((_armed(svc), svc.is_reset_decided(), machine.mem_backup(0)[1], wdt.feed_count - fed))
+        await _yields(10)
+        seen.extend((wdt.feed_count - fed, not sup.done(), list(events), calls[0]))  # nothing stopped or restarted
+        await cancel(sup)
+        await _fire(svc)
+
+    with FastAsyncSleep():
+        _run_into_reset(scenario())
+    assert seen == [True, True, _const("_RR_STACK_EXHAUSTED"), 1, 1, True, [], 1], seen
+    assert _persisted(svc) == [code("E", "STACK_EXHAUSTED")]  # one entry, no task end, no budget escalation
+    assert machine.reset_count == 1
+    assert begin_boot() == 20
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_supervisor() -> None:
+    # The real path: a setter that recurses until the C stack runs out keeps the push running, one E14 is persisted
+    # for it, and the supervisor's next pass escalates with code 20.
+    def bottomless(value: int) -> bool:
+        return bottomless(value + 1)
+
+    svc = _make_service(level_setters=lambda: [bottomless])
+
+    async def scenario() -> None:
+        await svc.setup()
+        await svc._apply_level(1)
+        assert asy_print_log.fatal_reported() is True
+        await svc.start_tasks([_long_lived_starter])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._reset_armed:
+                break
+        await cancel(sup)
+        await cancel(svc._reset_task)  # type: ignore[arg-type]
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert machine.mem_backup(0)[1] == _const("_RR_STACK_EXHAUSTED")
+    assert _persisted(svc) == [code("E", "CALLBACK"), code("E", "STACK_EXHAUSTED")]
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset() -> None:
+    # The re-check after the E25 entry write: a command that passed the gate meanwhile owns the reset, code 3.
+    rig = _Rig()
+    release, reached = asyncio.Event(), asyncio.Event()
+    real_err_s = rig.svc.pr.err_s
+
+    async def gated_err_s(*args: object, errno: int = 0, sep: str = " ", end: str = "\n", real: "_ErrS" = real_err_s) -> None:
+        if errno == code("E", "STACK_EXHAUSTED"):
+            reached.set()
+            await release.wait()
+        await real(*args, errno=errno, sep=sep, end=end)
+
+    rig.svc.pr.err_s = gated_err_s  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        asy_print_log.report_if_fatal(_stack_error())
+        for _ in range(_RUN_BOUND_S * 100):
+            if reached.is_set():
+                break
+            await _real_time(10)
+        assert reached.is_set(), "the supervisor never escalated"
+        assert await rig.svc.reboot_system() is True
+        release.set()
+        await rig.settle()
+        await rig.stop(sup)
+
+    with FastAsyncSleep():
+        run(scenario())
+    assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
 
 
 def test_power_on_reads_1_even_with_a_stale_valid_record() -> None:

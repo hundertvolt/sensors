@@ -157,13 +157,18 @@ and the dropped-connection count (`HTTPDropped`) at once. It must finish within 
 15-second request limit, the same limit the web page waits; on a busy device it can take several
 seconds. Outside the two cases below, a reset that reports "Failed" means one module's log could
 not be cleared; the other logs are cleared. During a backup pause ("Pause backups for 5 minutes")
-the reset answers "Failed", yet it still clears the logs held in memory, and their next save
-carries that into FRAM: read the logs before resetting, and repeat the reset after the pause if the
-answer matters. From the moment a Reboot, Reboot into bootloader, Reset to defaults or Erase FRAM
-command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner,
+the reset answers "Failed" and clears nothing, the logs held in memory and the dropped-connection
+count included (owner, 2026-10-13, asked "Clear nothing when ResetErrors answers Failed in
+mempause?": '1 b'); if a pause begins while a reset is still running, each log kept in FRAM that
+was not yet cleared stays as it was and that reset answers "Failed" too (owner, 2026-10-20, asked,
+paraphrase, whether to fix that case now or later: "I would like it to be fixed now"). Repeat it
+once the pause has ended. From the moment a Reboot, Reboot into bootloader, Reset to defaults or
+Erase FRAM command is accepted until the unit restarts, the reset answers "Failed" and clears nothing (owner,
 2026-10-13, asked "refuse `ResetErrors` once a reboot or erase command has been accepted?": '1 b',
-its option "Refuse it ("Failed") from the command's acceptance on"); clear the logs once the unit
-is back. Read and save the logs before clearing them: the reset cannot be undone. The page asks
+its option "Refuse it ("Failed") from the command's acceptance on"), and so it does once the unit
+has decided to restart on its own, after repeated task failures or a recorded stack overflow
+(owner, 2026-10-13, asked "Refuse ResetErrors from the supervisor's own reboot decision too?":
+'2 b'); clear the logs once the unit is back. Read and save the logs before clearing them: the reset cannot be undone. The page asks
 for confirmation ("Reset All Errors?") before it sends the reset (owner, 2026-10-01, asked about "A
 confirmation before clearing the DNS fallback list": '... add a dialog to all system commands and
 the clear error history as well. But only on the website, not on the API side.').

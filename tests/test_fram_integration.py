@@ -3,7 +3,6 @@ See SPECIFICATION.md Part E.4 for the mocking-boundary plan."""
 # No bus-level fault here: rp2 SPI's only one, an RX overrun raising OSError(EIO) on a 32+ byte read (SPECIFICATION.md
 # F.5.2), is modelled by tests/machine.py's rx_overrun and driven through this same stack in test_asy_fram_manager.py.
 
-import gc
 from collections import namedtuple
 
 from _async_harness import run
@@ -164,12 +163,7 @@ def test_after_a_chip_loss_ten_logger_writes_add_no_fram_log_entry_beyond_the_lo
 
 
 def test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak() -> None:
-    # gc.collect() each cycle: without it this tight allocate-heavy loop exhausts the Unix-port binary's
-    # heap after ~7 cycles with a plain MemoryError - a test-environment GC-timing artifact, diagnosed
-    # directly, not an asy_fram_manager.py bug.
-    #
-    # The loop is the regression check for state leaking across cycles (stale CRC, _verify_counter or lock
-    # state carrying over), not for the unrelated heap ceiling.
+    # Forty cycles: a stale CRC, verify counter or lock state would show by the second.
     manager, _chip = make_fram_manager()
     run(manager.setup())
     chunk = manager.get_chunk(8, crc=CRC32(), verify=1, owner="CYCLES")
@@ -182,7 +176,6 @@ def test_many_write_read_cycles_with_crc32_and_verify_show_no_state_leak() -> No
         return write_ok, data
 
     for i in range(40):
-        gc.collect()
         write_ok, data = run(run_cycle(i))
         assert write_ok is True
         assert data == bytearray(f"cy{i:06d}".encode())

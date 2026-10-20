@@ -1,0 +1,15 @@
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_fram_manager.py -1 new.test_asy_fram_manager.-1
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_fram_manager.py 32768 new.test_asy_fram_manager.32768
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_fram/test_asy_fram_manager.py -1 bite.fram_second_line
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_uart_comm_hazard.py -1 new.test_uart_comm_hazard.-1
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_uart_comm_hazard.py 32768 new.test_uart_comm_hazard.32768
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_uart_comm_hazard.py settrace new.test_uart_comm_hazard.settrace
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/base_tree /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall/base/test_uart_comm_hazard.py settrace bite.hazard_wall_clock.base w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/bite_wall/new/test_uart_comm_hazard.py settrace bite.hazard_wall_clock.new w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/base_tree /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/seen/test_asy_dns_client.py -1 seen.dns_on_fef34d0 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/base_tree /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/seen/test_asy_notification_service.py -1 seen.notif_on_fef34d0 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_dns_client.py -1 new.test_asy_dns_client.-1 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_dns_client.py 32768 new.test_asy_dns_client.32768 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/f1c/base_tree tests/test_asy_notification_service.py 32768 base.test_asy_notification_service.32768 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_notification_service.py -1 new.test_asy_notification_service.-1 w
+/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30f1c tests/test_asy_notification_service.py 32768 new.test_asy_notification_service.32768 w

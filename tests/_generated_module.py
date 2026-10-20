@@ -3,6 +3,7 @@ entry's own timeout, construction, then the one-time setup list. The caller load
 at its own named site (SPECIFICATION.md F.1); this file loads nothing by name."""
 
 import json
+import os
 import sys
 
 if "digital_twin/unixport" not in sys.path:
@@ -12,6 +13,8 @@ import machine
 from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
 from _generated_tree import require_fresh
 from _offline_ntp_config import write_offline_ntp_config
+
+from asy_config_manager import config_filename, instance_name
 
 try:
     from typing import TYPE_CHECKING
@@ -26,6 +29,12 @@ if TYPE_CHECKING:
 require_fresh()  # every caller loads a generated module, and this file reads its boot entry
 
 _WATCHDOG_LINE = "watchdog = WDT(timeout="
+
+# The console level of a boot that can run out of memory: its err() lines print, so a caught MemoryError reaches the
+# memory gate's stream (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
+# Pinned, not read from source: the boot-placement probe imports this file, and an import-time read shifts its heap.
+ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
+_SYSTEM_STORE = "SYSTEM"  # pins src/asy_system_service.py _NAME
 
 _BLANK = bytes(4096)
 
@@ -81,14 +90,19 @@ def boot_entry_watchdog(module: "ModuleType", device: str) -> "WDT":
     return machine.WDT(timeout=_watchdog_timeout_ms(module, device))
 
 
-async def boot_generated(module: "ModuleType", device: str, *, offline_ntp: bool = True, **kwargs: "str | int | None") -> "tuple[ModuleType, WDT]":
-    # The boot entry's order up to its main(): the watchdog first, then construction and the setup list.
-    # kwargs are build_system()'s own; offline_ntp writes the offline NTP config into cfg_path first.
+async def boot_generated(module: "ModuleType", device: str, *, offline_ntp: bool = True, log_errors: bool = False, **kwargs: "str | int | None") -> "tuple[ModuleType, WDT]":
+    # The boot entry's order up to its main(): the watchdog first, then construction and the setup list. kwargs are
+    # build_system()'s own; offline_ntp writes the offline NTP config into cfg_path first, log_errors boots at ERROR_LEVEL.
+    cfg_path = kwargs.get("cfg_path")
     if offline_ntp:
-        cfg_path = kwargs.get("cfg_path")
         if not isinstance(cfg_path, str) or not cfg_path:
             raise ValueError("offline_ntp needs a cfg_path to write into, never the working directory")
         write_offline_ntp_config(cfg_path)
+    if log_errors:
+        if not isinstance(cfg_path, str) or not cfg_path or "debug" in kwargs:
+            raise ValueError("log_errors needs a cfg_path to write into, and sets debug itself")
+        write_error_level_config(cfg_path)
+        kwargs["debug"] = ERROR_LEVEL
     watchdog = boot_entry_watchdog(module, device)
     await module.build_system(watchdog=watchdog, **kwargs)
     await module.sysfunct.run_setups(module._collect_setups())
@@ -101,3 +115,14 @@ def fram_fake_class(device: str) -> "type[FakeMB85RS64V]":
     with open(f"build/generated_src/sensortask_{device}_wiring_plan.json") as f:
         (spi_attachment,) = json.load(f)["spi"].values()
     return _FRAM_FAKE_BY_MAX_SIZE[spi_attachment["max_size"]]
+
+
+def write_error_level_config(cfg_path: str) -> None:
+    # SystemService.setup() applies the stored DebugLevel over every logger's debug=, so a boot at ERROR_LEVEL stores it
+    # too; only when absent, as the NTP config writer: a file a test planted or an earlier boot wrote is the run's own.
+    path = config_filename(cfg_path, instance_name(_SYSTEM_STORE, ""))
+    try:
+        os.stat(path)
+    except OSError:
+        with open(path, "w") as f:
+            f.write(json.dumps({"DebugLevel": ERROR_LEVEL}))

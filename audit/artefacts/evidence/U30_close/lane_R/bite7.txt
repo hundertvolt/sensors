@@ -1,0 +1,5 @@
+E       assert 0 == 1
+E       assert 0 == 1
+FAILED tests_scripts/test_micropython_overrides.py::test_the_rig_variant_header_sets_the_mark_stack_once_after_the_real_header
+FAILED tests_scripts/test_micropython_overrides.py::test_the_host_variant_relays_the_standard_variant_and_swaps_in_the_patched_copy
+2 failed, 287 deselected in 0.36s

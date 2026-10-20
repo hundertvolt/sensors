@@ -98,6 +98,9 @@ class _RaisingFramManager:
             raise MemoryError("simulated allocation failure")
         return self._chunk
 
+    def get_pause(self) -> bool:
+        return False
+
 
 Meas = namedtuple("Meas", ["temp", "hum"])
 
@@ -895,14 +898,19 @@ def test_arm_tick_timer_arms_a_periodic_one_second_timer() -> None:
 
 
 def test_arm_tick_timer_reports_a_failed_arm_with_one_line() -> None:
-    for exc in (OSError, MemoryError):
+    # An alarm-pool refusal prints at the error level; an allocation failure prints its own text at every level, the
+    # line the memory gates read.
+    for exc, level, head in ((OSError, 1, ("T", "Could not arm", "test")), (OSError, 0, None), (MemoryError, 0, ("T", "Could not arm a 1 s tick timer:"))):
         with RaiseOnArm(exc), record_prints() as recorder:
             timer = machine.Timer()
-            pr = PrintLogHistory(level=1, name="T")
+            pr = PrintLogHistory(level=level, name="T")
             assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), pr, "test") is False
-            assert len(recorder.lines) == 1
-            assert recorder.lines[0][:3] == ("T", "Could not arm", "test")
-            assert timer.period == -1  # never armed
+        assert timer.period == -1  # never armed
+        if head is None:
+            assert recorder.lines == [], recorder.lines
+        else:
+            assert len(recorder.lines) == 1 and recorder.lines[0][: len(head)] == head, (head, recorder.lines)
+    assert "simulated allocation failure" in recorder.text()
 
 
 def test_utc_now_is_none_until_the_clock_is_marked_valid() -> None:
@@ -1401,31 +1409,61 @@ def test_a_failed_timer_wakes_the_reader_and_logs_once() -> None:
     assert run(reader.pr.get_log())["DIVIDER"]["ErrCount"] == 1
 
 
-def test_trigger_loop_re_arms_a_failed_timer_first() -> None:
+def _timer_count(reader: SensorReader) -> int:
+    return run(reader.pr.get_log())[reader.pr.name]["ErrCount"]
+
+
+async def _run_briefly(reader: _DividingReader) -> bool:
+    # One task run of the trigger loop, cancelled after a few rounds; True when it ended by itself.
+    task = asyncio.create_task(reader._trigger_loop())
+    await _settle()
+    ended = task.done()
+    await _end(task)
+    return ended
+
+
+def test_trigger_loop_persists_an_arm_failure_no_task_saw_once_then_re_arms() -> None:
+    # An arm that failed while the task was down (a boot start that failed, say) is persisted at its start, then re-armed.
     reader = _DividingReader(1)
-    reader._timer_error = OSError(errno.ENOMEM, "alarm pool exhausted")
-
-    async def scenario() -> None:
-        task = asyncio.create_task(reader._trigger_loop())
-        await _settle()
-        await _end(task)
-
-    run(scenario())
-    assert len(reader._trigger_timer.arms) == 1  # one arm, at the task's start
-    assert reader._trigger_timer.period == 1000
-    assert _entries(reader, "E", "TIMER") == 0  # the re-arm succeeded: no fault to persist
+    with RaiseOnArm(OSError), record_prints():
+        reader.start_timer()
+    assert _timer_count(reader) == 0  # the starter only stores it
+    assert run(_run_briefly(reader)) is False
+    assert (_timer_count(reader), _entries(reader, "E", "TIMER")) == (1, 1)
+    assert len(reader._trigger_timer.arms) == 1 and reader._trigger_timer.period == 1000  # one arm, at the task's start
+    assert run(_run_briefly(reader)) is False  # a later start with nothing stored persists and arms nothing
+    assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
     assert reader._timer_error is None  # last: mypy keeps the OSError narrowed from the line above run()
 
 
-def test_a_failed_re_arm_ends_the_trigger_loop_with_one_timer_entry() -> None:
+def test_a_failure_the_loop_persisted_is_not_persisted_again_by_the_restarts_re_arm() -> None:
+    reader = _DividingReader(1)
+
+    async def scenario() -> bool:
+        task = asyncio.create_task(reader._trigger_loop())
+        await _settle()
+        with RaiseOnArm(OSError), record_prints():
+            reader.start_timer()  # an arm failing while the task runs wakes it
+        await _settle()
+        return task.done()
+
+    assert run(scenario()) is True
+    assert _timer_count(reader) == 1
+    assert run(_run_briefly(reader)) is False  # the restart re-arms without a second entry
+    assert (_timer_count(reader), len(reader._trigger_timer.arms)) == (1, 1)
+
+
+def test_a_failed_re_arm_persists_the_stored_failure_then_its_own_and_ends_the_loop() -> None:
     for exc in (OSError, MemoryError):
         reader = _DividingReader(1)
-        reader._timer_error = OSError(errno.ENOMEM, "alarm pool exhausted")
         with RaiseOnArm(exc), record_prints():
+            reader.start_timer()
             run(reader._trigger_loop(), 1)  # ends by itself: no cancel needed
-        assert _entries(reader, "E", "TIMER") == 1, exc
+        assert _timer_count(reader) == 2, exc  # one entry per failed arm, the boot's and the re-arm's
         assert isinstance(reader._timer_error, exc)
         assert reader._read_event.state == 0  # no read was triggered by the fault's wake
+        assert run(_run_briefly(reader)) is False  # the restart re-arms: no third entry
+        assert _timer_count(reader) == 2, exc
 
 
 def test_republish_replaces_the_named_fields_and_keeps_the_rest() -> None:

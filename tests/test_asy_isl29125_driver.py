@@ -20,13 +20,14 @@ from machine import Timer as FakeTimer
 
 import asy_base_classes
 import asy_isl29125_driver
+import asy_print_log
 from asy_i2c_driver import I2C
 from asy_isl29125_driver import (
     ISL29125,
     ISL29125_I2C,
     ISL29125_Reader,
 )
-from asy_print_log import LogConfig
+from asy_print_log import LogConfig, fatal_reported
 
 # FN8424 register/command copies, each citing its page: hardware facts kept as an independent source
 # (tests/_src_const.py reads the project's own values).
@@ -226,6 +227,36 @@ def test_decode_rgb_burst_accepts_a_bytearray_and_a_memoryview() -> None:
 
 def test_decode_rgb_burst_decodes_the_all_ones_bus_fault_pattern() -> None:
     assert ISL29125_I2C._decode_rgb_burst(bytes([0xFF] * 6)) == (0xFFFF, 0xFFFF, 0xFFFF)
+
+
+def test_decode_rgb_burst_unpacks_the_buffer_in_place_without_copying_it() -> None:
+    # The burst arrives in the driver's own bytearray every cycle; a bytes() copy of it would be one allocation per read.
+    copies: list[object] = []
+    real_bytes = bytes
+
+    def counting(*args: object) -> bytes:
+        copies.append(args)
+        return real_bytes(*args)
+
+    asy_isl29125_driver.bytes = counting  # type: ignore[attr-defined]  # a module-global shadow of the builtin
+    try:
+        assert ISL29125_I2C._decode_rgb_burst(bytearray(counts_burst(1, 2, 3))) == (1, 2, 3)
+    finally:
+        del asy_isl29125_driver.bytes  # type: ignore[attr-defined]
+    assert copies == []
+
+
+def _record_reads(i2c: I2C) -> "list[object]":
+    # Every buffer object the fake bus's readfrom_into() is handed, in call order; the reads themselves unchanged.
+    received: list[object] = []
+    real_read = fake(i2c).readfrom_into
+
+    def recording(address: int, buf: object, stop: bool = True) -> None:
+        received.append(buf)
+        real_read(address, buf, stop)
+
+    fake(i2c).readfrom_into = recording  # type: ignore[method-assign]
+    return received
 
 
 # ---------------------------------------------------------------------------
@@ -758,6 +789,20 @@ def test_read_counts_uses_a_six_byte_burst_not_three_halfwords() -> None:
     assert register_reads(i2c) == [(_REG_DATA, 6)]
 
 
+def test_read_counts_fills_the_drivers_own_burst_buffer_in_place() -> None:
+    # One 6-byte buffer per driver, built at construction and handed to the bus as that object every cycle.
+    i2c, isl = ready_protocol()
+    burst = isl._rgb_burst
+    assert type(burst) is bytearray and len(burst) == 6
+    received = _record_reads(i2c)
+    for green in (0x1111, 0x4444):
+        seed(i2c, _REG_DATA, counts_burst(green, 0x2222, 0x3333))
+        assert run(isl.read_counts()) == (green, 0x2222, 0x3333)
+        assert burst == counts_burst(green, 0x2222, 0x3333)
+    assert isl._rgb_burst is burst
+    assert [buf is burst for buf in received] == [True, True]
+
+
 def test_read_counts_raises_rather_than_returning_none_on_a_bus_fault() -> None:
     i2c, isl = ready_protocol()
     fake(i2c).inject_fault("readfrom_into", OSError, errno_mod.EIO, "no ACK", match=_REG_DATA)
@@ -824,6 +869,20 @@ def test_get_config_snapshot_reports_the_chip_not_the_shadow() -> None:
     seed(i2c, _REG_CONFIG1, bytes([0x00, 0x00, 0x00]))  # the chip loses its configuration
     assert run(isl.get_config_snapshot()) == bytes(3)
     assert isl.encode_shadow() != bytes(3)
+
+
+def test_get_config_snapshot_fills_one_buffer_built_at_construction() -> None:
+    # Taken every read cycle: it refills the protocol layer's own 3-byte buffer, handed to the bus as that object,
+    # rather than allocating a fresh copy per cycle.
+    i2c, isl = ready_protocol()
+    received = _record_reads(i2c)
+    seed(i2c, _REG_CONFIG1, bytes([0x15, 0xA8, 0x0D]))
+    first = run(isl.get_config_snapshot())
+    seed(i2c, _REG_CONFIG1, bytes([0x05, 0x00, 0x01]))
+    second = run(isl.get_config_snapshot())
+    assert second is first
+    assert second == bytes([0x05, 0x00, 0x01])
+    assert [buf is first for buf in received] == [True, True]
 
 
 def test_construction_performs_no_bus_transactions() -> None:
@@ -2178,6 +2237,26 @@ def test_read_sensor_dict_detects_a_diverged_mode_and_reapplies_the_shadow() -> 
     assert any(register == _REG_CONFIG1 and len(payload) == 3 for register, payload in register_writes(i2c))
 
 
+def test_a_config_get_answers_the_snapshot_it_checked_when_another_lands_meanwhile() -> None:
+    # The next snapshot refills the one buffer: the GET decodes its own before the divergence check, whose re-apply
+    # awaits, so a read cycle's snapshot landing meanwhile cannot change the answer.
+    i2c, reader = ready_reader("snapshot_reuse")
+    reader._range_auto = False  # Range is reported too
+    chip = ISL29125_I2C.decode_config(bytes(fake(i2c).registers[(_ADDR, _REG_CONFIG1)]))
+    assert chip is not None and chip[:4] != (12, 375, 1, 63)
+    real_check = reader._check_divergence
+
+    async def check_while_a_cycle_snapshots(raw: "bytes | bytearray") -> None:
+        await real_check(raw)
+        seed(i2c, _REG_CONFIG1, bytes([0x15, 0xBF, 0x00]))  # what the cycle's snapshot reads: 12 bit, 375 lx, 1, 63
+        await reader._isl.get_config_snapshot()
+
+    reader._check_divergence = check_while_a_cycle_snapshots  # type: ignore[method-assign]
+    with FastAsyncSleep():
+        result = run(reader._read_sensor_dict())
+    assert result == {"Resolution": chip[0], "Range": chip[1], "IRCompOffset": chip[2], "IRCompAdjust": chip[3]}
+
+
 def test_a_reserved_bit_difference_is_not_reported_as_divergence() -> None:
     # p9: "the value of the reserved bit can change without any notice" - a driver comparing raw
     # bytes would eventually report a divergence that is not one.
@@ -3083,6 +3162,42 @@ def test_a_failed_status_read_drops_the_whole_sample_without_storing_or_raising(
     assert _threshold_bursts(i2c) == [], "the range was evaluated on data that was never read"
 
 
+def _stack_overflow() -> RuntimeError:
+    # The interpreter's own C-stack exhaustion, from a real one (py/runtime.c:1786, v1.29.0).
+    def dive(depth: int) -> int:
+        return dive(depth + 1)
+
+    try:
+        dive(0)
+    except RuntimeError as e:
+        return e
+    raise AssertionError("no recursion limit reached")
+
+
+def test_a_stack_overflow_caught_by_either_read_handler_is_reported_for_the_supervisor() -> None:
+    # The status read's own handler and the cycle's outer one drop the sample and log as for any failed read, so the
+    # loop runs on; a C-stack overflow caught by either is also recorded for the supervisor's reboot, a routine error not.
+    _i2c, reader = ready_reader("stack_overflow_read")
+    real = {"read_status": reader._isl.read_status, "read_counts": reader._isl.read_counts}
+
+    def cycle_raising(method: str, error: BaseException, logged_as: str) -> bool:
+        async def raising() -> object:
+            raise error
+
+        setattr(reader._isl, method, raising)
+        with FastAsyncSleep():
+            assert run(reader._read_isl())[:5] == (None, None, None, None, None)
+        setattr(reader._isl, method, real[method])
+        assert errors(run(reader.get_error_counter()))[-1] == code("E", logged_as)
+        reported = fatal_reported()
+        asy_print_log._fatal = False  # the next case starts from a clear flag, as microtest's after-each hook leaves it
+        return reported
+
+    assert cycle_raising("read_status", RuntimeError("CRC check failed while reading data"), "ISL_STATUS_READ") is False
+    assert cycle_raising("read_status", _stack_overflow(), "ISL_STATUS_READ") is True
+    assert cycle_raising("read_counts", _stack_overflow(), "READ") is True
+
+
 def test_the_filter_coefficient_rejects_values_outside_its_band_with_bad_arg() -> None:
     # The setter owns the verdict even though it stores nothing - a False here is what makes
     # _set_dict_cfg() report the field "Failed" instead of silently accepting an unusable value.
@@ -3251,15 +3366,20 @@ def test_an_unsettled_cycle_is_no_failure() -> None:
 
 
 def test_every_protocol_read_raises_when_layer_one_answers_none_instead_of_raising() -> None:
-    # Layer 1 answers None for a bus it cannot use; each protocol read raises instead, so a caller's
-    # error path sees one shape. reset() is listed because its verify read IS the settle.
+    # Layer 1 answers None (bytes) or False (into a buffer) for a bus it cannot use; each protocol read raises
+    # instead, so a caller's error path sees one shape. reset() is listed because its verify read IS the settle.
     for call in ("get_device_id", "read_status", "get_config_snapshot", "read_counts", "reset"):
         _i2c, isl = ready_protocol()
 
         async def silent_none(*_args: object, **_kwargs: object) -> None:
             return None
 
-        isl._i2c_isl29125.i2c_device.get_register_bytes = silent_none  # type: ignore[method-assign]
+        async def silent_false(*_args: object, **_kwargs: object) -> bool:
+            return False
+
+        device = isl._i2c_isl29125.i2c_device
+        device.get_register_bytes = silent_none  # type: ignore[method-assign]
+        device.get_register_into = silent_false  # type: ignore[method-assign]
         try:
             run(getattr(isl, call)())
         except OSError:

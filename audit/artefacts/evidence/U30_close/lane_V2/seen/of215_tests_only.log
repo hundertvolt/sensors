@@ -1,0 +1,59 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[pending-exit 1 at once, nothing printed: the first was never consumed] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11310/test_a_twin_that_ignores_its_s0')
+capsys = <_pytest.capture.CaptureFixture object at 0x7f3bfd5935d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f3bfd3ef0d0>
+mode = 'pending'
+outcome = 'exit 1 at once, nothing printed: the first was never consumed'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code.
+>       monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.05)
+E       AttributeError: <module 'scripts._twin_process' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/scripts/_twin_process.py'> has no attribute '_KBD_TRACEBACK_WAIT_S'
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:665: AttributeError
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[absorbed-a clean exit: the first was raised and absorbed] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11310/test_a_twin_that_ignores_its_s1')
+capsys = <_pytest.capture.CaptureFixture object at 0x7f3bfd3b6110>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f3bfd3b5e50>
+mode = 'absorbed', outcome = 'a clean exit: the first was raised and absorbed'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code.
+>       monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.05)
+E       AttributeError: <module 'scripts._twin_process' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/scripts/_twin_process.py'> has no attribute '_KBD_TRACEBACK_WAIT_S'
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:665: AttributeError
+_ test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[ignored-still running: neither SIGINT was acted on] _
+
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11310/test_a_twin_that_ignores_its_s2')
+capsys = <_pytest.capture.CaptureFixture object at 0x7f3bfd5542d0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f3bfd554790>
+mode = 'ignored', outcome = 'still running: neither SIGINT was acted on'
+
+    @pytest.mark.parametrize(
+        ("mode", "outcome"),
+        [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+    )
+    def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+        # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code.
+>       monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.05)
+E       AttributeError: <module 'scripts._twin_process' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v2/scripts/_twin_process.py'> has no attribute '_KBD_TRACEBACK_WAIT_S'
+
+tests_scripts/test_digital_twin_ci_suite_errcount.py:665: AttributeError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[pending-exit 1 at once, nothing printed: the first was never consumed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[absorbed-a clean exit: the first was raised and absorbed]
+FAILED tests_scripts/test_digital_twin_ci_suite_errcount.py::test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded[ignored-still running: neither SIGINT was acted on]
+3 failed, 91 deselected in 0.31s

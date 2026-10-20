@@ -25,7 +25,6 @@ CLAUDE.md	catching `(OSError, MemoryError)` and degrading locally is a backstop 
 CLAUDE.md	it never gates anything** — no threshold is enforced anywhere, by design (confir
 DEVICE_REFERENCE.md	**`0` disables this staleness check** — a restored backup is accepted no matter
 DEVICE_REFERENCE.md	Change them deliberately, one at a time, and expect the lux scale to shift with
-HEAP_FRAGMENTATION_MEASUREMENTS.md	**It holds method, not results.** Current-state facts and rules live where they
 HEAP_FRAGMENTATION_MEASUREMENTS.md	Name the position on every line: `after_build_system`, `after_starter_loop_end`
 HEAP_FRAGMENTATION_MEASUREMENTS.md	`tests_hardware/flash/test_memory_stress.py` carries the current set (≤ 100,000
 README.md	Node comes from nodejs.org (checksum-verified against the release SHASUMS), deli
@@ -68,7 +67,6 @@ SPECIFICATION.md	Self-healing follows from the same two sites: the next accepted
 SPECIFICATION.md	That is **accepted** — no recovery scheme is wanted for a reboot that catches th
 SPECIFICATION.md	That makes it a host-dependency wherever a test asserts that every one of a long
 SPECIFICATION.md	The accepted trade-off is that neither test would now catch a *latency* regressi
-SPECIFICATION.md	The comparable 1.28 figure is the 2026-09-08 hammer-load `mem_free` floor of 91,
 SPECIFICATION.md	The corrected value writes back through `_set_mgr_cfg`, deliberately **not** thr
 SPECIFICATION.md	The final chunk's acknowledgement is deliberately deferred until after the total
 SPECIFICATION.md	The two are deliberately allowed to overlap in what they prove (layered coverage

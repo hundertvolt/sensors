@@ -25,7 +25,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _ntp_responder import NtpResponder  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config, write_responder_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -87,7 +87,8 @@ async def _boot(device: str, cfg_path: "str | None" = None) -> "ModuleType":
     machine.configure_wiring(plan)
     cfg = cfg_path if cfg_path is not None else _scratch.dir()
     write_offline_ntp_config(cfg)
-    await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg, web_host="127.0.0.1", web_port=0)
+    write_error_level_config(cfg)
+    await module.build_system(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
     runner_plan: _Plan = cast("_Plan", plan)
     run_generic_integration._wire_uart_crossover(module, runner_plan)  # before the setups (CLAUDE.md "Known hang cause")
     await module.sysfunct.run_setups(module._collect_setups())
@@ -103,6 +104,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
     network.reset_test_state()
     machine.configure_wiring(wiring_plan(device))
     write_responder_ntp_config(cfg_path)
+    write_error_level_config(cfg_path)
     with open(config_filename(cfg_path, "WIFI"), "w") as f:
         f.write(json.dumps({"SSID": _SSID}))
     module = load_device(device)
@@ -114,7 +116,7 @@ def _booted(device: str, responder: NtpResponder, scenario: "Callable[[ModuleTyp
 
     async def whole() -> "T":
         with redirect_udp_port(asy_ntp_client, 123, responder.port):
-            boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
+            boot = module.main(watchdog=boot_entry_watchdog(module, device), cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
             tasks = [asyncio.create_task(responder.serve()), asyncio.create_task(boot)]
             try:
                 await _until(built, "no construction")

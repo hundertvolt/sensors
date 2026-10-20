@@ -110,6 +110,25 @@ def test_the_pre_sync_timestamp_flag_is_back_to_its_boot_value_after_each_test()
     assert code == 0
 
 
+def test_a_test_leaving_the_fatal_report_flag_set_fails_and_the_next_test_finds_it_clear() -> None:
+    # Each of the first two records a real C-stack overflow: the one leaving the flag set fails, the one clearing its own
+    # passes; the third, run after both, finds the flag at its boot value.
+    code, lines = _run_child(
+        "import asy_print_log\n\n\n"
+        "def _dive(depth):\n    return _dive(depth + 1)\n\n\n"
+        "def _record():\n    try:\n        _dive(0)\n    except RuntimeError as e:\n        asy_print_log.report_if_fatal(e)\n"
+        "    assert asy_print_log.fatal_reported() is True\n\n\n"
+        "def test_a_leaves_it_set():\n    _record()\n\n\n"
+        "def test_b_clears_its_own():\n    assert asy_print_log.fatal_reported() is False\n    _record()\n    asy_print_log._fatal = False\n\n\n"
+        "def test_c_sees_boot_state():\n    assert asy_print_log.fatal_reported() is False\n",
+    )
+    assert "FAIL test_a_leaves_it_set: left the C-stack fatal flag set" in lines, lines
+    assert "PASS test_b_clears_its_own" in lines, lines
+    assert "PASS test_c_sees_boot_state" in lines, lines
+    assert "2/3 passed, 1 failed, 0 skipped" in lines, lines
+    assert code == 1
+
+
 if __name__ == "__main__":
     import microtest
 

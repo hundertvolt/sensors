@@ -19,7 +19,7 @@ import math_helpers
 from asy_base_classes import DeviceSession, LockedValue, SensorReaderConfig, utc_now
 from asy_config_manager import checked_int, make_dict, name_cfg
 from asy_i2c_driver import I2C, I2CDevice
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -175,6 +175,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         self._bmp = BMP3XX_I2C(i2c, address=address)
         self._recovery_bus = i2c
         self._cycle_comp: list[float] = list(_COMP_FALLBACK)  # this cycle's compensation, captured before its conversion
+        self._comp_unreadable = False  # a run of failed compensation captures, logged once: the next good one ends it
         self._base_trigger_event = asyncio.ThreadSafeFlag()
         self._read_event = asyncio.ThreadSafeFlag()
         # Bare Timer() is valid on rp2 (id defaults to -1); the stub requires an id. Removal trigger: SPECIFICATION.md B.15.
@@ -209,15 +210,18 @@ class BMP3XX_Reader(SensorReaderConfig):
             await self._bmp.set_temperature_oversampling(cfg_values[2])  # BMPTempOvers
             await self._bmp.set_filter_coefficient(cfg_values[3])  # BMPFiltCoeff
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting config data:", e, errno=_ERR_CHIP_SET)
             return _CHIP_WRITE_FAILED
         return _APPLIED
 
     async def _init_bmp(self) -> bool:
         self._err_cnt_internal = 0
+        self._comp_unreadable = False  # an episode never outlives the task
         try:
             await self._bmp.setup()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             await self._init_failed()
             return False  # error
@@ -258,7 +262,11 @@ class BMP3XX_Reader(SensorReaderConfig):
         values = await self.cfgmgr.get_float_values(_VAL_PRES_OFFSET + _VAL_TEMP_OFFSET + _VAL_SEA_LEVEL_OFFSET + _VAL_MEAN_ATM_TEMP)
         if values is None or len(values) != _N_FLOAT_CFG:
             values = None
-            await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
+            if not self._comp_unreadable:  # one entry and one console line per episode, not one per cycle
+                self._comp_unreadable = True
+                await self.pr.err_s("Error reading config data!", errno=_ERR_CFG_READ)
+        else:
+            self._comp_unreadable = False
         for i in range(_N_FLOAT_CFG):
             self._cycle_comp[i] = _COMP_FALLBACK[i] if values is None else values[i]
         pressure: float | None = None
@@ -277,6 +285,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             pressure = temperature = None
             await self.pr.err_s("Reading rejected:", e, errno=_ERR_READ_RANGE)
         except Exception as e:
+            report_if_fatal(e)
             pressure = temperature = None
             await self.pr.err_s("Read failed:", e, errno=_ERR_READ)
         return pressure, temperature, timestamp
@@ -300,6 +309,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             pressure_oversampling, temperature_oversampling, filter_coefficient = await self._bmp.get_config_snapshot()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading oversampling/filter config from sensor:", e, errno=_ERR_CHIP_GET)
             return None
         return {
@@ -315,6 +325,7 @@ class BMP3XX_Reader(SensorReaderConfig):
             try:
                 await self._bmp.reset()
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Soft reset failed:", e, errno=_ERR_CHIP_SET)
                 return False
             return await self._apply_stored_config() == _APPLIED
@@ -389,6 +400,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             return await self._bmp.get_filter_coefficient()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading filter coefficient:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -396,6 +408,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             return await self._bmp.get_pressure_oversampling()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading pressure oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -403,6 +416,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             return await self._bmp.get_temperature_oversampling()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error reading temperature oversampling:", e, errno=_ERR_CHIP_GET)
             return None
 
@@ -410,6 +424,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.set_filter_coefficient(coef)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting filter coefficient:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -418,6 +433,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.set_pressure_oversampling(oversample)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting pressure oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -426,6 +442,7 @@ class BMP3XX_Reader(SensorReaderConfig):
         try:
             await self._bmp.set_temperature_oversampling(oversample)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error setting temperature oversampling:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -444,6 +461,7 @@ class BMP3XX_I2C:
 
     def __init__(self, i2c: I2C, address: int = 0x77) -> None:
         self._i2c_bmp3xx = DeviceSession(I2CDevice(i2c, address))
+        self._pt_burst = bytearray(_PT_BURST_LEN)  # this instance's own, filled in place by every conversion's burst
 
     async def _get_osr_setting(self, start_bit: int) -> int:
         # Shared by get_pressure_oversampling()/get_temperature_oversampling() - osr_p and osr_t
@@ -497,15 +515,15 @@ class BMP3XX_I2C:
             await asyncio.sleep(wait_us / 1_000_000)
             await self._wait_status_bits(bmp3xx, _STATUS_DATA_READY, _MEAS_TIMEOUT_MS)
 
-            # ERR_REG, STATUS and the ADC values in one burst
+            # ERR_REG, STATUS and the ADC values in one burst, decoded in the same hold with no await after the fill
             async with bmp3xx.i2c_device as i2c:  # bus session
-                data = await i2c.get_register_bytes(_REGISTER_ERR, _PT_BURST_LEN)
-        if data is None:
-            raise OSError("I2C bus not initialized")
-        if data[0] & _REG_ERR_FATAL_BIT:
-            raise RuntimeError("BMP3XX fatal error (ERR_REG fatal_err)")
-        adc_p = data[4] << 16 | data[3] << 8 | data[2]
-        adc_t = data[7] << 16 | data[6] << 8 | data[5]
+                data = self._pt_burst
+                if not await i2c.get_register_into(_REGISTER_ERR, data):
+                    raise OSError("I2C bus not initialized")
+                if data[0] & _REG_ERR_FATAL_BIT:
+                    raise RuntimeError("BMP3XX fatal error (ERR_REG fatal_err)")
+                adc_p = data[4] << 16 | data[3] << 8 | data[2]
+                adc_t = data[7] << 16 | data[6] << 8 | data[5]
 
         # datasheet, sec 9.2 Temperature compensation
         T1, T2, T3 = self._temp_calib

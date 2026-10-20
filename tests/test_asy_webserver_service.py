@@ -30,11 +30,12 @@ from freezefs.ffsmount import VfsFrozen  # type: ignore[import-not-found]
 from microdot import Microdot, Request, Response
 
 import asy_config_manager as cm
+import asy_print_log
 import asy_spi_driver
 import asy_webserver_service
 from asy_base_classes import UNAVAILABLE, SensorReader, SensorReaderConfig
 from asy_fram_manager import FRAMManager
-from asy_print_log import LogConfig
+from asy_print_log import LogConfig, fatal_reported
 from asy_spi_driver import SPI
 from asy_system_service import SystemService
 from asy_webserver_service import ROUTES, RouteSources, ServingLimits, SettingsGroup, StaticSite, WebserverService, _PieceWriter, _shape_errcount_entry, _stream_dict_response, _TimeoutStreamProxy
@@ -50,14 +51,14 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine, Iterable, Sequence
-    from typing import TypedDict, TypeVar
+    from typing import NoReturn, TypedDict, TypeVar
 
     from typing_extensions import Unpack
 
     from asy_base_classes import ErrorSource, JsonDict, JsonMapping
     from asy_config_manager import WriteValidity
     from asy_print_log import ErrorLog
-    from asy_webserver_service import HotspotActiveFct, NotificationLedFct, NotificationPauseFct, StatusSourceFct, SystemCmdFct, _ModuleLike
+    from asy_webserver_service import HotspotActiveFct, NotificationLedFct, NotificationPauseFct, ResetRefusalFct, StatusSourceFct, SystemCmdFct, _ModuleLike
 
     T = TypeVar("T")
 
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
         settings: dict[str, Sequence[SettingsGroup]] | None
         build_info: JsonDict | None
         system_cmd: SystemCmdFct | None
+        reset_refusals: Sequence[ResetRefusalFct] | None
         notification_led: NotificationLedFct | None
         notification_pause: NotificationPauseFct | None
         status_sources: dict[str, StatusSourceFct] | None
@@ -84,6 +86,7 @@ if TYPE_CHECKING:
         static_index: str
         is_hotspot_active: HotspotActiveFct | None
         history_length: int
+        debug: int | None
 
 
 def status_body(res: "Response") -> bytes:
@@ -129,6 +132,9 @@ def _obj(value: object) -> "dict[str, object]":
 _DEFAULT_MAX_CONTENT_LENGTH: int = src_int("src/asy_webserver_service.py", "_DEFAULT_MAX_CONTENT_LENGTH")
 _DEFAULT_CHUNK_BYTES: int = src_int("src/asy_webserver_service.py", "_DEFAULT_CHUNK_BYTES")
 _VAL_NTP_HOST: "cm.ConfigSchema" = src_schema("src/asy_ntp_client.py", "_VAL_NTP_HOST")
+# The hammers' console level: their err() lines print, so a caught MemoryError reaches the memory gate's stream
+# (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
+_ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
 
 # run_timed()'s default bound: section F below exercises timeout/hang scenarios, so a genuine bug in the
 # implementation under test (or in one of the fakes below) must surface as a fast FAIL, never a whole-suite stall.
@@ -450,7 +456,7 @@ def _make_service(**kwargs: "Unpack[_ServiceKeywords]") -> "tuple[WebserverServi
     app = Microdot()
     routes = RouteSources(
         kwargs.pop("sensors", ()), kwargs.pop("settings", None), kwargs.pop("build_info", None), kwargs.pop("system_cmd", None),
-        kwargs.pop("notification_led", None), kwargs.pop("notification_pause", None), kwargs.pop("status_sources", None),
+        kwargs.pop("reset_refusals", None), kwargs.pop("notification_led", None), kwargs.pop("notification_pause", None), kwargs.pop("status_sources", None),
         kwargs.pop("maintenance_sensors", ()), kwargs.pop("error_sources", ()),
     )
     serving = ServingLimits(
@@ -465,7 +471,7 @@ def _make_service(**kwargs: "Unpack[_ServiceKeywords]") -> "tuple[WebserverServi
     )
     mount, index, hotspot = kwargs.pop("static_mount", None), kwargs.pop("static_index", "index.html"), kwargs.pop("is_hotspot_active", None)
     static = None if mount is None else StaticSite(mount, index, hotspot)
-    log = LogConfig(None, kwargs.pop("history_length", 10), None)
+    log = LogConfig(None, kwargs.pop("history_length", 10), kwargs.pop("debug", None))
     assert not kwargs, f"_make_service() got keywords no config object has: {sorted(kwargs)}"
     return WebserverService(app, routes, serving, _no_uptime, static, log), app
 
@@ -602,6 +608,29 @@ def test_sensors_put_malformed_json_body_is_a_clean_rejection_not_a_crash() -> N
     assert res.status_code == 200
     assert _json(res.body) == {"res": "ERR", "code": 1, "descr": "Invalid JSON request", "result": {}}
     assert scd.set_calls == []
+
+
+class _HeapShortRequest(Request):
+    # A request whose body parse runs out of heap: Microdot's own json property, raising as json.loads() would.
+    @property
+    def json(self) -> "NoReturn":
+        raise MemoryError("injected for the body parse")  # worded clear of the memory gates' markers
+
+
+def test_a_body_parse_that_runs_out_of_heap_answers_500_and_is_persisted() -> None:
+    # The heap failure is the device's, not a malformed body: the catch-all persists it and answers 500 (C.7),
+    # never "Invalid JSON request", and no settings write runs.
+    scd = _FakeModule("SCD30")
+    service, app = _make_service(sensors=[scd])
+    body = b"{}"
+    headers = {"Content-Length": str(len(body)), "Content-Type": "application/json"}
+    req = _HeapShortRequest(app, ("127.0.0.1", 12345), "PUT", "/sensors", "1.1", headers, body=body, sock=(_NoopHolder(), _NoopHolder()))  # type: ignore[arg-type]  # as _make_request()'s
+    res = run(app.dispatch_request(req))
+    assert (res.status_code, _json(res.body)) == (500, {"res": "ERR", "code": 500, "descr": "Internal server error", "result": {}})
+    assert scd.set_calls == []
+    log = run(service.get_error_counter())["WEBSERVER"]
+    assert log["ErrCount"] == 1
+    assert log["ErrNum"].count(code("E", "UNEXPECTED")) == 1
 
 
 def test_networking_get_is_flat_settings_only_no_live_fields() -> None:
@@ -907,7 +936,10 @@ class _CommandBench:
         self.fram = FRAMManager(SPI(0, sck_pin=2, mosi_pin=3, miso_pin=4), 1, max_size=0x2000)
         self.reader = _CmdReader(_CmdData(0), "CMDSENS", _CMD_SCHEMA, cfg_path=cfg_path)
         self.svc = SystemService(_never_synced, watchdog=machine.WDT(), storage=self.fram, config_stores=self._stores, cfg_path=cfg_path)
-        self.service, self.app = _make_service(sensors=(self.reader,), system_cmd=self._system_cmd)
+        self.service, self.app = _make_service(
+            sensors=(self.reader,), system_cmd=self._system_cmd, reset_refusals=(self.svc.is_reset_decided, self.fram.get_pause),
+            error_sources=(self.svc, self.reader),
+        )
         self.paths = (cfg_path + "config_SYSTEM.cfg", cfg_path + "config_CMDSENS.cfg")
         self.locked_at_dispatch: list[bool] = []
 
@@ -1224,29 +1256,99 @@ def _put_result(app: "Microdot", path: str, body: object) -> "dict[str, object]"
     return _obj(_at(_json(run(app.dispatch_request(_make_request(app, "PUT", path, body))).body), "result"))
 
 
-def test_reset_errors_answers_failed_and_clears_nothing_once_a_reboot_or_erase_command_is_accepted() -> None:
-    # From a restarting command's "Valid" on, ResetErrors answers "Failed" and no log, nor the drop window, is touched:
-    # the logs survive into the reboot (owner, 2026-10-13). A bad value still reads "Invalid"; repeating keeps it shut.
-    async def system_cmd(_cmd: str) -> bool:
-        return True
+def _seeded_bench() -> "_CommandBench":
+    # A set-up bench whose reader log holds one entry and whose webserver holds one entry and one dropped connection.
+    bench = _CommandBench()
+    run(bench.setup())
+    run(bench.reader.pr.err_s("x", errno=code("E", "CALLBACK")))
+    run(bench.service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))
+    return bench
 
+
+def _kept(bench: "_CommandBench") -> "tuple[int, int, int]":
+    # The reader's and the webserver's entry counts and the dropped connections: what a refused ResetErrors keeps.
+    reader = run(bench.reader.get_error_counter())["CMDSENS"]["ErrCount"]
+    return reader, run(bench.service.get_error_counter())["WEBSERVER"]["ErrCount"], run(bench.service.get_dropped_count())
+
+
+def test_reset_errors_is_refused_and_clears_nothing_once_a_command_owns_the_reset() -> None:
+    # Read through the system's own reset decision: from a restarting command's "Valid" on, ResetErrors answers
+    # "Failed" and no log, nor the drop window, is touched, so the logs survive into the reboot (owner, 2026-10-13).
     seen: dict[str, object] = {}
     for word in ("reboot", "bootloader", "resetconfig", "erasefram"):
-        mod = _FakeModule("SGP40")
-        run(mod.pr.err_s("x", errno=1))
-        service, app = _make_service(error_sources=[mod], system_cmd=system_cmd)
-        run(service._note_drop(code("W", "HTTP_REFUSED"), "seeded"))  # one entry in its own log, one dropped connection
-        answers: list[dict[str, object]] = []
-        for path, body in (("/system", {"SystemCmd": word}), ("/status", {"ResetErrors": True}), ("/status", {"ResetErrors": False}), ("/system", {"SystemCmd": word}), ("/status", {"ResetErrors": True})):
-            answers.append(_put_result(app, path, body))
-        seen[word] = (answers, mod.pr.reset_calls, mod.pr.err_count, run(service.get_error_counter())["WEBSERVER"]["ErrCount"], run(service.get_dropped_count()))
-    shut = [{"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}, {"ResetErrors": "Invalid"}, {"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}]
-    assert seen == dict.fromkeys(seen, (shut, 0, 1, 1, 1)), seen  # no reset call, every log and the drop count kept
+        bench = _seeded_bench()
+
+        async def scenario(bench: "_CommandBench" = bench, word: str = word) -> "list[dict[str, object]]":
+            sup = asyncio.create_task(bench.svc.supervise_tasks())
+            await asyncio.sleep(0)
+            answers = [await bench.put("/system", {"SystemCmd": word})]
+            for body in ({"ResetErrors": True}, {"ResetErrors": False}):
+                answers.append(await bench.put("/status", body))
+            await bench.sequence_ended()
+            answers.append(await bench.put("/status", {"ResetErrors": True}))  # still refused once the reset is armed
+            await cancel(sup)
+            return answers
+
+        with FastAsyncSleep():
+            seen[word] = (run(scenario()), _kept(bench))
+    refused = [{"SystemCmd": "Valid"}, {"ResetErrors": "Failed"}, {"ResetErrors": "Invalid"}, {"ResetErrors": "Failed"}]
+    assert seen == dict.fromkeys(seen, (refused, (1, 1, 1))), seen
 
 
-def test_reset_errors_stays_open_after_mempause_or_a_command_that_was_not_accepted() -> None:
-    # Guard: ResetErrors shuts only on a restarting command's "Valid" (owner, 2026-10-13). mempause (no reboot follows), a
-    # refused or raising command and a word that is no command leave it answering "Valid" and resetting every log.
+def test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_entry() -> None:
+    # A ResetErrors landing inside the task-budget escalation's own entry write is refused and clears nothing: the
+    # logs that explain the supervisor's reboot survive it (owner, 2026-10-13: "2 b").
+    bench = _seeded_bench()
+    answers: list[dict[str, object]] = []
+    real_err_s = bench.svc.pr.err_s
+
+    async def err_s_meeting_a_reset(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+        if errno == code("E", "TASK_BUDGET_REBOOT"):
+            answers.append(await bench.put("/status", {"ResetErrors": True}))
+        await real_err_s(*args, errno=errno, sep=sep, end=end)
+
+    bench.svc.pr.err_s = err_s_meeting_a_reset  # type: ignore[method-assign]
+
+    def dead_starter() -> "asyncio.Task[None]":
+        async def ends() -> None:
+            return None
+
+        return asyncio.create_task(ends())
+
+    async def scenario() -> bool:
+        await bench.svc.start_tasks([dead_starter])
+        sup = asyncio.create_task(bench.svc.supervise_tasks())
+        for _ in range(_SEQUENCE_YIELDS):
+            if bench.svc._reset_armed:
+                break
+            await asyncio.sleep(0)
+        await cancel(sup)
+        return bench.svc._reset_armed
+
+    with FastAsyncSleep():
+        armed = run(scenario())
+    assert (armed, answers) == (True, [{"ResetErrors": "Failed"}]), (armed, answers)
+    assert _kept(bench) == (1, 1, 1)
+
+
+def test_reset_errors_clears_nothing_while_storage_is_paused_and_everything_once_it_ends() -> None:
+    # During mempause ResetErrors answers "Failed" and clears nothing, the logs held in memory and the reader's give-up
+    # streak included (owner, 2026-10-13, asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
+    bench = _seeded_bench()
+    bench.reader._err_cnt_internal = 1
+    assert _put_result(bench.app, "/system", {"SystemCmd": "mempause"}) == {"SystemCmd": "Valid"}
+    assert _put_result(bench.app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Failed"}
+    assert (_kept(bench), bench.reader._err_cnt_internal) == ((1, 1, 1), 1)
+    assert bench.svc.pause_permanent_storage(0) is True  # mempause answers "Valid" and no reboot follows: the reset reopens
+    assert _put_result(bench.app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Valid"}
+    assert (_kept(bench), bench.reader._err_cnt_internal) == ((0, 0, 0), 0)
+
+
+def test_reset_errors_follows_the_reset_decision_and_the_storage_pause() -> None:
+    # The route reads the system's reset decision and the FRAM manager's pause: open while both are False, whatever a
+    # command answered, and refused with nothing cleared while either is True.
+    decided = [False]
+    paused = [False]
     outcome: list[object] = [True]
 
     async def system_cmd(_cmd: str) -> bool:
@@ -1255,16 +1357,18 @@ def test_reset_errors_stays_open_after_mempause_or_a_command_that_was_not_accept
         return outcome[0] is True
 
     mod = _FakeModule("SGP40")
-    _service, app = _make_service(error_sources=[mod], system_cmd=system_cmd)
-    cases: list[tuple[str, object, str]] = [("mempause", True, "Valid"), ("reboot ", True, "Invalid")]
-    for word in ("reboot", "bootloader", "mempause", "resetconfig", "erasefram"):
-        cases += [(word, False, "Failed"), (word, RuntimeError("injected for the command"), "Failed")]
-    for word, result, answer in cases:
+    _service, app = _make_service(error_sources=[mod], system_cmd=system_cmd, reset_refusals=(lambda: decided[0], lambda: paused[0]))
+    for result, answer in ((True, "Valid"), (False, "Failed"), (RuntimeError("injected for the command"), "Failed")):
         outcome[0] = result
         calls = mod.pr.reset_calls
-        assert _put_result(app, "/system", {"SystemCmd": word}) == {"SystemCmd": answer}, (word, result)
-        assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Valid"}, (word, result)
-        assert mod.pr.reset_calls == calls + 1, (word, result)
+        assert _put_result(app, "/system", {"SystemCmd": "reboot"}) == {"SystemCmd": answer}, result
+        assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Valid"}, result
+        assert mod.pr.reset_calls == calls + 1, result
+    for flags in ((True, False), (False, True)):
+        decided[0], paused[0] = flags
+        run(mod.pr.err_s("x", errno=1))
+        assert _put_result(app, "/status", {"ResetErrors": True}) == {"ResetErrors": "Failed"}, flags
+    assert (mod.pr.reset_calls, mod.pr.err_count) == (3, 2)
 
 
 def test_notification_get_is_flat_settings_only_no_live_fields() -> None:
@@ -2220,7 +2324,7 @@ def _body_service_with_connections(max_connections: int) -> "tuple[WebserverServ
     mod = _FakeModule("NETWORKING", values={"Interval": 5, "Offset": 0})
     service, app = _make_service(
         settings={"networking": [SettingsGroup(mod, ("Interval", "Offset"))]},
-        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0,
+        max_connections=max_connections, per_call_timeout_s=2.0, outer_cap_s=5.0, debug=_ERROR_LEVEL,
     )
     return service, app, mod
 
@@ -2243,32 +2347,21 @@ def test_f2b_hammer_concurrent_mixed_bodies_bound_the_total_buffered_bytes() -> 
     # The real-hardware shape this protects: max_connections bodies can be in flight at once, so
     # the simultaneous contiguous demand is that many buffers, not one. With the caps bound it is
     # bounded by connections x cap; with the band open it would be connections x 16 KB.
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)  # SPECIFICATION.md I.4(e) first: the guarantee must hold at MicroPython's own real default
-    try:
-        service, _app, mod = _body_service_with_connections(64)
-        sizes = [_BODY_CAP * 4 if i % 3 else 512 for i in range(60)]
-        readers = _hammer_mixed_bodies(service, sizes)
-        assert sum(r.max_body_read for r in readers) == sum(s for s in sizes if s <= _BODY_CAP)
-        assert all(r.max_body_read <= _BODY_CAP for r in readers)
-        assert len(mod.set_calls) == sum(1 for s in sizes if s <= _BODY_CAP)  # every under-cap one applied
-        assert run(service._open_conns.get_value()) == 0
-    finally:
-        gc.threshold(orig_threshold)
+    service, _app, mod = _body_service_with_connections(64)
+    sizes = [_BODY_CAP * 4 if i % 3 else 512 for i in range(60)]
+    readers = _hammer_mixed_bodies(service, sizes)
+    assert sum(r.max_body_read for r in readers) == sum(s for s in sizes if s <= _BODY_CAP)
+    assert all(r.max_body_read <= _BODY_CAP for r in readers)
+    assert len(mod.set_calls) == sum(1 for s in sizes if s <= _BODY_CAP)  # every under-cap one applied
+    assert run(service._open_conns.get_value()) == 0
 
 
 def test_f2b_hammer_all_oversized_allocates_no_body_at_all() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)  # and again at the shipped threshold, as the /status hammers do for their own pair
-    try:
-        service, _app, mod = _body_service_with_connections(64)
-        readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
-        assert all(r.body_reads == [] for r in readers)
-        assert mod.set_calls == []
-        assert run(service._open_conns.get_value()) == 0
-    finally:
-        gc.threshold(orig_threshold)
+    service, _app, mod = _body_service_with_connections(64)
+    readers = _hammer_mixed_bodies(service, [_BODY_CAP * 6] * 40)
+    assert all(r.body_reads == [] for r in readers)
+    assert mod.set_calls == []
+    assert run(service._open_conns.get_value()) == 0
 
 
 
@@ -2717,6 +2810,8 @@ def test_f9_soak_100_plus_start_wedge_reclaim_cycles_hold_counter_and_memory_fla
     def free_after(cycles: range) -> int:
         for i in cycles:
             run_timed(one_cycle(i), _RUN_BOUND_S)
+            if i % 3 == 1:  # every 3-cycle period ends collected: a dangling C-stack word of the test rig then finds the
+                gc.collect()  # same heap at each collect, so it pins a block in the warm-up or never (SPECIFICATION.md E.7)
         gc.collect()
         return gc.mem_free()
 
@@ -3261,6 +3356,51 @@ def test_h1_a_second_unhandled_exception_from_a_different_route_is_logged_indepe
     assert entry["ErrType"].count("E") == 1
 
 
+def _stack_overflow() -> RuntimeError:
+    # The interpreter's own C-stack exhaustion, from a real recursion (py/runtime.c:1786, v1.29.0).
+    def dive(depth: int) -> int:
+        return dive(depth + 1)
+
+    try:
+        dive(0)
+    except RuntimeError as e:
+        return e
+    raise AssertionError("no recursion limit reached")
+
+
+class _OverflowingSensorModule(_FakeModule):
+    async def get_dict_data(self) -> "JsonDict":
+        raise _stack_overflow()
+
+
+def test_h1_a_handler_that_exhausts_the_c_stack_answers_500_and_reports_it() -> None:
+    # Microdot catches the handler's error itself, so only the catch-all can record it for the supervisor's reboot.
+    service, app = _make_service(sensors=[_OverflowingSensorModule("SCD30")])
+    assert fatal_reported() is False
+    res = run(app.dispatch_request(_make_request(app, "GET", "/measurements", None)))
+    assert (res.status_code, _json(res.body)) == (500, {"res": "ERR", "code": 500, "descr": "Internal server error", "result": {}})
+    assert fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrNum"].count(code("E", "UNEXPECTED")) == 1
+
+
+class _OverflowingReader(_ScriptedReader):
+    async def read(self, n: int) -> bytes:
+        raise _stack_overflow()
+
+
+def test_h1_a_request_read_that_exhausts_the_c_stack_answers_400_and_reports_it() -> None:
+    # Microdot catches a request-read error itself and only prints it, through the hook rebound in __init__, so that
+    # hook records the overflow for the supervisor's reboot; the reply stays Microdot's own 400.
+    service, _app = _make_service()
+    writer = _ScriptedWriter()
+    assert fatal_reported() is False
+    run_timed(service._serve(_OverflowingReader([]), writer), timeout_s=3.0)
+    assert b" 400 " in writer.written
+    assert fatal_reported() is True
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
 def test_h1_abort_driven_404_is_unaffected_by_the_catch_all() -> None:
     # HTTPException (abort()) is caught separately by ext/microdot.py's dispatch_request() before
     # its except-Exception branch ever runs - the catch-all above must never fire for it, and the
@@ -3633,15 +3773,14 @@ def test_h2_piece_writer_flush_is_idempotent_and_an_empty_writer_adds_nothing() 
     assert pieces == [b"x"]
 
 
-# -- The /status hammers: gc.threshold() companions to the real-hardware hammer-load investigation --
+# -- The /status hammers: companions to the real-hardware hammer-load investigation --
 #
 # Unit-tier companions to the real-hardware hammer-load investigation: the same 5-concurrent-client
 # pattern that produced 237 real MemoryErrors on real hardware before the streaming fix and 0
 # after. A Unix-port heap can never reproduce an embedded-scale MemoryError - these are guards.
 
-# Both gc settings are exercised: MicroPython's own real default, and the project owner's chosen
-# gc.threshold(32768). That setting is process-global (py/modgc.c has no per-object/per-task
-# scoping), so every test below saves and restores the value it finds already set.
+# Each hammer runs at its process's GC stage: scripts/test.sh runs every file at gc.threshold(-1) and again at
+# 32768 (SPECIFICATION.md I.4(e)/(f)).
 
 
 def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
@@ -3656,6 +3795,7 @@ def _make_hammer_service() -> "tuple[WebserverService, Microdot]":
         maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
         error_sources=modules,
         history_length=0,
+        debug=_ERROR_LEVEL,
     )
 
 
@@ -3672,25 +3812,9 @@ async def _hammer_status(app: "Microdot", n: int) -> None:
     await asyncio.gather(*(_one() for _ in range(n)))
 
 
-def test_h3_hammer_concurrent_status_requests_stay_valid_with_gc_threshold_unset() -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)  # MicroPython's own real default (confirmed directly - no proactive collection)
-    try:
-        _, app = _make_hammer_service()
-        run(_hammer_status(app, 200))
-    finally:
-        gc.threshold(orig_threshold)
-
-
-def test_h3_hammer_concurrent_status_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)  # the project owner's chosen value, see this section's own comment above
-    try:
-        _, app = _make_hammer_service()
-        run(_hammer_status(app, 200))
-    finally:
-        gc.threshold(orig_threshold)
+def test_h3_hammer_concurrent_status_requests_stay_valid() -> None:
+    _, app = _make_hammer_service()
+    run(_hammer_status(app, 200))
 
 
 # -- _stream_dict_response() - the shared streaming primitive generalizing the /status streaming
@@ -3788,7 +3912,7 @@ def _assert_body_is_bounded_stream(res: "Response", path: str) -> bytes:
 
 def _make_sensor_hammer_service() -> "tuple[WebserverService, Microdot]":
     modules = [_NestedCfgModule(f"SENSOR{i}", values={"Interval": 5, "Offset": 0}, data={"Value": i}) for i in range(17)]
-    return _make_service(sensors=modules, history_length=0)
+    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
 
 
 async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[str]") -> None:
@@ -3804,46 +3928,14 @@ async def _hammer_route(app: "Microdot", path: str, n: int, expected_keys: "set[
 _SENSOR_HAMMER_KEYS = {f"SENSOR{i}" for i in range(17)}
 
 
-def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_gc_threshold_unset() -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)  # MicroPython's own real default (confirmed directly - no proactive collection)
-    try:
-        _, app = _make_sensor_hammer_service()
-        run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
-    finally:
-        gc.threshold(orig_threshold)
+def test_i2_hammer_concurrent_measurements_requests_stay_valid() -> None:
+    _, app = _make_sensor_hammer_service()
+    run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
 
 
-def test_i2_hammer_concurrent_measurements_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)  # the project owner's chosen value, see the /status hammers' own comment above
-    try:
-        _, app = _make_sensor_hammer_service()
-        run(_hammer_route(app, "/measurements", 200, _SENSOR_HAMMER_KEYS))
-    finally:
-        gc.threshold(orig_threshold)
-
-
-def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_gc_threshold_unset() -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)
-    try:
-        _, app = _make_sensor_hammer_service()
-        run(_hammer_route(app, "/sensors", 200, _SENSOR_HAMMER_KEYS))
-    finally:
-        gc.threshold(orig_threshold)
-
-
-def test_i2_hammer_concurrent_sensors_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)
-    try:
-        _, app = _make_sensor_hammer_service()
-        run(_hammer_route(app, "/sensors", 200, _SENSOR_HAMMER_KEYS))
-    finally:
-        gc.threshold(orig_threshold)
+def test_i2_hammer_concurrent_sensors_requests_stay_valid() -> None:
+    _, app = _make_sensor_hammer_service()
+    run(_hammer_route(app, "/sensors", 200, _SENSOR_HAMMER_KEYS))
 
 
 # -- /networking, /system, /notification each get the same dedicated per-hotspot hammer as
@@ -3858,7 +3950,7 @@ def _make_settings_hammer_service(endpoint: str) -> "tuple[WebserverService, Mic
     groups = [
         SettingsGroup(_FakeModule(f"GROUP{i}", values={f"F{i}A": i, f"F{i}B": 0}), (f"F{i}A", f"F{i}B")) for i in range(17)
     ]
-    service, app = _make_service(settings={endpoint: groups})
+    service, app = _make_service(settings={endpoint: groups}, debug=_ERROR_LEVEL)
     return service, app, {f"F{i}{s}" for i in range(17) for s in ("A", "B")}
 
 
@@ -3872,41 +3964,21 @@ async def _hammer_settings_route(app: "Microdot", path: str, n: int, expected_ke
     await asyncio.gather(*(_one() for _ in range(n)))
 
 
-def _run_settings_hammer(endpoint: str, path: str, threshold: int) -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(threshold)
-    try:
-        _, app, keys = _make_settings_hammer_service(endpoint)
-        run(_hammer_settings_route(app, path, 200, len(keys)))
-    finally:
-        gc.threshold(orig_threshold)
+def _run_settings_hammer(endpoint: str, path: str) -> None:
+    _, app, keys = _make_settings_hammer_service(endpoint)
+    run(_hammer_settings_route(app, path, 200, len(keys)))
 
 
-def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_gc_threshold_unset() -> None:
-    _run_settings_hammer("networking", "/networking", -1)
+def test_i2b_hammer_concurrent_networking_requests_stay_valid() -> None:
+    _run_settings_hammer("networking", "/networking")
 
 
-def test_i2b_hammer_concurrent_networking_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    # @tunable gc.threshold_bytes = 32768
-    _run_settings_hammer("networking", "/networking", 32768)
+def test_i2b_hammer_concurrent_system_requests_stay_valid() -> None:
+    _run_settings_hammer("system", "/system")
 
 
-def test_i2b_hammer_concurrent_system_requests_stay_valid_with_gc_threshold_unset() -> None:
-    _run_settings_hammer("system", "/system", -1)
-
-
-def test_i2b_hammer_concurrent_system_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    # @tunable gc.threshold_bytes = 32768
-    _run_settings_hammer("system", "/system", 32768)
-
-
-def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_gc_threshold_unset() -> None:
-    _run_settings_hammer("notification", "/notification", -1)
-
-
-def test_i2b_hammer_concurrent_notification_requests_stay_valid_with_the_chosen_gc_threshold() -> None:
-    # @tunable gc.threshold_bytes = 32768
-    _run_settings_hammer("notification", "/notification", 32768)
+def test_i2b_hammer_concurrent_notification_requests_stay_valid() -> None:
+    _run_settings_hammer("notification", "/notification")
 
 
 # -- Every memory-bounded GET route hammered concurrently for longer, maxing out every
@@ -3936,6 +4008,7 @@ def _make_combined_hammer_service() -> "tuple[WebserverService, Microdot]":
         maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],
         error_sources=error_modules,
         history_length=0,
+        debug=_ERROR_LEVEL,
     )
 
 
@@ -3953,25 +4026,9 @@ async def _hammer_all_routes(app: "Microdot", rounds: int) -> None:
     await asyncio.gather(*(_one(path) for _ in range(rounds) for path in _ALL_MEMORY_BOUNDED_GET_ROUTES))
 
 
-def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_gc_threshold_unset() -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)
-    try:
-        _, app = _make_combined_hammer_service()
-        run(_hammer_all_routes(app, 40))  # 40 rounds of every GET route, all concurrent
-    finally:
-        gc.threshold(orig_threshold)
-
-
-def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_gc_threshold() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)
-    try:
-        _, app = _make_combined_hammer_service()
-        run(_hammer_all_routes(app, 40))
-    finally:
-        gc.threshold(orig_threshold)
+def test_i3_hammer_every_memory_bounded_get_route_concurrently() -> None:
+    _, app = _make_combined_hammer_service()
+    run(_hammer_all_routes(app, 40))  # 40 rounds of every GET route, all concurrent
 
 
 # -- /measurements and /sensors hammered concurrently with a real config write (PUT /sensors)
@@ -3984,7 +4041,7 @@ def test_i3_hammer_every_memory_bounded_get_route_concurrently_with_the_chosen_g
 
 def _make_write_hammer_service() -> "tuple[WebserverService, Microdot]":
     modules = [_FakeModule(f"SENSOR{i}") for i in range(17)]
-    return _make_service(sensors=modules, history_length=0)
+    return _make_service(sensors=modules, history_length=0, debug=_ERROR_LEVEL)
 
 
 async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) -> None:
@@ -4004,25 +4061,9 @@ async def _hammer_routes_with_concurrent_writes(app: "Microdot", rounds: int) ->
     await asyncio.gather(*gets, *puts)
 
 
-def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_gc_threshold_unset() -> None:
-    orig_threshold = gc.threshold()
-    gc.threshold(-1)
-    try:
-        _, app = _make_write_hammer_service()
-        run(_hammer_routes_with_concurrent_writes(app, 40))  # 40 rounds * 2 GET routes + 40 PUTs = 120 concurrent requests
-    finally:
-        gc.threshold(orig_threshold)
-
-
-def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write_with_the_chosen_gc_threshold() -> None:
-    orig_threshold = gc.threshold()
-    # @tunable gc.threshold_bytes = 32768
-    gc.threshold(32768)
-    try:
-        _, app = _make_write_hammer_service()
-        run(_hammer_routes_with_concurrent_writes(app, 40))
-    finally:
-        gc.threshold(orig_threshold)
+def test_i4_hammer_measurements_and_sensors_concurrently_with_a_real_config_write() -> None:
+    _, app = _make_write_hammer_service()
+    run(_hammer_routes_with_concurrent_writes(app, 40))  # 40 rounds * 2 GET routes + 40 PUTs = 120 concurrent requests
 
 
 

@@ -3,6 +3,8 @@ the shared chip lookup and fault plumbing, and one smoke boot of a generated mod
 device's own boot is tests_scripts/test_digital_twin_generated_boot.py's; the soak check is the CI suite's Run 11)."""
 
 import asyncio
+import io
+import os
 import struct
 import sys
 import time
@@ -45,9 +47,10 @@ import machine  # noqa: E402 - imported after the prewarm and the UDP shim
 import microtest  # noqa: E402 - imported after the prewarm and the UDP shim
 import network  # noqa: E402 - imported after the prewarm and the UDP shim
 import run_generic_integration as runner  # noqa: E402 - imported after the prewarm and the UDP shim
-from _async_harness import cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
+from _async_harness import cancel, cancel_all, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_tree import require_fresh  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
+from _recording_print import record_prints  # noqa: E402 - imported after the prewarm and the UDP shim
 from _strict_json import strict_loads  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_common import Injections, StatePaths  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -102,6 +105,7 @@ def test_parse_args_minimal_valid_config_takes_every_persistent_default() -> Non
     assert config.state == StatePaths("digital_twin/fram_state.json", "digital_twin/scd30_state.json", "digital_twin/mem_backup_state.json")
     assert config.config_dir == "digital_twin/config/"
     assert config.online_ntp is False
+    assert config.debug_level is None  # the boot entry's own: every logger off until the stored level applies
     assert config.injections == Injections(None, [], [], [])
     # @tunable gc.threshold_bytes = 32768
     assert config.run == runner.RunLimits(None, 32768, None, None)
@@ -117,23 +121,30 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
+        "--test-hold-system-entry", "25", "--test-kbd-traceback",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True)
-    for flags in (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x")):
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True)
+    for flags in (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0")):
         _refused(_parse, *flags)
+
+
+def test_parse_args_takes_a_debug_level_the_products_loggers_take_and_refuses_any_other() -> None:
+    assert (_parse("--debug-level", "1").debug_level, _parse("--debug-level", "5").debug_level) == (1, 5)
+    for value in ("-1", "6", "x"):
+        assert "--debug-level" in _refused(_parse, "--debug-level", value), value
 
 
 def test_run_config_compares_and_prints_its_grouped_fields() -> None:
     faulted = runner.RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1, None, "oserror")], [], []))
     assert faulted != runner.RunConfig("m", "p.json")
     assert faulted == runner.RunConfig("m", "p.json", injections=Injections(None, [("sgp40", "writeto", 1, None, "oserror")], [], []))
-    assert runner.RunConfig("m", "p.json", environment=runner.RunEnvironment("c/", False, runner._NO_TEST_FLAGS)) != runner.RunConfig("m", "p.json")
+    assert runner.RunConfig("m", "p.json", environment=runner.RunEnvironment("c/", False, runner._NO_TEST_FLAGS, None)) != runner.RunConfig("m", "p.json")
     text = repr(faulted)
-    for field in ("state=", "injections=", "run=", "environment=", "config_dir=", "online_ntp=", "instrumentation="):
+    for field in ("state=", "injections=", "run=", "environment=", "config_dir=", "online_ntp=", "instrumentation=", "debug_level="):
         assert field in text, (field, text)
 
 
@@ -372,12 +383,23 @@ class _Store:
         self.flushed += 1
 
 
+class _Logger:
+    # SystemService's logger as the held-entry flag reaches it: the errno of every entry it wrote, in order.
+    def __init__(self) -> None:
+        self.written: list[int] = []
+
+    async def err_s(self, *_args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> None:
+        del sep, end
+        self.written.append(errno)
+
+
 class _Sysfunct:
     def __init__(self, task: "asyncio.Task[None]") -> None:
         self._tasks: list[asyncio.Task[None] | None] = [None, task]
         self._config_stores = [_Store()]
         self._reset_timer: object = None
         self.logged = 0
+        self.pr = _Logger()
 
     async def _log_dead_task(self, _task: object, _n: int) -> None:
         self.logged += 1
@@ -453,6 +475,36 @@ def test_the_rebound_report_announces_itself_once_when_first_entered_then_never_
 
     run_timed(scenario(), _RUN_BOUND_S)
     assert said == ["HUNG S1"]
+
+
+def test_the_held_system_entry_waits_for_its_release_and_lets_every_other_entry_through() -> None:
+    said: list[str] = []
+
+    async def scenario() -> None:
+        booted = _Booted(asyncio.create_task(_forever()))
+        logger = booted.sysfunct.pr
+        release = runner._test_hold_system_entry(_as_module(booted), 25, said.append)
+        await asyncio.wait_for_ms(logger.err_s("Task error counter above", errno=24), 100)  # another errno: not held
+        held = asyncio.create_task(logger.err_s("C stack exhausted - reboot triggered", errno=25))
+        await asyncio.sleep_ms(5)
+        assert logger.written == [24] and not held.done() and said == ["ENTRY_HELD"], (logger.written, said)
+        release()
+        await asyncio.wait_for_ms(held, 100)
+        await asyncio.wait_for_ms(logger.err_s("again", errno=25), 100)  # released for good
+        assert logger.written == [24, 25, 25] and said == ["ENTRY_HELD", "ENTRY_RELEASED"], (logger.written, said)
+        await cancel_all([t for t in booted.sysfunct._tasks if t is not None])
+
+    run_timed(scenario(), _RUN_BOUND_S)
+
+
+def test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_prints_where_it_was_raised() -> None:
+    said: list[str] = []
+    out = io.StringIO()
+    show = runner._test_kbd_traceback(said.append, out)
+    assert said == ["KBD_CAPTURED True"], said
+    show()
+    text = out.getvalue()
+    assert said[-1] == "KBD_TRACEBACK" and "KeyboardInterrupt" in text and "in _test_kbd_traceback" in text, (said, text)
 
 
 def test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum() -> None:
@@ -655,8 +707,21 @@ async def _times_out(aw: "Coroutine[object, object, object]") -> bool:
     return False
 
 
-def test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly() -> None:
+async def _until_a_line_from(name: str, lines: "list[tuple[object, ...]]", run: "Coroutine[object, object, None]") -> None:
+    # Serves until `name`'s logger has printed a line, then ends the run on main()'s own shutdown path by its cancel.
+    task = asyncio.create_task(run)
+    while not task.done() and not any(line and line[0] == name for line in lines):
+        await asyncio.sleep_ms(runner._READY_POLL_MS)
+    await cancel(task)
+
+
+def test_main_boots_at_the_stored_error_level_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_cleanly() -> None:
+    # The memory gate reads the printed lines (owner, 2026-10-20: "Option 1 is good"): with DebugLevel 1 stored, the first
+    # store set up after SYSTEM's prints the error a directory on its path makes, which a default boot keeps silent.
     config_dir = _scratch.dir("boot")
+    with open(config_dir + "config_SYSTEM.cfg", "w") as f:
+        f.write('{"DebugLevel": 1}')
+    os.mkdir(config_dir + "config_WIFI.cfg")
     device = generated_devices()[0]
     config = runner.RunConfig(
         "sensortask_" + device,
@@ -664,10 +729,12 @@ def test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_
         listen=("127.0.0.1", _PORTS.next()),
         state=StatePaths(None, None, None),
         injections=Injections(None, [("sgp40", "writeto", 2, None, "oserror")], [], []),
-        run=runner.RunLimits(0.0, runner._GC_THRESHOLD_DEFAULT, None, None),  # boot, arm the fault, then shut down
-        environment=runner.RunEnvironment(config_dir, False, runner._NO_TEST_FLAGS),
+        run=runner.RunLimits(None, runner._GC_THRESHOLD_DEFAULT, None, None),  # served until that error's line, then cancelled
+        environment=runner.RunEnvironment(config_dir, False, runner._NO_TEST_FLAGS, 1),
     )
-    run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+    with record_prints(echo=True) as printed:
+        run_timed(_until_a_line_from("CFGMGR_WIFI", printed.lines, runner.main(config)), timeout_s=_MAIN_RUN_BOUND_S)
+    assert any(line and line[0] == "CFGMGR_WIFI" for line in printed.lines), "the blocked config path printed nothing at error level"
     # The WDT the runner built and passed to the booted module's main(): an ordinary boot never starves it.
     watchdog = runner._watchdog
     assert watchdog is not None
@@ -683,12 +750,15 @@ def test_main_boots_arms_a_fault_writes_the_responder_ntp_config_and_shuts_down_
 
 
 class _IdleBoot:
-    # A booted module that only waits: the runner's own shutdown path is what this boot exercises.
+    # A booted module that only waits, keeping the keywords its main() was called with: the runner's own boot and
+    # shutdown path is what this boot exercises.
     def __init__(self, module_file: str) -> None:
         self.__file__ = module_file
         self.webserver = object()
+        self.boot: dict[str, object] = {}
 
-    async def main(self, **_boot: object) -> None:
+    async def main(self, **boot: object) -> None:
+        self.boot = boot
         await asyncio.sleep(3600)
 
 
@@ -729,8 +799,6 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
     # A per-file timeout's SIGINT landing while main() awaits the cancelled boot ends the run (__main__ then flushes the
     # state): the drain takes only the cancel's own end for its own.
     device = generated_devices()[0]
-    sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
-    runner.asyncio = _InterruptingAsyncio()  # type: ignore[assignment, attr-defined]  # the runner's module global, rebound from outside
     config = runner.RunConfig(
         "sensortask_idle",
         f"build/generated_src/sensortask_{device}_wiring_plan.json",
@@ -738,8 +806,10 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
         state=StatePaths(None, None, None),
         injections=Injections(None, [], [], []),
         run=runner.RunLimits(0.0, runner._GC_THRESHOLD_DEFAULT, None, None),
-        environment=runner.RunEnvironment(_scratch.dir("interrupted"), True, runner._NO_TEST_FLAGS),
+        environment=runner.RunEnvironment(_scratch.dir("interrupted"), True, runner._NO_TEST_FLAGS, None),
     )
+    sys.modules["sensortask_idle"] = _IdleBoot(f"build/generated_src/sensortask_{device}.py")  # type: ignore[assignment]
+    runner.asyncio = _InterruptingAsyncio()  # type: ignore[assignment, attr-defined]  # the runner's module global, rebound from outside
     try:
         run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
         interrupted = False
@@ -750,6 +820,26 @@ def test_an_interrupt_in_the_shutdown_drain_is_let_through() -> None:
         del sys.modules["sensortask_idle"]
         _flash_stall_installed()
     assert interrupted, "the interrupt was swallowed: a per-file timeout could not end this run"
+
+
+def test_main_builds_the_booted_module_at_the_debug_level_asked_for() -> None:
+    device = generated_devices()[0]
+    config = runner.RunConfig(
+        "sensortask_idle",
+        f"build/generated_src/sensortask_{device}_wiring_plan.json",
+        listen=("127.0.0.1", _PORTS.next()),
+        state=StatePaths(None, None, None),
+        run=runner.RunLimits(0.0, runner._GC_THRESHOLD_DEFAULT, None, None),
+        environment=runner.RunEnvironment(_scratch.dir("debug"), True, runner._NO_TEST_FLAGS, 3),
+    )
+    stand_in = _IdleBoot(f"build/generated_src/sensortask_{device}.py")
+    sys.modules["sensortask_idle"] = stand_in  # type: ignore[assignment]
+    try:
+        run_timed(runner.main(config), timeout_s=_MAIN_RUN_BOUND_S)
+    finally:
+        del sys.modules["sensortask_idle"]
+        _flash_stall_installed()
+    assert stand_in.boot.get("debug") == 3, stand_in.boot
 
 
 if __name__ == "__main__":

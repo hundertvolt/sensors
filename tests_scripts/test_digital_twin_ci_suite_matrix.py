@@ -1,6 +1,6 @@
-"""Tests scripts/_digital_twin_ci_suite.py's fault matrix and command line without a live twin: every fault and hang
-op a chip fake hooks is driven by a run or left out with a reason, every op named exists in the twin's vocabulary,
-and the diagnosis options refuse what they cannot honour (exit 2)."""
+"""Tests scripts/_digital_twin_ci_suite.py's fault matrix and command line without a live twin: every fault and hang op a
+chip fake hooks is driven by a run or left out with a reason, every op named exists in the twin's vocabulary, Run 12's
+stack subject is the plan's first bus device, and the diagnosis options refuse what they cannot honour (exit 2)."""
 
 import ast
 import subprocess
@@ -28,9 +28,11 @@ def _chip_hook_ops() -> "set[tuple[str, str, str]]":
 
 
 def _driven(ci_suite: ModuleType) -> "set[tuple[str, str, str]]":
-    # What the runs drive: Run 3's sustained faults, Run 5c's bounded ones, Run 5's measure read, Run 10's hangs.
+    # What the runs drive: Run 3's sustained faults, Run 5c's bounded ones, Run 5's measure read, Run 12's stack-exhaustion
+    # reads, Run 10's hangs.
     ops = {(d, "fault", op) for d, op in {**ci_suite._SUSTAINED_FAULT}.items()} | {(d, "fault", op) for d, op in ci_suite._BOUNDED_FAULT.items()}
     ops.add(("sgp40", "fault", ci_suite._RUN_5_FAULT_OP))
+    ops |= {(d, "fault", op) for d, op in ci_suite._STACK_FAULT_READ_OP.items()}
     return ops | {(d, "hang", op) for d, op in ci_suite._HANG_MATRIX.items()}
 
 
@@ -79,6 +81,33 @@ def test_every_uart_link_instance_gets_its_silent_fault(ci_suite: ModuleType, de
     assert faulted == links
     assert ci_suite._SUSTAINED_FAULT["uart_link"] == "silent"
     assert len(links) in (0, 2), f"{device} wires {links}: the pair has an initiator and a responder"
+
+
+def test_run_12s_stack_fault_reads_on_the_plans_first_bus_device(ci_suite: ModuleType) -> None:
+    # The plan's first attachment, its I2C buses in plan order before its SPI device, by instance key; a plan wiring no
+    # bus device has no subject, and the cell is skipped by name.
+    i2c = {"i2c1": [{"driver": "sgp40", "name_ext": "in", "address": 0x59}], "i2c0": [{"driver": "scd30", "name_ext": "", "address": 0x61}]}
+    spi = {"spi0": {"driver": "fram", "name_ext": "", "max_size": 0x2000}}
+    assert ci_suite._stack_fault_instance({"buses": i2c, "spi": spi, "uart": None}) == ci_suite.Instance("sgp40_in", "sgp40", "in")
+    assert ci_suite._stack_fault_instance({"buses": {}, "spi": spi, "uart": None}) == ci_suite.Instance("fram", "fram", "")
+    assert ci_suite._stack_fault_instance({"buses": {}, "spi": {}, "uart": None}) is None
+
+
+def test_run_12s_stack_fault_ops_are_queued_reads_the_twin_raises_from(ci_suite: ModuleType) -> None:
+    # A mode that stays set for the run takes no stack fault (digital_twin/launch.py parse_fault_spec()).
+    persistent = _vocabulary_tuple("_PERSISTENT_FAULT_OPS")
+    assert set(ci_suite._STACK_FAULT_READ_OP) == {d for d in _vocabulary("_FAULT_DEVICE_OPS") if d not in ("uart_link", "wlan")}
+    assert not [(d, op) for d, op in ci_suite._STACK_FAULT_READ_OP.items() if (d, op) in persistent or op not in _vocabulary("_FAULT_DEVICE_OPS")[d]]
+
+
+def _vocabulary_tuple(name: str) -> "tuple[tuple[str, str], ...]":
+    # digital_twin/launch.py's tuple of (driver, op) pairs under `name`, read by ast.
+    for node in ast.parse((_REPO_ROOT / "digital_twin" / "launch.py").read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name:
+            pairs = ast.literal_eval(node.value)
+            assert isinstance(pairs, tuple)
+            return pairs
+    raise AssertionError(f"digital_twin/launch.py no longer defines {name}")
 
 
 @pytest.mark.parametrize("args", [["--only", "5x"], ["--only", "5b"], ["--only", "4,5"], ["--repeat", "0"], ["--gc-threshold", "1024"]])

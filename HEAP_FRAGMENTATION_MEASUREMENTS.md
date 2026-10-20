@@ -4,7 +4,8 @@ How to get a heap-layout or serving-memory figure worth believing, on the digita
 board: what the allocator does, which instruments and metrics work, the traps that have silently
 produced wrong numbers, how to calibrate the twin, and how to rebuild the instruments. **It holds
 method, not results.** Current-state facts and rules live where they are enforced — `SPECIFICATION.md`
-Part I (I.2's settled decisions, I.3's bounded assembly, I.4(e)/(f)/(f.1)/(g)), H.7 and B.14.2 —
+Part I (I.2's allocation-site catalog with its recorded decisions, I.3's bounded assembly,
+I.4(e)/(f)/(f.1)/(g)), H.7 and B.14.2 —
 and the silicon-side rules for serving under load are `tests_hardware/README.md`'s "Measuring heap
 and serving under load". This file is the reasoning those rules come from.
 

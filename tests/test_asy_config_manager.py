@@ -8,6 +8,7 @@ from collections import namedtuple
 
 from _async_harness import run
 from _error_codes import code
+from _recording_print import record_prints
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
 
@@ -21,7 +22,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
+    from collections.abc import Coroutine, Sequence
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -2330,6 +2331,46 @@ def test_get_error_counter_accumulates_across_later_calls_too() -> None:
         assert _newest_code(mgr) == code("E", "CFG_NOT_VALID")
     finally:
         os.rmdir(path)
+
+
+def _count_and_lines(mgr: "cm.ConfigManager", reads: "Sequence[Coroutine[object, object, object]]") -> "tuple[int, int]":
+    # The history's count after the reads, and the console lines they printed; each read answers None.
+    with record_prints(mgr.pr) as recorder:
+        for read in reads:
+            assert run(read) is None
+    return run(mgr.get_error_counter())[mgr.name]["ErrCount"], len(recorder.lines)
+
+
+def test_an_invalid_store_keeps_one_entry_and_one_line_for_its_run_of_failed_reads() -> None:
+    # A store invalid for the boot fails every read: the first persists and prints, the rest add nothing; a cleared
+    # history starts a new run, so the still-invalid store shows again once.
+    path = _tmp_path("invalidrun.cfg")
+    _remove(path)
+    os.mkdir(path)
+    try:
+        mgr = cm.ConfigManager(path, _SCHEMA, "TEST", log=LogConfig(None, 10, 1))
+        with record_prints():
+            run(mgr.setup())  # its own entry: the path is a directory
+        reads = [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT), mgr.get_dict(["Count"]), mgr.get_str_values(_VAL_STR)]
+        assert _count_and_lines(mgr, reads) == (2, 1)
+        assert _newest_code(mgr) == code("E", "CFG_NOT_VALID")
+        assert run(mgr.reset_error_counter()) is True
+        assert _count_and_lines(mgr, [mgr.get_dict(["Count"]), mgr.get_int_values(_VAL_INT)]) == (1, 1)
+    finally:
+        os.rmdir(path)
+
+
+def test_a_wrong_typed_value_keeps_one_entry_per_run_and_a_good_read_ends_the_run() -> None:
+    mgr, path = _make("wrongtyperun.cfg")
+    mgr.pr.level = 1  # the entry's console line prints at the error level
+    try:
+        run(mgr.reset_error_counter())
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR), mgr.get_dict(["Missing"])]) == (1, 1)
+        assert run(mgr.get_str_values(_VAL_STR)) == ["abc"]  # a good read ends the run
+        assert _count_and_lines(mgr, [mgr.get_int_values(_VAL_STR), mgr.get_int_values(_VAL_STR)]) == (2, 1)
+        assert _newest_code(mgr) == code("E", "CONTRACT")
+    finally:
+        _remove(path)
 
 
 def test_configmanager_corrupt_json_warning_recorded_via_wrn_s() -> None:

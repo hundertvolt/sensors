@@ -9,6 +9,8 @@ import asyncio
 
 from micropython import const
 
+from asy_print_log import console
+
 COBS_DELIMITER = const(0x00)
 
 _COBS_MAX_RUN = const(0xFF)  # a code byte of 0xFF means "254 data bytes, no zero follows"
@@ -81,7 +83,9 @@ class FramingCOBS(FramingBase):
         if max_frame > 0:
             try:
                 self._scratch = bytearray(self.max_encoded(self.max_frame))
-            except (MemoryError, OverflowError):
+            except (MemoryError, OverflowError) as e:
+                # No logger in this class: one ungated line keeps a caught allocation failure visible to the memory gates (CLAUDE.md memory rule).
+                console("FramingCOBS", "scratch allocation failed:", e)
                 self._scratch = None
 
     def _checked(self, buf: bytearray, size: int) -> bool:

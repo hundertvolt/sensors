@@ -1304,6 +1304,152 @@ def test_a_set_register_struct_above_the_scratch_still_writes_address_and_payloa
 
 
 # ---------------------------------------------------------------------------
+# get_register_into() and whole-buffer transfers - the caller's own buffer goes to machine.I2C as it is
+# ---------------------------------------------------------------------------
+
+
+def _record_buffers(mock: FakeI2C) -> "list[object]":
+    # Every buffer object the fake's readfrom_into()/writeto() is handed, in call order, the calls themselves unchanged.
+    received: list[object] = []
+    real_read, real_write = mock.readfrom_into, mock.writeto
+
+    def read(address: int, buf: object, stop: bool = True) -> None:
+        received.append(buf)
+        real_read(address, buf, stop)
+
+    def write(address: int, buf: object, stop: bool = True) -> int:
+        received.append(buf)
+        return real_write(address, buf, stop)
+
+    mock.readfrom_into = read  # type: ignore[method-assign]
+    mock.writeto = write  # type: ignore[method-assign]
+    return received
+
+
+def test_get_register_into_fills_exactly_the_callers_buffer() -> None:
+    # The pointer write and the read get_register_bytes() makes, the read straight into the caller's buffer: only
+    # the register byte passes through the shared scratch, and the fake is handed the caller's object itself.
+    i2c = _make_i2c()
+    mock = _fake(i2c)
+    mock.registers[(0x50, 0x04)] = bytearray(b"\x10\x20\x30\x40")
+    i2c._scratch[:] = b"\xee" * _SCRATCH_SIZE
+    received = _record_buffers(mock)
+    buf = bytearray(3)
+    assert i2c.get_register_into(0x50, 0x04, buf) is True
+    assert buf == b"\x10\x20\x30"
+    assert len(received) == 2 and received[1] is buf
+    assert bytes(i2c._scratch)[1:] == b"\xee" * (_SCRATCH_SIZE - 1)
+    assert mock.log == [("writeto", 0x50, b"\x04", False), ("readfrom_into", 0x50, b"\x10\x20\x30", True)]
+    mock.log.clear()
+    assert i2c.get_register_into(0x50, 0x04, bytearray(0)) is False
+    i2c.deinit()
+    assert i2c.get_register_into(0x50, 0x04, buf) is False
+    assert mock.log == [("deinit",)]  # neither refusal made a transfer
+
+
+def test_get_register_into_lets_a_bus_oserror_propagate_and_never_reads_after_a_nacked_register_byte() -> None:
+    i2c = _make_i2c()
+    _fake(i2c).registers[(0x50, 0x20)] = bytearray(b"\x01\x02")
+    _fake(i2c).inject_fault("readfrom_into", OSError, errno.ETIMEDOUT, "stretch", match=0x20)
+    try:
+        i2c.get_register_into(0x50, 0x20, bytearray(2))
+        raised = None
+    except OSError as e:
+        raised = e.errno
+    assert raised == errno.ETIMEDOUT
+    buf = bytearray(b"\xaa\xaa")
+    _fake(i2c).log.clear()
+    _fake(i2c).short_ack(0x50, 0)
+    assert _eio(lambda: i2c.get_register_into(0x50, 0x20, buf))
+    assert buf == b"\xaa\xaa"  # an EIO, never the untouched buffer read as fresh data
+    assert _fake(i2c).log == [("writeto", 0x50, b"\x20", False), ("writeto", 0x50, b"", True)]
+
+
+def test_device_get_register_into_forwards_its_address_and_addrsize() -> None:
+    i2c = _make_i2c()
+    _fake(i2c).register_device(0x51, addrsize=16)
+    _fake(i2c).registers[(0x51, 0x0102)] = bytearray(b"\x12\x34")
+    _fake(i2c).registers[(0x50, 0x04)] = bytearray(b"\x56")
+    buf = bytearray(2)
+    assert run(I2CDevice(i2c, 0x51).get_register_into(0x0102, buf, addrsize=16)) is True
+    assert buf == b"\x12\x34"
+    assert _fake(i2c).log[0] == ("writeto", 0x51, b"\x01\x02", False)
+    one = bytearray(1)
+    assert run(I2CDevice(i2c, 0x50).get_register_into(0x04, one)) is True
+    assert one == b"\x56"
+
+
+def test_a_full_buffer_transfer_hands_the_fake_the_callers_object() -> None:
+    # A whole buffer, however it is named (no range, or 0 to its length), reaches machine.I2C as the caller's own
+    # object; only a region is a view, of exactly that region.
+    i2c = _make_i2c()
+    mock = _fake(i2c)
+    mock.attached.add(0x60)  # a raw device: reads come from its queue, writes are plain transfers
+    received = _record_buffers(mock)
+    buf = bytearray(4)
+    out = b"\x10\x20\x30"
+    device = I2CDevice(i2c, 0x60)
+    assert i2c.readfrom_into(0x60, buf) is True
+    assert i2c.readfrom_into(0x60, buf, 0, len(buf)) is True
+    assert i2c.writeto(0x60, out) == 3
+    assert i2c.writeto(0x60, out, 0, len(out)) == 3
+    assert i2c.writeto_then_readfrom(0x60, out, buf) is True
+    assert run(device.readinto(buf)) is True
+    assert run(device.write(out)) is True
+    assert run(device.write_then_readinto(out, buf)) is True
+    expected = [buf, buf, out, out, out, buf, buf, out, out, buf]
+    assert len(received) == len(expected)
+    assert all(received[i] is expected[i] for i in range(len(expected)))
+    assert i2c.writeto(0x60, "abc") == 3
+    assert type(received[-1]) is bytes  # a str is converted first and then passed whole
+    received.clear()
+    mock.read_queue_by_address[0x60] = [b"\xaa\xbb"]
+    buf[:] = bytes(4)
+    assert i2c.readfrom_into(0x60, buf, 1, 3) is True
+    assert buf == b"\x00\xaa\xbb\x00"
+    assert i2c.writeto(0x60, b"WXYZ", 1, 3) == 2
+    assert [type(got) for got in received] == [memoryview, memoryview]
+    assert [len(got) for got in received] == [2, 2]  # type: ignore[arg-type]
+    assert mock.log[-1] == ("writeto", 0x60, b"XY", True)
+
+
+def test_the_scratch_view_is_one_object_for_the_bus_life() -> None:
+    # Every register read and write within the scratch slices the one view the bus holds, and a whole-buffer
+    # transfer takes none: no memoryview() call at all, across a re-init too.
+    i2c = _make_i2c()
+    mock = _fake(i2c)
+    view = i2c._scratch_view
+    assert type(view) is memoryview and len(view) == _SCRATCH_SIZE
+    view[0] = 0x5A
+    assert i2c._scratch[0] == 0x5A  # a view of the scratch itself, not of a copy
+    mock.registers[(0x50, 0x10)] = bytearray(b"\x01\x02\x03")
+    wraps: list[object] = []
+    real_memoryview = memoryview
+
+    def counting(obj: object) -> memoryview:
+        wraps.append(obj)
+        return real_memoryview(obj)  # type: ignore[arg-type]
+
+    asy_i2c_driver.memoryview = counting  # type: ignore[attr-defined]  # a module-global shadow of the builtin
+    try:
+        i2c.get_register_struct(0x50, 0x10, "3s")
+        i2c.get_bits(0x50, 4, 0x10, 0, 1)
+        i2c.get_register_bytes(0x50, 0x10, 3)
+        i2c.get_register_into(0x50, 0x10, bytearray(3))
+        i2c.set_bits(0x50, 4, 0x10, 0, 0x5, 1)
+        i2c.set_register_struct(0x50, 0x10, ">H", 0x1234)
+        i2c.readfrom_into(0x50, bytearray(2))
+        i2c.writeto(0x50, b"\x10")
+        i2c.init(0, scl_pin=1, sda_pin=0, frequency=100000)
+        _fake(i2c).register_device(0x50)
+        i2c.get_register_bytes(0x50, 0x10, 2)
+    finally:
+        del asy_i2c_driver.memoryview  # type: ignore[attr-defined]
+    assert wraps == []
+    assert i2c._scratch_view is view
+
+
+# ---------------------------------------------------------------------------
 # The bus rungs: the boot clear before the controller exists, then clear() and recover() at runtime
 # ---------------------------------------------------------------------------
 

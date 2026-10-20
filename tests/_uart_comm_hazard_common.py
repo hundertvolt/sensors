@@ -49,11 +49,11 @@ def timeout_for(crc: "CrcMaker") -> int:
     return _TIMEOUT_MS if crc is None else _TIMEOUT_MS * _CRC_TIMEOUT_FACTOR
 
 
-def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v") -> Pair:
+def hazard_pair(crc: "CrcMaker" = None, timeout_ms: int | None = None, answer: bytes = b"v", *, debug: int | None = None) -> Pair:
     maker = (lambda: None) if crc is None else crc
     pair = Pair(
         payload_size=_PAYLOAD, timeout=timeout_for(crc) if timeout_ms is None else timeout_ms,
-        get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(),
+        get_callback=echo_get(answer), set_callback=accept_set(), crc_a=maker(), crc_b=maker(), debug=debug,
     )
     assert run(pair.setup(), RUN_LIMIT_S) is True
     return pair

@@ -15,6 +15,7 @@ from _recording_print import record_prints
 from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _uart_comm_harness import (
+    ERROR_LEVEL,
     PAYLOAD_SIZE,
     POLL_WAIT_MS,
     RUN_LIMIT_S,
@@ -1441,7 +1442,7 @@ def test_a_boot_drain_that_hits_its_bound_persists_nothing() -> None:
 def test_a_flood_that_laps_the_ring_drains_to_its_bound_not_as_quiet() -> None:
     # A peer sending faster than the drain reads laps the receive ring, and the read reports that overrun as a
     # failure: the drain must keep going (the line is anything but quiet) until its bound, then log W54.
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
 
     async def flood() -> None:
         while True:
@@ -2069,12 +2070,12 @@ def test_a_stream_of_the_largest_declarable_size_completes_and_one_more_byte_is_
         buf[0 : len(buf)] = source[start : start + len(buf)]
         return len(buf)
 
-    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
     sent, result = _stream_with_listener(pair, total, pull)
     assert sent is True
     assert copied_out(result.payload) == source
     assert len(frames(pair.wire_from_initiator(), _FRAME)) == 255
-    refused = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    refused = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
     assert run(refused.initiator.uart_set_stream(1, total + 1, pull), RUN_LIMIT_S) is False
     assert refused.wire_from_initiator() == b""
 
@@ -2410,9 +2411,9 @@ def _scrub(pair: Pair) -> None:
     pair.fake_b.log.clear()
 
 
-def _cap_pair(cap_side: str, answer: bytes = b"") -> Pair:
+def _cap_pair(cap_side: str, answer: bytes = b"", *, debug: int | None = None) -> Pair:
     # The default cap on one end, a two-frame cap on the other: the refusing end is the receiver.
-    pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set())
+    pair = Pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(answer), set_callback=accept_set(), debug=debug)
     assert run(pair.setup(), RUN_LIMIT_S) is True
     (pair.responder if cap_side == "responder" else pair.initiator)._max_transfer_bytes = 2 * PAYLOAD_SIZE
     return pair
@@ -2502,11 +2503,11 @@ def test_an_expected_size_over_the_cap_is_refused_before_any_allocation() -> Non
 
 @_on_poll_rounds
 def test_a_train_at_the_cap_is_accepted() -> None:
-    pair = _cap_pair("responder")
+    pair = _cap_pair("responder", debug=ERROR_LEVEL)
     sent, result = _set_with_listener(pair, 0x24, bytes(range(2 * PAYLOAD_SIZE)))
     assert sent is True
     assert copied_out(result.payload) == bytes(range(2 * PAYLOAD_SIZE))
-    pair = _cap_pair("initiator", bytes(range(2 * PAYLOAD_SIZE)))
+    pair = _cap_pair("initiator", bytes(range(2 * PAYLOAD_SIZE)), debug=ERROR_LEVEL)
     assert copied_out(run(pair.with_listener(pair.initiator.uart_get(0x26)), _RUN_BOUND_S)) == bytes(range(2 * PAYLOAD_SIZE))
 
 
@@ -2535,7 +2536,7 @@ def test_repeated_maximum_size_and_over_cap_trains_keep_the_heap_flat() -> None:
     cap = 2 * PAYLOAD_SIZE
     at_cap = bytes(range(cap))
     limits = transfer_limits(timeout=_SHORT_REPLY_TIMEOUT_MS, chunk_bytes=PAYLOAD_SIZE, max_transfer_bytes=cap)
-    pair = run(build_pair(limits=limits, get_callback=echo_get(at_cap), set_callback=accept_set()), RUN_LIMIT_S)
+    pair = run(build_pair(limits=limits, get_callback=echo_get(at_cap), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
     intact = refused = 0
 
     async def one_round(i: int) -> None:
@@ -2870,7 +2871,8 @@ class _StarvedAlloc:
     # Shadows asy_uart_comm.py's module-global `bytearray` - tests/'s usual reassign-a-module-name
     # mocking pointed at an allocation (SPECIFICATION.md Part E.4). Armed and one-shot, since every
     # degraded path allocates too; `skip` names the allocation to starve by position, not by count.
-    def __init__(self) -> None:
+    def __init__(self, err: Exception | None = None) -> None:
+        self.err = MemoryError("starved") if err is None else err
         self.skip = 0
         self.armed = False
         self.fired = 0
@@ -2886,7 +2888,7 @@ class _StarvedAlloc:
             else:
                 self.armed = False
                 self.fired += 1
-                raise MemoryError("starved")
+                raise self.err
         return bytearray(*args)
 
     def __enter__(self) -> "_StarvedAlloc":
@@ -2907,6 +2909,17 @@ def test_a_scratch_allocation_that_fails_during_construction_refuses_the_object(
     assert starved.fired == 1
     assert comm._init_errno == code("E", "ALLOC")
     assert run(comm.setup(), RUN_LIMIT_S) is False
+
+
+def test_a_failed_scratch_allocation_logs_its_own_text() -> None:
+    # The logger carries the caught error's text, not only the construction errno, so the memory gates read it at
+    # the error level the load tests log at.
+    err = MemoryError("injected for the comm scratch")  # worded clear of the memory gates' markers
+    with _StarvedAlloc(err) as starved, record_prints() as rec:
+        starved.arm()
+        comm = _make_comm(log=LogConfig(None, 4, ERROR_LEVEL))
+    assert comm._init_errno == code("E", "ALLOC")
+    assert rec.lines == [("UART", "Scratch buffer allocation failed:", err), ("UART", "Construction failed, errno", code("E", "ALLOC"))]
 
 
 def test_every_internal_buffer_read_rechecks_rather_than_indexing_none() -> None:

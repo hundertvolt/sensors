@@ -130,10 +130,11 @@ class I2C:
     ) -> None:
         self._i2c: _I2C | None = None
         self.bus_lock = asyncio.Lock()  # serialises the I2C peripheral: every device session on this bus holds it
-        # One long-lived read buffer per bus, not a fresh bytes per register read (Part I). Sharing
-        # it across this bus's devices is sound only because every method fills and decodes it with
-        # no await between, and no Timer/Pin.irq callback here touches I2C - both checked (Part G.2).
+        # One long-lived buffer per bus and one view of it, so a register access slices instead of allocating (Part I).
+        # Shared across this bus's devices: every method fills and decodes it with no await between, and no
+        # Timer/Pin.irq callback here touches I2C - both checked (Part G.2).
         self._scratch = bytearray(_SCRATCH_SIZE)
+        self._scratch_view = memoryview(self._scratch)
         self.recoveries = 0  # a wrap-by-design sequence: compared for equality only
         self._boot_clear_status = _clear_bus(scl_pin, sda_pin, _DEFAULT_TIMEOUT_US if timeout is None else timeout)
         self.init(port_id, scl_pin, sda_pin, frequency, timeout)
@@ -178,15 +179,18 @@ class I2C:
             buf[i] = (reg_addr >> (8 * (n - 1 - i))) & 0xFF
         return n
 
+    def _point_at(self, bus: _I2C, address: int, reg_addr: int, addrsize: int | None) -> None:
+        # The register address with no stop, so the read that follows starts there. Not readfrom_mem_into(): it returns
+        # with the buffer untouched when the device NACKs the register byte, so stale bytes would decode as fresh; here
+        # that is an EIO (SPECIFICATION.md F.5.1).
+        n = self._fill_reg_addr(self._scratch, reg_addr, addrsize)
+        self._write_all(bus, address, self._scratch_view[:n], stop=False)
+
     def _read_into_scratch(self, bus: _I2C, address: int, reg_addr: int, nbytes: int, addrsize: int | None) -> memoryview:
         # Returns a view over the first nbytes of the shared buffer - valid only until the next read
         # on this bus, so a caller that keeps the value must copy it out (struct.unpack already does).
-        buf = self._scratch if nbytes <= len(self._scratch) else bytearray(nbytes)  # oversized read: allocate rather than refuse
-        view = memoryview(buf)[:nbytes]
-        # Not readfrom_mem_into(): it returns with the buffer untouched when the device NACKs the register
-        # byte, so stale bytes would decode as fresh; here that is an EIO (SPECIFICATION.md F.5.1).
-        n = self._fill_reg_addr(self._scratch, reg_addr, addrsize)
-        self._write_all(bus, address, memoryview(self._scratch)[:n], stop=False)
+        view = self._scratch_view[:nbytes] if nbytes <= len(self._scratch) else memoryview(bytearray(nbytes))  # oversized read: allocate rather than refuse
+        self._point_at(bus, address, reg_addr, addrsize)
         bus.readfrom_into(address, view)
         return view
 
@@ -209,9 +213,9 @@ class I2C:
         # of a fresh buffer when they do not fit (as an oversized read allocates). No await may follow.
         n = self._fill_reg_addr(self._scratch, reg_addr, addrsize)
         if n + payload_len <= len(self._scratch):
-            return memoryview(self._scratch)[: n + payload_len]
+            return self._scratch_view[: n + payload_len]
         buf = bytearray(n + payload_len)
-        buf[:n] = memoryview(self._scratch)[:n]
+        buf[:n] = self._scratch_view[:n]
         return memoryview(buf)
 
     def get_bits(
@@ -237,6 +241,15 @@ class I2C:
         if self._i2c is None or length <= 0:
             return None
         return bytes(self._read_into_scratch(self._i2c, address, reg_addr, length, addrsize))
+
+    def get_register_into(self, address: int, reg_addr: int, buf: bytearray, addrsize: int | None = None) -> bool:
+        # len(buf) bytes straight into the caller's own buffer, for a burst it decodes at once: no scratch, no copy.
+        # False for no bus or an empty buffer; a bus OSError propagates.
+        if self._i2c is None or not len(buf):
+            return False
+        self._point_at(self._i2c, address, reg_addr, addrsize)
+        self._i2c.readfrom_into(address, buf)
+        return True
 
     def get_register_struct(
         self, address: int, reg_addr: int, reg_format: str, addrsize: int | None = None,
@@ -345,7 +358,7 @@ class I2C:
         # deinit() produces rather than swapping self._i2c under live readers. timeout=None omits the
         # kwarg instead of duplicating machine.I2C's own default, which could then drift.
         self._args = (port_id, scl_pin, sda_pin, frequency, timeout)
-        self.deinit()
+        self.deinit()  # always True (see deinit()), so a re-init has no teardown failure to report
         if timeout is None:
             self._i2c = _I2C(port_id, sda=Pin(sda_pin), scl=Pin(scl_pin), freq=frequency)
         else:
@@ -360,12 +373,14 @@ class I2C:
         *,
         stop: bool = True,
     ) -> bool:
-        # machine.I2C.readfrom_into(), with a start/end slice instead of a pre-sliced buffer.
+        # machine.I2C.readfrom_into(), with a start/end slice instead of a pre-sliced buffer; a whole buffer is
+        # passed as it is, only a region as a view of it.
         if self._i2c is None:
             return False
-        if end is None:
-            end = len(buf)
-        self._i2c.readfrom_into(address, memoryview(buf)[start:end], stop)
+        if start == 0 and (end is None or end == len(buf)):
+            self._i2c.readfrom_into(address, buf, stop)
+        else:
+            self._i2c.readfrom_into(address, memoryview(buf)[start:end], stop)
         return True
 
     async def recover(self) -> int:
@@ -411,8 +426,8 @@ class I2C:
                 buf = bytes([ord(x) for x in buf])
             except ValueError:  # character outside 0-255
                 return None
-        if end is None:
-            end = len(buf)
+        if start == 0 and (end is None or end == len(buf)):  # a whole buffer as it is, as readfrom_into() passes one
+            return self._write_all(self._i2c, address, buf, stop=stop)
         return self._write_all(self._i2c, address, memoryview(buf)[start:end], stop=stop)
 
     def writeto_then_readfrom(
@@ -468,6 +483,9 @@ class I2CDevice(Lockable):
 
     async def get_register_bytes(self, reg_addr: int, length: int, addrsize: int | None = None) -> bytes | None:
         return self.i2c.get_register_bytes(self.device_address, reg_addr, length, addrsize)
+
+    async def get_register_into(self, reg_addr: int, buf: bytearray, addrsize: int | None = None) -> bool:
+        return self.i2c.get_register_into(self.device_address, reg_addr, buf, addrsize)
 
     async def get_register_struct(
         self, reg_addr: int, reg_format: str, addrsize: int | None = None,

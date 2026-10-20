@@ -14,7 +14,7 @@ from micropython import const
 import asy_api_response as ar
 from asy_base_classes import UNAVAILABLE, HourlyWindowCounter, LockedCounter
 from asy_config_manager import FAILED, INVALID, VALID, checked_float, checked_int
-from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, console, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -92,6 +92,7 @@ if TYPE_CHECKING:
 
     StatusSourceFct = Callable[[], Awaitable[JsonDict]]
     SystemCmdFct = Callable[[str], Awaitable[bool]]
+    ResetRefusalFct = Callable[[], bool]
     NotificationLedFct = Callable[[int, int, int, float], Awaitable[bool]]
     NotificationPauseFct = Callable[[int], Awaitable[bool]]
     HotspotActiveFct = Callable[[], bool]
@@ -119,7 +120,6 @@ _WRN_HTTP_START_FAILED = const(62)
 # runs a command, so no alias, prefix or case variant does (owner, 2026-09-30). mempause's fixed 300 s lives in
 # the callback (Part A.8).
 _SYSTEM_CMDS = const(("reboot", "bootloader", "mempause", "resetconfig", "erasefram"))
-_SHUTDOWN_CMDS = const(("reboot", "bootloader", "resetconfig", "erasefram"))  # the four that end in a reset (Part A.8)
 _PAUSE_TIME_MAX = const(3600)  # inclusive upper bound for a client-supplied PauseTime - matches
 # legacy's own pauseAutoLED command range and asy_notification_service.py's own
 # set_override_led() clamp ceiling (_MAX_OVERRIDE_TIME), kept here as its own constant (not
@@ -193,7 +193,10 @@ def _body_as_dict(request: "_RequestLike") -> "dict[str, JsonValue] | None":
     # valid but non-dict body (array/string/number/null) - both degrade to the same clean ERR envelope.
     try:
         data = request.json
-    except Exception:
+    except MemoryError:
+        raise  # a heap failure is the device's, not a malformed body: the catch-all persists it and answers 500
+    except Exception as e:
+        report_if_fatal(e)
         return None
     return data if isinstance(data, dict) else None
 
@@ -308,6 +311,7 @@ class _TimeoutStreamProxy:
         timed_out: list[bool],
         head_refused: list[bool] | None = None,
         chunk: int = _DEFAULT_CHUNK_BYTES,
+        traced: list[BaseException | None] | None = None,
     ) -> None:
         self._stream = stream
         self._timeout_s = timeout_s
@@ -315,6 +319,7 @@ class _TimeoutStreamProxy:
         self._peer_gone = peer_gone  # shared by one connection's pair
         self._timed_out = timed_out  # likewise: _serve() reads it
         self._head_refused = [False] if head_refused is None else head_refused  # the reader's: the writer parses no head
+        self._traced: list[BaseException | None] = [None] if traced is None else traced  # the service's: its print skips it
         self._chunk = chunk  # the largest single read, so no read allocates more than one piece
         self._head: list[bytes] | None = []  # the response's header block until its blank line
         self._rbuf = b""  # bytes read ahead of what Microdot asked for: the next head line or the body's start
@@ -337,6 +342,7 @@ class _TimeoutStreamProxy:
             return await asyncio.wait_for(coro, self._timeout_s)
         except asyncio.TimeoutError as e:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
+            self._traced[0] = e  # after the await: no other read runs before Microdot prints this one (_print_exception())
             raise
         except OSError:
             # A read that saw a reset leaves the socket in STATE_PEER_RST_HANDLED with its pcb freed
@@ -465,6 +471,7 @@ if TYPE_CHECKING:
         settings: dict[str, Sequence[SettingsGroup]] | None
         build_info: JsonDict | None  # verbatim "build" sub-entry of GET /system (Part L.7); None omits it
         system_cmd: SystemCmdFct | None
+        reset_refusals: Sequence[ResetRefusalFct] | None  # ResetErrors clears nothing while one answers True (Part A.8)
         notification_led: NotificationLedFct | None
         notification_pause: NotificationPauseFct | None
         status_sources: dict[str, StatusSourceFct] | None
@@ -488,7 +495,7 @@ if TYPE_CHECKING:
 
 else:
     RouteSources = namedtuple("RouteSources", (
-        "sensors", "settings", "build_info", "system_cmd", "notification_led", "notification_pause",
+        "sensors", "settings", "build_info", "system_cmd", "reset_refusals", "notification_led", "notification_pause",
         "status_sources", "maintenance_sensors", "error_sources",
     ))
     ServingLimits = namedtuple("ServingLimits", (
@@ -557,7 +564,7 @@ class WebserverService:
         self._settings: dict[str, list[SettingsGroup]] = {k: list(v) for k, v in (routes.settings or {}).items()}
         self._build_info = routes.build_info
         self._system_cmd = routes.system_cmd
-        self._shutdown_accepted = False  # one-way: a _SHUTDOWN_CMDS word answered "Valid", so the unit is going down
+        self._reset_refusals = tuple(routes.reset_refusals or ())
         self._notification_led = routes.notification_led
         self._notification_pause = routes.notification_pause
         self._status_sources: dict[str, StatusSourceFct] = dict(routes.status_sources or {})
@@ -576,6 +583,7 @@ class WebserverService:
         self._port = serving.port
         self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
         self._dropped = HourlyWindowCounter()  # HTTPDropped: the last 24 hours in hourly bins, allocated once here
+        self._read_traced: list[BaseException | None] = [None]  # the read timeout the proxy traced last, until printed
         max_content_length = serving.max_content_length
 
         Request.max_content_length = max_content_length  # a Request *class* attribute, not
@@ -718,10 +726,12 @@ class WebserverService:
         except Exception as e:  # best-effort cleanup, never load-bearing - still logged (Part C.7's
             # silent-failure-masking convention) since a repeatedly-failing close() could leak TCP
             # PCBs under this platform's tiny connection ceiling with no other trace.
+            report_if_fatal(e)
             await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
         try:
             await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
+            report_if_fatal(e)
             await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
 
     async def _dispatch_notification_led(self, payload: object) -> tuple[str, bool]:
@@ -740,6 +750,7 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_led(r, g, b, t)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("notification_led callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED, False
         # External LED commands are refused while a signal runs and told to retry; internal ones wait, bounded (owner, 2026-10-02).
@@ -757,6 +768,7 @@ class WebserverService:
             # this codebase already has.
             ok = await self._notification_pause(pause)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("notification_pause callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
         return VALID if ok else FAILED
@@ -773,6 +785,7 @@ class WebserverService:
         # Registered via app.errorhandler(Exception) in __init__, purely to persist the exception
         # into FRAM history - never to shape the reply. The 500 status-code handler already does
         # that on its own, whether or not this one is registered (Part A.5).
+        report_if_fatal(exc)
         await self.pr.err_s("Unhandled exception in route handler:", exc, errno=_ERR_UNEXPECTED)
         return ar.make_response(500), 500
 
@@ -782,8 +795,12 @@ class WebserverService:
         await self.pr.wrn_s(what, wrnno=wrnno)
 
     def _print_exception(self, exc: BaseException) -> None:
-        # Microdot's own exception print (rebound in __init__): level-gated like every other line, except a
-        # MemoryError's text, which stays on the console so the memory gates read it (CLAUDE.md memory rule).
+        # Microdot's own exception print (rebound in __init__), all its request-read catch does: level-gated like every
+        # other line, except a MemoryError's text, which stays on the console so the memory gates read it (CLAUDE.md memory rule).
+        report_if_fatal(exc)
+        if exc is self._read_traced[0]:  # the proxy's read arm traced this very timeout already: one line, not two
+            self._read_traced[0] = None
+            return
         if isinstance(exc, MemoryError):
             console(_NAME, "Microdot caught:", exc)
         else:
@@ -831,7 +848,10 @@ class WebserverService:
             if key != "ResetErrors" or value is not True:
                 result[key] = INVALID  # {"ResetErrors": true} is the one request (SPECIFICATION.md A.8)
                 continue
-            if self._shutdown_accepted:  # refused, nothing cleared: the logs survive into the reboot (owner, 2026-10-13)
+            if any(refused() for refused in self._reset_refusals):
+                # Refused, nothing cleared: from the system's reset decision on, so the logs survive into the reboot (owner,
+                # 2026-10-13), and while the FRAM manager's pause holds, the logs held in memory included (owner, 2026-10-13,
+                # asked "Clear nothing when ResetErrors answers Failed in mempause?": '1 b').
                 result[key] = FAILED
                 continue
             # Every source at once, this service's own entry included (_build_status_pieces()): "`ResetErrors`
@@ -843,6 +863,7 @@ class WebserverService:
             for outcome in outcomes:
                 name = next(names, _NAME)
                 if isinstance(outcome, BaseException):  # persisted after the resets, so the cleared log keeps it
+                    report_if_fatal(outcome)
                     await self.pr.err_s("Error log reset failed:", name, outcome, errno=_ERR_CALLBACK)
                 if isinstance(outcome, BaseException) or not outcome:
                     result[key] = FAILED
@@ -865,10 +886,9 @@ class WebserverService:
             # persisted errno instead of escaping through the route handler.
             ok = await self._system_cmd(name)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("system_cmd callback failed:", e, errno=_ERR_CALLBACK)
             return FAILED
-        if ok and name in _SHUTDOWN_CMDS:  # set before this task yields: no request runs between the acceptance and here
-            self._shutdown_accepted = True
         return VALID if ok else FAILED
 
     async def _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:
@@ -886,7 +906,7 @@ class WebserverService:
             peer_gone = [False]
             timed_out = [False]
             head_refused = [False]
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes)
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes, self._read_traced)
             proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
             logged = False  # an arm below persisted this connection's one entry, so no drop trace follows it (C.7)
             try:
@@ -906,6 +926,7 @@ class WebserverService:
                 await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
                 logged = True
             except Exception as e:  # never raises out of this task (SPECIFICATION.md A.5)
+                report_if_fatal(e)
                 await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
                 logged = True
             finally:
@@ -936,7 +957,10 @@ class WebserverService:
                 if attempt >= _START_RETRIES:
                     await self.pr.wrn_s("Web server start failed:", e, wrnno=_WRN_HTTP_START_FAILED)
                     raise
-                self.pr.wrn("Web server start failed, retrying:", e)
+                if attempt == 1:  # persisted too, so a start that succeeds on a retry still leaves its trace
+                    await self.pr.wrn_s("Web server start failed, retrying:", e, wrnno=_WRN_HTTP_START_FAILED)
+                else:
+                    self.pr.wrn("Web server start failed, retrying:", e)
                 # Retries span one lwIP close linger (10 s): a socket() failure holds nothing; a failed bind()/listen()
                 # holds its pcb until a collection, up to two across the retries. The last failure ends the task (A.5).
                 await asyncio.sleep(_START_RETRY_S)
@@ -946,6 +970,7 @@ class WebserverService:
         try:  # see _write_guarded()'s own comment - identical reasoning, different source kind.
             raw = await get_log_fct()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return
@@ -956,6 +981,7 @@ class WebserverService:
             # one failing source discard every other section's already-fetched data.
             value = await fct()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Status stream source failed:", name, e, errno=_ERR_CALLBACK)
             writer.add(_UNAVAILABLE_TEXT)
             return

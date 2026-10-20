@@ -958,6 +958,9 @@ class _FakeFramManager:
     def get_chunk(self, size: int, crc: "CRCBase | None" = None, verify: int = 0, check_length: int = 8, *, owner: str) -> "_FakeFramChunk":
         return self.chunk
 
+    def get_pause(self) -> bool:
+        return False
+
 
 def test_fram_backed_variant_survives_a_reboot() -> None:
     chunk = _FakeFramChunk()

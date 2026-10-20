@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "tests/test_bus_hazard_multi_device.py", line 10, in <module>
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30l/tests/_bus_hazard_catalog.py", line 12, in <module>
+MemoryError: memory allocation failed, allocating 64 bytes

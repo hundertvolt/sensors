@@ -23,7 +23,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel, run_timed  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -84,8 +84,9 @@ async def _boot(device: str) -> "tuple[ModuleType, WDT]":
     machine.configure_wiring(plan)
     cfg_path = _scratch.dir()
     write_offline_ntp_config(cfg_path)
+    write_error_level_config(cfg_path)
     watchdog = boot_entry_watchdog(module, device)
-    await module.build_system(watchdog=watchdog, cfg_path=cfg_path, web_host="127.0.0.1", web_port=0)
+    await module.build_system(watchdog=watchdog, cfg_path=cfg_path, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=0)
     runner_plan: _Plan = cast("_Plan", plan)
     run_generic_integration._wire_uart_crossover(module, runner_plan)
     await module.sysfunct.run_setups(module._collect_setups())

@@ -19,7 +19,7 @@ from asy_base_classes import DeviceSession, SensorReaderConfig, utc_now
 from asy_config_manager import checked_float, make_dict, name_cfg
 from asy_crc_checks import CRC8, CRC32
 from asy_i2c_driver import I2CDevice
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 from voc_algorithm import VOCAlgorithm
 
 try:
@@ -247,6 +247,8 @@ class SGP40_Reader(SensorReaderConfig):
             else:
                 if self._ts_storage is None:  # refused: the declared chunks exceed the chip, fixed by the build
                     self.pr.err("FRAM backup storage allocation failed!")
+        # The backup's one buffer, allocated with the reader: a restore waiting for NTP checks the storage every second.
+        self._backup_buf: FRAMChunkTimestampedBuffer | None = None if self._ts_storage is None else self._ts_storage.get_buffer()
         self._last_backup: int | None = None
         self._restored_from: int | None = None
         self._reset_pending = False
@@ -289,7 +291,9 @@ class SGP40_Reader(SensorReaderConfig):
             self._backup_counter = 0
             # counts seconds, resets at 86400 = 1 day, give it some more space
 
-        buf = self._ts_storage.get_buffer() if serialize or deserialize else None
+        if (serialize or deserialize) and (self._backup_buf is None or self._backup_buf.get_buf() is None):
+            self._backup_buf = self._ts_storage.get_buffer()  # the reader's buffer failed to allocate: tried again
+        buf = self._backup_buf if serialize or deserialize else None
         if buf is not None and buf.get_buf() is None:  # the buffer's allocation failed: both parts wait a cycle
             if deserialize:
                 self._voc_init += 1  # the restore stays pending, never read as "no backup"
@@ -312,14 +316,13 @@ class SGP40_Reader(SensorReaderConfig):
             temp_data = await self._temperature.source.get_data()
             hum_data = await self._humidity.source.get_data()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Compensation data read failed:", e, errno=_ERR_SOURCE)
             return None, None
         return _current_value(temp_data, self._temperature.field, now), _current_value(hum_data, self._humidity.field, now)
 
     async def _init_sgp(self) -> bool:
-        if self._timer_error is not None:  # a failed read-trigger arm: the restarted task re-arms first
-            self._timer_error = None
-            self.start_timer()
+        await self._rearm_timer()  # a failed read-trigger arm is persisted once and re-armed first
         self._err_cnt_internal = 0
         self._backup_counter = 0
         restore_pending = self._voc_init > 0  # this boot's restore has not run its course yet
@@ -328,6 +331,7 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.setup()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Error in initial setup:", e, errno=_ERR_INIT)
             await self._init_failed()
             return False  # error
@@ -458,6 +462,7 @@ class SGP40_Reader(SensorReaderConfig):
             voc_state = self._voc_state(voc_index, fresh=reset_for_measure, restored=deserialized)
 
         except Exception as e:
+            report_if_fatal(e)
             # I2C failed, but a pending reset_for_measure already completed above regardless.
             if reset_now and self._reset_algo_applied and self._reset_fram_cleared:
                 self._reset_pending = False
@@ -475,6 +480,7 @@ class SGP40_Reader(SensorReaderConfig):
         try:
             await self._sgp.turn_heater_off()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Heater-off failed:", e, errno=_ERR_CHIP_SET)
             return False
         return True
@@ -542,6 +548,7 @@ class SGP40_Reader(SensorReaderConfig):
             try:
                 synced = await ntp_synced()
             except Exception as e:  # counts as not synced, as the FRAM layer treats the same callback
+                report_if_fatal(e)
                 await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
                 return False
             if not synced:
@@ -668,7 +675,8 @@ class SGP40_I2C:
         self._reply_buffer = bytearray(9)  # Sized for the longest reply, the 3-word serial number (datasheet Table 8)
         self.crc = CRC8()
         self._measure_command = bytearray(b"\x26\x0f\x80\x00\xa2\x66\x66\x93")
-        self._voc_algorithm: VOCAlgorithm | None = None
+        self._voc_algorithm = VOCAlgorithm()  # long-lived: built with the chip object, never in a read
+        self._voc_algorithm.vocalgorithm_init()
 
     @staticmethod
     def _celsius_to_ticks(temperature: float, buf: bytearray | memoryview) -> None:
@@ -680,33 +688,39 @@ class SGP40_I2C:
         buf[0] = ticks >> 8  # most significant byte
         buf[1] = ticks & 0xFF  # least significant byte
 
-    async def _measure_in_session(self, sgp40: DeviceSession) -> int:
-        # Caller holds self._i2c_sgp40. The finally restores the default command even when the read raises.
-        self._command_buffer = self._measure_command  # recycle a single buffer
-        try:
-            return (await self._read_word_from_command(sgp40, _MEASURE_WAIT_MS))[0]
-        finally:
-            self._command_buffer = self._default_command_buffer
-
-    async def _read_word_from_command(self, sgp40: DeviceSession, delay_ms: int, readlen: int = 1) -> list[int]:
-        # Sends self._command_buffer, waits delay_ms, reads back readlen CRC-checked words into the reply buffer.
-        replylen = readlen * 3
+    async def _exchange(self, sgp40: DeviceSession, delay_ms: int, words: int) -> None:
+        # Sends self._command_buffer, waits delay_ms, reads back `words` CRC-checked words into the reply buffer.
+        replylen = words * 3
         if replylen > len(self._reply_buffer):
             raise ValueError("reply longer than the reply buffer")
         async with sgp40.i2c_device as i2c:  # bus session
             if not await i2c.write(self._command_buffer):
                 raise OSError("I2C bus not initialized")
-        await asyncio.sleep(round(delay_ms * 0.001, 3))
+        await asyncio.sleep_ms(delay_ms)
         async with sgp40.i2c_device as i2c:
             if not await i2c.readinto(self._reply_buffer, end=replylen):
                 raise OSError("I2C bus not initialized")  # before the CRC check: a stale buffer would pass it
-
-        readdata_buffer = []
         for i in range(0, replylen, 3):
             if await self.crc.check_from(self._reply_buffer, 3, start=i) is None:
                 raise RuntimeError("CRC check failed while reading data")
-            readdata_buffer.append(unpack_from(">H", self._reply_buffer, i)[0])
-        return readdata_buffer
+
+    async def _measure_in_session(self, sgp40: DeviceSession) -> int:
+        # Caller holds self._i2c_sgp40. The finally restores the default command even when the read raises.
+        self._command_buffer = self._measure_command  # recycle a single buffer
+        try:
+            return await self._read_word(sgp40, _MEASURE_WAIT_MS)
+        finally:
+            self._command_buffer = self._default_command_buffer
+
+    async def _read_word(self, sgp40: DeviceSession, delay_ms: int) -> int:
+        # The per-sample read: one word decoded in place, no list, tuple or float.
+        await self._exchange(sgp40, delay_ms, 1)
+        return (self._reply_buffer[0] << 8) | self._reply_buffer[1]
+
+    async def _read_words(self, sgp40: DeviceSession, delay_ms: int, count: int) -> list[int]:
+        # The serial number's three words, read once at setup.
+        await self._exchange(sgp40, delay_ms, count)
+        return [unpack_from(">H", self._reply_buffer, 3 * i)[0] for i in range(count)]
 
     @staticmethod
     def _relative_humidity_to_ticks(humidity: float, buf: bytearray | memoryview) -> None:
@@ -740,7 +754,7 @@ class SGP40_I2C:
         async with self._i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x36
             self._command_buffer[1] = 0x82
-            serialnumber = await self._read_word_from_command(sgp40, _SERIAL_READ_WAIT_MS, readlen=3)
+            serialnumber = await self._read_words(sgp40, _SERIAL_READ_WAIT_MS, 3)
         if serialnumber[0] != 0x0000:
             # Word 0 == 0 is undocumented (datasheet 3.4 gives no structure) but field-proven: legacy checks it on
             # every unit. The dev board's word 0 is still to be recorded on real hardware.
@@ -749,10 +763,10 @@ class SGP40_I2C:
         async with self._i2c_sgp40 as sgp40:  # device session
             self._command_buffer[0] = 0x28
             self._command_buffer[1] = 0x0E
-            self_test = await self._read_word_from_command(sgp40, _SELF_TEST_WAIT_MS)
+            self_test = await self._read_word(sgp40, _SELF_TEST_WAIT_MS)
         # Datasheet Table 13: only the high byte is the pass/fail marker (0xD4/0x4B); the low
         # byte is documented as "ignore", not guaranteed zero.
-        if (self_test[0] >> 8) != _SELF_TEST_PASS:
+        if (self_test >> 8) != _SELF_TEST_PASS:
             raise RuntimeError("self test failed")
         await self._reset()
 
@@ -770,10 +784,6 @@ class SGP40_I2C:
         # VOC index (1-500, Sensirion Gas Index Algorithm - see voc_algorithm.py) from the
         # humidity-compensated raw signal. 100 = average of the last 24h; <100 improving,
         # >100 deteriorating air quality (datasheet Figure 8).
-        if self._voc_algorithm is None:
-            self._voc_algorithm = VOCAlgorithm()
-            self._voc_algorithm.vocalgorithm_init()
-
         if reset:
             self._voc_algorithm.vocalgorithm_reset()
 

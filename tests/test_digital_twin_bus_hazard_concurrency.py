@@ -24,7 +24,8 @@ from _async_harness import cancel, run_timed  # noqa: E402 - imported after the 
 from _crc8 import crc8  # noqa: E402 - imported after the prewarm and the UDP shim; the twin's own CRC-8, independent of src/
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
-from _generated_module import boot_entry_watchdog  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_int  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -134,8 +135,9 @@ async def _boot(device: str, *, port: int = 0, cfg_path: "str | None" = None) ->
     machine.configure_wiring(wiring_plan(device))
     cfg = cfg_path if cfg_path is not None else _scratch.dir()
     write_offline_ntp_config(cfg)
+    write_error_level_config(cfg)
     watchdog = boot_entry_watchdog(module, device)
-    await module.build_system(watchdog=watchdog, cfg_path=cfg, web_host="127.0.0.1", web_port=port)
+    await module.build_system(watchdog=watchdog, cfg_path=cfg, debug=ERROR_LEVEL, web_host="127.0.0.1", web_port=port)
     plan: _Plan = cast("_Plan", wiring_plan(device))
     run_generic_integration._wire_uart_crossover(module, plan)  # before the setups (CLAUDE.md "Known hang cause")
     await module.sysfunct.run_setups(module._collect_setups())
@@ -304,7 +306,7 @@ def _rung_across_offsets(device: str, bus_name: str, siblings: "tuple[str, ...]"
 
             await asyncio.gather(*(_sibling_reads(device, s, bus, failures) for s in siblings), fire())
 
-        with _FastSleep():
+        with FastAsyncSleep():
             run_timed(scenario(), timeout_s=_RUN_BOUND_S)
         assert not failures, f"{device} offset {offset}: a sibling read failed beside the rung: {failures}"
         check(built[0])
@@ -361,22 +363,6 @@ async def _sibling_reads(device: str, sibling: str, bus: "asy_i2c_driver.I2C", f
             if value is None:
                 failures.append(f"{sibling}: None")
         await asyncio.sleep(0)
-
-
-class _FastSleep:
-    # asyncio.sleep() yields once instead of waiting (the SCD30's 2.5 s restart, the SGP40's conversion);
-    # process-wide, so restored however the block exits.
-    def __enter__(self) -> "_FastSleep":
-        self._real = asyncio.sleep
-
-        async def fast(_seconds: float) -> None:
-            await self._real(0)
-
-        asyncio.sleep = fast  # type: ignore[assignment]  # restored on exit
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        asyncio.sleep = self._real
 
 
 def test_the_real_task_graph_survives_concurrent_bus_load_including_a_real_general_call() -> None:
@@ -860,7 +846,7 @@ def test_a_sensor_task_cancelled_inside_its_session_leaves_the_bus_usable() -> N
                         await _sibling_reads(device, sibling, bus, failures, rounds=1)
                 state.append(await sgp.measure_raw())
 
-            with _FastSleep():
+            with FastAsyncSleep():
                 run_timed(scenario(), timeout_s=_RUN_BOUND_S)
             held_bus, held_device, ended, restored, again = state
             where = f"{device} {bus_name}: the SGP40 cancelled {turns} turns in"

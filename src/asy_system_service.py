@@ -18,7 +18,7 @@ from micropython import const
 
 from asy_base_classes import UNAVAILABLE, LockedValue, TickSeconds, arm_tick_timer, utc_now
 from asy_config_manager import FAILED, UNCHANGED, VALID, ConfigManager, config_filename, instance_name, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig, make_logger
+from asy_print_log import DEFAULT_LOG, LogConfig, fatal_reported, make_logger, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and SYSTEM's bands.
 _ERR_CALLBACK = const(14)
 _ERR_TIMER = const(17)
+_ERR_STACK_EXHAUSTED = const(25)
 _ERR_TASK_STARTER_RAISED = const(40)
 _ERR_TASK_BUDGET_REBOOT = const(41)
 _ERR_TASK_RAISED = const(42)
@@ -82,6 +83,7 @@ _RR_CONFIG_RESET = const(7)
 _RR_FRAM_ERASED = const(8)
 _RR_COMMAND_INCOMPLETE = const(9)
 _RR_BOOT_FAILURE = const(10)  # + the boot phase that never completed
+_RR_STACK_EXHAUSTED = const(20)  # outside the 10 + phase band of boot failures
 RR_INTERRUPTED = const(21)  # Ctrl-C on the console ended the run and the watchdog reset followed; the boot entry imports it
 # The chip's own reset flags, which reset_cause() collapses (ports/rp2/modmachine.c:74-89): WATCHDOG REASON bits 0-1
 # (TIMER, FORCE) and CHIP_RESET bits 8, 16, 20 (HAD_POR, HAD_RUN, HAD_PSM_RESTART; pico-sdk watchdog.h, vreg_and_chip_reset.h).
@@ -195,6 +197,9 @@ class SystemService:
         self._force_watchdog_starve = False
         # One-way: set when a system command is accepted; from then only the shutdown sequence feeds (owner, 2026-09-30).
         self._feed_owned = False
+        # One-way: set at either reset decision, a command's acceptance or the supervisor's escalation, before its first
+        # await; from then ResetErrors is refused, so the logs that explain the reset survive it (owner, 2026-10-13, paraphrase).
+        self._reset_decided = False
         # System-settings store, deliberately not a SensorReaderConfig subclass - no measurement
         # data and no error-streak concept, both of which that base would drag in unused - just a
         # directly-embedded ConfigManager.
@@ -248,6 +253,7 @@ class SystemService:
             try:
                 setter(value)
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Level setter failed:", e, errno=_ERR_CALLBACK)
 
     def _charge_task_budget(self, budget: int) -> int:
@@ -271,6 +277,7 @@ class SystemService:
                     async with store.owner_lock:
                         await store.flush_pending()
             except Exception as e:
+                report_if_fatal(e)
                 await self.pr.err_s("Config flush before reset failed:", store.name, e, errno=_ERR_CALLBACK)
                 ok = False
             ok = not store.unpersisted and ok
@@ -286,6 +293,7 @@ class SystemService:
         except asyncio.CancelledError:
             await self.pr.err_s("Task", n, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("Task", n, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
             await self.pr.err_s("Task", n, "ended: returned", errno=_ERR_TASK_RETURNED)
@@ -297,6 +305,7 @@ class SystemService:
             synced = await self._ntp_is_synced()
         except Exception as e:  # caller-supplied callback, typed as any Callable - guarded broadly
             # since it isn't guaranteed to be a specific, known-safe implementation
+            report_if_fatal(e)
             await self.pr.err_s("NTP sync callback failed:", e, errno=_ERR_CALLBACK)
             return None
         if not synced:
@@ -363,6 +372,7 @@ class SystemService:
                 self.pr.err("Could not start the shutdown:", e)
                 return False
             self._feed_owned = True
+            self._reset_decided = True
             # Until _reboot() records the command's own code, a step that hangs ends in a watchdog reset that reads
             # "command incomplete" at the next boot, never as an unexplained one (agent, 2026-10-08).
             write_reset_record(_RR_COMMAND_INCOMPLETE)
@@ -385,6 +395,7 @@ class SystemService:
         try:
             starter()
         except Exception as e:  # driver-supplied starter - could misbehave; persisted, and sequencing continues
+            report_if_fatal(e)
             await self.pr.err_s("Timer starter", n, "failed:", e, errno=_ERR_TASK_STARTER_RAISED)
         else:
             self.pr.evt("Timer started:", n)
@@ -419,8 +430,8 @@ class SystemService:
             if t is not None:
                 try:
                     await t
-                except (asyncio.CancelledError, Exception):  # how a stopped task ended changes nothing here
-                    pass
+                except (asyncio.CancelledError, Exception) as e:  # how a stopped task ended changes nothing here
+                    report_if_fatal(e)
                 self._own_feed()
         self.pr.evt("Shutdown: supervised tasks stopped")
         done = True
@@ -449,6 +460,7 @@ class SystemService:
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
+            report_if_fatal(e)
             await self.pr.err_s("Task starter", n, "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
             return None
 
@@ -496,9 +508,11 @@ class SystemService:
             if self._feed_owned:
                 self._supervisor_parked.set()
                 await self._never.wait()
-            escalate = False
-            no_fail = True
-            for n in range(len(self._tasks)):
+            # A recorded C-stack overflow skips the scan for the reboot: its handler usually keeps the task running, and
+            # a restarted chain would overflow again on the same path (SPECIFICATION.md F.1).
+            escalate = _RR_STACK_EXHAUSTED if fatal_reported() and not self._reset_armed else 0
+            no_fail = not escalate
+            for n in range(0 if escalate else len(self._tasks)):
                 task = self._tasks[n]
                 if task is None or task.done():
                     no_fail = False
@@ -513,12 +527,18 @@ class SystemService:
                     if task_errors > _TASK_FAIL_MAX and not self._reset_armed:
                         # Escalate at the first end past the budget, fed once: a scan of every dead task could outlast the
                         # watchdog before the reset is even armed.
-                        escalate = True
+                        escalate = _RR_TASK_BUDGET
                         break
                     self._tasks[n] = await self._start_task(self._task_starters[n], n)
                     self.pr.wrn("Task ended - attempting restart, error counter increased to", task_errors, "- task", n)
             if escalate:
-                await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
+                self._reset_decided = True  # before the entry write, the escalation's first await
+                if escalate == _RR_STACK_EXHAUSTED:
+                    await self.pr.err_s("C stack exhausted - reboot triggered", errno=_ERR_STACK_EXHAUSTED)
+                    message = "Reboot: C stack exhausted"
+                else:
+                    await self.pr.err_s("Task error counter above", _TASK_FAIL_MAX, "- reboot triggered!", errno=_ERR_TASK_BUDGET_REBOOT)
+                    message = "Reboot triggered"
                 # Re-checked after the log write, which yields: a system command that passed the gate meanwhile owns
                 # the reset now, and nothing awaits from here until _reboot() marks it armed.
                 if self._feed_owned:
@@ -529,7 +549,7 @@ class SystemService:
                 self._force_watchdog_starve = True
                 # Resets directly: through the shutdown sequence it would run unfed (the starve flag stops the
                 # sequence's own feed too) and its first step would cancel this very loop.
-                await self._reboot(_RR_TASK_BUDGET, "Reboot triggered", system_reset)
+                await self._reboot(escalate, message, system_reset)
             if no_fail:
                 self.pr.all("All tasks running.")
                 if task_errors > 0:  # the decay, checked before the step
@@ -596,6 +616,9 @@ class SystemService:
     async def get_uptime(self) -> int:
         return self._uptime.read()
 
+    def is_reset_decided(self) -> bool:
+        return self._reset_decided
+
     def boot_phase(self, phase: int) -> None:
         # Marks a boot-phase transition in region 1: a watchdog reset before BOOT_DONE then decodes as 10 + phase.
         _write_region(1, _BP_MAGIC, phase)
@@ -635,6 +658,10 @@ class SystemService:
         return await self._request_shutdown(_RR_REBOOT)
 
     async def reset_error_counter(self) -> bool:
+        # Refused from the reset decision on, read with no suspension before pr.reset()'s clear: an entry the escalation
+        # writes while a ResetErrors runs survives into the reboot (owner, 2026-10-13: "2 b").
+        if self._reset_decided:
+            return False
         return await self.pr.reset()
 
     async def reset_to_defaults(self) -> bool:

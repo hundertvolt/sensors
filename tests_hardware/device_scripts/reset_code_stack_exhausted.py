@@ -1,6 +1,6 @@
 """Isolated-driver device script: one supervised reader's read coroutine rebound, over the bench build's scratch config,
-to recurse until MicroPython's stack check raises; it dies that way on every restart until the supervisor's budget
-reboots the board, whose attribution the host reads after the boot. FRAM only beyond the scratch setups, facts first."""
+to recurse until MicroPython's stack check raises; the recorded overflow makes the supervisor reboot the board with
+the stack code, whose attribution the host reads after the boot. FRAM only beyond the scratch setups, facts first."""
 
 import asyncio
 import errno
@@ -30,7 +30,7 @@ BENCH: "BenchFacts" = {}  # rendered by tests_hardware/harness.py
 
 _SCRATCH_CFG_PATH = "hwtest-scratch/"
 _WAIT_STEP_MS = 100
-_RESET_WAIT_MS = 4 * _WDT_TIMEOUT_MS  # the budget's deaths, one per supervisor pass, then the reset delay
+_RESET_WAIT_MS = 4 * _WDT_TIMEOUT_MS  # the death, the supervisor's next pass, then the reset delay
 
 
 def _deep(depth: "list[int]", n: int) -> int:
@@ -75,7 +75,7 @@ async def _main() -> None:
         _wrap_reboot(sysfunct, deaths)
         await sysfunct.start_tasks(device._collect_task_starters())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))
-        for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):  # the supervisor feeds until its budget starves the watchdog
+        for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):  # the supervisor feeds until its escalation starves the watchdog
             await asyncio.sleep_ms(_WAIT_STEP_MS)
         fact("no_reset_after_ms", _RESET_WAIT_MS)
     except Exception as e:  # a pre-reset failure: reported, then the cleanup below

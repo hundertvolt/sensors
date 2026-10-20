@@ -77,7 +77,7 @@ class _Product:
         self.calls: dict[str, int] = {}
         self.app = Microdot()
         modules: dict[str, WifiService | NTPClient | SystemService] = {"conn": wifi, "ntp": ntp, "sysfunct": system}  # the generated module's names
-        routes = RouteSources(readers, _settings_groups(modules, self.calls), None, None, None, None, None, (), ())
+        routes = RouteSources(readers, _settings_groups(modules, self.calls), None, None, None, None, None, None, (), ())
         self.service = WebserverService(self.app, routes, ServingLimits(2048, 256, 3, None, 0.2, 0.5, "0.0.0.0", 80), uptime_s=self.system.get_uptime)
 
 

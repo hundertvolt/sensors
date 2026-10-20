@@ -15,7 +15,7 @@ from machine import Pin
 from micropython import const
 
 from asy_base_classes import Lockable
-from asy_print_log import PrintLogHistory
+from asy_print_log import PrintLogHistory, report_if_fatal
 from asy_spi_driver import SPI, SPIDevice
 
 try:
@@ -166,8 +166,8 @@ class FRAM_SPI(Lockable):
     ) -> "Literal[False]":
         try:
             self._bus_lock.release()
-        except RuntimeError:  # already released somehow - same tolerance Lockable's own exit has
-            pass
+        except RuntimeError as e:  # already released somehow - same tolerance, and same C-stack record, as Lockable's own exit
+            report_if_fatal(e)
         return await super().__aexit__(exc_type, exc_val, exc_tb)
 
     def _is_write_protected(self) -> bool:

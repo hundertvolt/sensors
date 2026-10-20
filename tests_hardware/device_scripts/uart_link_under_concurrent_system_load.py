@@ -80,6 +80,7 @@ class Load:
         self.sgp_reads = 0
         self.i2c_errors = 0  # counted and reported, never silently dropped
         self.spi_reads = 0
+        self.fram_absent = 0  # a verify_present() that found no FRAM: counted, the host fails on any
         self.churn_blocks = 0
         self.alloc_failures = 0
         self.stop = False
@@ -117,6 +118,8 @@ async def _fram_read_loop(fram: FRAMManager, load: Load) -> None:
     while not load.stop:
         if await fram.fram.verify_present():
             load.spi_reads += 1
+        else:
+            load.fram_absent += 1
         await asyncio.sleep_ms(_SPI_LOAD_STEP_MS)
 
 
@@ -234,7 +237,6 @@ async def _sgp_load_loop(sgp: SGP40_I2C, load: Load) -> None:
 async def _main() -> None:
     wdt = arm()
     # The memory rule's first stage: MicroPython's own reactive default, no proactive collection (CLAUDE.md).
-    gc.collect()
     gc.threshold(-1)
     fact("gc_threshold", gc.threshold())
     fact("crc_mode", BENCH.get("CRC_MODE", "none"))
@@ -281,7 +283,7 @@ async def _main() -> None:
     for comm in (initiator, responder):  # no await inside a comprehension on MicroPython
         counts[comm.name] = log_record(await comm.get_error_counter(), comm.name)
     fact("error_counts", counts)
-    fact("load", {"scd_reads": load.scd_reads, "sgp_reads": load.sgp_reads, "i2c_errors": load.i2c_errors, "spi_reads": load.spi_reads, "churn_blocks": load.churn_blocks})
+    fact("load", {"scd_reads": load.scd_reads, "sgp_reads": load.sgp_reads, "i2c_errors": load.i2c_errors, "spi_reads": load.spi_reads, "fram_absent": load.fram_absent, "churn_blocks": load.churn_blocks})
     errors("alloc_failures", load.alloc_failures, [f"churn allocation of {_CHURN_BLOCK} B failed while <= {_CHURN_HELD_MAX + 1} blocks were held"] if load.alloc_failures else [])
     fact("heap_at_third", heap[0])
     fact("heap_at_end", heap[1])

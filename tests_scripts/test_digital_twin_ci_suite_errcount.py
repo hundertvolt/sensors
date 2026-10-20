@@ -8,6 +8,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING
@@ -637,6 +638,64 @@ def test_the_ignored_sigint_diagnostic_names_where_the_kernel_holds_sigint(mode:
     finally:
         child.kill()
         child.wait(timeout=5)
+
+
+# A twin that ignores its first SIGINT, as each outcome of the second one leaves it: the runtime's own exit 1 while the
+# first is still pending, an interrupt absorbed and then honoured, and a SIGINT never handled at all.
+_SECOND_SIGINT_CHILD = (
+    "import os, signal, sys, time\n"
+    "mode = sys.argv[1]\n"
+    "seen = []\n"
+    "def on_sigint(_n, _f):\n"
+    "    seen.append(1)\n"
+    "    if len(seen) == 2:\n"
+    "        os._exit(1 if mode == 'pending' else 0)\n"
+    "    print('handled', flush=True)\n"
+    "signal.signal(signal.SIGINT, signal.SIG_IGN if mode == 'ignored' else on_sigint)\n"
+    "print('ready', flush=True)\n"
+    "time.sleep(60)\n"
+)
+
+
+class _FirstWaitExpires(subprocess.Popen[str]):
+    # shutdown()'s first wait expires once the child has handled that SIGINT, at once when it ignores it: no timeout's
+    # wall time, and the second SIGINT never merges with an unhandled first. Every later wait is the real one.
+    handled_marker: "str | None" = None
+    log_path = Path("/nonexistent")
+    waited = False
+
+    def wait(self, timeout: "float | None" = None) -> int:
+        if self.waited:
+            return super().wait(timeout)
+        self.waited = True
+        deadline = time.monotonic() + 10
+        while self.handled_marker is not None and self.handled_marker not in self.log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
+            time.sleep(0.01)
+        raise subprocess.TimeoutExpired(self.args, timeout or 0.0)
+
+
+@pytest.mark.parametrize(
+    ("mode", "outcome"),
+    [("pending", "exit 1 at once, nothing printed: the first was never consumed"), ("absorbed", "a clean exit: the first was raised and absorbed"), ("ignored", "still running: neither SIGINT was acted on")],
+)
+def test_a_twin_that_ignores_its_sigint_gets_a_second_one_whose_outcome_is_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, mode: str, outcome: str) -> None:
+    # The verdict stays the first SIGINT's however the second ends the twin: the caller's kill, with its code. The second
+    # wait binds only for the child that never exits.
+    monkeypatch.setattr(twin_process, "_KBD_TRACEBACK_WAIT_S", 0.0)
+    monkeypatch.setattr(twin_process, "_SECOND_SIGINT_WAIT_S", 0.05 if mode == "ignored" else 5.0)
+    log_path = tmp_path / "twin.log"
+    log_file = log_path.open("w", encoding="utf-8")
+    proc = _FirstWaitExpires([sys.executable, "-I", "-S", "-c", _SECOND_SIGINT_CHILD, mode], stdin=subprocess.PIPE, stdout=log_file, stderr=subprocess.STDOUT, text=True)
+    proc.log_path, proc.handled_marker = log_path, None if mode == "ignored" else "handled"
+    run = twin_process.TwinRun(proc=proc, log_path=log_path, log_file=log_file, device="fixture-device", state_dir=tmp_path)
+    deadline = time.monotonic() + 10
+    while "ready" not in log_path.read_text(encoding="utf-8") and time.monotonic() < deadline:
+        time.sleep(0.01)
+    code = twin_process.shutdown(run, "fixture twin", timeout_s=0.5)
+    printed = capsys.readouterr().out
+    assert f"DIAG: fixture twin: a second SIGINT: {outcome}" in printed, printed
+    assert (code, run.killed) == (-signal.SIGKILL, True)
+    assert twin_process.exit_reason(code, killed=run.killed) == "killed by the caller after it ignored SIGINT"
 
 
 def test_an_empty_log_gives_no_memory_verdict(ci_suite: ModuleType, tmp_path: Path) -> None:

@@ -224,8 +224,9 @@ max-returns = 10
 # (SLF001); asy_webserver_service.py imports asy_api_response.py's private _RequestLike Protocol for its routes (PYI046).
 "src/asy_api_response.py" = ["PYI046", "SLF001"]
 "src/asy_webserver_service.py" = ["SLF001"]
-# `print()` is the log transport, not debug residue - asy_print_log.py is built on it.
-"src/asy_print_log.py" = ["T20"]
+# `print()` is the log transport, not debug residue - asy_print_log.py is built on it (T20); its one module flag, with
+# one writer, is the C-stack fatal flag report_if_fatal() sets (PLW0603).
+"src/asy_print_log.py" = ["PLW0603", "T20"]
 # The sensor drivers: the `_push_*` family takes the config-VALUE union through Part C.5.2's single-positional-argument
 # contract that D.10 forbids splitting (FBT001); C.2's `<CHIP>_<Role>` compounds and the Sensirion port's names (N801);
 # get_CO2 is the datasheet's name (N802); `x != x` is the NaN test at each site, commented there (PLR0124).

@@ -71,7 +71,7 @@ def _times(*holders: _Holder) -> "list[object]":
 
 
 def test_src_const_reads_a_folded_tuple_as_a_tuple() -> None:
-    assert src_const("src/asy_webserver_service.py", "_SHUTDOWN_CMDS") == ("reboot", "bootloader", "resetconfig", "erasefram")
+    assert src_const("src/asy_webserver_service.py", "_SYSTEM_CMDS") == ("reboot", "bootloader", "mempause", "resetconfig", "erasefram")
 
 
 def test_src_const_evaluates_each_value_with_the_names_bound_before_it() -> None:
@@ -90,7 +90,7 @@ def test_src_const_refuses_a_name_that_is_no_const() -> None:
 
 def test_each_typed_reader_raises_on_a_value_of_another_type() -> None:
     ws = "src/asy_webserver_service.py"
-    for reader, name in ((src_int, "_SHUTDOWN_CMDS"), (src_float, "_SHUTDOWN_CMDS"), (src_bytes, "_PAUSE_TIME_MAX"), (src_schema, "_PAUSE_TIME_MAX"), (src_strs, "_PAUSE_TIME_MAX"), (src_schema, "_SHUTDOWN_CMDS")):
+    for reader, name in ((src_int, "_SYSTEM_CMDS"), (src_float, "_SYSTEM_CMDS"), (src_bytes, "_PAUSE_TIME_MAX"), (src_schema, "_PAUSE_TIME_MAX"), (src_strs, "_PAUSE_TIME_MAX"), (src_schema, "_SYSTEM_CMDS")):
         try:
             reader(ws, name)
         except TypeError as e:
@@ -98,7 +98,7 @@ def test_each_typed_reader_raises_on_a_value_of_another_type() -> None:
         else:
             raise AssertionError(name + " read without a TypeError")
     assert src_int(ws, "_PAUSE_TIME_MAX") == 3600 and src_float(ws, "_PAUSE_TIME_MAX") == 3600
-    assert src_strs(ws, "_SHUTDOWN_CMDS") == ("reboot", "bootloader", "resetconfig", "erasefram")
+    assert src_strs(ws, "_SYSTEM_CMDS") == ("reboot", "bootloader", "mempause", "resetconfig", "erasefram")
     assert src_schema("src/asy_bmp3xx_driver.py", "_VAL_SAMPLE_INTERVAL") == (("SampleInterval", "int", 2, 1, 3600, None),)
 
 def test_src_consts_reads_each_file_once_and_every_src_const_evaluates() -> None:

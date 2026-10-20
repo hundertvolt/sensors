@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 _AFTER_EACH: "list[Callable[[], None]]" = []
 _RETURNED = "returned a value - an async def test_* or a stray return; microtest runs synchronous functions only"
 _PARKED = "left a task parked on the scheduler"
+_FATAL = "left the C-stack fatal flag set"
 
 
 class Skip(Exception):
@@ -82,8 +83,9 @@ def _drain_scheduler() -> bool:
 
 
 def _reset_process_state(name: str, saved_path: "list[str]", saved_threshold: int) -> bool:
-    # After every test: the scheduler check, each registered hook, sys.path and gc.threshold(), then the product's
-    # one-way flags at their boot value (only for a module already loaded). True when the test FAILs here.
+    # After every test: the scheduler check, each registered hook, sys.path and gc.threshold(), then the product's one-way
+    # flags at their boot value (only for a module already loaded), the fatal flag failing a test that left it set.
+    # True when the test FAILs here.
     failed = _drain_scheduler()
     if failed:
         print(f"FAIL {name}: {_PARKED}")
@@ -99,6 +101,11 @@ def _reset_process_state(name: str, saved_path: "list[str]", saved_threshold: in
     base_classes = sys.modules.get("asy_base_classes")
     if base_classes is not None:
         base_classes._utc_valid = False  # type: ignore[attr-defined]  # the pre-sync timestamp flag, as at boot
+    print_log = sys.modules.get("asy_print_log")
+    if print_log is not None and print_log._fatal:  # the C-stack fatal flag
+        failed = True
+        print(f"FAIL {name}: {_FATAL}")
+        print_log._fatal = False  # type: ignore[attr-defined]  # as at boot
     return failed
 
 

@@ -12,7 +12,7 @@ import asyncio
 from micropython import const
 
 from asy_dns_client import DNS_LABEL_MAX, DNS_NAME_MAX, DNS_QTYPE_A, DNS_UDP_MAX, ipv4_to_int
-from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger
+from asy_print_log import DEFAULT_LOG, PrintLogHistory, make_logger, report_if_fatal
 from asy_udp_socket import UDPSocket
 
 try:
@@ -101,7 +101,8 @@ class CaptiveDNS:
                             addr_int = ipv4_to_int(addr[0])
                         except MemoryError:
                             raise  # a heap failure is ours, not a malformed sender: the catch-all below persists it
-                        except Exception:
+                        except Exception as e:
+                            report_if_fatal(e)
                             addr_int = None
                         on_subnet = addr_int is not None and (addr_int & netmask_int) == network
                         if not on_subnet:
@@ -131,6 +132,7 @@ class CaptiveDNS:
 
                 except Exception as e:
                     # nothing supervises this task - never let an unexpected exception here kill it.
+                    report_if_fatal(e)
                     await self.pr.err_s("DNS Server error:", e, errno=_ERR_UNEXPECTED)
                     await asyncio.sleep(_ERROR_RETRY_WAIT_S)
 
@@ -141,6 +143,7 @@ class CaptiveDNS:
             except Exception as e:
                 # disconnect() is documented as never raising, but nothing supervises this task -
                 # never let cleanup itself become the uncaught exception.
+                report_if_fatal(e)
                 await self.pr.err_s("DNS Server error during disconnect:", e, errno=_ERR_UNEXPECTED)
                 disconnect_ok = True  # already logged above via the except-Exception branch
             if not disconnect_ok:
@@ -189,9 +192,10 @@ class DNSQuery:
                 self._parsed_ok = True
         except MemoryError:
             raise  # a heap failure is ours, not the client's: run() persists it rather than dropping a "malformed" query
-        except Exception:
+        except Exception as e:
             # Truncated/malformed data (or non-bytes data, since this class is public) - not a
             # usable standard query. Reuses the empty-domain sentinel, no raise into run().
+            report_if_fatal(e)
             self.domain = ""
             self._parsed_ok = False
         self.pr.evt("DNSQuery domain:", self.domain)

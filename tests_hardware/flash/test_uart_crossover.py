@@ -153,6 +153,7 @@ def test_an_idle_listener_polls_at_the_idle_rate_not_the_transaction_rate(board:
     fast = min(_int(n) for n in _list(facts["fast_rounds"]))
     idle = max(_int(n) for n in _list(facts["idle_rounds"]))
     expected, factor, ratio = _int(facts["expected_idle_rounds"]), _int(facts["expected_rounds_factor"]), _int(facts["min_ratio"])
+    assert not any(_list(facts["listener_cancelled"])), f"a listener outlived comm.clear() and was cancelled (fast, idle, fast, idle): {facts['listener_cancelled']}"
     assert idle, "an idle listener performed no poll rounds at all - it is not waiting where this test thinks"
     assert fast // idle >= ratio, f"the idle rate cut poll rounds only {fast // idle}x ({fast} -> {idle}), under the {ratio}x floor"
     # A listener that stopped polling would pass the ratio too, and never notice a frame: the rate tracks poll_idle_ms.
@@ -197,8 +198,10 @@ def test_the_link_keeps_transferring_while_every_other_subsystem_is_busy(board: 
     assert worst <= _int(bounds["max_rtt_ms"]), f"worst round trip {worst} ms under load, past {bounds['max_rtt_ms']} ms (timeout {facts['timeout_ms']} ms)"
     assert facts["set_total"] and facts["echo_intact"] == facts["set_total"], f"echo SETs did not come back intact: {facts['echo_mismatch']}"
     _clean_counts(facts)
-    starved = {name: n for name, n in _dict(facts["load"]).items() if name != "i2c_errors" and not n}
+    load = _dict(facts["load"])
+    starved = {name: n for name, n in load.items() if name not in ("i2c_errors", "fram_absent") and not n}
     assert not starved, f"a subsystem was starved by the link: {starved}"
+    assert load["fram_absent"] == 0, f"the FRAM went unanswered {load['fram_absent']} time(s) under the load"
     assert _dict(facts["alloc_failures"])["total"] == 0, f"a churn allocation failed: {facts['alloc_failures']}"
     third, end = _int(facts["heap_at_third"]), _int(facts["heap_at_end"])
     assert not third or end - third <= _int(bounds["heap_growth_max_bytes"]), f"the heap grew {end - third} bytes over the last two thirds of the run"

@@ -422,7 +422,7 @@ def _make_service(
     sensors: "Sequence[_ModuleLike]" = (),
     port: int = 80,
 ) -> WebserverService:
-    routes = RouteSources(sensors, None, None, None, None, None, None, (), ())
+    routes = RouteSources(sensors, None, None, None, None, None, None, None, (), ())
     serving = ServingLimits(_MAX_CONTENT_LENGTH, _CHUNK_BYTES, max_connections, None, per_call_timeout_s, outer_cap_s, "127.0.0.1", port)
     uptime_s = (uptime or _Uptime()).read
     return WebserverService(Microdot(), routes, serving, uptime_s, None, LogConfig(None, 10, debug))
@@ -835,10 +835,10 @@ def test_a_start_that_fails_twice_then_serves() -> None:
     delays = [seconds for _task, seconds in fast.slept]
     assert (starter.calls, delays, starter.server.waited) == (3, [_START_RETRY_S] * 2, True)
     assert [line[1] for line in console.lines] == ["Web server start failed, retrying:"] * 2, console.lines
-    assert log == (0, []), log  # a retried failure prints, and persists nothing
+    assert log == (1, [(_W_START_FAILED, "W")]), log  # the first failure is persisted, so a start won on a retry leaves a trace
 
 
-def test_a_start_that_fails_three_times_logs_once_and_raises() -> None:
+def test_a_start_that_fails_three_times_persists_its_first_and_last_failure_and_raises() -> None:
     service = _make_service()
     failures: list[Exception] = [OSError(errno.EADDRINUSE) for _ in range(_START_RETRIES)]
     last = failures[-1]
@@ -862,7 +862,7 @@ def test_a_start_that_fails_three_times_logs_once_and_raises() -> None:
     delays = [seconds for _task, seconds in fast.slept]
     assert raised is last  # re-raised, so the task ends and the supervisor's rung takes over
     assert (starter.calls, delays) == (_START_RETRIES, [_START_RETRY_S] * (_START_RETRIES - 1))
-    assert log == (1, [(_W_START_FAILED, "W")]), log
+    assert log == (2, [(_W_START_FAILED, "W")]), log  # the first and the last, one slot by the newest-entry rule
 
 
 def _can_listen(port: int) -> bool:
@@ -1010,6 +1010,28 @@ def test_client_faults_print_nothing_at_debug_level_zero() -> None:
     # five drops among them too, and none printed.
     assert (count, dropped, open_conns) == (48, 20, 0), (count, dropped, open_conns)
     assert {c for c, _t in used} <= {_W_REQUEST_CAP, _W_REFUSED, _W_BAD_HEAD, _W_CALL_TIMEOUT, _W_PEER_RESET}, used
+
+
+def test_a_silent_client_prints_one_line_at_a_raised_level() -> None:
+    # A client that sends nothing: the proxy's read arm traces the per-call timeout (W49), and Microdot's rebound print
+    # skips that same exception, so the timeout costs one console line on a host that may not read the port, not two.
+    clock = _DrivenClock()
+    service = _make_service(per_call_timeout_s=1.0, outer_cap_s=2.0, debug=2)
+
+    async def scenario() -> "tuple[int, list[tuple[int, str]]]":
+        await service.setup()
+        await service._serve(_Reader([], eof=False, sleep=clock.sleep), _Writer())
+        return await _log(service)
+
+    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    console = _Console()
+    try:
+        log = run(_driven(clock, scenario()), _RUN_LIMIT_S)
+    finally:
+        console.restore()
+        stand_in.uninstall()
+    assert [line[:2] for line in console.lines] == [("WEBSERVER", "Connection reclaimed (per-call timeout):")], console.lines
+    assert log == (1, [(_W_CALL_TIMEOUT, "W")]), log
 
 
 def test_a_handler_exception_prints_nothing_at_level_zero_and_one_gated_line_above() -> None:

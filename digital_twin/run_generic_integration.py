@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from types import ModuleType
     from typing import NamedTuple, Protocol, TypeVar
 
+    from _mpy_shed import IOBase_mp
     from _mpy_shed.time_mp import _TicksMs
     from launch import FaultSpec, HangSpec, _Chip, _KnobChip, _Plan
 
@@ -39,7 +40,7 @@ if TYPE_CHECKING:
         # The generated module's globals and entry this runner reads; the module is chosen at run time (--module).
         @property
         def __file__(self) -> str | None: ...
-        def main(self, *, watchdog: "machine.WDT", cfg_path: str, web_host: str, web_port: int) -> "Coroutine[object, object, None]": ...
+        def main(self, *, watchdog: "machine.WDT", cfg_path: str, debug: int | None, web_host: str, web_port: int) -> "Coroutine[object, object, None]": ...
 
         @property
         def webserver(self) -> object: ...  # read only: any built module's own WebserverService type matches
@@ -96,6 +97,7 @@ if "digital_twin/unixport" not in sys.path:
 import _flash_stall
 import _unix_port_udp_addr_shim
 import _wall_clock
+import ffi  # type: ignore[import-not-found]  # the Unix port's own module, no stub: --test-kbd-traceback's self-SIGINT
 import machine
 import network
 from _ntp_responder import NtpResponder
@@ -121,6 +123,8 @@ from launch import (  # one implementation of each, in launch.py
 )
 from unix_port_poll_prewarm import prewarm_poll_set
 from unix_port_unretrieved_report import install
+
+from asy_print_log import PrintLog
 
 _SOURCE = "run_generic_integration.py"
 _LINE_PREFIX = "digital_twin/" + _SOURCE
@@ -151,6 +155,7 @@ _SHUTDOWN_HANG_STEPS = ("S1", "S2", "S3", "S4", "S5reset", "S5erase", "S6")
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
+_SIGINT = 2  # Linux's signal number (signal(7)): MicroPython has no signal module
 
 
 if TYPE_CHECKING:
@@ -172,21 +177,28 @@ if TYPE_CHECKING:
         shutdown_hang: str | None
         flash_stall_max: bool
         uart_over_cap: bool
+        hold_system_entry: int | None
+        kbd_traceback: bool
 
     class RunEnvironment(NamedTuple):
-        # The product's config directory, whether NTP may go online instead of the local responder, the test flags.
+        # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
+        # the level the loggers are built at (None: off until the stored DebugLevel applies, as the boot entry passes).
         config_dir: str
         online_ntp: bool
         instrumentation: TestFlags
+        debug_level: int | None
 
 else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
-    TestFlags = namedtuple("TestFlags", ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap"))
-    RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation"))
+    TestFlags = namedtuple(
+        "TestFlags",
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback"),
+    )
+    RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False)
-_DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False)
+_DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
 
@@ -203,6 +215,7 @@ _STOP_FILE_POLL_MS = 100
 
 # @tunable l2.twin_test_stdin_poll_ms = 50
 _TEST_STDIN_POLL_MS = 50  # how often a --test-* trigger line on stdin is looked for
+_KBD_CAPTURE_SPINS = 1000  # loop passes after the self-SIGINT, each jump a pending-exception check (py/vm.c:575, v1.29.0)
 
 # The WDT keeps its newest 200 feed times: a span it dropped between two folds lasts under one fold period,
 # well below the gaps worth flagging, so folding this often loses none of them; the harness judges the gap.
@@ -216,6 +229,7 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --host HOST, --port N    where the webserver listens (default: localhost, 8080)
   --device LABEL           the device name the log lines carry (default: the module name)
   --config-dir PATH        the product's config directory (default: {_CONFIG_DIR_DEFAULT})
+  --debug-level N          build every logger at level N, until the stored DebugLevel applies (default: off, as on the device)
   --fram-state-path PATH   persist the FRAM image (default: {_FRAM_STATE_DEFAULT}; "" in memory)
   --scd30-state-path PATH  persist the SCD30's NVM (default: {_SCD30_STATE_DEFAULT}; "" in memory)
   --mem-backup-state-path PATH  the watchdog scratch registers' file (default: {_MEM_BACKUP_STATE_DEFAULT}; "" in memory)
@@ -227,7 +241,9 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   test-only instrumentation, each off by default:
   --test-hold-closing-slot, --test-stall-loop-ms N, --test-conn-status-interval-ms N,
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
-  --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap)
+  --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
+  --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE),
+  --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback)
   -h, --help               print this and exit 0"""
 
 
@@ -258,7 +274,7 @@ class RunConfig:
         self.injections = injections if injections is not None else Injections(None, [], [], [])
         self.run = run if run is not None else RunLimits(None, _GC_THRESHOLD_DEFAULT, None, None)
         self.environment = environment if environment is not None else _DEFAULT_ENVIRONMENT
-        self.config_dir, self.online_ntp, self.instrumentation = self.environment
+        self.config_dir, self.online_ntp, self.instrumentation, self.debug_level = self.environment
 
     def __eq__(self, other: "object") -> bool:
         if not isinstance(other, RunConfig):
@@ -304,6 +320,17 @@ class _FeedGaps:
 _feed_gaps = _FeedGaps()
 
 
+def _debug_level(text: str) -> int:
+    # --debug-level's value, refused unless the product's own validator takes it (PrintLog.set_level()).
+    try:
+        level = int(text)
+    except ValueError as e:
+        raise ValueError(f"--debug-level {text!r} is not an integer") from e
+    if not PrintLog().set_level(level):
+        raise ValueError(f"--debug-level {level} is no level the product's loggers take")
+    return level
+
+
 def _ensure_dir(path: str) -> None:
     try:
         os.mkdir(path)
@@ -333,9 +360,9 @@ def _link_directions(module_file: str, link: "machine.UARTLink") -> "dict[str, o
 
 
 async def _mem_sampler(interval_ms: int) -> None:
-    # Optional (--mem-sample-interval-ms): the one thing a host-side driver cannot get any other
-    # way, gc.mem_free() living in this heap with no REST route. Fixed timer, timestamped lines,
-    # and an instrumentation-only gc.collect() - README.md has the reasoning and measurement.
+    # Optional (--mem-sample-interval-ms): gc.mem_free() lives in this heap with no REST route, so these lines feed the CI
+    # suite's Run 11 memory-trend check (_run_11_soak()); its collect is the one twin exception the gc site checker allows
+    # (scripts/_check_gc_collect_sites.py) - README.md has the reasoning and measurement.
     while True:
         await asyncio.sleep_ms(interval_ms)
         gc.collect()
@@ -344,7 +371,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -361,14 +388,13 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         stall_max = True
     elif arg == "--test-uart-over-cap":
         over_cap = True
+    elif arg == "--test-hold-system-entry":
+        entry = _positive_int(arg, "ERRNO", _pop_value(remaining, arg))
+    elif arg == "--test-kbd-traceback":
+        kbd = True
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap)
-
-
-def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
-    # The moment a starved watchdog would reset silicon, as it happens: a host waiting on a hang ends there.
-    print(f"WATCHDOG_WOULD_TRIGGER count={watchdog.would_have_triggered_count}")
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd)
 
 
 def _print_shutdown_line(config: RunConfig) -> None:
@@ -380,6 +406,11 @@ def _print_shutdown_line(config: RunConfig) -> None:
         gc.collect()
         micropython.mem_info()  # the largest free block's only reader (py/gc.c gc_info(), v1.29.0)
         print(_shutdown_line(config.device, _watchdog, _feed_gaps, _uart_counts))
+
+
+def _print_watchdog_would_trigger(watchdog: "machine.WDT") -> None:
+    # The moment a starved watchdog would reset silicon, as it happens: a host waiting on a hang ends there.
+    print(f"WATCHDOG_WOULD_TRIGGER count={watchdog.would_have_triggered_count}")
 
 
 def _reset_kind(error: "machine.SimulatedRebootError") -> str:
@@ -503,6 +534,50 @@ def _test_hold_closing_slot(module: "ModuleType") -> "Callable[[], None]":
     return release
 
 
+def _test_hold_system_entry(module: "ModuleType", errno_held: int, say: "Callable[[str], None]" = print) -> "Callable[[], None]":
+    # SystemService's logger writes its entry with errno_held only after ENTRY_RELEASE: ENTRY_HELD marks the call's start,
+    # so the host acts inside that write (the supervisor's escalation entry); the returned callback releases it.
+    logger, gate = module.sysfunct.pr, asyncio.Event()
+    real_err_s = logger.err_s
+
+    async def held(*args: object, **kwargs: object) -> None:
+        if kwargs.get("errno") == errno_held and not gate.is_set():
+            say("ENTRY_HELD")
+            await gate.wait()
+        await real_err_s(*args, **kwargs)
+
+    def release() -> None:
+        gate.set()
+        say("ENTRY_RELEASED")
+
+    logger.err_s = held
+    return release
+
+
+def _test_kbd_traceback(say: "Callable[[str], None]" = print, out: "IOBase_mp | None" = None) -> "Callable[[], None]":
+    # Every SIGINT raises the interpreter's one KeyboardInterrupt object (py/scheduler.c:48-52, v1.29.0): caught once here
+    # through a SIGINT to this process, so KBD_TRACEBACK prints where the newest one was raised and how far it got.
+    libc = ffi.open("libc.so.6")
+    caught: list[BaseException] = []
+    try:
+        libc.func("i", "kill", "ii")(libc.func("i", "getpid", "")(), _SIGINT)
+        for _ in range(_KBD_CAPTURE_SPINS):  # the VM raises a pending interrupt at its next check
+            pass
+    except KeyboardInterrupt as e:
+        caught.append(e)
+    say(f"KBD_CAPTURED {bool(caught)}")
+
+    def show() -> None:
+        say("KBD_TRACEBACK")
+        for interrupt in caught:
+            if out is None:
+                sys.print_exception(interrupt)  # stdout, the log the host reads
+            else:
+                sys.print_exception(interrupt, out)
+
+    return show
+
+
 def _test_never_pulled(_chunk: int, _buf: "memoryview") -> int:
     return 0  # the over-cap train is refused before its first frame, so nothing is ever pulled
 
@@ -581,7 +656,11 @@ def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, obje
         triggers["SLOT_RELEASE"] = _test_hold_closing_slot(module)
     if flags.stall_loop_ms:
         triggers["STALL_TRIGGER"] = _test_stall_loop(flags.stall_loop_ms)
-    if flags.hold_closing_slot or flags.stall_loop_ms:
+    if flags.hold_system_entry:
+        triggers["ENTRY_RELEASE"] = _test_hold_system_entry(module, flags.hold_system_entry)
+    if flags.kbd_traceback:
+        triggers["KBD_TRACEBACK"] = _test_kbd_traceback()
+    if flags.hold_closing_slot or flags.stall_loop_ms or flags.hold_system_entry or flags.kbd_traceback:
         tasks.append(loop.create_task(_test_stdin_lines(triggers)))
     if flags.conn_status_interval_ms:
         tasks.append(loop.create_task(_test_conn_status(module, flags.conn_status_interval_ms)))
@@ -737,7 +816,7 @@ async def main(config: RunConfig) -> None:
     print(
         f"{_LINE_PREFIX} starting - device={config.device!r} module={config.module!r} host={config.host!r} "
         f"port={config.port!r} state={config.state!r} config_dir={config.config_dir!r} online_ntp={config.online_ntp!r} "
-        f"injections={injections!r} run={run!r}",
+        f"debug_level={config.debug_level!r} injections={injections!r} run={run!r}",
     )
 
     booted = load_module(config.module)
@@ -748,7 +827,7 @@ async def main(config: RunConfig) -> None:
     watchdog = machine.WDT(timeout=_WDT_TIMEOUT_MS, on_would_trigger=_print_watchdog_would_trigger)
     _watchdog, _shutdown_printed, _feed_gaps, _uart_counts = watchdog, False, _FeedGaps(), []
     loop = asyncio.get_event_loop()
-    main_task = loop.create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, web_host=config.host, web_port=config.port))
+    main_task = loop.create_task(module.main(watchdog=watchdog, cfg_path=config.config_dir, debug=config.debug_level, web_host=config.host, web_port=config.port))
     tasks = [loop.create_task(_feed_gap_folder(watchdog))]
     if responder is not None:
         tasks.append(loop.create_task(responder.serve()))
@@ -819,6 +898,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
     duration: float | None = None
     gc_threshold = _GC_THRESHOLD_DEFAULT
     mem_sample_interval_ms: int | None = None
+    debug_level: int | None = None
     flags = _NO_TEST_FLAGS
 
     while remaining:
@@ -843,6 +923,8 @@ def parse_args(argv: "list[str]") -> RunConfig:
             gc_threshold = int(_pop_value(remaining, arg))
         elif arg == "--mem-sample-interval-ms":
             mem_sample_interval_ms = int(_pop_value(remaining, arg))
+        elif arg == "--debug-level":
+            debug_level = _debug_level(_pop_value(remaining, arg))
         else:
             parsed = _parse_test_flag(arg, remaining, flags)
             if parsed is None:
@@ -864,7 +946,7 @@ def parse_args(argv: "list[str]") -> RunConfig:
         state=StatePaths(_state_path(text["--fram-state-path"]), _state_path(text["--scd30-state-path"]), _state_path(text["--mem-backup-state-path"])),
         injections=Injections(seed, faults, hangs, wifi_outcomes),
         run=RunLimits(duration, gc_threshold, mem_sample_interval_ms, text["--stop-file"] or None),  # "" as the state paths
-        environment=RunEnvironment(text["--config-dir"], online_ntp, flags),
+        environment=RunEnvironment(text["--config-dir"], online_ntp, flags, debug_level),
     )
 
 

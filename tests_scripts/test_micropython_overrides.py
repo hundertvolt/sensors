@@ -25,6 +25,21 @@ if TYPE_CHECKING:
 
 _REAL_ANCHOR_LINE = "#define MICROPY_ASYNC_KBD_INTR         (!MICROPY_PY_THREAD_GIL)"
 
+# The mark stack's pinned facts, file by file and in order: the #ifndef-guarded default the variant
+# header's own define replaces, the array the readback reads, and the overflow's whole-heap re-scan.
+_FAKE_GC_STACK_ANCHORS = (
+    ("py/mpconfig.h", ("#ifndef MICROPY_ALLOC_GC_STACK_SIZE\n#define MICROPY_ALLOC_GC_STACK_SIZE (64)\n#endif\n",)),
+    ("py/mpstate.h", ("    MICROPY_GC_STACK_ENTRY_TYPE gc_block_stack[MICROPY_ALLOC_GC_STACK_SIZE];\n",)),
+    ("py/gc.c", (
+        "            if (sp < MICROPY_ALLOC_GC_STACK_SIZE) {\n",
+        "                MP_STATE_MEM(gc_stack_overflow) = 1;\n",
+        "static void gc_deal_with_stack_overflow(void) {\n",
+        "            for (size_t block = 0; block < area->gc_alloc_table_byte_len * BLOCKS_PER_ATB; block++) {\n",
+    )),
+)
+
+_EVERY_GC_STACK_ANCHOR = tuple(anchor for _path, anchors in _FAKE_GC_STACK_ANCHORS for anchor in anchors)
+
 
 _REAL_BOARD = "RPI_PICO_W"
 
@@ -133,7 +148,7 @@ _FAKE_LWIP_HOST_ANCHORS = (
 _FAKE_TCP_OUT = "lib/lwip/src/core/tcp_out.c"
 
 _EVERY_LWIP_HOST_ANCHOR = (
-    _REAL_ANCHOR_LINE, _FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_INSERT_AFTER, _FAKE_MODLWIP_INCLUDE, _FAKE_POLL_SOCKETS,
+    _REAL_ANCHOR_LINE, *_EVERY_GC_STACK_ANCHOR, _FAKE_MODLWIP_LOOP, _FAKE_MODLWIP_INSERT_AFTER, _FAKE_MODLWIP_INCLUDE, _FAKE_POLL_SOCKETS,
     *(anchor for _path, anchors in _FAKE_LWIP_HOST_ANCHORS for anchor in anchors), _FAKE_TCP_OUT,
 )
 
@@ -208,6 +223,13 @@ def _fake_make(tmp_path: Path, *, pp: str | None = "", exit_code: int = 0, sleep
     return {"PATH": str(bindir)}, argv_log
 
 
+def _gc_pp_text(dimension: str, *, with_struct: bool = True, with_array: bool = True) -> str:
+    # A real `make <build>/unix_mphal.pp` at v1.29.0 cut to the mark stack: its last define and mp_state_mem_t.
+    array = f"    int gc_stack_overflow;\n    size_t gc_block_stack[{dimension}];\n" if with_array else "    int gc_stack_overflow;\n"
+    struct = f"typedef struct _mp_state_mem_t {{\n\n    size_t total_bytes_allocated;\n\n    mp_state_mem_area_t area;\n\n{array}\n    uint16_t gc_auto_collect_enabled;\n}} mp_state_mem_t;\n"
+    return f'# 1 "unix_mphal.c"\n#define MICROPY_ALLOC_GC_STACK_SIZE {dimension}\n' + (struct if with_struct else "") + "void mp_hal_set_interrupt_char(char c) {\n}\n"
+
+
 def _modlwip_paths(tmp_path: Path) -> "tuple[Path, Path, Path]":
     # (micropython_dir, the original modlwip.c, the patched copy), all absolute as the build sees them.
     micropython_dir = tmp_path.resolve() / "toolchain" / "micropython"
@@ -242,7 +264,7 @@ def _stub_build_readbacks(setup_toolchain: ModuleType, monkeypatch: pytest.Monke
     # The post-build proofs read a real build tree; the installer's structural tests record each
     # call instead (the proofs' own cases drive them over fake build outputs).
     calls: list[tuple[str, tuple[object, ...]]] = []
-    for name in ("verify_unix_kbd_intr_in_build", "verify_modlwip_eagain_in_build", "verify_unix_lwip_host_in_build", "verify_tick_offset_in_build"):
+    for name in ("verify_unix_kbd_intr_in_build", "verify_unix_gc_stack_in_build", "verify_modlwip_eagain_in_build", "verify_unix_lwip_host_in_build", "verify_tick_offset_in_build"):
 
         def record(*args: object, _name: str = name, **kwargs: object) -> None:
             calls.append((_name, (*args, *kwargs.values())))
@@ -259,7 +281,7 @@ def _tree_state(root: Path) -> "list[tuple[str, int, int]]":
 def _write_fake_lwip_host_tree(root: Path, *, drop: str | None = None) -> Path:
     # Everything the host build flavour checks - the SIGINT anchor, modlwip's, and its own - with
     # `drop` leaving exactly one out.
-    _write_fake_micropython_tree(root, anchor_line=None if drop == _REAL_ANCHOR_LINE else _REAL_ANCHOR_LINE)
+    _write_fake_micropython_tree(root, anchor_line=None if drop == _REAL_ANCHOR_LINE else _REAL_ANCHOR_LINE, drop=drop)
     _write_fake_modlwip_tree(root, drop=drop)
     for relative, anchors in _FAKE_LWIP_HOST_ANCHORS:
         (root / relative).parent.mkdir(parents=True, exist_ok=True)
@@ -316,7 +338,8 @@ def _write_fake_lwip_tree(root: Path, *, drop: str | None = None, board: str = _
     return root
 
 
-def _write_fake_micropython_tree(root: Path, *, anchor_line: str | None = _REAL_ANCHOR_LINE, with_manifest: bool = True) -> Path:
+def _write_fake_micropython_tree(root: Path, *, anchor_line: str | None = _REAL_ANCHOR_LINE, with_manifest: bool = True, drop: str | None = None) -> Path:
+    # The Unix variant's files and the mark stack's anchors; `drop` leaves exactly one mark-stack anchor out.
     variants_dir = root / "ports" / "unix" / "variants"
     variants_dir.mkdir(parents=True)
     common_header = variants_dir / "mpconfigvariant_common.h"
@@ -333,6 +356,9 @@ def _write_fake_micropython_tree(root: Path, *, anchor_line: str | None = _REAL_
     (standard_dir / "mpconfigvariant.mk").write_text("FROZEN_MANIFEST ?= $(VARIANT_DIR)/manifest.py\n", encoding="utf-8")
     if with_manifest:
         (standard_dir / "manifest.py").write_text('include("$(PORT_DIR)/variants/manifest.py")\n', encoding="utf-8")
+    for relative, anchors in _FAKE_GC_STACK_ANCHORS:
+        (root / relative).parent.mkdir(parents=True, exist_ok=True)
+        (root / relative).write_text("".join(anchor for anchor in anchors if anchor != drop), encoding="utf-8")
     return root
 
 
@@ -347,7 +373,8 @@ def _write_fake_modlwip_tree(root: Path, *, drop: str | None = None) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write("".join(f"{anchor}\n" for anchor in anchors if anchor != drop) + ")\n")
-    (root / "py" / "mpconfig.h").write_text("#define MICROPY_VERSION_MAJOR 1\n#define MICROPY_VERSION_MINOR 29\n#define MICROPY_VERSION_MICRO 0\n", encoding="utf-8")
+    with (root / "py" / "mpconfig.h").open("a", encoding="utf-8") as f:  # appended: a host tree's mark-stack default stays
+        f.write("#define MICROPY_VERSION_MAJOR 1\n#define MICROPY_VERSION_MINOR 29\n#define MICROPY_VERSION_MICRO 0\n")
     return root
 
 
@@ -1352,6 +1379,127 @@ def test_the_kbd_readback_names_a_hung_make(overrides: ModuleType, tmp_path: Pat
 
 
 # ---------------------------------------------------------------------------
+# unix_gc_stack (SPECIFICATION.md B.14.6): every Unix build's GC mark stack, in the shared variant header.
+# ---------------------------------------------------------------------------
+
+
+def test_the_gc_stack_anchors_hold_in_the_real_pinned_source(overrides: ModuleType, micropython_dir: Path) -> None:
+    if not (micropython_dir / "py" / "gc.c").is_file():
+        pytest.fail(f"no real toolchain checkout at {micropython_dir} - build it with `uv run toolchain/setup_toolchain.py setup` (scripts/test.sh does)")
+    overrides.verify_unix_gc_stack_anchor(micropython_dir)
+
+
+@pytest.mark.parametrize("dropped", _EVERY_GC_STACK_ANCHOR)
+def test_every_gc_stack_anchor_is_load_bearing(overrides: ModuleType, tmp_path: Path, dropped: str) -> None:
+    fake = _write_fake_micropython_tree(tmp_path / "micropython", drop=dropped)
+    with pytest.raises(overrides.OverrideError, match=r"^unix_gc_stack: expected .* in .*py/(mpconfig\.h|mpstate\.h|gc\.c)"):
+        overrides.apply_unix_kbd_intr_override(fake, tmp_path / "build_overrides")
+    assert not (tmp_path / "build_overrides").exists()
+
+
+def test_the_gc_stack_parametrization_covers_every_anchor_the_code_checks(overrides: ModuleType) -> None:
+    assert _FAKE_GC_STACK_ANCHORS == overrides._UNIX_GC_STACK_ANCHORS
+
+
+def test_the_rig_mark_stack_is_larger_than_the_pinned_default(overrides: ModuleType) -> None:
+    # At the default the readback could not tell a build that never reached the variant header.
+    default = re.search(r"#define MICROPY_ALLOC_GC_STACK_SIZE \((\d+)\)", _FAKE_GC_STACK_ANCHORS[0][1][0])
+    assert default is not None
+    assert int(default.group(1)) < overrides.UNIX_GC_STACK_ENTRIES
+
+
+def test_the_rig_variant_header_sets_the_mark_stack_once_after_the_real_header(overrides: ModuleType, tmp_path: Path) -> None:
+    fake_mp_dir = _write_fake_micropython_tree(tmp_path / "micropython")
+    real_header = fake_mp_dir.resolve() / "ports" / "unix" / "variants" / "standard" / "mpconfigvariant.h"
+    result = overrides.apply_unix_kbd_intr_override(fake_mp_dir, tmp_path / "build_overrides")
+    generated = (Path(result["VARIANT_DIR"]) / "mpconfigvariant.h").read_text(encoding="utf-8")
+    define = f"#define MICROPY_ALLOC_GC_STACK_SIZE ({overrides.UNIX_GC_STACK_ENTRIES})\n"
+    # A plain #define, no #undef: py/mpconfig.h's default is #ifndef-guarded, and any other definition must warn.
+    assert generated.count(define) == 1
+    assert "#undef MICROPY_ALLOC_GC_STACK_SIZE" not in generated
+    assert generated.index(f'#include "{real_header}"') < generated.index(define)
+    assert generated == overrides._unix_variant_header(real_header.parent)
+
+
+def test_no_firmware_override_carries_the_mark_stack(overrides: ModuleType, tmp_path: Path) -> None:
+    # The board keeps MicroPython's own 64 (F.7): the setting lives in the Unix variant header alone.
+    out = tmp_path / "build_overrides"
+    overrides.apply_lwip_connection_counts_override(_write_fake_lwip_tree(tmp_path / "rp2"), out, _REAL_BOARD, _pinned())
+    overrides.apply_modlwip_eagain_override(_write_fake_modlwip_tree(tmp_path / "modlwip"), out)
+    overrides.apply_tick_offset_override(_write_fake_mphalport(tmp_path / "tick"), out, board=_REAL_BOARD)
+    named = [str(path) for path in out.rglob("*") if path.is_file() and "GC_STACK" in path.read_text(encoding="utf-8")]
+    assert named == []
+
+
+def test_the_gc_stack_readback_accepts_the_rigs_stack(overrides: ModuleType) -> None:
+    overrides._check_unix_gc_stack_pp(_gc_pp_text(f"({overrides.UNIX_GC_STACK_ENTRIES})"), Path("unix_mphal.pp"))
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        (_gc_pp_text("(64)"), r"^unix_gc_stack: this build's GC mark stack is not the rig's .* declares gc_block_stack \['\(64\)'\]"),
+        (_gc_pp_text("(1023)"), r"declares gc_block_stack \['\(1023\)'\]"),
+        (_gc_pp_text("(64)", with_array=False), r"declares gc_block_stack \[\]: it never reached the generated variant header's MICROPY_ALLOC_GC_STACK_SIZE"),
+        (_gc_pp_text("(64)", with_struct=False), r"^unix_gc_stack: unix_mphal\.pp has no mp_state_mem_t: the pinned source changed - re-verify SPECIFICATION\.md B\.14\.6"),
+    ],
+)
+def test_the_gc_stack_readback_names_each_miss(overrides: ModuleType, text: str, message: str) -> None:
+    # The stock 64 (the variant header never reached), another value, the array gone, the struct gone.
+    with pytest.raises(overrides.OverrideError, match=message):
+        overrides._check_unix_gc_stack_pp(text, Path("unix_mphal.pp"))
+
+
+def test_the_gc_stack_readback_preprocesses_with_the_builds_own_variables_and_removes_the_pp(overrides: ModuleType, tmp_path: Path) -> None:
+    unix_dir = tmp_path / "ports" / "unix"
+    (unix_dir / "build-settrace").mkdir(parents=True)
+    env, argv_log = _fake_make(tmp_path, pp=_gc_pp_text(f"({overrides.UNIX_GC_STACK_ENTRIES})"))
+    make_vars = {"VARIANT": "standard", "VARIANT_DIR": "/over/unix_kbd_intr_variant", "CFLAGS_EXTRA": "-DMICROPY_PY_SYS_SETTRACE=1", "BUILD": "build-settrace"}
+    overrides.verify_unix_gc_stack_in_build(unix_dir, make_vars, "build-settrace", env=env)
+    assert argv_log.read_text(encoding="utf-8").splitlines() == [*(f"{key}={value}" for key, value in make_vars.items()), "build-settrace/unix_mphal.pp"]
+    assert not (unix_dir / "build-settrace" / "unix_mphal.pp").exists(), "the .pp must not outlive the check"
+
+
+def test_the_gc_stack_readback_fails_a_stock_build_by_name_and_removes_the_pp(overrides: ModuleType, tmp_path: Path) -> None:
+    unix_dir = tmp_path / "ports" / "unix"
+    (unix_dir / "build-standard").mkdir(parents=True)
+    env, _argv = _fake_make(tmp_path, pp=_gc_pp_text("(64)"))
+    with pytest.raises(overrides.OverrideError, match=r"^unix_gc_stack: this build's GC mark stack is not the rig's .* declares gc_block_stack \['\(64\)'\]"):
+        overrides.verify_unix_gc_stack_in_build(unix_dir, {"VARIANT": "standard"}, "build-standard", env=env)
+    assert not (unix_dir / "build-standard" / "unix_mphal.pp").exists()
+
+
+def test_the_gc_stack_readback_names_its_own_preprocessing_failures(overrides: ModuleType, tmp_path: Path) -> None:
+    unix_dir = tmp_path / "ports" / "unix"
+    (unix_dir / "build-standard").mkdir(parents=True)
+    with pytest.raises(overrides.OverrideError, match=r"^unix_gc_stack: the make variables name BUILD=build-settrace, not the build being proven"):
+        overrides.verify_unix_gc_stack_in_build(unix_dir, {"BUILD": "build-settrace"}, "build-standard", env={"PATH": str(tmp_path / "empty")})
+    with pytest.raises(overrides.OverrideError, match=r"^unix_gc_stack: no `make` on the build's PATH"):
+        overrides.verify_unix_gc_stack_in_build(unix_dir, {}, "build-standard", env={"PATH": str(tmp_path / "empty")})
+    env, _argv = _fake_make(tmp_path, pp=None)
+    with pytest.raises(overrides.OverrideError, match=r"^unix_gc_stack: .* did not produce .*unix_mphal\.pp \(exit 0\)"):
+        overrides.verify_unix_gc_stack_in_build(unix_dir, {}, "build-standard", env=env)
+
+
+@pytest.mark.parametrize("settrace", [False, True])
+def test_build_unix_port_proves_the_mark_stack_in_each_flavours_own_build(setup_toolchain: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, settrace: bool) -> None:
+    fake_mp_dir = _write_fake_micropython_tree(tmp_path / "toolchain" / "micropython")
+    build_name = setup_toolchain.UNIX_SETTRACE_BUILD_DIR if settrace else setup_toolchain.UNIX_BUILD_DIR
+
+    def fake_run(cmd: list[str], cwd: Path | None = None, **_kwargs: object) -> str:
+        if cmd[0] == "make":
+            (fake_mp_dir / "ports" / "unix" / build_name).mkdir(parents=True, exist_ok=True)
+            (fake_mp_dir / "ports" / "unix" / build_name / "micropython").write_text("", encoding="utf-8")
+        return "namespace(name='micropython')"
+
+    monkeypatch.setattr(setup_toolchain, "run", fake_run)
+    calls = _stub_build_readbacks(setup_toolchain, monkeypatch)
+    setup_toolchain.build_unix_port(fake_mp_dir, tmp_path / "toolchain", jobs=2, settrace=settrace)
+    assert [name for name, _args in calls] == ["verify_unix_kbd_intr_in_build", "verify_unix_gc_stack_in_build"], "the SIGINT proof, then the mark-stack proof"
+    assert calls[1][1][:3] == calls[0][1][:3] == (fake_mp_dir / "ports" / "unix", calls[0][1][1], build_name), "both read the same build with its own variables"
+
+
+# ---------------------------------------------------------------------------
 # modlwip_eagain (SPECIFICATION.md B.14): the anchors, the patched copy and its CMake swap.
 # ---------------------------------------------------------------------------
 
@@ -1578,7 +1726,8 @@ def test_every_host_anchor_is_load_bearing(overrides: ModuleType, tmp_path: Path
 
 def test_the_host_parametrization_covers_every_anchor_the_code_checks(overrides: ModuleType) -> None:
     in_code = {
-        overrides._UNIX_KBD_INTR_ANCHOR, *overrides._MODLWIP_SOURCE_ANCHORS, overrides._LWIP_HOST_TCP_OUT,
+        overrides._UNIX_KBD_INTR_ANCHOR, *(anchor for _path, anchors in overrides._UNIX_GC_STACK_ANCHORS for anchor in anchors),
+        *overrides._MODLWIP_SOURCE_ANCHORS, overrides._LWIP_HOST_TCP_OUT,
         *(anchor for _path, anchors in overrides._LWIP_HOST_ANCHORS for anchor in anchors),
     }
     assert set(_EVERY_LWIP_HOST_ANCHOR) == in_code
@@ -1631,7 +1780,8 @@ def test_the_host_variant_relays_the_standard_variant_and_swaps_in_the_patched_c
     ]
     assert (variant / "src" / "extmod" / "modlwip.c").read_bytes() == rp2_copy.read_bytes(), "the host build compiles the firmware's own patched copy"
     header = (variant / "mpconfigvariant.h").read_text(encoding="utf-8")
-    assert header == overrides._unix_kbd_intr_header(real) + "void mp_lwip_host_poll(void);\n#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()\n"
+    assert header == overrides._unix_variant_header(real) + "void mp_lwip_host_poll(void);\n#define MICROPY_INTERNAL_EVENT_HOOK mp_lwip_host_poll()\n"
+    assert header.count(f"#define MICROPY_ALLOC_GC_STACK_SIZE ({overrides.UNIX_GC_STACK_ENTRIES})\n") == 1, "the host build marks with the rig's stack too"
     mk = (variant / "mpconfigvariant.mk").read_text(encoding="utf-8").splitlines()
     # vpath before py/mkrules.mk's own `vpath %.c . $(TOP)`: make searches the copy's directory first.
     assert mk[:3] == [f"include {real / 'mpconfigvariant.mk'}", f"INC += -I{variant / 'lwip_inc'}", f"vpath extmod/modlwip.c {variant / 'src'}"]
@@ -1743,8 +1893,9 @@ def test_build_unix_lwip_port_builds_the_host_flavour_and_proves_it(tmp_path: Pa
     assert binary == unix_dir / "build-lwip" / "micropython"
     make_vars = [arg for arg in recorded[0] if "=" in arg]
     assert make_vars == ["VARIANT=standard", f"VARIANT_DIR={toolchain_dir.resolve() / 'build_overrides' / 'unix_lwip_host_variant'}", "BUILD=build-lwip", "MICROPY_PY_LWIP=1", "MICROPY_PY_LWIP_LOOPBACK=1", "MICROPY_PY_SOCKET=0"]
-    assert [name for name, _args in calls] == ["verify_unix_kbd_intr_in_build", "verify_unix_lwip_host_in_build"], "the SIGINT proof, then the host proof"
-    assert calls[1][1][:3] == (unix_dir / "build-lwip", fake_mp_dir, binary)
+    assert [name for name, _args in calls] == ["verify_unix_kbd_intr_in_build", "verify_unix_gc_stack_in_build", "verify_unix_lwip_host_in_build"], "the SIGINT proof, the mark-stack proof, then the host proof"
+    assert (calls[1][1][0], calls[1][1][2]) == (unix_dir, "build-lwip"), "the mark stack is proven in the host build's own directory"
+    assert calls[2][1][:3] == (unix_dir / "build-lwip", fake_mp_dir, binary)
 
 
 # ---------------------------------------------------------------------------

@@ -7,8 +7,17 @@ from _async_harness import run
 from _fram_builders import make_fram_manager
 from voc_reference_vectors import DIV, EXP, INDEX_CRC32, INDEX_EVERY_500, MUL, SQRT, SRAW_COUNT, sraw_sequence
 
+import voc_algorithm
 from asy_crc_checks import CRC32
 from voc_algorithm import VOCAlgorithm
+
+try:
+    from typing import TYPE_CHECKING
+except ImportError:  # typing has no runtime presence on MicroPython, on-device or in the Unix-port test build
+    TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # The 32 persisted fields in pack_into()'s order; F16(n) is n in the port's Q16.16.
 _PERSISTED_FIELDS = (
@@ -32,15 +41,24 @@ def _f16(n: int) -> int:
     return n * 65536
 
 
-# vocalgorithm_init(), then every sraw_sequence() sample: two tests only read this run, so the first to ask builds it
-# once - each index as two little-endian bytes, and every 500th sample's index, pack_into() result and packed state.
-_REFERENCE_TRAJECTORY: "list[tuple[bytearray, list[tuple[int, int, bool, bytes]]]]" = []
+# vocalgorithm_init(), then every sraw_sequence() sample: three tests only read this run, so the first to ask builds it
+# once - each index as two little-endian bytes, every 500th sample's index, pack_into() result and packed state, and
+# how many _f16() conversions the samples made.
+_REFERENCE_TRAJECTORY: "list[tuple[bytearray, list[tuple[int, int, bool, bytes]], int]]" = []
 
 
-def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes]]]":
+def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes]], int]":
     if not _REFERENCE_TRAJECTORY:
         algo = VOCAlgorithm()
         algo.vocalgorithm_init()
+        conversions = [0]
+        real_f16 = algo._f16
+
+        def counting_f16(x: float) -> int:
+            conversions[0] += 1
+            return real_f16(x)
+
+        algo._f16 = counting_f16  # type: ignore[method-assign]  # counts, and converts as before
         indices = bytearray(2 * SRAW_COUNT)
         checkpoints: list[tuple[int, int, bool, bytes]] = []
         buf = bytearray(VOCAlgorithm.get_params_memsize())
@@ -50,7 +68,7 @@ def reference_trajectory() -> "tuple[bytearray, list[tuple[int, int, bool, bytes
             indices[2 * i + 1] = voc_index >> 8
             if i % 500 == 0:
                 checkpoints.append((i, voc_index, algo.params.pack_into(buf), bytes(buf)))
-        _REFERENCE_TRAJECTORY.append((indices, checkpoints))
+        _REFERENCE_TRAJECTORY.append((indices, checkpoints, conversions[0]))
     return _REFERENCE_TRAJECTORY[0]
 
 # ---------------------------------------------------------------------------
@@ -302,6 +320,55 @@ def test_unpack_from_buffer_too_small_returns_false_not_raise() -> None:
     assert algo.params.unpack_from(too_small) is False
 
 
+class _RaisingStruct:
+    # Stands in for the module's struct: both calls the persisted state makes raise the given exception.
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    def pack_into(self, *_args: object) -> None:
+        raise self._exc
+
+    def unpack_from(self, *_args: object) -> "tuple[int, ...]":
+        raise self._exc
+
+
+def _with_struct(exc: BaseException, call: "Callable[[], bool]") -> bool:
+    real = voc_algorithm.struct
+    voc_algorithm.struct = _RaisingStruct(exc)  # type: ignore[assignment]  # monkeypatch, restored below
+    try:
+        return call()
+    finally:
+        voc_algorithm.struct = real
+
+
+def test_a_buffer_or_offset_struct_refuses_is_a_false_answer() -> None:
+    # A read-only or absent buffer (TypeError) and an offset past a machine word (OverflowError), as struct raises them.
+    params = VOCAlgorithm().params
+    assert params.pack_into(bytes(VOCAlgorithm.get_params_memsize())) is False  # type: ignore[arg-type]  # read-only on purpose
+    assert params.pack_into(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
+    assert params.unpack_from(None) is False  # type: ignore[arg-type]  # no buffer on purpose
+    assert params.unpack_from(bytearray(VOCAlgorithm.get_params_memsize()), offset=1 << 70) is False
+
+
+def test_a_stack_overflow_or_an_allocation_failure_in_the_state_codec_propagates() -> None:
+    # The handlers take only what struct raises for a bad buffer or offset: anything else, a C-stack overflow or the
+    # unpack's allocation failing among them, reaches the SGP40 read path's own handler, which logs its text.
+    params = VOCAlgorithm().params
+    buf = bytearray(VOCAlgorithm.get_params_memsize())
+    cases = (
+        (RuntimeError("maximum recursion depth exceeded"), lambda: params.pack_into(buf)),
+        (RuntimeError("maximum recursion depth exceeded"), lambda: params.unpack_from(buf)),
+        (MemoryError("injected for the handler"), lambda: params.unpack_from(buf)),
+    )
+    for exc, call in cases:
+        try:
+            _with_struct(exc, call)
+            raised = None
+        except (MemoryError, RuntimeError) as e:
+            raised = e
+        assert raised is exc, (exc, raised)
+
+
 def test_deserialize_with_malformed_buffer_leaves_algorithm_usable() -> None:
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
@@ -354,7 +421,7 @@ def test_pack_into_writes_little_endian() -> None:
 
 
 def test_the_ports_own_state_always_restores() -> None:
-    _indices, checkpoints = reference_trajectory()
+    _indices, checkpoints, _conversions = reference_trajectory()
     for i, _voc_index, packed, state in checkpoints:
         assert packed is True, i
         for value in struct.unpack_from("<32q", state):
@@ -500,11 +567,33 @@ def test_fix16_helpers_match_the_c_reference_vectors() -> None:
 
 
 def test_the_index_sequence_matches_the_c_reference() -> None:
-    indices, checkpoints = reference_trajectory()
+    indices, checkpoints, _conversions = reference_trajectory()
     assert tuple(voc_index for _i, voc_index, _packed, _state in checkpoints) == INDEX_EVERY_500
     framed = run(CRC32().add(indices))
     assert framed is not None
     assert int.from_bytes(framed[-4:], "big") == INDEX_CRC32
+
+
+def test_no_sample_converts_a_constant() -> None:
+    # The reference samples make no _f16() call: every constant a sample uses was converted once, at construction.
+    _indices, _checkpoints, conversions = reference_trajectory()
+    assert conversions == 0
+
+
+class _ShiftedF16(VOCAlgorithm):
+    # Every conversion one tick high, so each value that went through _f16() at construction shows it.
+    def _f16(self, x: float) -> int:
+        return super()._f16(x) + 1
+
+
+def test_the_sample_constants_are_converted_by_f16_at_construction() -> None:
+    # Through _f16() itself, so each rounds in the port's own float (single precision on rp2) exactly as the
+    # per-sample calls did; a literal would carry the double-precision value instead.
+    plain, shifted = VOCAlgorithm(), _ShiftedF16()
+    names = [name for name in plain.__dict__ if name.startswith("_f16_")]
+    assert len(names) == 35
+    for name in names:
+        assert getattr(shifted, name) == getattr(plain, name) + 1, name
 
 
 # ---------------------------------------------------------------------------
@@ -652,9 +741,8 @@ def test_voc_state_self_heals_from_a_single_corrupted_copy_through_real_fram() -
 
 
 def test_pack_into_negative_offset_returns_false_not_raise() -> None:
-    # Confirmed against the real interpreter: MicroPython's struct.pack_into() raises ValueError for a
-    # negative offset, unlike CPython's, which treats one as relative to the buffer's end. Already caught by
-    # pack_into()'s own try/except; no real caller passes a negative offset.
+    # A negative offset counts from the buffer's end, as in CPython (py/modstruct.c, v1.29.0): 300 - 50 leaves no
+    # room for the 256-byte state, so struct raises ValueError and pack_into() answers False. No caller passes one.
     algo = VOCAlgorithm()
     algo.vocalgorithm_init()
     buf = bytearray(300)

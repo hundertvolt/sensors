@@ -1,0 +1,8 @@
+R	X	-1	rc=1	4.39s	f9=FAIL	mem=0	AssertionError: 13.6 bytes kept per cycle (free 16097536, 16097536, 16095904)	217/219 passed, 2 failed, 0 skipped
+R	Xf	-1	rc=1	4.27s	f9=PASS	mem=0		218/219 passed, 1 failed, 0 skipped
+C	committed	-1	rc=0	4.43s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+C	committedf	-1	rc=0	4.23s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+R	X	32768	rc=1	7.11s	f9=PASS	mem=0		218/219 passed, 1 failed, 0 skipped
+R	Xf	32768	rc=1	7.21s	f9=PASS	mem=0		218/219 passed, 1 failed, 0 skipped
+C	committed	32768	rc=0	7.14s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped
+C	committedf	32768	rc=0	7.17s	f9=PASS	mem=0		219/219 passed, 0 failed, 0 skipped

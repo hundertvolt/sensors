@@ -1,0 +1,8 @@
+digital_twin/run_generic_integration.py starting - device='arzi' module='sensortask_arzi' host='127.0.0.1' port=20000 state=StatePaths(fram='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/laneV/manual/s/wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww.json', scd30='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/laneV/manual/s/scd30_state.json', mem_backup='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/laneV/manual/s/mb.json') config_dir='/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u30/laneV/manual/s/config/' online_ntp=False injections=Injections(seed=None, faults=[], hangs=[], wifi_outcomes=[]) run=RunLimits(duration=None, gc_threshold=-1, mem_sample_interval_ms=None, stop_file=None)
+Serving forever at http://127.0.0.1:20000/ - Ctrl+C to stop
+mem: total=5251013, current=1612722, peak=1612987
+stack: 1264 out of 80000
+GC: total: 2072832, used: 677664, free: 1395168
+ No. of 1-blocks: 5442, 2-blocks: 1241, max blk sz: 885, max free sz: 29467
+digital_twin/run_generic_integration.py [arzi] shutdown: would_have_triggered_count=0 feed_count=11 largest_feed_gap_ms=2001 wdt_timeout_ms=8000 mem_backup: r0=0x00000000,0x00000000,0x00000000,0x00000000 public_destinations_refused=0 flash_stall_longest_ms=0 gc_block_bytes=32
+digital_twin/run_generic_integration.py: interrupted

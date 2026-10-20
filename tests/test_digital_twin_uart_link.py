@@ -3,6 +3,7 @@ finds wiring a uart_link pair, its two peripherals joined as the bench jumper jo
 mismatch cases."""
 
 import asyncio
+import gc
 import sys
 import time
 
@@ -30,6 +31,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_bytes  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -41,6 +43,7 @@ import asy_uart_comm  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_uart_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 import asy_uart_link_driver  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_crc_checks import CRC16  # noqa: E402 - imported after the prewarm and the UDP shim
+from asy_print_log import DEFAULT_LOG, LogConfig  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_uart_comm import ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm  # noqa: E402 - imported after the prewarm and the UDP shim
 from asy_uart_link_driver import UARTLinkDriver  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -78,6 +81,7 @@ _ends: "dict[str, UARTLinkDriver]" = {}
 # Each end's (port, tx, rx, bus, role, limits), read once off the latest build for the CRC16 pairs.
 _specs: "list[tuple[int, int, int, asy_uart_driver.UART, str, TransferLimits]]" = []
 _BANNER: bytes = src_bytes("src/asy_uart_link_driver.py", "_BANNER")
+_ERROR_LOG = LogConfig(None, DEFAULT_LOG.history_length, ERROR_LEVEL)  # a link end built here logs as the booted device's
 
 # @tunable l2.uart_link_run_limit_s = 30
 _RUN_LIMIT_S = 30
@@ -134,7 +138,8 @@ _COEXIST_NOISE_TASKS = 4
 async def _boot_device(cfg_path: str) -> None:
     # The generated main()'s first two steps: build_system() with the watchdog a boot entry arms, then the setup list.
     write_offline_ntp_config(cfg_path)
-    await module.build_system(watchdog=WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=cfg_path)
+    write_error_level_config(cfg_path)
+    await module.build_system(watchdog=WDT(timeout=run_generic_integration._WDT_TIMEOUT_MS), cfg_path=cfg_path, debug=ERROR_LEVEL)
     await module.sysfunct.run_setups(module._collect_setups())
 
 
@@ -196,7 +201,7 @@ def _crc16_pair() -> "tuple[UARTLinkDriver, UARTLinkDriver, TwinLink]":
     for port, tx, rx, bus, role, limits in _specs:
         crc_bus = asy_uart_driver.UART(port, tx, rx, baudrate=bus.baudrate, rxbuf=bus.rxbuf, txbuf=bus._txbuf, rx_ring=bus.rx_ring, poll_wait_ms=bus.poll_wait_ms, poll_idle_ms=bus.poll_idle_ms, crc=CRC16())
         buses.append(crc_bus)
-        ends.append(UARTLinkDriver(crc_bus, role, limits=limits, name_ext=role))
+        ends.append(UARTLinkDriver(crc_bus, role, limits=limits, name_ext=role, log=_ERROR_LOG))
     fake_a, fake_b = buses[0]._uart, buses[1]._uart
     assert fake_a is not None and fake_b is not None
     link = UARTLink(fake_a, fake_b)
@@ -224,18 +229,14 @@ async def _exercised(initiator: UARTLinkDriver, responder: UARTLinkDriver, done:
         await cancel_all(tasks)
 
 
-def _hammer_with_the_graph_running(threshold: int) -> None:
+def _hammer_with_the_graph_running() -> None:
     # The combined case: the link hammered flat out while the rest of the device's real graph runs, with the heap
-    # watched throughout. Run under MicroPython's own default (no proactive collection) as well as the
-    # project's 32768 - a hammer that only survives with proactive collection hides the defect.
-    import gc
-
+    # watched throughout, at its process's GC stage: scripts/test.sh runs this file at gc.threshold(-1) and again at
+    # 32768 (SPECIFICATION.md I.4(e)/(f)).
     link = build_linked_system()
     assert module.sysfunct is not None
     initiator = _link(ROLE_INITIATOR)._comm
     fake_a, fake_b = fakes()
-    original = gc.threshold()
-    gc.threshold(threshold)
 
     def clear_wire_logs() -> None:
         # The twin records every delivered byte in an unbounded wire_log - about 15kB over this
@@ -260,21 +261,19 @@ def _hammer_with_the_graph_running(threshold: int) -> None:
             await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
 
     # The warm-up absorbs one-time cost; the window is its own run, so the heap is read with no run's task record held.
-    try:
-        _run(hammered(_HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
-        clear_wire_logs()
-        gc.collect()
-        free_n1 = gc.mem_free()
-        ok = _run(hammered(_HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
-        clear_wire_logs()
-        gc.collect()
-        rate = (free_n1 - gc.mem_free()) / _HAMMER_ROUNDS
-    finally:
-        gc.threshold(original)
-    assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed at gc.threshold({threshold})"
+    _run(hammered(_HAMMER_WARMUP_ROUNDS), limit=_HAMMER_LIMIT_S)
+    clear_wire_logs()
+    gc.collect()
+    free_n1 = gc.mem_free()
+    ok = _run(hammered(_HAMMER_ROUNDS), limit=_HAMMER_LIMIT_S)
+    clear_wire_logs()
+    gc.collect()
+    rate = (free_n1 - gc.mem_free()) / _HAMMER_ROUNDS
+    stage = gc.threshold()
+    assert ok == _HAMMER_ROUNDS, f"only {ok}/{_HAMMER_ROUNDS} hammered transactions completed at gc.threshold({stage})"
     counts = _run(initiator.get_error_counter())
-    assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({threshold})"
-    assert rate < _LEAK_RATE_BYTES_PER_TRANSFER, f"{rate:.1f} bytes retained per hammered transaction at gc.threshold({threshold})"
+    assert counts[initiator.name]["ErrCount"] == 0, f"errors logged under hammer at gc.threshold({stage})"
+    assert rate < _LEAK_RATE_BYTES_PER_TRANSFER, f"{rate:.1f} bytes retained per hammered transaction at gc.threshold({stage})"
 
 
 def _link(role: str) -> UARTLinkDriver:
@@ -489,7 +488,7 @@ def test_a_payload_size_mismatch_is_diagnosed_as_unintelligible() -> None:
     initiator = _link(ROLE_INITIATOR)._comm
     limits = transfer_limits(payload_size=initiator._payload_size + 8, timeout=initiator._timeout)
     callbacks = ResponderCallbacks(echo_get(b"v"), accept_set(), None)
-    responder = UARTComm(_bus("responder_bus"), ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH")
+    responder = UARTComm(_bus("responder_bus"), ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_MISMATCH", log=_ERROR_LOG)
     assert _run(responder.setup()) is True
 
     async def scenario() -> None:
@@ -641,8 +640,6 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     # Massive repeated load rather than one big transfer: the counters, the UID space and the
     # buffers all have to survive being cycled, not just used once. The UID wraps at 0xFE, so this
     # deliberately runs past one whole wrap.
-    import gc
-
     link = build_linked_system()
     initiator = _link(ROLE_INITIATOR)._comm
     rounds = _LEAK_ROUNDS
@@ -719,13 +716,8 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
     assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
 
 
-def test_hammering_the_link_beside_the_graph_holds_at_the_gc_default() -> None:
-    _hammer_with_the_graph_running(-1)
-
-
-def test_hammering_the_link_beside_the_graph_holds_at_the_chosen_gc_threshold() -> None:
-    # @tunable gc.threshold_bytes = 32768
-    _hammer_with_the_graph_running(32768)
+def test_hammering_the_link_beside_the_graph_holds() -> None:
+    _hammer_with_the_graph_running()
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from micropython import const
 
 from asy_base_classes import SensorReaderConfig, TickSeconds, utc_now
 from asy_config_manager import make_dict, name_cfg, schema_names
-from asy_print_log import DEFAULT_LOG, LogConfig
+from asy_print_log import DEFAULT_LOG, LogConfig, report_if_fatal
 
 try:
     from typing import TYPE_CHECKING
@@ -228,6 +228,7 @@ class NotificationService(SensorReaderConfig):
             if now is not None and isinstance(ts, int) and now - ts > _SAMPLE_MAX_AGE_S:
                 value = None
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s(notif.name, "Value read failed:", e, errno=_ERR_SOURCE)
             value = None
         if value is None:
@@ -249,6 +250,7 @@ class NotificationService(SensorReaderConfig):
         # No self._auto_active = True here, unlike __init__/_pause_loop() which own it - this
         # task only reads it. A supervisor-driven restart of this task used to reset it, clobbering
         # an override set mid-run: two independently-restartable tasks over one unlocked flag.
+        cfg_unreadable = False  # a run of cycles whose own config could not be read, logged once
         while True:
             t0 = time.ticks_ms()
             cfg_int = await self.cfgmgr.get_int_values(_VAL_INT_FIELDS)
@@ -263,10 +265,12 @@ class NotificationService(SensorReaderConfig):
                 or len(cfg_bool) != 1
             ):
                 interv = _CFG_FAIL_INTERVAL_S
-                # Persisted every failing cycle; a repeat spends no slot (the newest-entry rule).
-                await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
+                if not cfg_unreadable:  # one entry and one console line per episode: a good read or a task restart ends it
+                    cfg_unreadable = True
+                    await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
                 await self._store_notif_data(any_triggered=False, state=_STATE_CFG_UNREADABLE)
             else:
+                cfg_unreadable = False
                 on_h, on_m, off_h, off_m, flash_bri = cfg_int
                 interv, flash_dur = cfg_float
                 auto_on = cfg_bool[0]
@@ -316,6 +320,7 @@ class NotificationService(SensorReaderConfig):
         try:  # caller-supplied callback, could legitimately misbehave
             return await self._local_time_callback()
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s("local_time_callback failed:", e, errno=_ERR_CALLBACK)
             return None
 
@@ -329,6 +334,7 @@ class NotificationService(SensorReaderConfig):
             if not ok and not self._sink_is_default:
                 await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
         except Exception as e:
+            report_if_fatal(e)
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
 
     def get_task_starters(self) -> "list[TaskStarter]":

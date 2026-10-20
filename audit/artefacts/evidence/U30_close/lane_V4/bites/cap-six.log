@@ -1,0 +1,25 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_______ test_more_than_five_strings_are_named_five_and_the_rest_counted ________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u30v4-bite')
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-11389/test_more_than_five_strings_ar0')
+
+    def test_more_than_five_strings_are_named_five_and_the_rest_counted(repo_root: Path, tmp_path: Path) -> None:
+        # A long TMPDIR under --coverage would name every file's data file: the first five carry the cause.
+        layout = ":".join(chr(ord("a") + n) * (_LIMIT + 1) for n in range(7))
+        done = _run_intern_check(repo_root, tmp_path, _padded_root(tmp_path, "tests/lwip_host", 200), layout=layout)
+        named = ", ".join(f"MICROPYPATH entry {n + 1} {chr(ord('a') + n) * (_LIMIT + 1)} ({_LIMIT + 1} bytes)" for n in range(5))
+>       assert (done.returncode, done.stdout, done.stderr) == (2, "", f"error: no test file was started: {named}, +2 more{_INTERN_REFUSAL}"), done
+E       AssertionError: CompletedProcess(args=['/bin/bash', '/tmp/pytest-of-root/pytest-11389/test_more_than_five_strings_ar0/intern_check.sh'...ffff (256 bytes), +2 more - the Unix port interns each as a qstr of at most 255 bytes and dies before a file starts
+E         ')
+E       assert (2, '', 'erro...ile starts\n') == (2, '', 'erro...ile starts\n')
+E         
+E         At index 2 diff: 'error: no test file was started: MICROPYPATH entry 1 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (256 bytes), MICROPYPATH entry 2 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...
+E         
+E         ...Full output truncated (2 lines hidden), use '-vv' to show
+
+tests_scripts/test_test_sh.py:1410: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_test_sh.py::test_more_than_five_strings_are_named_five_and_the_rest_counted
+1 failed, 189 deselected in 0.21s

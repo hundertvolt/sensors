@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("ci_suite._run_12_reset_reasons",)
 
 _SRC = "asy_system_service.py"
-_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE")}
+_RR = {name: module_int_const(SRC_DIR, _SRC, f"_RR_{name}") for name in ("UNKNOWN", "WATCHDOG", "BOOTLOADER", "TASK_BUDGET", "STACK_EXHAUSTED", "STARVE_ARM_FAILED", "COMMAND_INCOMPLETE", "BOOT_FAILURE")}
 _RR_INTERRUPTED = module_int_const(SRC_DIR, _SRC, "RR_INTERRUPTED")
 _TASK_CHECK_TIME, _RESET_DELAY = module_int_const(SRC_DIR, _SRC, "_TASK_CHECK_TIME"), module_int_const(SRC_DIR, _SRC, "_RESET_DELAY")
 _TIMER_BIT, _FORCED_BIT = 0x1, 0x2  # ResetBits' watchdog half: REASON bits 0-1, TIMER and FORCE (src/asy_system_service.py)
@@ -173,15 +173,15 @@ def test_a_hang_in_boot_phase_p_is_attributed(board: "Board", bench: "BenchBridg
 
 
 def test_a_c_stack_exhaustion_is_attributed(board: "Board", bench: "BenchBridge", dut_ip: str, result_note: "Callable[[str], None]") -> None:
-    # src/ has no code of its own for a stack exhaustion: the reader dies of the stack check's RuntimeError on every
-    # restart until the supervisor's budget reboots, so the attribution is the budget's (agent, 2026-10-14).
+    # The reader dies of the stack check's RuntimeError; the handler that catches it records the overflow, and the
+    # supervisor's next pass reboots with the stack code instead of restarting the chain (SPECIFICATION.md F.1).
     try:
         _evidence(board, bench, dut_ip, "reset-reason-stack-exhausted")
         facts = parse_facts(board.run_isolated_expect_reset(DEVICE_SCRIPTS_DIR / "reset_code_stack_exhausted.py", timeout_s=_SCRIPT_TIMEOUT_S), allow_missing_done=True)
         reset = facts.get("reset")
-        assert isinstance(reset, dict) and reset.get("code") == _RR["TASK_BUDGET"] and reset.get("deaths"), f"the exhaustion did not end in the budget's reboot: {facts}"
-        bits = _attributed(dut_ip, _RR["TASK_BUDGET"], result_note, f"stack exhaustion in {facts.get('reader')} (depths {reset.get('deaths')})")
-        assert bits & _FORCED_BIT, f"the budget's machine.reset() left the forced bit clear: {bits}"
+        assert isinstance(reset, dict) and reset.get("code") == _RR["STACK_EXHAUSTED"] and reset.get("deaths"), f"the exhaustion did not end in the stack code's reboot: {facts}"
+        bits = _attributed(dut_ip, _RR["STACK_EXHAUSTED"], result_note, f"stack exhaustion in {facts.get('reader')} (depths {reset.get('deaths')})")
+        assert bits & _FORCED_BIT, f"the supervisor's machine.reset() left the forced bit clear: {bits}"
     finally:
         board.exec(_SCRATCH_REMOVE)
         restore_board_to_serving(board, bench, dut_ip)

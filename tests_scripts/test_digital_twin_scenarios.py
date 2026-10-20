@@ -6,6 +6,7 @@ import ast
 import inspect
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -281,6 +282,71 @@ def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harnes
     err = capsys.readouterr().err
     assert (code, ran) == (1, []), (code, ran, err)
     assert "port 53 is held by another suite" in err, err
+
+
+def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **boot: object) -> "tuple[list[str], str | None]":
+    # One Context.boot() over a stub twin: the runner arguments spawn() was handed and the stored SYSTEM settings its
+    # state held at that moment (None: no file).
+    seen: list[tuple[list[str], str | None]] = []
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    log_path = tmp_path / "twin.log"
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
+
+    def spawn(_launch: object, *, state_dir: Path, args: "tuple[str, ...]", **_kw: object) -> object:
+        stored = state_dir / "config" / "config_SYSTEM.cfg"
+        seen.append((list(args), stored.read_text(encoding="utf-8") if stored.exists() else None))
+        return SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=state_dir)
+
+    monkeypatch.setattr(harness, "spawn", spawn)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
+    ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
+    with ctx.boot("--test-flash-stall-max", **boot):
+        pass
+    assert ctx.failures == [] and len(seen) == 1, (ctx.failures, seen)
+    return seen[0]
+
+
+def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Built at error level by the runner's flag and kept there by a stored DebugLevel planted before the spawn, so a
+    # caught allocation failure's line reaches the memory gate; the scenario's own arguments follow unchanged.
+    level = module_int_const(_REPO_ROOT / "src", "asy_print_log.py", "_LOG_ERR")
+    args, stored = _spawned_boot(harness, tmp_path, monkeypatch)
+    assert args == ["--debug-level", str(level), "--test-kbd-traceback", "--test-flash-stall-max"], args
+    assert stored is not None and json.loads(stored) == {"DebugLevel": level}, stored
+
+
+def test_a_stored_level_is_kept_and_a_boot_not_logged_plants_nothing(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = tmp_path / "state_01" / "config"
+    config.mkdir(parents=True)
+    (config / "config_SYSTEM.cfg").write_text('{"DebugLevel": 4}', encoding="utf-8")  # an earlier boot's own
+    assert _spawned_boot(harness, tmp_path, monkeypatch)[1] == '{"DebugLevel": 4}'
+    args, stored = _spawned_boot(harness, tmp_path / "unlogged", monkeypatch, logged=False)
+    assert (args, stored) == (["--test-kbd-traceback", "--test-flash-stall-max"], None)
+
+
+def test_only_the_scenario_reading_the_device_defaults_boots_unlogged(harness: ModuleType) -> None:
+    # GET /system's DebugLevel is the device's default only on a boot that planted nothing: that scenario's own boot.
+    unlogged = sorted(item.name for item in harness.SCENARIOS.values() if "logged=False" in inspect.getsource(item.body))
+    assert unlogged == ["every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly"], unlogged
+    assert not harness.SCENARIOS[unlogged[0]].shared
+
+
+@pytest.mark.parametrize(
+    ("word", "counters", "expected"),
+    [("Failed", {"SGP40": 2, "SYSTEM": 0}, None), ("Valid", {"SGP40": 2, "SYSTEM": 0}, "answered 200 'Valid'"), ("Failed", {"SGP40": 0, "SYSTEM": 0}, "'SGP40': (2, 0)")],
+    ids=["refused, nothing cleared", "accepted", "a count lowered"],
+)
+def test_a_reset_errors_under_a_held_reset_must_answer_failed_and_lower_nothing(harness: ModuleType, monkeypatch: pytest.MonkeyPatch, word: str, counters: "dict[str, int]", expected: "str | None") -> None:
+    answer = harness.Answer(200, {}, json.dumps({"result": {"ResetErrors": word}}).encode())
+    monkeypatch.setattr(harness, "_request", lambda *_a, **_kw: answer)
+    monkeypatch.setattr(harness, "_error_table", lambda _port: {name: {"counter": value} for name, value in counters.items()})
+    before = {"SGP40": {"counter": 2}, "SYSTEM": {"counter": 0}}
+    if expected is None:
+        harness._refused_reset_errors(20000, before, "while held")
+        return
+    with pytest.raises(AssertionError, match=re.escape(expected)):
+        harness._refused_reset_errors(20000, before, "while held")
 
 
 def test_the_routes_come_from_the_service_table(harness: ModuleType) -> None:

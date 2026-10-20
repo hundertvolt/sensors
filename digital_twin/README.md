@@ -435,6 +435,7 @@ off the booted module by name, joins their underlying `machine.UART` fakes with
 | `--device LABEL` | the module name | the device name the log lines carry |
 | `--host HOST`, `--port N` | `localhost`, `8080` (owner, 2026-08-13) | where the webserver listens |
 | `--config-dir PATH` | `digital_twin/config/` | the product's config directory |
+| `--debug-level N` | off, as on the device | every logger built at level N, until the stored `DebugLevel` applies; a level `PrintLog.set_level()` refuses is refused |
 | `--fram-state-path`, `--scd30-state-path`, `--mem-backup-state-path PATH` | `digital_twin/fram_state.json`, `scd30_state.json`, `mem_backup_state.json` | where that state persists; `""` keeps it in memory |
 | `--online-ntp` | off | off: the local NTP responder runs and the config pointing at it is written; on: neither, the stored config is used |
 | `--seed N` | none | seeds every chip's random walk |
@@ -458,6 +459,8 @@ host-side harness reads:
 | `--test-shutdown-hang STEP` | `HANG <step>`; for S1 also `HUNG S1` | the controlled shutdown's step S1, S2, S3, S4, S5reset, S5erase or S6 never completes, so only the watchdog ends it; `HUNG S1` comes when the rebound dead-task report is first entered |
 | `--test-flash-stall-max` | — | every flash stall at its datasheet maximum |
 | `--test-uart-over-cap` | `UART_OVER_CAP <key> sent\|refused` | per initiating `uart_link`, right after its next transfer, one stream of the link's cap plus one byte, which the protocol refuses before its first frame and logs |
+| `--test-hold-system-entry ERRNO` | `ENTRY_HELD`, `ENTRY_RELEASED` | SystemService's logger holds its entry with that errno (the supervisor's escalation entry) until an `ENTRY_RELEASE` line arrives on stdin |
+| `--test-kbd-traceback` | `KBD_CAPTURED <bool>`, `KBD_TRACEBACK` | the interpreter's one `KeyboardInterrupt` object, caught at start through a SIGINT to itself; a `KBD_TRACEBACK` line on stdin prints where the newest interrupt was raised |
 
 The runner prints `WATCHDOG_WOULD_TRIGGER count=<n>` whenever its WDT would have reset silicon, and
 one shutdown line naming `would_have_triggered_count`, `feed_count`, `largest_feed_gap_ms`,
@@ -797,8 +800,14 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
     own buffers (SPECIFICATION.md Part E.9).
 12. **The reset reasons reachable at L2** — a fresh boot reads the power-on code; `bootloader` exits
     with code 4 and the relaunch reads its code (the fidelity table's bootloader assumption) with the
-    record cleared at boot; a SIGINT relaunch reads power-on, the twin's non-reset launch. Escalation
-    is run 4's, the REST reboot run 5c's, the config-reset and FRAM-erase codes run 13's.
+    record cleared at boot; a SIGINT relaunch reads power-on, the twin's non-reset launch. Last, on
+    the same state, a C-stack overflow in one read of the plan's first bus device (I2C buses in plan
+    order before SPI): `--fault <instance>:<read op>:stack` (`readfrom_into` for SCD30 and SGP40,
+    `readfrom_mem` for BMP3XX and ISL29125, `readinto` for the FRAM) queues one, the handler that
+    catches it records it and the supervisor resets the device — exit code 3, the watchdog never
+    starved — and the relaunch reads code 20 with SYSTEM's one `STACK_EXHAUSTED` entry; a device
+    wiring no bus driver records a named skip of the cell. Escalation is run 4's, the REST reboot run
+    5c's, the config-reset and FRAM-erase codes run 13's.
 13. **The system commands end to end**, each cell in fresh state — `resetconfig` (every config file
     deleted unread, the relaunch writing each at its defaults, the TOML's `Hostname` back, its reset
     code, `ConfigFaults` empty), the same over damaged files (`ConfigFaults` names the unparseable and
@@ -813,7 +822,17 @@ never a hardcoded driver list, and every fault it leaves out is printed with its
 runs after the suite at each GC stage, holding port 53 (`--exclusive-port-53`), so its DNS scenarios
 run too; without that lock they are deselected and listed. Each scenario boots the device's
 generated graph in a twin and drives it over HTTP, reading only the runner's stdout and its
-`--test-*` lines; it declares its family (webserver concurrency, sensortask integration, the real
+`--test-*` lines. Every boot logs at error level, so a caught allocation failure's line reaches the
+memory gate (the owner's option 1 for the unit tests, owner, 2026-10-20, asked, paraphrase, whether
+to turn logging on at error level or above in the unit tests that can actually run out of memory, in
+every unit test, or in none: "Option 1 is good"; applied to the harness too, agent, 2026-10-20):
+the runner's `--debug-level 1` over a stored `DebugLevel` of 1 planted before the spawn unless one
+is stored, but for the scenario reading the settings routes' defaults, which boots unplanted at the
+default level. Every boot also carries
+`--test-kbd-traceback`, so a twin that ignores its shutdown SIGINT is described before the kill:
+where its interrupt was raised, then what a second SIGINT does (`scripts/_twin_process.py`'s
+`shutdown()`), the verdict staying the kill's. Each scenario declares its family (webserver
+concurrency, sensortask integration, the real
 website, bus hazards, system commands, webserver requests, UART load), the drivers it needs (a
 device without them skips it) and whether it may share a boot. The sharing ones run first on one twin
 per group, with an idle check between two of them — the twin alive, every slot drained, the kernel's
@@ -849,8 +868,9 @@ Almost every request-driving and response-observing job moved host-side (SPECIFI
   very channel this design avoids, and a denser stream is at least as sensitive to a real trend.
   Each line is timestamped off the same wall clock the host reads, so the host selects the samples
   inside its own window — the same way it scrapes the watchdog counter from stdout, never by
-  calling back in. Its `gc.collect()` is measurement instrumentation under Part I.4(e)'s narrow
-  exception, not a pressure workaround: on a fixed timer, reaching no webserver or driver, it
+  calling back in. Its `gc.collect()` is measurement instrumentation, Part I.4(e)'s one twin
+  exception (owner, 2026-09-26), kept while a sparser sampling interval gives Run 11 the same
+  verdict, not a pressure workaround: on a fixed timer, reaching no webserver or driver, it
   cannot mask a real `MemoryError`. Verified by removing it (2026-09-14) — the trend check got
   *worse*, swinging min=99808/max=1347104 on a healthy run, a false positive from incidental
   reactive-GC timing.
@@ -1142,6 +1162,17 @@ each bare `machine`/`network`/`neopixel` resolves to one file per run (SPECIFICA
   `os.environ` is missing, so read `os.getenv()`; and `micropython.mem_info()` with any argument
   prints the full block map. Every Unix-port-vs-rp2 difference worked around in test code is listed
   in SPECIFICATION.md F.7.
+- **A launch string over 255 bytes kills the Unix port before its script runs**: every argument
+  from the script on, the script's real directory and every `MICROPYPATH` entry but a `~/` one built
+  from `$HOME` is interned as a qstr, and a longer one raises outside any handler (`FATAL: uncaught
+  NLR`, exit 1), which reads as a twin that exited before ever serving. A deep logs directory or a
+  long scenario name reaches it through the state paths, so `scripts/_twin_process.py`'s `spawn()`,
+  `scripts/test.sh`, `tests_js/_twin_process.js`'s `spawnTwin()`, `tests_hardware/twin_board.py` and
+  `scripts/run_unix_port_integration.sh` refuse such a launch first, naming each string and its size
+  (SPECIFICATION.md F.7 row 32). A module path over 255 bytes, a directory those checks pass plus the
+  imported file's name, is not refused: it fails at that import with a plain
+  `RuntimeError: name too long` traceback naming the import (`py/builtinimport.c:242`), so its cause
+  reads plainly.
 
 ## Known gaps / follow-ups for later sessions
 

@@ -881,6 +881,17 @@ def test_real_device_webserver_reads_the_system_uptime_for_its_drop_window(devic
     assert next(ast.unparse(k.value) for k in call.keywords if k.arg == "uptime_s") == "sysfunct.get_uptime"
 
 
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_reset_errors_is_refused_by_the_reset_decision_and_the_fram_managers_own_pause(device: str) -> None:
+    # Each read where it lives, not a copy: ResetErrors clears nothing from the reset decision on, nor while the pause holds.
+    assert _reset_refusals(_real(device).module_source) == f"(sysfunct.is_reset_decided, {_fram_var(_real(device))}.get_pause)"
+
+
+def _reset_refusals(source: str) -> str:
+    call = next(n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and ast.unparse(n.func) == "RouteSources")
+    return next(ast.unparse(k.value) for k in call.keywords if k.arg == "reset_refusals")
+
+
 def _uart_bus_calls(source: str) -> "dict[str, str]":
     fn = _function(source, "build_system")
     return {s.targets[0].id: ast.unparse(s.value) for s in fn.body if isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Name) and isinstance(s.value, ast.Call) and ast.unparse(s.value.func) == "asy_uart_driver.UART"}
@@ -1189,6 +1200,19 @@ def test_device_without_notification_or_neopixel_omits_their_wiring(tmp_path: Pa
     assert "notification_led=None" in result.module_source
     assert "notification_pause=None" in result.module_source
     assert '"notification":' not in result.module_source.split("status_sources=")[1].split("\n")[0] if "status_sources=" in result.module_source else True
+
+
+def test_device_without_a_fram_manager_refuses_reset_errors_by_the_reset_decision_alone(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:
+    doc = base_doc()
+    doc["instance"] = [i for i in instances(doc) if i["driver"] != "fram"]
+    for owner in [table_at(doc, "device"), *instances(doc)]:  # every fram_target, the device's and each instance's
+        wiring = owner.get("wiring")
+        if isinstance(wiring, dict):
+            wiring.pop("fram_target", None)
+    del table_at(doc, "device", "wiring")["led_target"]  # its FRAM-logged NeoPixel names the chip too
+    del table_at(doc, "bus")["spi0"]  # the FRAM chip's bus, which nothing else uses
+    result = generate_device(write_doc(tmp_path, "no_fram_manager", doc), src_dir, ext_dir)
+    assert _reset_refusals(result.module_source) == "(sysfunct.is_reset_decided,)"
 
 
 def test_wiring_defaults_generate_inline_provider_construction(tmp_path: Path, src_dir: Path, ext_dir: Path) -> None:

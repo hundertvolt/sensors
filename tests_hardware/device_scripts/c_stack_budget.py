@@ -1,6 +1,6 @@
-"""The C-stack peak of the bench build's await chains on silicon: every bus and FRAM leaf the running system reaches is
-wrapped from outside to record micropython.stack_use() over a fed window of the started tasks and timers; the host
-holds the peak to half the 7,936 B limit. The Unix port's figure is reported apart and never compared."""
+"""The C-stack peak of the bench build's await chains on silicon: every bus and FRAM leaf is wrapped from outside to record
+micropython.stack_use() over a fed window of the started tasks and timers, then one GET /status, the top of the deepest
+chain tests_scripts/test_await_depth.py finds; the host holds the peak to half the 7,936 B limit, the Unix port's apart."""
 
 import asyncio
 import errno
@@ -10,6 +10,7 @@ import sys
 import _bench_device as device  # rendered: the bench device's generated module
 import machine
 import micropython
+from microdot import Microdot, Request
 
 # @include _shared/facts.py
 # @include _shared/watchdog.py
@@ -39,7 +40,7 @@ _SCRATCH_CFG_PATH = "hwtest-scratch/"
 _C_STACK_LIMIT = 0x2000 - 256
 # @tunable l3.c_stack_budget_window_ms = 10000
 _WINDOW_MS = 10000  # about ten read cycles of every reader the build starts
-_I2C_LEAVES = ("readfrom_into", "writeto", "writeto_then_readfrom", "get_register_bytes", "get_register_struct", "get_bits", "set_bits", "set_register_struct")
+_I2C_LEAVES = ("readfrom_into", "writeto", "writeto_then_readfrom", "get_register_bytes", "get_register_into", "get_register_struct", "get_bits", "set_bits", "set_register_struct")
 _FRAM_LEAVES = ("set_values_sync", "get_values_sync")
 peaks: dict[str, int] = {}
 
@@ -69,6 +70,13 @@ async def _main() -> None:
         await sysfunct.start_tasks(device._collect_task_starters())
         await sysfunct.start_timers(device._collect_trigger_starters(), device._collect_timer_starters())
         await fed_sleep_ms(wdt, _WINDOW_MS)
+        webserver = device.webserver
+        assert webserver is not None, "the generated build constructs the webserver unconditionally"
+        app = webserver._app
+        assert isinstance(app, Microdot)
+        res = await app.dispatch_request(Request(app, ("127.0.0.1", 0), "GET", "/status", "1.0", {}))  # the app's real dispatch
+        assert res.status_code == 200, "Microdot answers a raising handler with a 500: only a 200 ran the handler to its end"
+        wdt.feed()
     finally:
         pixel = getattr(device, "neopixel", None)  # the build constructs the rig's NeoPixel where the TOML wires one
         if pixel is not None:

@@ -12,6 +12,7 @@ from rp2 import DMA
 
 import asy_uart_comm
 import asy_uart_driver
+from asy_print_log import DEFAULT_LOG, LogConfig
 from asy_uart_comm import DEFAULT_LIMITS, ROLE_INITIATOR, ROLE_RESPONDER, ResponderCallbacks, TransferLimits, UARTComm
 from asy_uart_driver import UART
 
@@ -23,7 +24,9 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
     from types import ModuleType
-    from typing import Protocol, TypeVar
+    from typing import Protocol, TypedDict, TypeVar
+
+    from typing_extensions import Unpack
 
     from asy_base_classes import PieceBuffer
     from asy_crc_checks import CRCBase
@@ -39,6 +42,18 @@ if TYPE_CHECKING:
     class MessageCallback(Protocol):
         def __call__(self, cmd_id: int, cmd: int, payload: "PieceBuffer | None") -> object: ...
 
+    class PairOptions(TypedDict, total=False):
+        # Pair's keywords, one per field it builds from, each defaulted in Pair.__init__.
+        payload_size: int
+        timeout: int
+        get_callback: CommCallback | None
+        set_callback: CommCallback | None
+        message_callback: MessageCallback | None
+        crc_a: CRCBase | None
+        crc_b: CRCBase | None
+        limits: TransferLimits | None
+        debug: int | None
+
 PAYLOAD_SIZE = 8
 # @tunable l1.uart_comm_harness_timeout_ms = 100
 TIMEOUT_MS = 100
@@ -48,25 +63,24 @@ POLL_WAIT_MS = 1
 RUN_LIMIT_S = 10
 # @tunable l1.uart_comm_harness_listener_drain_s = 5
 LISTENER_DRAIN_S = 5
+# The console level a load test's pair passes as debug: its err() lines print, so a caught MemoryError reaches the
+# memory gate's stream (owner, 2026-10-20, paraphrase: the unit tests that can run out of memory log at error level).
+ERROR_LEVEL = 1  # pins src/asy_print_log.py _LOG_ERR
 
 
 class Pair:
     # One initiator and one responder across a crossover link, plus the link itself so a test can
     # reach its fault knobs and its wire log.
-    def __init__(
-        self,
-        payload_size: int = PAYLOAD_SIZE,
-        timeout: int = TIMEOUT_MS,
-        get_callback: "CommCallback | None" = None,
-        set_callback: "CommCallback | None" = None,
-        message_callback: "MessageCallback | None" = None,
-        crc_a: "CRCBase | None" = None,
-        crc_b: "CRCBase | None" = None,
-        limits: TransferLimits | None = None,
-    ) -> None:
+    def __init__(self, **options: "Unpack[PairOptions]") -> None:
         # crc_a/crc_b are per-bus, not per-Comm: the CRC sits on the UART object below the protocol
         # and is invisible to it (SPECIFICATION.md Part J). Both ends must agree, so a test that
         # passes only one models a mismatched pair rather than a protected link.
+        payload_size, timeout, limits = options.pop("payload_size", PAYLOAD_SIZE), options.pop("timeout", TIMEOUT_MS), options.pop("limits", None)
+        crc_a, crc_b = options.pop("crc_a", None), options.pop("crc_b", None)
+        callbacks = ResponderCallbacks(options.pop("get_callback", None), options.pop("set_callback", None), options.pop("message_callback", None))
+        # debug is both ends' console level: None keeps them off, as every plain test runs; a load test passes ERROR_LEVEL.
+        log = LogConfig(None, DEFAULT_LOG.history_length, options.pop("debug", None))
+        assert not options, f"Pair() got keywords it has no field for: {sorted(options)}"
         DMA.reset_registry()  # each link's ring holds two of the twelve channels: a later pair in one test frees them
         self.driver_a = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_a)
         self.driver_b = UART(1, tx_pin=8, rx_pin=9, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS, crc=crc_b)
@@ -81,14 +95,8 @@ class Pair:
         # A test needing other receive limits passes one limits, which then carries its frame and timeout too.
         assert limits is None or (payload_size, timeout) == (PAYLOAD_SIZE, TIMEOUT_MS), "frame and timeout go through limits"
         limits = limits if limits is not None else transfer_limits(payload_size=payload_size, timeout=timeout)
-        self.initiator = UARTComm(self.driver_a, ROLE_INITIATOR, limits=limits, name="UART_A")
-        self.responder = UARTComm(
-            self.driver_b,
-            ROLE_RESPONDER,
-            limits=limits,
-            callbacks=ResponderCallbacks(get_callback, set_callback, message_callback),
-            name="UART_B",
-        )
+        self.initiator = UARTComm(self.driver_a, ROLE_INITIATOR, limits=limits, name="UART_A", log=log)
+        self.responder = UARTComm(self.driver_b, ROLE_RESPONDER, limits=limits, callbacks=callbacks, name="UART_B", log=log)
 
     async def _listen_rounds(self, rounds: int) -> None:
         for _ in range(rounds):
@@ -208,18 +216,9 @@ async def awaited_with_listener(work: "Coroutine[object, object, T]", listener: 
     return result
 
 
-async def build_pair(
-    payload_size: int = PAYLOAD_SIZE,
-    timeout: int = TIMEOUT_MS,
-    get_callback: "CommCallback | None" = None,
-    set_callback: "CommCallback | None" = None,
-    message_callback: "MessageCallback | None" = None,
-    crc_a: "CRCBase | None" = None,
-    crc_b: "CRCBase | None" = None,
-    limits: TransferLimits | None = None,
-) -> Pair:
-    # Pair's own parameters, passed through.
-    pair = Pair(payload_size, timeout, get_callback, set_callback, message_callback, crc_a, crc_b, limits)
+async def build_pair(**options: "Unpack[PairOptions]") -> Pair:
+    # Pair's own keywords, passed through.
+    pair = Pair(**options)
     assert await pair.setup(), "Pair.setup() failed - both roles must be ready before the test's own assertions mean anything"
     return pair
 

@@ -14,7 +14,7 @@ from harness import REPO_ROOT, HardwareNotAvailableError, HardwareTestFailureErr
 
 from buildgen.twin_wiring import compute_twin_wiring
 from buildgen.validate import build_model
-from scripts._twin_process import EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET
+from scripts._twin_process import _QSTR_MAX_BYTES, EXIT_SIMULATED_BOOTLOADER, EXIT_SIMULATED_RESET, _uninternable
 
 RUNNER = "digital_twin/run_device_script.py"
 PLAN_DIR = REPO_ROOT / "build" / "twin_board"
@@ -60,15 +60,20 @@ class TwinBoard:
         self._last_output: list[str] = []
 
     def _run(self, script: Path, timeout_s: "float | None", *, expect_reset: bool) -> str:
-        # A missing build, or one of another build flavour, raises naming the probe's own fix.
+        # A launch the interpreter would die on before the runner starts fails first; then a missing build, or one of
+        # another build flavour, raises naming the probe's own fix.
+        args = [str(REPO_ROOT / RUNNER), str(_plan(self.device)), str(Path(script).resolve()), "--gc-threshold", str(self.gc_threshold), "--state-dir", self._state.name]
+        env = dict(os.environ, MICROPYPATH=twin_micropypath(), TZ="UTC")
+        uninternable = _uninternable(args, env)
+        if uninternable:
+            raise HardwareTestFailureError(f"twin run of {script.name} was not started: {', '.join(uninternable)} - the Unix port interns each as a qstr of at most {_QSTR_MAX_BYTES} bytes and dies before the runner starts")
         done = _unix_port("check", "standard")
         if done.returncode != 0:
             raise _refused(done, "check standard")
         binary = Path(done.stdout.strip())
         filesystem = Path(self._state.name) / "fs"
         filesystem.mkdir(exist_ok=True)
-        argv = [str(binary), "-X", f"heapsize={_HEAP_SIZE}", str(REPO_ROOT / RUNNER), str(_plan(self.device)), str(Path(script).resolve()), "--gc-threshold", str(self.gc_threshold), "--state-dir", self._state.name]
-        env = dict(os.environ, MICROPYPATH=twin_micropypath(), TZ="UTC")
+        argv = [str(binary), "-X", f"heapsize={_HEAP_SIZE}", *args]
         timeout = timeout_s or self.default_timeout_s
         try:
             proc = subprocess.run(argv, cwd=filesystem, env=env, capture_output=True, text=True, timeout=timeout, check=False)  # argv from repo paths, no shell
@@ -118,6 +123,8 @@ class TwinBoard:
         del duration_s, baudrate
         lines, self._last_output = self._last_output, []
         return lines
+
+
 def twin_micropypath() -> str:
     # The twin's one MICROPYPATH with each directory made absolute, so a run works from the board's own filesystem;
     # ".frozen" stays as it is, the interpreter's token for its frozen modules (asyncio among them), not a directory.
@@ -130,5 +137,3 @@ def unix_port_binary() -> Path:
     if done.returncode != 0:
         raise _refused(done, "unix_port_bin standard")
     return Path(done.stdout.strip())
-
-
