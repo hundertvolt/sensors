@@ -24,3 +24,14 @@ tracked file (checked over `b1fecfb` and every commit of `b1fecfb..3e87082`: blo
   `fix2/` the ignored-SIGINT diagnostic (`bf42ac8`): the new test red then green, the probe of a healthy interpreter, ruff,
   the host mypy pass, and `tier/` the whole `tests_scripts` tier on it; `hang/` the hung-shutdown agent's hand-back and its
   runs (the SIGINT probe, `run1`-`run4`, the five storms), every run's logs; `putskip/` the hand-back naming `npm test`'s six skips.
+
+Added with the records after the push (the CI runs and their two fixes):
+
+- `lead/ci/`: each run's jobs as `gh api` returned them (U27's 38777834467, the unit push's cold run 39335426899, the fixes'
+  warm run 39344544377), the inputs of the job budgets.
+- `lead/fix3/`: the probe's mode (`836689a`): the workflow test red on the old mode, green after; `ensure standard` run as CI
+  runs it; ruff, host mypy, shellcheck, the doc checks; `tier/` the whole `tests_scripts` tier on it.
+- `lead/fix4/`: `scripts/test.sh` at -1 and at 32768 on `a628c4d`, in parallel as gate1b's two stage legs.
+- `lead/sgp/`: the SGP40-in-the-idle-check root cause and fix: the agent's hand-back, its notes, the idle-twin measurement
+  (`run1.out`), the CI job-log tails it read (`ci/`), the fix's red and green runs and the dev harness at both stages
+  (`fix/h32768`, `fix/hneg1`).

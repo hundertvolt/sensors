@@ -1,0 +1,252 @@
+[
+  {
+    "name": "above_max_connections_all_flaky_survives",
+    "outcome": "passed",
+    "reason": "5.7s"
+  },
+  {
+    "name": "above_max_connections_mixed_healthy_and_flaky_at_least_one_healthy_succeeds",
+    "outcome": "passed",
+    "reason": "1.6s"
+  },
+  {
+    "name": "every_admitted_connection_is_actually_served_a_complete_correct_response",
+    "outcome": "passed",
+    "reason": "3.2s"
+  },
+  {
+    "name": "a_full_ceiling_of_real_page_loads_is_served_without_truncation",
+    "outcome": "passed",
+    "reason": "4.1s"
+  },
+  {
+    "name": "all_flaky_connections_dont_wedge_the_server",
+    "outcome": "passed",
+    "reason": "0.8s"
+  },
+  {
+    "name": "api_burst_at_the_ceiling_during_bus_load",
+    "outcome": "passed",
+    "reason": "1.2s"
+  },
+  {
+    "name": "connections_beyond_max_connections_are_rejected_cleanly_not_crashed",
+    "outcome": "passed",
+    "reason": "1.7s"
+  },
+  {
+    "name": "connections_at_each_count_from_one_to_max_connections_all_succeed",
+    "outcome": "passed",
+    "reason": "1.9s"
+  },
+  {
+    "name": "every_get_endpoint_is_reachable_over_real_http_and_shaped_correctly",
+    "outcome": "passed",
+    "reason": "1.2s"
+  },
+  {
+    "name": "existing_connections_survive_an_overflow_burst_untouched",
+    "outcome": "passed",
+    "reason": "1.5s"
+  },
+  {
+    "name": "connection_count_fluctuating_in_real_time_server_stays_healthy",
+    "outcome": "passed",
+    "reason": "1.7s"
+  },
+  {
+    "name": "high_concurrency_burst_at_historical_segfault_repro_scale_survives",
+    "outcome": "passed",
+    "reason": "7.9s"
+  },
+  {
+    "name": "get_measurements_and_sensors_are_reachable_and_shaped_correctly",
+    "outcome": "passed",
+    "reason": "0.8s"
+  },
+  {
+    "name": "mixed_healthy_and_flaky_connections_dont_wedge_the_server",
+    "outcome": "passed",
+    "reason": "1.0s"
+  },
+  {
+    "name": "realistic_mixed_traffic_above_the_connection_ceiling_degrades_gracefully",
+    "outcome": "passed",
+    "reason": "4.5s"
+  },
+  {
+    "name": "multiple_browser_like_sessions_concurrently_all_succeed",
+    "outcome": "passed",
+    "reason": "4.4s"
+  },
+  {
+    "name": "n_healthy_concurrent_connections_up_to_max_connections_all_succeed",
+    "outcome": "passed",
+    "reason": "0.8s"
+  },
+  {
+    "name": "negative_content_length_is_refused",
+    "outcome": "passed",
+    "reason": "0.5s"
+  },
+  {
+    "name": "realistic_mixed_openhab_polling_and_browser_session_concurrently",
+    "outcome": "passed",
+    "reason": "3.5s"
+  },
+  {
+    "name": "refusal_at_the_ceiling_is_counted",
+    "outcome": "passed",
+    "reason": "2.4s"
+  },
+  {
+    "name": "real_website_inlined_definitions_matches_the_booted_devices_own",
+    "outcome": "passed",
+    "reason": "0.9s"
+  },
+  {
+    "name": "a_full_ceiling_of_concurrent_real_page_loads_all_serve_the_real_website",
+    "outcome": "passed",
+    "reason": "4.6s"
+  },
+  {
+    "name": "real_website_put_to_unmatched_path_in_hotspot_mode_still_405",
+    "outcome": "passed",
+    "reason": "0.4s"
+  },
+  {
+    "name": "real_website_hotspot_mode_redirects_unmatched_path_to_root",
+    "outcome": "passed",
+    "reason": "0.5s"
+  },
+  {
+    "name": "real_website_hotspot_mode_still_serves_real_index_and_real_api_route",
+    "outcome": "passed",
+    "reason": "0.9s"
+  },
+  {
+    "name": "real_website_production_js_entry_is_served_not_the_prototype",
+    "outcome": "passed",
+    "reason": "1.3s"
+  },
+  {
+    "name": "real_website_static_mount_never_shadows_a_real_api_route",
+    "outcome": "passed",
+    "reason": "0.5s"
+  },
+  {
+    "name": "real_website_root_serves_the_actual_production_index_html",
+    "outcome": "passed",
+    "reason": "4.9s"
+  },
+  {
+    "name": "a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection",
+    "outcome": "passed",
+    "reason": "5.9s"
+  },
+  {
+    "name": "static_site_is_served_over_real_http",
+    "outcome": "passed",
+    "reason": "0.9s"
+  },
+  {
+    "name": "the_accept_queue_is_never_shallower_than_the_admission_ceiling",
+    "outcome": "passed",
+    "reason": "4.6s"
+  },
+  {
+    "name": "a_real_bus_fault_degrades_to_a_clean_response_not_a_crash",
+    "outcome": "passed",
+    "reason": "4.5s"
+  },
+  {
+    "name": "a_connection_still_closing_holds_its_slot_after_its_client_has_the_whole_response",
+    "outcome": "passed",
+    "reason": "5.6s"
+  },
+  {
+    "name": "a_command_right_after_the_first_answer_resets_cleanly",
+    "outcome": "passed",
+    "reason": "37.6s"
+  },
+  {
+    "name": "erasefram_concurrent_with_a_reboot_accepts_exactly_one",
+    "outcome": "passed",
+    "reason": "9.9s"
+  },
+  {
+    "name": "erasefram_on_a_silent_chip_stops_short_and_the_device_feeds_on",
+    "outcome": "passed",
+    "reason": "16.1s"
+  },
+  {
+    "name": "wifi_sta_failure_falls_back_to_hotspot_and_drives_the_real_dns_server",
+    "outcome": "deselected",
+    "reason": "needs exclusive port 53 - run_digital_twin_ci.sh runs it"
+  },
+  {
+    "name": "a_hung_shutdown_step_is_ended_by_the_watchdog",
+    "outcome": "passed",
+    "reason": "104.9s"
+  },
+  {
+    "name": "isl29125_config_put_during_get_loops",
+    "outcome": "passed",
+    "reason": "8.0s"
+  },
+  {
+    "name": "mempause_over_real_http_reaches_the_real_fram_manager",
+    "outcome": "passed",
+    "reason": "4.3s"
+  },
+  {
+    "name": "mempause_then_reboot_unpauses_on_the_relaunch",
+    "outcome": "passed",
+    "reason": "10.4s"
+  },
+  {
+    "name": "put_pause_time_round_trips_and_counts_down_over_real_http",
+    "outcome": "passed",
+    "reason": "7.1s"
+  },
+  {
+    "name": "realistic_mixed_polling_and_a_concurrent_real_config_write",
+    "outcome": "passed",
+    "reason": "5.4s"
+  },
+  {
+    "name": "put_round_trips_through_a_real_twin_backed_driver_over_real_http",
+    "outcome": "passed",
+    "reason": "4.1s"
+  },
+  {
+    "name": "reboot_and_bootloader_at_once_accept_exactly_one",
+    "outcome": "passed",
+    "reason": "7.9s"
+  },
+  {
+    "name": "reset_errors_over_real_http_is_not_undone_by_a_fram_loggers_later_setup",
+    "outcome": "passed",
+    "reason": "9.1s"
+  },
+  {
+    "name": "sensors_put_round_trips_a_real_scd30_field_over_real_http",
+    "outcome": "passed",
+    "reason": "4.2s"
+  },
+  {
+    "name": "a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly",
+    "outcome": "passed",
+    "reason": "6.8s"
+  },
+  {
+    "name": "real_website_dynamic_hotspot_toggle_switches_redirect_behavior_live",
+    "outcome": "passed",
+    "reason": "44.7s"
+  },
+  {
+    "name": "uart_ring_under_concurrent_load",
+    "outcome": "passed",
+    "reason": "63.2s"
+  }
+]
