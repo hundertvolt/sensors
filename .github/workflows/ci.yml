@@ -119,8 +119,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_lint_and_typecheck_timeout_min = 10
-    timeout-minutes: 10
+    # @tunable ci.web_lint_and_typecheck_timeout_min = 5
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -160,8 +160,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_unit_tests_timeout_min = 20
-    timeout-minutes: 20
+    # @tunable ci.web_unit_tests_timeout_min = 15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -219,8 +219,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_put_matrix_timeout_min = 20
-    timeout-minutes: 20
+    # @tunable ci.web_put_matrix_timeout_min = 15
+    timeout-minutes: 15
     strategy:
       fail-fast: false  # one shard's failure must not hide which cases the other two would have caught
       matrix:
@@ -276,8 +276,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_coverage_timeout_min = 20
-    timeout-minutes: 20
+    # @tunable ci.web_coverage_timeout_min = 15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -360,8 +360,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.web_cross_browser_smoke_timeout_min = 25
-    timeout-minutes: 25
+    # @tunable ci.web_cross_browser_smoke_timeout_min = 15
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -425,8 +425,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.lint_and_typecheck_timeout_min = 15
-    timeout-minutes: 15
+    # @tunable ci.lint_and_typecheck_timeout_min = 5
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -494,15 +494,15 @@ jobs:
     # needs: lint-and-typecheck is sequencing only, the standing hang backstop; `if: !cancelled()`
     # drops the success gating, so a red lint never skips the tests (CLAUDE.md).
     #
-    # Its budget: a warm run plus one hung file's full retry budget (Part N); the per-file timeout in
-    # scripts/test.sh is the real hang defence (B.10.1).
+    # Its budget: a warm run plus one hung scenario job's full retry budget, plus 25% (Part N); the
+    # per-job timeouts in scripts/test.sh are the real hang defence (B.10.1).
     needs: lint-and-typecheck
     if: ${{ !cancelled() }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.unit_tests_timeout_min = 45
-    timeout-minutes: 45
+    # @tunable ci.unit_tests_timeout_min = 175
+    timeout-minutes: 175
     steps:
       - uses: actions/checkout@v7
         with:
@@ -527,8 +527,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.unit_tests_gc_threshold_timeout_min = 45
-    timeout-minutes: 45
+    # @tunable ci.unit_tests_gc_threshold_timeout_min = 175
+    timeout-minutes: 175
     steps:
       - uses: actions/checkout@v7
         with:
@@ -555,8 +555,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.unit_tests_coverage_timeout_min = 45
-    timeout-minutes: 45
+    # @tunable ci.unit_tests_coverage_timeout_min = 35
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
         with:
@@ -682,8 +682,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    # @tunable ci.firmware_build_verify_timeout_min = 15
-    timeout-minutes: 15
+    # @tunable ci.firmware_build_verify_timeout_min = 20
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

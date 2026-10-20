@@ -408,8 +408,8 @@ fi
 # none is solved by raising everyone's default, which would make a genuine future hang 2-3x slower to detect. The
 # scenario harness has its own: one job boots a twin per scenario (measured figures: Part E.3.1 and Part N).
 declare -A per_file_timeout_overrides_s=()
-# @tunable runner.scenarios_timeout_s = 1980
-per_file_timeout_overrides_s[scenarios]=1980
+# @tunable runner.scenarios_timeout_s = 2555
+per_file_timeout_overrides_s[scenarios]=2555
 # @tunable runner.per_file_attempts = 3
 max_attempts=3
 
