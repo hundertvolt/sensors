@@ -3,7 +3,6 @@
 BACKLOG.md	HARDWARE_TEST_HANDOVER.md
 BACKLOG.md	HARDWARE_TEST_PLAN.md
 BACKLOG.md	REAL_HARDWARE_TEST_QUEUE.md
-BACKLOG.md	Session 2
 CLAUDE.md	WP1
 CLAUDE.md	WP1
 CLAUDE.md	WP2
@@ -16,7 +15,6 @@ CLAUDE.md	improved-quality/async_connect.py
 CLAUDE.md	improved-quality/microdot.py
 CLAUDE.md	improved-quality/microdot.py
 CLAUDE.md	improved-quality/mypy.ini
-CLAUDE.md	improved-quality/pycheck.sh
 CLAUDE.md	src/sensortask_wozi.py
 CLAUDE.md	tests_hardware/bus_topology.py
 HEAP_FRAGMENTATION_MEASUREMENTS.md	tests_hardware/combined_load_sweep.py

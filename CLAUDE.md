@@ -163,8 +163,9 @@ information):
   initiation is out of contract. Each link receives through a DMA ring, so a flash write holding
   interrupts off loses no frame (owner, 2026-10-05; SPECIFICATION.md F.5.8). **`dev` carries two
   instances across its permanent crossover jumper** (owner, 2026-09-11, UART promotion 'Target
-  variant. dev, two instances') **and `wozi` carries none** — wozi is never flashed, so the
-  peripheral would be untestable there (agent, 2026-09-11). The protocol's own wire constants and
+  variant. dev, two instances') **and `wozi` carries none** — no session
+  ever flashes or bench-tests `wozi`, so the peripheral would be untestable
+  there (agent, 2026-09-11). The protocol's own wire constants and
   recovery timings live in `src/asy_uart_comm.py` as `const()` values. **Construction is
   buildgen-driven, like every other driver**: `devices/dev.toml` declares the two instances as
   `driver = "uart_link"` (`role = "initiator"`/`"responder"`, one on each of
@@ -178,10 +179,12 @@ information):
 - **`dev` meets every device's bar**: its generated config is held to the same standard as every
   device's; a quirk is a defect (owner, 2026-09-26).
 - **WoZi is the exemplary/base variant the whole `src/` promotion is built and validated against —
-  it is never physically flashed or bench-tested; only the dev board is, and only ever will be.**
-  (owner, 2026-09-03, `a19691c`) WoZi's own correctness is established entirely through the
-  mock/twin/unit-test suite (`tests/`), which stays the source of truth for it and is unaffected by
-  any real-hardware work. The dev bench exists solely to physically validate the underlying shared
+  it is never bench-tested; only the dev board is, and only ever will be.** (owner,
+  2026-09-03, `a19691c`) WoZi's own correctness is established entirely through the
+  mock/twin/unit-test suite (`tests/`), which stays the source of truth for it and is
+  unaffected by any real-hardware work. No session ever flashes `wozi`; like every legacy
+  unit, it moves to the refactored firmware only by the owner's own reflash (owner, 2026-09-26,
+  paraphrase). The dev bench exists solely to physically validate the underlying shared
   mechanisms (I2C/SPI/WiFi/webserver/etc.) that wozi's own code also uses — **a passing dev-bench
   result is treated as valid for wozi too**, provided the code actually under test is genuinely
   dev-native (dev's own correct pins/config via its own entry point), never wozi's own hardcoded
@@ -899,10 +902,9 @@ information):
   `[tool.ruff.lint]`, where each exclusion carries its own reasoning). That opt-in-to-everything
   choice is exactly why ruff is pinned: an unpinned upgrade would hard-fail CI on a rule nobody
   chose.
-- **Bare `except:` (E722) is intentionally left enabled**, unlike the old `improved-quality/pycheck.sh`
-  — the project owner wants ruff to flag existing bare excepts (owner, 2026-07-13) as a tracked
-  to-do, not silence them before they're fixed (test-driven-development framing, confirmed
-  directly).
+- **Bare `except:` (E722) stays enabled** (owner, 2026-07-13, `c0dfd20`, paraphrase: flag bare
+  excepts rather than silence them): every one it flagged has been fixed, none remains in any lint
+  scope, and the rule keeps it that way.
 - **Union type annotations: always PEP 604 `X | Y` (and `X | None`), never `typing.Union[...]`.**
   Confirmed safe at runtime on 1.26 and on the refactor's 1.29.0 target (the legacy units run
   1.24.1; not tested there) by testing directly against the pinned Unix-port interpreter (`int | None` in an unquoted, executed

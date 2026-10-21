@@ -601,19 +601,24 @@ The rest, one fact each (occurrences: `HEAP_FRAGMENTATION_MEASUREMENTS.md` archi
 - Ctrl-C reaches the autostart image only while the board's 512-byte stdin ring has room: the
   firmware never reads stdin, so after a host program has sent 511 bytes (a terminal, a probe) a
   later Ctrl-C stays in the USB buffer and `mpremote`'s raw-REPL entry fails with a generic error
-  that looks like a board fault. Reset the board by power or RUN (`shared/tinyusb/mp_usbd_cdc.c`,
-  `ports/rp2/mphalport.c`, v1.29.0).
+  that looks like a board fault. Reset the board by power or RUN, or use the no-autostart image
+  (`scripts/build_firmware.py <device> --no-autostart`), whose REPL keeps reading stdin
+  (`shared/tinyusb/mp_usbd_cdc.c`, `ports/rp2/mphalport.c`, v1.29.0).
 - A Ctrl-C into the autostart image ends its whole event loop: the board records reset reason 21
   and the watchdog resets it within its timeout; a change answered `Valid` whose deferred flush has
   not run yet is lost.
 - Every flash run ends with one hard reset to a serving board (`flash/conftest.py`'s
   `leave_board_serving`).
 - Every hard-reset fallback goes through `harness.recover_by_reset()`, reported as a recovery pass
-  naming what the reset path skipped; for a hand recovery `.venv/bin/python
-  tests_hardware/kick_then_reset.py [--device D]` kicks every station off the bench AP and then
-  resets, since a reset without the kick right before it is what leaves a board in hotspot mode.
-- After a reset or a flash the board can fall back to hotspot mode; `kick_all_stations()` +
-  `hard_reset()` recovers it, occasionally only on a second try.
+  naming what the reset path skipped.
+- After a reset or a flash the board can fall back to hotspot mode, since a reset without a kick
+  right before it leaves a stale station entry on the bench AP ("Workarounds");
+  `kick_all_stations()` + `hard_reset()` recovers it, occasionally only on a second try, and for a
+  hand recovery `.venv/bin/python tests_hardware/kick_then_reset.py [--device D]` does both steps
+  (~40 s to recover, recorded 2026-09-19, `1fb370b`). A reboot issued by hand over REST
+  (`PUT /system {"SystemCmd": "reboot"}`) is the same trap: kick the AP's stations as soon as the
+  command answers, before the reset it arms fires, as `bench/test_end_to_end_timing.py` does, or
+  the board comes back healthy but never re-associates (serial: `WIFI Hotspot mode is active`).
 - An ad-hoc bench script caps every retry and runs under `timeout`: one that retried a refused
   `PUT` without bound ran for 1 h 40 min (2026-09-25).
 - Leave > 45 s between a reset and the next `mpremote` attach; a watchdog reset ~9 s after an early

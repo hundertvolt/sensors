@@ -191,66 +191,6 @@ cites is deleted outright, its permanent content migrated per the policy above. 
     log text now says what the status means, and the bench outage check accepts `WLAN_AUTH_FAILED`
     as benign beside `WLAN_NO_AP`.
 
-32. **The bench tier's `ResetErrors` timeout was raised 10.0s → 30.0s with no elapsed-time budget
-    to replace what that bound was incidentally enforcing.** Recorded 2026-09-17: a loosening with
-    no compensating check.
-    The old `10.0` was genuinely miscalibrated — it sat *below* the product's own
-    `outer_cap_s = 15.0`, so a legitimate sweep (measured 6.32s idle, **11.58s under three
-    concurrent readers** on the dev bench) failed as a client timeout before the server could abort,
-    and the test could never observe the server's real behaviour at all. Raising it was correct.
-    **But the twin got a compensating `_RESET_ERRORS_BUDGET_S` (12.0s, asserted per sweep by
-    `_put_reset_errors_timed()`) and the bench tier did not.** `reset_all_error_logs()` passes the
-    timeout and asserts nothing about elapsed time, so a sweep that degraded to, say, 25s on real
-    hardware would now pass silently where the old bound would at least have gone red — for the
-    wrong reason, but red.
-    **Why no bench budget was set instead of recording this.** Sizing one needs the reader-count
-    curve R2 measured on 2026-09-25 (0/1/2/3/4 readers, below). Two points did not
-    say whether it flattens: the twin's 12.0s is already below the 11.58s-at-3-readers measurement
-    plus any margin, so copying it across would flake the bench suite, and anything above ~15s
-    cannot fire before the server's own abort. Both halves of the owner's standing requirement for
-    this budget — "reliably won't fail the pipeline accidentally with a false positive" **and**
-    "will reliably fail if something really went wrong" — are unsatisfiable until that curve exists.
-
-    **The reader-count curve, real hardware 2026-09-25** (`dev` bench board, image
-    `2026-09-25T05:21:43Z`, 21 FRAM-backed chunks, three sweeps per point, readers re-requesting
-    `/status` with zero think time — queue R2; measured while `ResetErrors` still reset the sources
-    one after another):
-
-    | concurrent `GET /status` readers | wall clock (3 sweeps) | % of the 15s ceiling |
-    | --- | --- | --- |
-    | 0 | 2.31 / 2.43 / 2.43s | 16% |
-    | 1 | 5.53 / 5.61 / 5.76s | 37% |
-    | 2 | 8.80 / 10.57 / 11.03s | 59-74% |
-    | 3 | 13.16 / 13.24 / 14.69s | 88-98% |
-    | 4 | no result: refused 20x at the connection ceiling, then no answer within 30s | over |
-
-    Idle sits far below the 6.32s measured idle on 2026-09-17, but the curve does not flatten: it
-    climbs ~3.5s per reader, so three readers reach 88-98% of the ceiling and four exceed it.
-    **The curve is taken, and at the one-after-another reset it was measured on, it says no budget
-    can meet both halves**: three readers already land at 13.2-14.7s against a 15s server abort, so
-    any budget that never false-positives sits at or above the point where the server gives up
-    first (R4 on 2026-09-25 measured 12.1-14.6s at three readers again, the worst 0.4s from the
-    abort). The owner chose the concurrent reset (owner, 2026-09-26), and it has landed; the bench
-    budget is set once the curve is re-measured on silicon with it. Then add the bench analogue of the twin's own budget check to
-    `tests_hardware/error_log_helpers.py`.
-
-44. **Board anomalies from the connection-limit sittings — recorded, not chased; each needs
-    silicon** (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5; row F17). A fourth, 2026-09-24: the
-    USB serial dropped mid-upload of `uart_idle_poll_rate.py`; later resets overwrote
-    `reset_cause()`, an isolated re-run passed, and two later full bench tiers did not reproduce it.
-    - One silent reset in 1 of 9 instrumented peak-load boots, cause lost. Watchdog starvation is the
-      first candidate to rule out: the supervisor loop is the only feed site (`asy_system_service.py`'s
-      `feed_watchdog()`), and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap.
-    - Hotspot fallback after a reset, three times. `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is
-      the mechanism that would take it there. **One instance is now measured (2026-09-25, F17)**: a watchdog reset with no `kick_all_stations()` before it gave `reset_cause()` =
-      `WDT_RESET` and WIFI `WLAN_CONNECT_FAILED` (`W38`) ×5 (`STAT_CONNECT_FAIL`) — the
-      stale-AP-station mechanism, cleared by a kick. Whether the earlier three were the same is not
-      recoverable.
-    - ~~A likely watchdog reset at `mpremote` attach~~ — **not an open anomaly: that mechanism is
-      already measured** (item 12, 2026-09-11 — an `mpremote exec` stops `main.py`, nothing feeds the
-      WDT, and the board takes a hard reset ~8 s later; the occurrence was ~9 s after attach). It is
-      `tests_hardware/README.md`'s "> 45 s between a reset and the next attach" trap, not a finding.
-
 ## Real-hardware work still owed
 
 Folded in from the retired `REAL_HARDWARE_TEST_QUEUE.md` and `HARDWARE_TEST_HANDOVER.md` after the
@@ -267,48 +207,62 @@ gates, traps).
   (agent, 2026-09-22): read and save `errcount` before anything writes (CLAUDE.md), build and flash,
   confirm `/system`'s `build.BuildDate`, flash tier, bench tier, then the gated run
   (`scripts/run_bench_hardware_suite.sh --allow-persistence-write -s`), reading each verdict's
-  deselected count, not only "clean". **Board state at the fold**: `dev` image
-  built 2026-09-25T12:54:13Z (tree `851e816`), `max_connections = 6`, `DebugLevel` 5; its last
-  runs were two clean default bench tiers and one clean gated run (2026-09-25).
-- **Not yet confirmed on silicon.** (1) SGP40 `SGP_WRITTEN_NO_TS` (`W35`) spends one slot per run
-  of untimestamped backups (`83c9920`'s episode rule on the board's image, the central newest-entry
-  rule in `asy_print_log.py` since): no run since has kept NTP away past `WaitTimeNTP`, so none logged
-  one. Zero-wear check: block UDP 123 longer than that, expect one `W35` with `ErrCount` rising per
-  backup. (2) The flash tier's watchdog-starvation test ending with `hard_reset()` (`79eb41b`,
-  test-only, no reflash needed): no full flash-tier run since. Before it, the flash tier always left
-  the board parked at the REPL with no watchdog, because the test attached within ~1 s of boot.
+  deselected count, not only "clean".
+- **Not yet confirmed on silicon: the flash tier's watchdog-starvation test ending with
+  `hard_reset()`** (`79eb41b`, test-only, no reflash needed) — no full flash-tier run since. Before
+  it, the flash tier always left the board parked at the REPL with no watchdog, because the test
+  attached within ~1 s of boot. Expected: `flash/test_watchdog_starvation.py` closes with one
+  `hard_reset()` and the USB device back (its `closing_reset` fixture), so the tier no longer ends
+  on a board parked without its watchdog. Wear: none (test only, no reflash). Twin row: the twin
+  CI's watchdog hang backstop run (`ci_suite._run_10_watchdog_hang_backstop`, the file's named
+  cover).
 - **M1 + S3b, the ISL29125 light programs** — needs the owner at the bench, ~30 min. M1 first
   (`scripts/run_manual_hardware_tests.sh --only isl29125_real_lux_vs_reference_meter_and_neopixel_rig_geometry`,
   interactive: repeatability on an unchanged scene, continuity across the range switch, and writing
   down the rig geometry S3b depends on; the reference light meter is an optional data point, never
-  pass/fail), then `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep` (~10 min). R9's
-  `Overrange` half rides S3b (open question "ISL29125's chip configuration divergence" above).
+  pass/fail), then
+  `scripts/run_flash_hardware_suite.sh --allow-neopixel-sweep --allow-persistence-write` (~10 min;
+  the envelope test's config pushes need the second flag). R9's `Overrange` half rides S3b (open
+  question "ISL29125's chip configuration divergence" above). Expected: M1, the operator's verdict
+  on repeatability and on continuity across the range switch, with the rig geometry written down;
+  S3b, no task died, `Overrange` set at full white and the envelope check reporting nothing
+  (`flash/test_sensor_accuracy.py::test_isl29125_mechanism_envelope_holds_across_range_resolution_and_calibration`)
+  (agent, 2026-10-21). Wear: M1 none; S3b seven flash writes to a scratch config file, removed
+  afterwards (the run's other persistence-gated flash tests spend their own,
+  `tests_hardware/README.md`'s budget table). Twin row: M1 none (an operator observation); S3b the
+  `isl29125` and `isl29125_autorange` scenarios its file names.
 - **R13 + N3, UART `wrnno` 54 (`UART_DRAIN_BOUND`) against a real babbling peer** — needs hardware
   the bench does not have (owner, 2026-09-25): the live firmware owns both UARTs, so nothing on the
-  board can play the peer. Confirm `GET /status` shows `W54` for `UART_init`/`UART_resp` after the
-  drain hits its bound, and that a boot drain against the same peer persists nothing
-  (SPECIFICATION.md C.7.1). N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
-  reclassification (receiver-side only, no emitted bytes change). Low urgency: the mock tier covers
-  the logic.
-- **T4 — the FRAM per-block hold stays** (owner, 2026-09-26: 'Probably better to keep';
-  SPECIFICATION.md F.5.8). Measured 2026-09-25: a 1-byte write holds the loop 2.8-3.4 ms without
-  yielding (~0.6-0.7 ms per CS command). The command-envelope timing script is committed as
-  `tests_hardware/device_scripts/fram_command_hold_timing.py`, run by the flash tier's
-  `test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor`; its first run on
-  silicon is owed. It writes only at 0x3FF00 and never calls `get_chunk()`, so production's error
-  logs are safe.
-- **Give ad-hoc bench scripts one helper that kicks the AP's stations and then resets.** Every
-  hotspot fallback of the 2026-09-25 sitting was a reset without `kick_all_stations()` *immediately*
-  before it; kicking 50 s early does not help, since the board re-associates in between.
+  board can play the peer. N3 also owes a check that `UART_C_PORT_CHANGELOG.md` records the
+  reclassification (receiver-side only, no emitted bytes change). Low urgency. Expected:
+  `GET /status` shows `W54` for `UART_init`/`UART_resp` once the drain hits its bound, and a boot
+  drain against the same peer persists nothing (SPECIFICATION.md C.7.1). Wear: none (FRAM log
+  entries only; FRAM writes are not wear). Twin row: none; the mock tier covers the logic
+  (`tests/test_asy_uart_comm.py`'s `test_a_drain_that_hits_its_bound_persists_the_drain_warning` and
+  `test_a_boot_drain_that_hits_its_bound_persists_nothing`).
+- **T4, the FRAM command hold on silicon** — on `dev`, `scripts/run_flash_hardware_suite.sh` runs
+  `flash/test_fram_storage.py::test_fram_command_hold_stays_under_the_uart_poll_floor` (device
+  script `tests_hardware/device_scripts/fram_command_hold_timing.py`, which writes only in its
+  scratch region, the part's top 256 bytes above every chunk, and never calls `get_chunk()`, so
+  production's error logs are safe). Its first run on silicon is owed; the 2026-09-25 measurement
+  gave 2.8-3.4 ms per 1-byte write without yielding (~0.6-0.7 ms per CS command, F.5.8). Expected:
+  the longest non-yielding FRAM stretch within one UART poll floor (80 B at 115200 baud, 6,944 µs,
+  SPECIFICATION.md J.6), and the block hold within its 25,000 µs budget (Part F.3's
+  `hold.fram_block` row, which also records that the per-block hold stays: owner, 2026-09-26:
+  'Probably better to keep'). Wear: none (FRAM writes are not wear). Twin row: none (the twin's FRAM
+  chip models no wire time).
 - **The two unfed boot stretches, measured** — a `dev` boot log with a `ticks_ms()` stamp at every
-  watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first setup
-  feed, and from the last setup feed to the supervisor's first, each expected well inside the 8,000 ms
-  timeout. It replaces the estimates in Part N `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms`
-  (SPECIFICATION.md) and checks the L1 boot-stretch scenario's sleep sum. The same log gives each
-  setup unit's stretch between two feeds, against Part N `boot.setup_unit_stretch_ms` (79-91 ms per
-  unit, dev, 2026-09-25); one more boot with a damaged config file adds that unit's repair write
-  (`asy_config_manager.py`'s one write per boot), so it spends one flash write and runs only behind
-  `--allow-persistence-write`.
+  watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first
+  setup feed, and from the last setup feed to the supervisor's first, each expected well inside the
+  8,000 ms timeout. It replaces the estimates in Part N
+  `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms` (SPECIFICATION.md) and checks the L1
+  boot-stretch scenario's sleep sum. The same log gives each setup unit's stretch between two feeds,
+  against Part N `boot.setup_unit_stretch_ms` (79-91 ms per unit, dev, 2026-09-25); one more boot
+  with a damaged config file adds that unit's repair write (`asy_config_manager.py`'s one write per
+  boot), so it spends one flash write and runs only behind `--allow-persistence-write`. Twin row:
+  the twin's boots assert the watchdog would never have fired
+  (`tests/test_digital_twin_sensortask_integration.py`, `would_have_triggered_count` 0); that proves
+  the sequence, not rp2 timing, so the figures are silicon-only.
 - **The on-target no-yield stretches and a flash write's loop gap** — on `dev`,
   `flash/test_memory_stress.py`'s `test_routine_no_yield_stretches_stay_under_the_gc_term` (the
   default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
@@ -325,18 +279,19 @@ gates, traps).
   `con.uart_reply`); its max and p99 go into Part F.3's `lag.loop` row. Wear: none (FRAM block
   writes in the script's scratch region). Twin row: the
   `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
-- **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding
-  SDA low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction
-  (pico-sdk's `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the
-  constructor's boot clear. Expected: the held slave releases SDA within the nine pulses, the STOP
-  is on the wire, and no sibling sees a stray START while the controller is rebuilt. Then, with SDA
-  held the same way, a `machine.reset()` and a watchdog reset: whether the bus comes back and
-  whether the next boot's clear frees it (constructing `machine.I2C` clocks nothing itself). Zero
-  wear; it confirms the twin's bus-recovery case
-  (`tests/test_digital_twin_bus_hazard_concurrency.py`). The held SDA itself is made by
-  `i2c_held_sda_recovery.py` (`flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers`),
-  which checks SDA high and every device answering after both clears; the line levels need a scope,
-  and the two resets with SDA held a script of their own.
+- **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding SDA
+  low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction (pico-sdk's
+  `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the constructor's boot
+  clear. Expected: the held slave releases SDA within the nine pulses, the STOP is on the wire, and
+  no sibling sees a stray START while the controller is rebuilt. Then, with SDA held the same way, a
+  `machine.reset()` and a watchdog reset: whether the bus comes back and whether the next boot's
+  clear frees it (constructing `machine.I2C` clocks nothing itself). Zero wear. Twin row: the
+  bus-recovery case of `tests/test_digital_twin_bus_hazard_concurrency.py` for the sequence; none
+  for the line levels, since the twin models no electrical bus state. The held SDA itself is made by
+  `i2c_held_sda_recovery.py`
+  (`flash/test_bus_concurrency.py::test_a_held_sda_line_is_cleared_and_every_device_answers`), which
+  checks SDA high and every device answering after both clears; the line levels need a scope, and
+  the two resets with SDA held a script of their own.
 - **The free alarm count on silicon** —
   `tests_hardware/device_scripts/timer_alarm_pool_exhaustion.py` on `dev`: record its
   `constructed=N` (the alarms free at that moment, not the pool size) with the image's other
@@ -345,19 +300,28 @@ gates, traps).
 - **The idle poll rate** — the event-loop share an idle captive-DNS listener's 100 ms poll takes,
   and its first-query latency, on the twin and on the bench: a hotspot run with a counter task
   running flat out beside the listener, then one query after a silence, timed. The rate stays at
-  100 ms with its measurement owed (owner, 2026-10-05); the figures go into Part N
-  `udp.poll_idle_ms`'s Basis (SPECIFICATION.md F.5.9). Zero wear; twin row: none yet, the twin
-  measurement is owed with it.
+  100 ms with its measurement owed (owner, 2026-10-05); the figures go into Part N `udp.poll_idle_ms`'s
+  Basis (SPECIFICATION.md F.5.9). Expected: queued datagrams answered back to back, and only the
+  first query after a silence waiting up to one 100 ms idle poll (`src/asy_udp_socket.py`'s
+  `ready()`); the listener's loop share at idle recorded beside it. Zero wear; twin row: none yet,
+  the twin measurement is owed with it.
 - **The SGP40's lost samples over ten minutes** — `flash/test_sensor_accuracy.py::
   test_sgp40_sample_cadence` on `dev` (`scripts/run_bench_soak_tests.sh --duration short`): its
   cadence facts, cycles near 600 expected; the figures go into SPECIFICATION.md M.3 (no pass threshold: a
   dropped soft-timer tick is not mitigated in software, owner, 2026-07-18, `f3924e1`). Wear: none (FRAM writes
   are not wear; read the FRAM logs first). Twin row: none (the twin's timers model no rp2 drop).
-- **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, one `AmbPres`
-  PUT (one SCD30 NVM write, `--allow-persistence-write`), a power cycle, then 0x0010 read back:
-  the answer goes into SPECIFICATION.md M.2 (Interface Description 1.4.1 documents only the
-  measurement status as persisted). Twin row: the fidelity table's SCD30 pressure-persistence
-  assumption (`digital_twin/README.md`).
+- **Whether the SCD30 keeps the ambient pressure across a power cycle** — on `dev`, the manual
+  tier's power-cycle step (`tests_hardware/manual/manual_persistence.py`, run through
+  `scripts/run_manual_hardware_tests.sh`; every power-cut test there takes it) reads `GET /sensors`'
+  SCD30 `AmbPres` before the cut and again once the board serves, writes nothing itself, and reports
+  whether the product's boot sends 0x0010 (read from `src/asy_scd30_driver.py`'s `setup()` at run
+  time). Still owed, with no instrument yet: one `AmbPres` PUT before the cut, read back after it
+  (one SCD30 NVM write, `--allow-persistence-write`). Expected: none stated, since Interface
+  Description 1.4.1 documents only the measurement status as persisted; both readings and whether
+  the boot sends 0x0010 go into SPECIFICATION.md M.2, and the fidelity row moves to measured, or to
+  not relied on when the boot sends 0x0010 (agent, 2026-10-21). Wear: the step none
+  (`real_fram_persistence_across_power_cycle` writes FRAM only); the owed PUT one SCD30 NVM write.
+  Twin row: the fidelity table's SCD30 pressure-persistence assumption (`digital_twin/README.md`).
 - **The modlwip send stall, reproduced and then the override proven (owner, 2026-09-30)** — on
   `dev`, `errcount` read and saved first (CLAUDE.md's FRAM rule). (1) Flash a control image: the
   pinned tree built without `apply_modlwip_eagain_override()` (the build code changed in a throwaway
@@ -391,26 +355,30 @@ gates, traps).
   `tests_hardware/bench/test_hotspot_role_reversal.py`'s two stage-6 cases for a credentials change
   landing in the fresh-boot state (owner, 2026-10-08, paraphrase). (a)
   `test_a_wrong_password_over_the_hotspot_reopens_the_hotspot`, about 3-4 min: a well-formed wrong
-  password over the DUT's hotspot reopens the hotspot once more, with one more `WLAN_TO_HOTSPOT` and
-  no `WLAN_SILENT` in WIFI's history. (b)
+  password over the DUT's hotspot. (b)
   `test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt`, two `hotspot_time_min`
-  windows (16 min on `dev`) plus its streaks: the reopened
-  hotspot's window ends with no client, the second streak goes silent (one `WLAN_SILENT`, no
-  `WLAN_GIVE_UP`) and a later attempt links once the bench AP is back, with no reset. (b) runs on the
-  real-credentials test's write, so both run as the whole module in one invocation with
-  `--soak-duration long` and `--allow-persistence-write` (`tests_hardware/README.md`'s "The hotspot
-  role reversal" names a candidate invocation). Wear: (a) one owned flash write, restored by the
-  real-credentials test; (b) none. Twin row: `tests/test_digital_twin_wifi_modes.py`.
+  windows (16 min on `dev`) plus its streaks: the reopened hotspot's window ends with no client,
+  then a second streak fails. (b) runs on the real-credentials test's write, so both run as the
+  whole module in one invocation with `--soak-duration long` and `--allow-persistence-write`
+  (`tests_hardware/README.md`'s "The hotspot role reversal" names a candidate invocation). Expected:
+  (a) the hotspot reopens once more, with one more `WLAN_TO_HOTSPOT` and no `WLAN_SILENT` in WIFI's
+  history; (b) the second streak goes silent (one `WLAN_SILENT`, no `WLAN_GIVE_UP`) and a later
+  attempt links once the bench AP is back, with no reset. Wear: (a) one owned flash write, restored
+  by the real-credentials test; (b) none. Twin row: `tests/test_digital_twin_wifi_modes.py`.
 - **Whether the chips other than the SGP40 ACK or NAK a general call** — on `dev`, a device script
-  sending the general-call reset (address 0x00, 0x06) on each I2C bus and recording ACK or NAK per bus
-  and which chips answer afterwards; no datasheet states it. Wear: none (no NVM write). Twin row: the
-  fidelity table's general-call assumption (`digital_twin/README.md`). Needs that device script.
+  sending the general-call reset (address 0x00, 0x06) on each I2C bus and recording ACK or NAK per
+  bus and which chips answer afterwards. Expected: none stated, since no datasheet states it; the
+  answers are recorded, not judged, and the fidelity row follows them (agent, 2026-10-21). Wear:
+  none (no NVM write). Twin row: the fidelity table's general-call assumption
+  (`digital_twin/README.md`). Needs that device script.
 - **The SCD30's reaction to a wrong argument CRC or an out-of-range interval** — on `dev`,
   `flash/test_chip_conformance.py::test_scd30_argument_reaction_is_recorded`
-  (`scd30_argument_reaction.py`): 0x4600 once with a wrong argument CRC and once with 0 and a correct
-  CRC, each read back and the period then in effect timed, the original put back; recorded, not
-  judged, since the datasheet states no reaction and the twin ignores each. The out-of-range values
-  1 s and 1801 s are not sent. Wear: up to three SCD30 NVM writes (`--allow-persistence-write` and
+  (`scd30_argument_reaction.py`): 0x4600 once with a wrong argument CRC and once with 0 and a
+  correct CRC, each read back and the period then in effect timed, the original put back; recorded,
+  not judged, since the datasheet states no reaction and the twin ignores each. The out-of-range
+  values 1 s and 1801 s are not sent. Expected: the measurement interval back at its start value
+  afterwards (`restored=ok` and the interval equal to the start snapshot, the test's only
+  assertions). Wear: up to three SCD30 NVM writes (`--allow-persistence-write` and
   `--allow-scd30-extra-write`). Twin row: the fidelity table's SCD30 argument assumption.
 - **Whether a CONFIG1 write restarts an in-flight ISL29125 conversion** — on `dev`, a device script
   writing CONFIG1 unchanged part-way through a 100 ms 16-bit conversion and timing the next
@@ -418,45 +386,59 @@ gates, traps).
   0x01", the twin restarts it. Wear: none (volatile registers). Twin row: the fidelity table's
   ISL29125 CONFIG1 assumption, which no test is tuned to. The register probe measures it
   (`isl29125_mock_conformance_probe.py`'s `G01`/`G02` keys,
-  `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`).
+  `flash/test_chip_conformance.py::test_isl29125_matches_its_twin_fake`). Expected: none stated; the
+  probe's `G01`/`G02` facts are reported only, and the fidelity row stays an assumption unless they
+  settle it (agent, 2026-10-21).
 - **The SGP40's reaction to an unknown command** — on `dev`, a device script sending one undefined
   16-bit command and then a measure command, recording whether the measure answers normally; the
-  datasheet states no reaction, the twin ignores it. Wear: none. Twin row: the fidelity table's SGP40
-  unknown-command assumption. Needs that device script.
+  datasheet states no reaction, the twin ignores it. Expected: none stated; the answer is recorded,
+  and the fidelity row follows it (agent, 2026-10-21). Wear: none. Twin row: the fidelity table's
+  SGP40 unknown-command assumption. Needs that device script.
 - **The BMP3XX's real calibration block** — on `dev`, the 21 calibration bytes from register 0x31
   (`asy_bmp3xx_driver.py`'s `_REGISTER_CAL_DATA`) printed once by a device script, so the twin's
   synthetic block can be checked against a real one. The probe reads it
   (`bmp3xx_conformance_probe.py`'s `A02_calibration`,
-  `flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake`). Wear: none (a read). Twin
-  row: the fidelity table's BMP3XX calibration row, synthetic until then.
+  `flash/test_chip_conformance.py::test_bmp3xx_matches_its_twin_fake`). Expected: 21 bytes, neither
+  erased nor floating (the probe's `_bmp3xx_calibration_set`), recorded so the twin's synthetic
+  block can be set against them. Wear: none (a read). Twin row: the fidelity table's BMP3XX
+  calibration row, synthetic until then.
 - **`mem_backup()` and `reset_cause()` after a BOOTSEL round trip** — on `dev`, a value written to
-  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL, then
-  both read: whether the registers survive and which cause rp2 reports is not in the pinned
+  the watchdog scratch registers, `machine.bootloader()`, the board brought back out of BOOTSEL,
+  then both read: whether the registers survive and which cause rp2 reports is not in the pinned
   MicroPython source (the bootrom is not in the corpus); the twin keeps the registers and reports a
   watchdog reset. `bench/test_reset_reasons.py::test_a_bootloader_reboot_is_attributed` runs the
-  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Wear: none (no flash write; leaving
-  BOOTSEL needs the owner or `picotool reboot`). Twin row: the fidelity table's bootloader
-  assumption.
+  round trip through `PUT /system {"SystemCmd": "bootloader"}`. Expected: the board serves again and
+  `GET /status`'s `ResetReason` reads 4, the bootloader code, since the record survived (the test's
+  assertion; `ResetBits` recorded beside it); a 2 or a 1 means the bootrom's reboot lost it. Wear:
+  none (no flash write; leaving BOOTSEL needs the owner or `picotool reboot`). Twin row: the
+  fidelity table's bootloader assumption.
 - **Every reset code read back through `/status`** — `bench/test_reset_reasons.py` on `dev`, the
   session saving `errcount` and the raw FRAM first: the harness hard reset (a watchdog reset with no
   record), the bootloader reboot, the supervisor's escalation reboot, the starved-watchdog fallback,
   an invalid record, an incomplete command, a hang in each boot phase, a C-stack exhaustion and a
   console interrupt, each read back as `GET /status`'s `ResetReason`; `tests_hardware/README.md`'s
-  "Reset codes proven on the bench" fills from the run. Wear: no owned write (the tests carry no
-  wear marker). Twin row: each script's twin run.
+  "Reset codes proven on the bench" fills from the run. Expected: each `ResetReason` the code its
+  reset fixes (`bench/test_reset_reasons.py`, from `src/asy_system_service.py`'s constants): 2 the
+  harness hard reset, 4 the bootloader reboot, 5 the escalation reboot with SYSTEM's escalation
+  entry, 6 the starved-watchdog fallback, 0 an invalid record, 9 an incomplete command, 10 + phase a
+  hang in boot phases 1-5, 20 a C-stack exhaustion, 21 a console interrupt; the board serving after
+  each. Wear: no owned write (the tests carry no wear marker). Twin row: each script's twin run.
 - **The UART receive ring sized for the bench's interrupts-off window** — on `dev`, the receiving
   link's `rx_ring` is the driver-default 512 B (SPECIFICATION.md J.6 and I.2; agent, 2026-10-08),
   while a continuous sender puts 4,608 B into the 400 ms flash window at 115200 baud, so
   `flash/test_uart_crossover.py::test_no_frame_is_lost_while_interrupts_are_off` fails up front
-  naming the size until `devices/dev.toml` sizes it. Then the run measures the ring's heap cost
-  (the test reports it) and expects every frame intact with the overrun bit clear within the ring's
-  bound, an overrun reported past it. Wear: none (`uart_dma_ring_interrupts_off.py` holds
+  naming the size until `devices/dev.toml` sizes it. Then the run measures the ring's heap cost (the
+  test reports it). Expected: every frame intact with the overrun bit clear within the ring's bound,
+  an overrun reported past it, the frames after its resync intact, and the receive-DMA-off overrun
+  failing one transaction and recovering. Wear: none (`uart_dma_ring_interrupts_off.py` holds
   interrupts off with a busy-wait, no flash write). Twin row: none.
 - **Whether a changed `Altitude` applies at once while `AmbPres` is 0** — on `dev`,
   `bench/test_sensor_config_push_over_real_hardware.py::test_scd30_altitude_takes_effect_while_ambient_pressure_is_zero`:
   `AmbPres` 0, a stepped `Altitude`, both restored; the answer goes into SPECIFICATION.md M.2.
-  Wear: 4 SCD30 NVM writes (`--allow-persistence-write` and `--allow-scd30-extra-write`). Twin row:
-  none (a silicon question).
+  Expected: `AmbPres` 0 and the `Altitude` step answered `Valid`, both restores `Valid` or
+  `Unchanged`, and `CFGMGR_SCD30`'s log empty (the test's assertions); the CO2 readings before and
+  after the step recorded, not presumed. Wear: 4 SCD30 NVM writes (`--allow-persistence-write` and
+  `--allow-scd30-extra-write`). Twin row: none (a silicon question).
 - **`env --tier bench` on the bench Pi4 once more, after the tooling pins** — `uv run
   toolchain/setup_toolchain.py env --tier bench`, a host step that writes nothing to the board: the
   bench host's `uv` must be the version `pyproject.toml`'s `[tool.uv] required-version` names (any
@@ -497,11 +479,58 @@ gates, traps).
   budget ("Persistence-write gating", `tests_hardware/README.md`) plus that test's two flash cycles;
   none in the default run. Twin row: none new (`tests_hardware/twin_board.py` runs the same device
   scripts under `--twin`).
-- **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
-  reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
-  segfault fix" below); G6, the tick rollover on the tick-offset test image (`bench/test_ticks_ms_rollover.py`:
-  one flash cycle, about two hours of polling over REST, owner, 2026-10-01; item 12); H1, the owner's two-chroot run (the chroot entry below); F17, item
-  44's anomalies.
+- **The bench `ResetErrors` budget** — on `dev`, after the round's FRAM evidence is saved: the
+  `ResetErrors` sweep timed three times each against 0, 1, 2, 3 and 4 concurrent `GET /status`
+  readers, on the concurrent reset the owner chose (owner, 2026-09-26). Then the bench analogue of
+  the twin's per-sweep budget check goes into `tests_hardware/error_log_helpers.py`, beside its 30 s
+  timeout, which alone asserts nothing about elapsed time. Expected: a curve that leaves room for a
+  budget below the server's 15 s `outer_cap_s` that "reliably won't fail the pipeline accidentally
+  with a false positive" and "will reliably fail if something really went wrong" (the owner's
+  standing requirement as BACKLOG.md recorded it on 2026-09-17, `569c6bb`). Last measured 2026-09-25
+  on the one-after-another reset since replaced: about 3.5 s per reader, three readers at
+  13.2-14.7 s, four past the connection ceiling. Wear: none (the clears are FRAM writes). Twin row:
+  `_RESET_ERRORS_BUDGET_S` in `scripts/_digital_twin_ci_suite.py` (Part N
+  `l2.reset_errors_budget_ratio`).
+- **S4, the six-hour soak** — on `dev`, after the round's FRAM evidence is saved and on top of a
+  clean bench run, `scripts/run_bench_soak_tests.sh --duration long` (six hours,
+  `tests_hardware/soak_durations.py`) runs the soak-duration tests, among them
+  `bench/test_memory_stress_bench.py::test_http_soak_stays_live`, a modest request stream over every
+  JSON GET route. Expected: no allocation-failure marker, crash line or reboot in the board's log,
+  no supervised task ended, and failed requests at most Part N `l4.soak_request_failure_rate`
+  (0.1 %) of those sent. This is a liveness check with no leak bound; last run 2026-09-08 at the
+  10-minute `--duration mid`, clean. Wear: none (the soak's error-log clears are FRAM writes).
+  Twin row: none as a parameter (a silicon duration); the twin CI's soak run
+  (`ci_suite._run_11_soak`) is the scenario the test names as its cover.
+- **G6, the tick rollover on silicon** — on `dev`, `scripts/run_bench_rollover_test.sh` builds the
+  tick-offset test image (its millisecond count starts 15 minutes short of `2**32`), flashes it and
+  runs `bench/test_ticks_ms_rollover.py` for about two hours, polling over REST only (owner,
+  2026-10-01; item 12: a serial attach ends in a watchdog reset); the runner passes
+  `--allow-multi-day-rollover` and `--allow-flash-cycle` itself, on top of a clean bench run.
+  Expected: across the `ticks_ms()`, soft-timer and lwIP wraps nothing reboots or stalls: the uptime
+  keeps rising under one boot signature, NTP keeps syncing within its interval, and every sensor's
+  timestamp advances. Wear: one flash cycle (the tick-offset image, left for the next round to
+  replace). Twin row: none for the wrap, which the Unix port never reaches
+  (`digital_twin/README.md`'s fidelity table: the wrap proofs are fake-clock unit tests); the twin's
+  `sensortask_integration` run, the test's named cover, covers the rest.
+- **F17, the board anomalies of the connection-limit sittings** — on `dev`, across every round
+  (HEAP_FRAGMENTATION_MEASUREMENTS.md archive §7R.5): a reset the round did not intend is read
+  through `GET /status`'s `ResetReason` and the FRAM `errcount`, both saved before anything clears
+  them (CLAUDE.md's FRAM rule); `reset_cause()` separates only power-on from everything else, so it
+  cannot attribute one (SPECIFICATION.md F.5.4). Open, each needing silicon: (1) one silent reset in
+  1 of 9 instrumented peak-load boots, cause lost; watchdog starvation is the first candidate to
+  rule out, since the supervisor loop is the only feed site (`asy_system_service.py`'s
+  `feed_watchdog()`) and a board CPU-bound at ~2.2 requests/s can miss the 8,388 ms cap. (2) Hotspot
+  fallback after a reset, three times; `devices/dev.toml`'s `conn_fail_to_hotspot = 5` is the
+  mechanism that would take it there. One instance is measured (2026-09-25): a watchdog reset with
+  no `kick_all_stations()` before it gave `reset_cause()` = `WDT_RESET` and WIFI
+  `WLAN_CONNECT_FAILED` (`W38`) ×5 (`STAT_CONNECT_FAIL`), the stale-AP-station mechanism, cleared by
+  a kick; whether the earlier three were the same is not recoverable. (3) The USB serial dropped
+  mid-upload of `uart_idle_poll_rate.py` (2026-09-24); later resets overwrote `reset_cause()`, an
+  isolated re-run passed, and two later full bench tiers did not reproduce it. Expected: no reset a
+  round did not intend, and a hotspot fallback only after a reset with no kick right before it
+  (agent, 2026-10-21). Wear: none (reads only). Twin row: none (the twin fakes Wi-Fi connection
+  state only).
+- **Still owed elsewhere in this file**: H1, the owner's two-chroot run (the chroot entry below).
   Excluded on purpose: G10, the UART protocol against its C implementation (post-audit only), and
   the two unbought bench-rig capabilities (item 8).
 
@@ -610,6 +639,23 @@ gates, traps).
   10 s / 20 s pause (`run_retried()`, mirroring `ci.yml`'s `unit-tests`), after a clean-sandbox install
   failed on one HTTP 502 from `actionlint-py`'s release download. Same command, same dependencies;
   the installer leg only gains the retry.
+  **Not named above, changed after the legs' tree up to 2026-09-24** (side-branch commits dated
+  2026-09-11/12, merged after the legs, included): lint and typecheck legs — `host_typecheck.ini`
+  (`buildgen` joined the host pass, `tests_scripts/conftest.py` excluded, `mypy_path` gained
+  `tests_scripts` and `toolchain`; a side branch's `hosttools_typecheck.ini` in `scripts/` of
+  2026-09-10 gave way to it at the 2026-09-11 merge, so no leg ran that file), `digital_twin/typecheck.ini`
+  (`mypy_path` gained `build/generated_src` and `tests`). Lint, typecheck and `scripts/test.sh` legs
+  — `scripts/_generate_sensortask_modules.py` (new: every `devices/*.toml`, plus a wiring plan per
+  device; run by `typecheck.sh` and `test.sh`). `scripts/test.sh` leg, host code with no build step
+  — `scripts/build_website.sh` (generates a device's `definitions.json` when none is committed),
+  `scripts/_render_coverage.py` (comments only). No leg runs them —
+  `scripts/cross_browser_smoke.mjs` (the generic twin entry, `build/generated_src` on its path); the
+  four hardware runners `scripts/run_flash_hardware_suite.sh`,
+  `scripts/run_bench_hardware_suite.sh`, `scripts/run_bench_soak_tests.sh` and
+  `scripts/run_manual_hardware_tests.sh` (comments only); `.github/workflows/ci.yml` (push on every
+  branch, the retried `uv sync` in every job, the sharded live PUT matrix, the coverage job's
+  split); `.github/actions/setup-micropython-toolchain/action.yml` (its own retried `uv sync`);
+  `.github/zizmor.yml` (comments only).
   **Partial evidence, not a leg**: a session sandbox (GCC 13.3, not a `--variant=minbase` chroot)
   ran `env --tier generic` and then `uv run toolchain/setup_toolchain.py` from an empty toolchain
   directory on 2026-09-24 — all eight verification checks passed and the lwIP readback was clean.
@@ -638,6 +684,12 @@ gates, traps).
   `ci.yml`'s web filter gains `src/`, `buildgen/` and `devices/`, and the cross-browser job builds
   through `npm run build:site`. Shell and host Python with no new dependency; a chroot's
   `scripts/test.sh` leg runs the generator as before, and `env --tier generic` installs nothing new.
+  **2026-10-06 and 2026-10-19, the cross-browser smoke's decisions, Node only, no new dependency**:
+  `scripts/_cross_browser_probe.mjs` holds the smoke's pure decisions (the field each device's site
+  edits, a WebDriver failure reply and, since 2026-10-19, the verdict over the engines found).
+  `tests_scripts/test_cross_browser_smoke_probe.py` drives it under Node in `scripts/test.sh`'s
+  pytest tier; `env --tier generic` installs nothing new, and the chroot legs run only its pytest
+  file.
   **2026-10-06, the runner summary block and the level ladder**: `scripts/test.sh`, `lint.sh` and
   `typecheck.sh` end with the SPECIFICATION.md E.10 block (new `scripts/_summary_block.sh` and
   `scripts/_summary_block.py`); `test.sh` reports a retried pass as `RETRIED-PASS`, validates
@@ -837,6 +889,14 @@ gates, traps).
   suite|harness` (without them both stages and both parts run, as before), and `.github/workflows/ci.yml`'s
   `digital-twin-e2e` runs one job per device, GC stage and part. The chroot legs' `scripts/lint.sh`
   shellchecks the script and actionlints the workflow; neither leg runs them.
+  **2026-10-14 to 2026-10-20, the twin-process helpers, host Python only, no dependency or build
+  step**: `scripts/_twin_process.py` launches, waits for, ends and reads the twin runner for the
+  twin CI suite and for the scenario harness `scripts/test.sh` runs per derived device. Since
+  2026-10-15 it reads the twin MICROPYPATH from `scripts/micropypath.toml` (stdlib `tomllib`) and
+  checks the watchdog feed gap; since 2026-10-19 it reports an ignored SIGINT's state; since
+  2026-10-20 it waits for a second SIGINT and holds arguments and MICROPYPATH entries to the Unix
+  port's 255-byte qstr limit. The chroot legs lint and type-check it, and `scripts/test.sh`'s pytest
+  tier and scenario harness run it; `env --tier generic` installs nothing new.
   **2026-10-14, the installer's command start, host Python only, no dependency change — the
   installer leg is owed**: `toolchain/setup_toolchain.py`'s `run()` holds SIGINT, SIGTERM and SIGHUP
   while a command starts and takes them once it can stop the command. The chroot legs lint and
@@ -867,6 +927,10 @@ gates, traps).
   - runs hold the toolchain lock shared;
   - `scripts/test.sh` builds the first derived device's site;
   - `scripts/test.sh` runs the scenario harness, one job per derived device;
+  - `scripts/_port_lock.py`, the CPython form of `scripts/_port_lock.sh`'s lock (the same lock
+    directory, pid and runner files, owner chain), taken by the scenario harness `scripts/test.sh`
+    runs and by the twin CI suite (2026-10-19 and 2026-10-20: a suppression comment dropped and its
+    attempt count tagged, no behaviour change);
   - the hardware runners pass `--marker-floor`; new runner `scripts/run_bench_rollover_test.sh`,
     shellcheck-linted, no environment change;
   - `scripts/mpremote_connect.sh` resolves the board through `setup_toolchain.py board`;
@@ -972,6 +1036,15 @@ gates, traps).
   `scripts/_digital_twin_scenarios.py` gains the loop-lag-under-load scenario on every device, the
   two dropped one-shot fires, and the device's smallest hard consumer as the lag
   bound. They run in a chroot's `scripts/test.sh` leg with nothing new to install.
+  **2026-10-21, the `scripts/test.sh` leg needs Node on `PATH`, no change of its own** (agent,
+  2026-10-21): three files of the pytest tier `scripts/test.sh` runs assert a `node` on `PATH`, and
+  `scripts/test.sh` puts none there: `tests_scripts/test_cross_browser_smoke_probe.py:24-25` and
+  `tests_scripts/test_twin_process_js_spawn.py:53-54` any Node, and
+  `tests_scripts/test_live_twin_ceiling_parser.py`'s `_pinned_node()` the major `.nvmrc` pins.
+  CLAUDE.md's recipe runs `uv sync`, lint, typecheck and `scripts/test.sh` without `env --tier generic`, the
+  step that installs the pinned Node, so in a fresh `--variant=minbase` chroot those three files
+  fail on that assertion. The owner's next run settles it: `env --tier generic` before
+  `scripts/test.sh`, or the pinned Node first on `PATH`.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot
@@ -985,27 +1058,6 @@ gates, traps).
   (agent, 2026-09-12) — a from-scratch trixie leg (or a run on the bench Pi4, which already runs
   trixie/GCC 14.2) should still confirm it whenever one is next convenient. The change itself is the
   `build_info=` parameter SPECIFICATION.md Part L.7 describes.
-- **`buildgen/buildspec.py`'s per-driver schema is hand-maintained — making it AST-derivable is a
-  separate, unstarted unit of work.** Everything else `buildgen/` needs from a driver is derived
-  from `src/` automatically (the class itself via `driver_registry.py`'s naming convention,
-  `_WIRING`, `_VALUE_WIRING`, `_LIMITS`, `_Default*`); `buildspec.py`'s "which TOML fields does this
-  driver require/allow, does it sit on a bus, does it have a selectable address" dicts are the one
-  exception, because Session 2's shipped TOML field names (`pin`, `cs_pin`, ...) and `src/`'s
-  constructor parameter names (`neopixel_pin`, `spi_cs`, ...) are two independently-evolved naming
-  spaces with no rule connecting them. So adding a 7th driver means editing one table by hand, and
-  forgetting to is a real (if now clearly-reported) failure. **The small half is already done**: a
-  driver that resolves via `driver_registry` but has no `buildspec.py` entry raises a dedicated
-  error naming that as the cause, instead of reporting every one of its real fields as
-  "unrecognized" (SPECIFICATION.md Part L.6's "Known limitation" section). The large half —
-  deriving the schema from each driver's own constructor signature, or from a new declarative tuple
-  beside `_WIRING` — needs real design, not a mechanical continuation, and hasn't been started.
-  **Owner decision, 2026-09-18: it stays hand-maintained, and this is no longer an open question.**
-  The drivers are an integral part of this repo, not third-party definitions arriving from outside,
-  so one table edit per new driver is an acceptable cost — and the small half above already turns
-  forgetting it into a named error rather than a confusing one. Kept to record that the alternative
-  was considered and declined (owner, 2026-09-18).
-  **Same answer for `buildgen/definitions.py`'s cross-cutting `status`/`errcount` sections** (owner,
-  2026-09-24): they stay a hand-maintained catalog beside the `@web`-derived per-driver sections.
 - **`[device].name`/`hostname`/`hotspot_password` are wired into the boot path now - done (owner
   decision, 2026-09-18).** Every device really did boot as `SensorNode` whatever its TOML said; the
   three fields were validated and then reached nothing. `WifiService.__init__` takes `hostname=`/
@@ -1061,11 +1113,6 @@ gates, traps).
   - **One `FramingCOBS` instance shared between two drivers would corrupt both**, since its
     long-lived scratch is per-instance, not per-call. Every construction site makes its own; noted
     because the failure would be silent if one ever did not.
-- **A device-script loose end from the 2026-09-25 sitting — owner's call.** Two stale scratch
-  configs sit on the dev board's flash, `config_HWTEST_DEBUGLEVEL_BACKUP.cfg` and
-  `config_HWTEST_REBOOT.cfg`, left by earlier device scripts; the DebugLevel backup could mislead a
-  later restore. Should their scripts remove them on exit?
-
 - **`mypy tests_hardware/device_scripts` run STANDALONE reports two `Timer()` findings that no
   gate ever sees.** Both `timer_alarm_pool_exhaustion.py` and `scheduler_saturation_drop.py`
   construct a bare `machine.Timer()`, which is valid runtime usage the third-party board stub does
@@ -1076,81 +1123,6 @@ gates, traps).
   `tests/`, whose `tests/machine.py` fake models `Timer()` correctly and wins module resolution.
   Worth knowing before anyone runs mypy over that directory on its own and reads the result as a
   regression.
-- **Additional checker candidates, measured and mostly declined** (agent, 2026-09-10; a dead-code
-  tool is run once, owner 2026-09-26). Evaluated against the real tree rather than by reputation,
-  when shellcheck/actionlint/zizmor were added:
-  - **`zizmor`** (GitHub Actions security) - **adopted.** All 50 findings fixed, not suppressed:
-    `excessive-permissions` (workflow-level `permissions: {}` + per-job `contents: read`),
-    `artipacked` (`persist-credentials: false` on every checkout), and `unpinned-uses` (SHA-pinned
-    `codecov/`+`dorny/`; `actions/*` stays tag-pinned by an explicit `.github/zizmor.yml` policy,
-    since a compromise of GitHub's own org compromises the runner anyway and SHA-bumping four
-    first-party actions has real cost with no Dependabot configured). One audit is **disabled with
-    cause**: `self-repository` wants `uses: $/.github/...` (GitHub's July-2026 syntax), which
-    actionlint 1.7.12 - the other hard gate over the same files - rejects outright as invalid.
-    Revisit when actionlint learns it. Runs `--offline` so it behaves identically in CI, on a dev
-    box, and in the clean-chroot recipe.
-  - **`import-linter`** - **rejected, measured; structurally incompatible.** It validates that every
-    `root_packages` entry is a real package and refuses flat modules ("'x' is a module, not a
-    package"), and `src/` is deliberately a flat set of modules with no `__init__.py` - they are
-    copied flat alongside `ext/` and frozen into firmware. Both workarounds were tried and both
-    produce a **false green**: wrapping `src/` in a shadow package (or letting it resolve as an
-    implicit namespace package) reports `Analyzed 27 files, 0 dependencies` and marks every
-    contract KEPT, because each intra-`src/` import is a bare absolute `from asy_base_classes import
-    ...` that resolves outside the package. Making it work would mean rewriting every import in
-    `src/` to package-relative form - an operational change to frozen firmware code, not a tooling
-    change. Note also that Part C's Layer 2/3 split lives *inside* one module per driver, so
-    import-linter could never have seen it; only the coarser module-level direction was ever in
-    reach.
-  - **`vulture`** (dead code) - **rejected, measured.** All 8 of its >=80%-confidence findings are
-    false positives: it cannot see through quoted annotations or `if TYPE_CHECKING:` blocks, so it
-    reports `Self`/`NamedTuple`/`Iterable`/`Sequence` as unused imports.
-  - **`gitleaks`/`detect-secrets`** - **rejected, redundant.** `detect-secrets` found only the known
-    test/twin WiFi passwords and *missed* the real documented credential in `asy_wifi_service.py`
-    that ruff's `S106` catches. Ruff's `S105`/`S106` are live everywhere except the three known,
-    individually-exempted sites, which covers this better.
-  - **`codespell`** - **rejected, measured.** 1519 findings, overwhelmingly false positives on
-    domain vocabulary (`FRAM` -> "FRAME", `Pres` -> "Press", `optionEl` -> "optional").
-  - Also considered and dismissed as not applicable or redundant: `markdownlint` (fights
-    hand-formatted prose), `yamllint` (actionlint covers the only two YAML files), `hadolint` (no
-    Dockerfiles), `taplo` (two TOML files), `pip-audit`/`npm audit` (dev-only dependencies, nothing
-    ships to the device), and the many flake8/pylint-era Python tools ruff's `ALL` already subsumes.
-- **Real-hardware re-test of the segfault fix and the memory-leak soak test — real-hardware forms
-  now exist and are wired into `tests_hardware/`, but the actual long-soak run is still opt-in and
-  has not yet been executed.** Corrects a stale claim (this entry used to say neither soak-test
-  script had a real-hardware-runnable form at all — no longer true):
-  - The **segfault stress test** equivalent is
-    `tests_hardware/bench/test_end_to_end_timing.py::test_real_concurrent_client_burst_does_not_crash_the_webserver`
-    — confirmed passing on real hardware (2026-09-04). Not because the root cause was ever in doubt
-    (a dangling-pointer bug in `extmod/modselect.c`, confirmed compiled out of real rp2 firmware via
-    `MICROPY_PY_SELECT_POSIX_OPTIMISATIONS` and fixed on the Unix port by
-    `digital_twin/unix_port_poll_prewarm.py` — see `digital_twin/README.md`'s "What's here" for the
-    fix), but as standing on-target validation of the wider stress scenario itself.
-  - The **memory-leak soak test** equivalent is
-    `tests_hardware/bench/test_memory_stress_bench.py::test_http_soak_stays_live` (a liveness check:
-    no crash line, no boot line, no task end, no allocation marker; it claims no leak bound) — real, committed, `@pytest.mark.soak_duration`, and **still not yet actually completed cleanly**
-    as of 2026-09-04 (the one real attempt that day was aborted by an unrelated cascading DUT-
-    unreachable failure elsewhere in the same run - see open question 9's `BENCH_AP_PASSWORD` -
-    before this test itself ever got a genuine clean pass/fail). Deliberately does **not** use the
-    Unix-port twin's own `gc.mem_free()` recovery-peak-trend methodology — confirmed impossible on
-    real hardware without disturbing the very system being measured (`mpremote exec()` always
-    interrupts the live system first, and a live `asyncio.run()` doesn't resume once interrupted —
-    see the test's own module docstring). Instead watches real HTTP soak traffic passively for the
-    two disqualifying symptoms observable without disturbing anything: a `MemoryError` traceback,
-    or an unexpected mid-soak reboot — a real but coarser signal than an actual trend measurement.
-    Not because the "no confirmed leak on the Unix port" conclusion is in doubt (four independent,
-    properly-powered replication experiments found no reproducible decline, on either idle or
-    HTTP-soak traffic), but because the Unix port's allocator/heap behavior isn't guaranteed
-    identical to rp2040's real one. **The 10-minute duration (then `--tier mid`, now `--duration
-    mid`) run for real (2026-09-08, bench
-    Pi4, project owner's go-ahead given in-session): clean pass** - `test_real_hardware_memory_
-    does_not_leak_under_real_http_soak_traffic` (now `test_http_soak_stays_live`) plus its two soak
-    siblings
-    (`test_single_core_timing_headroom_holds_under_normal_full_task_load`,
-    `test_scd30_real_clock_stretch_never_exceeds_the_configured_timeout`) all PASSED, 3/3, zero
-    `MemoryError`/reboot markers, zero unexpected skips. **Still open**: the real `--duration long`
-    (6h) production-duration run itself - `mid` is a genuine real-hardware pass at 10 minutes, not
-    a substitute for the full 6h window this item was always about
-    (S4).
 - **Manual cross-browser/cross-device spot check not yet done — needs the project owner directly.**
   Automated coverage (Part H.7's cross-browser smoke script, Vitest's browser-mode suite) only ever
   exercises Chromium/WebKitGTK/Firefox/Edge on Linux CI runners — Part H.1's "stable and

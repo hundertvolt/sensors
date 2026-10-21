@@ -4,12 +4,10 @@ BACKLOG.md	**Note**: `get_long_block_lock()` itself was already removed entirely
 BACKLOG.md	- **A digital-twin soak's wall clock is set by GC timing, so it must never be bi
 BACKLOG.md	- **The UART fakes still do not *wait* the way a real read does, deliberately.**
 BACKLOG.md	- **The sibling `W12` ("saturated on the high range") finding from the same isol
-BACKLOG.md	Deliberately does **not** use the Unix-port twin's own `gc.mem_free()` recovery-
 BACKLOG.md	Once an item is resolved (bug fixed, decision settled, question answered) it com
 BACKLOG.md	Settled: the mock tier's ~20-scenario UART fault-injection catalog is a structur
 BACKLOG.md	What stays deliberately absent is any *sensor* behind that link: no BME688/BSEC
 BACKLOG.md	decided, with full upstream research citations, real bench-hardware recovery-tim
-BACKLOG.md	structurally incompatible.** It validates that every `root_packages` entry is a
 CLAUDE.md	**That was HEAP_FRAGMENTATION_MEASUREMENTS.md archive §11 item 0, now decided an
 CLAUDE.md	- **Don't touch `sensors/config.json`-equivalent files or commit any real creden
 CLAUDE.md	- **Two suites that both bind real ports must never run at the same time.** `scr

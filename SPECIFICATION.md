@@ -2745,6 +2745,32 @@ trigger: SPECIFICATION.md B.15"; the repairs' account is F.5.5):
   `__enter__`/`__exit__` nor a typed `read()` (`deflate.pyi:43-88`); `warn_unused_ignores` flags
   the ignore the day `read()` is typed, and `with` returns in that change.
 
+## B.16 Checkers measured and declined
+
+import-linter, vulture, detect-secrets and codespell were run against the real tree before they were
+declined (agent, 2026-09-10); the others were judged not applicable without a run. None is in
+`scripts/lint.sh` or the dev dependencies. **import-linter**: it accepts only packages, and `src/`
+is a flat module set frozen beside `ext/`; a shadow package or an implicit namespace package
+analyses 0 dependencies and passes every contract, because each intra-`src/` import is a bare
+absolute one — a false green, and making it work means rewriting `src/`'s imports. **vulture**:
+every one of its ≥ 80 %-confidence findings was a false positive (it cannot see quoted annotations
+or `if TYPE_CHECKING:` blocks); a dead-code tool is run once, by hand, and never added to
+`scripts/lint.sh` (owner, 2026-09-26, paraphrase); its candidates are confirmed by a reference
+search. **gitleaks / detect-secrets**: redundant. The 2026-09-10 detect-secrets run flagged only
+test and twin passwords and missed the one credential the project keeps, the hotspot fallback
+default, accepted permanently (owner, 2026-09-26; A.11 row 8), which lives in a shape neither tool
+sees (`src/asy_wifi_service.py`'s `_VAL_HOTSPOT_PW` and each `devices/*.toml`); ruff's `S105`/`S106`
+stay on everywhere except the per-file exemptions for the literal passwords of test doubles and
+bound checks (`pyproject.toml`), so a new credential in keyword or assignment form is caught, and
+the repository's whole history was scanned for secrets once (agent, 2026-10-20; A.11 row 15).
+**codespell**: overwhelmingly false positives on the domain vocabulary (`FRAM`, `Pres`, `optionEl`).
+**markdownlint** (fights hand-formatted prose), **yamllint** (actionlint covers the workflow YAML),
+**hadolint** (no Dockerfile), **taplo** (each TOML file is read by the tool that owns it — buildgen
+validates `devices/*.toml` field by field, `tomllib` rejects a malformed
+`pyproject.toml`/`toolchain/versions.toml`) and **pip-audit** (dev-only dependencies, nothing
+reaches the device; not part of `scripts/lint.sh` or CI) do not apply. `zizmor` was adopted
+(CLAUDE.md 'Code quality tooling'); `npm audit` is H.8's.
+
 # Part C — Sensor Driver Architecture Specification
 
 Extracted from the three drivers first promoted to `src/` (`asy_scd30_driver.py`,
@@ -3376,8 +3402,8 @@ firmware:
   holds the event loop and cannot threaten the 8388ms watchdog cap. Its cost is fixed **per chunk**
   (~305ms), not per history entry, and the twin is no floor for it: real idle (6.32s) ran faster
   than the twin's own `dev` figure (8.15s), the Unix-port interpreter and the fake chip costing more
-  than real SPI wire time saves. Timings, the 2026-09-25 reader-count curve and the bench budget
-  still to be sized from it: BACKLOG.md item 32.
+  than real SPI wire time saves. The bench budget is still to be sized from a 0-4 reader sweep of
+  the concurrent reset: BACKLOG.md's "Real-hardware work still owed", bench `ResetErrors` budget row.
 - **The UART link keeps its never-block invariant under sustained FRAM writing.** Across a 20.8s
   window carrying three back-to-back `ResetErrors` calls (~6.9s each, i.e. near-continuous chunk
   writing), `dev`'s crossover pair completed 23 further transfers with zero failures and held its 1s
@@ -8218,7 +8244,9 @@ each reference's routes against the definitions, its result words against `js/ap
 its code table against the mock's; `tests_scripts/test_js_api_mirrors.py` pins every JS copy of a
 `src/` wire fact (G.2). `tests_js/expected-display.test.js` pins the live tier's display oracle to
 hand-written texts, and `tests_js/memory-markers.test.js` the twin's restart signs beside the memory
-markers (H.7).
+markers (H.7). `npm audit` is not part of `scripts/lint.sh` or CI: every npm package is a dev
+dependency and none reaches the device or the served site (`package.json` has no runtime
+`dependencies`; Part B.16 lists the other declined checkers).
 
 **ESLint's rule set is curated, not `eslint:all`** (its own docs advise against that switch, which
 enables mutually contradictory style rules): `BUG_CATCHING_RULES` in `eslint.config.js` is every
@@ -9817,15 +9845,16 @@ C/D alone:
 ## K.3 Wire into `buildgen`
 
 Every file below; a driver following the `asy_<name>_driver.py` → `*_Reader(SensorReader |
-SensorReaderConfig)` naming convention (C.2) usually needs only the first three — confirm by
-actually running `buildgen/generate.py` against a fixture TOML (or a real `devices/*.toml` with a
-draft instance added), not by inspection alone.
+SensorReaderConfig)` naming convention (C.2) needs items 1, 3 and 4 (item 2 only when a driver
+cannot follow that convention) — confirm by actually running `buildgen/generate.py` against a
+fixture TOML (or a real `devices/*.toml` with a draft instance added), not by inspection alone.
 
 1. **`buildgen/buildspec.py`** — one of the two tables buildgen keeps by hand (owner, 2026-09-18;
-   the other is `buildgen/definitions.py`'s status/errcount catalog, step 4); every other value
-   buildgen restates from `src/` is read by AST or pinned both ways, and
-   `tests_scripts/test_buildgen_source_agreement.py` fails on a resolvable driver missing a row of
-   either table, before any TOML uses it. Add rows to
+   the other is `buildgen/definitions.py`'s status/errcount catalog, item 4, owner, 2026-09-24): a
+   driver's TOML field names and its constructor's parameter names are independent naming spaces, so
+   no rule derives one from the other. Every other value buildgen restates from `src/` is read by
+   AST or pinned both ways, and `tests_scripts/test_buildgen_source_agreement.py` fails on a
+   resolvable driver missing a row of either table, before any TOML uses it. Add rows to
    `REQUIRED_TOML_FIELDS`/`OPTIONAL_TOML_FIELDS` (every constructor parameter with no default is
    required; every one with a default your device might want to override is optional — see PR #86
    for adding a single optional field to an already-promoted driver). If the driver sits on a bus,
@@ -9853,7 +9882,7 @@ draft instance added), not by inspection alone.
 4. **`buildgen/definitions.py`** — add the driver's `_ERRCOUNT_CATALOG` row and, when its class
    owns a `cfgmgr`, its `_CFGMGR_LABEL` row (the second hand-kept table, owner, 2026-09-24). A
    sensor's website card needs no entry: a driver the registry resolves as kind `sensor` gets one,
-   built from its `@web`/`@web-group` tags (K.6 below). A missing row fails
+   built from its `@web`/`@web-group` tags (K.4 below). A missing row fails
    `tests_scripts/test_buildgen_source_agreement.py`.
 5. **`buildgen/twin_wiring.py`** — usually **no change**: `fram_target` and every other generic
    wiring field is handled uniformly by `codegen.py`'s own `_fram_kw()`/`ctx.wiring_expr()`, not
@@ -10088,12 +10117,14 @@ instance; every SCD30-carrying `i2c0` bus gets `timeout = 200000` of clock-stret
 Two criteria define the scheme and must keep holding — they are the thing a change to `buildgen/`
 can most easily break without any test naming them:
 
-1. **A new driver needs exactly one association plus one `buildgen/buildspec.py` table entry** (the
+1. **A new driver needs exactly one association plus one row in each owner-kept table** (the
    criterion: owner, 2026-09-09, `0755e37`; the table stays hand-maintained: owner, 2026-09-18,
-   `b0f755c`): its common name resolved to its class via the
-   mandatory `asy_<name>_driver.py` naming convention. Schema, frozen-module inclusion, REST/config
-   naming, website fields and wiring validation all follow automatically. True of every driver in
-   `src/` today. **Named exception**: a genuinely new chip type still needs a hand-written
+   `b0f755c`): its common name resolves to its class through the mandatory `asy_<name>_driver.py`
+   naming convention; the two owner-kept tables each take one row — `buildgen/buildspec.py`'s field
+   schema and `buildgen/definitions.py`'s `status`/`errcount` catalog (owner, 2026-09-24, `58abf8f`;
+   L.6.6) — and a missing row is named by a build error or a completeness test, never skipped.
+   Frozen-module inclusion, REST/config naming, website fields and wiring validation follow
+   automatically. **Named exception**: a genuinely new chip type still needs a hand-written
    digital-twin chip fake — inherently bespoke, and outside "the auto build" in the
    firmware/website-generation sense this criterion is about.
 2. **A new hardware combination of already-known drivers needs exactly one new file**, the device's
@@ -10950,13 +10981,17 @@ a `{source, field}` reference whose field the producer's `get_data()` lacks (L.6
 key on any instance but the notification, or outside the warn-signal catalog. Every generated
 source is compiled before anything is written (L.4). The message form is L.5's.
 
-**Known limitation**: `buildgen/buildspec.py`'s per-driver TOML-field schema
-(`REQUIRED_TOML_FIELDS`/`ALLOWED_INSTANCE_FIELDS`/`ADDRESS_CAPABLE_DRIVERS`/
-`FIXED_ADDRESS_DRIVERS`) is still hand-maintained — the one association `buildgen` needs from a
-driver that is not AST-derivable from `_WIRING`/`_VALUE_WIRING`/`_LIMITS`/`_Default*` alone, since
-the TOML field names and `src/`'s constructor parameter names are two independently-evolved naming
-spaces. BACKLOG.md's "Deferred" section has the full account of why making it AST-derivable is a
-separate unit of work rather than a mechanical continuation.
+**Hand-maintained by owner decision** (owner, 2026-09-18, `b0f755c`): `buildgen/buildspec.py`'s
+per-driver TOML-field schema
+(`REQUIRED_TOML_FIELDS`/`ALLOWED_INSTANCE_FIELDS`/`ADDRESS_CAPABLE_DRIVERS`/`FIXED_ADDRESS_DRIVERS`)
+is the one association `buildgen` needs from a driver that is not AST-derivable from
+`_WIRING`/`_VALUE_WIRING`/`_LIMITS`/`_Default*` alone, since the TOML field names and `src/`'s
+constructor parameter names are two independent naming spaces. The drivers are part of this repo,
+not definitions arriving from outside, so one table edit per new driver is an acceptable cost, and a
+resolvable driver without its row raises a named error (above) (owner, 2026-09-18, `b0f755c`,
+paraphrase). `buildgen/definitions.py`'s cross-cutting `status`/`errcount` catalog stays hand-kept
+beside the `@web`-derived per-driver sections for the same reason (owner, 2026-09-24, `58abf8f`);
+`tests_scripts/test_buildgen_source_agreement.py` fails on a driver missing a row in either table.
 
 ## L.7 Product versioning (firmware and website)
 
