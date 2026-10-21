@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, "ext")  # scripts/test.sh's MICROPYPATH excludes ext/, where the real vendored microdot lives
 
 from _async_harness import cancel, run
+from _fast_sleep import check_sleep_ms
 from _generated_tree import require_fresh
 from _sensortask_scenarios import build
 from _shared_rest_roundtrip import drain_json
@@ -56,7 +57,7 @@ async def _run_until(predicate: "Callable[[], bool]", max_yields: int) -> bool:
 def test_real_neopixel_driver_on_off_toggle_through_wifi_service_ext_led() -> None:
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = 0.01
+    pixel._frame_ms = 10
     conn = WifiService(WifiConfig("SensorNode", "12345678", 5, 5), ext_led=pixel, cfg_path=_tmp_cfg_dir())
 
     def last_is(colour: "tuple[int, int, int]") -> "Callable[[], bool]":
@@ -87,27 +88,34 @@ _PATTERN_YIELDS = 8 * _PHASE_YIELDS  # four whole on/off cycles of either patter
 
 
 class _FlashSleeps:
-    # For the block, asyncio.sleep() records each non-zero duration (with a conn, only its flash task's) and yields
-    # _PHASE_YIELDS times instead of waiting: the flash phases become scheduling steps. Restored however the block exits.
+    # For the block, asyncio.sleep_ms() records each non-zero duration in ms (with a conn, only its flash task's) and
+    # both sleeps yield _PHASE_YIELDS times instead of waiting: the flash phases become scheduling steps. Restored on exit.
     def __init__(self, conn: "WifiService | None" = None) -> None:
-        self.durations: list[float] = []
+        self.durations: list[int] = []
         self._conn = conn
 
     def __enter__(self) -> "Self":
-        self._real = asyncio.sleep
+        self._real = (asyncio.sleep, asyncio.sleep_ms)
+        real_sleep_ms = self._real[1]
         conn = self._conn
 
-        async def _fast(seconds: float) -> None:
-            if seconds and (conn is None or asyncio.current_task() is conn._ledflash):
-                self.durations.append(seconds)
+        async def _fast_ms(ms: int) -> None:
+            check_sleep_ms(ms)
+            if ms and (conn is None or asyncio.current_task() is conn._ledflash):
+                self.durations.append(ms)
             for _ in range(_PHASE_YIELDS):
-                await self._real(0)
+                await real_sleep_ms(0)
+
+        async def _fast(_seconds: float) -> None:
+            for _ in range(_PHASE_YIELDS):
+                await real_sleep_ms(0)
 
         asyncio.sleep = _fast  # type: ignore[assignment]  # a module-attribute swap, restored in __exit__
+        asyncio.sleep_ms = _fast_ms  # type: ignore[assignment]  # likewise, the form every flash phase sleeps in
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real
+        asyncio.sleep, asyncio.sleep_ms = self._real
 
 
 async def _yields(count: int) -> None:
@@ -124,8 +132,8 @@ def _frames(pixel: NeopixelDriver, start: int) -> "list[tuple[int, ...]]":
     return frames
 
 
-def _pairs(durations: "list[float]") -> "set[tuple[float, float]]":
-    # The (on, off) pairs a flash task slept, starting from its first on phase.
+def _pairs(durations: "list[int]") -> "set[tuple[int, int]]":
+    # The (on, off) pairs in ms a flash task slept, starting from its first on phase.
     return {(durations[i], durations[i + 1]) for i in range(0, len(durations) - 1, 2)}
 
 
@@ -162,8 +170,8 @@ def test_the_hotspot_pattern_blinks_a_real_neopixel_driver_through_the_flash_tas
     assert frames[:4] == [_ON, _OFF, _ON, _OFF]  # every phase reached the real pixel, on first
     pairs = _pairs(sleeps.durations)
     assert len(pairs) == 1  # one pattern ran, unchanged
-    on_s, off_s = pairs.pop()
-    assert on_s > off_s  # the hotspot pattern: mostly on, with a short dark beat
+    on_ms, off_ms = pairs.pop()
+    assert on_ms > off_ms  # the hotspot pattern: mostly on, with a short dark beat
 
 
 def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_restores_it() -> None:
@@ -171,7 +179,7 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
     conn = _hotspot_conn(pixel)
     with _FlashSleeps() as sleeps:
 
-        async def scenario() -> "tuple[list[float], list[float], list[float], list[tuple[int, ...]]]":
+        async def scenario() -> "tuple[list[int], list[int], list[int], list[tuple[int, ...]]]":
             overlay_task = pixel.start_asy_overlay()
             await conn.set_wifi_led(status=True)
             await conn._hotspot_client_absent()
@@ -191,8 +199,8 @@ def test_a_station_on_the_hotspot_swaps_the_real_pixels_pattern_and_its_leaving_
         hotspot, client, restored, client_frames = run(scenario())
     assert len(_pairs(hotspot)) == 1
     assert len(_pairs(client)) == 1
-    client_on_s, client_off_s = _pairs(client).pop()
-    assert client_on_s == client_off_s  # an even blink, never a steady light that reads as a home link
+    client_on_ms, client_off_ms = _pairs(client).pop()
+    assert client_on_ms == client_off_ms  # an even blink, never a steady light that reads as a home link
     assert _pairs(client) != _pairs(hotspot)
     assert _pairs(restored) == _pairs(hotspot)
     assert _OFF in client_frames and client_frames.count(_ON) >= 2  # the client pattern blinks the real pixel
@@ -295,8 +303,8 @@ def test_the_no_configuration_pattern_blinks_a_real_neopixel_driver_and_obeys_le
     assert _ON in shown and _OFF in shown
     pairs = _pairs(sleeps.durations)
     assert len(pairs) == 1
-    on_s, off_s = pairs.pop()
-    assert on_s < off_s  # a short blink, the hotspot pattern's inverse
+    on_ms, off_ms = pairs.pop()
+    assert on_ms < off_ms  # a short blink, the hotspot pattern's inverse
     assert dark == [_OFF]
     assert _ON in back
 

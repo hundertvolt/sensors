@@ -143,16 +143,16 @@ def _with_default(schema: tuple[tuple[str, str, str, int, int, str | None], ...]
 # @wiring fram_target FRAMManager log optional kwarg
 
 # @tunable wifi.sta_disconnect_wait_iters = 20
-_STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 0.5s = 10s max wait for isconnected() to clear -
+_STA_DISCONNECT_WAIT_ITERS = const(20)  # 20 * 500 ms = 10 s max wait for isconnected() to clear -
 # bounds _disconnect_sta_and_wait()'s loop; a real disconnect() completes far faster than this.
-# @tunable wifi.sta_disconnect_poll_s = 0.5
-_STA_DISCONNECT_POLL_S = const(0.5)  # one step of that wait
-# @tunable wifi.sta_connect_poll_s = 0.5
-_STA_CONNECT_POLL_S = const(0.5)  # one step of _poll_sta_connect_status()'s wait for a verdict
+# @tunable wifi.sta_disconnect_poll_ms = 500
+_STA_DISCONNECT_POLL_MS = const(500)  # one step of that wait
+# @tunable wifi.sta_connect_poll_ms = 500
+_STA_CONNECT_POLL_MS = const(500)  # one step of _poll_sta_connect_status()'s wait for a verdict
 # @tunable wifi.sta_connect_poll_iters = 10
-_STA_CONNECT_POLL_ITERS = const(10)  # its bound: 10 * 0.5s = 5s
-# @tunable wifi.hotspot_stations_settle_s = 0.1
-_HOTSPOT_STATIONS_SETTLE_S = const(0.1)  # before the stations query
+_STA_CONNECT_POLL_ITERS = const(10)  # its bound: 10 * 500 ms = 5 s
+# @tunable wifi.hotspot_stations_settle_ms = 100
+_HOTSPOT_STATIONS_SETTLE_MS = const(100)  # before the stations query
 # @tunable wifi.wlan_down_settle_s = 2
 _WLAN_DOWN_SETTLE_S = const(2)  # after disconnect() + active(False), before deinit()
 # @tunable wifi.wlan_deinit_settle_s = 1
@@ -162,18 +162,18 @@ _WLAN_MODE_SETTLE_S = const(1)  # after the new interface is created
 # @tunable wifi.sta_retry_after_loss_s = 60
 _STA_RETRY_AFTER_LOSS_S = const(60)  # retry a previously successful connection after one minute
 # The flash patterns' (on, off) phases, each run by the one flash task (_run_led_pattern()).
-# @tunable wifi.led_hotspot_on_s = 2.9
-_LED_HOTSPOT_ON_S = const(2.9)  # the hotspot without a client: mostly lit
-# @tunable wifi.led_hotspot_off_s = 0.1
-_LED_HOTSPOT_OFF_S = const(0.1)
-# @tunable wifi.led_hotspot_client_on_s = 1.5
-_LED_HOTSPOT_CLIENT_ON_S = const(1.5)  # a station on the hotspot: an even slow blink
-# @tunable wifi.led_hotspot_client_off_s = 1.5
-_LED_HOTSPOT_CLIENT_OFF_S = const(1.5)
-# @tunable wifi.led_deactivated_on_s = 0.1
-_LED_DEACTIVATED_ON_S = const(0.1)  # no readable Wi-Fi configuration: the hotspot pattern inverted, a short blink every 3 s
-# @tunable wifi.led_deactivated_off_s = 2.9
-_LED_DEACTIVATED_OFF_S = const(2.9)
+# @tunable wifi.led_hotspot_on_ms = 2900
+_LED_HOTSPOT_ON_MS = const(2900)  # the hotspot without a client: mostly lit
+# @tunable wifi.led_hotspot_off_ms = 100
+_LED_HOTSPOT_OFF_MS = const(100)
+# @tunable wifi.led_hotspot_client_on_ms = 1500
+_LED_HOTSPOT_CLIENT_ON_MS = const(1500)  # a station on the hotspot: an even slow blink
+# @tunable wifi.led_hotspot_client_off_ms = 1500
+_LED_HOTSPOT_CLIENT_OFF_MS = const(1500)
+# @tunable wifi.led_deactivated_on_ms = 100
+_LED_DEACTIVATED_ON_MS = const(100)  # no readable Wi-Fi configuration: the hotspot pattern inverted, a short blink every 3 s
+# @tunable wifi.led_deactivated_off_ms = 2900
+_LED_DEACTIVATED_OFF_MS = const(2900)
 # @tunable wifi.reconnect_caller_grace_s = 5
 _RECONNECT_CALLER_GRACE_S = const(5)  # lets the triggering caller's own final tasks finish
 # @tunable wifi.reconnect_settle_s = 3
@@ -259,7 +259,7 @@ class WifiService(SensorReaderConfig):
         self._hotspot_timer_running = False
         self._hotspot_timeout_trigger_event = asyncio.ThreadSafeFlag()
         self._ledflash: asyncio.Task[None] | None = None
-        self._led_pattern: tuple[float, float] | None = None  # the (on, off) pattern _ledflash runs
+        self._led_pattern: tuple[int, int] | None = None  # the (on, off) pattern _ledflash runs
         # _connect_loop()'s own state machine - reset at the top of every _connect_loop() call
         # (i.e. every task (re)start), not meant to be read from outside this class.
         self._conn_phase = _PHASE_STA_SEEKING
@@ -277,7 +277,7 @@ class WifiService(SensorReaderConfig):
         async with self.wifi_mode_lock:
             # Legacy's settle before the stations query (legacy/firmware/python/CommonDrivers/async_connect.py:258); cyw43 055d642 states no such need.
             # It stays: two flashes are not spent testing a harmless 100 ms wait (owner, 2026-10-05, paraphrase).
-            await asyncio.sleep(_HOTSPOT_STATIONS_SETTLE_S)
+            await asyncio.sleep_ms(_HOTSPOT_STATIONS_SETTLE_MS)
             try:
                 # The 1.29 stub types status(str) as int; "stations" returns a list of 1-tuples (network_cyw43.c:371-388).
                 # Remove the ignore when the stub types it (warn_unused_ignores then flags it).
@@ -406,11 +406,12 @@ class WifiService(SensorReaderConfig):
                 self.pr.all("WLAN is deactivated.")
                 # Deactivated: a distinct pattern (owner, 2026-09-29), a short blink every 3 s that obeys the Wi-Fi LED setting
                 # like every pattern: silent while it is off, shown once it is turned on (owner, 2026-10-02).
-                self._run_led_pattern(_LED_DEACTIVATED_ON_S, _LED_DEACTIVATED_OFF_S)
+                self._run_led_pattern(_LED_DEACTIVATED_ON_MS, _LED_DEACTIVATED_OFF_MS)
             else:
                 self._hw_op_failed = False
                 if self._tick_armed is False:  # the uptime tick never armed: this iteration retries it
-                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime")
+                    # Quiet: the episode's first refusal printed the helper's line; this pass's persisted entry is its record.
+                    self._tick_armed = arm_tick_timer(self._counter_timer, self._time_counter_trigger_event, self.pr, "WiFi uptime", quiet=True)
                     if not self._tick_armed:
                         await self.pr.err_s("WiFi uptime timer not armed", errno=_ERR_TIMER)
                         self._hw_op_failed = True
@@ -442,7 +443,7 @@ class WifiService(SensorReaderConfig):
                 if not self._wlan.isconnected():
                     break
                 self._led_toggle()
-                await asyncio.sleep(_STA_DISCONNECT_POLL_S)
+                await asyncio.sleep_ms(_STA_DISCONNECT_POLL_MS)
             else:
                 self._hw_op_failed = True
                 await self.pr.err_s("Timed out waiting for STA disconnect", errno=_ERR_TIMEOUT)
@@ -451,14 +452,14 @@ class WifiService(SensorReaderConfig):
             self._hw_op_failed = True
             await self.pr.err_s("Error waiting for STA disconnect:", e, errno=_ERR_WLAN_STA_DISCONNECT)
 
-    async def _flash_led(self, on_s: float, off_s: float) -> None:
+    async def _flash_led(self, on_ms: int, off_ms: int) -> None:
         # A cancel ends the task at its sleep and touches no LED: the canceller sets the LED it wants.
         try:
             while True:
                 self._led_on()
-                await asyncio.sleep(on_s)
+                await asyncio.sleep_ms(on_ms)
                 self._led_off()
-                await asyncio.sleep(off_s)
+                await asyncio.sleep_ms(off_ms)
         except Exception as e:  # unsupervised task's top: its end is persisted, the LED left as it is
             report_if_fatal(e)
             await self.pr.err_s("LED flash task failed:", e, errno=_ERR_UNEXPECTED)
@@ -502,12 +503,12 @@ class WifiService(SensorReaderConfig):
                 # Persisted and retried next iteration; with no window the hotspot never ends and STA is never retried, so the
                 # failed arm is this iteration's hardware failure and feeds the streak, as the uptime tick's does (owner, 2026-10-13).
                 self._hw_op_failed = True
-        self._run_led_pattern(_LED_HOTSPOT_ON_S, _LED_HOTSPOT_OFF_S)
+        self._run_led_pattern(_LED_HOTSPOT_ON_MS, _LED_HOTSPOT_OFF_MS)
 
     def _hotspot_client_connected(self) -> None:
         self._hotspot_timer.deinit()  # if client connected, do not stop hotspot
         self._hotspot_timer_running = False
-        self._run_led_pattern(_LED_HOTSPOT_CLIENT_ON_S, _LED_HOTSPOT_CLIENT_OFF_S)
+        self._run_led_pattern(_LED_HOTSPOT_CLIENT_ON_MS, _LED_HOTSPOT_CLIENT_OFF_MS)
         self.pr.evt("Client connected to hotspot, timer stopped")
 
     async def _hotspot_timeout_loop(self) -> None:
@@ -630,7 +631,7 @@ class WifiService(SensorReaderConfig):
             else:
                 await self.pr.wrn_s("WLAN undefined state:", status, wrnno=_WRN_WLAN_STATUS_UNKNOWN)
                 return
-            await asyncio.sleep(_STA_CONNECT_POLL_S)
+            await asyncio.sleep_ms(_STA_CONNECT_POLL_MS)
         # Every verdict returned above: each poll stayed IDLE, CONNECTING or joined without an IP (a DHCP server that never answers).
         await self.pr.wrn_s("WLAN connect attempt ended without a verdict, last status:", status, wrnno=_WRN_WLAN_NO_VERDICT)
 
@@ -733,17 +734,17 @@ class WifiService(SensorReaderConfig):
             await self._bring_up_hotspot_ap()
             await self._hotspot_client_absent()
 
-    def _run_led_pattern(self, on_s: float, off_s: float) -> None:
+    def _run_led_pattern(self, on_ms: int, off_ms: int) -> None:
         # One flash task; asking for the pattern already running keeps its phase (a task that ended on a fault
         # is not running: the next request starts it again). None while silent: dark until a link, see _led_on().
         if self._conn_phase == _PHASE_SILENT:
             return
-        if self._ledflash is not None and not self._ledflash.done() and self._led_pattern == (on_s, off_s):
+        if self._ledflash is not None and not self._ledflash.done() and self._led_pattern == (on_ms, off_ms):
             return
         if self._ledflash is not None:
             self._ledflash.cancel()
-        self._led_pattern = (on_s, off_s)
-        self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_s, off_s))
+        self._led_pattern = (on_ms, off_ms)
+        self._ledflash = asyncio.get_event_loop().create_task(self._flash_led(on_ms, off_ms))
 
     async def _run_silent_mode(self) -> bool:  # True: an attempt ran, so the hardware streak has evidence to judge
         # One connect attempt per hotspot_time_min, uncapped, the watcher marking it due on the window's own timer; never a

@@ -353,6 +353,7 @@ _ROWS: "dict[str, Row]" = {
     "bus.i2c-frequency-range": Row("generate", f"[{_DEVICE}.frequency] ", doc=_set("bus", "i2c0", "frequency", 1000001)),
     "bus.i2c-timeout-range": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 0)),
     "bus.i2c-timeout-max": Row("generate", f"[{_DEVICE}.timeout] ", doc=_set("bus", "i2c0", "timeout", 10000000)),
+    "bus.i2c-timeout-consumer": Row("generate", f"[{_DEVICE}.timeout] ", doc=_paired(_set("bus", "uart1", "poll_idle_ms", 900))),
     "bus.uart-baudrate-range": Row("generate", f"[{_DEVICE}.baudrate] ", doc=_paired(_set("bus", "uart0", "baudrate", 7812501))),
     "bus.uart-rxbuf-range": Row("generate", f"[{_DEVICE}.rxbuf] ", doc=_paired(_set("bus", "uart0", "rxbuf", 32767))),
     "bus.uart-txbuf-range": Row("generate", f"[{_DEVICE}.txbuf] ", doc=_paired(_set("bus", "uart0", "txbuf", 31))),

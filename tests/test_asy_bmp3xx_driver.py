@@ -12,7 +12,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
-from _src_const import src_float, src_int
+from _src_const import src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -52,7 +52,8 @@ _REGISTER_CAL_DATA = 0x31  # DS001 §4.3.21, Table 23 NVM_PAR_T1
 _REGISTER_CMD = 0x7E  # DS001 §4.3.22
 _OSR_SETTINGS = (1, 2, 4, 8, 16, 32)  # DS001 §3.4.1-3.4.2, Tables 6-7: encodings 000-101
 _IIR_SETTINGS = (0, 1, 3, 7, 15, 31, 63, 127)  # DS001 §4.3.20, Table 44: iir_filter 000-111
-_STATUS_POLL_S: float = src_float("src/asy_bmp3xx_driver.py", "_STATUS_POLL_S")
+_BOSCH_RESET_SETTLE_MS = 2  # Bosch's reference bmp3_soft_reset(); DS001 4.3.22 gives no settle for 0xB6
+_STATUS_POLL_MS: int = src_int("src/asy_bmp3xx_driver.py", "_STATUS_POLL_MS")
 _MEAS_TIMEOUT_MS: int = src_int("src/asy_bmp3xx_driver.py", "_MEAS_TIMEOUT_MS")
 
 
@@ -167,21 +168,27 @@ def _read_pointers(i2c: I2C) -> "list[int]":
 
 
 class _SleepRecorder:
-    # Records every asyncio.sleep() duration and still sleeps it for real; asyncio.sleep is process-wide,
-    # so it is restored however the block exits.
+    # Records every asyncio.sleep()/sleep_ms() as (form, value) and still sleeps it for real; both names are
+    # process-wide, so they are restored however the block exits.
     def __enter__(self) -> "Self":
-        self.calls: list[float] = []
-        self._real_sleep = asyncio.sleep
+        self.calls: list[tuple[str, float]] = []
+        self._real = (asyncio.sleep, asyncio.sleep_ms)
+        real_sleep, real_sleep_ms = self._real
 
         async def _recorded(seconds: float) -> None:
-            self.calls.append(seconds)
-            await self._real_sleep(seconds)
+            self.calls.append(("sleep", seconds))
+            await real_sleep(seconds)
+
+        async def _recorded_ms(ms: int) -> None:
+            self.calls.append(("sleep_ms", ms))
+            await real_sleep_ms(ms)
 
         asyncio.sleep = _recorded  # type: ignore[assignment]  # a recorder patched in, restored on exit
+        asyncio.sleep_ms = _recorded_ms  # type: ignore[assignment]  # likewise, for the millisecond form
         return self
 
     def __exit__(self, *exc_info: object) -> None:
-        asyncio.sleep = self._real_sleep
+        asyncio.sleep, asyncio.sleep_ms = self._real
 
 
 def _make_bmp(address: int = _ADDR) -> "tuple[I2C, BMP3XX_I2C]":
@@ -391,6 +398,15 @@ def test_reset_succeeds_when_err_reg_clear() -> None:
     run(bmp.reset())  # must not raise
     # 0xB6 to CMD (0x7E) is the soft reset (BMP388 datasheet section 4.3.22, Table 45)
     assert ("writeto", _ADDR, bytes([_REGISTER_CMD, 0xB6]), True) in fake(i2c).log
+
+
+def test_reset_settles_one_tick_past_the_reference_settle() -> None:
+    # sleep_ms() counts whole ticks_ms() from the current tick, so it may wake up to 1 ms early: the one settle
+    # after 0xB6 is Bosch's reference 2 ms plus one tick, in whole milliseconds.
+    _, bmp = ready_bmp()
+    with _SleepRecorder() as recorder:
+        run(bmp.reset())
+    assert recorder.calls == [("sleep_ms", _BOSCH_RESET_SETTLE_MS + 1)], recorder.calls
 
 
 def test_reset_ends_its_session_with_one_event_read_after_the_err_read() -> None:
@@ -606,8 +622,8 @@ def test_read_raises_runtime_error_when_err_reg_reports_fatal_err() -> None:
 
 
 def test_read_waits_the_computed_conversion_time_at_x32_x32() -> None:
-    # DS001 3.9.2: 234 + (392 + 32 * 2000) + (313 + 32 * 2000) us = 128939 us, slept once after the trigger;
-    # STATUS is then ready, so the poll takes one read and no poll sleep.
+    # DS001 3.9.2: 234 + (392 + 32 * 2000) + (313 + 32 * 2000) us = 128939 us, slept once after the trigger in
+    # whole milliseconds, rounded up; STATUS is then ready, so the poll takes one read and no poll sleep.
     i2c, bmp = ready_bmp()
     seed_calibration(i2c)
     seed_data(i2c, _adc_to_data6(_ADC_P, _ADC_T))
@@ -616,8 +632,7 @@ def test_read_waits_the_computed_conversion_time_at_x32_x32() -> None:
     fake(i2c).log.clear()
     with _SleepRecorder() as recorder:
         run(bmp._read())
-    assert len(recorder.calls) == 1, recorder.calls
-    assert abs(recorder.calls[0] - 0.128939) < 1e-9, recorder.calls
+    assert recorder.calls == [("sleep_ms", 129)], recorder.calls
     assert _register_reads(i2c, _REGISTER_STATUS) <= 2
     assert _read_pointers(i2c)[0] == _REGISTER_OSR  # the wait follows the settings of this conversion
 
@@ -636,9 +651,10 @@ def test_read_raises_within_the_measurement_bound_when_status_never_reports_read
             raised = True
     assert raised
     polls = _register_reads(i2c, _REGISTER_STATUS)
-    assert 1 <= polls <= _MEAS_TIMEOUT_MS // 2 + 1, polls  # the poll step is 2 ms (_STATUS_POLL_S)
-    assert recorder.calls[0] > _STATUS_POLL_S  # the conversion wait first, then the poll steps
-    assert all(call == _STATUS_POLL_S for call in recorder.calls[1:])
+    assert 1 <= polls <= _MEAS_TIMEOUT_MS // _STATUS_POLL_MS + 1, polls
+    form, conversion = recorder.calls[0]  # the conversion wait first, then the poll steps
+    assert form == "sleep_ms" and conversion > _STATUS_POLL_MS, recorder.calls[0]
+    assert all(call == ("sleep_ms", _STATUS_POLL_MS) for call in recorder.calls[1:]), recorder.calls
 
 
 def test_read_refuses_a_reserved_osr_encoding_before_triggering() -> None:
@@ -2381,7 +2397,7 @@ def test_read_loop_stores_a_result_after_one_trigger() -> None:
 
     async def scenario() -> BMP3XX:
         task = asyncio.create_task(reader._read_loop())
-        await _settle(10)  # let _init_bmp()'s reset settle (_RESET_SETTLE_S, real but small) pass
+        await _settle(10)  # let _init_bmp()'s reset settle (_RESET_SETTLE_MS, real but small) pass
         reader._read_event.set()
         await _settle(10)
         await cancel(task)

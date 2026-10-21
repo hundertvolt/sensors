@@ -374,7 +374,7 @@ def set_utc_valid(*, valid: bool = True) -> None:
     _utc_valid = valid
 
 
-def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHistory", what: str) -> bool:
+def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHistory", what: str, *, quiet: bool = False) -> bool:
     # The one starter shape of the 1 s tick timers (system uptime, WiFi uptime, NTP sync age): False when
     # the alarm pool refuses the arm (Part F.1), reported here in one wording; the caller degrades.
     try:
@@ -383,7 +383,8 @@ def arm_tick_timer(timer: "Timer", flag: asyncio.ThreadSafeFlag, pr: "PrintLogHi
         console(pr.name, "Could not arm a 1 s tick timer:", e)
         return False
     except OSError as e:
-        pr.err("Could not arm", what, "timer:", e)
+        if not quiet:  # a re-arm inside an episode its first arm already reported
+            pr.err("Could not arm", what, "timer:", e)
         return False
     return True
 

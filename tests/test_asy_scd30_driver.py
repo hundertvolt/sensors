@@ -14,7 +14,7 @@ from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
-from _src_const import src_const, src_float
+from _src_const import src_const, src_int
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
 from machine import I2C as FakeI2C
@@ -46,7 +46,9 @@ if TYPE_CHECKING:
 _ADDR = 0x61  # Interface Description 1.1.1: the address is fixed
 # @tunable scd30.start_trigger_period_ms = 500
 _START_TRIGGER_PERIOD_MS = 500  # pins src/asy_scd30_driver.py _START_TRIGGER_PERIOD_MS
-_SOFT_RESET_WAIT_S: float = src_float("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_S")
+_CMD_RESPONSE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_CMD_RESPONSE_WAIT_MS")
+_ASC_ENABLE_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_ASC_ENABLE_WAIT_MS")
+_SOFT_RESET_WAIT_MS: int = src_int("src/asy_scd30_driver.py", "_SOFT_RESET_WAIT_MS")
 _STACK_EXHAUSTED = src_const("src/asy_print_log.py", "_STACK_EXHAUSTED")  # the interpreter's own C-stack overflow text
 # @tunable l1.asy_scd30_driver_event_wait_s = 1
 _EVENT_WAIT_S = 1
@@ -749,7 +751,7 @@ def test_fault_injected_read_half_failure_after_a_successful_write_half() -> Non
 
 
 # ---------------------------------------------------------------------------
-# Module level: setup()/reset() - identity check, then the soft reset and its _SOFT_RESET_WAIT_S settle,
+# Module level: setup()/reset() - identity check, then the soft reset and its _SOFT_RESET_WAIT_MS settle,
 # recorded by FastAsyncSleep rather than slept.
 # ---------------------------------------------------------------------------
 
@@ -760,7 +762,7 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     i2c.read_queue.append(register_frame(450))
     with FastAsyncSleep() as sleeps:
         assert run(scd.setup()) is True
-    assert [seconds for _task, seconds in sleeps.slept].count(_SOFT_RESET_WAIT_S) == 1
+    assert [seconds for _task, seconds, _ms in sleeps.slept].count(_SOFT_RESET_WAIT_MS / 1000) == 1
     ops = [entry[0] for entry in i2c.log]
     assert ops == ["writeto", "writeto", "readfrom_into", "writeto", "writeto", "readfrom_into"]
     assert i2c.log[0][2] == b""  # I2CDevice.setup()'s device-presence probe
@@ -768,6 +770,20 @@ def test_setup_probes_reads_firmware_version_then_soft_resets_and_reads_the_temp
     assert i2c.log[3][2] == bytes([0xD3, 0x04])  # _CMD_SOFT_RESET
     assert i2c.log[4][2] == bytes([0x54, 0x03])  # the temperature offset the range gate adds back
     assert scd._temp_offset_ticks == 450
+
+
+def test_each_command_wait_is_a_whole_millisecond_sleep() -> None:
+    # A register read, a command, the ASC enable and the soft reset wait through sleep_ms() with the integer
+    # constants: a float-second sleep() would allocate a heap float on rp2 at every exchange.
+    scd, i2c = _make_scd()
+    i2c.read_queue.append(register_frame(2))
+    with FastAsyncSleep() as sleeps:
+        assert run(scd.get_measurement_interval()) == 2
+        run(scd.set_self_calibration_enabled(True))
+        run(scd.reset())
+    waits = [ms for _task, seconds, ms in sleeps.slept if ms is not None or seconds]  # the CRC loops' sleep(0) left out
+    response = _CMD_RESPONSE_WAIT_MS
+    assert waits == [response, response, _ASC_ENABLE_WAIT_MS, response, _SOFT_RESET_WAIT_MS], sleeps.slept
 
 
 def test_setup_probe_failure_never_reaches_firmware_read_or_reset() -> None:
@@ -1631,7 +1647,7 @@ def test_get_error_counter_forwards_to_the_real_print_log() -> None:
 # ---------------------------------------------------------------------------
 # Integration: _init_scd() / _read_loop() - real asy_base_classes.SensorReader plus asy_print_log wiring.
 # scd.setup() and the interval read are faked by _fake_init() so these focus on _read_loop()'s orchestration
-# without re-paying the real _SOFT_RESET_WAIT_S reset delay each time.
+# without re-paying the real _SOFT_RESET_WAIT_MS reset delay each time.
 # ---------------------------------------------------------------------------
 
 

@@ -99,7 +99,7 @@ def _make_stack(sgp_reader: SGP40_Reader) -> "tuple[NeopixelDriver, Notification
     # build_system() emits.
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = 0.01
+    pixel._frame_ms = 10
 
     signal = NotificationSignal("WarnVOC", ValueRef(sgp_reader, "VOC"), (("WarnVOC", "int", 350, 0, 500, None),), (0, 1, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())

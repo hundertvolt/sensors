@@ -39,8 +39,8 @@ _OVERRIDE_SECS = 2
 # The pause, one 1 s round and a margin: the most the measured override may outlast its setting.
 # @tunable l1.asy_notification_service_override_bound_ms = 3200
 _OVERRIDE_BOUND_MS = 3200
-# @tunable l1.asy_notification_service_next_sleep_min_s = 59.0
-_NEXT_SLEEP_MIN_S = 59.0
+# @tunable l1.asy_notification_service_next_sleep_min_ms = 59000
+_NEXT_SLEEP_MIN_MS = 59000
 
 
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper - see that module's
@@ -1306,28 +1306,24 @@ def test_malformed_own_config_read_degrades_gracefully_and_keeps_retrying() -> N
     assert run(scenario()) is True  # would raise/hang if the loop crashed instead of degrading
 
 
-def test_next_sleep_s_subtracts_elapsed_time() -> None:
-    # Direct unit test of the rem_interv arithmetic _monitor_loop() uses, isolated from a full real-time
+def test_next_sleep_ms_subtracts_elapsed_time() -> None:
+    # Direct unit test of the remaining-interval arithmetic _monitor_loop() uses, isolated from a full real-time
     # cycle: FlashInterval's schema floor is 60.0s, which makes observing this end to end impractically slow for a
     # unit test, so this exercises the same clamp and subtraction expression directly.
-    import time
-
     coordinator, _clock, _cb = _make_coordinator(())
     run(coordinator.setup())
     t0 = time.ticks_ms()
     time.sleep_ms(_ELAPSED_STIMULUS_MS)
-    result = coordinator._next_sleep_s(60.0, t0)
-    assert _NEXT_SLEEP_MIN_S < result < 60.0  # ~60s minus the ~50ms actually elapsed
+    result = coordinator._next_sleep_ms(60.0, t0)
+    assert type(result) is int and _NEXT_SLEEP_MIN_MS < result < 60000, result  # 60 s minus the ~50 ms actually elapsed
 
 
-def test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv() -> None:
-    import time
-
+def test_next_sleep_ms_floors_at_the_minimum_when_elapsed_exceeds_the_interval() -> None:
     coordinator, _clock, _cb = _make_coordinator(())
     run(coordinator.setup())
     t0_100s_ago = time.ticks_add(time.ticks_ms(), -100000)  # simulate 100s already elapsed
-    result = coordinator._next_sleep_s(60.0, t0_100s_ago)
-    assert result == 0.1
+    result = coordinator._next_sleep_ms(60.0, t0_100s_ago)
+    assert type(result) is int and result == 100, result
 
 
 # ---------------------------------------------------------------------------

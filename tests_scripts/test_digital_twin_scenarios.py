@@ -18,7 +18,8 @@ from _devices import DEVICE_NAMES, device_toml
 from _script_loader import load_script_module
 
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
-from buildgen.validate import module_int_const
+from buildgen.model import load_device
+from buildgen.validate import _WDT_TIMEOUT_MS, init_int_default, module_int_const, smallest_hard_consumer
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _HARNESS = _REPO_ROOT / "scripts" / "_digital_twin_scenarios.py"
@@ -38,46 +39,6 @@ def _boot_once(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPa
         twin.exit_claimed = claim
         twin.starves_watchdog = starves
     return [str(failure) for failure in ctx.failures]
-
-
-def _harness(*args: str, env: "dict[str, str] | None" = None) -> "subprocess.CompletedProcess[str]":
-    return subprocess.run([sys.executable, str(_HARNESS), *args], capture_output=True, text=True, check=False, cwd=_REPO_ROOT, timeout=60, env=env)
-
-
-def _item(harness: ModuleType, name: str, *, shared: bool = True, moves: "tuple[str, ...]" = ()) -> object:
-    return harness.Scenario(name, lambda _ctx: None, "A goal.", "fixture", (), False, False, shared, moves)
-
-
-def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
-    # Another runner's live lock on `port`, as scripts/_port_lock.sh leaves it: its pid alive, outside this chain.
-    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
-    lock = runtime / f"sensors-port-{port}.lock"
-    lock.mkdir(parents=True)
-    (lock / "runner").write_text("another suite\n", encoding="utf-8")
-    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
-    return holder
-
-
-def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counters: "list[dict[str, int]]") -> "list[object]":
-    # Stub twins for a SharedBoot, each spawn recorded in the list returned: every slot reads free, and each GET /status
-    # read takes the next of `counters`, each source's history one warning.
-    spawned: list[object] = []
-    log_path = tmp_path / "twin.log"
-    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
-
-    def spawn(_launch: object, **_kw: object) -> object:
-        run = SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=tmp_path)
-        spawned.append(run)
-        return run
-
-    reads = iter([{name: {"counter": value, "history": [{"type": "W", "num": 48}]} for name, value in read.items()} for read in counters])
-    monkeypatch.setattr(harness, "spawn", spawn)
-    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
-    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
-    monkeypatch.setattr(harness, "_error_table", lambda _port: next(reads))
-    monkeypatch.setattr(harness, "_accept_queue", lambda _port: 0)
-    monkeypatch.setattr(harness.Twin, "drained", lambda _self, _timeout_s=0: True)
-    return spawned
 
 
 def _clocked_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, first_move_s: float) -> "tuple[list[float], list[float]]":
@@ -106,6 +67,73 @@ def _clocked_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.Monke
     return clock, spawned
 
 
+def _harness(*args: str, env: "dict[str, str] | None" = None) -> "subprocess.CompletedProcess[str]":
+    return subprocess.run([sys.executable, str(_HARNESS), *args], capture_output=True, text=True, check=False, cwd=_REPO_ROOT, timeout=60, env=env)
+
+
+def _item(harness: ModuleType, name: str, *, shared: bool = True, moves: "tuple[str, ...]" = ()) -> object:
+    return harness.Scenario(name, lambda _ctx: None, "A goal.", "fixture", (), False, False, shared, moves)
+
+
+def _lag_run(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], windows: "list[int]", after: "tuple[int | tuple[int, int], ...]" = (2000, 900, 900)) -> "tuple[list[str], str, str]":
+    # The loop-lag scenario on a stub twin on a fake clock: its load prints one LOOP_LAG line per figure of `windows`, the
+    # first closing the window open when it began, after a line printed before it; then `after`'s lines print a report
+    # window apart, the first 1 s after the stop. Returns the failures, the printed line and the evidence.
+    device = DEVICE_NAMES[0]
+    links = sorted(harness._link_roles(device))
+    log_path = tmp_path / "twin.log"
+    report_s = module_int_const(harness.REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
+    clock = [0.0]
+
+    def line(index: int, us: "int | tuple[int, int]") -> str:
+        max_us, p99_us = us if isinstance(us, tuple) else (us, us)
+        return f"LOOP_LAG max_us={max_us} p99_us={p99_us} samples=500" + "".join(f" {key}={index}" for key in links)
+
+    due = [(1.0 + report_s * i, line(len(windows) + i, us)) for i, us in enumerate(after)]
+
+    def emit(*lines: str) -> None:
+        with log_path.open("a", encoding="utf-8") as log:
+            log.writelines(f"{text}\n" for text in lines)
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+        while due and due[0][0] <= clock[0]:
+            emit(due.pop(0)[1])
+
+    def load(_ctx: object, _twin: object) -> "dict[str, int]":
+        emit(*(line(i, us) for i, us in enumerate(windows)))
+        return dict.fromkeys(harness._get_routes(), 1)
+
+    def shut_down(_run: object, _label: str) -> int:
+        emit(_SHUTDOWN_LINE)
+        return 0
+
+    emit("LOOP_LAG max_us=400000 p99_us=400000 samples=100")
+    run = SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=tmp_path)
+    monkeypatch.setattr(harness, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=sleep))
+    monkeypatch.setattr(harness, "spawn", lambda _launch, **_kw: run)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", shut_down)
+    monkeypatch.setattr(harness, "_lag_load", load)
+    ctx = harness.Context(device, "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
+    try:
+        harness.SCENARIOS["loop_lag_under_combined_load"].body(ctx)
+    except AssertionError as failure:
+        ctx.failures.insert(0, str(failure))
+    evidence = tmp_path / "loop_lag.txt"
+    return ctx.failures, capsys.readouterr().out, evidence.read_text(encoding="utf-8") if evidence.exists() else ""
+
+
+def _plant_held_lock(runtime: Path, port: int) -> "subprocess.Popen[bytes]":
+    # Another runner's live lock on `port`, as scripts/_port_lock.sh leaves it: its pid alive, outside this chain.
+    holder = subprocess.Popen(["sleep", "60"])  # coreutils sleep, the stand-in holder's process
+    lock = runtime / f"sensors-port-{port}.lock"
+    lock.mkdir(parents=True)
+    (lock / "runner").write_text("another suite\n", encoding="utf-8")
+    (lock / "pid").write_text(f"{holder.pid}\n", encoding="utf-8")
+    return holder
+
+
 def _sgp40_default(tree: ast.Module, name: str) -> int:
     # The default of one `NAME = const(((field, type, default, ...),))` schema of src/asy_sgp40_driver.py.
     node = next(n for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
@@ -113,6 +141,51 @@ def _sgp40_default(tree: ast.Module, name: str) -> int:
     field = node.value.args[0].elts[0]
     assert isinstance(field, ast.Tuple) and isinstance(field.elts[2], ast.Constant) and isinstance(field.elts[2].value, int), ast.unparse(field)
     return field.elts[2].value
+
+
+def _shared_stub(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, counters: "list[dict[str, int]]") -> "list[object]":
+    # Stub twins for a SharedBoot, each spawn recorded in the list returned: every slot reads free, and each GET /status
+    # read takes the next of `counters`, each source's history one warning.
+    spawned: list[object] = []
+    log_path = tmp_path / "twin.log"
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
+
+    def spawn(_launch: object, **_kw: object) -> object:
+        run = SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=tmp_path)
+        spawned.append(run)
+        return run
+
+    reads = iter([{name: {"counter": value, "history": [{"type": "W", "num": 48}]} for name, value in read.items()} for read in counters])
+    monkeypatch.setattr(harness, "spawn", spawn)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
+    monkeypatch.setattr(harness, "_error_table", lambda _port: next(reads))
+    monkeypatch.setattr(harness, "_accept_queue", lambda _port: 0)
+    monkeypatch.setattr(harness.Twin, "drained", lambda _self, _timeout_s=0: True)
+    return spawned
+
+
+def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **boot: object) -> "tuple[list[str], str | None]":
+    # One Context.boot() over a stub twin: the runner arguments spawn() was handed and the stored SYSTEM settings its
+    # state held at that moment (None: no file).
+    seen: list[tuple[list[str], str | None]] = []
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    log_path = tmp_path / "twin.log"
+    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
+
+    def spawn(_launch: object, *, state_dir: Path, args: "tuple[str, ...]", **_kw: object) -> object:
+        stored = state_dir / "config" / "config_SYSTEM.cfg"
+        seen.append((list(args), stored.read_text(encoding="utf-8") if stored.exists() else None))
+        return SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=state_dir)
+
+    monkeypatch.setattr(harness, "spawn", spawn)
+    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
+    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
+    ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
+    with ctx.boot("--test-flash-stall-max", **boot):
+        pass
+    assert ctx.failures == [] and len(seen) == 1, (ctx.failures, seen)
+    return seen[0]
 
 
 def _toml_keys(node: object) -> "set[str]":
@@ -163,6 +236,104 @@ def test_a_device_without_a_scenarios_driver_skips_it_by_name(harness: ModuleTyp
     device = next(d for d in DEVICE_NAMES if "isl29125" not in {driver for _k, driver, _e in harness._instances(d)})
     chosen = {item.name: why for item, why in harness.select(device, None, exclusive_port_53=True)}
     assert chosen["isl29125_config_put_during_get_loops"] == "skipped: device wires no isl29125", chosen
+
+
+def test_a_device_independent_scenario_runs_on_its_first_device_with_the_property_only(harness: ModuleType) -> None:
+    firsts = [item for item in harness.SCENARIOS.values() if item.first_device]
+    assert {item.first_device for item in firsts} == set(harness._DEVICE_PROPERTIES), firsts  # each property in use
+    for item in firsts:
+        having = [d for d in harness.generated_devices() if harness._has_property(d, item.first_device)]
+        assert having, f"{item.name}: no generated device has {item.first_device}"
+        runs = {d: {s.name: why for s, why in harness.select(d, None, exclusive_port_53=True)}[item.name] for d in harness.generated_devices()}
+        assert runs[having[0]] is None and all(why == f"skipped: a device-independent mechanism, run on {having[0]} only (SPECIFICATION.md E.2.1)" for d, why in runs.items() if d != having[0]), runs
+
+
+def test_the_lag_bound_is_each_devices_smallest_hard_consumer_from_one_source(harness: ModuleType) -> None:
+    # The watchdog's room beside one supervisor sleep, and each uart_link's reply slack (SPECIFICATION.md F.3), read
+    # here from the sources; the build rule, the twin scenario and the bench lag test all call buildgen's one export.
+    src = harness.REPO_ROOT / "src"
+    task_check_s, reply_ms, gc_pause = module_int_const(src, "asy_system_service.py", "_TASK_CHECK_TIME"), module_int_const(src, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS"), module_int_const(src, "asy_uart_comm.py", "_GC_PAUSE_WORST_MS")
+    linked = []
+    for device in DEVICE_NAMES:
+        doc = tomllib.loads(device_toml(device).read_text(encoding="utf-8"))
+        links = [doc["bus"][inst["bus"]] for inst in doc.get("instance", []) if inst.get("driver") == "uart_link"]
+        expected = min([_WDT_TIMEOUT_MS - task_check_s * 1000] + [reply_ms - (2 * bus["poll_wait_ms"] + bus["poll_idle_ms"] + gc_pause) for bus in links])
+        assert smallest_hard_consumer(load_device(device_toml(device)), src).ms == expected, device
+        linked += [device] if links else []
+    assert linked, "no device wires a uart_link, so the reply-slack consumer is never read"
+    for reader in (harness.REPO_ROOT / "scripts" / "_digital_twin_scenarios.py", harness.REPO_ROOT / "tests_hardware" / "flash" / "test_memory_stress.py"):
+        text = reader.read_text(encoding="utf-8")
+        assert re.search(r"^from buildgen\.validate import .*\bsmallest_hard_consumer\b", text, re.MULTILINE), f"{reader.name} does not import the export"
+        assert "_GC_PAUSE_WORST_MS" not in text and "def smallest_hard_consumer" not in text, f"{reader.name} computes its own consumer"
+
+
+def test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window(harness: ModuleType) -> None:
+    # Each storm fault lands on one read, at most the device's longest read trigger apart (each reader's trigger_s, the
+    # SGP40's fixed 1 s); a link exercises once a period; one whole LOOP_LAG window inside the load prints by its end.
+    src = harness.REPO_ROOT / "src"
+    report_s = module_int_const(harness.REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
+    link_s = module_int_const(src, "asy_uart_link_driver.py", "_EXERCISE_PERIOD_MS") / 1000
+    faults = module_int_const(harness.REPO_ROOT / "buildgen", "codegen.py", "_MAX_MODULE_ERROR")  # the generated module's give-up streak
+    readers = {"scd30": ("asy_scd30_driver.py", "SCD30_Reader"), "bmp3xx": ("asy_bmp3xx_driver.py", "BMP3XX_Reader"), "isl29125": ("asy_isl29125_driver.py", "ISL29125_Reader")}
+    spans = []
+    for device in DEVICE_NAMES:
+        instances = load_device(device_toml(device)).instances.values()
+        triggers = [1] + [int(str(s.fields.get("trigger_s", init_int_default(src, *readers[s.driver], "trigger_s")))) for s in instances if s.driver in readers]
+        spans.append(max([faults * max(triggers)] + [link_s for s in instances if s.driver == "uart_link"]) + report_s)
+    assert max(spans) == harness._LOOP_LAG_LOAD_S, spans
+
+
+def test_the_lag_under_load_is_over_the_windows_begun_after_its_start_and_the_boot_window_is_reported_apart(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # The first LOOP_LAG line after the load's start closes the window open then, which holds the end of boot: its
+    # figure is reported beside the load's, never as it, and a line printed before the load counts in neither.
+    failures, printed, evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800])
+    assert failures == [], failures
+    assert "max 3000 us over 4 windows" in printed and "max 240000 us" in printed and "400000" not in printed, printed
+    assert evidence.splitlines()[0].split()[1:5] == ["load_max_us=3000", "boot_window_max_us=240000", "straddler_max_us=2000", "settled_max_us=900"], evidence
+
+
+@pytest.mark.parametrize(("over", "expected"), [(0, "in the window open when the load began"), (2, "under load"), (4, "under load")], ids=["the boot window", "a load window", "the window straddling the stop"])
+def test_every_window_the_load_spans_is_held_to_the_bound_the_boot_one_included(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], over: int, expected: str) -> None:
+    # The window open when the readers stop closes on the next LOOP_LAG line: it holds load, so it is bound as a load window.
+    bound_us = smallest_hard_consumer(load_device(device_toml(DEVICE_NAMES[0])), harness.SRC_DIR).ms * 1000
+    figures = [240000, 3000, 2500, 2800, 2000]
+    figures[over] = bound_us + 1
+    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, figures[:4], (figures[4], 900, 900))
+    assert any(f"lagged {bound_us + 1} us {expected}" in f for f in failures), failures
+
+
+@pytest.mark.parametrize(("after", "settles"), [((60000, -1, 60000), True), ((2000, 0, 900), False)], ids=["the window after the straddling one", "one LED frame of lag"])
+def test_the_settle_window_begins_after_the_stop_and_drops_no_led_frame(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], *, after: "tuple[int, int, int]", settles: bool) -> None:
+    # The line after the straddling one closes a window begun after the stop: it settles under one LED frame (the
+    # neopixel driver's frame period), and neither the straddling window nor a later one stands in for it.
+    frame_us = 1000 // module_int_const(harness.SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ") * 1000
+    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (after[0], frame_us + after[1], after[2]))
+    assert (failures == []) if settles else any("did not settle" in f for f in failures), failures
+
+
+@pytest.mark.parametrize(("settle", "expected"), [((70000, 900), None), ((None, 900), "in the window after the load"), ((60000, 50000), "did not settle")], ids=["one host stall", "past one DNS query", "a slowed loop"])
+def test_the_settle_window_is_held_at_its_p99_and_its_maximum_to_the_bound(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], settle: "tuple[int | None, int]", expected: "str | None") -> None:
+    # One late wake past a frame is the host's and passes; one past a DNS query (and so past every hard bound), or a
+    # loop slowed at its p99, fails.
+    rest_max_us = module_int_const(harness.REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS") * 1000
+    figure = (rest_max_us + 1 if settle[0] is None else settle[0], settle[1])
+    failures, _printed, _evidence = _lag_run(harness, tmp_path, monkeypatch, capsys, [240000, 3000, 2500, 2800], (2000, figure, 900))
+    assert (failures == []) if expected is None else any(expected in f for f in failures), failures
+
+
+def test_a_stagger_wait_is_the_second_read_trigger_and_an_unknown_property_is_refused(harness: ModuleType) -> None:
+    for device in harness.generated_devices():
+        text = (harness.GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8")
+        starter = text[text.index("def _collect_trigger_starters") :].split("\n\n", 1)[0]
+        modules = re.search(r"for module in \(([^)]*)\)", starter)
+        assert modules is not None, device
+        assert harness._stagger_waits(device) == (len([m for m in modules.group(1).split(",") if m.strip()]) > 1), (device, modules.group(1))
+    def body(_ctx: object) -> None:
+        """A body asking for a property no device is read for."""
+
+    with pytest.raises(ValueError, match="no known property"):
+        harness.scenario("zz_unknown_property", family="fixture", first_device="fixture-property")(body)
+    assert "zz_unknown_property" not in harness.SCENARIOS
 
 
 def test_only_selects_by_name_and_refuses_an_unknown_one(harness: ModuleType) -> None:
@@ -282,29 +453,6 @@ def test_a_held_port_53_fails_the_run_at_once_naming_it_and_boots_nothing(harnes
     err = capsys.readouterr().err
     assert (code, ran) == (1, []), (code, ran, err)
     assert "port 53 is held by another suite" in err, err
-
-
-def _spawned_boot(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, **boot: object) -> "tuple[list[str], str | None]":
-    # One Context.boot() over a stub twin: the runner arguments spawn() was handed and the stored SYSTEM settings its
-    # state held at that moment (None: no file).
-    seen: list[tuple[list[str], str | None]] = []
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    log_path = tmp_path / "twin.log"
-    log_path.write_text(_SHUTDOWN_LINE + "\n", encoding="utf-8")
-
-    def spawn(_launch: object, *, state_dir: Path, args: "tuple[str, ...]", **_kw: object) -> object:
-        stored = state_dir / "config" / "config_SYSTEM.cfg"
-        seen.append((list(args), stored.read_text(encoding="utf-8") if stored.exists() else None))
-        return SimpleNamespace(proc=SimpleNamespace(poll=lambda: None, returncode=None), log_path=log_path, killed=False, state_dir=state_dir)
-
-    monkeypatch.setattr(harness, "spawn", spawn)
-    monkeypatch.setattr(harness, "wait_until_serving", lambda *_a: None)
-    monkeypatch.setattr(harness, "shutdown", lambda _run, _label: 0)
-    ctx = harness.Context("fixture-device", "/nonexistent", -1, tmp_path, (), iter([20000]), "fixture")
-    with ctx.boot("--test-flash-stall-max", **boot):
-        pass
-    assert ctx.failures == [] and len(seen) == 1, (ctx.failures, seen)
-    return seen[0]
 
 
 def test_every_boot_logs_at_error_level_from_its_build_and_its_stored_level(harness: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

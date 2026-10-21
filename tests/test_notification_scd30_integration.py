@@ -59,7 +59,7 @@ def _make_hum_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notifica
     # avoids the two signals' ramps overlapping in the same pixel._pixel.writes trace.
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = 0.01
+    pixel._frame_ms = 10
 
     signal = NotificationSignal("WarnHum", ValueRef(scd_reader, "Hum"), (("WarnHum", "float", 65.0, 0.0, 100.0, None),), (0, 0, 1))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())
@@ -83,7 +83,7 @@ def _make_stack(scd_reader: SCD30_Reader) -> "tuple[NeopixelDriver, Notification
     # its own .CO2/.Hum fields) - the registration shape the generated build_system() emits.
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = 100  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = 0.01
+    pixel._frame_ms = 10
 
     signal = NotificationSignal("WarnCO2", ValueRef(scd_reader, "CO2"), (("WarnCO2", "int", 1600, 0, 3000, None),), (1, 0, 0))
     notify = NotificationService(pixel.request_signal, _local_time, (signal,), cfg_path=_tmp_cfg_dir())

@@ -10,7 +10,7 @@ sys.path.insert(0, "digital_twin")  # see test_digital_twin_sgp40.py's own comme
 import microtest
 import network
 from _async_harness import run
-from _src_const import src_float, src_int
+from _src_const import src_int
 from _twin_common import COUNTER_CAP, LOG_MAXLEN
 from neopixel import NeoPixel
 from network import (
@@ -51,10 +51,17 @@ def _value_error(call: "object") -> str:
     raise AssertionError("expected ValueError")
 
 
+def _active_sta() -> WLAN:
+    # cyw43_wifi_join() refuses an inactive STA (cyw43_ctrl.c:637-640, v1.29.0): every connecting case activates first.
+    wlan = WLAN(STA_IF)
+    wlan.active(True)
+    return wlan
+
+
 def test_one_connect_phase_fits_the_services_poll_budget() -> None:
     # The twin's connect phase stays under _poll_sta_connect_status()'s whole wait, or every boot would fall back.
-    budget_s = src_float("src/asy_wifi_service.py", "_STA_CONNECT_POLL_S") * src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS")
-    assert budget_s > network._CONNECT_DELAY_S
+    budget_ms = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS") * src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS")
+    assert budget_ms > network._CONNECT_DELAY_S * 1000
 
 
 def test_wlan_starts_disconnected() -> None:
@@ -144,8 +151,7 @@ def test_country_and_hostname_set_then_get_round_trip() -> None:
 
 def test_wlan_connect_shows_a_real_connecting_phase_before_got_ip() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
-        wlan.active(True)
+        wlan = _active_sta()
         wlan.connect("ssid", "password")
         # Real hardware never resolves instantly - this must still be in progress right after
         # connect() returns, matching the "all phases" strategy (see network.py's own docstring).
@@ -161,7 +167,7 @@ def test_wlan_connect_shows_a_real_connecting_phase_before_got_ip() -> None:
 def test_a_connected_sta_reports_a_test_net_address() -> None:
     # RFC 5737 TEST-NET-1: the DNS server the twin's DHCP hands out routes nowhere, so no run reaches a public resolver.
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         assert wlan.ifconfig() == _UNSET  # not yet connected
         wlan.connect("ssid", "password")
         await _wait_until_connected(wlan)
@@ -172,7 +178,7 @@ def test_a_connected_sta_reports_a_test_net_address() -> None:
 
 def test_wlan_disconnect_resets_state() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.connect("ssid", "password")
         await _wait_until_connected(wlan)
         wlan.disconnect()
@@ -185,7 +191,7 @@ def test_wlan_disconnect_resets_state() -> None:
 
 def test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connection() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.connect("ssid", "password")
         wlan.disconnect()
         await asyncio.sleep(1.0)  # longer than _CONNECT_DELAY_S - must never flip to connected
@@ -196,7 +202,7 @@ def test_wlan_disconnect_before_connecting_finishes_cancels_the_pending_connecti
 
 
 def test_wlan_fault_injection() -> None:
-    wlan = WLAN(STA_IF)
+    wlan = _active_sta()
     wlan.raise_on["connect"] = (OSError, ("simulated radio failure",), 1)
     try:
         wlan.connect("ssid", "password")
@@ -264,12 +270,14 @@ def test_a_status_entry_with_a_parameter_filter_fails_only_those_queries() -> No
 def test_a_joined_link_with_no_address_holds_status_two() -> None:
     # cyw43's CYW43_LINK_NOIP: joined, but the DHCP server never answers - it stays there, unconnected and unaddressed.
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([2])
         wlan.connect("ssid", "password")
         await _wait_until_settled(wlan)
         await asyncio.sleep_ms(_POLL_MS * 2)
         assert (wlan.status(), wlan.isconnected(), wlan.ifconfig()) == (2, False, _UNSET)
+        set_access_point_up(up=False)  # the joined link goes down with it, to cyw43's join state (LINK_JOIN)
+        assert (wlan.status(), wlan.isconnected(), wlan.ifconfig()) == (STAT_CONNECTING, False, _UNSET)
 
     run(scenario())
 
@@ -287,7 +295,7 @@ def test_reset_test_state_restores_every_network_knob() -> None:
 def test_wlan_script_connect_outcomes_defaults_to_always_succeeding() -> None:
     # Empty/unset queue - every test above this line keeps passing unchanged.
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.connect("ssid", "password")
         await _wait_until_settled(wlan)
         assert wlan.status() == STAT_GOT_IP
@@ -298,7 +306,7 @@ def test_wlan_script_connect_outcomes_defaults_to_always_succeeding() -> None:
 
 def test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_NO_AP_FOUND])
         wlan.connect("ssid", "password")
         await _wait_until_settled(wlan)
@@ -311,7 +319,7 @@ def test_wlan_scripted_failure_outcome_sets_status_and_stays_disconnected() -> N
 
 def test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_WRONG_PASSWORD, STAT_CONNECT_FAIL, STAT_GOT_IP])
 
         wlan.connect("ssid", "wrong")
@@ -332,7 +340,7 @@ def test_wlan_scripted_outcomes_are_consumed_in_order_one_per_completed_attempt(
 
 def test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_NO_AP_FOUND])
 
         wlan.connect("ssid", "password")
@@ -349,7 +357,7 @@ def test_wlan_exhausted_scripted_queue_falls_back_to_always_succeeding() -> None
 
 def test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a_real_address() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_CONNECT_FAIL])
         wlan.connect("ssid", "password")
         await _wait_until_settled(wlan)
@@ -364,7 +372,7 @@ def test_wlan_a_successful_reconnect_after_an_earlier_scripted_failure_reports_a
 
 def test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcome() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_WRONG_PASSWORD])
         wlan.connect("ssid", "password")
         wlan.disconnect()  # cancels before _run_connect() ever completes - nothing "used"
@@ -382,7 +390,7 @@ def test_wlan_disconnect_of_a_pending_attempt_does_not_consume_a_scripted_outcom
 
 def test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_consume_an_outcome() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
+        wlan = _active_sta()
         wlan.script_connect_outcomes([STAT_GOT_IP])
         wlan.connect("ssid", "first")  # immediately superseded below - never completes
         wlan.connect("ssid", "second")
@@ -395,8 +403,7 @@ def test_wlan_a_second_connect_that_cancels_the_first_pending_attempt_does_not_c
 
 def test_wlan_connect_calls_stays_bounded_across_many_calls() -> None:
     async def scenario() -> None:
-        wlan = WLAN(STA_IF)
-        wlan.active(True)
+        wlan = _active_sta()
         for _ in range(LOG_MAXLEN + 50):
             wlan.connect("ssid", "password")  # each call cancels/replaces the prior pending task -
             # never accumulates asyncio tasks, only entries in connect_calls itself.
@@ -408,11 +415,18 @@ def test_wlan_connect_calls_stays_bounded_across_many_calls() -> None:
 
 def test_a_downed_access_point_fails_the_station_until_switched_back() -> None:
     async def scenario() -> None:
-        first = WLAN(STA_IF)
+        first = _active_sta()
         first.connect("ssid", "password")
-        await _wait_until_connected(first)  # an address the downed access point must take away
+        await _wait_until_connected(first)
+        held = first.ifconfig()
+        own_ap = WLAN(AP_IF)
+        own_ap.active(True)
         set_access_point_up(up=False)
         try:
+            # cyw43's link-down event drops only the netif link (cyw43_ctrl.c:402-413, cyw43_lwip.c:296-298): status()
+            # then reads the join state, still active (LINK_JOIN, cyw43_ctrl.c:434-437, 613-617); lwIP keeps the address.
+            assert (first.isconnected(), first.status(), first.ifconfig()) == (False, STAT_CONNECTING, held), "a held link survived"
+            assert own_ap.status() == STAT_GOT_IP, "the home network's access point took the device's own one down"
             first.script_connect_outcomes([STAT_WRONG_PASSWORD])
             first.connect("ssid", "password")
             await _wait_until_settled(first)
@@ -533,13 +547,44 @@ def test_country_and_hostname_enforce_the_real_byte_bounds() -> None:
         raise AssertionError("hostname() accepted 33 bytes")
 
 
-def test_connect_refuses_what_the_real_driver_cannot_take() -> None:
+def test_connect_on_an_inactive_station_raises_eperm() -> None:
+    # cyw43_wifi_join() refuses an inactive STA before its key check (cyw43_ctrl.c:637-640), raised as OSError(EPERM)
+    # (network_cyw43.c:308-311, v1.29.0): never activated, deactivated, and after the radio's deinit().
     wlan = WLAN(STA_IF)
+    refused = [_raised(lambda: wlan.connect("ssid", "ä" * 32 + "x"))]
     wlan.active(True)
+    wlan.active(False)
+    refused.append(_raised(lambda: wlan.connect("ssid", "password")))
+    wlan.active(True)
+    wlan.deinit()
+    refused.append(_raised(lambda: wlan.connect("ssid", "password")))
+    assert [e.args if isinstance(e, OSError) else e for e in refused] == [(errno.EPERM,)] * 3, refused
+    assert (len(wlan.connect_calls), wlan.status(), wlan._connect_task) == (0, STAT_IDLE, None)
+
+
+def test_deactivating_the_station_drops_its_link_its_address_and_a_pending_connect() -> None:
+    # network_cyw43.c:146-149 leaves the network and cyw43_wifi_set_up() takes the STA's netif down (cyw43_ctrl.c:579-582),
+    # its DHCP stopped (cyw43_lwip.c:251-254): unlinked, idle and unaddressed, a pending join gone with it.
+    async def scenario() -> None:
+        wlan = _active_sta()
+        wlan.connect("ssid", "password")
+        await _wait_until_connected(wlan)
+        wlan.active(False)
+        assert (wlan.isconnected(), wlan.status(), wlan.ifconfig()) == (False, STAT_IDLE, _UNSET)
+        wlan.active(True)
+        wlan.connect("ssid", "password")
+        wlan.active(False)
+        assert (wlan.status(), wlan._connect_task) == (STAT_IDLE, None)
+
+    run(scenario())
+
+
+def test_connect_refuses_what_the_real_driver_cannot_take() -> None:
+    wlan = _active_sta()
     try:
         wlan.connect("net", "ä" * 32 + "x")  # 65 bytes: cyw43_ll_wifi_join()'s -CYW43_EINVAL
     except OSError as e:
-        assert e.args[0] == 22
+        assert e.args == (errno.EINVAL,), e.args  # as mp_raise_OSError(-ret) raises it (network_cyw43.c:308-311)
     else:
         raise AssertionError("connect() took a 65-byte key")
     try:

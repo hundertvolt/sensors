@@ -299,13 +299,13 @@ class _HeadRefusedError(OSError):
 
 
 class _TimeoutStreamProxy:
-    # Forwards every stream method ext/microdot.py calls, each bounded by timeout_s (a plain asyncio.TimeoutError,
+    # Forwards every stream method ext/microdot.py calls, each bounded by timeout_ms (a plain asyncio.TimeoutError,
     # not an OSError subclass - Part F.1), and bounds the request head before Microdot parses it (SPECIFICATION.md A.5).
     # Microdot's read-phase catch swallows a read timeout (Part A.5), so this proxy is the only place it is observable.
     def __init__(
         self,
         stream: "_StreamLike",
-        timeout_s: float,
+        timeout_ms: int,
         pr: "PrintLogHistory",
         peer_gone: list[bool],
         timed_out: list[bool],
@@ -314,7 +314,7 @@ class _TimeoutStreamProxy:
         traced: list[BaseException | None] | None = None,
     ) -> None:
         self._stream = stream
-        self._timeout_s = timeout_s
+        self._timeout_ms = timeout_ms
         self._pr = pr
         self._peer_gone = peer_gone  # shared by one connection's pair
         self._timed_out = timed_out  # likewise: _serve() reads it
@@ -330,7 +330,7 @@ class _TimeoutStreamProxy:
 
     async def _bounded(self, coro: "Awaitable[_T]") -> "_T":
         try:
-            return await asyncio.wait_for(coro, self._timeout_s)
+            return await asyncio.wait_for_ms(coro, self._timeout_ms)
         except asyncio.TimeoutError:
             self._timed_out[0] = True  # only non-read calls: a read's was logged already, below
             raise
@@ -339,7 +339,7 @@ class _TimeoutStreamProxy:
         # Logged here, and only for reads: a write-phase timeout escapes microdot and reaches
         # _serve(), which logs it itself - logging both counted one timeout twice.
         try:
-            return await asyncio.wait_for(coro, self._timeout_s)
+            return await asyncio.wait_for_ms(coro, self._timeout_ms)
         except asyncio.TimeoutError as e:
             await self._pr.wrn_s("Connection reclaimed (per-call timeout):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT)
             self._traced[0] = e  # after the await: no other read runs before Microdot prints this one (_print_exception())
@@ -577,8 +577,10 @@ class WebserverService:
         # backlog under the ceiling resets part of a burst the ceiling admits, which reads as an
         # application bug. buildgen rejects the same mistake in config, where it can be named.
         self._backlog = max_connections + 1 if serving.backlog is None else max(serving.backlog, max_connections)
-        self._per_call_timeout_s = serving.per_call_timeout_s
-        self._outer_cap_s = serving.outer_cap_s
+        # Converted once from ServingLimits' seconds: wait_for_ms() takes whole milliseconds, where a float timeout
+        # boxes one float per stream call of every request (extmod/asyncio/core.py sleep(), SPECIFICATION.md Part I.2).
+        self._per_call_timeout_ms = round(serving.per_call_timeout_s * 1000)
+        self._outer_cap_ms = round(serving.outer_cap_s * 1000)
         self._host = serving.host
         self._port = serving.port
         self._open_conns = LockedCounter(init_value=0)  # the shared COUNTER_CAP; a gauge bounded by the backlog
@@ -729,7 +731,7 @@ class WebserverService:
             report_if_fatal(e)
             await self.pr.wrn_s("Error closing connection writer:", e, wrnno=_WRN_HTTP_CLOSE_RAISED)
         try:
-            await asyncio.wait_for(writer.wait_closed(), self._per_call_timeout_s)
+            await asyncio.wait_for_ms(writer.wait_closed(), self._per_call_timeout_ms)
         except Exception as e:  # bounds a hanging wait_closed() (F.6) as well as any raised error
             report_if_fatal(e)
             await self.pr.wrn_s("Error waiting for writer to close:", e, wrnno=_WRN_HTTP_WAIT_CLOSED)
@@ -906,17 +908,17 @@ class WebserverService:
             peer_gone = [False]
             timed_out = [False]
             head_refused = [False]
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_s, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes, self._read_traced)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_s, self.pr, peer_gone, timed_out)
+            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_ms, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes, self._read_traced)
+            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_ms, self.pr, peer_gone, timed_out)
             logged = False  # an arm below persisted this connection's one entry, so no drop trace follows it (C.7)
             try:
                 # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
                 # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
-                await asyncio.wait_for(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_s)  # type: ignore[arg-type]
+                await asyncio.wait_for_ms(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_ms)  # type: ignore[arg-type]
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
             except asyncio.TimeoutError as e:
-                # Either the outer wait_for() above (bounds a Slowloris-paced client no per-call
+                # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
                 # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
                 # read-phase one logged inside the proxy, and microdot swallowed it.
                 await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)

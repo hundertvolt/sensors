@@ -731,6 +731,8 @@ def _log(counter: int, *entries: tuple[str, int]) -> dict[str, object]:
         (_log(5, ("E", 42)), _log(1, ("E", 42)), 1),  # cleared in between: what the log holds is new
         ({}, _log(2, ("E", 44), ("E", 42)), 1),
         (_log(0), _log(2, ("W", 42), ("E", 41)), 0),  # a warning with the same number is no task end
+        (_log(1, ("E", 42)), _log(2, ("E", 42), ("E", 115)), 1),  # the supervisor's own fault is a task-level raise too
+        (_log(0), _log(1, ("W", 115)), 0),
     ],
 )
 def test_new_task_raised_counts_only_the_entries_since_the_first_read(helpers: "ModuleType", before: dict[str, object], after: dict[str, object], expected: int) -> None:

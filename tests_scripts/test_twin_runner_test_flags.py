@@ -11,6 +11,12 @@ _PREFIX = "--test-"
 _INSTRUMENT = "_test_"  # every instrumentation function's prefix
 _STARTER = "_test_start"  # the one dispatcher main() calls, every flag checked inside it
 _SHARED_NAMES = {"machine", "network", "neopixel", "rp2"}  # twin fakes standing in for the firmware's own modules
+# Every test-only flag the runner may have: one it gains or loses is a reviewed change to this table, never silent.
+_FLAG_TABLE = (
+    "--test-hold-closing-slot", "--test-stall-loop-ms", "--test-conn-status-interval-ms", "--test-fault-status-interval-ms",
+    "--test-shutdown-hang", "--test-flash-stall-max", "--test-uart-over-cap", "--test-hold-system-entry", "--test-kbd-traceback",
+    "--test-loop-lag-ms", "--test-drop-timer-fire",
+)
 
 
 def _functions(tree: ast.Module) -> "dict[str, ast.FunctionDef | ast.AsyncFunctionDef]":
@@ -49,6 +55,8 @@ def default_problems(source: str) -> "list[str]":
     usage = next(ast.unparse(n.value) for n in tree.body if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == "_USAGE")
     problems += [f"{flag} is not parsed by _parse_test_flag()" for flag in sorted(named - parsed)]
     problems += [f"{flag} is not in the --help text" for flag in sorted(named) if flag not in usage]
+    problems += [f"{flag} is in the flag table but not in the runner" for flag in _FLAG_TABLE if flag not in named]
+    problems += [f"{flag} is in the runner but not in the flag table" for flag in sorted(named - set(_FLAG_TABLE))]
     fields = len(default.args) if isinstance(default, ast.Call) else 0
     if len(named) != fields:
         problems.append(f"{len(named)} --test- flags for the {fields} TestFlags fields")
@@ -104,9 +112,11 @@ def test_nothing_the_firmware_freezes_names_a_test_flag_the_runner_or_a_twin_mod
 
 def test_a_flag_defaulting_on_or_an_unguarded_call_is_caught() -> None:
     source = RUNNER.read_text(encoding="utf-8")
-    on = source.replace("_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False)", "_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, True)")
+    on = source.replace("_NO_TEST_FLAGS = TestFlags(False,", "_NO_TEST_FLAGS = TestFlags(True,", 1)
     assert on != source and any("by default" in p for p in default_problems(on))
     unguarded = source.replace("    if flags.conn_status_interval_ms:\n        tasks.append(", "    if True:\n        tasks.append(")
     assert unguarded != source and any("outside its flag's if" in p for p in guard_problems(unguarded))
     leaked = source.replace("def load_module(", "def _leak(m):\n    m.webserver._close_writer = None\n\n\ndef load_module(")
     assert leaked != source and any("rebinds m.webserver._close_writer" in p for p in guard_problems(leaked))
+    dropped = source.replace('elif arg == "--test-loop-lag-ms":', 'elif arg == "--test-loop-lag":')
+    assert dropped != source and any("--test-loop-lag-ms is in the flag table but not in the runner" in p for p in default_problems(dropped))

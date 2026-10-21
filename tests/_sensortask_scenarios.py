@@ -3,6 +3,7 @@ webserver wiring (deep per-route behavior stays tests/test_asy_webserver_service
 Not a test file - register_for_device() is the export; SPECIFICATION.md Part E.2.1 has the split."""
 
 import asyncio
+import asyncio.core as _core  # type: ignore[import-not-found]  # its sleep_ms, create_task and cur_task; no stub covers them
 import json
 import os
 import select
@@ -22,7 +23,7 @@ from _async_harness import cancel, run
 from _boot_recorder import BootRecorder, expected_entries
 from _bus_hazard_catalog import adapter_for, scd_data_frame, scd_register_frame
 from _error_codes import code
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, boot_generated, fram_fake_class, write_error_level_config, write_offline_ntp_config
 from _generated_tree import require_fresh
@@ -55,10 +56,12 @@ from asy_print_log import PrintLog, PrintLogHistory, PrintLogHistoryStore
 from asy_scd30_driver import SCD30_Reader
 from asy_sgp40_driver import SGP40_Reader
 from asy_system_service import SystemService
+from asy_uart_link_driver import UARTLinkDriver
 
 require_fresh()  # every scenario boots a generated module or reads its plan
 
 _PHASE_STA_SEEKING = src_const("src/asy_wifi_service.py", "_PHASE_STA_SEEKING")
+_DRAIN_BOUND_MULT = src_int("src/asy_uart_comm.py", "_DRAIN_BOUND_MULT")
 _PHASE_HOTSPOT = src_const("src/asy_wifi_service.py", "_PHASE_HOTSPOT")
 
 # Every pair of read triggers stays at least this far apart (SPECIFICATION.md Part C.9.1); estimated,
@@ -463,7 +466,6 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     # point calls <module>.main(). Fakes every step after the setup list, as the main-call-order
     # scenario below does: the real ones start every task and then supervise them for good.
     from asy_ntp_client import NTPClient
-    from asy_system_service import SystemService
 
     real_start_tasks = SystemService.start_tasks
     real_start_timers = SystemService.start_timers
@@ -748,16 +750,82 @@ def _scenario_setup_batch_order(device: str) -> None:
     assert expected[-1] == "webserver"
 
 
+class _BatchWaits:
+    # For the with block: each wait that ran its full time in the setup batch's task or in a task it spawned (a wait_for_ms()
+    # runner and the coroutine it bounds), as (unit, ms), the unit being the feeds so far (run_setups() feeds after each).
+    # sleep(), sleep_ms() and wait_for_ms()'s bound all end in asyncio.core's sleep_ms (extmod/asyncio, v1.29.0).
+    def __init__(self) -> None:
+        self.timed: list[tuple[int, int]] = []
+        self._real = (asyncio.sleep_ms, _core.sleep_ms, asyncio.create_task, _core.create_task, SystemService.run_setups)
+
+    def __enter__(self) -> "_BatchWaits":
+        self._real = (asyncio.sleep_ms, _core.sleep_ms, asyncio.create_task, _core.create_task, SystemService.run_setups)
+        real_sleep_ms, real_core_sleep_ms, real_create_task, real_core_create_task, real_run_setups = self._real
+        timed = self.timed
+        watchdog: list[machine.WDT] = []  # the batch's watchdog, while it runs
+        tasks: list[object] = []  # the batch's task and every task spawned from one of them, while it runs
+
+        async def run_setups(self: "SystemService", setups: "list[SetupFct]") -> None:
+            if self._watchdog is not None:
+                watchdog.append(self._watchdog)
+                tasks.append(asyncio.current_task())
+            try:
+                await real_run_setups(self, setups)
+            finally:
+                watchdog.clear()
+                tasks.clear()
+
+        def recording(real: "Callable[[int], Any]") -> "Callable[[int], Coroutine[object, object, None]]":
+            async def sleep_ms(ms: int) -> None:
+                await real(ms)  # a cancelled wait, as wait_for_ms()'s bound once its coroutine ends, is no wait
+                if ms > 0 and _core.cur_task in tasks:
+                    timed.append((watchdog[0].feed_count, ms))
+
+            return sleep_ms
+
+        def tracking(real: "Callable[[Any], asyncio.Task[Any]]") -> "Callable[[Any], asyncio.Task[Any]]":
+            def create_task(coro: "Any") -> "asyncio.Task[Any]":
+                task = real(coro)
+                if _core.cur_task in tasks:
+                    tasks.append(task)
+                return task
+
+            return create_task
+
+        asyncio.sleep_ms = recording(real_sleep_ms)  # type: ignore[assignment]  # the block's recorders, the real call shapes, swapped back on exit
+        _core.sleep_ms = recording(real_core_sleep_ms)
+        asyncio.create_task = tracking(real_create_task)  # type: ignore[assignment]  # likewise: marks the tasks the batch spawns
+        _core.create_task = tracking(real_core_create_task)
+        SystemService.run_setups = run_setups  # type: ignore[method-assign]  # marks the batch's task, then runs the real batch
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        asyncio.sleep_ms, _core.sleep_ms, asyncio.create_task, _core.create_task, SystemService.run_setups = self._real  # type: ignore[method-assign]
+
+
 @_register("boot_feeds_the_watchdog_exactly_once_per_setup_call")
 def _scenario_boot_feeds_the_watchdog(device: str) -> None:
-    # SPECIFICATION.md Part D.9/G.2: the boot must actually feed the WDT it was handed after every setup()
-    # it runs. The expected count is the generated setup list's own length, not a number by hand.
-    module, wdt = run(_boot(device))
+    # SPECIFICATION.md Part D.9/G.2: the boot feeds the WDT it was handed once after every setup() it runs, the count
+    # being the generated setup list's own length; and no unit waits but a UART link's boot drain at its bus's poll
+    # wait (A.7), so a settle, probe or reset wait moved into a setup(), under a wait_for_ms() bound or not, fails here.
+    with _BatchWaits() as waits:
+        module, wdt = run(_boot(device))
     expected_feeds = len(module._collect_setups())
     assert expected_feeds > 0
     assert module.sysfunct is not None
     assert module.sysfunct._watchdog is wdt
     assert wdt.feed_count == expected_feeds
+    names = _setup_owner_names(module)
+    drained: dict[str, int] = {}
+    for unit, ms in waits.timed:
+        owner = getattr(module, names[unit])
+        bus = owner._comm._uart if isinstance(owner, UARTLinkDriver) else None
+        assert bus is not None and ms == bus.poll_wait_ms, f"setup unit {names[unit]} waits {ms} ms"
+        drained[names[unit]] = drained.get(names[unit], 0) + ms
+    for name, total in drained.items():  # the drain's own hard bound
+        assert total <= getattr(module, name)._comm._resync_window_ms() * _DRAIN_BOUND_MULT, (name, total)
+    links = sorted(name for name in dir(module) if isinstance(getattr(module, name), UARTLinkDriver))
+    assert sorted(drained) == links, (sorted(drained), links)  # every link's drain seen, so the recorder is live
 
 
 async def _main_until_supervised(module: "Any", device: str, recorder: "BootRecorder") -> None:
@@ -1071,6 +1139,7 @@ class _StaggerClock:
         return self.now
 
     def ticks_add(self, ticks: int, delta: int) -> int:
+        time.ticks_add(time.ticks_ms(), delta)  # the real one's delta check: a float raises as on rp2 (mp_obj_get_int)
         return ticks + delta
 
     def ticks_diff(self, new: int, old: int) -> int:
@@ -1088,9 +1157,10 @@ class _AsyncioWaits:
         return getattr(asyncio, name)
 
     async def sleep(self, seconds: float) -> None:
-        await self.sleep_ms(round(seconds * 1000))
+        await self.sleep_ms(int(seconds * 1000))  # asyncio's own conversion (extmod/asyncio/core.py)
 
     async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
         self.waits_ms.append(ms)
         if self._on_wait is not None:
             self._on_wait(len(self.waits_ms))
@@ -1515,7 +1585,6 @@ def _scenario_main_call_order(device: str) -> None:
     calls: list[str] = []
     passed: list[object] = []
     from asy_ntp_client import NTPClient
-    from asy_system_service import SystemService
 
     real_run_setups = SystemService.run_setups
     real_start_tasks = SystemService.start_tasks

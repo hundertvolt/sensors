@@ -62,7 +62,7 @@ def _co2_signal(value: int = 2000) -> NotificationSignal:
 
 
 _FREQ_HZ = 100
-_FRAME_S = 1.0 / _FREQ_HZ  # the pixel's frame period, also the pace of every condition poll below
+_FRAME_MS = 1000 // _FREQ_HZ  # the pixel's frame period, also the pace of every condition poll below
 
 
 def _lit_frames(pixel: NeopixelDriver) -> "list[tuple[int, ...]]":
@@ -76,7 +76,7 @@ def _make_pair(
     # tests/test_asy_neopixel_driver.py's own _make_driver()).
     pixel = NeopixelDriver(0)
     pixel.neopixel_freq = _FREQ_HZ  # the driver's own fixed state, set from outside
-    pixel.neopixel_dt = _FRAME_S
+    pixel._frame_ms = _FRAME_MS
     notify = NotificationService(pixel.request_signal, local_time, signals, cfg_path=_tmp_cfg_dir())
     run(pixel.setup())  # the boot batch's setup() for both, before any task starts
     run(notify.setup())
@@ -110,7 +110,7 @@ async def _wait_until(predicate: "Callable[[], bool]") -> bool:
     while not predicate():
         if time.ticks_diff(time.ticks_ms(), t0) > _WAIT_UNTIL_TIMEOUT_MS:
             return False
-        await asyncio.sleep(_FRAME_S)
+        await asyncio.sleep_ms(_FRAME_MS)
     return True
 
 
@@ -183,6 +183,7 @@ class _LateTicks:
         self._reads = 0
 
     def ticks_add(self, ticks: int, delta: int) -> int:
+        time.ticks_add(time.ticks_ms(), delta)  # the real one's delta check: a float raises as on rp2 (mp_obj_get_int)
         return ticks + delta
 
     def ticks_diff(self, end: int, start: int) -> int:

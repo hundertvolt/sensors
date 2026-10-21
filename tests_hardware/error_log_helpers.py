@@ -50,7 +50,8 @@ class ErrcountEntry(TypedDict):
 _RESET_ERRORS_TIMEOUT_S = 30.0
 # @tunable l4.error_log_helpers_errcount_timeout_s = 10.0
 _ERRCOUNT_TIMEOUT_S = 10.0
-_TASK_RAISED = code("E", "TASK_RAISED")
+# A task-level raise: a supervised task's, or the supervisor's own, which ends in a watchdog reset.
+_RAISED = (code("E", "TASK_RAISED"), code("E", "SUPERVISOR_RAISED"))
 # The flash tier has no network client: the live firmware's own SYSTEM logger read over the REPL, from its RAM copy
 # only (no FRAM access). Entering the REPL interrupts the firmware, so a caller reads outside its observed window.
 _READ_SYSTEM_LOG = (
@@ -105,9 +106,9 @@ def assert_no_module_logged_a_new_error(dut_ip: str, before: "dict[str, Errcount
 
 def assert_no_new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]", context: str) -> None:
     # The console gates' second half: at DebugLevel 0 the firmware's unretrieved-exception report prints nothing, so a
-    # supervised task that died of an exhausted heap shows only here (SPECIFICATION.md Part I.4(e)).
+    # task (or the supervisor) that died of an exhausted heap shows only here (SPECIFICATION.md Part I.4(e)).
     found = new_task_raised(before, after)
-    assert found == 0, f"{context}: SYSTEM logged {found} new TASK_RAISED entr(y/ies) - a supervised task ended raising; before {before.get('SYSTEM')!r}, after {after.get('SYSTEM')!r}"
+    assert found == 0, f"{context}: SYSTEM logged {found} new TASK_RAISED or SUPERVISOR_RAISED entr(y/ies) - a supervised task or the supervisor ended raising; before {before.get('SYSTEM')!r}, after {after.get('SYSTEM')!r}"
 
 
 def assert_no_task_ended(dut_ip: str, context: str) -> None:
@@ -131,7 +132,7 @@ def errcount_entry(counts: "Mapping[str, object]", name: str) -> ErrcountEntry:
 
 
 def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, ErrcountEntry]") -> int:
-    # SYSTEM TASK_RAISED entries between two errcount reads, an empty `before` (a log cleared first) counting all of it as
+    # SYSTEM TASK_RAISED/SUPERVISOR_RAISED entries between two errcount reads, an empty `before` (a log cleared first) counting all as
     # new. Counted over the newest entries the counter grew by, so a repeat into the newest slot still counts; reaching
     # past a collapsed repeat into an older entry can only fail a run.
     old = errcount_entry(before, "SYSTEM") if before else ErrcountEntry(counter=0, history=[])
@@ -141,7 +142,7 @@ def new_task_raised(before: "dict[str, ErrcountEntry]", after: "dict[str, Errcou
     if grew < 0:  # cleared in between: everything in the log is newer than the first read
         grew = len(used)
     window = used[len(used) - min(grew, len(used)) :]
-    return sum(1 for h in window if h.get("type") == "E" and h.get("num") == _TASK_RAISED)
+    return sum(1 for h in window if h.get("type") == "E" and h.get("num") in _RAISED)
 
 
 def read_live_system_log(board: "Board") -> "dict[str, ErrcountEntry]":

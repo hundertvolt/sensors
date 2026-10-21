@@ -1,4 +1,4 @@
-"""Models a flash write on the twin: rp2 programs its flash with interrupts off (ports/rp2/rp2_flash.c:167-173, v1.29.0),
+"""Models a flash write on the twin: rp2 programs its flash with interrupts off (ports/rp2/rp2_flash.c:168-174, v1.29.0),
 so a config flush holds the whole loop for the chip's erase and program time; installed from outside src/, as
 _wall_clock.py is."""
 

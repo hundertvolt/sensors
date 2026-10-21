@@ -13,8 +13,9 @@ import time
 sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (SPECIFICATION.md F.7 row 1)
 
 from _async_harness import run
+from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
-from _src_const import src_float, src_int
+from _src_const import src_int
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
 
@@ -116,7 +117,7 @@ def _raw(addr: tuple[str, int]) -> tuple[str, int]:
 
 
 # The shipped values, read from source (tests/_src_const.py).
-_RETRY_BACKOFF_S: float = src_float("src/asy_udp_socket.py", "_RETRY_BACKOFF_S")
+_RETRY_BACKOFF_MS: int = src_int("src/asy_udp_socket.py", "_RETRY_BACKOFF_MS")
 _POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
 _POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 
@@ -354,7 +355,7 @@ def test_a_socket_that_never_connects_does_not_wait_for_a_reply() -> None:
         elapsed = time.ticks_diff(time.ticks_ms(), t0)
     finally:
         asy_udp_socket.socket = original
-    backoff_ms = int(_RETRY_BACKOFF_S * 1000)
+    backoff_ms = _RETRY_BACKOFF_MS
     assert result == (None, None)
     assert backoff_ms <= elapsed < 2 * backoff_ms, elapsed
 
@@ -670,6 +671,28 @@ def test_ready_without_a_deadline_polls_at_the_idle_rate() -> None:
     assert all(ms == _POLL_IDLE_MS for ms in sleeps), sleeps
 
 
+def test_a_failed_setup_backs_off_with_one_sleep_ms_of_the_shipped_value() -> None:
+    # The backoff is one sleep_ms() of the shipped int, never a seconds sleep(), whose ms conversion
+    # (int(t * 1000), extmod/asyncio/core.py, v1.29.0) allocates a float on every call.
+    sock = UDPSocket(_make_addr(), mode="server")
+    original = asy_udp_socket.socket
+    asy_udp_socket.socket = _FailingSocketModule(OSError("injected setup failure"))  # type: ignore[assignment]
+    fast = FastAsyncSleep()
+
+    async def attempt() -> "tuple[list[int], list[float]]":
+        await sock._connect()
+        task = asyncio.current_task()
+        return fast.ms_of(task), fast.of(task)
+
+    try:
+        with fast:
+            asked = run(attempt())
+    finally:
+        asy_udp_socket.socket = original
+    assert sock.connected is False
+    assert asked == ([_RETRY_BACKOFF_MS], [_RETRY_BACKOFF_MS / 1000]), asked
+
+
 # lwIP's per-socket UDP receive queue on rp2: extmod/modlwip.c:299 LWIP_INCOMING_PACKET_QUEUE_LEN, v1.29.0.
 _LWIP_UDP_QUEUE_LEN = 4
 
@@ -946,7 +969,7 @@ async def _connect_arm(exc: BaseException) -> object:
     try:
         t0 = time.ticks_ms()
         await sock._connect()
-        backoff_waited = time.ticks_diff(time.ticks_ms(), t0) >= int(_RETRY_BACKOFF_S * 1000)
+        backoff_waited = time.ticks_diff(time.ticks_ms(), t0) >= _RETRY_BACKOFF_MS
     finally:
         asy_udp_socket.socket = original
     return sock.connected, sock._sock is None, backoff_waited
@@ -1705,7 +1728,7 @@ def test_disconnect_no_longer_crashes_a_concurrent_in_flight_connect_retry() -> 
     connected, elapsed = run(scenario())
     assert connected is False  # bad_addr never becomes bindable
     # disconnect() waited out the one backoff the failed attempt holds the lock for
-    assert elapsed >= int(_RETRY_BACKOFF_S * 1000) - int(_FIRST_ATTEMPT_S * 1000), elapsed
+    assert elapsed >= _RETRY_BACKOFF_MS - int(_FIRST_ATTEMPT_S * 1000), elapsed
     assert elapsed < _RETRY_CYCLE_MAX_MS  # ...but didn't hang forever either
 
 

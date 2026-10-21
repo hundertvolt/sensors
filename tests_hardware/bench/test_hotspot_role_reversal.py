@@ -436,7 +436,7 @@ def test_a_second_failed_streak_goes_silent_and_links_on_a_later_attempt(bench: 
         bench.ap_up()
         restored = True
         up_at = time.monotonic()
-        relink_s = window_s + _load.src_number(_WIFI, "_STA_CONNECT_POLL_ITERS") * _load.src_number(_WIFI, "_STA_CONNECT_POLL_S") + refresh_s + _DERIVED_WAIT_MARGIN_S
+        relink_s = window_s + _connect_poll_s() + refresh_s + _DERIVED_WAIT_MARGIN_S
         wait_until(lambda: _load.sta_mode(dut_ip), timeout_s=relink_s, poll_interval_s=_FLIP_BACK_POLL_S, description="the silent DUT to link on a later attempt once the bench AP is back, with no reset")
         assert_no_task_ended(dut_ip, "the second failed streak, the silent mode and its later link")
         result_note(f"silent mode: relinked {time.monotonic() - up_at:.0f} s after the bench AP came back (one silent period is {window_s:.0f} s)")
@@ -477,6 +477,11 @@ def test_the_uart_link_across_the_mode_switch_is_recorded(joined_hotspot: str, d
     assert before is not None and joined is not None and back is not None, f"a link read is missing: {points}"
     assert _int(joined, "Transfers") > _int(before, "Transfers"), f"no transfer advanced across the switch to the hotspot: {before} -> {joined}"
     wait_until(lambda: _int(_link_counters(dut_ip) or {}, "Transfers") > _int(back, "Transfers"), timeout_s=_LINK_ADVANCE_TIMEOUT_S, poll_interval_s=_HOTSPOT_SCAN_POLL_S, description="the link's transfers advancing after the switch back to STA")
+
+
+def _connect_poll_s() -> float:
+    # One connect attempt's whole status poll in seconds; the Wi-Fi service steps it in milliseconds.
+    return _load.src_number(_WIFI, "_STA_CONNECT_POLL_ITERS") * _load.src_number(_WIFI, "_STA_CONNECT_POLL_MS") / 1000
 
 
 def _flip_back(board: Board, bench: "BenchBridge", gateway_ip: str, dut_ip: str, note: "_load.Note") -> None:
@@ -570,8 +575,7 @@ def _streak_bound_s() -> float:
     fails, _window_min = _wifi_settings()
     refresh = _load.src_number(_WIFI, "_WIFI_REFRESH_S")
     switch = _load.src_number(_WIFI, "_WLAN_DOWN_SETTLE_S") + _load.src_number(_WIFI, "_WLAN_DEINIT_SETTLE_S") + _load.src_number(_WIFI, "_WLAN_MODE_SETTLE_S")
-    poll = _load.src_number(_WIFI, "_STA_CONNECT_POLL_ITERS") * _load.src_number(_WIFI, "_STA_CONNECT_POLL_S")
-    return refresh + _load.src_number(_WIFI, "_RECONNECT_CALLER_GRACE_S") + switch + _load.src_number(_WIFI, "_RECONNECT_SETTLE_S") + fails * (poll + refresh) + switch + _DERIVED_WAIT_MARGIN_S
+    return refresh + _load.src_number(_WIFI, "_RECONNECT_CALLER_GRACE_S") + switch + _load.src_number(_WIFI, "_RECONNECT_SETTLE_S") + fails * (_connect_poll_s() + refresh) + switch + _DERIVED_WAIT_MARGIN_S
 
 
 def _unstrand(bench: "BenchBridge", hotspot_ssid: str, note: "_load.Note") -> None:

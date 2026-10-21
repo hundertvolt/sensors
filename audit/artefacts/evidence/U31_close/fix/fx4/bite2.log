@@ -1,0 +1,29 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_ test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window _
+
+harness = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx4/bite_tree/scripts/_digital_twin_scenarios.py'>
+
+    def test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window(harness: ModuleType) -> None:
+        # Each storm fault lands on one read, at most the device's longest read trigger apart (each reader's trigger_s, the
+        # SGP40's fixed 1 s); a link exercises once a period; one whole LOOP_LAG window inside the load prints by its end.
+        src = harness.REPO_ROOT / "src"
+        report_s = module_int_const(harness.REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
+        link_s = module_int_const(src, "asy_uart_link_driver.py", "_EXERCISE_PERIOD_MS") / 1000
+        faults = module_int_const(harness.REPO_ROOT / "buildgen", "codegen.py", "_MAX_MODULE_ERROR")  # the generated module's give-up streak
+        readers = {"scd30": ("asy_scd30_driver.py", "SCD30_Reader"), "bmp3xx": ("asy_bmp3xx_driver.py", "BMP3XX_Reader"), "isl29125": ("asy_isl29125_driver.py", "ISL29125_Reader")}
+        spans = []
+        for device in DEVICE_NAMES:
+            instances = load_device(device_toml(device)).instances.values()
+            triggers = [1] + [int(str(s.fields.get("trigger_s", init_int_default(src, *readers[s.driver], "trigger_s")))) for s in instances if s.driver in readers]
+            spans.append(max([faults * max(triggers)] + [link_s for s in instances if s.driver == "uart_link"]) + report_s)
+>       assert max(spans) == harness._LOOP_LAG_LOAD_S, spans
+E       AssertionError: [23.0, 23.0, 23.0, 23.0, 23.0, 23.0]
+E       assert 23.0 == 20.0
+E        +  where 23.0 = max([23.0, 23.0, 23.0, 23.0, 23.0, 23.0])
+E        +  and   20.0 = <module '_digital_twin_scenarios' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx4/bite_tree/scripts/_digital_twin_scenarios.py'>._LOOP_LAG_LOAD_S
+
+../../../wt-u31fx4/tests_scripts/test_digital_twin_scenarios.py:278: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_digital_twin_scenarios.py::test_the_loop_lag_load_spans_the_storm_at_the_longest_read_trigger_and_one_whole_window
+1 failed, 56 deselected in 0.18s

@@ -11,6 +11,7 @@ sys.path.insert(0, "digital_twin/unixport")  # the Unix-port UDP address shim (S
 
 from _async_harness import cancel, run
 from _error_codes import code
+from _fast_sleep import check_sleep_ms
 from _port_bands import PortAllocator
 from _src_const import src_int
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -31,6 +32,7 @@ except ImportError:  # typing isn't available on the real MicroPython test inter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
     from typing import NoReturn
 
     from _mpy_shed.time_mp import _TicksMs
@@ -38,6 +40,9 @@ if TYPE_CHECKING:
 
 # The suite's waits, bounds and backoff-gap bands, one constant each (SPECIFICATION.md Part N).
 _ERROR_RETRY_WAIT_S: int = src_int("src/asy_captive_dns.py", "_ERROR_RETRY_WAIT_S")
+_RECV_FAIL_BACKOFF_INITIAL_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_INITIAL_MS")
+_RECV_FAIL_BACKOFF_MAX_MS: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MAX_MS")
+_RECV_FAIL_BACKOFF_MULTIPLIER: int = src_int("src/asy_captive_dns.py", "_RECV_FAIL_BACKOFF_MULTIPLIER")
 # @tunable l1.captive_dns_wait_until_timeout_ms = 1000
 _WAIT_UNTIL_TIMEOUT_MS = 1000
 # @tunable l1.captive_dns_wait_until_poll_ms = 10
@@ -1325,6 +1330,57 @@ def test_run_recv_backoff_caps_at_the_ceiling() -> None:
     assert len(call_times) >= 6  # 5 empty results + the one that finally returns real data
     gaps = [time.ticks_diff(call_times[i + 1], call_times[i]) for i in range(5)]
     assert _GAP_CAP_MIN_MS <= gaps[4] < _GAP_CAP_MAX_MS  # 5th failure's pause is capped at ~5.0s, not the uncapped ~8.0s
+
+
+class _InstantSleepAsyncio:
+    # Stands in for asy_captive_dns's module-level asyncio: each sleep_ms() is kept as the int it was given and, like
+    # sleep(), costs one yield; every other name is the real module's, so a wait asked in seconds never shows here.
+    def __init__(self, real: "ModuleType") -> None:
+        self._real = real
+        self.sleep_ms_calls: list[int] = []
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._real, name)
+
+    async def sleep(self, _seconds: float) -> None:
+        await self._real.sleep_ms(0)
+
+    async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
+        self.sleep_ms_calls.append(ms)
+        await self._real.sleep_ms(0)
+
+
+def test_run_recv_backoff_is_asked_in_milliseconds() -> None:
+    # Each pause is one sleep_ms() of a small int, never a float per pause: it doubles from the initial value to the
+    # ceiling and restarts at the initial value once a datagram arrives.
+    query = _make_query(["a", "io"])
+    failures = 6
+    fake = _FakeUDPS([(None, None)] * failures + [(query, ("127.0.0.5", 5000)), (None, None)])
+    instant = _InstantSleepAsyncio(asy_captive_dns.asyncio)
+
+    async def scenario() -> None:
+        server = CaptiveDNS()
+        server._udps = fake  # type: ignore[assignment]
+        task = asyncio.create_task(server.run("127.0.0.1", "255.0.0.0"))
+        try:
+            assert await _wait_until(lambda: len(fake.recv_call_times_ms) > failures + 2)  # parked in the fake's last wait
+        finally:
+            await cancel(task)
+
+    asy_captive_dns.asyncio = instant  # type: ignore[assignment]
+    try:
+        run(scenario())
+    finally:
+        asy_captive_dns.asyncio = instant._real
+    expected: list[int] = []
+    backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS
+    for _ in range(failures):
+        expected.append(backoff_ms)
+        backoff_ms = min(backoff_ms * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_MS)
+    assert expected[-1] == _RECV_FAIL_BACKOFF_MAX_MS  # the series reaches the ceiling
+    expected.append(_RECV_FAIL_BACKOFF_INITIAL_MS)  # the received datagram restarted the series
+    assert instant.sleep_ms_calls == expected, instant.sleep_ms_calls
 
 
 def test_run_disconnect_reporting_a_second_cancellation_propagates_without_logging() -> None:

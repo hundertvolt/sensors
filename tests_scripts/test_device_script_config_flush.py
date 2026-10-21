@@ -148,7 +148,7 @@ def test_the_cfgmgr_delegation_this_guard_assumes_is_still_what_src_does() -> No
 
 
 # A test's scratch store: config_HWTEST_* files and the directory a scratch build writes its stores into.
-_SCRATCH_FILE = re.compile(r"config_HWTEST_\w*\.cfg")
+_SCRATCH_FILE = re.compile(r"config_HWTEST_\w*\.\w+")
 _SCRATCH_DIR_NAME = "_SCRATCH_CFG_PATH"
 _TESTS_HARDWARE = REPO_ROOT / "tests_hardware"
 

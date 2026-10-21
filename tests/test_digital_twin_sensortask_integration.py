@@ -33,10 +33,11 @@ import unix_port_unretrieved_report  # noqa: E402 - imported after the prewarm a
 from _async_harness import cancel, release_finished, run  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _port_bands import PortAllocator  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
-from _src_const import src_const, src_float, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
+from _src_const import src_const, src_int  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_common import Walk  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
 from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim (C4 order)
@@ -95,7 +96,7 @@ _IDLE_WINDOW_S = 3.0
 _POLL_IDLE_MS = src_const("src/asy_udp_socket.py", "_POLL_IDLE_MS")
 _STA_ESTABLISHED = src_const("src/asy_wifi_service.py", "_PHASE_STA_ESTABLISHED")
 _RUNG_AT = src_int("src/asy_base_classes.py", "_RECOVER_DEVICE_AT")  # consecutive failed iterations to the device rung
-_WIFI_STEP_S = src_float("src/asy_wifi_service.py", "_STA_CONNECT_POLL_S")  # the connect poll's step: _SteppedWifiAsyncio's cap
+_WIFI_STEP_MS = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS")  # the connect poll's step: _SteppedWifiAsyncio's cap
 _WAIT_TIMEOUT_MS = int(_WAIT_TIMEOUT_S * 1000)
 _STATUS_DEATHS = 10
 _DECAY_PASSES = 110  # clean supervisor passes between two deaths: each decays the restart budget by one, a death adds 100
@@ -282,13 +283,13 @@ async def _one_backup(sgp: "SGP40_Reader", then: "Callable[[], Coroutine[object,
 def _radio_rung_bound_s(conn: "WifiService") -> float:
     # The fault to the link back at the service's own waits as _SteppedWifiAsyncio caps them: each failed iteration and
     # the one that joins at most a refresh, a join polled to its budget and the retry wait, the rung's three settles, a tick.
-    def stepped(name: str) -> float:
-        return min(src_float("src/asy_wifi_service.py", name), _WIFI_STEP_S)
+    def stepped(name: str) -> int:  # one of the service's whole-second waits, in ms as the stand-in caps it
+        return min(src_int("src/asy_wifi_service.py", name) * 1000, _WIFI_STEP_MS)
 
-    poll_budget = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS") * _WIFI_STEP_S
+    poll_budget = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS") * _WIFI_STEP_MS
     iteration = stepped("_WIFI_REFRESH_S") + poll_budget + stepped("_STA_RETRY_AFTER_LOSS_S")
     settles = stepped("_WLAN_DOWN_SETTLE_S") + stepped("_WLAN_DEINIT_SETTLE_S") + stepped("_WLAN_MODE_SETTLE_S")
-    return (_RUNG_AT + 1) * iteration + settles + conn._counter_timer.period / 1000  # the uptime tick, armed in ms
+    return ((_RUNG_AT + 1) * iteration + settles + conn._counter_timer.period) / 1000  # the uptime tick, armed in ms
 
 
 def _red_frames(frames: "list[list[tuple[int, ...]]]") -> "list[list[tuple[int, ...]]]":
@@ -334,7 +335,8 @@ class _FastSupervisorAsyncio:
         else:
             await asyncio.sleep(0)
 
-    async def sleep_ms(self, _ms: int) -> None:
+    async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
         await asyncio.sleep(0)
 
 
@@ -377,13 +379,17 @@ class _StatusFault:
 
 
 class _SteppedWifiAsyncio:
-    # asy_wifi_service's view of asyncio, each sleep at most one connect-poll step: its periods, settles and retry wait
-    # are not under test, its transitions are; the poll keeps its real step, so the twin's join reads as unstepped.
+    # asy_wifi_service's view of asyncio, each sleep or sleep_ms at most one connect-poll step: its periods, settles,
+    # retry wait and LED pattern are not under test, its transitions are; the poll keeps its real step, unstepped.
     def __getattr__(self, name: str) -> object:
         return getattr(asyncio, name)
 
     async def sleep(self, seconds: float) -> None:
-        await asyncio.sleep(min(seconds, _WIFI_STEP_S))
+        await self.sleep_ms(int(seconds * 1000))  # asyncio's own conversion (extmod/asyncio/core.py)
+
+    async def sleep_ms(self, ms: int) -> None:
+        check_sleep_ms(ms)
+        await asyncio.sleep_ms(min(ms, _WIFI_STEP_MS))
 
 
 def test_sgp40_reading_before_scd30_has_measured_yet_logs_no_bogus_error() -> None:

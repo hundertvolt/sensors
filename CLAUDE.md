@@ -258,6 +258,8 @@ information):
   `SystemService.feed_watchdog()` exists to prevent (SPECIFICATION.md Part A.7/G.2). Don't "fix" a
   slow boot by trimming that batch, reordering it for speed, or otherwise treating its wall-clock
   cost as a defect — the accepted target is "does not starve the watchdog," not "boots fast."
+  Each inter-feed boot stretch is a row of SPECIFICATION.md Part F.3's table, its margin in the
+  Part N row that row cites.
 - **`asy_uart_driver.py` and `asy_uart_comm.py` may never block the asyncio loop — not even in a
   wait state.** They may time out and handle it; they may not wait synchronously (project owner,
   2026-09-11). This is sharper than F.3's general principle and is easy to violate by accident:

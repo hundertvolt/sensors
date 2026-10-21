@@ -74,6 +74,9 @@ class _ScaledAsyncio:
     async def sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds / _SLEEP_SCALE)
 
+    async def sleep_ms(self, ms: int) -> None:
+        await asyncio.sleep_ms(ms // _SLEEP_SCALE)
+
 
 async def _await_failed_arm(conn: "WifiService", site: str, trigger: "Callable[[], None]") -> None:
     # `trigger` leads to the site's window arm, refused: one more E TIMER persisted, the streak fed, the timer not

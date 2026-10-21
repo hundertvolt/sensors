@@ -1302,6 +1302,11 @@ class Timer:
         hard: bool = False,  # likewise: a callback here always runs where trigger() calls it
     ) -> None:
         # The keywords machine_timer_init_helper() takes (machine_timer.c:74-112); `period` keeps the value given.
+        # init() cancels the running alarm first (:143-146), then parses mode, period and tick_hz as MP_ARG_INT (:77-80).
+        self.callback = None
+        for value in (mode, period, tick_hz):
+            if not isinstance(value, int):
+                raise TypeError("can't convert " + type(value).__name__ + " to int")
         if Timer.raise_on_arm:
             if Timer.raise_on_arm_exc is OSError:
                 raise OSError(errno.ENOMEM, "alarm pool exhausted")

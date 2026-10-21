@@ -1,6 +1,6 @@
-"""Flash-tier automated tests: real GC-heap headroom once the whole object graph exists, the routine no-yield
-stretches, the loop lag and the C-stack peak on the real 133 MHz core, and single-core timing headroom under normal
-full task load (SPECIFICATION.md Parts I and F.3). The real-HTTP-soak variants live in bench/."""
+"""Flash-tier automated tests: real GC-heap headroom once the whole object graph exists, the routine no-yield stretches,
+one flash write's span, the loop lag and the C-stack peak on the real 133 MHz core, and single-core timing headroom
+under normal full task load (SPECIFICATION.md Parts I and F.3). The real-HTTP-soak variants live in bench/."""
 
 import time
 from typing import TYPE_CHECKING
@@ -13,14 +13,15 @@ from harness import DEVICE_SCRIPTS_DIR, MEMORY_ERROR_MARKERS, SRC_DIR, boot_line
 from heap_bounds import WORST_CASE_ALLOCATION
 from soak_durations import SOAK_DURATION_SECONDS
 
-from buildgen.validate import _WDT_TIMEOUT_MS, build_model, module_int_const
+from buildgen.model import load_device
+from buildgen.validate import smallest_hard_consumer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from harness import Board
 
-COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction",)
+COVERS_TWIN_SCENARIOS: tuple[str, ...] = ("construction", "loop_lag")
 
 # @tunable l3.memory_stress_headroom_script_timeout_s = 120.0
 _HEADROOM_SCRIPT_TIMEOUT_S = 120.0
@@ -33,21 +34,14 @@ _PRESENCE_TIMEOUT_S = 30.0
 _BOOT_SETTLE_S = 30.0
 # @tunable l3.memory_stress_stretch_script_timeout_s = 60.0
 _STRETCH_SCRIPT_TIMEOUT_S = 60.0
+# @tunable l3.memory_stress_flash_gap_script_timeout_s = 30.0
+_FLASH_GAP_SCRIPT_TIMEOUT_S = 30.0
 # The lag script's own 30 s window plus the shipped boot and the scratch cleanup.
 # @tunable l3.memory_stress_loop_lag_script_timeout_s = 90.0
 _LOOP_LAG_SCRIPT_TIMEOUT_S = 90.0
 # The C-stack script's own 10 s window plus the build, its setup batch and the timer stagger.
 # @tunable l3.memory_stress_c_stack_script_timeout_s = 60.0
 _C_STACK_SCRIPT_TIMEOUT_S = 60.0
-
-
-def _hard_consumer_ms() -> int:
-    # The bench build's smallest hard consumer of loop time: the UART link's reply timeout on a device wiring a link (a
-    # lag past it reads as a dead link at the peer), the watchdog otherwise (agent, 2026-10-14).
-    links = [spec for spec in build_model(device_toml(), SRC_DIR).instances.values() if spec.driver == "uart_link"]
-    if links:
-        return module_int_const(SRC_DIR, "asy_uart_comm.py", "_DEFAULT_TIMEOUT_MS")
-    return _WDT_TIMEOUT_MS  # the generated boot entry's watchdog, buildgen's one source
 
 
 def _run(board: "Board", script: str, timeout_s: float) -> "tuple[str, dict[str, object]]":
@@ -96,12 +90,22 @@ def test_routine_no_yield_stretches_stay_under_the_gc_term(board: "Board", resul
     assert not over, f"routine no-yield stretches over the {bound} us GC term, or missing: {over}; facts {facts}"
 
 
+@pytest.mark.persistence_write
+def test_flash_write_loop_gap_is_recorded(board: "Board", result_note: "Callable[[str], None]") -> None:
+    # The test owns one scratch flash write (CLAUDE.md wear rule); the figure feeds F.3's flash stall row, so it is
+    # recorded here and judged against its consumers there.
+    _output, facts = _run(board, "flash_write_loop_gap.py", _FLASH_GAP_SCRIPT_TIMEOUT_S)
+    longest, total = facts.get("flash_call_max_us"), facts.get("flash_total_us")
+    result_note(f"one 1 KiB scratch flash write: longest call {longest} us, all four {total} us ({facts.get('flash_calls_us')})")
+    assert isinstance(longest, int) and isinstance(total, int), f"the flash write's spans were not reported: {facts}"
+
+
 def test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget(board: "Board", request: pytest.FixtureRequest, result_note: "Callable[[str], None]") -> None:
     # The shipped main() writes production FRAM chunks, so it runs on the bench round only, after the session's evidence save.
     if not request.config.getoption("--twin") and not BenchBridge().is_configured():
         pytest.skip("the bench round's instrument: the shipped main() runs, so the round's FRAM evidence is saved first and the bench bridge is set up")
     _output, facts = _run(board, "loop_lag_under_combined_load.py", _LOOP_LAG_SCRIPT_TIMEOUT_S)
-    bound_us = _hard_consumer_ms() * 1000
+    bound_us = smallest_hard_consumer(load_device(device_toml()), SRC_DIR).ms * 1000  # the build rule's and the twin scenario's one source
     lag_max, lag_p99 = facts.get("lag_max_us"), facts.get("lag_p99_us")
     result_note(f"loop lag under combined load: max {lag_max} us, p99 {lag_p99} us over {facts.get('samples')} samples (bound {bound_us} us)")
     assert facts.get("main_running") is True, f"the shipped main() ended inside the window: {facts}"

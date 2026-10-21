@@ -152,6 +152,7 @@ _GC_THRESHOLD_DEFAULT = 32768
 _WDT_TIMEOUT_MS = 8000
 
 _SHUTDOWN_HANG_STEPS = ("S1", "S2", "S3", "S4", "S5reset", "S5erase", "S6")
+_DROP_TIMER_SITES = ("reset", "sequencer")  # the product one-shots --test-drop-timer-fire reaches: sysfunct's two
 # MICROPY_BYTES_PER_GC_BLOCK, 4 x the object word (py/mpconfig.h:251, v1.29.0): the unit of mem_info()'s max free sz.
 _GC_BLOCK_BYTES = 4 * struct.calcsize("P")
 _TEST_TRAIN_CMD_ID = 0x02  # the exerciser's ECHO (asy_uart_link_driver.py), the one SET its responder takes
@@ -179,6 +180,8 @@ if TYPE_CHECKING:
         uart_over_cap: bool
         hold_system_entry: int | None
         kbd_traceback: bool
+        loop_lag_ms: int | None
+        drop_timer_fire: str | None
 
     class RunEnvironment(NamedTuple):
         # The product's config directory, whether NTP may go online instead of the local responder, the test flags, and
@@ -192,12 +195,12 @@ else:
     RunLimits = namedtuple("RunLimits", ("duration", "gc_threshold", "mem_sample_interval_ms", "stop_file"))
     TestFlags = namedtuple(
         "TestFlags",
-        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback"),
+        ("hold_closing_slot", "stall_loop_ms", "conn_status_interval_ms", "fault_status_interval_ms", "shutdown_hang", "flash_stall_max", "uart_over_cap", "hold_system_entry", "kbd_traceback", "loop_lag_ms", "drop_timer_fire"),
     )
     RunEnvironment = namedtuple("RunEnvironment", ("config_dir", "online_ntp", "instrumentation", "debug_level"))
 
 
-_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False)
+_NO_TEST_FLAGS = TestFlags(False, None, None, None, None, False, False, None, False, None, None)
 _DEFAULT_ENVIRONMENT = RunEnvironment(_CONFIG_DIR_DEFAULT, False, _NO_TEST_FLAGS, None)
 _PERSISTENT_STATE = StatePaths(_FRAM_STATE_DEFAULT, _SCD30_STATE_DEFAULT, _MEM_BACKUP_STATE_DEFAULT)
 
@@ -215,6 +218,10 @@ _STOP_FILE_POLL_MS = 100
 
 # @tunable l2.twin_test_stdin_poll_ms = 50
 _TEST_STDIN_POLL_MS = 50  # how often a --test-* trigger line on stdin is looked for
+# @tunable l2.twin_loop_lag_report_ms = 5000
+_LOOP_LAG_REPORT_MS = 5000  # one LOOP_LAG line per window of this length, its figures that window's alone
+_LOOP_LAG_BUCKETS = 64  # 1 ms histogram bins, the last one open-ended: a fixed fold, no list grows with the run
+_DROP_WINDOW_CALLBACKS = 1_000_000  # more soft callbacks than any one-shot's window can see: the queue stays full to its fire
 _KBD_CAPTURE_SPINS = 1000  # loop passes after the self-SIGINT, each jump a pending-exception check (py/vm.c:575, v1.29.0)
 
 # The WDT keeps its newest 200 feed times: a span it dropped between two folds lasts under one fold period,
@@ -243,7 +250,9 @@ _USAGE = f"""Usage: micropython digital_twin/run_generic_integration.py --module
   --test-fault-status-interval-ms N, --test-shutdown-hang S1|S2|S3|S4|S5reset|S5erase|S6,
   --test-flash-stall-max (every flush at its datasheet maximum), --test-uart-over-cap (one train past each link's cap),
   --test-hold-system-entry ERRNO (SYSTEM's entry with that errno waits for ENTRY_RELEASE),
-  --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback)
+  --test-kbd-traceback (KBD_TRACEBACK prints the interrupt object's traceback),
+  --test-loop-lag-ms N (a LOOP_LAG line every {_LOOP_LAG_REPORT_MS // 1000} s from a task sleeping N ms at a time, each link's transfers on it),
+  --test-drop-timer-fire reset|sequencer (that one-shot's fire lost as rp2's full scheduler queue loses it)
   -h, --help               print this and exit 0"""
 
 
@@ -371,7 +380,7 @@ async def _mem_sampler(interval_ms: int) -> None:
 
 def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "TestFlags | None":
     # `flags` with one --test-* flag set; None for an argument that is no test flag.
-    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd = flags
+    hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop = flags
     if arg == "--test-hold-closing-slot":
         hold = True
     elif arg == "--test-stall-loop-ms":
@@ -392,9 +401,15 @@ def _parse_test_flag(arg: str, remaining: "list[str]", flags: "TestFlags") -> "T
         entry = _positive_int(arg, "ERRNO", _pop_value(remaining, arg))
     elif arg == "--test-kbd-traceback":
         kbd = True
+    elif arg == "--test-loop-lag-ms":
+        lag = _positive_int(arg, "N", _pop_value(remaining, arg))
+    elif arg == "--test-drop-timer-fire":
+        drop = _pop_value(remaining, arg)
+        if drop not in _DROP_TIMER_SITES:
+            raise ValueError(f"--test-drop-timer-fire {drop!r} not recognized - expected one of {_DROP_TIMER_SITES}")
     else:
         return None
-    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd)
+    return TestFlags(hold, stall, conn, fault, hang, stall_max, over_cap, entry, kbd, lag, drop)
 
 
 def _print_shutdown_line(config: RunConfig) -> None:
@@ -481,6 +496,37 @@ async def _test_conn_status(module: "ModuleType", interval_ms: int) -> None:
     while True:
         print(await _test_conn_line(module))
         await asyncio.sleep_ms(interval_ms)
+
+
+def _test_drop_timer_fire(module: "ModuleType", site: str, say: "Callable[[str], None]" = print) -> "Coroutine[object, object, None]":
+    # Rebinds, from outside, the next init() of the one product one-shot `site` names, so the host sees what its lost fire
+    # costs: the twin's drop knob is set before the arm (rp2's full depth-8 queue) and cleared once that fire was dropped.
+    sysfunct = module.sysfunct
+    timer: machine.Timer = sysfunct._reset_timer if site == "reset" else sysfunct._sequencer_timer
+    armed = asyncio.Event()
+    real_init = timer.init
+
+    def init(**kwargs: object) -> None:
+        timer.init = real_init  # type: ignore[method-assign]  # the next arm only
+        machine.Timer.drop_next_soft_callbacks = _DROP_WINDOW_CALLBACKS
+        real_init(**kwargs)  # type: ignore[arg-type]
+        armed.set()
+
+    timer.init = init  # type: ignore[method-assign]
+    return _test_drops_cleared(timer, armed, site, say)
+
+
+async def _test_drops_cleared(timer: "machine.Timer", armed: "asyncio.Event", site: str, say: "Callable[[str], None]" = print) -> None:
+    # DROP_ARMED once the knob is set, FIRE_DROPPED once the one-shot's own loop ended on its dropped fire; then every
+    # other timer's soft callbacks run again, so what follows is that one lost fire's cost alone.
+    await armed.wait()
+    say(f"DROP_ARMED {site}")
+    run = timer._task
+    while run is not None and not run.done():
+        await asyncio.sleep_ms(1)
+    dropped = _DROP_WINDOW_CALLBACKS - machine.Timer.drop_next_soft_callbacks
+    machine.Timer.drop_next_soft_callbacks = 0
+    say(f"FIRE_DROPPED {site} callbacks={dropped}")
 
 
 def _test_fault_line(chips: "dict[str, object]") -> str:
@@ -578,8 +624,39 @@ def _test_kbd_traceback(say: "Callable[[str], None]" = print, out: "IOBase_mp | 
     return show
 
 
+async def _test_loop_lag(period_ms: int, say: "Callable[[str], None]" = print, links: "Iterable[tuple[str, _LinkCounts, object]]" = ()) -> None:
+    # One task sleeping period_ms at a time: each wake's overshoot past its due time folds into a fixed 1 ms histogram,
+    # and each window's maximum, 99th percentile and sample count print as one LOOP_LAG line, with each link's transfers.
+    bins = [0 for _ in range(_LOOP_LAG_BUCKETS)]
+    worst = samples = 0
+    window = time.ticks_ms()
+    while True:
+        due = time.ticks_add(time.ticks_us(), period_ms * 1000)
+        await asyncio.sleep_ms(period_ms)
+        lag = max(0, time.ticks_diff(time.ticks_us(), due))
+        worst = max(worst, lag)
+        bins[min(lag // 1000, _LOOP_LAG_BUCKETS - 1)] += 1
+        samples += 1
+        if time.ticks_diff(time.ticks_ms(), window) >= _LOOP_LAG_REPORT_MS:
+            say(f"LOOP_LAG max_us={worst} p99_us={_test_p99_us(bins, samples, worst)} samples={samples}" + "".join(f" {key}={link._transfers}" for key, link, _bus in links))
+            for i in range(_LOOP_LAG_BUCKETS):
+                bins[i] = 0
+            worst = samples = 0
+            window = time.ticks_ms()
+
+
 def _test_never_pulled(_chunk: int, _buf: "memoryview") -> int:
     return 0  # the over-cap train is refused before its first frame, so nothing is ever pulled
+
+
+def _test_p99_us(bins: "list[int]", samples: int, worst: int) -> int:
+    # The upper edge of the bin holding the 99th-percentile sample, never past the window's own maximum.
+    rank, seen = samples - samples // 100, 0
+    for i, count in enumerate(bins[:-1]):
+        seen += count
+        if seen >= rank:
+            return min((i + 1) * 1000, worst)
+    return worst
 
 
 def _test_report_then_hang(line: str, say: "Callable[[str], None]" = print) -> "Callable[[object, int], Coroutine[object, object, None]]":
@@ -672,6 +749,10 @@ def _test_start(flags: "TestFlags", module: "ModuleType", chips: "dict[str, obje
         _test_flash_stall_max()
     if flags.uart_over_cap:
         tasks.append(loop.create_task(_test_uart_over_cap(links)))
+    if flags.loop_lag_ms:
+        tasks.append(loop.create_task(_test_loop_lag(flags.loop_lag_ms, links=links)))
+    if flags.drop_timer_fire:
+        tasks.append(loop.create_task(_test_drop_timer_fire(module, flags.drop_timer_fire)))
     return tasks
 
 

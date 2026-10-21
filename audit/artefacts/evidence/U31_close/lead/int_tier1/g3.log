@@ -1,0 +1,32 @@
+........................................................................ [  6%]
+........................................................................ [ 13%]
+........................................................................ [ 19%]
+........................................................................ [ 26%]
+........................................................................ [ 32%]
+........................................................................ [ 39%]
+........................................................................ [ 45%]
+........................................................................ [ 52%]
+........................................................................ [ 58%]
+........................................................................ [ 65%]
+........................................................................ [ 71%]
+........................................................................ [ 78%]
+...................................F.................................... [ 84%]
+........................................................................ [ 91%]
+........................................................................ [ 97%]
+..........................                                               [100%]
+=================================== FAILURES ===================================
+________________ test_every_entrys_hashes_are_the_current_files ________________
+
+recorder = <module 'record_twin_instrument_runs' from '/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31int/scripts/record_twin_instrument_runs.py'>
+record = {'tests_hardware/bench/test_boot_order_and_triggers.py': {'api_sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b9...2026-10-20T20:35:32Z', 'gc_threshold': -1, 'reason': 'needs the bench bridge (network, WLAN role-reversal)', ...}, ...}
+
+    def test_every_entrys_hashes_are_the_current_files(recorder: ModuleType, record: "dict[str, dict[str, object]]") -> None:
+        stale = [f"{key}: {name}" for key, entry in sorted(record.items()) if (recorder.REPO_ROOT / key).is_file() for name, digest in recorder.entry_hashes(recorder.REPO_ROOT / key).items() if entry.get(name) != digest]
+>       assert not stale, f"changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: {stale}"
+E       AssertionError: changed since their twin run was recorded - re-run scripts/record_twin_instrument_runs.py: ['tests_hardware/bench/test_hotspot_role_reversal.py: sha256', 'tests_hardware/device_scripts/allocation_need_per_source.py: api_sha256', 'tests_hardware/device_scripts/bmp3xx_alone_survives_a_general_call.py: api_sha256', 'tests_hardware/device_scripts/bmp3xx_plausibility_read.py: api_sha256', 'tests_hardware/device_scripts/bmp3xx_same_device_rw_concurrency.py: api_sha256', 'tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py: api_sha256', 'tests_hardware/device_scripts/bus_concurrency_isl29125_write_vs_siblings.py: api_sha256', 'tests_hardware/device_scripts/bus_concurrency_same_device_scd30.py: api_sha256', 'tests_hardware/device_scripts/bus_concurrency_scd30_write_vs_siblings.py: api_sha256', 'tests_hardware/device_scripts/bus_topology_autodetect_and_hazard_sweep.py: api_sha256', 'tests_hardware/device_scripts/fram_pause_unpause_and_gating.py: api_sha256', 'tests_hardware/device_scripts/heap_layout_after_full_boot_sequence.py: api_sha256', 'tests_hardware/device_scripts/i2c_held_sda_recovery.py: api_sha256', 'tests_hardware/device_scripts/isl29125_cross_device_concurrency.py: api_sha256', 'tests_hardware/device_scripts/isl29125_lighting_scenarios.py: api_sha256', 'tests_hardware/device_scripts/isl29125_mechanism_envelope.py: api_sha256', 'tests_hardware/device_scripts/isl29125_plausibility_read.py: api_sha256', 'tests_hardware/device_scripts/isl29125_real_irq_edge.py: api_sha256', 'tests_hardware/device_scripts/isl29125_same_device_rw_concurrency.py: api_sha256', 'tests_hardware/device_scripts/reboot_fallback_starves_the_watchdog.py: api_sha256', 'tests_hardware/device_scripts/reset_code_invalid_record.py: api_sha256', 'tests_hardware/device_scripts/reset_code_stack_exhausted.py: api_sha256', 'tests_hardware/device_scripts/scd30_data_ready_wait.py: api_sha256', 'tests_hardware/device_scripts/scd30_measurement_interval_read.py: api_sha256', 'tests_hardware/device_scripts/scd30_plausibility_read.py: api_sha256', 'tests_hardware/device_scripts/scd30_real_irq_edge.py: api_sha256', 'tests_hardware/device_scripts/scd30_same_device_rw_concurrency.py: api_sha256', 'tests_hardware/device_scripts/scd30_start_continuous_measurement.py: api_sha256', 'tests_hardware/device_scripts/serving_at_default_gc.py: api_sha256', 'tests_hardware/device_scripts/sgp40_fram_backup_restore.py: api_sha256', 'tests_hardware/device_scripts/sgp40_general_call_reset_hazard.py: api_sha256', 'tests_hardware/device_scripts/sgp40_same_device_concurrent_sessions.py: api_sha256', 'tests_hardware/device_scripts/sgp40_sample_cadence.py: api_sha256', 'tests_hardware/device_scripts/sgp40_voc_algorithm_quality.py: api_sha256', 'tests_hardware/device_scripts/system_command_fram_erase.py: api_sha256', 'tests_hardware/device_scripts/system_command_reboot.py: api_sha256', 'tests_hardware/device_scripts/system_service_restarts_a_real_dead_task.py: api_sha256', 'tests_hardware/device_scripts/uart_crossover_exchange.py: api_sha256', 'tests_hardware/device_scripts/uart_link_echo_under_serving_load.py: api_sha256', 'tests_hardware/device_scripts/uart_link_under_concurrent_system_load.py: api_sha256', 'tests_hardware/device_scripts/unretrieved_task_exception_handler.py: api_sha256', 'tests_hardware/device_scripts/wifi_radio_reinit_recovery.py: api_sha256']
+E       assert not ['tests_hardware/bench/test_hotspot_role_reversal.py: sha256', 'tests_hardware/device_scripts/allocation_need_per_sour...currency.py: api_sha256', 'tests_hardware/device_scripts/bus_concurrency_cross_device_scd30_sgp40.py: api_sha256', ...]
+
+tests_scripts/test_twin_record.py:37: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_twin_record.py::test_every_entrys_hashes_are_the_current_files
+1 failed, 1105 passed in 154.61s (0:02:34)

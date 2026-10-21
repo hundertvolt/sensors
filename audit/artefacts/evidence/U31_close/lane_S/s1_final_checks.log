@@ -1,0 +1,34 @@
+...................F..............F.....                                 [100%]
+=================================== FAILURES ===================================
+___________________ test_the_tags_and_the_part_n_rows_agree ____________________
+
+repo_root = PosixPath('/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u31s')
+real_tags = [Tag(path='vitest.config.js', line=41, id='l0.vitest_test_timeout_ms', literal='20000'), Tag(path='vitest.config.js', ...r_controller_at', literal='4'), Tag(path='src/asy_base_classes.py', line=403, id='module.max_error', literal='5'), ...]
+
+    def test_the_tags_and_the_part_n_rows_agree(repo_root: Path, real_tags: "list[Tag]") -> None:
+        rows, problems = parse_register((repo_root / "SPECIFICATION.md").read_text(encoding="utf-8"))
+        problems += check_register(real_tags, rows)
+>       assert not problems, "\n".join(problems)
+E       AssertionError: src/asy_notification_service.py:62: notify.min_sleep_ms is tagged but has no SPECIFICATION.md Part N row
+E         tests/test_asy_notification_service.py:42: l1.asy_notification_service_next_sleep_min_ms is tagged but has no SPECIFICATION.md Part N row
+E         SPECIFICATION.md:11436: notify.min_sleep_s is a tuned row, but no file carries its @tunable tag
+E         SPECIFICATION.md:11437: notify.cfg_fail_interval_s: Sites list [('src/asy_notification_service.py', '600.0')], the tags say [('src/asy_notification_service.py', '600')]
+E         SPECIFICATION.md:11663: l1.asy_notification_service_next_sleep_min_s is a tuned row, but no file carries its @tunable tag
+E       assert not ['src/asy_notification_service.py:62: notify.min_sleep_ms is tagged but has no SPECIFICATION.md Part N row', 'tests/te...IFICATION.md:11663: l1.asy_notification_service_next_sleep_min_s is a tuned row, but no file carries its @tunable tag']
+
+tests_scripts/test_tunables_register.py:253: AssertionError
+______________________ test_the_pending_list_only_shrinks ______________________
+
+    def test_the_pending_list_only_shrinks() -> None:
+        stale = sorted((Counter(_PENDING) - collect_sites()).elements())
+>       assert not stale, "_PENDING entries that no longer occur - delete them (or --regenerate):\n" + "\n".join(f"  {s}" for s in stale)
+E       AssertionError: _PENDING entries that no longer occur - delete them (or --regenerate):
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time')
+E           ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')
+E       assert not [('tests/test_asy_notification_service.py', 'test_next_sleep_s_floors_at_point_one_when_elapsed_exceeds_interv', 'time'), ('tests/test_asy_notification_service.py', 'test_next_sleep_s_subtracts_elapsed_time', 'time')]
+
+tests_scripts/test_import_placement.py:187: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_tunables_register.py::test_the_tags_and_the_part_n_rows_agree
+FAILED tests_scripts/test_import_placement.py::test_the_pending_list_only_shrinks
+2 failed, 38 passed in 43.35s

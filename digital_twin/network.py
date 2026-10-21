@@ -3,6 +3,7 @@ traffic uses the host's sockets. Per-interface singletons with cyw43's status ru
 independent of tests/network.py (digital_twin/README.md fidelity table)."""
 
 import asyncio
+import errno
 
 from _twin_common import LOG_MAXLEN, BoundedLog, saturating_add
 
@@ -21,6 +22,7 @@ STAT_GOT_IP = 3
 STAT_CONNECT_FAIL = -1
 STAT_NO_AP_FOUND = -2
 STAT_WRONG_PASSWORD = -3
+_STAT_JOINED_NO_IP = 2
 
 # One real STAT_CONNECTING phase, under _poll_sta_connect_status()'s 5 s budget (pinned by a test).
 # @tunable l2.twin_wifi_connect_delay_s = 0.7
@@ -28,7 +30,8 @@ _CONNECT_DELAY_S = 0.7
 
 _COUNTRY_SEED = "XX"  # extmod/modnetwork.c:71 (v1.29.0) power-on value
 _HOSTNAME_SEED = "PicoW"  # ports/rp2/boards/RPI_PICO_W/mpconfigboard.h:8
-# twin-only test knob: the home network's access point is down for every interface object until switched back
+# twin-only test knob: the home network's access point is down for every interface object until switched back; switched
+# down, it also takes a held STA link down
 _access_point_up = [True]
 _country_code = [_COUNTRY_SEED]
 _hostname_value = [_HOSTNAME_SEED]
@@ -56,6 +59,9 @@ constructions = {STA_IF: 0, AP_IF: 0}  # WLAN() calls per interface, saturating
 
 def set_access_point_up(*, up: bool) -> None:
     _access_point_up[0] = up
+    sta = _INTERFACES.get(STA_IF)
+    if not up and sta is not None:
+        sta._drop_link()
 
 
 def country(code: "str | None" = None) -> str:
@@ -135,6 +141,13 @@ class WLAN:
         _INTERFACES[key] = wlan
         return wlan
 
+    def _drop_link(self) -> None:
+        # cyw43's link-down event drops only the netif link (cyw43_ctrl.c:402-413, cyw43_lwip.c:296-298): status() then
+        # reads the join state, still active (LINK_JOIN, cyw43_ctrl.c:434-437, 613-617), and lwIP keeps the address.
+        if self._status in (STAT_GOT_IP, _STAT_JOINED_NO_IP):
+            self._connected = False
+            self._status = STAT_CONNECTING
+
     def _maybe_raise(self, method: str, param: object = None) -> None:
         entry = self.raise_on.get(method)
         if entry is None:
@@ -186,7 +199,12 @@ class WLAN:
         self._maybe_raise("active")
         if value is not None:
             self._active = bool(value)
-            if self.if_id == AP_IF:
+            if self.if_id == STA_IF and not self._active:
+                # network_cyw43.c:146-149 leaves (cyw43_ctrl.c:666-669), then the netif goes down with its DHCP (:579-582).
+                # Silicon reads STAT_CONNECTING until the DISASSOC event clears the join state (:353-355, cyw43-driver
+                # v1.1.1 at v1.29.0): the instant STAT_IDLE simplifies that, and no product path reads it before deinit().
+                self._power_down()
+            elif self.if_id == AP_IF:
                 # The AP is up with its fixed address once active; down again it reads as the unconfigured interface.
                 self._status = STAT_GOT_IP if self._active else STAT_IDLE
                 self._ifconfig = _AP_IFCONFIG_BASE + (_dns[0],) if self._active else _UNSET_IFCONFIG
@@ -214,8 +232,10 @@ class WLAN:
 
     def connect(self, ssid: "str | None" = None, password: "str | None" = None) -> None:
         self._maybe_raise("connect")
+        if not self._active:  # cyw43_wifi_join()'s first check (cyw43_ctrl.c:637-640), raised by network_cyw43.c:308-311
+            raise OSError(errno.EPERM)
         if password is not None and len(password.encode()) > 64:  # cyw43_ll_wifi_join()'s -CYW43_EINVAL
-            raise OSError(22, "EINVAL")
+            raise OSError(errno.EINVAL)
         if ssid is not None and len(ssid.encode()) > 32:  # real driver: unchecked copy past a 32-byte field
             raise AssertionError("SSID over 32 bytes reached connect() - overflows cyw43's last_ssid_joined on silicon")
         self.connect_calls.append((ssid, password))

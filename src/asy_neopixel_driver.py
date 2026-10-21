@@ -81,7 +81,7 @@ class NeopixelDriver:
         self._overlay_rgb: tuple[int, int, int] = (0, 0, 0)
         self._overlay_on = False
         self.neopixel_freq = _NEOPIXEL_FREQ_HZ
-        self.neopixel_dt = 1.0 / _NEOPIXEL_FREQ_HZ
+        self._frame_ms = 1000 // _NEOPIXEL_FREQ_HZ  # the frame period as an int: every frame and poll wait is a float-free sleep_ms()
 
     async def _overlay_loop(self) -> None:
         self._overlay_start.set()  # a (re)started task writes the current overlay at once
@@ -117,11 +117,11 @@ class NeopixelDriver:
                     for n in range(1, steps + 1):
                         self._pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
                         self._pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
+                        await asyncio.sleep_ms(self._frame_ms)
                     for n in range(steps - 1, -1, -1):
                         self._pixel[0] = (int(r_s * n), int(g_s * n), int(b_s * n))
                         self._pixel.write()
-                        await asyncio.sleep(self.neopixel_dt)
+                        await asyncio.sleep_ms(self._frame_ms)
             finally:  # also on a cancel or failure mid-ramp: the slot freed first, then the defined off state
                 self._start_signal_event.clear()
                 self._overlay_start.set()  # restore last overlay value, written after the black frame (no await here)
@@ -184,7 +184,7 @@ class NeopixelDriver:
             if time.ticks_diff(deadline, time.ticks_ms()) <= 0:
                 self.pr.evt("Internal LED command dropped: signal still busy.")
                 return False
-            await asyncio.sleep(self.neopixel_dt)
+            await asyncio.sleep_ms(self._frame_ms)
         self._rgbt = values
         self._start_signal_event.set()
         return True

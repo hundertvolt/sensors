@@ -13,7 +13,7 @@ import time
 from _async_harness import run
 from _fake_time import DrivenTime, FakeTime, Rp2Gmtime, tick
 from _fake_timer_arm import RaiseOnArm
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _generated_tree import devices
@@ -59,6 +59,15 @@ class _Holder:
 
 class _BigChip(FakeMB85RS64V):
     SIZE = 0x8000
+
+
+async def _refused_sleep_ms(ms: float) -> str:
+    # What sleep_ms() raises for ms, or "no error" once it has slept.
+    try:
+        await asyncio.sleep_ms(ms)  # a float on purpose: the device refuses it
+    except (TypeError, OverflowError) as e:
+        return f"{type(e).__name__}: {e}"
+    return "no error"
 
 
 def _times(*holders: _Holder) -> "list[object]":
@@ -176,6 +185,45 @@ def test_fast_sleep_keeps_a_bounded_record_and_counts_what_it_dropped() -> None:
         run(scenario(FastAsyncSleep.CAP + 3), 5)
     assert len(fast.slept) == FastAsyncSleep.CAP
     assert fast.dropped == 3
+
+
+def test_fast_sleep_keeps_the_form_each_wait_was_asked_in() -> None:
+    # A sleep_ms() keeps the int it was given and a sleep() keeps None there, so a wait asked in seconds never reads as
+    # one asked in milliseconds, even at the same length.
+    async def scenario() -> "tuple[list[int], list[float]]":
+        await asyncio.sleep_ms(250)
+        await asyncio.sleep(0.25)
+        await asyncio.sleep(1)
+        await asyncio.sleep_ms(0)
+        task = asyncio.current_task()
+        return fast.ms_of(task), fast.of(task)
+
+    with FastAsyncSleep() as fast:
+        asked = run(scenario(), 5)
+    assert asked == ([250, 0], [0.25, 0.25, 1, 0]), asked
+    assert [form for _task, _seconds, form in fast.slept] == [250, None, None, 0], fast.slept
+
+
+def test_fast_sleep_refuses_a_float_sleep_ms_as_the_real_one_does() -> None:
+    # The real sleep_ms() hands its delay to ticks_add(), whose mp_obj_get_int() refuses a float (extmod/asyncio/core.py:55-57,
+    # extmod/modtime.c:181, v1.29.0), and MicroPython's 2.0 == 2 would let a recorded float pass an int pin.
+    real = run(_refused_sleep_ms(2.0), 5)
+    with FastAsyncSleep() as fast:
+        stood_in = run(_refused_sleep_ms(2.0), 5)
+    assert real == stood_in == "TypeError: can't convert float to int", (real, stood_in)
+    assert fast.slept == [], fast.slept  # refused before it was recorded
+
+
+def test_check_sleep_ms_refuses_what_the_real_sleep_ms_refuses_and_takes_an_int() -> None:
+    # The one check every other stand-in runs: the real call's own exception for a float, nothing for an int or a negative.
+    try:
+        check_sleep_ms(2.0)  # type: ignore[arg-type]  # a float on purpose
+        said = "no error"
+    except TypeError as e:
+        said = f"TypeError: {e}"
+    assert said == run(_refused_sleep_ms(2.0), 5), said
+    check_sleep_ms(5)
+    check_sleep_ms(-1)  # sleep_ms() clamps a negative delay to 0
 
 
 def test_fast_sleep_restores_both_sleeps_when_the_block_raises() -> None:

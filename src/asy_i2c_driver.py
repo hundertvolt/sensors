@@ -19,8 +19,8 @@ from asy_base_classes import COUNTER_CAP, Lockable
 # Covers every read the drivers actually make (BMP3XX's 21-byte calibration block is the largest;
 # the hot paths are 1-6 bytes). A larger read still works - it falls back to the allocating call.
 _SCRATCH_SIZE = const(32)
-# @tunable i2c.probe_settle_s = 0.1
-_PROBE_SETTLE_S = const(0.1)  # the settle before and after _probe_for_device()'s zero-byte write
+# @tunable i2c.probe_settle_ms = 100
+_PROBE_SETTLE_MS = const(100)  # the settle before and after _probe_for_device()'s zero-byte write
 # @tunable i2c.clear_half_period_us = 5
 _CLEAR_HALF_PERIOD_US = const(5)  # 100 kHz clock-out, the SCD30's ceiling (Interface Description p.2)
 _CLEAR_PULSES = const(9)  # one byte plus its acknowledge: an I2C protocol constant
@@ -458,12 +458,12 @@ class I2CDevice(Lockable):
         # writeto() returning None (bus not initialized, e.g. deinit() was called on the shared
         # I2C instance) is a distinct failure from "no device" and gets its own message.
         try:
-            await asyncio.sleep(_PROBE_SETTLE_S)
+            await asyncio.sleep_ms(_PROBE_SETTLE_MS)
             acked = self.i2c.writeto(self.device_address, b"")
         except OSError:
             raise ValueError(f"no I2C device at address: {self.device_address:#x}") from None
         finally:
-            await asyncio.sleep(_PROBE_SETTLE_S)
+            await asyncio.sleep_ms(_PROBE_SETTLE_MS)
         if acked is None:
             raise RuntimeError("I2C bus not initialized")
 

@@ -7,7 +7,7 @@ import functools
 import importlib.util
 import math
 from pathlib import Path
-from typing import TypeGuard, TypeVar
+from typing import NamedTuple, TypeGuard, TypeVar, cast
 
 import tomllib
 
@@ -123,6 +123,12 @@ SETTINGS_GROUPS: "tuple[tuple[str, str, tuple[str, ...], str | None], ...]" = (
     ("system", "sysfunct", ("DebugLevel",), None),
     ("system", "ntp", ("GMTOffset", "DSTOffset"), None),
 )
+
+
+class HardConsumer(NamedTuple):
+    ms: int  # the loop time it tolerates held
+    what: str  # its name in a build error
+    relief: str  # what else frees it, appended to the fix text
 
 
 def _is_int(value: object) -> "TypeGuard[int]":
@@ -604,6 +610,28 @@ def _check_i2c_bus(model: DeviceModel, bus_name: str, table: "TomlDoc") -> None:
             fix=f"set timeout to at most {_I2C_TIMEOUT_MAX_US}",
             field="timeout",
         )
+
+
+def _check_i2c_timeout_consumer(model: DeviceModel, buses: "dict[str, TomlDoc]", src_dir: Path) -> None:
+    # Each machine.I2C transfer may run to one timeout with the loop held (ports/rp2/machine_i2c.c:125, :147, v1.29.0)
+    # and a register read makes two, so twice every I2C timeout fits the device's smallest hard consumer: a uart_link's
+    # reply slack, or the watchdog's room beside one supervisor sleep (agent, 2026-10-21).
+    tables = {name: t for name, t in buses.items() if _bus_kind(name, model.device) == "i2c"}
+    if not tables:
+        return
+    consumer = smallest_hard_consumer(model, src_dir)
+    tolerance_us = consumer.ms * 1000
+    default_us = module_int_const(src_dir, "asy_i2c_driver.py", "_DEFAULT_TIMEOUT_US")
+    for bus_name, table in tables.items():
+        timeout = _checked_int(table["timeout"]) if "timeout" in table else default_us
+        if 2 * timeout > tolerance_us:
+            raise BuildError(
+                model.device,
+                f"bus.{bus_name} (i2c) timeout {timeout} us{'' if 'timeout' in table else ' (rp2 default)'}: a register read's two transfers can hold the loop {2 * timeout} us, above the {tolerance_us} us {consumer.what}",
+                rule="bus.i2c-timeout-consumer",
+                fix=f"set timeout to at most {tolerance_us // 2}{consumer.relief}",
+                field="timeout",
+            )
 
 
 def _check_instance_bus(model: DeviceModel, spec: InstanceSpec, buses: "dict[str, TomlDoc]") -> None:
@@ -1461,6 +1489,7 @@ def build_model(toml_path: Path, src_dir: Path) -> DeviceModel:
     _check_connection_ceiling(model, src_dir)
     _check_ntp_backoff(model, src_dir)
     _check_uart_link_buses(model, buses, src_dir)
+    _check_i2c_timeout_consumer(model, buses, src_dir)  # after the link checks, so its poll values are the validated ones
     return model
 
 
@@ -1530,6 +1559,22 @@ def ntp_backoff(device_table: "TomlDoc", src_dir: Path) -> "tuple[int, int]":
     retry_s = _checked_int(device_table["ntp_retry_s"]) if "ntp_retry_s" in device_table else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_S")
     retry_max_s = _checked_int(device_table["ntp_retry_max_s"]) if "ntp_retry_max_s" in device_table else module_int_const(src_dir, "asy_ntp_client.py", "_DEFAULT_RETRY_MAX_S")
     return retry_s, retry_max_s
+
+
+def smallest_hard_consumer(model: DeviceModel, src_dir: Path) -> HardConsumer:
+    # The device's smallest hard consumer of loop time (SPECIFICATION.md F.3), the one source the I2C build rule, the twin's
+    # loop-lag scenario and the bench lag test read: the watchdog's room beside one supervisor sleep, and each uart_link's
+    # reply timeout less its two polls, its idle poll and one GC pause; the first smallest wins (agent, 2026-10-21).
+    task_check_s = module_int_const(src_dir, "asy_system_service.py", "_TASK_CHECK_TIME")
+    consumers = [HardConsumer(_WDT_TIMEOUT_MS - task_check_s * 1000, f"the watchdog's {_WDT_TIMEOUT_MS}ms less one {task_check_s}s supervisor sleep", "")]
+    reply_ms, gc_pause = (module_int_const(src_dir, "asy_uart_comm.py", n) for n in ("_DEFAULT_TIMEOUT_MS", "_GC_PAUSE_WORST_MS"))
+    buses = cast("dict[str, TomlDoc]", model.doc.get("bus", {}))
+    for spec in _uart_links(model):
+        bus = _checked_str(spec.fields["bus"])
+        poll_wait, poll_idle = (_uart_bus_value(src_dir, buses[bus], n) for n in ("poll_wait_ms", "poll_idle_ms"))
+        what = f"{spec.label}'s reply slack ({reply_ms}ms reply timeout - 2 x poll_wait_ms {poll_wait} - poll_idle_ms {poll_idle} - {gc_pause}ms GC pause)"
+        consumers.append(HardConsumer(reply_ms - (2 * poll_wait + poll_idle + gc_pause), what, f", or lower poll_idle_ms on bus.{bus}"))
+    return min(consumers, key=lambda c: c.ms)
 
 
 def webserver_init_default(src_dir: Path, name: str) -> int:

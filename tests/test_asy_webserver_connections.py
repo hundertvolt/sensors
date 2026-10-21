@@ -14,7 +14,7 @@ sys.path.insert(0, "ext")
 import microdot
 from _async_harness import run
 from _error_codes import code
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _src_const import src_int
 from _strict_json import strict_loads
 from microdot import Microdot, Request
@@ -247,7 +247,7 @@ class _Timer:
 
 
 class _DrivenClock:
-    # The file's own time double: virtual seconds that move only in _driven(), each due sleep or wait_for() bound firing
+    # The file's own time double: virtual seconds that move only in _driven(), each due sleep or wait_for_ms() bound firing
     # as they pass, so the order of two deadlines is fixed by the test, never by the host's speed or scheduling.
     def __init__(self) -> None:
         self.now = 0.0
@@ -277,11 +277,12 @@ class _DrivenClock:
         finally:
             self._drop(timer)
 
-    async def wait_for(self, aw: "Coroutine[object, object, T]", timeout: float) -> "T":
-        # asyncio.wait_for()'s contract on this clock: aw's result or exception, else aw cancelled and TimeoutError at the
+    async def wait_for_ms(self, aw: "Coroutine[object, object, T]", timeout_ms: int) -> "T":
+        # asyncio.wait_for_ms()'s contract on this clock: aw's result or exception, else aw cancelled and TimeoutError at the
         # deadline; a cancel of the caller reaches aw too, as Task.cancel() forwards it (extmod/asyncio/task.py).
+        check_sleep_ms(timeout_ms)
         task = asyncio.create_task(aw)
-        timer = self._add(timeout, task.cancel)
+        timer = self._add(timeout_ms / 1000, task.cancel)  # the module's milliseconds on this clock's seconds
         try:
             return await task
         except asyncio.CancelledError:
@@ -301,7 +302,7 @@ async def _driven(clock: _DrivenClock, coro: "Coroutine[object, object, T]") -> 
     return await task
 
 
-_ASYNCIO_NAMES = ("CancelledError", "Event", "Task", "TimeoutError", "create_task", "gather", "get_event_loop", "sleep", "sleep_ms", "start_server", "wait_for")
+_ASYNCIO_NAMES = ("CancelledError", "Event", "Task", "TimeoutError", "create_task", "gather", "get_event_loop", "sleep", "sleep_ms", "start_server", "wait_for_ms")
 
 
 class _AsyncioStandIn:
@@ -583,7 +584,7 @@ def test_a_client_gone_mid_response_counts_one_drop() -> None:
     stalled = _make_service(per_call_timeout_s=0.5, outer_cap_s=2.0)
     unreachable = _make_service()
     reset_writer = _Writer(fail_at=1, fail_with=OSError(errno.ECONNRESET))  # the head goes out, the first body piece fails
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    stand_in = _AsyncioStandIn(wait_for_ms=clock.wait_for_ms, sleep=clock.sleep)
     console = _Console()
 
     async def outcome(service: WebserverService, writer: _Writer) -> "tuple[int, tuple[int, list[tuple[int, str]]]]":
@@ -797,7 +798,7 @@ def test_expect_100_continue_is_answered_once_the_late_body_arrives() -> None:
     body = b'{"ResetErrors": true}'
     head = _head("PUT /status HTTP/1.1", "Expect: 100-continue", "Content-Type: application/json", f"Content-Length: {len(body)}")
     reader = _Reader([(0, head), (1.0, body)], sleep=clock.sleep)
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    stand_in = _AsyncioStandIn(wait_for_ms=clock.wait_for_ms, sleep=clock.sleep)
     console = _Console(exceptions=True)
     try:
         results, used = run(_driven(clock, _serve_all(service, [reader])), _RUN_LIMIT_S)
@@ -832,7 +833,7 @@ def test_a_start_that_fails_twice_then_serves() -> None:
         finally:
             console.restore()
             stand_in.uninstall()
-    delays = [seconds for _task, seconds in fast.slept]
+    delays = [seconds for _task, seconds, _ms in fast.slept]
     assert (starter.calls, delays, starter.server.waited) == (3, [_START_RETRY_S] * 2, True)
     assert [line[1] for line in console.lines] == ["Web server start failed, retrying:"] * 2, console.lines
     assert log == (1, [(_W_START_FAILED, "W")]), log  # the first failure is persisted, so a start won on a retry leaves a trace
@@ -859,7 +860,7 @@ def test_a_start_that_fails_three_times_persists_its_first_and_last_failure_and_
             raised, log = run(scenario(), _RUN_LIMIT_S)
         finally:
             stand_in.uninstall()
-    delays = [seconds for _task, seconds in fast.slept]
+    delays = [seconds for _task, seconds, _ms in fast.slept]
     assert raised is last  # re-raised, so the task ends and the supervisor's rung takes over
     assert (starter.calls, delays) == (_START_RETRIES, [_START_RETRY_S] * (_START_RETRIES - 1))
     assert log == (2, [(_W_START_FAILED, "W")]), log  # the first and the last, one slot by the newest-entry rule
@@ -996,7 +997,7 @@ def test_client_faults_print_nothing_at_debug_level_zero() -> None:
         await feeding
         return await _log(service), await service.get_dropped_count(), await _slots(service)
 
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    stand_in = _AsyncioStandIn(wait_for_ms=clock.wait_for_ms, sleep=clock.sleep)
     console = _Console(block_ms=500)
     try:
         (count, used), dropped, open_conns = run(_driven(clock, load()), _RUN_LIMIT_S)
@@ -1023,7 +1024,7 @@ def test_a_silent_client_prints_one_line_at_a_raised_level() -> None:
         await service._serve(_Reader([], eof=False, sleep=clock.sleep), _Writer())
         return await _log(service)
 
-    stand_in = _AsyncioStandIn(wait_for=clock.wait_for, sleep=clock.sleep)
+    stand_in = _AsyncioStandIn(wait_for_ms=clock.wait_for_ms, sleep=clock.sleep)
     console = _Console()
     try:
         log = run(_driven(clock, scenario()), _RUN_LIMIT_S)

@@ -8,6 +8,7 @@ import time
 
 from _async_harness import run
 from _bus_hazard_catalog import PollRoundClock
+from _fast_sleep import check_sleep_ms
 from _src_const import src_int
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from machine import _OMITTED, Pin
@@ -38,6 +39,7 @@ _REC_SDA_LOW: int = src_int("src/asy_i2c_driver.py", "_REC_SDA_LOW")
 _REC_SDA_STUCK: int = src_int("src/asy_i2c_driver.py", "_REC_SDA_STUCK")
 _REC_SCL_HELD: int = src_int("src/asy_i2c_driver.py", "_REC_SCL_HELD")
 _REC_NO_CONTROLLER: int = src_int("src/asy_i2c_driver.py", "_REC_NO_CONTROLLER")
+_PROBE_SETTLE_MS: int = src_int("src/asy_i2c_driver.py", "_PROBE_SETTLE_MS")
 _SCRATCH_SIZE: int = src_int("src/asy_i2c_driver.py", "_SCRATCH_SIZE")
 _SCL, _SDA = 1, 0  # _make_i2c()'s pins
 _HOST_STALL_MS = 60  # past rp2's 50 ms default bus timeout, the SCL-release bound of a construction without one
@@ -420,6 +422,41 @@ def test_probe_succeeds_when_device_acks() -> None:
     device = I2CDevice(i2c, 0x50)
     assert run(device.setup()) is True
     assert _fake(i2c).log == [("writeto", 0x50, b"", True)]  # one zero-length probe, rp2's soft-I2C path
+
+
+def test_probe_settles_in_whole_milliseconds_before_and_after_its_write() -> None:
+    # Each settle is one sleep_ms() of the int, never asyncio.sleep() with a float; the after-settle also runs
+    # when the address NAKs. Each entry records how many logged bus operations had gone out when it was asked for.
+    i2c = _make_i2c()
+    _fake(i2c).nak_addresses.add(0x51)
+    calls: list[tuple[str, float, int]] = []
+    real_sleep, real_sleep_ms = asyncio.sleep, asyncio.sleep_ms
+
+    async def recording_sleep(seconds: float) -> None:
+        calls.append(("sleep", seconds, len(_fake(i2c).log)))
+        await real_sleep_ms(0)
+
+    async def recording_sleep_ms(ms: int) -> None:
+        check_sleep_ms(ms)
+        calls.append(("sleep_ms", ms, len(_fake(i2c).log)))
+        await real_sleep_ms(0)
+
+    asyncio.sleep = recording_sleep  # type: ignore[assignment]  # monkeypatch, restored below
+    asyncio.sleep_ms = recording_sleep_ms  # type: ignore[assignment]  # likewise
+    try:
+        assert run(I2CDevice(i2c, 0x50).setup()) is True
+        acked = list(calls)
+        calls.clear()
+        try:
+            run(I2CDevice(i2c, 0x51).setup())
+            nak_message = ""
+        except ValueError as e:
+            nak_message = str(e)
+    finally:
+        asyncio.sleep, asyncio.sleep_ms = real_sleep, real_sleep_ms
+    assert acked == [("sleep_ms", _PROBE_SETTLE_MS, 0), ("sleep_ms", _PROBE_SETTLE_MS, 1)], acked
+    assert nak_message == f"no I2C device at address: {0x51:#x}"
+    assert calls == [("sleep_ms", _PROBE_SETTLE_MS, 1)] * 2, calls  # a NAKed probe logs no entry
 
 
 def test_probe_raises_value_error_when_device_missing() -> None:

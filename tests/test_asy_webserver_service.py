@@ -18,7 +18,7 @@ import machine
 import microtest
 from _async_harness import cancel, run, run_timed
 from _error_codes import code
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
@@ -364,30 +364,34 @@ class _ScriptedWriter(_OneStream):
 
 
 class _VirtualClock:
-    # Stands in for the module's wait_for() timers: a deadline elapses only when the test advances
+    # Stands in for the module's wait_for_ms() timers: a deadline elapses only when the test advances
     # the clock, so the order of two bounds is fixed by the test, never by host scheduling.
     def __init__(self) -> None:
-        self.now = 0.0
+        self.now = 0.0  # virtual seconds, as the scripted readers pace them
+        self.bounds_ms: list[int] = []  # every bound the module asked for, in order
 
-    async def sleep(self, t: float) -> None:
+    async def sleep_ms(self, t: int) -> None:
         # Yields rather than parking on an Event: wait_for()'s runner cancels its waiter only while
         # that waiter's task data is None, which an Event wait would set (extmod/asyncio/funcs.py).
-        deadline = self.now + t
+        check_sleep_ms(t)
+        deadline = self.now + t / 1000
         while self.now < deadline:
             await asyncio.sleep_ms(0)
 
     def timers(self) -> object:
         # Every asyncio name asy_webserver_service uses, set on an instance so none binds as a method, with
-        # wait_for() on this clock; sleep() and start_server() stay the real ones.
+        # wait_for_ms() on this clock; sleep() and start_server() stay the real ones.
         timers = type("VirtualTimers", (), {})()
         for name in ("CancelledError", "Task", "TimeoutError", "gather", "get_event_loop", "sleep", "start_server"):
             setattr(timers, name, getattr(asyncio, name))
-        timers.wait_for = self.wait_for
+        timers.wait_for_ms = self.wait_for_ms
         return timers
 
-    def wait_for(self, aw: "Coroutine[object, object, T]", timeout: float) -> "Coroutine[object, object, T]":
-        # MicroPython's wait_for() takes its sleep as a third argument (extmod/asyncio/funcs.py).
-        return asyncio.wait_for(aw, timeout, self.sleep)  # type: ignore[call-arg]
+    def wait_for_ms(self, aw: "Coroutine[object, object, T]", timeout_ms: int) -> "Coroutine[object, object, T]":
+        # MicroPython's wait_for_ms() is wait_for() with sleep_ms() as its sleep (extmod/asyncio/funcs.py).
+        check_sleep_ms(timeout_ms)
+        self.bounds_ms.append(timeout_ms)
+        return asyncio.wait_for(aw, timeout_ms, self.sleep_ms)  # type: ignore[call-arg]
 
 
 def _on_virtual_clock(clock: "_VirtualClock", scenario: "Coroutine[object, object, T]", timeout_s: float = 5.0) -> "T":
@@ -2593,7 +2597,7 @@ def test_a_read_timeout_then_a_capped_400_write_logs_the_request_cap_code() -> N
 
 def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
     timed_out = [False]
-    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), 0.05, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(_ScriptedWriter(hang_close=True), 50, _FakeLogger("X"), [False], timed_out)  # type: ignore[arg-type]
     try:
         run_timed(proxy.wait_closed(), _RUN_BOUND_S)
     except asyncio.TimeoutError:
@@ -2601,6 +2605,19 @@ def test_a_timed_out_proxy_call_sets_the_shared_timed_out_flag() -> None:
     else:
         raise AssertionError("a hanging wait_closed() was not bounded")
     assert timed_out == [True]
+
+
+def test_every_bound_is_asked_in_whole_milliseconds() -> None:
+    # The outer cap, then each stream call's and the close's own bound, all through wait_for_ms(): wait_for() sleeps
+    # its seconds through sleep(), one heap float per stream call (extmod/asyncio/core.py, funcs.py).
+    service, _app = _make_service(per_call_timeout_s=0.05, outer_cap_s=2.0)
+    clock = _VirtualClock()
+    writer = _ScriptedWriter()
+    _on_virtual_clock(clock, service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))], eof=True), writer))  # a still clock
+    bounds = clock.bounds_ms
+    assert len(bounds) >= 3 and bounds[0] == 2000 and set(bounds[1:]) == {50}, bounds
+    assert all(type(bound) is int for bound in bounds), bounds
+    assert writer.written.startswith(b"HTTP/1.0 200 OK\r\n"), writer.written
 
 
 class _ResetReader(_OneStream):
@@ -2630,7 +2647,7 @@ def test_timeout_stream_proxy_close_and_wait_closed_forward_to_the_wrapped_strea
     # F's scenarios (close() is sync; wait_closed() only ever reaches the raw writer, via
     # WebserverService._close_writer()) - still real forwards that must work correctly.
     writer = _ScriptedWriter()
-    proxy = _TimeoutStreamProxy(writer, 1.0, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
+    proxy = _TimeoutStreamProxy(writer, 1000, _FakeLogger("X"), [False], [False])  # type: ignore[arg-type]
     proxy.close()
     assert writer.close_called is True
     run_timed(proxy.wait_closed(), _RUN_BOUND_S)
@@ -3075,7 +3092,7 @@ class _ChunkRecordingWriter(_ScriptedWriter):
 def _get_on_the_wire(service: "WebserverService", path: str) -> "tuple[str, dict[str, str], list[bytes]]":
     # These tests pin write bounds, not timeouts: _make_service()'s 0.5s outer cap cut a 37 KB body
     # short on a loaded CI runner. 4s stays under run_timed()'s 5s, so a hang still fails the test.
-    service._per_call_timeout_s, service._outer_cap_s = 2.0, 4.0
+    service._per_call_timeout_ms, service._outer_cap_ms = 2000, 4000
     writer = _ChunkRecordingWriter()
     run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", path))], eof=True), writer), timeout_s=5.0)
     head = writer.chunks[0]  # the whole header block is one write (_TimeoutStreamProxy.awrite)
@@ -3456,7 +3473,7 @@ def test_h2_stream_response_is_a_plain_iterator_with_explicit_json_content_type(
 def test_h2_stream_yields_one_piece_per_top_level_section_not_one_precomputed_buffer() -> None:
     # Proof of the memory property this was built for: the body is genuinely 5 separate pieces (one
     # per top-level key), never one string for the whole aggregate - but also never one piece per
-    # punctuation character, measured to cost ~53% throughput via per-write asyncio.wait_for().
+    # punctuation character, measured to cost ~53% throughput via the per-write timeout wrapper.
     _service, app = _make_service(
         status_sources={"networking": _const_source({"A": 1})},
         maintenance_sensors=[("SGP40", _const_source({"BackupTS": 1}))],

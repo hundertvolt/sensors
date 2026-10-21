@@ -69,12 +69,12 @@ _TEMP_MAX_C = const(70.0)
 _HUM_MIN_PCT = const(0.0)
 _HUM_MAX_PCT = const(100.0)
 # Waits between a command and its result, after a soft reset, and the start-trigger timer's period.
-# @tunable scd30.cmd_response_wait_s = 0.05
-_CMD_RESPONSE_WAIT_S = const(0.05)
-# @tunable scd30.asc_enable_wait_s = 0.01
-_ASC_ENABLE_WAIT_S = const(0.01)
-# @tunable scd30.soft_reset_wait_s = 2.5
-_SOFT_RESET_WAIT_S = const(2.5)
+# @tunable scd30.cmd_response_wait_ms = 50
+_CMD_RESPONSE_WAIT_MS = const(50)
+# @tunable scd30.asc_enable_wait_ms = 10
+_ASC_ENABLE_WAIT_MS = const(10)
+# @tunable scd30.soft_reset_wait_ms = 2500
+_SOFT_RESET_WAIT_MS = const(2500)
 # @tunable scd30.start_trigger_period_ms = 500
 _START_TRIGGER_PERIOD_MS = const(500)
 
@@ -728,7 +728,7 @@ class SCD30_I2C:
             raise OSError("I2C bus not initialized")
         # Separate readinto: the SCD30 has no repeated-start, so this stops the bus first; the
         # delay clears the datasheet's >3ms minimum (Interface Description 1.4.4).
-        await asyncio.sleep(_CMD_RESPONSE_WAIT_S)
+        await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)
         if not await i2c.readinto(self._buffer, end=3):
             raise OSError("I2C bus not initialized")  # before the CRC check: a stale buffer would pass it
         if await self.crc.check_from(self._buffer, 3) != _WORD_BYTES:
@@ -757,7 +757,7 @@ class SCD30_I2C:
             end_byte = 5
         if not await i2c.write(self._buffer, end=end_byte):
             raise OSError("I2C bus not initialized")
-        await asyncio.sleep(_CMD_RESPONSE_WAIT_S)  # delay for response
+        await asyncio.sleep_ms(_CMD_RESPONSE_WAIT_MS)  # delay for response
 
     async def get_CO2(self) -> float | None:
         # Pure cache read from the last read_measurement() call, no I2C of its own - see read_measurement()'s
@@ -836,7 +836,7 @@ class SCD30_I2C:
         # NVM-persisted - survives reset() and power cycles.
         await self._send_command(_CMD_AUTOMATIC_SELF_CALIBRATION, enabled)
         if enabled:
-            await asyncio.sleep(_ASC_ENABLE_WAIT_S)
+            await asyncio.sleep_ms(_ASC_ENABLE_WAIT_MS)
 
     async def set_temperature_offset(self, offset: float) -> None:
         # NVM-persisted - survives reset() and power cycles. NaN rejected explicitly first - see
@@ -904,7 +904,7 @@ class SCD30_I2C:
         await self._send_command(_CMD_SOFT_RESET)
         # Boot-up is documented as <2s (Interface Description 1.1); wait the full bound since this
         # also runs on every failure-triggered restart, not just cold boot.
-        await asyncio.sleep(_SOFT_RESET_WAIT_S)
+        await asyncio.sleep_ms(_SOFT_RESET_WAIT_MS)
 
     async def setup(self) -> bool:
         async with self._i2c_scd30 as scd30, scd30.i2c_device as i2c:

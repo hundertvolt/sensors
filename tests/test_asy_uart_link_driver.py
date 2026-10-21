@@ -1,4 +1,4 @@
-"""UartLinkExerciser: the bench exerciser's transfers, failure counts and banner across a real UART_Comm pair in both
+"""UARTLinkDriver: the bench exerciser's transfers, failure counts and banner across a real UART_Comm pair in both
 CRC modes, its task starters and its FRAM-backed log."""
 
 import asyncio

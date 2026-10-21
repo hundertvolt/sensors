@@ -37,10 +37,10 @@ _WRN_DNS_RECV_FAILED = const(42)
 # Backoff for a persistently-failing recvfrom() that returns (None, None) without raising - e.g. a
 # bind() that never succeeded. This path once looped at zero delay, measured at ~5 warning lines a
 # second in a real run (Part C.9's cascading-recovery-storm convention).
-# @tunable dns_server.recv_backoff_initial_s = 0.5
-_RECV_FAIL_BACKOFF_INITIAL_S = const(0.5)
-# @tunable dns_server.recv_backoff_max_s = 5.0
-_RECV_FAIL_BACKOFF_MAX_S = const(5.0)
+# @tunable dns_server.recv_backoff_initial_ms = 500
+_RECV_FAIL_BACKOFF_INITIAL_MS = const(500)
+# @tunable dns_server.recv_backoff_max_ms = 5000
+_RECV_FAIL_BACKOFF_MAX_MS = const(5000)
 # @tunable dns_server.recv_backoff_mult = 2
 _RECV_FAIL_BACKOFF_MULTIPLIER = const(2)
 # @tunable dns_server.error_retry_wait_s = 3
@@ -82,7 +82,7 @@ class CaptiveDNS:
             await self.pr.err_s("Invalid server_ip/netmask, not starting:", server_ip, netmask, errno=_ERR_BAD_ARG)
             return
         network = server_int & netmask_int
-        recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S
+        recv_fail_backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS
         try:
             while True:
                 try:
@@ -91,7 +91,7 @@ class CaptiveDNS:
                     # every queued one is read before _poll() sleeps, so a burst loses only what exceeds 4 per idle poll.
                     data, addr = await self._udps.recvfrom(DNS_UDP_MAX)
                     if data is not None and addr is not None:
-                        recv_fail_backoff_s = _RECV_FAIL_BACKOFF_INITIAL_S  # socket is receiving fine again
+                        recv_fail_backoff_ms = _RECV_FAIL_BACKOFF_INITIAL_MS  # socket is receiving fine again
                         # One yield per datagram: while a flood keeps the socket ready nothing below this loop yields (on rp2
                         # lwIP refills the queue from PendSV while Python runs), so without it no other task would get a turn.
                         await asyncio.sleep(0)
@@ -125,9 +125,9 @@ class CaptiveDNS:
                             await self.pr.err_s("Captive DNS socket could not bind port 53.", errno=_ERR_INIT)
                         else:
                             await self.pr.wrn_s("Receiving a DNS request failed.", wrnno=_WRN_DNS_RECV_FAILED)
-                        await asyncio.sleep(recv_fail_backoff_s)
-                        recv_fail_backoff_s = min(
-                            recv_fail_backoff_s * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_S,
+                        await asyncio.sleep_ms(recv_fail_backoff_ms)
+                        recv_fail_backoff_ms = min(
+                            recv_fail_backoff_ms * _RECV_FAIL_BACKOFF_MULTIPLIER, _RECV_FAIL_BACKOFF_MAX_MS,
                         )
 
                 except Exception as e:

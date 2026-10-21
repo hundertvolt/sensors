@@ -1456,7 +1456,10 @@ class Timer:
         hard: bool = False,
     ) -> None:
         global _ALARMS_FREE
-        self.deinit()  # cancels a running schedule first, returning its alarm
+        self.deinit()  # cancels a running schedule first, returning its alarm, as rp2's init() does (machine_timer.c:143-146)
+        for value in (mode, period, tick_hz):  # then MP_ARG_INT on rp2 (:77-80): a float raises with nothing armed
+            if not isinstance(value, int):
+                raise TypeError("can't convert " + type(value).__name__ + " to int")
         self.mode = mode
         self.period = period
         self.callback = callback

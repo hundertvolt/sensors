@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from typing import Protocol
 
-    # The stubs' only name for a ticks_ms() value is private (_mpy_shed); _next_sleep_s()'s t0 is one.
+    # The stubs' only name for a ticks_ms() value is private (_mpy_shed); _next_sleep_ms()'s t0 is one.
     # Removal trigger: SPECIFICATION.md B.15.
     from _mpy_shed.time_mp import _TicksMs
 
@@ -59,10 +59,10 @@ _MAX_OVERRIDE_TIME = const(3600)
 _NAME = const("NOTIFY")
 # @tunable notify.loop_tick_s = 1
 _LOOP_TICK_S = const(1)  # _pause_loop()'s round: how late a measured pause can end
-# @tunable notify.min_sleep_s = 0.1
-_MIN_SLEEP_S = const(0.1)  # floor of _monitor_loop()'s sleep to its next cycle
-# @tunable notify.cfg_fail_interval_s = 600.0
-_CFG_FAIL_INTERVAL_S = const(600.0)  # cycle interval while the own configuration cannot be read
+# @tunable notify.min_sleep_ms = 100
+_MIN_SLEEP_MS = const(100)  # floor of _monitor_loop()'s sleep to its next cycle
+# @tunable notify.cfg_fail_interval_s = 600
+_CFG_FAIL_INTERVAL_S = const(600)  # cycle interval while the own configuration cannot be read
 # Three times the longest configurable producer interval (BMP3XX SampleInterval 3600 s): a slow
 # producer is never cut off (agent, 2026-10-06).
 # @tunable notify.sample_max_age_s = 10800
@@ -264,7 +264,7 @@ class NotificationService(SensorReaderConfig):
                 or len(cfg_float) != len(_VAL_FLOAT_FIELDS)
                 or len(cfg_bool) != 1
             ):
-                interv = _CFG_FAIL_INTERVAL_S
+                interv: float = _CFG_FAIL_INTERVAL_S  # an int here, FlashInterval's float on a good read
                 if not cfg_unreadable:  # one entry and one console line per episode: a good read or a task restart ends it
                     cfg_unreadable = True
                     await self.pr.wrn_s("Error reading own configuration!", wrnno=_WRN_CFG_READ)
@@ -293,15 +293,14 @@ class NotificationService(SensorReaderConfig):
                                 elif triggered:
                                     any_triggered = True
                                     await self._trigger_signal(notif, flash_bri, flash_dur)
-                                    await asyncio.sleep(2 * flash_dur)
+                                    await asyncio.sleep_ms(round(flash_dur * 2000))
                 await self._store_notif_data(any_triggered=any_triggered, state=state)
-            await asyncio.sleep(self._next_sleep_s(interv, t0))
+            await asyncio.sleep_ms(self._next_sleep_ms(interv, t0))
 
-    def _next_sleep_s(self, interv: float, t0: "_TicksMs") -> float:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
+    def _next_sleep_ms(self, interv: float, t0: "_TicksMs") -> int:  # t0: an opaque ticks_ms() value - only ever compared via time.ticks_diff()
         # Isolated from _monitor_loop() specifically so it's directly unit-testable without needing
         # a real elapsed time close to FlashInterval's own 60.0s schema floor to observe the floor kick in.
-        rem_interv = interv - (time.ticks_diff(time.ticks_ms(), t0) * 0.001)  # run duration so far in sec
-        return max(rem_interv, _MIN_SLEEP_S)
+        return max(round(interv * 1000) - time.ticks_diff(time.ticks_ms(), t0), _MIN_SLEEP_MS)
 
     async def _pause_loop(self) -> None:
         self._auto_active = True

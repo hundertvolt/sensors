@@ -1,0 +1,27 @@
+FAIL test_a_notification_dropped_by_a_busy_led_persists_one_warning:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx6/bites/np_new/test_notification_neopixel_integration.py", line 218, in test_a_notification_dropped_by_a_busy_led_persists_one_warning
+AssertionError: 
+PASS test_a_service_on_the_default_sink_completes_a_cycle_silently
+FAIL test_led_signal_during_a_notification_ramp_is_refused_at_once:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx6/bites/np_new/test_notification_neopixel_integration.py", line 172, in test_led_signal_during_a_notification_ramp_is_refused_at_once
+AssertionError: 
+FAIL test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx6/bites/np_new/test_notification_neopixel_integration.py", line 153, in test_multiple_simultaneous_crossings_produce_sequential_correctly_colored_ramps
+AssertionError: 
+FAIL test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx6/bites/np_new/test_notification_neopixel_integration.py", line 130, in test_real_threshold_crossing_produces_an_actual_ramp_with_scaled_color
+AssertionError: 
+FAIL test_the_window_check_reads_a_real_ntp_clock:
+Traceback (most recent call last):
+  File "tests/microtest.py", line 39, in _call
+  File "/tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/u31/fx6/bites/np_new/test_notification_neopixel_integration.py", line 249, in test_the_window_check_reads_a_real_ntp_clock
+AssertionError: 
+1/6 passed, 5 failed, 0 skipped

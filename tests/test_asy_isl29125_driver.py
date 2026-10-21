@@ -10,7 +10,7 @@ from _async_harness import cancel, run
 from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _src_const import src_float, src_int, src_strs
 from _ticks30 import TICKS_PERIOD, Ticks30Time
 from _tmp_scratch import TmpScratch
@@ -720,6 +720,7 @@ def test_a_passed_settle_deadline_never_ages_past_the_tick_horizon() -> None:
     real_sleep_ms = asyncio.sleep_ms
 
     async def recording(ms: int) -> None:
+        check_sleep_ms(ms)
         slept.append(ms)
         await real_sleep_ms(0)
 
@@ -1579,6 +1580,7 @@ def test_no_sample_is_reported_during_the_settle_window() -> None:
     real_sleep_ms = asyncio.sleep_ms
 
     async def recording(ms: int) -> None:
+        check_sleep_ms(ms)
         slept.append(ms)
         await real_sleep_ms(0)
 
@@ -1600,7 +1602,8 @@ def test_the_settle_wait_is_bounded_against_a_stream_of_config_writes() -> None:
     rounds = []
     real_sleep_ms = asyncio.sleep_ms
 
-    async def extending(_ms: int) -> None:
+    async def extending(ms: int) -> None:
+        check_sleep_ms(ms)
         rounds.append(1)
         run_extend = reader._isl
         run_extend._settle_until_ms = __import__("time").ticks_add(__import__("time").ticks_ms(), 500)
@@ -3331,7 +3334,8 @@ def test_an_unsettled_cycle_is_no_failure() -> None:
     keep_extending = [True]
     real_sleep_ms = asyncio.sleep_ms
 
-    async def extending(_ms: int) -> None:
+    async def extending(ms: int) -> None:
+        check_sleep_ms(ms)
         if keep_extending[0]:
             reader._isl._settle_until_ms = time.ticks_add(time.ticks_ms(), 500)
         await real_sleep_ms(0)

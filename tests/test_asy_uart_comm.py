@@ -10,6 +10,7 @@ import time
 
 from _async_harness import run
 from _error_codes import code
+from _fast_sleep import check_sleep_ms
 from _fram_builders import make_fram_manager
 from _recording_print import record_prints
 from _src_const import src_int
@@ -318,6 +319,7 @@ class _SleepRecorder:
         asy_uart_comm.asyncio = self._inner
 
     def sleep_ms(self, ms: int) -> "Any":
+        check_sleep_ms(ms)
         self.delays.append(ms)
         return self._inner.sleep_ms(min(ms, self.cap_ms))
 

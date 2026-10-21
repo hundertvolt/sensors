@@ -116,6 +116,19 @@ def check_spi_bit_order(m: "ModuleType") -> None:
     assert m.SPI(1, sck=m.Pin(10), mosi=m.Pin(11), miso=m.Pin(12)).firstbit == m.SPI.MSB
 
 
+def check_timer_refuses_a_float_period(m: "ModuleType") -> None:
+    # ports/rp2/machine_timer.c:77-80 parse mode, period and tick_hz as MP_ARG_INT: a float raises TypeError there.
+    timer = m.Timer(-1)
+    assert isinstance(_raised(lambda: timer.init(period=1000.0, mode=m.Timer.ONE_SHOT, callback=None)), TypeError)
+    assert isinstance(_raised(lambda: timer.init(period=1000, mode=m.Timer.ONE_SHOT, tick_hz=1000.0, callback=None)), TypeError)
+    timer.init(period=1000, mode=m.Timer.ONE_SHOT, callback=None)
+    fired: list[object] = []
+    timer.init(period=1000, mode=m.Timer.PERIODIC, callback=fired.append)
+    assert isinstance(_raised(lambda: timer.init(period=1000.0, mode=m.Timer.PERIODIC, callback=fired.append)), TypeError)
+    assert timer.callback is None, "a refused re-init left the old schedule armed: init() cancels it first (:143-146)"
+    timer.deinit()
+
+
 def check_wdt_feed_times(m: "ModuleType") -> None:
     # Each feed() is counted and its ticks_ms() kept, oldest first, so a test reads the gaps between feeds.
     wdt = m.WDT(timeout=8000)
@@ -144,6 +157,7 @@ ALL_CHECKS = (
     check_reset_never_returns,
     check_scan_never_raises,
     check_spi_bit_order,
+    check_timer_refuses_a_float_period,
     check_wdt_feed_times,
     check_wdt_timeout_bounds,
 )

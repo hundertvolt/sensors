@@ -121,14 +121,15 @@ def test_parse_args_takes_the_config_dir_the_online_ntp_switch_and_in_memory_sta
 
 
 def test_every_test_only_flag_is_off_by_default_and_parses_when_named() -> None:
-    assert runner.TestFlags(False, None, None, None, None, False, False, None, False) == runner._NO_TEST_FLAGS
+    assert runner.TestFlags(False, None, None, None, None, False, False, None, False, None, None) == runner._NO_TEST_FLAGS
     config = _parse(
         "--test-hold-closing-slot", "--test-stall-loop-ms", "40", "--test-conn-status-interval-ms", "50",
         "--test-fault-status-interval-ms", "60", "--test-shutdown-hang", "S5erase", "--test-flash-stall-max", "--test-uart-over-cap",
-        "--test-hold-system-entry", "25", "--test-kbd-traceback",
+        "--test-hold-system-entry", "25", "--test-kbd-traceback", "--test-loop-lag-ms", "10", "--test-drop-timer-fire", "sequencer",
     )
-    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True)
-    for flags in (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0")):
+    assert config.instrumentation == runner.TestFlags(True, 40, 50, 60, "S5erase", True, True, 25, True, 10, "sequencer")
+    refused = (("--test-shutdown-hang", "S7"), ("--test-stall-loop-ms", "0"), ("--test-conn-status-interval-ms", "x"), ("--test-hold-system-entry", "0"), ("--test-loop-lag-ms", "0"), ("--test-drop-timer-fire", "ntp"))
+    for flags in refused:
         _refused(_parse, *flags)
 
 
@@ -507,10 +508,106 @@ def test_the_kbd_traceback_flag_catches_the_interrupt_object_by_a_sigint_and_pri
     assert said[-1] == "KBD_TRACEBACK" and "KeyboardInterrupt" in text and "in _test_kbd_traceback" in text, (said, text)
 
 
+class _Holder:
+    # The booted module's and its system service's two attributes the drop flag reads.
+    pass
+
+
+def test_the_drop_flag_loses_that_one_shots_next_fire_alone_and_every_timer_runs_again_after_it() -> None:
+    said: list[str] = []
+    fired: list[int] = []
+    ticks: list[int] = []
+    sysfunct, module = _Holder(), _Holder()
+    sysfunct._reset_timer, sysfunct._sequencer_timer = machine.Timer(), machine.Timer()  # type: ignore[attr-defined]
+    module.sysfunct = sysfunct  # type: ignore[attr-defined]
+
+    async def drive() -> int:
+        cleared = asyncio.create_task(runner._test_drop_timer_fire(cast("ModuleType", module), "sequencer", said.append))
+        ticker = machine.Timer(period=3, callback=lambda _t: ticks.append(1))
+        sysfunct._sequencer_timer.init(period=15, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(1))  # type: ignore[attr-defined]
+        await asyncio.wait_for_ms(cleared, 2000)
+        during = len(ticks)
+        sysfunct._sequencer_timer.init(period=5, mode=machine.Timer.ONE_SHOT, callback=lambda _t: fired.append(2))  # type: ignore[attr-defined]
+        await asyncio.sleep_ms(20)
+        ticker.deinit()
+        await asyncio.sleep_ms(0)  # the deinit's cancel lands before the run ends
+        return len(ticks) - during
+
+    after = run_timed(drive(), _RUN_BOUND_S)
+    assert said[0] == "DROP_ARMED sequencer" and said[1].startswith("FIRE_DROPPED sequencer callbacks="), said
+    assert int(said[1].split("=")[1]) >= 1 and machine.Timer.drop_next_soft_callbacks == 0, (said, machine.Timer.drop_next_soft_callbacks)
+    assert fired == [2] and after >= 2, (fired, after)  # the armed fire lost, the next arm's kept, the ticker back
+
+
 def test_the_flash_stall_flag_puts_every_flush_at_its_datasheet_maximum() -> None:
     assert _flash_stall.use_max is False
     runner._test_flash_stall_max()
     assert _flash_stall.use_max is True  # machine.reset_test_state() puts it back after this test
+
+
+def test_the_loop_lag_flag_prints_each_windows_maximum_p99_and_samples() -> None:
+    said: list[str] = []
+    report = runner._LOOP_LAG_REPORT_MS
+    runner._LOOP_LAG_REPORT_MS = 20
+
+    async def drive() -> None:
+        lag = asyncio.create_task(runner._test_loop_lag(5, said.append))
+        await asyncio.sleep_ms(5)
+        time.sleep_ms(20)  # one synchronous stall of the whole loop
+        await asyncio.sleep_ms(50)
+        lag.cancel()
+        try:
+            await lag
+        except asyncio.CancelledError:
+            pass
+
+    try:
+        run_timed(drive(), _RUN_BOUND_S)
+    finally:
+        runner._LOOP_LAG_REPORT_MS = report
+    windows = [dict(part.split("=") for part in line.split()[1:]) for line in said if line.startswith("LOOP_LAG ")]
+    assert len(windows) >= 2 and len(windows) == len(said), said
+    assert max(int(w["max_us"]) for w in windows) >= 15000, said  # the stall, past the 5 ms sleep it delayed
+    assert all(0 <= int(w["p99_us"]) <= int(w["max_us"]) and int(w["samples"]) > 0 for w in windows), said
+
+
+def test_each_loop_lag_line_carries_every_links_transfers_so_far() -> None:
+    # The count each line names is the link's own at that line, so a load window's transfers are two lines' difference.
+    class Link:
+        _transfers = 0
+        _failures = 0
+
+    link = Link()
+    said: list[str] = []
+    report = runner._LOOP_LAG_REPORT_MS
+    runner._LOOP_LAG_REPORT_MS = 10
+
+    async def drive() -> None:
+        lag = asyncio.create_task(runner._test_loop_lag(2, said.append, [("uart_link_init", link, None)]))
+        for _ in range(3):
+            await asyncio.sleep_ms(12)
+            link._transfers += 1
+        lag.cancel()
+        try:
+            await lag
+        except asyncio.CancelledError:
+            pass
+
+    try:
+        run_timed(drive(), _RUN_BOUND_S)
+    finally:
+        runner._LOOP_LAG_REPORT_MS = report
+    counts = [int(dict(part.split("=") for part in line.split()[1:])["uart_link_init"]) for line in said]
+    assert len(counts) >= 2 and counts == sorted(counts) and counts[0] < counts[-1] <= 3, said
+
+
+def test_the_lag_p99_is_its_bins_upper_edge_never_past_the_maximum() -> None:
+    bins = [0 for _ in range(runner._LOOP_LAG_BUCKETS)]
+    bins[0], bins[1], bins[5] = 98, 1, 1
+    assert runner._test_p99_us(bins, 100, 5400) == 2000
+    assert runner._test_p99_us(bins, 100, 1500) == 1500
+    bins[1], bins[-1] = 0, 2
+    assert runner._test_p99_us(bins, 101, 90000) == 90000  # past the last closed bin: the maximum itself
 
 
 class _OverCapComm:

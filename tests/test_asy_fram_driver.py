@@ -5,6 +5,7 @@ import asyncio
 
 from _async_harness import run
 from _error_codes import code
+from _fast_sleep import check_sleep_ms
 from _fram_chip_fake import FakeMB85RS2MTA, FakeMB85RS64V
 from _src_const import src_const
 
@@ -1016,6 +1017,7 @@ class _RecordingWaitFor:
         return getattr(asyncio, name)
 
     def wait_for_ms(self, aw: "Coroutine[object, object, T]", timeout_ms: int) -> "Coroutine[object, object, T]":
+        check_sleep_ms(timeout_ms)
         self.timeouts_ms.append(timeout_ms)
         return asyncio.wait_for_ms(aw, 1)
 

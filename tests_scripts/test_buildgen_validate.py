@@ -24,7 +24,7 @@ from buildgen.driver_registry import resolve_driver
 from buildgen.errors import BuildError, BuildInternalError
 from buildgen.generate import generate_device
 from buildgen.graph import build_construction_order
-from buildgen.validate import build_model, device_max_connections, device_max_connections_by_name, module_float_const, module_str_const, webserver_init_default
+from buildgen.validate import HardConsumer, build_model, device_max_connections, device_max_connections_by_name, module_float_const, module_str_const, webserver_init_default
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -710,6 +710,64 @@ def test_every_real_device_meets_the_i2c_timeout_bound_and_budget(src_dir: Path,
     assert isinstance(buses, dict)
     timeouts = [table.get("timeout", 0) for name, table in buses.items() if name.startswith("i2c") and isinstance(table, dict)]
     assert all(isinstance(t, int) and t <= validate_mod._I2C_TIMEOUT_MAX_US for t in timeouts), timeouts
+
+
+def _bmp3xx_alone_on_i2c0(doc: "TomlDoc") -> "TomlDoc":
+    # i2c0 carries only a bmp3xx, which states no timeout floor, so the bus timeout may sit at any bound.
+    doc["instance"] = [i for i in instances(doc) if i["driver"] not in ("scd30", "sgp40", "notification")]
+    array_at(doc, "instance").append({"driver": "bmp3xx", "name_ext": "", "bus": "i2c0"})
+    return doc
+
+
+def test_an_i2c_timeout_past_a_uart_links_reply_slack_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # 1000ms reply timeout - (2 x 2 + 900 + 21) = 75ms of slack on the responder, below a register read's two 200ms transfers.
+    doc = with_uart_pair(base_doc())
+    table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+    with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 200000 us: .*hold the loop 400000 us, above the 75000 us uart_link_resp's reply slack") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.field, info.value.fix) == ("bus.i2c-timeout-consumer", "timeout", "set timeout to at most 37500, or lower poll_idle_ms on bus.uart1")
+
+
+def test_an_i2c_timeout_at_a_uart_links_bound_builds_and_one_above_is_rejected(tmp_path: Path, src_dir: Path) -> None:
+    # 75ms of the responder's reply slack gives each of a register read's two transfers 37500 us.
+    doc = _bmp3xx_alone_on_i2c0(with_uart_pair(base_doc()))
+    table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+    table_at(doc, "bus", "i2c0")["timeout"] = 37500
+    _build(tmp_path, src_dir, doc)
+    table_at(doc, "bus", "i2c0")["timeout"] = 37501
+    with pytest.raises(BuildError, match=r"timeout 37501 us: .*above the 75000 us uart_link_resp's reply slack") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.rule == "bus.i2c-timeout-consumer"
+
+
+def test_an_i2c_timeout_at_the_watchdogs_bound_builds_and_one_above_is_rejected(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # No uart_link: the consumer is the watchdog's room beside one 2s supervisor sleep, 75ms under a 2075ms watchdog.
+    monkeypatch.setattr(validate_mod, "_WDT_TIMEOUT_MS", 2075)
+    doc = _bmp3xx_alone_on_i2c0(base_doc())
+    table_at(doc, "bus", "i2c0")["timeout"] = 37500
+    _build(tmp_path, src_dir, doc)
+    table_at(doc, "bus", "i2c0")["timeout"] = 37501
+    with pytest.raises(BuildError, match=r"timeout 37501 us: .*above the 75000 us the watchdog's 2075ms less one 2s supervisor sleep") as info:
+        _build(tmp_path, src_dir, doc)
+    assert (info.value.rule, info.value.fix) == ("bus.i2c-timeout-consumer", "set timeout to at most 37500")
+
+
+def test_an_unstated_i2c_timeout_is_held_at_the_rp2_default(tmp_path: Path, src_dir: Path) -> None:
+    # No timeout stated: rp2's own 50000 us default is what boots (asy_i2c_driver's _DEFAULT_TIMEOUT_US), above a 37500 us bound.
+    doc = _bmp3xx_alone_on_i2c0(with_uart_pair(base_doc()))
+    table_at(doc, "bus", "uart1")["poll_idle_ms"] = 900
+    del table_at(doc, "bus", "i2c0")["timeout"]
+    with pytest.raises(BuildError, match=r"bus\.i2c0 \(i2c\) timeout 50000 us \(rp2 default\): ") as info:
+        _build(tmp_path, src_dir, doc)
+    assert info.value.rule == "bus.i2c-timeout-consumer"
+
+
+def test_the_build_rule_reads_the_one_smallest_hard_consumer_export(tmp_path: Path, src_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The rule takes its bound from smallest_hard_consumer(), the export the twin scenario and the bench lag test read too.
+    monkeypatch.setattr(validate_mod, "smallest_hard_consumer", lambda _model, _src: HardConsumer(1, "a planted consumer", ", or a planted relief"))
+    with pytest.raises(BuildError, match=r"timeout 200000 us: .*above the 1000 us a planted consumer - fix: ") as info:
+        _build(tmp_path, src_dir, base_doc())
+    assert (info.value.rule, info.value.fix) == ("bus.i2c-timeout-consumer", "set timeout to at most 500, or a planted relief")
 
 
 @pytest.mark.parametrize("device", DEVICE_NAMES)
@@ -1791,10 +1849,17 @@ def test_instance_entry_without_a_driver_key(tmp_path: Path, src_dir: Path) -> N
 # ---------------------------------------------------------------------------
 
 
+def _without_i2c(doc: "TomlDoc") -> "TomlDoc":
+    # No I2C bus: a link whose polls fill its whole reply timeout leaves no slack for an I2C transfer.
+    doc["instance"] = [i for i in instances(doc) if i["driver"] not in ("scd30", "sgp40", "notification")]
+    del table_at(doc, "bus")["i2c0"]
+    return doc
+
+
 def test_a_uart_link_whose_polls_outlast_its_reply_timeout_is_rejected(tmp_path: Path, src_dir: Path) -> None:
     # 2 x 2 + poll_idle_ms + 21ms GC pause against asy_uart_comm's 1000ms default timeout: 975 is the
     # last idle poll that fits, 976 the first UARTComm.setup() refuses with UART_TIMEOUT_PARAM.
-    doc = with_uart_pair(base_doc())
+    doc = _without_i2c(with_uart_pair(base_doc()))
     table_at(doc, "bus", "uart1")["poll_idle_ms"] = 975
     _build(tmp_path, src_dir, doc)
     table_at(doc, "bus", "uart1")["poll_idle_ms"] = 976
@@ -1841,7 +1906,7 @@ def test_uart_link_bus_check_falls_back_to_the_driver_defaults(tmp_path: Path, s
 def test_an_unstated_poll_idle_ms_is_read_from_the_driver_source(tmp_path: Path, src_dir: Path) -> None:
     # An unstated poll_idle_ms is UART's own default, read from source: 2 x 2 + 975 + 21 = 1000 fits
     # asy_uart_comm's 1000ms default timeout, 976 does not.
-    doc = with_uart_pair(base_doc())
+    doc = _without_i2c(with_uart_pair(base_doc()))
     del table_at(doc, "bus", "uart1")["poll_idle_ms"]
     staged = _staged_src(tmp_path, src_dir, "asy_uart_driver.py", "poll_idle_ms: int = 50,", "poll_idle_ms: int = 975,")
     _build(tmp_path, staged, doc)

@@ -913,6 +913,22 @@ def test_arm_tick_timer_reports_a_failed_arm_with_one_line() -> None:
     assert "simulated allocation failure" in recorder.text()
 
 
+def test_arm_tick_timer_quiet_drops_only_the_alarm_pool_line() -> None:
+    # A caller's re-arm inside one failed episode: the refusal was reported at the episode's first arm, while every
+    # allocation failure still prints, the line the memory gates read. The result is unchanged either way.
+    for exc, lines in ((OSError, 0), (MemoryError, 1)):
+        with RaiseOnArm(exc), record_prints() as recorder:
+            timer = machine.Timer()
+            pr = PrintLogHistory(level=5, name="T")
+            assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), pr, "test", quiet=True) is False
+        assert timer.period == -1  # never armed
+        assert len(recorder.lines) == lines, (exc, recorder.lines)
+    with record_prints() as recorder:
+        timer = machine.Timer()
+        assert arm_tick_timer(timer, asyncio.ThreadSafeFlag(), PrintLogHistory(level=5, name="T"), "test", quiet=True) is True
+    assert (timer.period, recorder.lines) == (1000, [])
+
+
 def test_utc_now_is_none_until_the_clock_is_marked_valid() -> None:
     fake = _with_fake_ticks()
     try:

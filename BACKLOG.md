@@ -304,7 +304,27 @@ gates, traps).
   watchdog feed, taken in a hardware session (zero wear): the stretch from `WDT()` to the first setup
   feed, and from the last setup feed to the supervisor's first, each expected well inside the 8,000 ms
   timeout. It replaces the estimates in Part N `boot.unfed_stretch_1_ms`/`boot.unfed_stretch_2_ms`
-  (SPECIFICATION.md) and checks the L1 boot-stretch scenario's sleep sum.
+  (SPECIFICATION.md) and checks the L1 boot-stretch scenario's sleep sum. The same log gives each
+  setup unit's stretch between two feeds, against Part N `boot.setup_unit_stretch_ms` (79-91 ms per
+  unit, dev, 2026-09-25); one more boot with a damaged config file adds that unit's repair write
+  (`asy_config_manager.py`'s one write per boot), so it spends one flash write and runs only behind
+  `--allow-persistence-write`.
+- **The on-target no-yield stretches and a flash write's loop gap** — on `dev`,
+  `flash/test_memory_stress.py`'s `test_routine_no_yield_stretches_stay_under_the_gc_term` (the
+  default flash tier, zero wear) and `test_flash_write_loop_gap_is_recorded` (one scratch flash
+  write, `--allow-persistence-write`). Expected: the collection, VOC-step and CRC-gap figures under
+  the 21 ms GC term (Part N `uart.gc_pause_worst_ms`), and the flash calls' spans recorded. The
+  figures go into SPECIFICATION.md Part F.3's `stall.gc`, `stall.voc_process`, `stall.crc_byte` and
+  `stall.flash_program` rows. Twin row: none (silicon-only figures).
+- **Loop lag under combined load on the bench** — on `dev`, the bench round's
+  `flash/test_memory_stress.py::test_loop_lag_under_combined_load_stays_under_the_uart_reply_budget`
+  (`device_scripts/loop_lag_under_combined_load.py`), after the round's FRAM evidence is saved: the
+  shipped `main()` beside a 10 ms lag probe, an allocation-churn task and FRAM block writes in the
+  script's scratch region, with no concurrent API load (the twin scenario adds HTTP load, this
+  instrument does not). Expected: the worst lag under `dev`'s smallest hard consumer (Part F.3's
+  `con.uart_reply`); its max and p99 go into Part F.3's `lag.loop` row. Wear: none (FRAM block
+  writes in the script's scratch region). Twin row: the
+  `loop_lag_under_combined_load` scenario (Part F.3's `lag.loop`).
 - **What SCL and SDA do on silicon during an I2C bus recovery** — on `dev`, with a slave holding
   SDA low mid-byte: the line levels through `I2C.recover()`'s clear and its re-construction
   (pico-sdk's `i2c_init()` resets the whole block, SPECIFICATION.md F.5.1), and through the
@@ -939,6 +959,10 @@ gates, traps).
   installation candidate); and every CI job now runs on `ubuntu-24.04`, the docs' target OS (the
   deferred Ubuntu 26.04 entry). A chroot run does not reach this script (CI's cross-browser job
   only).
+  **2026-10-21, the twin scenario harness, host Python only, no dependency or build step**:
+  `scripts/_digital_twin_scenarios.py` gains the loop-lag-under-load scenario on every device, the
+  two dropped one-shot fires, and the device's smallest hard consumer as the lag
+  bound. They run in a chroot's `scripts/test.sh` leg with nothing new to install.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

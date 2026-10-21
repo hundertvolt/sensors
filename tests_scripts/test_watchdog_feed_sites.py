@@ -292,7 +292,7 @@ def test_an_own_feed_without_the_starve_latch_fails(src_copy: Path) -> None:
 
 
 def test_an_own_feed_outside_the_sequence_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self._own_feed()\n")
+    _edit(src_copy / "asy_system_service.py", "                        no_fail = False\n", "                        no_fail = False\n                        self._own_feed()\n")
     findings = src_findings(src_copy)
     assert len(findings) == 1 and findings[0].startswith("SystemService._supervise():") and "uses _own_feed outside the pinned set" in findings[0], findings
 
@@ -337,20 +337,20 @@ def test_a_function_a_timer_callback_reaches_must_not_feed(src_copy: Path) -> No
 
 
 def test_a_feed_inside_the_supervisor_scan_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "                    no_fail = False\n", "                    no_fail = False\n                    self.feed_watchdog()\n")
+    _edit(src_copy / "asy_system_service.py", "                        no_fail = False\n", "                        no_fail = False\n                        self.feed_watchdog()\n")
     findings = src_findings(src_copy)
     assert findings[0].endswith("feeds inside ('While', 'For'), where the pinned site sits inside ('While',)"), findings
     assert findings[1] == "SystemService._supervise(): 3 `feed_watchdog(` calls where the pinned set has 2", findings
 
 
 def test_a_dropped_escalation_feed_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "                self.feed_watchdog()\n                self._force_watchdog_starve = True\n", "                self._force_watchdog_starve = True\n")
+    _edit(src_copy / "asy_system_service.py", "                    self.feed_watchdog()\n                    self._force_watchdog_starve = True\n", "                    self._force_watchdog_starve = True\n")
     findings = src_findings(src_copy)
     assert findings == ["SystemService._supervise(): 1 `feed_watchdog(` calls where the pinned set has 2"], findings
 
 
 def test_an_escalation_through_a_command_path_fails(src_copy: Path) -> None:
-    _edit(src_copy / "asy_system_service.py", "                await self._reboot(escalate, message, system_reset)\n", "                await self.reboot_system()\n")
+    _edit(src_copy / "asy_system_service.py", "                    await self._reboot(escalate, message, system_reset)\n", "                    await self.reboot_system()\n")
     findings = src_findings(src_copy)
     assert findings == [
         "SystemService._supervise() references reboot_system",

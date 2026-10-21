@@ -31,6 +31,7 @@ import run_generic_integration  # noqa: E402 - imported after the prewarm and th
 from _async_harness import cancel_all, run  # noqa: E402 - imported after the prewarm and the UDP shim
 from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imported after the prewarm and the UDP shim
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
+from _fast_sleep import check_sleep_ms  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_bytes  # noqa: E402 - imported after the prewarm and the UDP shim
@@ -179,7 +180,8 @@ class _BackToBack:
     get_event_loop = staticmethod(asyncio.get_event_loop)
 
     @staticmethod
-    async def sleep_ms(_ms: int) -> None:
+    async def sleep_ms(ms: int) -> None:
+        check_sleep_ms(ms)
         await asyncio.sleep_ms(0)
 
 

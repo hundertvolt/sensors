@@ -11,6 +11,7 @@ sys.path.insert(0, "ext")
 from _async_harness import cancel_all, run
 from _error_codes import code
 from _fake_time import DrivenTime
+from _fast_sleep import check_sleep_ms
 from _recording_print import record_prints
 from _src_const import src_const, src_int
 
@@ -65,13 +66,15 @@ class _YieldOnlyAsyncio:
     get_event_loop = staticmethod(asyncio.get_event_loop)
 
     @staticmethod
-    async def sleep(_s: float) -> None:
+    async def sleep_ms(ms: int) -> None:
+        check_sleep_ms(ms)
         await asyncio.sleep(0)
 
     @staticmethod
     async def wait_for_ms(aw: "Coroutine[object, object, T]", timeout_ms: int) -> "T":
         # The bounded wait in yields: the awaited coroutine runs as its own task, cancelled once the driven clock
         # passes the deadline or the caller is cancelled, as asyncio cancels its runner (extmod/asyncio/funcs.py, v1.29.0).
+        check_sleep_ms(timeout_ms)
         clock = asy_neopixel_driver.time
         deadline = clock.ticks_add(clock.ticks_ms(), timeout_ms)
         inner = asyncio.create_task(aw)
@@ -108,10 +111,10 @@ def _last_colour_is(driver: NeopixelDriver, colour: "tuple[int, ...]") -> "Calla
 def _make_driver(neopixel_freq: int = 100, led_overl_bri: int = 50, debug: "int | None" = None) -> NeopixelDriver:
     # freq=100, against the shipped 20 Hz, keeps every ramp's step count high enough - 5 per direction at the
     # t=0.1 floor - to observe mid-ramp state; the fixed values are the driver's own state, set from outside.
-    # A test outside _DrivenClock drives real asyncio.sleep(), so fast ramps keep its runtime short.
+    # A test outside _DrivenClock drives real asyncio.sleep_ms(), so fast ramps keep its runtime short.
     driver = NeopixelDriver(0, log=LogConfig(None, 10, debug))
     driver.neopixel_freq = neopixel_freq
-    driver.neopixel_dt = 1.0 / neopixel_freq
+    driver._frame_ms = 1000 // neopixel_freq
     driver._overlay_bri = led_overl_bri
     run(driver.setup())  # the boot batch's setup(), before any task starts
     return driver
@@ -144,7 +147,8 @@ def test_init_bakes_name_into_the_logger() -> None:
 def test_the_frame_rate_and_overlay_brightness_are_fixed_values_no_caller_passes() -> None:
     driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
     freq = src_int("src/asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")
-    assert (driver.neopixel_freq, driver.neopixel_dt, driver._overlay_bri) == (freq, 1.0 / freq, src_const("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"))
+    assert (driver.neopixel_freq, driver._frame_ms, driver._overlay_bri) == (freq, 1000 // freq, src_const("src/asy_neopixel_driver.py", "_LED_OVERL_BRI"))
+    assert type(driver._frame_ms) is int  # the frame sleep's own ms value, no float per frame
     refused = []
     for keyword in ("neopixel_freq", "led_overl_bri"):
         try:
@@ -837,7 +841,8 @@ class _SupervisorPasses:
             else:
                 await real_sleep(0)
 
-        async def _one_yield(_ms: int) -> None:
+        async def _one_yield(ms: int) -> None:
+            check_sleep_ms(ms)
             await real_sleep(0)
 
         asyncio.sleep = _gated  # type: ignore[assignment]  # a module-attribute swap, restored in __exit__

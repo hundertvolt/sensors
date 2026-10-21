@@ -76,10 +76,10 @@ _OP_TEMP_MAX_C = const(85.0)
 _CMD_RDY_TIMEOUT_MS = const(50)  # cmd_rdy is set whenever no command is executing (DS001 4.3.3); the datasheet gives no bound, so 50 ms bounds a bus fault (agent, 2026-10-07)
 # @tunable bmp3xx.meas_timeout_ms = 300
 _MEAS_TIMEOUT_MS = const(300)  # ~150 ms worst case at x32/x32 (3.9.2 typical + Table 22 max margin); 300 ms bounds a stuck STATUS
-# @tunable bmp3xx.status_poll_s = 0.002
-_STATUS_POLL_S = const(0.002)  # the STATUS poll step
-# @tunable bmp3xx.reset_settle_s = 0.002
-_RESET_SETTLE_S = const(0.002)  # the settle after a soft reset
+# @tunable bmp3xx.status_poll_ms = 2
+_STATUS_POLL_MS = const(2)  # the STATUS poll step
+# @tunable bmp3xx.reset_settle_ms = 3
+_RESET_SETTLE_MS = const(3)  # Bosch's reference bmp3_soft_reset() settles 2 ms (DS001 4.3.22 gives none for 0xB6); one tick more: sleep_ms() may wake up to 1 ms early
 
 _OSR_SETTINGS = const((1, 2, 4, 8, 16, 32))  # pressure/temperature oversampling settings -
 # const()-wrapped so it can embed in _VAL_PRES_OVERS/_VAL_TEMP_OVERS's own const() schema tuples below.
@@ -509,10 +509,10 @@ class BMP3XX_I2C:
                 if not await i2c.set_register_struct(_REGISTER_CONTROL, "B", 0x13):
                     raise OSError("I2C bus not initialized")
             wait_us = 939 + 2000 * (_OSR_SETTINGS[osr_p] + _OSR_SETTINGS[osr_t])
-            # 3.9.2 typical conversion time (BMP384/388 constants; BMP390's 2020 us repetitions run ~1 % longer), then
-            # poll STATUS: Table 22's maximum runs up to ~18 % over typical, so a few polls remain; the timeout
-            # bounds a STATUS that never reports ready.
-            await asyncio.sleep(wait_us / 1_000_000)
+            # 3.9.2 typical conversion time, rounded up to whole ms (BMP384/388 constants; BMP390's 2020 us repetitions
+            # run ~1 % longer), then poll STATUS: Table 22's maximum runs up to ~18 % over typical, so a few polls
+            # remain; the timeout bounds a STATUS that never reports ready.
+            await asyncio.sleep_ms((wait_us + 999) // 1000)
             await self._wait_status_bits(bmp3xx, _STATUS_DATA_READY, _MEAS_TIMEOUT_MS)
 
             # ERR_REG, STATUS and the ADC values in one burst, decoded in the same hold with no await after the fill
@@ -619,7 +619,7 @@ class BMP3XX_I2C:
                 return
             if time.ticks_diff(time.ticks_ms(), start) >= timeout_ms:
                 raise OSError(f"STATUS bits {mask:#x} not set within {timeout_ms}ms")
-            await asyncio.sleep(_STATUS_POLL_S)
+            await asyncio.sleep_ms(_STATUS_POLL_MS)
 
     async def get_config_snapshot(self) -> tuple[int, int, int]:
         # One device-session lock hold across all three bit-field reads, closing the torn-read window
@@ -687,14 +687,14 @@ class BMP3XX_I2C:
 
     async def reset(self) -> None:
         # Soft reset via CMD register (datasheet sec 4.3.22, cmd 0xB6); all config reverts to
-        # default. Matches Bosch's reference sequence (bmp3_soft_reset()): wait cmd_rdy, settle
-        # 2ms, verify via ERR_REG's cmd_err - a blind write can be ignored/corrupted on a bad bus.
+        # default. Matches Bosch's reference sequence (bmp3_soft_reset()): wait cmd_rdy, settle at
+        # least 2 ms, verify via ERR_REG's cmd_err - a blind write can be ignored/corrupted on a bad bus.
         async with self._i2c_bmp3xx as bmp3xx:  # device session
             await self._wait_status_bits(bmp3xx, _STATUS_CMD_RDY, _CMD_RDY_TIMEOUT_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
                 if not await i2c.set_register_struct(_REGISTER_CMD, "B", 0xB6):
                     raise OSError("I2C bus not initialized")
-            await asyncio.sleep(_RESET_SETTLE_S)  # datasheet-confirmed 2ms post-reset settle time
+            await asyncio.sleep_ms(_RESET_SETTLE_MS)
             async with bmp3xx.i2c_device as i2c:  # bus session
                 err = await i2c.get_register_struct(_REGISTER_ERR, "B")
                 # The por_detected this reset raised, read away (clear-on-read): the next cycle sees only a self-reset.

@@ -207,7 +207,7 @@ def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int |
     # or after the release, finished at the deadline, returned True); release_after_ms clears the signal that far in.
     driver = NeopixelDriver(0, log=LogConfig(None, 10, None))
     driver.neopixel_freq = 100  # the driver's own fixed state, set from outside: 10 ms polls
-    driver.neopixel_dt = 0.01
+    driver._frame_ms = 10
     run(driver.setup())
     fake = _install(asy_neopixel_driver, start)
 
@@ -242,14 +242,14 @@ def _neopixel_wait_outcome(start: int, wait_ms: int, *, release_after_ms: "int |
         _restore(asy_neopixel_driver)
 
 
-def _next_sleep_after(start: int, elapsed_ms: int, interv: float) -> float:
-    # _next_sleep_s(interv, t0) with t0 taken at `start` and the clock `elapsed_ms` later.
+def _next_sleep_after(start: int, elapsed_ms: int, interv: float) -> int:
+    # _next_sleep_ms(interv, t0) with t0 taken at `start` and the clock `elapsed_ms` later.
     coordinator = NotificationService(_no_signal, _no_local_time, (), cfg_path=_scratch.dir(), log=LogConfig(None, 10, None))
     fake = _install(asy_notification_service, start)
     try:
         t0 = fake.ticks_ms()
         fake.advance(elapsed_ms)
-        return coordinator._next_sleep_s(interv, t0)  # type: ignore[arg-type]  # a ticks value from the fake
+        return coordinator._next_sleep_ms(interv, t0)  # type: ignore[arg-type]  # a ticks value from the fake
     finally:
         _restore(asy_notification_service)
 
@@ -586,13 +586,13 @@ def test_tickseconds_counts_up_to_the_horizon_its_readers_keep() -> None:
             _restore(asy_base_classes)
 
 
-def test_next_sleep_s_crosses_the_ticks_wrap() -> None:
+def test_next_sleep_ms_crosses_the_ticks_wrap() -> None:
     # t0 1 s before the wrap; 5 s and 70 s later (past a 60 s interval: the floor).
     for elapsed_ms in (5000, 70_000):
         wrapped = _next_sleep_after(TICKS_PERIOD - 1000, elapsed_ms, 60.0)
         assert wrapped == _next_sleep_after(_REFERENCE_NOW, elapsed_ms, 60.0), (elapsed_ms, wrapped)
-    assert abs(_next_sleep_after(TICKS_PERIOD - 1000, 5000, 60.0) - 55.0) < 1e-6
-    assert _next_sleep_after(TICKS_PERIOD - 1000, 70_000, 60.0) == 0.1
+    assert _next_sleep_after(TICKS_PERIOD - 1000, 5000, 60.0) == 55000
+    assert _next_sleep_after(TICKS_PERIOD - 1000, 70_000, 60.0) == 100
 
 
 def test_neopixel_signal_deadline_crosses_the_ticks_wrap() -> None:

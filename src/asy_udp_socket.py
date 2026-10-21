@@ -27,8 +27,8 @@ if TYPE_CHECKING:
     from typing import Literal
 
 _ADDR_TUPLE_LEN = const(2)  # a plain (host, port) address tuple
-# @tunable udp.retry_backoff_s = 0.5
-_RETRY_BACKOFF_S = const(0.5)  # pause after a failed socket setup, connect() or bind()
+# @tunable udp.retry_backoff_ms = 500
+_RETRY_BACKOFF_MS = const(500)  # pause after a failed socket setup, connect() or bind()
 # @tunable udp.poll_wait_ms = 20
 _POLL_WAIT_MS = const(20)  # a wait with a deadline: inside a DNS or NTP exchange
 # @tunable udp.poll_idle_ms = 100
@@ -70,7 +70,7 @@ class UDPSocket:
                     if isinstance(e, MemoryError):
                         console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
                     # setup, connect or bind failed
-                    await asyncio.sleep(_RETRY_BACKOFF_S)
+                    await asyncio.sleep_ms(_RETRY_BACKOFF_MS)
 
                 if not self.connected:
                     await self._disconnect_locked()

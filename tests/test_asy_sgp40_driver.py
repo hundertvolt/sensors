@@ -10,7 +10,7 @@ from _async_harness import cancel, run
 from _error_codes import code
 from _fake_time import UTCValid
 from _fake_timer_arm import RaiseOnArm
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
 from _src_const import src_const, src_int
 from _src_schema import src_schema
@@ -286,7 +286,7 @@ def test_initialize_waits_out_each_command_and_the_reset_past_the_datasheet_maxi
     queue_successful_init(bus(sgp._i2c_sgp40.i2c_device.i2c))
     with FastAsyncSleep() as sleeps:
         run(sgp.initialize())
-    waits = [seconds for _task, seconds in sleeps.slept if seconds]  # the CRC checks' zero-second yields left out
+    waits = [seconds for _task, seconds, _ms in sleeps.slept if seconds]  # the CRC checks' zero-second yields left out
     assert waits == [_SERIAL_READ_WAIT_MS / 1000, _SELF_TEST_WAIT_MS / 1000, _GENERAL_CALL_RESET_WAIT_S]
     assert _SERIAL_READ_WAIT_MS >= _SERIAL_READ_MAX_MS
     assert _SELF_TEST_WAIT_MS >= _SELF_TEST_MAX_MS
@@ -351,6 +351,7 @@ def test_turn_heater_off_writes_its_command_to_the_sgp40_alone_then_waits_out_it
     real_sleep_ms = asyncio.sleep_ms
 
     async def recording_sleep_ms(ms: int) -> None:
+        check_sleep_ms(ms)
         waits.append(ms)
         await real_sleep_ms(0)
 
@@ -542,6 +543,7 @@ def test_a_measurement_waits_in_whole_milliseconds() -> None:
         await real_sleep_ms(0)
 
     async def recording_sleep_ms(ms: int) -> None:
+        check_sleep_ms(ms)
         calls.append(("sleep_ms", ms))
         await real_sleep_ms(0)
 

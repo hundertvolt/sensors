@@ -27,7 +27,7 @@ _SCRATCH_REGIONS = ((BENCH["fram_max_size"] - 0x100, 0x100),)  # the part's top 
 _SCRATCH_ADDR = _SCRATCH_REGIONS[0][0]
 _UART_FLOOR_US = 80 * 10 * 1_000_000 // 115_200  # 80 B of 8N1 at 115200 baud (J.6): 6,944 us
 # @tunable l3.fram_command_hold_block_budget_us = 25000
-_BLOCK_HOLD_BUDGET_US = 25000  # the measured 18,089-23,148 us block hold (SPECIFICATION.md F.5.8) plus 8 %
+_BLOCK_HOLD_BUDGET_US = 25000  # SPECIFICATION.md F.3's hold.fram_block row: the measured 18,089-23,148 us (F.5.8) plus 8 %
 _BLOCK_COMMANDS = 4  # a block operation's own command count
 
 

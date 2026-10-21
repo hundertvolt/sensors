@@ -19,7 +19,7 @@ from _fake_timer_arm import RaiseOnArm
 from _fast_sleep import FastAsyncSleep
 from _port_bands import PortAllocator
 from _recording_print import record_prints
-from _src_const import src_const, src_float, src_int
+from _src_const import src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -35,11 +35,9 @@ from asy_wifi_service import WIFI, WifiConfig, WifiService
 # UDPSocket takes plain (host, port) tuples; on this Unix build the shim resolves them (once, class-wide).
 patch_asy_udp_socket_for_unix_port()
 
-def _src_pattern(name: str) -> "tuple[float, float]":
-    # One LED pattern's (on, off) seconds: _src_pattern("HOTSPOT") reads _LED_HOTSPOT_ON_S and _LED_HOTSPOT_OFF_S.
-    on_s, off_s = src_const("src/asy_wifi_service.py", "_LED_" + name + "_ON_S"), src_const("src/asy_wifi_service.py", "_LED_" + name + "_OFF_S")
-    assert isinstance(on_s, (int, float)) and isinstance(off_s, (int, float)), name
-    return float(on_s), float(off_s)
+def _src_pattern(name: str) -> "tuple[int, int]":
+    # One LED pattern's (on, off) milliseconds: _src_pattern("HOTSPOT") reads _LED_HOTSPOT_ON_MS and _LED_HOTSPOT_OFF_MS.
+    return src_int("src/asy_wifi_service.py", "_LED_" + name + "_ON_MS"), src_int("src/asy_wifi_service.py", "_LED_" + name + "_OFF_MS")
 
 
 # Read from source: const() folds them out of the module (tests/_src_const.py), each by the typed reader of the type
@@ -56,7 +54,10 @@ _VAL_COUNTRY: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_CO
 _VAL_HOSTNAME: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_HOSTNAME")
 _VAL_LED_WIFI_ON: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_LED_WIFI_ON")
 _VAL_HOTSPOT_PW: "cm.ConfigSchema" = src_schema("src/asy_wifi_service.py", "_VAL_HOTSPOT_PW")
-_STA_DISCONNECT_POLL_S: float = src_float("src/asy_wifi_service.py", "_STA_DISCONNECT_POLL_S")
+_STA_DISCONNECT_POLL_MS: int = src_int("src/asy_wifi_service.py", "_STA_DISCONNECT_POLL_MS")
+_STA_CONNECT_POLL_MS: int = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_MS")
+_STA_CONNECT_POLL_ITERS: int = src_int("src/asy_wifi_service.py", "_STA_CONNECT_POLL_ITERS")
+_HOTSPOT_STATIONS_SETTLE_MS: int = src_int("src/asy_wifi_service.py", "_HOTSPOT_STATIONS_SETTLE_MS")
 _STA_DISCONNECT_WAIT_ITERS: int = src_int("src/asy_wifi_service.py", "_STA_DISCONNECT_WAIT_ITERS")
 _STA_RETRY_AFTER_LOSS_S: int = src_int("src/asy_wifi_service.py", "_STA_RETRY_AFTER_LOSS_S")
 _STAT_JOINED_NO_IP: int = src_int("src/asy_wifi_service.py", "_STAT_JOINED_NO_IP")
@@ -395,6 +396,29 @@ def test_a_failed_tick_arm_is_retried_by_the_next_loop_iteration() -> None:
     assert client._counter_timer.period == 1000
     log = run(client.get_error_counter())
     assert code("E", "TIMER") in _used_slots(log)
+
+
+def test_a_refused_tick_prints_the_arm_line_once_per_episode() -> None:
+    # The first refused arm prints the helper's line; each later pass's re-arm inside that episode is quiet, the pass's
+    # own persisted entry being its record.
+    client = _make_client()
+    run(client.pr.setup())
+    client.pr.set_level(5)
+    _no_sta(client)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(client._connect_loop())
+        for _ in range(12):  # several iterations, every re-arm refused
+            await asyncio.sleep(0)
+        await cancel(task)
+
+    with record_prints() as recorder, FastAsyncSleep(), RaiseOnArm():
+        client.start_uptime_timer()
+        run(scenario())
+    passes = [ln for ln in recorder.lines if "WiFi uptime timer not armed" in ln]
+    assert len(passes) >= 2, recorder.lines
+    armed = [ln[:4] for ln in recorder.lines if "Could not arm" in ln]
+    assert armed == [("WIFI", "Could not arm", "WiFi uptime", "timer:")], armed
 
 
 def test_max_failed_rearms_end_the_loop() -> None:
@@ -881,7 +905,7 @@ def test_a_raising_led_helper_ends_the_flash_task_with_one_unexpected_entry() ->
 
 # ---------------------------------------------------------------------------
 # LED patterns: one flash task, created only through _run_led_pattern(); every pattern obeys LEDWifiOn
-# (silent while it is off). The phases are read from the recorded sleeps, in seconds.
+# (silent while it is off). The phases are read from the recorded sleep_ms() requests, in milliseconds.
 # ---------------------------------------------------------------------------
 
 
@@ -914,14 +938,14 @@ def _lit_client(*, led_on: bool = True) -> "tuple[WifiService, _FakeLED]":
 
 
 def test_the_hotspot_pattern_is_on_2900_off_100() -> None:
-    # Guard on the behaviour (unchanged); it failed first only on the renamed constants.
+    # Each phase is one sleep_ms() of an int: a phase allocates no float.
     client, led = _lit_client()
     fast = FastAsyncSleep()
 
-    async def scenario() -> "list[float]":
+    async def scenario() -> "list[int]":
         await client._hotspot_client_absent()
         await _drive()
-        phases = fast.of(client._ledflash)
+        phases = fast.ms_of(client._ledflash)
         await _stop_flash(client)
         return phases
 
@@ -936,10 +960,10 @@ def test_a_station_on_the_hotspot_runs_its_own_pattern() -> None:
     client, led = _lit_client()
     fast = FastAsyncSleep()
 
-    async def scenario() -> "list[float]":
+    async def scenario() -> "list[int]":
         client._hotspot_client_connected()
         await _drive()
-        phases = fast.of(client._ledflash)
+        phases = fast.ms_of(client._ledflash)
         await _stop_flash(client)
         return phases
 
@@ -953,13 +977,13 @@ def test_the_client_leaving_restores_the_hotspot_pattern() -> None:
     client, _led = _lit_client()
     fast = FastAsyncSleep()
 
-    async def scenario() -> "tuple[list[float], bool]":
+    async def scenario() -> "tuple[list[int], bool]":
         client._hotspot_client_connected()
         await _drive()
         client_flash = client._ledflash
         await client._hotspot_client_absent()
         await _drive()
-        phases = fast.of(client._ledflash)
+        phases = fast.ms_of(client._ledflash)
         await _stop_flash(client)
         return phases, client_flash is not None and client_flash.done()
 
@@ -1042,10 +1066,10 @@ def test_deactivated_with_the_led_enabled_blinks_100_on_2900_off() -> None:
     client, led = _deactivated_client(led_on=True)
     fast = FastAsyncSleep()
 
-    async def scenario() -> "list[float]":
+    async def scenario() -> "list[int]":
         task = asyncio.create_task(client._connect_loop())
         await _drive(12)
-        phases = fast.of(client._ledflash)
+        phases = fast.ms_of(client._ledflash)
         await cancel(task)
         await _stop_flash(client)
         return phases
@@ -1359,6 +1383,28 @@ def test_get_hotspot_stations_releases_the_lock_when_cancelled_mid_call() -> Non
 
     run(scenario())
     assert not client.wifi_mode_lock.locked(), "the wifi mode lock leaked on cancellation"
+
+
+def test_get_hotspot_stations_settles_once_in_milliseconds_before_the_query() -> None:
+    client = _make_client()
+    fast = FastAsyncSleep()
+    wlan = _wlan(client)
+    real_status = wlan.status
+    settled_at_query: list[list[int]] = []  # the call's settles so far, at each stations query
+
+    def status(*params: str) -> object:
+        if params == ("stations",):
+            settled_at_query.append(fast.ms_of(asyncio.current_task()))
+        return real_status(*params)
+
+    async def scenario() -> "list[int]":
+        await client._get_hotspot_stations()
+        return fast.ms_of(asyncio.current_task())
+
+    wlan.status = status  # type: ignore[method-assign]  # records each stations query, the fake's own status() answering
+    with fast:
+        assert run(scenario()) == [_HOTSPOT_STATIONS_SETTLE_MS]
+    assert settled_at_query == [[_HOTSPOT_STATIONS_SETTLE_MS]], settled_at_query
 
 
 def test_handle_reconnect_trigger_cancels_a_running_ledflash_task() -> None:
@@ -2298,7 +2344,7 @@ def test_disconnect_sta_and_wait_returns_immediately_when_already_disconnected()
 
 def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     # A driver that never confirms disconnection (isconnected() always True) must not hang _connect_loop()
-    # forever: the wait is bounded by _STA_DISCONNECT_WAIT_ITERS x _STA_DISCONNECT_POLL_S, each step a yield here.
+    # forever: the wait is bounded by _STA_DISCONNECT_WAIT_ITERS x _STA_DISCONNECT_POLL_MS, each step a yield here.
 
     # The fake WLAN's disconnect() normally clears _connected as a side effect; overridden here to
     # a no-op so isconnected() keeps reporting True throughout.
@@ -2308,13 +2354,13 @@ def test_disconnect_sta_and_wait_times_out_instead_of_hanging_forever() -> None:
     _wlan(client).disconnect = lambda: setattr(_wlan(client), "disconnect_called", True)  # type: ignore[method-assign]  # keeps the link up
     fast = FastAsyncSleep()
 
-    async def scenario() -> "list[float]":
+    async def scenario() -> "list[int]":
         await client._disconnect_sta_and_wait()
-        return fast.of(asyncio.current_task())
+        return fast.ms_of(asyncio.current_task())
 
     with fast:
         steps = run(scenario())
-    assert steps == [_STA_DISCONNECT_POLL_S] * _STA_DISCONNECT_WAIT_ITERS
+    assert steps == [_STA_DISCONNECT_POLL_MS] * _STA_DISCONNECT_WAIT_ITERS
     assert client._hw_op_failed is True
     counter = run(client.get_error_counter())
     assert _last_err(counter, "ErrNum") == code("E", "TIMEOUT")
@@ -4629,6 +4675,21 @@ def test_poll_sta_connect_status_returns_after_one_status_call_on_got_ip() -> No
     with fast:
         assert run(scenario()) == []
     assert calls == [()]
+
+
+def test_a_poll_without_a_verdict_steps_in_milliseconds_for_its_whole_bound() -> None:
+    client = _make_client()
+    run(client.pr.setup())
+    calls = _script_status(client, [network.STAT_CONNECTING])
+    fast = FastAsyncSleep()
+
+    async def scenario() -> "list[int]":
+        await client._poll_sta_connect_status()
+        return fast.ms_of(asyncio.current_task())
+
+    with fast:
+        assert run(scenario()) == [_STA_CONNECT_POLL_MS] * _STA_CONNECT_POLL_ITERS
+    assert len(calls) == _STA_CONNECT_POLL_ITERS
 
 
 # ---------------------------------------------------------------------------

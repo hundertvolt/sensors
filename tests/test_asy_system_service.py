@@ -20,11 +20,11 @@ from _async_harness import cancel, run
 from _error_codes import code
 from _fake_time import DrivenTime
 from _fake_timer_arm import RaiseOnArm
-from _fast_sleep import FastAsyncSleep
+from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_builders import make_fram_manager
 from _fram_chip_fake import FakeMB85RS64V
 from _recording_print import record_prints
-from _src_const import src_const, src_int
+from _src_const import py_value, src_const, src_int
 from _src_schema import src_schema
 from _tmp_scratch import TmpScratch
 from _write_counters import WriteCountingOpen
@@ -539,6 +539,30 @@ def test_a_dead_uptime_timer_falls_back_to_one_second_passes() -> None:
             return settled
 
         assert run(rearm()) >= 1
+    assert _persisted(svc) == [code("E", "TIMER")]
+
+
+def test_a_dead_uptime_timer_prints_its_arm_refusal_once_per_episode() -> None:
+    # The console half of the once-per-run entry: the boot's failed arm prints the refusal, and the fallback's
+    # re-arms, refused on every pass, stay silent.
+    with record_prints() as recorder, _driven() as clock:
+        svc = _make_service(log=LogConfig(None, 10, _ERR))
+        with RaiseOnArm():
+            svc.start_uptime_timer()
+
+        async def scenario() -> int:
+            task = asyncio.create_task(svc._status_loop())
+            with RaiseOnArm(), FastAsyncSleep(clock):
+                for _ in range(30):
+                    await asyncio.sleep(0)
+            passes = await svc.get_uptime()
+            await cancel(task)
+            return passes
+
+        passes = run(scenario())
+    assert passes >= 10  # one refused re-arm per pass
+    refusals = [line for line in recorder.lines if line[1:3] == ("Could not arm", "uptime")]
+    assert len(refusals) == 1, refusals
     assert _persisted(svc) == [code("E", "TIMER")]
 
 
@@ -2586,6 +2610,10 @@ def _long_lived_starter() -> "asyncio.Task[None]":
     return asyncio.create_task(_c())
 
 
+def _always_raising_starter() -> "asyncio.Task[None]":
+    raise RuntimeError("starter always fails")
+
+
 def test_supervise_tasks_with_no_tasks_never_fails() -> None:
     wdt = machine.WDT()
     svc = _make_service(watchdog=wdt)
@@ -3255,11 +3283,8 @@ def test_the_supervisor_escalation_decodes_to_code_5() -> None:
     begin_boot()
     svc = _make_service()
 
-    def always_raising_starter() -> "asyncio.Task[None]":
-        raise RuntimeError("starter always fails")
-
     async def scenario() -> None:
-        await svc.start_tasks([always_raising_starter])
+        await svc.start_tasks([_always_raising_starter])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
@@ -3349,8 +3374,10 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
 
 
 def test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset() -> None:
-    # The re-check after the E25 entry write: a command that passed the gate meanwhile owns the reset, code 3.
+    # The re-check after the E25 entry write: a command that passed the gate meanwhile owns the reset, code 3. The record
+    # reads 20 from the decision on, then 9 from the command's acceptance, so the command's own record is written last.
     rig = _Rig()
+    records: list[int] = []
     release, reached = asyncio.Event(), asyncio.Event()
     real_err_s = rig.svc.pr.err_s
 
@@ -3370,15 +3397,165 @@ def test_a_command_accepted_while_the_stack_escalation_logs_keeps_its_own_reset(
                 break
             await _real_time(10)
         assert reached.is_set(), "the supervisor never escalated"
+        records.append(machine.mem_backup(0)[1])
         assert await rig.svc.reboot_system() is True
+        records.append(machine.mem_backup(0)[1])
         release.set()
         await rig.settle()
         await rig.stop(sup)
 
     with FastAsyncSleep():
         run(scenario())
+    assert records == [_const("_RR_STACK_EXHAUSTED"), _const("_RR_COMMAND_INCOMPLETE")], records
     assert len(rig.svc._reset_timer.arms) == 1 and machine.mem_backup(0)[1] == _const("_RR_REBOOT")
     asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_a_fault_of_the_supervisor_itself_is_persisted_once_and_ends_it_unfed() -> None:
+    # Its own end logging raising a C-stack overflow's error: recorded for the reboot, one entry of its own code persisted,
+    # and the loop ends unfed, so the watchdog resets (code 2); ResetErrors is refused meanwhile, so the entry survives.
+    wdt = machine.WDT()
+    svc = _make_service(watchdog=wdt)
+
+    async def faulty_log(*_args: object, **_kwargs: object) -> None:
+        raise _stack_error()
+
+    svc._log_dead_task = faulty_log  # type: ignore[method-assign]
+
+    async def ends() -> None:
+        return
+
+    async def scenario() -> "tuple[bool, int, bool, bool]":
+        await svc.start_tasks([lambda: asyncio.create_task(ends())])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._supervisor_task is not None and svc._supervisor_task.done():
+                break
+        fed = wdt.feed_count
+        await _yields(10)
+        ended = svc._supervisor_task is not None and svc._supervisor_task.done()
+        await cancel(sup)
+        return ended, wdt.feed_count - fed, svc.is_reset_decided(), await svc.reset_error_counter()
+
+    with FastAsyncSleep():
+        ended, fed_after, decided, cleared = run(scenario())
+    assert ended and fed_after == 0
+    assert decided and not cleared, (decided, cleared)
+    assert asy_print_log.fatal_reported() is True
+    assert _persisted(svc) == [code("E", "SUPERVISOR_RAISED")]
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def test_an_escalation_whose_entry_write_waits_on_a_held_lock_still_records_code_20_in_budget() -> None:
+    # An overflow inside a lock's release() leaves the lock held, and the E25 write waits on it: the escalation must feed
+    # exactly once, reach _reboot() inside the watchdog's budget (the pass's sleep counted in) and name its reset in the
+    # timeout's line, the one line DebugLevel 1 shows (_reboot()'s own is an event).
+    rig = _Rig(level=_ERR)
+    manager = rig.manager
+    assert manager is not None
+    timeout = py_value("buildgen/validate.py", "_WDT_TIMEOUT_MS")
+    assert isinstance(timeout, int)
+    budget_ms = timeout - _const("_TASK_CHECK_TIME") * 1000
+    seen: list[int] = []
+
+    async def scenario() -> None:
+        sup = await rig.start()
+        await manager.fram.session_lock.acquire()  # held for good, as the overflowed release() leaves it
+        fed = rig.wdt.feed_count
+        start = time.ticks_ms()
+        asy_print_log.report_if_fatal(_stack_error())
+        while not _armed(rig.svc) and time.ticks_diff(time.ticks_ms(), start) < budget_ms:
+            await _real_time(20)
+        seen.extend((time.ticks_diff(time.ticks_ms(), start), int(_armed(rig.svc)), machine.mem_backup(0)[1], rig.wdt.feed_count - fed))
+        await _yields(10)
+        seen.append(rig.wdt.feed_count - fed)  # nothing feeds after the starve
+        await rig.stop(sup)
+        manager.fram.session_lock.release()
+
+    with record_prints(rig.svc.pr) as recorder, FastAsyncSleep():
+        run(scenario())
+    elapsed, armed, record, feeds, later = seen
+    assert armed == 1, f"the escalation never reached _reboot() within {budget_ms} ms"
+    assert elapsed < budget_ms and record == _const("_RR_STACK_EXHAUSTED"), seen
+    assert feeds == later == 1 and rig.svc._force_watchdog_starve is True, seen
+    held = [line for line in recorder.lines if "Reboot: C stack exhausted" in line]
+    assert len(held) == 1 and _const("_ESCALATION_ENTRY_WAIT_MS") in held[0], recorder.text()
+    asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+
+
+def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, stack: bool, build: bool) -> "list[object]":
+    # One escalation on a heap full from its decision on: building its entry (`build`) or its bounded wait raises, and so
+    # does every star-call log line. Whether it armed, its record, the starve, the supervisor running on, the cause lines.
+    real_wait = asyncio.wait_for_ms
+    bound_ms = _const("_ESCALATION_ENTRY_WAIT_MS")
+    no_room = _ExhaustionError("no room for the entry or its wait's two tasks")
+    machine.power_on()
+    svc = _make_service(watchdog=machine.WDT(), log=LogConfig(None, 10, _ERR))
+    real_err_s = svc.pr.err_s
+    entries = (code("E", "STACK_EXHAUSTED"), code("E", "TASK_BUDGET_REBOOT"))
+    seen: list[object] = []
+
+    def full_heap_wait(aw: "Coroutine[object, object, object]", timeout: int) -> "Coroutine[object, object, object]":
+        check_sleep_ms(timeout)  # the real wait's own argument check: a float bound raises as on rp2, not as no room
+        if timeout == bound_ms:
+            raise no_room
+        return real_wait(aw, timeout)
+
+    def full_heap_entry(*args: object, errno: int = 0, sep: str = " ", end: str = "\n") -> "Coroutine[object, object, None]":
+        if build and errno in entries:
+            raise no_room  # the entry's generator and its argument tuple
+        return real_err_s(*args, errno=errno, sep=sep, end=end)
+
+    def full_heap_line(*_args: object, **_kwargs: object) -> None:
+        raise no_room  # a star-call's argument tuple
+
+    svc.pr.err_s = full_heap_entry  # type: ignore[method-assign]
+    svc.pr.err = full_heap_line  # type: ignore[method-assign]
+
+    async def scenario() -> None:
+        await svc.start_tasks([starter])
+        sup = asyncio.create_task(svc.supervise_tasks())
+        await _yields(5)
+        if stack:
+            asy_print_log.report_if_fatal(_stack_error())
+        for _ in range(_RUN_BOUND_S * 100):
+            await asyncio.sleep(0)
+            if svc._reset_armed:
+                break
+        running = svc._supervisor_task is not None and not svc._supervisor_task.done()
+        seen.extend((_armed(svc), machine.mem_backup(0)[1], svc._force_watchdog_starve, running))
+        await cancel(sup)
+        assert seen[0], f"the escalation never reached _reboot(): {seen}"
+        await _fire(svc)
+
+    asyncio.wait_for_ms = full_heap_wait  # type: ignore[assignment]  # a non-generic stand-in for the run, put back below
+    try:
+        with record_prints() as recorder, FastAsyncSleep():
+            _run_into_reset(scenario())
+    finally:
+        asyncio.wait_for_ms = real_wait
+        asy_print_log._fatal = False  # as at boot: microtest fails a test that leaves it set
+    seen.append(sum(1 for line in recorder.lines if no_room in line))
+    return seen
+
+
+def test_an_escalation_whose_entry_wait_finds_the_heap_full_still_reboots_with_its_code() -> None:
+    # The bounded entry wait allocates its own two tasks, so a full heap raises there: each escalation must still print
+    # the cause once, starve and arm its own code through _reboot() as on a timeout, the supervisor running on.
+    stack = _escalate_into_a_full_heap(_long_lived_starter, stack=True, build=False)
+    budget = _escalate_into_a_full_heap(_always_raising_starter, stack=False, build=False)
+    assert stack == [True, _const("_RR_STACK_EXHAUSTED"), True, True, 1], stack
+    assert budget == [True, _const("_RR_TASK_BUDGET"), True, True, 1], budget
+
+
+def test_an_escalation_whose_entry_cannot_even_be_built_on_a_full_heap_still_reboots_with_its_code() -> None:
+    # Building the entry allocates its generator and argument tuple before the wait allocates anything, so on a full heap
+    # that fails first: each escalation must still print the cause once, starve and arm its own code, running on.
+    stack = _escalate_into_a_full_heap(_long_lived_starter, stack=True, build=True)
+    budget = _escalate_into_a_full_heap(_always_raising_starter, stack=False, build=True)
+    assert stack == [True, _const("_RR_STACK_EXHAUSTED"), True, True, 1], stack
+    assert budget == [True, _const("_RR_TASK_BUDGET"), True, True, 1], budget
 
 
 def test_power_on_reads_1_even_with_a_stale_valid_record() -> None:

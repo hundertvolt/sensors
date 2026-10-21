@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, NamedTuple, TypeVar
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from buildgen.buildspec import BUS_ATTACHED_DRIVERS
 from buildgen.model import instance_label, load_device
-from buildgen.validate import device_max_connections, module_float_const, module_int_const
+from buildgen.validate import device_max_connections, module_float_const, module_int_const, smallest_hard_consumer
 from scripts._port_lock import PortHeldError, port_lock
 from scripts._summary_block import Summary
 
@@ -58,6 +58,7 @@ from scripts._twin_process import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEVICE_PROPERTIES = ("any", "stagger_wait")  # what a first_device= scenario may ask its device for (_has_property())
 SRC_DIR = REPO_ROOT / "src"
 GENERATED_SRC_DIR = REPO_ROOT / "build" / "generated_src"
 SITES_DIR = REPO_ROOT / "build" / "generated_html"
@@ -115,6 +116,15 @@ _UART_LOAD_S = 20.0  # the concurrent-load window
 # @tunable l2.scenario_uart_load_faults = 3
 _UART_LOAD_FAULTS = 3  # SGP40 measure reads failed under the UART load: logged and persisted, below any restart
 _SGP40_MEASURE_RAW = 0x260F  # the command whose following read the fault matches, so setup stays healthy
+# @tunable l2.loop_lag_load_s = 20.0
+_LOOP_LAG_LOAD_S = 20.0  # the storm's faults, one per read at the longest read trigger, then one whole LOOP_LAG window (agent, 2026-10-21)
+_LOOP_LAG_REST_MAX_MS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_DNS_TIMEOUT_MS")  # one DNS query (`con.dns_query`), the generated module's
+_LOOP_LAG_RECOVERED_MS = 1000 // module_int_const(SRC_DIR, "asy_neopixel_driver.py", "_NEOPIXEL_FREQ_HZ")  # one LED frame (`con.led_frame`): once the load is over, the loop drops none
+# @tunable l2.loop_lag_period_ms = 10
+_LOOP_LAG_PERIOD_MS = 10
+# SGP40 measure reads failed in a row, setup spared: the longest streak with no give-up, the max_module_error the
+# generated module passes (buildgen/codegen.py), so the storm ends no task.
+_LOOP_LAG_FAULTS = module_int_const(REPO_ROOT / "buildgen", "codegen.py", "_MAX_MODULE_ERROR")
 # The silicon floor for the largest block after the full system build (heap_headroom_after_full_system_build.py's
 # factor times heap_bounds.py's worst-case allocation), read as data: the load must not fragment the heap below it.
 _HEADROOM_SCRIPT = ("tests_hardware/device_scripts", "heap_headroom_after_full_system_build.py", "_WORST_CASE_FACTOR")
@@ -164,12 +174,13 @@ class Scenario:
     needs_site: bool = False
     shared: bool = False
     moves: "tuple[str, ...]" = ()
+    first_device: str = ""  # a device-independent mechanism: run on the first generated device with this property only
 
 
 SCENARIOS: "dict[str, Scenario]" = {}
 
 
-def scenario(name: str, *, family: str, drivers: "tuple[str, ...]" = (), needs_exclusive_port_53: bool = False, needs_site: bool = False, shared: bool = False, moves: "tuple[str, ...]" = ()) -> "Callable[[Callable[[Context], None]], Callable[[Context], None]]":
+def scenario(name: str, *, family: str, drivers: "tuple[str, ...]" = (), needs_exclusive_port_53: bool = False, needs_site: bool = False, shared: bool = False, moves: "tuple[str, ...]" = (), first_device: str = "") -> "Callable[[Callable[[Context], None]], Callable[[Context], None]]":
     # Registers a scenario under `name` in `family`; a body without a goal docstring, a name taken twice, no family, or
     # moved error sources stated by a scenario on its own boot (no idle check reads them) refuses at import.
     def register(body: "Callable[[Context], None]") -> "Callable[[Context], None]":
@@ -182,7 +193,9 @@ def scenario(name: str, *, family: str, drivers: "tuple[str, ...]" = (), needs_e
             raise ValueError(f"scenario {name!r} names no family ({family!r})")
         if moves and not shared:
             raise ValueError(f"scenario {name!r} states moved error sources but runs on its own boot")
-        SCENARIOS[name] = Scenario(name, body, goal[0].strip(), family, tuple(drivers), needs_exclusive_port_53, needs_site, shared, tuple(moves))
+        if first_device and first_device not in _DEVICE_PROPERTIES:
+            raise ValueError(f"scenario {name!r} runs on the first device with {first_device!r}, which is no known property")
+        SCENARIOS[name] = Scenario(name, body, goal[0].strip(), family, tuple(drivers), needs_exclusive_port_53, needs_site, shared, tuple(moves), first_device)
         return body
 
     return register
@@ -220,13 +233,15 @@ class Twin:
 
     def wait_line(self, text: str, since: int, timeout_s: float) -> "str | None":
         # The first log line holding `text` printed after the `since` offset, or None by the deadline.
+        return next(iter(self.wait_lines(text, since, 1, timeout_s)), None)
+
+    def wait_lines(self, text: str, since: int, count: int, timeout_s: float) -> "list[str]":
+        # The first `count` log lines holding `text` printed after the `since` offset, or those printed by the deadline.
         deadline = time.monotonic() + timeout_s
         while True:
-            for line in log_from(self.run.log_path, since).splitlines():
-                if text in line:
-                    return line
-            if time.monotonic() >= deadline or self.run.proc.poll() is not None:
-                return None
+            found = [line for line in log_from(self.run.log_path, since).splitlines() if text in line][:count]
+            if len(found) == count or time.monotonic() >= deadline or self.run.proc.poll() is not None:
+                return found
             time.sleep(_LINE_POLL_S)
 
 
@@ -827,6 +842,10 @@ def _has_entry(entry: JSONValue, kind: str, num: "int | None" = None) -> bool:
     return any(isinstance(h, dict) and h.get("type") == kind and num in (None, h.get("num")) for h in (history if isinstance(history, list) else []))
 
 
+def _has_property(device: str, name: str) -> bool:
+    return name == "any" or (name == "stagger_wait" and _stagger_waits(device))
+
+
 @scenario("high_concurrency_burst_at_historical_segfault_repro_scale_survives", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
 def _high_concurrency_burst(ctx: Context) -> None:
     """Five bursts at the scale that once crashed the Unix port: only 200s and clean refusals, serving after each."""
@@ -967,6 +986,38 @@ def _key_tree(value: JSONValue) -> JSONValue:
     return None
 
 
+def _lag_load(ctx: Context, twin: Twin) -> "dict[str, int]":
+    # A ceiling of readers, each cycling every GET route of the service's table, for the load window; returns how many
+    # answers each route served. A clean refusal counts as no answer and the reader goes on.
+    stop = threading.Event()
+    routes = _get_routes()
+
+    def reader(index: int) -> "dict[str, int]":
+        served = dict.fromkeys(routes, 0)
+        while not stop.is_set():
+            route = routes[index % len(routes)]
+            served[route] += _status_of(twin.port, route) == HTTPStatus.OK
+            index += 1
+        return served
+
+    readers = ctx.ceiling()
+    results: list[object] = [None] * readers
+    threads = [threading.Thread(target=_record_into, args=(results, i, reader)) for i in range(readers)]
+    for thread in threads:
+        thread.start()
+    time.sleep(_LOOP_LAG_LOAD_S)
+    stop.set()
+    for thread in threads:
+        thread.join(timeout=_REQUEST_TIMEOUT_S * 2)
+    _expect(all(isinstance(r, dict) for r in results), f"a reader raised or never ended: {_statuses(results)}")
+    return {route: sum(int(r[route]) for r in results if isinstance(r, dict)) for route in routes}
+
+
+def _lag_windows(text: str) -> "list[dict[str, int]]":
+    # Each LOOP_LAG line's figures (max_us, p99_us, samples) and each link's `<key>=<transfers>`, oldest first.
+    return [{key: int(value) for key, value in (part.split("=", 1) for part in line.split()[1:])} for line in text.splitlines() if line.startswith("LOOP_LAG ")]
+
+
 def _link_roles(device: str) -> "dict[str, str]":
     # Each uart_link instance's role by its key, as its TOML states it.
     model = load_device(REPO_ROOT / "devices" / f"{device}.toml")
@@ -984,6 +1035,51 @@ def _log_at_error_level(state: Path) -> "tuple[str, ...]":
     if not stored.exists():
         stored.write_text(json.dumps({"DebugLevel": level}), encoding="utf-8")
     return ("--debug-level", str(level))
+
+
+@scenario("loop_lag_under_combined_load", family="loop_lag")
+def _loop_lag_under_load(ctx: Context) -> None:
+    """The loop's lag under a ceiling of GETs on every route, a FRAM-log fault storm and the links' exercisers stays under the device's smallest hard consumer, and settles once the load stops."""
+    bound_us = smallest_hard_consumer(load_device(REPO_ROOT / "devices" / f"{ctx.device}.toml"), SRC_DIR).ms * 1000
+    report_s = module_int_const(REPO_ROOT / "digital_twin", "run_generic_integration.py", "_LOOP_LAG_REPORT_MS") / 1000
+    sgp40 = next((key for key, driver, _ext in ctx.instances if driver == "sgp40"), None)
+    fault = ("--fault", f"{sgp40}:readfrom_into:{_LOOP_LAG_FAULTS}:{_SGP40_MEASURE_RAW:04X}") if sgp40 else ()
+    initiators = sorted(key for key, role in _link_roles(ctx.device).items() if role == "initiator")
+    with ctx.boot("--test-loop-lag-ms", str(_LOOP_LAG_PERIOD_MS), *fault) as twin:
+        since = twin.mark()
+        served = _lag_load(ctx, twin)
+        under_load = log_from(twin.run.log_path, since)
+        loaded = _lag_windows(under_load)
+        # The next line closes the window open at the stop, which holds load; the one after it, a window begun after it.
+        stopped = twin.wait_lines("LOOP_LAG ", since + len(under_load), 2, 2 * report_s + _DRAIN_WAIT_S)
+        persisted = _counter(_errcount(twin.port, "SGP40")) if sgp40 else _LOOP_LAG_FAULTS
+    # Each load source shows it ran under the load: every route answered, the storm reached its streak, each link moved.
+    _expect(all(served.get(route) for route in _get_routes()), f"GET routes never served under the load: {sorted(r for r in _get_routes() if not served.get(r))}")
+    _expect(not sgp40 or f"SGP40 Error counter increased to {_LOOP_LAG_FAULTS}" in under_load, f"the SGP40 fault storm never reached its {_LOOP_LAG_FAULTS}-read streak under the load")
+    _expect(persisted >= _LOOP_LAG_FAULTS, f"the SGP40 log persisted {persisted} errors, under the storm's {_LOOP_LAG_FAULTS}")
+    moved = {key: loaded[-1].get(key, 0) - loaded[0].get(key, 0) if loaded else 0 for key in initiators}
+    _expect(all(n >= 1 for n in moved.values()), f"a link exerciser transferred nothing under the load: {moved}")
+    # The probe opens each window as it prints the last, so the first line after the load's start closes the window open
+    # then, which holds the end of boot: the load's figure is over the windows begun after it, the one straddling the
+    # stop included, and every window is bound.
+    after = _lag_windows("\n".join(stopped))
+    windows = loaded + after[:1]
+    boot, load = windows[:1], windows[1:]
+    worst = max((w["max_us"] for w in load), default=None)
+    boot_max = boot[0]["max_us"] if boot else None
+    straddler_max = after[0]["max_us"] if after else None
+    settled = after[1] if len(after) > 1 else None
+    settled_max, settled_p99 = (settled["max_us"], settled["p99_us"]) if settled else (None, None)
+    (ctx.logs_dir / "loop_lag.txt").write_text(f"bound_us={bound_us} load_max_us={worst} boot_window_max_us={boot_max} straddler_max_us={straddler_max} settled_max_us={settled_max} settled_p99_us={settled_p99} served={served} after_stop={stopped}\n" + "\n".join(map(str, windows)) + "\n", encoding="utf-8")
+    print(f"loop lag under load: max {worst} us over {len(load)} windows begun after its start (bound {bound_us} us), {straddler_max} us in the one straddling its stop; the window open at its start, with the end of boot: max {boot_max} us; after it: {settled_max} us, p99 {settled_p99} us")
+    _expect(len(windows) >= int(_LOOP_LAG_LOAD_S / report_s), f"the probe printed {len(windows)} LOOP_LAG windows over a {_LOOP_LAG_LOAD_S:g} s load, the one straddling its stop included")
+    _expect(worst is not None and worst <= bound_us, f"the loop lagged {worst} us under load, past the {bound_us} us smallest hard consumer: {load}")
+    _expect(boot_max is not None and boot_max <= bound_us, f"the loop lagged {boot_max} us in the window open when the load began, past the {bound_us} us smallest hard consumer: {boot}")
+    # After the load 99 % of wakes fall within one LED frame and every wake within one DNS query: a single wake also
+    # carries the host's late resumption, the case Part N `l1.lwip_host_spin_window_rounds` records (agent, 2026-10-21).
+    rest_max_us = min(bound_us, _LOOP_LAG_REST_MAX_MS * 1000)
+    _expect(settled_max is not None and settled_max <= rest_max_us, f"the loop lagged {settled_max} us in the window after the load, past the {rest_max_us} us of one DNS query or the smallest hard consumer: {stopped[1:]}")
+    _expect(settled_p99 is not None and settled_p99 < _LOOP_LAG_RECOVERED_MS * 1000, f"the lag after the load did not settle under {_LOOP_LAG_RECOVERED_MS} ms, one LED frame, at its p99: {stopped[1:]}")
 
 
 @scenario("get_measurements_and_sensors_are_reachable_and_shaped_correctly", family="sensortask_integration", shared=True)
@@ -1314,6 +1410,23 @@ def _reset_errors_under_mempause(ctx: Context) -> None:
         _refused_reset_errors(twin.port, before, "while storage is paused")
 
 
+@scenario("a_reboots_reset_fire_lost_to_a_full_scheduler_queue_leaves_the_reset_to_the_watchdog", family="system_commands", first_device="any")
+def _reset_fire_dropped(ctx: Context) -> None:
+    """A reboot whose reset one-shot fire a full scheduler queue drops: no reset runs, nothing feeds, the watchdog engages."""
+    with ctx.boot("--test-drop-timer-fire", "reset") as twin:
+        twin.starves_watchdog = True
+        since = twin.mark()
+        _expect(_system_cmd(twin.port, "reboot") == "Valid", "reboot did not answer Valid")
+        dropped = twin.wait_line("FIRE_DROPPED reset", since, _commanded_reset_deadline_s())
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", since, _commanded_reset_deadline_s() + _WATCHDOG_WINDOW_S)
+        _expect(twin.run.proc.poll() is None, f"the device reset although its reset one-shot's fire was dropped ({exit_reason(twin.run.proc.returncode or 0)})")
+        _expect(engaged is not None, "the watchdog did not engage once the reset one-shot's fire was dropped")
+        _expect(dropped is not None and int(dropped.split("=")[1]) >= 1, f"the knob dropped nothing before the watchdog engaged: {dropped!r}")
+    line = parse_shutdown_line(read_log(twin.run.log_path))
+    _expect(line is not None and line.would_have_triggered_count >= 1, f"the watchdog never engaged ({line!r})")
+    _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "a reset ran past the dropped fire")
+
+
 def _responder_host() -> str:
     # The NTP host the runner writes for its local responder (digital_twin/unixport/_offline_ntp_config.py), read by ast.
     tree = ast.parse((REPO_ROOT / "digital_twin" / "unixport" / "_offline_ntp_config.py").read_text(encoding="utf-8"))
@@ -1410,6 +1523,22 @@ def _sensors_put_scd30(ctx: Context) -> None:
     with ctx.boot() as twin:
         answer = _request(twin.port, "PUT", "/sensors", {"SCD30": {"MeasInterval": 4}})
         _expect(answer.status == HTTPStatus.OK and _object(answer).get("result") == {"SCD30": {"MeasInterval": "Valid"}}, f"PUT answered {answer.status} {answer.body!r}")
+
+
+@scenario("a_boot_stagger_fire_lost_to_a_full_scheduler_queue_stalls_the_timer_start_until_the_watchdog", family="timer_pool", first_device="stagger_wait")
+def _sequencer_fire_dropped(ctx: Context) -> None:
+    """The boot's first stagger one-shot fire a full scheduler queue drops: the timer start never ends, nothing feeds, the watchdog engages, the device serves on."""
+    with ctx.boot("--test-drop-timer-fire", "sequencer") as twin:
+        twin.starves_watchdog = True
+        dropped = twin.wait_line("FIRE_DROPPED sequencer", 0, _SERVING_TIMEOUT_S)
+        engaged = twin.wait_line("WATCHDOG_WOULD_TRIGGER", 0, _SERVING_TIMEOUT_S + _WATCHDOG_WINDOW_S)
+        _expect(twin.run.proc.poll() is None, f"the device reset although its timer start stalled ({exit_reason(twin.run.proc.returncode or 0)})")
+        _expect(engaged is not None, "the watchdog did not engage once the stagger one-shot's fire was dropped")
+        _still_serving(twin.port)  # the loss is the timer start's alone: the tasks it followed still run
+        _expect(dropped is not None and int(dropped.split("=")[1]) >= 1, f"the knob dropped nothing before the watchdog engaged: {dropped!r}")
+    line = parse_shutdown_line(read_log(twin.run.log_path))
+    _expect(line is not None and line.would_have_triggered_count >= 1, f"the watchdog never engaged ({line!r})")
+    _expect(parse_machine_reset_line(read_log(twin.run.log_path)) is None, "a reset ran past the stalled timer start")
 
 
 @scenario("a_full_ceiling_of_concurrent_request_bodies_is_answered_correctly", family="webserver_concurrency")
@@ -1554,6 +1683,15 @@ def _slow_put(port: int, delay_s: float) -> int:
 
 def _src_int(filename: str, name: str) -> int:
     return module_int_const(SRC_DIR, filename, name)
+
+
+def _stagger_waits(device: str) -> bool:
+    # Whether the device's boot arms a stagger one-shot: its generated module starts two read triggers or more, the
+    # second and later each after a wait (asy_system_service.py start_timers()).
+    tree = ast.parse((GENERATED_SRC_DIR / f"sensortask_{device}.py").read_text(encoding="utf-8"))
+    starter = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_collect_trigger_starters")
+    loop = next(node for node in ast.walk(starter) if isinstance(node, ast.For))
+    return isinstance(loop.iter, ast.Tuple) and len(loop.iter.elts) > 1
 
 
 @scenario("a_slot_freed_by_a_stale_connections_timeout_accepts_a_new_connection", family="webserver_concurrency", shared=True, moves=("WEBSERVER",))
@@ -1777,6 +1915,11 @@ def main(argv: "list[str] | None" = None) -> int:
         return summary.print(_EXIT_FAIL)
 
 
+def first_device(name: str) -> "str | None":
+    # The first generated device with the property, the one a first_device= scenario runs on (SPECIFICATION.md E.2.1).
+    return next((device for device in generated_devices() if _has_property(device, name)), None)
+
+
 def generated_devices() -> "list[str]":
     # Every device buildgen generated a wiring plan for, by name.
     prefix, suffix = "sensortask_", "_wiring_plan.json"
@@ -1791,15 +1934,18 @@ def run_order(chosen: "list[tuple[Scenario, str | None]]") -> "list[tuple[Scenar
 
 def select(device: str, only: "frozenset[str] | None", *, exclusive_port_53: bool) -> "list[tuple[Scenario, str | None]]":
     # Every registered scenario with why it does not run (None: it runs): a driver the device does not wire, a
-    # shared port 53, or not named by --only.
+    # device-independent mechanism another device runs, a shared port 53, or not named by --only.
     drivers = {driver for _key, driver, _ext in _instances(device)}
     chosen: list[tuple[Scenario, str | None]] = []
     for item in SCENARIOS.values():
         if only is not None and item.name not in only:
             continue
         missing = [d for d in item.drivers if d not in drivers]
+        runner = first_device(item.first_device) if item.first_device else device
         if missing:
             chosen.append((item, f"skipped: device wires no {', '.join(missing)}"))
+        elif runner != device:
+            chosen.append((item, f"skipped: a device-independent mechanism, run on {runner or 'no device'} only (SPECIFICATION.md E.2.1)"))
         elif item.needs_exclusive_port_53 and not exclusive_port_53:
             chosen.append((item, "deselected: needs exclusive port 53 - run_digital_twin_ci.sh runs it"))
         else:
