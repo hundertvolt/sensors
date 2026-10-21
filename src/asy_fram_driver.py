@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: 2018 Michael Schroeder for Adafruit Industries (original adafruit_fram,
-# CircuitPython) - restructured/rewritten for asyncio + MicroPython, see THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: 2018 Michael Schroeder for Adafruit Industries
 # SPDX-License-Identifier: MIT
+# From adafruit_fram (CircuitPython), restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
 """Async SPI driver for one Fujitsu FRAM chip (MB85RS64V 8KB or MB85RS2MTA 256KB, the part max_size names, checked by RDID against _KNOWN_PRODUCT_IDS): raw byte-addressed get_values()/set_values() plus write protection.
 Opcode/register-constant naming and the write-enable/write/write-disable method shape follow Adafruit's Adafruit_CircuitPython_FRAM; RDID checking and the two-part table are this project's own addition, verified against the Fujitsu MB85RS64V (DS501-00015) and MB85RS2MTA (DS501-00032) datasheets.

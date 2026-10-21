@@ -58,7 +58,7 @@ src/                     Fully-reviewed/tested refactor code, freely editable (P
 ext/                     Vendored third-party code, hands-off (CLAUDE.md)
   microdot.py               Microdot v2.7.0, unmodified (A.5)
   typings/microdot/         upstream v2.7.0 type stubs for it, unmodified (A.5)
-  freezefs/                 freezefs 2.4, unmodified - the website's gzip+freeze pipeline (A.9)
+  freezefs/                 freezefs `main` at `26be9e3`, unmodified - the website's gzip+freeze pipeline (A.9)
 devices/                 One TOML file per device variant (SPECIFICATION.md Part L) - the single source
                           of truth for that device's hardware/wiring facts; buildgen/ turns each one
                           into a real firmware build.
@@ -1679,8 +1679,9 @@ on a tree with nothing wrong with it. Its coverage report gates nothing and its 
   miss, since every twin boot binds the local NTP responder's port 123 and a restored cache carries
   no file capabilities. It `needs: web-lint-and-typecheck` for order only, with `!cancelled()`, so
   a red web lint does not skip the web tests (CLAUDE.md). Playwright's browser is cached keyed on
-  `package-lock.json` (which pins its version); its OS packages are reinstalled every run,
-  Playwright's own documented pattern. Before either install an apt drop-in bounds and retries
+  `package-lock.json` (which pins its version) and on the runner identity the toolchain cache keys
+  on (above), hashed by a step identical to the toolchain action's; its OS packages are reinstalled
+  every run, Playwright's own documented pattern. Before either install an apt drop-in bounds and retries
   apt's fetches as `setup_toolchain.py`'s `apt_options()` does (`Acquire::Retries` one under Part N
   `tool.uv_sync_attempts`, `Acquire::http(s)::Timeout` `tool.apt_acquire_timeout_s`), and each
   install step is bounded by `ci.playwright_install_timeout_min`; the four web jobs that test share
@@ -6276,8 +6277,8 @@ indefinite-block report against name lookups (micropython#18797) is fixed since 
 mechanism**: a wait that genuinely can be bounded is wrapped in `asyncio.wait_for_ms(<awaitable>,
 <timeout_ms>)` around the single awaitable that can wait (`extmod/asyncio/funcs.py:24-55`), the
 timeout a caller parameter in milliseconds and a timeout mapped to the owning function's documented
-sentinel (agent, 2026-09-29) — `asy_udp_socket.py`'s `select.poll`-driven `ready()` (and so
-`write_and_recvfrom()`) and the FRAM presence check's wait for the driver's session lock. Five
+sentinel (agent, 2026-09-29) — `asy_udp_socket.py`'s `select.poll`-driven `ready()` and the FRAM
+presence check's wait for the driver's session lock. Five
 waits map no sentinel. The webserver's waits (each stream call, the writer's close and the outer
 request cap, in milliseconds its constructor converts once from `ServingLimits`' seconds) raise
 `TimeoutError`, which `_serve()` turns into a reclaimed connection and its warning, and a close
@@ -10029,8 +10030,10 @@ missing, and an `errcount` module's missing sample too, naming its group and mod
 - **`digital_twin/README.md`** — the new chip fake's own "What's here" entry, matching the doc's
   current section structure (don't clobber sections added since, e.g. PR #82's "Driver/DUT process
   separation").
-- **`THIRD_PARTY_LICENSES.md`** — if the driver is adapted from third-party/vendor code (SPDX header
-  + attribution, matching the file's existing entries).
+- **`THIRD_PARTY_LICENSES.md`** — if the driver is adapted from third-party/vendor code (a three-line
+  header — `# SPDX-FileCopyrightText:`, `# SPDX-License-Identifier:`, one line pointing to
+  `THIRD_PARTY_LICENSES.md`, in that order, before the docstring — and exactly one entry;
+  `tests_scripts/test_third_party_attribution.py` checks both).
 - **BACKLOG.md** — only for a genuinely still-open question this promotion surfaced but didn't
   resolve (e.g. "no pytest gate wired for the new conformance-probe script yet" — PR #83's own
   disclosed, not-silently-resolved gap). Never process narrative (CLAUDE.md's pruning rule).
@@ -11889,8 +11892,6 @@ One table per area, in this order: firmware, build, L0, L1, L2, L3/L4, CI, runne
 | `l1.asy_uart_driver_feed_delay_ms` | 3 ms | `tests/test_asy_uart_driver.py` — `3` | `feed_after()`'s default: bytes land on the ring while a read already waits on it | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_uart_driver_hammer_bound_s` | 60 s | `tests/test_asy_uart_driver.py` — `60` | the run bound of the two hammering tests (5,000 back-to-back frames at the line rate; seeded consumer stalls within and beyond the ring's bound) | estimated (agent, 2026-10-07) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_udp_socket_recv_empty_timeout_ms` | 50 ms | `tests/test_asy_udp_socket.py` — `50` | — | estimated (agent, `ffe52a8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.asy_udp_socket_attempt_timeout_ms` | 200 ms | `tests/test_asy_udp_socket.py` — `200` | — | estimated (agent, `ffe52a8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
-| `l1.asy_udp_socket_exhaust_timeout_ms` | 30 ms | `tests/test_asy_udp_socket.py` — `30` | — | estimated (agent, `ffe52a8`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_udp_socket_peer_recv_timeout_ms` | 1000 ms | `tests/test_asy_udp_socket.py` — `1000` | — | estimated (agent, `6438bdc`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_udp_socket_peer_poll_ms` | 5 ms | `tests/test_asy_udp_socket.py` — `5` | — | estimated (agent, `6438bdc`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |
 | `l1.asy_udp_socket_reply_timeout_ms` | 500 ms | `tests/test_asy_udp_socket.py` — `500` | — | estimated (agent, `6438bdc`) — measurement owed: elapsed of the test at both GC stages on the slowest host that runs it, L1 | against that measurement, once taken | the code under test or the host class changes |

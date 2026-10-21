@@ -1,7 +1,8 @@
-"""ext/freezefs/ stays byte-identical to the upstream commit it was vendored from: upstream publishes no
+"""ext/freezefs/ stays byte-identical to the upstream commit THIRD_PARTY_LICENSES.md records: upstream publishes no
 release tags, so the commit and these hashes are the pin. Moving it is a recorded re-vendor decision."""
 
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ VENDORED_SHA256 = {
     "ffsmount.py": "e8bd4887ef1c35dc938ad016dcd2ec1213381e169533a2ca0257c5afe3da0f63",
     "LICENSE": "cd6a0db606632a8a736341a1066113e2bdd80cce06e73495a0a4903e01dce96e",
 }
+_RECORDED_COMMIT = re.compile(r"vendored from `main` at `([0-9a-f]{40})`")
 
 
 @pytest.mark.parametrize("name", sorted(VENDORED_SHA256))
@@ -29,3 +31,8 @@ def test_vendored_file_matches_the_pinned_upstream_commit(repo_root: Path, name:
 def test_nothing_else_is_vendored_there(repo_root: Path) -> None:
     present = {p.name for p in (repo_root / "ext" / "freezefs").iterdir() if p.name != "__pycache__"}
     assert present == set(VENDORED_SHA256), f"ext/freezefs/ holds {sorted(present)}, the pin covers {sorted(VENDORED_SHA256)}"
+
+
+def test_the_pin_is_the_one_commit_third_party_licenses_records(repo_root: Path) -> None:
+    recorded = _RECORDED_COMMIT.findall((repo_root / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8"))
+    assert recorded == [UPSTREAM_COMMIT], f"THIRD_PARTY_LICENSES.md records freezefs at {recorded}, this pin is {UPSTREAM_COMMIT}"

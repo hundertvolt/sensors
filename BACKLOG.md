@@ -1045,6 +1045,22 @@ gates, traps).
   step that installs the pinned Node, so in a fresh `--variant=minbase` chroot those three files
   fail on that assertion. The owner's next run settles it: `env --tier generic` before
   `scripts/test.sh`, or the pinned Node first on `PATH`.
+  **2026-10-21, the explicit-`Any` baselines, the third-party attribution check and the Playwright
+  cache keys, by the leg that covers each change**:
+  - lint and typecheck legs: `pyproject.toml`'s `CPY001` reason names an attribution header (SPDX
+    where a license is named), a comment only; its explicit-`Any` baseline drops
+    `allocation_need_per_source`, `uart_crossover_exchange`, `uart_crossover_recovery` and
+    `uart_driver_read_never_blocks_the_loop`, and `host_typecheck.ini` drops its `[mypy-http_client]`
+    section, each module clean under `disallow_any_explicit`; mypy config only, nothing new to install;
+  - `scripts/test.sh` leg: `tests_scripts/test_mypy_any_baseline.py` also fails on an exemption its
+    pass's residual list does not name; the new `tests_scripts/test_third_party_attribution.py` checks
+    the third-party headers against `THIRD_PARTY_LICENSES.md`; `tests_scripts/test_vendored_freezefs.py`,
+    not named in this list before, pins `ext/freezefs/` by upstream commit and file hashes and checks
+    that `THIRD_PARTY_LICENSES.md` names that commit; `tests_scripts/test_ci_workflow.py` checks the
+    cache keys below; host Python only, no new dependency;
+  - CI only: `.github/workflows/ci.yml`'s four Playwright browser caches are keyed on the runner
+    identity too (runner image, compiler and C library, computed as the toolchain action's identity
+    step computes it); no chroot leg runs it.
   Kept here as the running list of what the owner's next manual run has to cover.
 - **Session 7's `pyproject.toml` `max-args` ratchet (21 → 22, for `WebserverService.__init__`'s new
   `build_info=` parameter) only got the noble leg of CLAUDE.md's two-target clean-chroot

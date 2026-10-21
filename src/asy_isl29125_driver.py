@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 Jose D. Montoya (original MicroPython_ISL29125) -
-# restructured/rewritten for asyncio + this project's driver shape, see THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: Copyright (c) 2023 Jose D. Montoya
 # SPDX-License-Identifier: MIT
+# From MicroPython_ISL29125, rewritten for asyncio + this driver shape - see THIRD_PARTY_LICENSES.md.
 
 """Renesas/Intersil ISL29125 RGB colour sensor driver: lux, sensor RGB/HSB, relative CCT, and an auto-range state machine driven by the chip's own threshold interrupt.
 ISL29125_I2C is the protocol layer; ISL29125_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).

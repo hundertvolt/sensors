@@ -173,14 +173,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      # Playwright's browser cached on package-lock.json (which pins its version); OS packages
-      # reinstalled every run - Playwright's documented CI pattern.
+      - name: Runner and compiler identity for the cache key
+        id: ident
+        shell: bash
+        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+      # Playwright's browser cached on package-lock.json (which pins its version) and on the runner identity the
+      # toolchain cache keys on; OS packages reinstalled every run - Playwright's documented CI pattern.
       - name: Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
       # A stalled mirror otherwise holds the install to the job's limit: apt retries each fetch, then fails the
       # install step below by name (toolchain/setup_toolchain.py's apt_options()).
       - name: Bound and retry apt's downloads
@@ -236,12 +240,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Runner and compiler identity for the cache key
+        id: ident
+        shell: bash
+        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
       - name: Bound and retry apt's downloads
         run: |
           # @tunable tool.uv_sync_attempts = 3
@@ -289,12 +297,16 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Runner and compiler identity for the cache key
+        id: ident
+        shell: bash
+        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright Chromium
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
       - name: Bound and retry apt's downloads
         run: |
           # @tunable tool.uv_sync_attempts = 3
@@ -373,6 +385,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Runner and compiler identity for the cache key
+        id: ident
+        shell: bash
+        run: printf 'id=%s\n' "$(printf '%s\n' "${ImageOS:-unknown}" "$(gcc --version | head -n1)" "$(ldd --version | head -n1)" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       # Installed here too: every job is a fresh VM, and without it the Chromium leg failed with
       # "Executable doesn't exist" (B.10.1).
       - name: Cache Playwright Chromium
@@ -380,7 +396,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ steps.ident.outputs.id }}-${{ hashFiles('package-lock.json') }}
       - name: Bound and retry apt's downloads
         run: |
           # @tunable tool.uv_sync_attempts = 3

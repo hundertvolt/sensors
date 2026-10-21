@@ -144,8 +144,8 @@ ignore = [
     # __init__.py by design.
     "INP001",
 
-    # CPY001: project-authored files carry no copyright notice; files derived from third-party code carry SPDX headers,
-    # and THIRD_PARTY_LICENSES.md holds every notice.
+    # CPY001: project-authored files carry no copyright notice; files derived from third-party code carry an attribution
+    # header (SPDX where a license is named), and THIRD_PARTY_LICENSES.md holds every notice.
     "CPY001",
 ]
 
@@ -422,7 +422,6 @@ module = [
     "_bus_hazard_catalog",
     "_sensortask_scenarios",
     "_uart_link_contract",
-    "allocation_need_per_source",
     "asy_system_service",
     "machine",
     "serving_at_default_gc",
@@ -430,9 +429,6 @@ module = [
     "test_asy_uart_driver",
     "test_bus_hazard_generated",
     "test_bus_hazard_multi_device",
-    "uart_crossover_exchange",
-    "uart_crossover_recovery",
-    "uart_driver_read_never_blocks_the_loop",
 ]
 disallow_any_explicit = false
 

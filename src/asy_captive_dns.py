@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright 2019 p-doyle (Micropython-DNSServer-Captive-Portal)
-# SPDX-License-Identifier: Apache-2.0
-# DNSQuery derives from its main.py - changes per Apache-2.0 SS4(b): THIRD_PARTY_LICENSES.md.
+# SPDX-License-Identifier: Apache-2.0 AND MIT
+# Apache-2.0 covers DNSQuery (from its main.py, changes per SS4(b)), MIT the rest - THIRD_PARTY_LICENSES.md.
 
 """Captive-portal DNS spoofer for hotspot/AP mode. CaptiveDNS.run() runs while the device broadcasts
 its fallback hotspot; every on-subnet A/ANY query gets a canned A record pointing back at the AP's own IP, any other type an empty NOERROR reply.

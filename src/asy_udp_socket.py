@@ -1,5 +1,5 @@
-# Attribution, no formal SPDX identifier: this class's shape is close to karfas's AsyUDPClient
-# (github.com/karfas/upy-simple-app), offered publicly by its author for exactly this reuse.
+# No formal license: the class's shape is close to karfas's AsyUDPClient (github.com/karfas/upy-simple-app),
+# which its author posted as 'a starting point' in github.com/orgs/micropython/discussions/12967.
 # THIRD_PARTY_LICENSES.md carries the full account and what was changed or added here.
 
 """Async, non-blocking UDP wrapper around one socket.socket, driven by a hand-rolled select.poll
@@ -171,26 +171,3 @@ class UDPSocket:
                 if isinstance(e, MemoryError):
                     console("UDPSocket", e)  # the class has no logger; the memory gates read this text (CLAUDE.md)
         return None
-
-    async def write_and_recvfrom(
-        self,
-        msg: bytes | bytearray,
-        buf: int,
-        timeout_ms: int = -1,
-        *,
-        tries: int,
-    ) -> tuple[bytes | None, tuple[str, int] | None]:
-        # Retries the full write+response round trip up to `tries` times, returning as soon as a response arrives;
-        # a try whose write() failed does not wait for a reply. range(tries) is guarded: a malformed tries raises TypeError
-        # from range() itself, before write()/recvfrom() ever see it.
-        try:
-            tries_range = range(tries)
-        except TypeError:
-            return None, None
-        for _ in tries_range:
-            if await self.write(msg, timeout_ms=timeout_ms) is None:
-                continue
-            data, addr = await self.recvfrom(buf, timeout_ms=timeout_ms)
-            if data is not None:
-                return data, addr
-        return None, None

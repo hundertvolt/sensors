@@ -1,0 +1,20 @@
+== timing (alternating base/head, 3 rounds)
+base round 1 rc=0 .394983952 s 17 passed in 0.12s
+head round 1 rc=0 .795940328 s 18 passed in 0.26s
+base round 2 rc=0 .356232712 s 17 passed in 0.07s
+head round 2 rc=0 .605296039 s 18 passed in 0.11s
+base round 3 rc=0 .381563399 s 17 passed in 0.08s
+head round 3 rc=0 .392801202 s 18 passed in 0.10s
+== readers
+test_ci_workflow rc=0 .300451277 s 18 passed in 0.08s
+test_build_firmware rc=0 12.413523937 s 53 passed, 6 skipped in 11.56s
+test_js_coverage_report_dir rc=0 4.470949858 s 3 passed in 4.16s
+test_lint_type_scopes rc=0 .338728997 s 8 passed in 0.10s
+test_uv_sync_retried_sh rc=0 5.137610311 s 7 passed in 4.89s
+== scans (17 + commit checks) in one process
+scans rc=0 121.013435368 s 965 passed, 1 warning in 119.37s (0:01:59)
+== test_test_sh (wall-time-bound: waits for at most 4 heavy processes)
+heavy at start: 3
+test_test_sh rc=0 35.817923733 s 190 passed in 35.55s
+== memory markers
+none

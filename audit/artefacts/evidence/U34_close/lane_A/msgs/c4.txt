@@ -1,0 +1,9 @@
+U34 lane A: the freezefs pin is the commit THIRD_PARTY_LICENSES.md records
+
+tests_scripts/test_vendored_freezefs.py now also asserts that THIRD_PARTY_LICENSES.md records
+exactly one freezefs commit and that it is UPSTREAM_COMMIT, the same pairing
+test_vendored_microdot.py keeps for Microdot's tag. A guard that passes on the tree: in scratch
+copies, another commit in the licence file and a removed commit each fail.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

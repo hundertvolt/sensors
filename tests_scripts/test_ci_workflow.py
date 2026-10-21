@@ -1,6 +1,6 @@
 """The workflow's standing rules over .github/workflows/ci.yml and its two composite actions, read as text (pyyaml is no
 dependency here): gating, the web filter, pins, the composite actions, the derived device matrices, values reaching a
-`run:` only through `env:`, executable scripts and the bounded installs. Each failure names the job and the fix (SPECIFICATION.md B.10.1)."""
+`run:` only through `env:`, executable scripts, the bounded installs and the Playwright caches' runner identity. Each failure names the job and the fix (SPECIFICATION.md B.10.1)."""
 
 import re
 from pathlib import Path
@@ -32,6 +32,7 @@ _SHA_PIN = re.compile(r"@[0-9a-f]{40} # v\d+\.\d+\.\d+$")
 _JOB_KEY = re.compile(r"^  ([a-z][\w-]*):$", re.MULTILINE)
 _ENV_PREFIX = re.compile(r"^(?:[A-Z_][A-Z0-9_]*=\S*\s+)+")
 _HTML_VALIDATE_CHECK = "tests_scripts/test_html_validate_config.py"
+_IDENT_ID = re.compile(r"^\s+(?:- )?id: ident$", re.MULTILINE)
 # A repo script a `run:` line runs as a command: at a line start, after `$(`, `;`, `&`, `|`, `(` or `sudo`, past any VAR=value.
 _SCRIPT_COMMAND = re.compile(r"(?:^|[;&|(]|\$\(|\bsudo\s)\s*(?:[A-Z_][A-Z0-9_]*=\S*\s+)*(?:\./)?(scripts/[\w./-]+)")
 
@@ -92,6 +93,11 @@ def _run_lines(step: str) -> "list[str]":
             break
         body.append(line.strip())
     return [line for line in body if line and not line.startswith("#")]
+
+
+def _step_lines(step: str) -> "list[str]":
+    # A step's lines stripped and its comments dropped, so one step at two indents compares equal.
+    return [line.strip() for line in step.splitlines() if line.strip() and not line.strip().startswith("#")]
 
 
 def _steps(text: str, indent: int) -> "list[str]":
@@ -295,4 +301,27 @@ def test_every_playwright_install_is_bounded_and_retried_by_apt() -> None:
                 problems.append(f"{name}: no apt retry and timeout step before {_run_lines(step)[0]!r}")
             if not re.search(r"^\s+# @tunable ci\.\w+ = \d+\n\s+timeout-minutes: \d+$", step, re.MULTILINE):
                 problems.append(f"{name}: {_run_lines(step)[0]!r} has no tagged step timeout-minutes")
+    assert not problems, "\n".join(problems)
+
+
+def test_every_playwright_cache_keys_on_the_runner_identity_the_toolchain_action_computes() -> None:
+    # A browser restored under another runner image or C library fails at launch; a key read before its step is empty.
+    ident = [_step_lines(step) for step in _action_steps(_TOOLCHAIN_ACTION) if _IDENT_ID.search(step)]
+    assert len(ident) == 1, "the toolchain action must hold exactly one `id: ident` step, the identity every Playwright cache copies"
+    problems = []
+    caches = 0
+    for name, job in _jobs().items():
+        steps = _steps(job, 6)
+        for index, step in enumerate(steps):
+            if _IDENT_ID.search(step) and _step_lines(step) != ident[0]:
+                problems.append(f"{name}: its identity step differs from the toolchain action's - copy that step's text unchanged")
+            if "path: ~/.cache/ms-playwright" not in step:
+                continue
+            caches += 1
+            key = re.search(r"^\s+key: (.*)$", step, re.MULTILINE)
+            if not key or "${{ steps.ident.outputs.id }}" not in key.group(1):
+                problems.append(f"{name}: the Playwright cache key misses `${{{{ steps.ident.outputs.id }}}}` - a runner-image change would restore a stale browser")
+            if not any(_IDENT_ID.search(earlier) for earlier in steps[:index]):
+                problems.append(f"{name}: no identity step (the toolchain action's, `id: ident`) before its Playwright cache")
+    assert caches, "no step caches ~/.cache/ms-playwright: a reshaped workflow must fail this rule rather than pass it empty"
     assert not problems, "\n".join(problems)

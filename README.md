@@ -928,11 +928,15 @@ anything bench-related, BACKLOG.md's "Real-hardware work still owed" is the list
 **`LICENSE` / `THIRD_PARTY_LICENSES.md`** (permanent, legal):
 
 - **[`LICENSE`](LICENSE)** — this project's own license (MIT).
-- **[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)** — every piece of vendored or
-  attribution-derived third-party code in one place (Microdot, freezefs, the Adafruit-derived
-  sensor drivers, the DFRobot-derived VOC algorithm port), plus the one area where a specific
-  source couldn't be established (`asy_captive_dns.py`/`asy_ntp_client.py`/`asy_udp_socket.py`) and a
-  disclosure that parts of this codebase were written with AI assistance.
+- **[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)** — every vendored or derived
+  third-party file with its source, holder and license (Microdot and freezefs vendored; the
+  Adafruit-derived drivers and the ISL29125 driver; the micropython-lib NTP code; the aiodns credit;
+  the DFRobot port of Sensirion's VOC algorithm; the Apache-2.0 captive-DNS `DNSQuery`; the
+  `UDPSocket` shape its author offered without a license), what the firmware image and the website
+  contain and the notices a published image carries, and a disclosure that parts of this codebase
+  were written with AI assistance. `arduino/` is outside it and every other review (lint, test,
+  license, secret scan): post-audit only (owner, 2026-09-25: 'the C port stays out of scope,
+  anything there is post-audit only'; the secret scan too, owner, 2026-09-30).
 
 **`digital_twin/README.md`** (permanent, kept current):
 

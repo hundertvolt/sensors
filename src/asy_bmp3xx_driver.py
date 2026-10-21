@@ -1,6 +1,6 @@
-# SPDX-FileCopyrightText: 2018 Carter Nelson for Adafruit Industries (original adafruit_bmp3xx,
-# CircuitPython) - restructured/rewritten for asyncio + MicroPython, see THIRD_PARTY_LICENSES.md.
+# SPDX-FileCopyrightText: 2018 Carter Nelson for Adafruit Industries
 # SPDX-License-Identifier: MIT
+# From adafruit_bmp3xx (CircuitPython), restructured for asyncio + MicroPython - see THIRD_PARTY_LICENSES.md.
 
 """Async I2C driver for the Bosch BMP384/BMP388/BMP390 (Sparkfun breakout, forced-mode reads only).
 BMP3XX_I2C is the protocol layer; BMP3XX_Reader is the asyncio task/config layer (see SPECIFICATION.md Part C).

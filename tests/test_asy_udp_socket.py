@@ -41,10 +41,6 @@ if TYPE_CHECKING:
 
 # @tunable l1.asy_udp_socket_recv_empty_timeout_ms = 50
 _RECV_EMPTY_TIMEOUT_MS = 50
-# @tunable l1.asy_udp_socket_attempt_timeout_ms = 200
-_ATTEMPT_TIMEOUT_MS = 200
-# @tunable l1.asy_udp_socket_exhaust_timeout_ms = 30
-_EXHAUST_TIMEOUT_MS = 30
 # @tunable l1.asy_udp_socket_peer_recv_timeout_ms = 1000
 _PEER_RECV_TIMEOUT_MS = 1000
 # @tunable l1.asy_udp_socket_peer_poll_ms = 5
@@ -120,6 +116,7 @@ def _raw(addr: tuple[str, int]) -> tuple[str, int]:
 _RETRY_BACKOFF_MS: int = src_int("src/asy_udp_socket.py", "_RETRY_BACKOFF_MS")
 _POLL_WAIT_MS: int = src_int("src/asy_udp_socket.py", "_POLL_WAIT_MS")
 _POLL_IDLE_MS: int = src_int("src/asy_udp_socket.py", "_POLL_IDLE_MS")
+_NTP_PACKET_LEN: int = src_int("src/asy_ntp_client.py", "_NTP_PACKET_LEN")
 
 
 # ---------------------------------------------------------------------------
@@ -273,94 +270,6 @@ def test_recvfrom_returns_none_sentinel_on_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# write_and_recvfrom - retry budget
-# ---------------------------------------------------------------------------
-
-
-def test_write_and_recvfrom_retries_until_a_reply_arrives() -> None:
-    # Bug: the `for _ in range(tries):` loop used to return on the very first iteration
-    # regardless of outcome, so `tries` never actually retried. Prove a reply that only arrives
-    # after the first request is dropped still gets picked up within the retry budget.
-    addr = _make_addr()
-
-    async def scenario() -> bytes | None:
-        server = UDPSocket(addr, mode="server")
-        client = UDPSocket(addr, mode="client")
-        try:
-            await server._connect()
-
-            async def drop_first_then_reply() -> None:
-                await server.recvfrom(64)  # dropped - no reply sent
-                _, from_addr = await server.recvfrom(64)
-                if from_addr is not None:
-                    await server.sendto(b"pong", from_addr)
-
-            responder = asyncio.create_task(drop_first_then_reply())
-            data, _ = await client.write_and_recvfrom(b"ping", 64, timeout_ms=_ATTEMPT_TIMEOUT_MS, tries=3)
-            await responder
-            return data
-        finally:
-            await client.disconnect()
-            await server.disconnect()
-
-    assert run(scenario()) == b"pong"
-
-
-def test_write_and_recvfrom_exhausts_tries_and_returns_none_sentinel() -> None:
-    addr = _make_addr()  # nobody listens on this address at all
-
-    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        client = UDPSocket(addr, mode="client")
-        try:
-            return await client.write_and_recvfrom(b"ping", 64, timeout_ms=_EXHAUST_TIMEOUT_MS, tries=2)
-        finally:
-            await client.disconnect()
-
-    data, from_addr = run(scenario())
-    assert data is None
-    assert from_addr is None
-
-
-def test_a_failed_send_returns_without_waiting_for_a_reply() -> None:
-    # A try whose write() failed never sent its request, so nothing can answer it: write_and_recvfrom()
-    # moves on at once instead of waiting out timeout_ms for a reply that cannot come.
-    addr = _make_addr()
-
-    async def scenario() -> "tuple[tuple[bytes | None, tuple[str, int] | None], int]":
-        client = UDPSocket(addr, mode="client")
-        try:
-            await client._connect()
-            assert client._sock is not None
-            client._sock = _FailingSocket(client._sock, "write", OSError("injected send failure"))  # type: ignore[assignment]
-            t0 = time.ticks_ms()
-            result = await client.write_and_recvfrom(b"x", 64, timeout_ms=_REPLY_TIMEOUT_MS, tries=1)
-            return result, time.ticks_diff(time.ticks_ms(), t0)
-        finally:
-            await client.disconnect()
-
-    result, elapsed = run(scenario())
-    assert result == (None, None)
-    assert elapsed < _REPLY_TIMEOUT_MS // 2, elapsed
-
-
-def test_a_socket_that_never_connects_does_not_wait_for_a_reply() -> None:
-    # write() answers None when ready() could not connect; the try then ends after that one failed attempt
-    # and its backoff, instead of a second connect attempt and backoff inside recvfrom().
-    sock = UDPSocket(_make_addr(), mode="client")
-    original = asy_udp_socket.socket
-    asy_udp_socket.socket = _FailingSocketModule(OSError("injected setup failure"))  # type: ignore[assignment]
-    try:
-        t0 = time.ticks_ms()
-        result = run(sock.write_and_recvfrom(b"x", 64, timeout_ms=_REPLY_TIMEOUT_MS, tries=1))
-        elapsed = time.ticks_diff(time.ticks_ms(), t0)
-    finally:
-        asy_udp_socket.socket = original
-    backoff_ms = _RETRY_BACKOFF_MS
-    assert result == (None, None)
-    assert backoff_ms <= elapsed < 2 * backoff_ms, elapsed
-
-
-# ---------------------------------------------------------------------------
 # _connect() retry/self-heal
 # ---------------------------------------------------------------------------
 
@@ -450,8 +359,8 @@ def test_recvfrom_silently_truncates_an_oversized_datagram() -> None:
 
 def test_recvfrom_treats_a_zero_length_datagram_as_a_real_reply_not_a_timeout() -> None:
     # UDP explicitly allows zero-length payloads (RFC 768). recvfrom() must return (b"", addr) -
-    # distinguishable from the (None, None) timeout/error sentinel, since `data is not None` is
-    # exactly what write_and_recvfrom() checks to decide a reply arrived.
+    # distinguishable from the (None, None) timeout/error sentinel, since a None test is exactly how
+    # asy_dns_client.py's resolver and asy_ntp_client.py decide a reply arrived.
     addr = _make_addr()
     peer_addr = _make_addr()
 
@@ -1406,22 +1315,35 @@ def test_recvfrom_detects_pollerr_instead_of_waiting_out_the_full_timeout() -> N
 
 
 # ---------------------------------------------------------------------------
-# Integration-level: real-world call patterns of the upstream callers - an NTP-shaped round trip
-# through write_and_recvfrom(), the call asy_dns_client.py's resolver makes, and asy_captive_dns.py's
-# CaptiveDNS - plus how a real UDP fault propagates up through each processing path.
+# Integration-level: real-world call patterns of the upstream callers - asy_ntp_client.py's
+# write() checked before its recvfrom(), the shape asy_dns_client.py's resolver repeats per try,
+# and asy_captive_dns.py's CaptiveDNS - plus how a real UDP fault propagates up through each path.
 
-# These mirror each caller's documented, stable call shape (mode, buffer sizes, timeout/tries,
-# acquire-use-release) rather than importing implementation details - proving the contract is
-# robust protects a future refactored caller too, not just today's.
+# These mirror each caller's documented, stable call shape (mode, buffer sizes, timeouts, the
+# checked write, acquire-use-release) rather than importing implementation details - proving the
+# contract is robust protects a future refactored caller too, not just today's.
 # ---------------------------------------------------------------------------
 
 
-def test_ntp_client_pattern_end_to_end_success() -> None:
-    # An NTP-shaped exchange through write_and_recvfrom(), with disconnect() on the success path
-    # AND unconditionally again in finally - proving that double disconnect() is safe in this
-    # usage shape, and that a caller's broad except Exception backstop is never needed.
-    server_addr = _make_addr()
+async def _ntp_shaped_fetch(addr: tuple[str, int], timeout_ms: int) -> "tuple[bool, bytes | None, bool]":
+    # asy_ntp_client.py's _fetch_ntp_reply() shape: no reply is awaited for a request that was not sent, and
+    # the teardown runs in finally. Returns (sent, reply, torn down); no except here, so any raise fails the test.
     ntp_request = b"\x1b" + bytearray(47)
+    cli = UDPSocket(addr, mode="client")
+    msg: bytes | None = None
+    try:
+        sent = await cli.write(ntp_request, timeout_ms=timeout_ms) is not None
+        if sent:
+            msg, _ = await cli.recvfrom(_NTP_PACKET_LEN, timeout_ms=timeout_ms)
+    finally:
+        torn_down = await cli.disconnect()
+    return sent, msg, torn_down
+
+
+def test_ntp_client_pattern_end_to_end_success() -> None:
+    # An NTP-shaped exchange: the checked write(), a 48-byte reply read into the caller's 48-byte buffer,
+    # and a clean teardown - with no broad except Exception backstop anywhere in the call shape.
+    server_addr = _make_addr()
     ntp_reply = b"\x1c" + bytearray(47)  # a realistic 48-byte NTP-shaped reply
 
     async def responder(peer: _AdversarialPeer) -> None:
@@ -1429,59 +1351,25 @@ def test_ntp_client_pattern_end_to_end_success() -> None:
         assert from_addr is not None
         peer.sock.sendto(ntp_reply, from_addr)
 
-    async def scenario() -> tuple[bytes | None, bool]:
+    async def scenario() -> "tuple[bool, bytes | None, bool]":
         peer = _AdversarialPeer(server_addr)
-        exception_hit = False
-        cli = None
-        msg: bytes | None = None
         try:
             responder_task = asyncio.create_task(responder(peer))
-            cli = UDPSocket(server_addr, mode="client")
-            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS, tries=1)
-            del add
-            await cli.disconnect()
+            result = await _ntp_shaped_fetch(server_addr, _LONG_REPLY_TIMEOUT_MS)
             await responder_task
-        except Exception:
-            cli = msg = None
-            exception_hit = True
+            return result
         finally:
-            if cli is not None:
-                await cli.disconnect()
             peer.close()
-        return msg, exception_hit
 
-    msg, exception_hit = run(scenario())
-    assert msg == ntp_reply
-    assert exception_hit is False  # asy_udp_socket.py's own contract never needed this backstop
+    assert run(scenario()) == (True, ntp_reply, True)
 
 
 def test_ntp_client_pattern_no_server_reachable() -> None:
     # The same call shape against an address nobody listens on - a real network fault (ICMP
-    # port-unreachable, exactly like an offline NTP server) - proving msg ends up None, matching
-    # the real "if msg is None: retry" branch downstream, with no broad except needed.
+    # port-unreachable, exactly like an offline NTP server): the request is sent and the reply is None,
+    # the caller's "No reply from NTP server" branch, never its "not sent" one.
     server_addr = _make_addr()  # nobody ever binds/listens here
-    ntp_request = b"\x1b" + bytearray(47)
-
-    async def scenario() -> tuple[bytes | None, bool]:
-        exception_hit = False
-        cli = None
-        msg: bytes | None = None
-        try:
-            cli = UDPSocket(server_addr, mode="client")
-            msg, add = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_UNREACHABLE_TIMEOUT_MS, tries=1)
-            del add
-            await cli.disconnect()
-        except Exception:
-            cli = msg = None
-            exception_hit = True
-        finally:
-            if cli is not None:
-                await cli.disconnect()
-        return msg, exception_hit
-
-    msg, exception_hit = run(scenario())
-    assert msg is None
-    assert exception_hit is False
+    assert run(_ntp_shaped_fetch(server_addr, _UNREACHABLE_TIMEOUT_MS)) == (True, None, True)
 
 
 def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
@@ -1489,27 +1377,24 @@ def test_ntp_client_pattern_garbage_reply_is_delivered_not_rejected() -> None:
     # replies with garbage (not a valid 48-byte NTP packet at all) must still be delivered
     # faithfully - validating NTP structure is asy_ntp_client.py's own job, not this module's.
     server_addr = _make_addr()
-    ntp_request = b"\x1b" + bytearray(47)
-    garbage_reply = b"\x00\x01\x02not-an-ntp-packet-at-all" * 3
+    garbage_reply = b"\x00\x01\x02not-an-ntp-packet-at-all"  # 27 bytes, inside the caller's 48-byte buffer
 
     async def responder(peer: _AdversarialPeer) -> None:
         _, from_addr = await peer.recv(1024, timeout_ms=_PEER_RECV_TIMEOUT_MS)
         assert from_addr is not None
         peer.sock.sendto(garbage_reply, from_addr)
 
-    async def scenario() -> bytes | None:
+    async def scenario() -> "tuple[bool, bytes | None, bool]":
         peer = _AdversarialPeer(server_addr)
-        cli = UDPSocket(server_addr, mode="client")
         try:
             responder_task = asyncio.create_task(responder(peer))
-            msg, _ = await cli.write_and_recvfrom(ntp_request, 1024, timeout_ms=_LONG_REPLY_TIMEOUT_MS, tries=1)
+            result = await _ntp_shaped_fetch(server_addr, _LONG_REPLY_TIMEOUT_MS)
             await responder_task
-            return msg
+            return result
         finally:
-            await cli.disconnect()
             peer.close()
 
-    assert run(scenario()) == garbage_reply
+    assert run(scenario()) == (True, garbage_reply, True)
 
 
 def test_dns_server_pattern_bound_to_all_interfaces_end_to_end() -> None:
@@ -1896,23 +1781,10 @@ def test_disconnect_on_a_fresh_never_connected_object_is_a_clean_no_op() -> None
     assert sock_is_none and not_connected
 
 
-def test_write_and_recvfrom_tries_zero_returns_immediately() -> None:
-    addr = _make_addr()
-
-    async def scenario() -> tuple[bytes | None, tuple[str, int] | None]:
-        sock = UDPSocket(addr, mode="client")
-        try:
-            return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=0)
-        finally:
-            await sock.disconnect()
-
-    assert run(scenario()) == (None, None)
-
-
 # ---------------------------------------------------------------------------
-# Sixth pass: ready()'s mask/timeout_ms and write_and_recvfrom()'s tries were never
-# guarded against a malformed caller-supplied value, and raised an uncaught TypeError past every
-# except clause - the raise is inside ready(), which callers await before their own try begins.
+# Sixth pass: ready()'s mask/timeout_ms were never guarded against a malformed caller-supplied
+# value, and raised an uncaught TypeError past every except clause - the raise is inside ready(),
+# which callers await before their own try begins.
 # ---------------------------------------------------------------------------
 
 
@@ -1993,23 +1865,6 @@ def test_recvfrom_propagates_readys_false_sentinel_for_a_malformed_timeout_ms() 
             await server.disconnect()
 
     assert run(scenario()) == (None, None)
-
-
-def test_write_and_recvfrom_returns_none_sentinel_for_a_malformed_tries() -> None:
-    # Bug: `for _ in range(tries):` raised an uncaught TypeError for e.g. tries=None or tries="3" -
-    # confirmed directly, and write_and_recvfrom() had no try/except of its own to catch it.
-    addr = _make_addr()
-
-    async def scenario(bad_tries: object) -> tuple[bytes | None, tuple[str, int] | None]:
-        sock = UDPSocket(addr, mode="client")
-        try:
-            return await sock.write_and_recvfrom(b"x", 64, timeout_ms=50, tries=bad_tries)  # type: ignore[arg-type]  # the malformed value under test
-        finally:
-            await sock.disconnect()
-
-    for bad_tries in (None, "3", [1]):
-        assert run(scenario(bad_tries)) == (None, None)
-
 
 
 # ---------------------------------------------------------------------------
