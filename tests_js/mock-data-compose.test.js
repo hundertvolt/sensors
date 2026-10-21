@@ -50,6 +50,19 @@ function groupValues(sectionKey, group, data) {
 }
 
 /**
+ * The generated module's `LastTaskEnd` once a task has ended (buildgen/codegen.py's _system_status()).
+ * @param {unknown} value
+ * @returns {boolean} an object of exactly a string `Task` and an integer `Uptime`
+ */
+function isTaskEndRecord(value) {
+    if (typeof value !== "object" || value === null) {
+        return false;
+    }
+    const { Task: task, Uptime: uptime, ...rest } = /** @type {Record<string, unknown>} */ (value);
+    return typeof task === "string" && Number.isInteger(uptime) && Object.keys(rest).length === 0;
+}
+
+/**
  * What is wrong with one field's composed value, or null: a command carries none, an always-executed
  * setting may have none (GET cannot always report it), everything else a value of its kind.
  * @param {FieldDef} field
@@ -78,6 +91,9 @@ function valueProblem(field, values) {
     }
     if (field.format === "gmtimestruct") {
         return typeof value === "object" && value !== null ? null : "not a time struct";
+    }
+    if (field.format === "lasttaskend") {
+        return value === null || isTaskEndRecord(value) ? null : "neither null nor a task-end record";
     }
     return null; // readonly: present is all a value of any shape needs
 }
@@ -250,5 +266,16 @@ describe("composeMockData", () => {
         body.Stray = 1;
         expect(fieldProblems(defs, data)).toContain(`measurements/${groupKey}/${fieldKey}: no value`);
         expect(strayKeys(defs, data)).toContain(`measurements.${groupKey}.Stray`);
+    });
+
+    it("takes a task-end field as null or a {Task, Uptime} record and reports any other value", () => {
+        const field = { key: "LastTaskEnd", label: "Task Last Ended", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("lasttaskend") };
+        expect(valueProblem(field, { LastTaskEnd: null })).toBeNull();
+        expect(valueProblem(field, { LastTaskEnd: { Task: "SCD30.start_asy_read", Uptime: 3600 } })).toBeNull();
+        const wrong = [
+            0, "SCD30.start_asy_read", { Task: "SCD30.start_asy_read" }, { Task: 7, Uptime: 3600 }, { Task: "SCD30.start_asy_read", Uptime: 1.5 },
+            { Task: "SCD30.start_asy_read", Uptime: 3600, Extra: 1 },
+        ];
+        expect(wrong.map((value) => valueProblem(field, { LastTaskEnd: value }))).toEqual(wrong.map(() => "neither null nor a task-end record"));
     });
 });

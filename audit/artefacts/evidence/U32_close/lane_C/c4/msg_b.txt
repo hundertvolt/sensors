@@ -1,0 +1,18 @@
+U32 lane C: every task created outside the starters is checked for its own top
+
+tests_scripts/test_task_tops.py: each create_task() in src/ outside a get_task_starters()/
+get_timer_starters() method runs a method resolved from `self.<m>()` or `self.<attr>.<m>()` (the
+attribute's class from its one `self.<attr> = Class(...)`); that coroutine's last statement, through
+any cleanup-only try, is a try whose `except Exception as e:` calls report_if_fatal(e) and awaits
+self.pr.err_s() with e, or a `while True:` whose whole body is one. An unresolvable target fails.
+Statements before the last one are not checked. Self-tests plant in a copy of src/: a supervised
+loop started outside its starter, a narrowed handler, a cause not logged, a fatal not reported, work
+after the top, a loop pass outside it, an unresolvable coroutine.
+
+The rule (owner, 2026-10-21: "The task logs shall then be handled by their creators in general and
+the caveats are okay as they are inevitable."; the question, paraphrase: whether a task's failure
+is logged by the module creating it, five tasks already doing so and two in SystemService needing a
+small change, with FRAM paused before a reset and the logging call itself as the two caveats).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

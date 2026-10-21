@@ -4,8 +4,10 @@ A generic asyncio-based sensor framework for **Raspberry Pi Pico W (1st gen, RP2
 running **MicroPython**, currently applied to room air-quality monitoring. Each physical unit
 reads sensors over I2C/SPI, exposes a REST API plus a small web UI, persists frequently-changing
 data to an external FRAM chip, and persists configuration to a JSON file on the onboard flash
-filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware, not loaded from
-the device filesystem at runtime.
+filesystem. Code ships as frozen bytecode compiled into the MicroPython firmware, and the boot
+entry puts the frozen modules ahead of the device filesystem on the import path, so no file there
+replaces them; a filesystem `boot.py` still runs before the frozen `main.py`, which is why a legacy
+unit's move to this firmware erases its flash (see "Moving a legacy unit to this firmware").
 
 The REST API and web UI have no authentication: the firmware is built for a trusted home LAN, and
 SPECIFICATION.md A.11 lists what that accepts.
@@ -404,9 +406,10 @@ compile locally.
 ### Flashing a real board
 
 Needs `uv run toolchain/setup_toolchain.py env --tier flash` already run once (see "Dev environment
-setup" above — installs `picotool`, grants non-root USB access). Always flash `dev`, never `wozi` —
-`wozi` is never physically flashed; its hardcoded pins don't match any real bench wiring (see the
-device table at the top of this file, and CLAUDE.md's hard rule).
+setup" above — installs `picotool`, grants non-root USB access). A session always flashes `dev`;
+a session never flashes `wozi`, whose hardcoded pins don't match any real bench wiring (see the
+device table at the top of this file, and CLAUDE.md's hard rule); moving one of the owner's own
+units is their operation (see "Moving a legacy unit to this firmware" below).
 
 **First flash of a genuinely blank board** (no firmware running yet, so there's nothing to trigger
 bootloader mode remotely — needs a human holding the BOOTSEL button):
@@ -433,6 +436,84 @@ recipes are exercised as real, automated/manual tests, not just prose here —
 `tests_hardware/flash/test_toolchain_flash_boot.py::test_real_uf2_reflash_and_boot_smoke_test`
 (later flashes, `--allow-flash-cycle`-gated, see "Real-hardware test tiers" below) and
 `tests_hardware/manual/manual_toolchain.py` (first flash, human-run).
+
+#### Moving a legacy unit to this firmware (reflash runbook)
+
+The owner's operation on their own units; no session runs it. A legacy unit runs the legacy firmware
+(`legacy/firmware/`) on MicroPython 1.24.1 (owner, 2026-09-26, paraphrase). Nothing is migrated:
+the unit gets a fresh setup, and its flash is erased first (owner, 2026-09-26, paraphrase).
+
+This runbook covers the move and a move back, each erasing the flash; an update of a unit already
+on this firmware keeps its filesystem (agent, 2026-09-30; owner-reviewed, 2026-10-02).
+
+**Before**
+
+1. Note the unit's settings from its legacy pages (network/time, sensor, system/LED): SSID,
+   country, hostname, NTP host, offset and interval, GMT/DST offsets, sensor offsets and intervals,
+   the LED settings; they are entered again on the new pages, several under new names. The Wi-Fi
+   password is masked on the legacy page.
+2. Note the unit's MAC address and its DHCP reservation in the router.
+3. Build the unit's image: `uv run scripts/build_firmware.py <device>`, where `<device>` names the
+   `devices/<device>.toml` whose header names the unit.
+
+**Flash**
+
+4. Put the unit into its USB bootloader: send the system command `bootloader` on its legacy system
+   page (it resets into the bootloader 5 s later), or hold BOOTSEL while plugging it in, as for a
+   first flash above.
+5. `sudo picotool erase -a` erases the whole flash: the legacy firmware and every file of its
+   filesystem (`config.json`, and any `boot.py`, `main.py`, `.py` or `.mpy`). A filesystem
+   `boot.py` runs before this firmware's frozen `main.py`, and a filesystem file named like a
+   built-in module (`machine.py`, `time.py`, …) is found before that module; the firmware protects
+   only its own frozen modules.
+6. `sudo picotool load -x -v build/firmware-<device>.uf2`.
+
+**First boot**
+
+7. The filesystem is formatted at the first mount (MicroPython's own boot script formats a
+   filesystem it cannot mount), at the port's default size, 848 KB on a Pico W; whatever size the
+   legacy build used no longer matters after the erase.
+8. With no Wi-Fi settings the unit opens its hotspot at once: SSID = the TOML's `hostname`,
+   password = the TOML's `hotspot_password`, address 192.168.4.1, where every name resolves to the
+   device's pages; with no SSID stored it opens the hotspot again at the end of every window, so
+   there is no deadline to join. Enter Wi-Fi & Identity with "Apply & Reconnect": the unit tries
+   the network as after a fresh boot (owner, 2026-10-08: 'Any change of credentials, no matter
+   from which side, lands in the same mode as "initial connection attempt after a fresh boot".').
+   If the settings are wrong it tries five times and opens its hotspot once more; if nobody
+   corrects them in that window, it tries five times again and then goes silent — the status LED
+   dark, no hotspot, one quiet connection attempt every `hotspot_time_min` minutes, connecting by
+   itself once the network accepts it (owner, 2026-10-08: 'Don't permanently switch WiFi off, only
+   stop retrying to connect.'). Unplug and replug it to get the hotspot back.
+9. Hostname and DHCP: the default hostname is the TOML's `SensorStation<Name>` (the rule
+   `tests_scripts/test_device_tomls.py::test_hostname_is_sensorstation_plus_name` pins), not the
+   legacy default `SensorNode` or the name set on the unit; set the old name on the networking page
+   if the router or other hosts use it. A reservation keyed on the MAC keeps working if the MAC is
+   unchanged: this firmware takes the Wi-Fi MAC from the CYW43 chip's OTP, else from the board's
+   unique flash ID, both tied to the board; compare the MAC the router shows after the first join
+   with the one noted in step 2.
+10. Enter the other settings from step 1 on their pages.
+11. SCD30: continuous measurement, measurement interval, self-calibration, temperature offset,
+    altitude and the forced-recalibration curve are kept in the sensor's own non-volatile memory
+    and survive the reflash. This firmware writes a setting to the sensor only on a PUT and only
+    when its value differs, ambient pressure and forced recalibration whenever a PUT carries them,
+    and it does not start continuous measurement by itself: a sensor whose measurement was stopped
+    resumes it after an ambient-pressure PUT. Check them on the sensors page. Unplugging the unit
+    interrupts a self-calibration still in its first seven days.
+12. FRAM: the legacy SGP40 backup in the FRAM does not match this firmware's layout; the first
+    boot reads every chunk as invalid and initialises it, and the SGP40's VOC index learns afresh.
+
+**Back to legacy**
+
+13. Read and save `GET /status`'s `errcount` first: the FRAM error logs do not survive what follows
+    (CLAUDE.md's FRAM rule).
+14. Send the system command `bootloader` (or use BOOTSEL), `sudo picotool erase -a`, then
+    `sudo picotool load -x -v` the legacy image built from `legacy/firmware/` on MicroPython 1.24.1;
+    set the unit up afresh through the legacy hotspot (SSID `SensorNode`, the legacy firmware's
+    built-in hotspot password, `legacy/firmware/python/CommonDrivers/async_connect.py`). Join the
+    legacy hotspot within 8 minutes of its boot and enter correct Wi-Fi settings; otherwise the
+    legacy firmware switches its Wi-Fi off until it is power-cycled.
+15. How the legacy firmware treats the FRAM this firmware wrote is not established (the legacy tree
+    gets no tests, CLAUDE.md's legacy rule): check the unit's VOC reading after the move back.
 
 ## Real hardware access (mpremote)
 

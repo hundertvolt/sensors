@@ -59,7 +59,7 @@ async def _main() -> None:
         with open(_SCRATCH_CFG_PATH + files[0], "wb") as f:  # the one owned write: a damaged store file
             f.write(_DAMAGE)
         fact("damaged", files[0])
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))  # the shutdown's first step waits for it to park
         if state == "mempause":
             fact("mempause", await webserver._dispatch_system_cmd("mempause"))

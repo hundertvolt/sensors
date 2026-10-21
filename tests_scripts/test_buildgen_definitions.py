@@ -367,7 +367,7 @@ def test_networking_status_lists_the_drop_window_and_the_wifi_snapshot_time(repo
 
 
 # GET /status's system keys in the order the generated _system_status() publishes them; MemPaused only with FRAM.
-_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime", "UnixTime")
+_SYSTEM_STATUS_KEYS = ("SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", "MemPaused", "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime")
 
 
 def _system_status_fields(repo_root: Path, src_dir: Path, device: str) -> "list[JsonDict]":
@@ -399,6 +399,14 @@ def test_the_reset_heap_and_config_rows_say_what_they_report(repo_root: Path, sr
     assert fields["ConfigUnpersisted"] == {
         "key": "ConfigUnpersisted", "label": "Config Unpersisted", "kind": "readonly",
         "description": "Modules whose last accepted config change could not be written to flash: it applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.",
+    }
+
+
+def test_the_last_task_end_row_says_what_it_reports(repo_root: Path, src_dir: Path) -> None:
+    fields = {_str(f["key"]): f for f in _system_status_fields(repo_root, src_dir, DEVICE_NAMES[0])}
+    assert fields["LastTaskEnd"] == {
+        "key": "LastTaskEnd", "label": "Task Last Ended", "kind": "readonly", "format": "lasttaskend",
+        "description": "The supervised task whose end the supervisor recorded last since boot, and the system uptime in seconds at that record; empty until one ends. The supervisor restarts it unless a reboot follows. The reason is in that module's and SYSTEM's error history.",
     }
 
 
@@ -891,7 +899,7 @@ _SUPPORTED_SCHEMA_MAJOR = int(SCHEMA_VERSION.split(".")[0])  # js/definitions.js
 _MAX_POLL_INTERVAL_MS = 2**31 - 1  # setTimeout's ceiling; js/definitions.js's copy is pinned by test_definitions_js_mirrors.py
 _POLL_GROUPS = ("live", "settings", "none")
 _FIELD_KINDS = ("readonly", "number", "string", "enum", "toggle", "composite")
-_FIELD_FORMATS = ("gmtimestruct", "epoch")
+_FIELD_FORMATS = ("gmtimestruct", "epoch", "lasttaskend")
 _STRING_SHAPES = ("hostLabel", "countryCode", "hostName", "ipv4List")
 _CODE_TONES = ("good", "neutral", "warn")
 

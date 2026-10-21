@@ -184,7 +184,7 @@ def test_parse_web_tags_always_executed_with_dispatch_rejected(tmp_path: Path) -
     _parse_expecting(tmp_path, '# @web X section=sensors submitGroup=self label="L" alwaysExecuted=true dispatch=true\n', "exclude each other", "web.always-executed-and-dispatch")
 
 
-@pytest.mark.parametrize("value", ["epoch", "gmtimestruct"])
+@pytest.mark.parametrize("value", ["epoch", "gmtimestruct", "lasttaskend"])
 def test_parse_web_tags_format_on_a_readonly_field(tmp_path: Path, value: str) -> None:
     (tag,) = _parse(tmp_path, f'# @web X section=measurements submitGroup=self kind=readonly label="L" format={value}\n')
     assert tag.format == value

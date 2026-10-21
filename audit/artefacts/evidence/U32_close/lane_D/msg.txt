@@ -1,0 +1,15 @@
+U32 lane D: SPECIFICATION.md states the task names, LastTaskEnd and the task-top rule
+
+A.7 names _collect_task_names() among the collectors and the SGP40 backup's clock gate
+(_clock_was_set); A.8 gives LastTaskEnd's meaning with the owner's answer; C.9's Shutdown and
+Reset rows name the tops the two SystemService tasks now end in, and C.9 points to the rule;
+G.2 records the task-top rule with the owner's answer and its two inherent caveats; F.1 names
+the reflash runbook and records the owner's answer that /status counts no task death silent at
+level 0;
+G.2's mirror list, H.5's format list and H.5.1's System Status row gain the lasttaskend format;
+J.6 names the three bounded waits' dropped-frame wording; L.2 and I.4 list the new generated
+functions and the boot-built task names.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8
+

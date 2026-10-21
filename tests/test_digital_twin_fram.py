@@ -27,6 +27,7 @@ from _fast_sleep import FastAsyncSleep  # noqa: E402 - imported after the prewar
 from _fram_chip import _PAGE_SIZE, FRAMChip  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import boot_generated  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _task_names import task_name  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import device_with, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -844,7 +845,7 @@ def test_a_booted_device_whose_fram_goes_silent_restarts_its_task_and_recovers_o
         assert isinstance(chip, FRAMChip)
         fram, sysfunct = module.fram.fram, module.sysfunct
         with FastAsyncSleep():
-            await sysfunct.start_tasks([module.fram.start_asy_watch_chip])
+            await sysfunct.start_tasks([module.fram.start_asy_watch_chip], task_names=[task_name(module.fram, module.fram.start_asy_watch_chip)])
             first = sysfunct._tasks[0]
             supervisor = asyncio.create_task(sysfunct.supervise_tasks())
             await _lose(fram, chip)

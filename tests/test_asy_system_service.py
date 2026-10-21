@@ -953,6 +953,39 @@ def test_a_task_creation_failure_inside_reboot_starves_and_arms_nothing() -> Non
     assert machine.mem_backup(0)[1] == _const("_RR_STARVE_ARM_FAILED")
 
 
+class _CloseRaisingStore(_Store):
+    # Its close raises: any unexpected fault in the reset task's last flush, the one pass that closes after an
+    # escalation's arm. The real close_writes() only sets a flag, so this stands in for a fault, not its I/O.
+    def close_writes(self) -> None:
+        _Store.close_writes(self)
+        raise RuntimeError("injected close fault")
+
+
+def test_a_fault_in_the_reset_task_is_logged_and_the_watchdog_still_resets() -> None:
+    machine.power_on()
+    machine.reset_count = 0
+    wdt = machine.WDT()
+    store = _CloseRaisingStore("A", [])
+    svc = _make_service(watchdog=wdt, log=LogConfig(None, 10, _ERR), cfg_path=_tmp_cfg_dir(), config_stores=lambda: [store])  # type: ignore[list-item]
+    run(svc.setup())
+
+    async def scenario() -> None:
+        await svc._reboot(_const("_RR_TASK_BUDGET"), "Reboot triggered", machine.reset)  # the escalation's own call
+        await _fire(svc)
+        assert svc._reset_task is not None
+        await svc._reset_task  # ended at its top, not with the fault
+
+    with record_prints(svc.pr) as recorder:
+        run(scenario())
+    assert _persisted(svc) == [code("E", "UNEXPECTED")], _persisted(svc)
+    assert "injected close fault" in recorder.text(), recorder.text()
+    assert machine.reset_count == 0  # the reset action never ran: nothing feeds, so the watchdog resets
+    fed = wdt.feed_count
+    svc.feed_watchdog()
+    assert wdt.feed_count == fed
+    assert machine.mem_backup(0)[1] == _const("_RR_TASK_BUDGET")
+
+
 # Per-test config-file isolation via the shared tests/_tmp_scratch.py helper.
 _scratch = TmpScratch("sysservice")
 
@@ -1201,7 +1234,7 @@ class _Rig:
 
     async def start(self, *, supervise: bool = True) -> "asyncio.Task[None] | None":
         # main()'s last two steps: start_tasks(), then supervise_tasks() as a task, past the supervisor's first pass.
-        await self.svc.start_tasks(self.starters)
+        await self.svc.start_tasks(self.starters, task_names=["t" + str(n) for n in range(len(self.starters))])
         if not supervise:
             return None
         sup = asyncio.create_task(self.svc.supervise_tasks())
@@ -1556,6 +1589,30 @@ def test_a_file_that_cannot_be_deleted_ends_the_reset_in_code_9() -> None:
     assert out.record == _const("_RR_COMMAND_INCOMPLETE")
     assert (_exists(path + "config_KEEP.cfg"), _exists(path + "config_GONE.cfg")) == (True, False)
     assert _persisted(keep.pr) == []  # the failed delete prints one line and persists nothing
+
+
+class _DeleteRaisingStore(_Store):
+    # Its delete raises: any unexpected fault in a config reset's own step, past the quiesce that paused FRAM. The
+    # real delete_file() turns an OSError into False (the reset then ends in code 9): a fault, not a delete error.
+    async def delete_file(self) -> bool:
+        await _Store.delete_file(self)
+        raise RuntimeError("injected delete fault")
+
+
+def test_a_fault_in_a_shutdown_step_is_logged_and_the_watchdog_still_resets() -> None:
+    rig = _Rig(stores=0, level=_ERR)
+    rig.stores += [_Store("A", rig.events), _DeleteRaisingStore("B", rig.events)]
+    with record_prints(rig.svc.pr) as recorder:
+        out = _drive(rig, "_RR_CONFIG_RESET")
+    assert out.answer is True
+    assert _persisted(rig.svc) == [code("E", "UNEXPECTED"), code("E", "LOG_RAM_ONLY")], _persisted(rig.svc)
+    assert "injected delete fault" in recorder.text(), recorder.text()
+    assert code("E", "UNEXPECTED") not in _rings_after(rig.chip)[0][0]  # FRAM paused: the console and RAM log only
+    # No reset armed and nothing feeds, so the watchdog resets; the record still reads the incomplete command.
+    assert (out.arms, machine.reset_count, out.record) == (0, 0, _const("_RR_COMMAND_INCOMPLETE"))
+    fed = rig.wdt.feed_count
+    rig.svc.feed_watchdog()
+    assert rig.wdt.feed_count == fed
 
 
 def test_an_erase_whose_writes_stop_ends_in_code_9_with_every_block_marked_blank() -> None:
@@ -2587,6 +2644,7 @@ def test_start_task_starter_exception_returns_none_and_logs_once() -> None:
     def bad_starter() -> "asyncio.Task[None]":
         raise RuntimeError("boom")
 
+    svc._task_names = ["T0", "T1", "T2"]  # what start_tasks() stores: _start_task() names slot n from it
     result = run(svc._start_task(bad_starter, 2))
     assert result is None
     assert svc.pr._err_count == 1
@@ -2619,7 +2677,7 @@ def test_supervise_tasks_with_no_tasks_never_fails() -> None:
     svc = _make_service(watchdog=wdt)
 
     async def scenario() -> None:
-        await svc.start_tasks([])
+        await svc.start_tasks([], task_names=[])
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(3)
         assert wdt.feed_count >= 1
@@ -2634,7 +2692,7 @@ def test_cancelling_supervise_tasks_cancels_its_supervisor() -> None:
     svc = _make_service(watchdog=wdt)
 
     async def scenario() -> None:
-        await svc.start_tasks([_long_lived_starter])
+        await svc.start_tasks([_long_lived_starter], task_names=["T"])
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(10)
         supervisor = svc._supervisor_task
@@ -2671,7 +2729,7 @@ def _count_collects_during_supervision(starters: "list[Callable[[], asyncio.Task
     after_start = [0]
 
     async def scenario() -> None:
-        await svc.start_tasks(starters)
+        await svc.start_tasks(starters, task_names=["T"] * len(starters))
         after_start[0] = counter.collects
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(iterations)
@@ -2700,10 +2758,11 @@ def test_start_tasks_with_no_starters_still_does_the_start_of_list_collect() -> 
     assert after_supervision == 1, "the supervisor loop must not collect even with no tasks to supervise"
 
 
-def _supervised(svc: SystemService, starters: "list[Callable[[], asyncio.Task[None]]]", passes: int = 20) -> None:
-    # Drives the start loop, then the supervisor through `passes` yields under the fast sleep, then cancels it.
+def _supervised(svc: SystemService, starters: "list[Callable[[], asyncio.Task[None]]]", passes: int = 20, names: "list[str] | None" = None) -> None:
+    # Drives the start loop (every slot named "T" unless `names` are given), then the supervisor through `passes` yields
+    # under the fast sleep, then cancels it.
     async def scenario() -> None:
-        await svc.start_tasks(starters)
+        await svc.start_tasks(starters, task_names=names if names is not None else ["T"] * len(starters))
         task = asyncio.create_task(svc.supervise_tasks())
         await _yields(passes)
         await cancel(task)
@@ -2804,6 +2863,79 @@ def test_supervise_tasks_logs_a_self_cancelled_task_as_a_persisted_error() -> No
     assert _persisted(svc) == [code("E", "TASK_CANCELLED")]  # exactly one entry, _log_dead_task's own
 
 
+def test_a_slot_is_named_in_its_end_start_failure_and_restart_lines() -> None:
+    # Each console line of a slot's end and restart carries the name start_tasks() was given for it, not its index.
+    svc = _make_service(log=LogConfig(None, 10, _WARN))
+    with record_prints(svc.pr) as recorder:
+        _supervised(svc, [_long_lived_starter, _ending_then_parked("starter", [0], asyncio.Event())], names=["W", "X"])
+    lines = [line[1:] for line in recorder.lines]
+    assert ("Task", "X", "ended: returned") in lines, recorder.text()
+    assert [line[:3] for line in lines if line[0] == "Task starter"] == [("Task starter", "X", "failed to start:")], recorder.text()
+    restarts = [line for line in lines if line[0] == "Task ended - attempting restart, error counter increased to"]
+    assert len(restarts) == 2 and all(line[-2:] == ("-", "X") for line in restarts), recorder.text()
+
+
+def _ends_when_set(event: asyncio.Event) -> "Callable[[], asyncio.Task[None]]":
+    # A starter whose first task returns once `event` is set; a restart's task stays parked.
+    calls = [0]
+
+    def starter() -> "asyncio.Task[None]":
+        calls[0] += 1
+        first = calls[0] == 1
+
+        async def _c() -> None:
+            await (event if first else asyncio.Event()).wait()
+
+        return asyncio.create_task(_c())
+
+    return starter
+
+
+def test_get_last_task_end_names_the_last_ended_slot_and_the_uptime_then() -> None:
+    # None until a supervised task ends; then that slot's name and the measured uptime at its end, each end replacing
+    # the one before - two slots of one module differ by their names.
+    a_ends, b_ends = asyncio.Event(), asyncio.Event()
+    seen: list[object] = []
+    with _driven() as clock:
+        svc = _make_service()
+
+        async def scenario() -> None:
+            await svc.start_tasks([_ends_when_set(a_ends), _ends_when_set(b_ends)], task_names=["mod.a", "mod.b"])
+            sup = asyncio.create_task(svc.supervise_tasks())
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            clock.advance(42000)
+            a_ends.set()
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            clock.advance(8000)
+            b_ends.set()
+            await _yields(20)
+            seen.append(svc.get_last_task_end())
+            await cancel(sup)
+
+        with FastAsyncSleep():
+            run(scenario())
+    assert seen == [None, {"Task": "mod.a", "Uptime": 42}, {"Task": "mod.b", "Uptime": 50}], seen
+
+
+def test_a_starter_that_raised_at_start_is_not_a_task_end() -> None:
+    # An empty slot is restarted, but no task existed to end: the record stays None.
+    calls = [0]
+
+    def raising_then_parked() -> "asyncio.Task[None]":
+        calls[0] += 1
+        if calls[0] == 1:
+            raise RuntimeError("injected starter failure")
+        return _long_lived_starter()
+
+    svc = _make_service()
+    _supervised(svc, [raising_then_parked], names=["R"])
+    assert calls[0] == 2, calls
+    assert svc.get_last_task_end() is None
+    assert _persisted(svc) == [code("E", "TASK_STARTER_RAISED")], _persisted(svc)
+
+
 def _dead_starter(calls: "list[int]") -> "Callable[[], asyncio.Task[None]]":
     def starter() -> "asyncio.Task[None]":
         calls[0] += 1
@@ -2827,7 +2959,7 @@ def test_the_supervisor_escalates_past_the_failure_budget() -> None:
         raise RuntimeError("starter always fails")
 
     async def scenario() -> None:
-        await svc.start_tasks([always_raising_starter])
+        await svc.start_tasks([always_raising_starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
@@ -2856,7 +2988,7 @@ def test_a_pass_with_every_task_dead_escalates_at_the_first_end_past_the_budget(
     seen: list[object] = []
 
     async def scenario() -> None:
-        await svc.start_tasks(starters)
+        await svc.start_tasks(starters, task_names=["T"] * len(starters))
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(200):
             await asyncio.sleep(0)
@@ -2915,7 +3047,7 @@ def test_an_escalating_pass_retires_the_dead_task_so_no_later_pass_awaits_it_aga
     svc._reboot = recording_reboot  # type: ignore[method-assign]
 
     async def scenario() -> None:
-        await svc.start_tasks([starter])
+        await svc.start_tasks([starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(400):
             await asyncio.sleep(0)
@@ -2963,7 +3095,7 @@ def test_the_escalation_flushes_a_staged_write_and_stops_feeding_for_good() -> N
 
     async def scenario() -> None:
         assert (await store.write_config({"Count": 9}))[0] is True
-        await svc.start_tasks([_dead_starter(calls)])
+        await svc.start_tasks([_dead_starter(calls)], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
@@ -3284,7 +3416,7 @@ def test_the_supervisor_escalation_decodes_to_code_5() -> None:
     svc = _make_service()
 
     async def scenario() -> None:
-        await svc.start_tasks([_always_raising_starter])
+        await svc.start_tasks([_always_raising_starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(500):
             await asyncio.sleep(0)
@@ -3321,7 +3453,7 @@ def test_a_recorded_stack_overflow_reboots_with_code_20_at_the_next_pass() -> No
         return sleeping()
 
     async def scenario() -> None:
-        await svc.start_tasks([starter])
+        await svc.start_tasks([starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         await _yields(5)  # its first pass ran, healthy
         fed = wdt.feed_count
@@ -3357,7 +3489,7 @@ def test_a_stack_overflow_caught_by_a_level_setter_reboots_through_the_superviso
         await svc.setup()
         await svc._apply_level(1)
         assert asy_print_log.fatal_reported() is True
-        await svc.start_tasks([_long_lived_starter])
+        await svc.start_tasks([_long_lived_starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
@@ -3426,7 +3558,7 @@ def test_a_fault_of_the_supervisor_itself_is_persisted_once_and_ends_it_unfed() 
         return
 
     async def scenario() -> "tuple[bool, int, bool, bool]":
-        await svc.start_tasks([lambda: asyncio.create_task(ends())])
+        await svc.start_tasks([lambda: asyncio.create_task(ends())], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         for _ in range(_RUN_BOUND_S * 100):
             await asyncio.sleep(0)
@@ -3514,7 +3646,7 @@ def _escalate_into_a_full_heap(starter: "Callable[[], asyncio.Task[None]]", *, s
     svc.pr.err = full_heap_line  # type: ignore[method-assign]
 
     async def scenario() -> None:
-        await svc.start_tasks([starter])
+        await svc.start_tasks([starter], task_names=["T"])
         sup = asyncio.create_task(svc.supervise_tasks())
         await _yields(5)
         if stack:

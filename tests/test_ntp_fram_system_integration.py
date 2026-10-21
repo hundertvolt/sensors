@@ -17,6 +17,7 @@ from _ntp_frames import FakeNtpServer, make_ntp_reply
 from _port_bands import PortAllocator
 from _recording_print import record_prints
 from _src_const import src_const, src_int
+from _task_names import task_name
 from _tmp_scratch import TmpScratch
 from _udp_port_redirect import redirect_udp_port
 from _unix_port_udp_addr_shim import patch_asy_udp_socket_for_unix_port
@@ -389,7 +390,7 @@ def test_system_service_never_restarts_a_real_ntp_task_whose_server_stays_unreac
     try:
 
         async def scenario() -> int:
-            await svc.start_tasks([spy_starter])
+            await svc.start_tasks([spy_starter], task_names=[task_name(ntp, ntp.start_asy_sync)])
             assert len(starts) == 1
             svc_task = asyncio.create_task(svc.supervise_tasks())
             await asyncio.sleep(0)  # one yield: the supervisor's first pass (a limit, not an interleaving claim)
@@ -506,7 +507,7 @@ def test_system_service_restarts_a_real_sensor_reader_task_that_genuinely_gives_
         return t
 
     async def scenario() -> int:
-        await svc.start_tasks([spy_starter])
+        await svc.start_tasks([spy_starter], task_names=[task_name(reader, reader.start_asy_read)])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): asy_i2c_driver.py's _probe_for_device() awaits two real
             # 0.1s sleeps regardless of outcome, and sleep(0) never advances wall-clock time on this
@@ -568,7 +569,7 @@ def test_system_service_restarts_a_real_scd30_reader_task_that_genuinely_gives_u
         return t
 
     async def scenario() -> int:
-        await svc.start_tasks([spy_starter])
+        await svc.start_tasks([spy_starter], task_names=[task_name(reader, reader.start_asy_read)])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():
@@ -597,7 +598,7 @@ def test_system_service_restarts_a_real_sgp40_reader_task_that_genuinely_gives_u
         return t
 
     async def scenario() -> int:
-        await svc.start_tasks([spy_starter])
+        await svc.start_tasks([spy_starter], task_names=[task_name(reader, reader.start_asy_read)])
         for _ in range(_START_POLL_TRIES):  # bounded wait for the real _read_loop()'s own init failure -> return False -
             # a real sleep, not sleep(0): see the BMP3xx test above for why.
             if starts and starts[0].done():

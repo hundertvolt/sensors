@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     from _mpy_shed.time_mp import _TicksMs
 
-    from asy_base_classes import ErrorSource, JsonMapping, NtpSyncFct, SetupFct, TaskStarter, TimerStarter
+    from asy_base_classes import ErrorSource, JsonDict, JsonMapping, NtpSyncFct, SetupFct, TaskStarter, TimerStarter
     from asy_config_manager import CfgValue, ConfigSchema, WriteValidity
     from asy_fram_manager import FRAMManager
     from asy_print_log import ErrorLog, PrintLogHistory
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 # Codes from the global catalog (buildgen/error_catalog.json): the shared ones and SYSTEM's bands.
 _ERR_CALLBACK = const(14)
 _ERR_TIMER = const(17)
+_ERR_UNEXPECTED = const(23)
 _ERR_STACK_EXHAUSTED = const(25)
 _ERR_TASK_STARTER_RAISED = const(40)
 _ERR_TASK_BUDGET_REBOOT = const(41)
@@ -227,6 +228,11 @@ class SystemService:
         # Task[Any], not the TaskStarter alias, until every reader's task returns None (its read loop still returns bool).
         self._task_starters: list[Callable[[], asyncio.Task[Any]]] = []
         self._tasks: list[asyncio.Task[Any] | None] = []
+        self._task_names: list[str] = []  # one per starter, given with them: the name in its slot's lines and task-end record
+        # The last task end, fixed-size: its slot's name (a reference, never a copy) and the uptime then, so recording an
+        # end allocates nothing; get_last_task_end() builds the reply.
+        self._last_end_name: str | None = None
+        self._last_end_uptime = 0
         # Modules whose config file was unreadable or damaged at this boot: filled once by run_setups(), then fixed.
         self._config_faults: list[str] = []
         self._unpause_at: _TicksMs | None = None  # ticks_ms() deadline of a mempause auto-unpause; None when none is pending
@@ -291,15 +297,18 @@ class SystemService:
     async def _log_dead_task(self, task: "asyncio.Task[Any]", n: int) -> None:
         # A finished Task has no .exception()/.result() (Part F.1): awaiting it again is how to learn why it
         # ended, giving the restart line below real diagnostic content.
+        name = self._task_names[n]
+        self._last_end_name = name
+        self._last_end_uptime = self._uptime.read()
         try:
             await task
         except asyncio.CancelledError:
-            await self.pr.err_s("Task", n, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
+            await self.pr.err_s("Task", name, "ended: was cancelled", errno=_ERR_TASK_CANCELLED)
         except Exception as e:
             report_if_fatal(e)
-            await self.pr.err_s("Task", n, "ended with exception:", e, errno=_ERR_TASK_RAISED)
+            await self.pr.err_s("Task", name, "ended with exception:", e, errno=_ERR_TASK_RAISED)
         else:
-            await self.pr.err_s("Task", n, "ended: returned", errno=_ERR_TASK_RETURNED)
+            await self.pr.err_s("Task", name, "ended: returned", errno=_ERR_TASK_RETURNED)
 
     async def _ntp_boot_signature(self) -> int | None:
         # None if not synced yet - a failing NTP callback counts as not synced (owner, 2026-07-18);
@@ -387,12 +396,16 @@ class SystemService:
             return True
 
     async def _reset_when_due(self, action: "Callable[[], None]") -> None:
-        await self._reset_due.wait()
-        # After a system command the shutdown sequence already closed and flushed every store, so this pass finds
-        # nothing; after the supervisor escalation it is the last flush, with FRAM paused (its failure reaches the
-        # console only). No await between it and the reset, so no write can start in between.
-        await self._flush_config_stores(close=True)
-        action()
+        try:
+            await self._reset_due.wait()
+            # After a system command the shutdown sequence already closed and flushed every store, so this pass finds
+            # nothing; after the supervisor escalation it is the last flush, with FRAM paused (its failure reaches the
+            # console and the RAM log only). No await between it and the reset, so no write can start in between.
+            await self._flush_config_stores(close=True)
+            action()
+        except Exception as e:  # an unsupervised task's top, FRAM paused: nothing feeds after it, so the watchdog resets
+            report_if_fatal(e)
+            await self.pr.err_s("Reset task failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _run_timer_starter(self, starter: "TimerStarter", n: int) -> None:
         try:
@@ -406,65 +419,70 @@ class SystemService:
     async def _shutdown_sequence(self, purpose: int) -> None:
         # One controlled shutdown for a system command (owner, 2026-09-30): no step has a timeout that moves on -
         # a hung step is not fed, so the watchdog resets the unit; the order is explained in SPECIFICATION.md Part A.8.
-        self._own_feed()
-        task = self._supervisor_task
-        if task is None or not task.done():
-            await self._supervisor_parked.wait()  # set only inside the supervisor task, once it parked
+        try:
+            self._own_feed()
             task = self._supervisor_task
-            if task is not None:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-        if task is None or not task.done():
-            return  # not proven stopped: nothing feeds from here, the watchdog resets the unit
-        self.pr.evt("Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone")
-        self._own_feed()
-        flushed = await self._flush_config_stores(close=True, step_done=self._own_feed)
-        self.pr.evt("Shutdown: config stores closed and flushed")
-        if self._storage is not None:
-            await self._storage.quiesce(self._own_feed)
-        self.pr.evt("Shutdown: storage quiesced")
-        for t in self._tasks:
-            if t is not None and not t.done():
-                t.cancel()
-        for t in self._tasks:
-            if t is not None:
-                try:
-                    await t
-                except (asyncio.CancelledError, Exception) as e:  # how a stopped task ended changes nothing here
-                    report_if_fatal(e)
-                self._own_feed()
-        self.pr.evt("Shutdown: supervised tasks stopped")
-        done = True
-        if purpose == _RR_CONFIG_RESET:
-            for store in self._config_stores:
-                done = await store.delete_file() and done
-                self._own_feed()
-        elif purpose == _RR_FRAM_ERASED:
-            done = self._storage is not None and await self._storage.erase_chip(self._own_feed)
-        if purpose in (_RR_CONFIG_RESET, _RR_FRAM_ERASED):
-            self.pr.evt("Shutdown:", _purpose_name(purpose), "done" if done else "incomplete")
-        # A shortfall reads 9 at the next boot: a failed delete or erase, or config the reset loses (a config reset's
-        # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08).
-        code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
-        if purpose == _RR_REBOOT:
-            message = "Reboot triggered"
-        elif purpose == _RR_BOOTLOADER:
-            message = "Reboot into bootloader triggered"
-        elif purpose == _RR_CONFIG_RESET:
-            message = "Reboot after config reset"
-        else:
-            message = "Reboot after FRAM erase"
-        await self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)
+            if task is None or not task.done():
+                await self._supervisor_parked.wait()  # set only inside the supervisor task, once it parked
+                task = self._supervisor_task
+                if task is not None:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            if task is None or not task.done():
+                return  # not proven stopped: nothing feeds from here, the watchdog resets the unit
+            self.pr.evt("Shutdown: supervisor stopped, the watchdog is fed by the shutdown alone")
+            self._own_feed()
+            flushed = await self._flush_config_stores(close=True, step_done=self._own_feed)
+            self.pr.evt("Shutdown: config stores closed and flushed")
+            if self._storage is not None:
+                await self._storage.quiesce(self._own_feed)
+            self.pr.evt("Shutdown: storage quiesced")
+            for t in self._tasks:
+                if t is not None and not t.done():
+                    t.cancel()
+            for t in self._tasks:
+                if t is not None:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception) as e:  # how a stopped task ended changes nothing here
+                        report_if_fatal(e)
+                    self._own_feed()
+            self.pr.evt("Shutdown: supervised tasks stopped")
+            done = True
+            if purpose == _RR_CONFIG_RESET:
+                for store in self._config_stores:
+                    done = await store.delete_file() and done
+                    self._own_feed()
+            elif purpose == _RR_FRAM_ERASED:
+                done = self._storage is not None and await self._storage.erase_chip(self._own_feed)
+            if purpose in (_RR_CONFIG_RESET, _RR_FRAM_ERASED):
+                self.pr.evt("Shutdown:", _purpose_name(purpose), "done" if done else "incomplete")
+            # A shortfall reads 9 at the next boot: a failed delete or erase, or config the reset loses (a config reset's
+            # deletes discard it anyway). Without FRAM the reset reason is a lost write's one surviving trace (agent, 2026-10-08).
+            code = purpose if done and (flushed or purpose == _RR_CONFIG_RESET) else _RR_COMMAND_INCOMPLETE
+            if purpose == _RR_REBOOT:
+                message = "Reboot triggered"
+            elif purpose == _RR_BOOTLOADER:
+                message = "Reboot into bootloader triggered"
+            elif purpose == _RR_CONFIG_RESET:
+                message = "Reboot after config reset"
+            else:
+                message = "Reboot after FRAM erase"
+            await self._reboot(code, message, system_bootloader if purpose == _RR_BOOTLOADER else system_reset, fed=True)
+        except Exception as e:  # an unsupervised task's top: no reset is armed and nothing feeds, so the watchdog resets
+            # with the record the sequence left; past the quiesce FRAM is paused, so the entry stays in RAM.
+            report_if_fatal(e)
+            await self.pr.err_s("Shutdown sequence failed:", e, errno=_ERR_UNEXPECTED)
 
     async def _start_task(self, starter: "Callable[[], asyncio.Task[Any]]", n: int) -> "asyncio.Task[Any] | None":
         try:
             return starter()
         except Exception as e:  # driver-supplied starter (get_task_starters()) - could legitimately misbehave
             report_if_fatal(e)
-            await self.pr.err_s("Task starter", n, "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
+            await self.pr.err_s("Task starter", self._task_names[n], "failed to start:", e, errno=_ERR_TASK_STARTER_RAISED)
             return None
 
     async def _status_loop(self) -> None:
@@ -535,7 +553,7 @@ class SystemService:
                             escalate = _RR_TASK_BUDGET
                             break
                         self._tasks[n] = await self._start_task(self._task_starters[n], n)
-                        self.pr.wrn("Task ended - attempting restart, error counter increased to", task_errors, "- task", n)
+                        self.pr.wrn("Task ended - attempting restart, error counter increased to", task_errors, "-", self._task_names[n])
                 if escalate:
                     # The reset is recorded before the escalation's first await and with no allocation: should what follows
                     # fail, the watchdog's reset still reads this code; a command passing the gate later writes its own after it.
@@ -624,6 +642,12 @@ class SystemService:
         # SensorReaderConfig.get_error_sources() shape (this class owns a cfgmgr too), duck-typed
         # rather than inherited (see this module's own "not a SensorReaderConfig subclass" comment).
         return [self, self.cfgmgr]
+
+    def get_last_task_end(self) -> "JsonDict | None":
+        # None until a supervised task ends this boot; then its name and the uptime in seconds when its end was logged.
+        if self._last_end_name is None:
+            return None
+        return {"Task": self._last_end_name, "Uptime": self._last_end_uptime}
 
     def get_loggers(self) -> "list[PrintLogHistory]":
         return [self.pr, self.cfgmgr.pr]
@@ -717,11 +741,12 @@ class SystemService:
                 await self._apply_level(level[0])
         return self.cfgmgr.valid
 
-    async def start_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
+    async def start_tasks(self, task_starters: "list[Callable[[], asyncio.Task[Any]]]", task_names: list[str]) -> None:
         # The boot placement reset (SPECIFICATION.md I.4(f.1)): the second of the two one-time boot lists that get a
         # placement reset between their units - each collect puts the allocator's free-scan index back to zero.
         # Not hygiene, not compaction, and never in the supervisor.
         self._task_starters = task_starters
+        self._task_names = task_names
         self._tasks = [None] * len(task_starters)
         gc.collect()
         # A task that dies with nobody awaiting it reaches SYSTEM's level-gated report (Part F.1). A handler already

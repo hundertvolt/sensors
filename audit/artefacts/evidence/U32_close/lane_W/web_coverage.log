@@ -1,0 +1,163 @@
+
+ RUN  v5.0.3 /tmp/claude-0/-home-user-sensors/185d5b0e-d0ae-57c0-8798-ed52081f7df8/scratchpad/wt-u32w
+      Coverage enabled with v8
+
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a settings section's one-shot GET fails, and a later tick recovers it
+Could not refresh Sensors: [TypeError: Failed to fetch (simulated network failure)]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a GET response body is empty
+Could not refresh Measurements: [Error: GET /measurements returned an empty body]
+stderr | tests_js/render.test.js > renderSection > shows a clear, non-crashing error banner when a GET response body is torn/truncated JSON (a transmission error)
+Could not refresh Measurements: [Error: Response from /measurements was not valid JSON (likely a corrupted or truncated transmission)]
+stderr | tests_js/render.test.js > renderSection > surfaces the server's own descr text when a section's /status sub-request returns a shaped HTTP error
+Could not refresh Notification: [Error: GET /status failed: Not found]
+stderr | tests_js/render.test.js > renderSection > shows a visible error banner when a section's /status sub-request fails
+Could not refresh Notification: [TypeError: Failed to fetch (simulated)]
+stderr | tests_js/render.test.js > renderSection > the section controller > calls onRecovered once when a failure episode ends, never on a plain success
+Could not refresh Measurements: [Error: GET /measurements failed: Internal server error]
+stderr | tests_js/render.test.js > renderSection > the section controller > shows the banner when a GET answers JSON that is not an object, never a silent dash everywhere
+Could not refresh Measurements: [Error: GET /measurements returned no JSON object]
+stderr | tests_js/render.test.js > renderSection > the section controller > words a failed GET whose body is not JSON by its status, not as an empty body
+Could not refresh Measurements: [Error: GET /measurements failed: HTTP 404]
+stderr | tests_js/render.test.js > renderSection > the Apply path > keeps a Valid result when the post-write GET fails: the banner shows, Apply re-enables, nothing rejects unhandled
+Could not refresh Sensors: [Error: GET /sensors failed: Internal server error]
+ ✓ |chromium| tests_js/render.test.js (86 tests) 3950ms
+   ✓ renderSection (85)
+     ✓ shows a visible error banner (without clearing existing data) when a live poll's GET fails, and hides it again once the next poll succeeds 423ms
+     ✓ the section controller (19)
+       ✓ updates a sensor card in place to unavailable when a refresh sends its marker, and back when the map returns 421ms
+       ✓ calls onRecovered once when a failure episode ends, never on a plain success 420ms
+ ✓ |chromium| tests_js/lint-ceilings.test.js (4 tests) 4517ms
+   ✓ ESLint complexity ceilings (4)
+     ✓ complexity sits at its measured maximum 1718ms
+     ✓ max-depth sits at its measured maximum 1156ms
+     ✓ max-nested-callbacks sits at its measured maximum 1104ms
+     ✓ max-classes-per-file sits at its measured maximum 536ms
+ ✓ |chromium| tests_js/shell.test.js (15 tests) 1683ms
+   ✓ startShell (13)
+     ✓ shows ages against the device's clock: unknown until /status carries UnixTime, then tracking it as time passes 707ms
+ ✓ |chromium| tests_js/accessibility.test.js (45 tests) 1212ms
+ ✓ |chromium| tests_js/port-lock.test.js (15 tests) 3895ms
+   ✓ the JS port lock (15)
+     ✓ takes over a lock recording no pid at all, leaving nothing behind 2138ms
+ ✓ |chromium| tests_js/site-functions.test.js (54 tests) 1331ms
+ ✓ |chromium| tests_js/generated-definitions-render.test.js (48 tests) 849ms
+ ✓ |chromium| tests_js/mock-server-put-matrix.test.js (433 tests) 215ms
+ ✓ |chromium| tests_js/poll-manager.test.js (22 tests) 378ms
+ ✓ |chromium| tests_js/templates.test.js (116 tests) 151ms
+ ✓ |chromium| tests_js/main.test.js (11 tests) 348ms
+ ✓ |chromium| tests_js/app.test.js (11 tests) 98ms
+ ✓ |chromium| tests_js/mock-server.test.js (138 tests) 124ms
+ ✓ |chromium| tests_js/micropypath.test.js (3 tests) 15ms
+ ✓ |chromium| tests_js/definitions-shape-corpus.test.js (134 tests) 18ms
+ ✓ |chromium| tests_js/definitions.test.js (50 tests) 66ms
+ ✓ |chromium| tests_js/definitions-mockdata-coverage.test.js (11 tests) 15ms
+ ✓ |chromium| tests_js/mock-data-compose.test.js (30 tests) 19ms
+ ✓ |chromium| tests_js/nav.test.js (8 tests) 26ms
+ ✓ |chromium| tests_js/summary-reporter.test.js (8 tests) 11ms
+ ✓ |chromium| tests_js/api-reference-agreement.test.js (19 tests) 10ms
+ ✓ |chromium| tests_js/memory-markers.test.js (12 tests) 12ms
+ ✓ |chromium| tests_js/source-constants.test.js (7 tests) 15ms
+ ✓ |chromium| tests_js/expected-display.test.js (6 tests) 6ms
+ ✓ |chromium| tests_js/twin-start-failure.test.js (3 tests) 6ms
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: arzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on arzi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: dev > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on dev: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: grkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on grkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: klkizi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on klkizi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: schlafzi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on schlafzi: 6 tabs, 6 loaded on the first pass, 0 on their reload, 0 not at all
+stdout | tests_js/live-backend.test.js > live digital-twin backend, concurrent browser sessions: wozi > a full ceiling of browser tabs against one live twin all load, directly or on one reload
+concurrent tabs on wozi: 6 tabs, 5 loaded on the first pass, 1 on their reload, 0 not at all
+ ✓ |chromium| tests_js/live-backend.test.js (18 tests) 238192ms
+   ✓ live digital-twin backend: arzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 7470ms
+   ✓ live digital-twin backend: dev (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 7247ms
+   ✓ live digital-twin backend: grkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5629ms
+   ✓ live digital-twin backend: klkizi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5759ms
+   ✓ live digital-twin backend: schlafzi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 5969ms
+   ✓ live digital-twin backend: wozi (1)
+     ✓ the real website, driven by a real browser, round-trips a real PUT against a live twin 6025ms
+   ✓ live digital-twin backend, concurrent browser sessions: arzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 11470ms
+   ✓ live digital-twin backend, concurrent browser sessions: dev (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 13905ms
+   ✓ live digital-twin backend, concurrent browser sessions: grkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 24291ms
+   ✓ live digital-twin backend, concurrent browser sessions: klkizi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 18440ms
+   ✓ live digital-twin backend, concurrent browser sessions: schlafzi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 18573ms
+   ✓ live digital-twin backend, concurrent browser sessions: wozi (1)
+     ✓ a full ceiling of browser tabs against one live twin all load, directly or on one reload 37735ms
+   ✓ live digital-twin backend, device restart: arzi (1)
+     ✓ the page recovers from a device restart without reloading 19036ms
+   ✓ live digital-twin backend, device restart: dev (1)
+     ✓ the page recovers from a device restart without reloading 9058ms
+   ✓ live digital-twin backend, device restart: grkizi (1)
+     ✓ the page recovers from a device restart without reloading 13268ms
+   ✓ live digital-twin backend, device restart: klkizi (1)
+     ✓ the page recovers from a device restart without reloading 16041ms
+   ✓ live digital-twin backend, device restart: schlafzi (1)
+     ✓ the page recovers from a device restart without reloading 10478ms
+   ✓ live digital-twin backend, device restart: wozi (1)
+     ✓ the page recovers from a device restart without reloading 7795ms
+
+ Test Files  26 passed (26)
+      Tests  1307 passed (1307)
+   Start at  09:29:17
+   Duration  240.69s (worker 54%, tests 46%)
+
+== Summary: npm test ==
+Commit: 0087f16
+Levels: L0
+Counts (tests): passed 1307 · failed 0 · skipped 0 · deselected 0 · retried 0 · recovered 0 · vacuous 0
+Failed: none
+Skipped: none
+Deselected: none
+Passed only on retry: none
+Recovery passes: none
+Notes: none
+Checked nothing: none
+Result: PASS
+Exit code: 0
+[34m % [39m[2mCoverage report from [22m[33mv8[39m
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   96.72 |     91.6 |   96.28 |   96.72 |                   
+ ...pad/wt-u32w/js |   98.38 |    93.31 |   98.54 |   98.37 |                   
+  app.js           |   97.14 |      100 |   85.71 |   97.05 | 93                
+  definitions.js   |     100 |    99.55 |     100 |     100 | 419               
+  field-format.js  |     100 |    98.43 |     100 |     100 | 100               
+  main.js          |    87.5 |      100 |   66.66 |    87.5 | 40                
+  mock-server.js   |   97.55 |    92.47 |   98.41 |   97.71 | ...01,586,592,802 
+  nav.js           |   97.61 |       80 |     100 |   97.56 | 58                
+  poll-manager.js  |     100 |    97.72 |   93.75 |     100 | 137               
+  render.js        |   97.35 |    88.61 |     100 |   97.26 | ...85,411,465,504 
+  shell.js         |   98.75 |    94.11 |     100 |   98.59 | 120               
+  templates.js     |   98.83 |    91.76 |     100 |    98.8 | ...22-523,538,568 
+ ...-u32w/tests_js |   88.71 |    83.12 |   90.29 |   88.27 |                   
+  _a11y_checks.js  |     100 |    83.33 |     100 |     100 | ...9,33,66-70,109 
+  _dom_helpers.js  |   94.11 |       50 |     100 |   94.11 | 15                
+  ...ed_display.js |     100 |    96.15 |     100 |     100 | 34                
+  ...efinitions.js |   97.43 |       80 |     100 |   96.87 | 98                
+  ...ry_markers.js |   72.05 |    86.95 |   69.23 |   70.49 | 135-166           
+  ...ield_cases.js |     100 |    97.72 |     100 |     100 | 35                
+  ...ary_layout.js |    75.8 |    63.49 |    87.5 |      75 | ...17,141-153,159 
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 96.72% ( 1803/1864 )
+Branches     : 91.6% ( 1332/1454 )
+Functions    : 96.28% ( 363/377 )
+Lines        : 96.72% ( 1713/1771 )
+================================================================================

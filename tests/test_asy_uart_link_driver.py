@@ -1,4 +1,4 @@
-"""UARTLinkDriver: the bench exerciser's transfers, failure counts and banner across a real UART_Comm pair in both
+"""UARTLinkDriver: the bench exerciser's transfers, failure counts and banner across a real UARTComm pair in both
 CRC modes, its task starters and its FRAM-backed log."""
 
 import asyncio
@@ -102,7 +102,7 @@ def test_initiator_task_starters_include_exercise_loop() -> None:
     driver = UART(0, tx_pin=0, rx_pin=1, poll_wait_ms=POLL_WAIT_MS, poll_idle_ms=POLL_WAIT_MS)
     initiator = UARTLinkDriver(driver, ROLE_INITIATOR)
     starters = initiator.get_task_starters()
-    assert len(starters) == 1  # UARTComm's own list is empty for an initiator - see its own get_task_starters()
+    assert starters == [initiator.start_asy_exercise], starters  # UARTComm's own list is empty for an initiator - see its own get_task_starters()
 
     async def start_and_end() -> None:  # a starter makes its task inside the loop, as start_tasks() calls it
         await cancel(starters[0]())
@@ -123,7 +123,7 @@ def test_responder_task_starters_are_the_listen_loop_only() -> None:
     responder._get_callback = get_cb  # type: ignore[method-assign]
     responder._set_callback = set_cb  # type: ignore[method-assign]
     starters = responder.get_task_starters()
-    assert len(starters) == 1  # the listen loop, not an exercise loop
+    assert starters == [responder._comm.start_asy_listen], starters  # the listen loop, not an exercise loop
 
     async def start_and_end() -> None:
         await cancel(starters[0]())

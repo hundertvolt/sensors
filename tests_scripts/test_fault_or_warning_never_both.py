@@ -27,7 +27,7 @@ _FILE_THEN_WRITE = "the config file was unusable, then writing its repair failed
 _TWO_SOURCES = "the config manager and the read callback are two sources: two occurrences"
 _FILE_THEN_SCHEMA = "the config file was unusable, then the schema itself proved invalid: two occurrences"
 _CHIP_RESET = "a chip reset, then a failed re-apply or a rejected reading: separate occurrences"
-_ARM_OR_DROP_TRACE = "never in one run: an arm that persisted sets the flag the trace tests"
+_OWN_CALL = "only the warning's own logging call can raise once it persisted, and the task's top logs that: the logging-call caveat (SPECIFICATION.md G.2)"
 
 # The mixed pairs the tree holds on purpose, each with why its two entries are two occurrences. A listed
 # pair the scan no longer finds fails, so the list follows every change that renames or removes one.
@@ -41,9 +41,14 @@ _ALLOWED: "dict[Pair, str]" = {
     ("src/asy_fram_manager.py", "_read", ("W", "FRAM_BLOCK_INVALID"), ("E", "FRAM_BLOCK_WRITE")): "an invalid block, then a failed repair write",
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_CALLBACK_RAISED")): _TWO_SOURCES,
     ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CALLBACK_KEYS"), ("E", "CFG_CALLBACK_RAISED")): "the callback's unknown keys, then merging its result raised: two occurrences",
+    ("src/asy_base_classes.py", "_get_dict_cfg", ("W", "CFG_KEYS"), ("E", "CFG_GET_RAISED")): "the config manager's unknown keys, then merging its result raised: two occurrences",
     ("src/asy_captive_dns.py", "run", ("E", "UNEXPECTED"), ("W", "SOCKET_TEARDOWN")): "never in one run: the raising disconnect sets disconnect_ok, which the teardown warning tests",
-    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_BAD_HEAD")): _ARM_OR_DROP_TRACE,
-    ("src/asy_webserver_service.py", "_serve", ("E", "UNEXPECTED"), ("W", "HTTP_PEER_RESET")): _ARM_OR_DROP_TRACE,
+    ("src/asy_captive_dns.py", "run", ("W", "DNS_RECV_FAILED"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_captive_dns.py", "run", ("W", "DNS_REPLY_DROPPED"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_BAD_HEAD"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_PEER_RESET"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "HTTP_SOCKET_ERROR"), ("E", "UNEXPECTED")): _OWN_CALL,
+    ("src/asy_webserver_service.py", "_serve", ("W", "_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP"), ("E", "UNEXPECTED")): _OWN_CALL,
     ("src/asy_ntp_client.py", "_fetch_ntp_reply", ("W", "SOCKET_TEARDOWN"), ("E", "NTP_NO_REPLY")): "the socket's teardown and the exchange's outcome (a silent server) are two occurrences",
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_NOT_OBJECT"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
     ("src/asy_config_manager.py", "setup", ("W", "CFG_FILE_JSON"), ("E", "CFG_FILE_WRITE")): _FILE_THEN_WRITE,
@@ -197,12 +202,13 @@ class _Walk:
         return self.block(stmt.orelse, pending | body | continued) | broken
 
     def try_(self, stmt: "ast.Try | ast.TryStar", pending: "set[Event]") -> "set[Event]":
-        # A handler is entered from the start of any statement of the try body.
+        # A handler is entered from the start of any statement of the try body, and from the end of its last.
         entry = set(pending)
         body = pending
         for inner in stmt.body:
             entry |= body
             body = self.stmt(inner, body)
+        entry |= body
         out = self.block(stmt.orelse, body)
         for handler in stmt.handlers:
             out |= self.block(handler.body, entry)
@@ -297,6 +303,22 @@ def test_the_scan_bites_a_planted_pair(second: str, expected: "set[Pair]") -> No
 def test_the_scan_sees_a_handler_entered_after_a_warning() -> None:
     source = "async def f(pr):\n    try:\n        await pr.wrn_s('w', wrnno=_WRN_A)\n        step()\n    except OSError:\n        await pr.err_s('e', errno=_ERR_B)\n"
     assert _pairs([_parse("src/plant.py", source)]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
+
+
+_NESTED = "async def f(pr):\n    try:\n        try:\n            step()\n{arm}\n        finally:\n            release()\n    except Exception:\n        await pr.err_s('e', errno=_ERR_B)\n"
+
+
+@pytest.mark.parametrize(
+    "arm",
+    [
+        "            await pr.wrn_s('w', wrnno=_WRN_A)",  # the nested try's last statement persists the warning
+        "        except OSError:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its handler does
+        "        except OSError:\n            pass\n        else:\n            await pr.wrn_s('w', wrnno=_WRN_A)",  # its else arm does
+    ],
+)
+def test_the_scan_sees_an_outer_handler_entered_after_a_nested_try(arm: str) -> None:
+    # The nested finally's release(), or the warning's own call, raises after the warning persisted.
+    assert _pairs([_parse("src/plant.py", _NESTED.format(arm=arm))]) == {("src/plant.py", "f", ("W", "A"), ("E", "B"))}
 
 
 def test_a_second_fault_after_a_fault_passes() -> None:

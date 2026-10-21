@@ -54,7 +54,7 @@ async def _main() -> None:
     sysfunct = SystemService(_ntp_never_synced, watchdog=wdt, log=LogConfig(None, _HISTORY_LENGTH, _LEVEL))
     if mode == "hold_console":
         print("HOLD_FROM_HERE")  # the bench test holds the console unread from here; nothing more is printed
-    await sysfunct.start_tasks([_dying_starter])
+    await sysfunct.start_tasks([_dying_starter], task_names=["dying"])
     supervisor = asyncio.create_task(sysfunct.supervise_tasks())
     rounds = _WAIT_ROUNDS if mode == "restart" else _ESCALATE_ROUNDS
     for n in range(rounds):

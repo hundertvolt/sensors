@@ -469,25 +469,34 @@ gates, traps).
   (`scripts/_require_clean_hardware_run.sh` and so the flash, bench and soak runners,
   `scripts/run_bench_rollover_test.sh`, `scripts/run_manual_hardware_tests.sh`,
   `scripts/mpremote_connect.sh`) now runs `scripts/uv_sync_retried.sh` before its hardware step, a
-  failed sync exiting 1 before anything reaches the board. The default flash and bench tiers run: the device scripts
-  whose suppression comments moved (`isl29125_mechanism_envelope.py`, `sgp40_sample_cadence.py`,
-  `sgp40_voc_algorithm_quality.py`, `system_command_fram_erase.py`, `system_command_hang.py`,
+  failed sync exiting 1 before anything reaches the board. The default flash and bench tiers run,
+  each through the flash and bench tests that run it: the device scripts whose suppression comments
+  moved, comments only (`isl29125_mechanism_envelope.py`, `sgp40_voc_algorithm_quality.py`,
   `uart_comm_hazards.py`, `uart_dma_ring_interrupts_off.py`,
-  `uart_driver_read_never_blocks_the_loop.py`, comments only) through the flash and bench tests
-  that run them; the host files edited (`bench/test_hotspot_role_reversal.py`,
+  `uart_driver_read_never_blocks_the_loop.py`); the 11 whose `start_tasks()` call now passes the
+  required `task_names` (`c_stack_budget.py`, `heap_layout_after_full_boot_sequence.py`, whose list
+  collection also follows `main()`'s order now, `reset_code_command_incomplete.py`,
+  `reset_code_stack_exhausted.py`, `sgp40_sample_cadence.py`, `system_command_config_reset.py`,
+  `system_command_fram_erase.py`, `system_command_hang.py`, `system_command_reboot.py`,
+  `system_service_restarts_a_real_dead_task.py`, `unretrieved_task_exception_handler.py`; of them
+  `sgp40_sample_cadence.py`, `system_command_fram_erase.py` and `system_command_hang.py` also carry
+  moved suppression comments); the host files edited (`bench/test_hotspot_role_reversal.py`,
   `bench/test_reset_reasons.py`, `bench/test_system_commands_over_rest.py`,
-  `flash/test_system_commands.py`, `conftest.py`'s `bench`
-  fixture, now a plain return, and its VL805 read, `bench_control.py`'s two `contextlib.suppress`
-  forms, `twin_board.py`, `website_identity.py`); and `dev`'s UART link, whose listen now names a
-  frame its read dropped ("listen read dropped a corrupted or incomplete frame") apart from a
-  silence. Then the gated run, `--allow-persistence-write`, for the persistence-gated tests among
-  them (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,
+  `flash/test_system_commands.py`, `conftest.py`'s `bench` fixture, now a plain return, and its
+  VL805 read, `bench_control.py`'s two `contextlib.suppress` forms, `twin_board.py`,
+  `website_identity.py`); `dev`'s UART link, whose listen and whose GET, train and ACK waits now
+  name a frame their read dropped ("listen read dropped a corrupted or incomplete frame", "answer
+  read dropped ... for GET", "train read dropped ... at chunk", "ACK read dropped ... after sending
+  frame") apart from a silence; and one `GET /status` on `dev`'s own firmware, its
+  `system.LastTaskEnd` read (`null` while no supervised task has ended this boot). Then the gated
+  run, `--allow-persistence-write`, for the persistence-gated tests among them
+  (`bench/test_hotspot_role_reversal.py`, `bench/test_system_commands_over_rest.py`,
   `flash/test_system_commands.py`, and the ISL29125 envelope behind `--allow-neopixel-sweep`), and
   `bench/test_uart_link_crc16.py` behind `--allow-flash-cycle` (its CRC16 image flashed, the
   standard one flashed back). Expected: clean verdicts on all three runs. Wear: the gated run's own
   budget ("Persistence-write gating", `tests_hardware/README.md`) plus that test's two flash cycles;
-  none in the default run. Twin row: none new
-  (`tests_hardware/twin_board.py` runs the same device scripts under `--twin`).
+  none in the default run. Twin row: none new (`tests_hardware/twin_board.py` runs the same device
+  scripts under `--twin`).
 - **Still owed elsewhere in this file**: R2's `ResetErrors` curve, re-measured with the concurrent
   reset, sizes item 32's bench budget; S4, the real 6 h soak ("Real-hardware re-test of the
   segfault fix" below); G6, the tick rollover on the tick-offset test image (`bench/test_ticks_ms_rollover.py`:
@@ -1291,3 +1300,16 @@ question.
    (measured 2026-10-15) and are rewrapped or shortened before the switch is turned on. (c) the same at 120 characters: 126
    blocks in 116 files. Either way no device's firmware, wiring or bus changes: the check reads source text only, and the
    switch is one constant in that file. Until answered: (a), the current behaviour.
+
+7. **Keep timestamping once the NTP sync goes stale?** (entered 2026-10-21, agent) The sync turns
+   stale when none has succeeded for 3 x `NTPInterval` (36 h at the default 12 h), and an NTP
+   settings change clears it until the next sync (owner, 2026-09-29); the RTC keeps good time
+   meanwhile. Two consumers then drop the clock: `/status` `UTCTime` reads null, and the VOC backup
+   (the SGP40's algorithm state in FRAM, on all six devices: SGP40 on I2C, FRAM on SPI) is written
+   without a timestamp, logging warning 35 at each backup, and such a backup is restored at the next
+   boot with no age test. `LocalTime` and the LED schedule already keep the clock set this boot
+   (agent, 2026-10-06). (a) keep it so, as legacy did: nothing changes. (b) both keep the clock set
+   this boot through a stale sync: `UTCTime` stays shown, backups keep their timestamp and their age
+   test; after an NTP settings change both still wait for the next sync. A firmware change in the
+   generated module and the NTP client, the same on every device; no bus traffic or wiring changes.
+   Until answered: (a), the current behaviour.

@@ -1,0 +1,5 @@
+codes: TRANSFER_CAP 93 SIZE_MISMATCH 84 PAYLOAD_TOO_LARGE 83 NO_ACK 81
+one over the cap cap 2032 exp_size 2033 -> uart_get None | initiator sent 13 B | initiator ['E84'] | responder ['E81']
+one over the cap cap 2032 total 2033 -> uart_set False | initiator sent 0 B | initiator ['E83']
+a small-cap control cap 16 exp_size 17 -> uart_get None | initiator sent 0 B | initiator ['E93'] | responder []
+a small-cap control cap 16 total 17 -> uart_set False | initiator sent 0 B | initiator ['E93']

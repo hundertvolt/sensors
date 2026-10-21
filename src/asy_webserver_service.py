@@ -894,55 +894,60 @@ class WebserverService:
         return VALID if ok else FAILED
 
     async def _serve(self, reader: "_StreamLike", writer: "_StreamLike") -> None:
-        current = await self._open_conns.increment()
-        if current > self._max_connections:
-            # Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever
-            # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
-            await self._open_conns.decrement()
-            try:
-                await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
-            finally:  # a trace that cannot be written still closes the refused connection
-                await self._close_writer(writer)
-            return
+        counted = False  # this connection still holds its count, which the finally releases once
         try:
-            peer_gone = [False]
-            timed_out = [False]
-            head_refused = [False]
-            proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_ms, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes, self._read_traced)
-            proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_ms, self.pr, peer_gone, timed_out)
-            logged = False  # an arm below persisted this connection's one entry, so no drop trace follows it (C.7)
             try:
-                # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
-                # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
-                await asyncio.wait_for_ms(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_ms)  # type: ignore[arg-type]
+                current = await self._open_conns.increment()
+                counted = True
+                if current > self._max_connections:
+                    # Reject-when-full (owner, 2026-08-12; SPEC A.8): accepted by asyncio, then closed with no response ever
+                    # written - cheapest, doesn't risk the rejection path itself becoming a resource consumer.
+                    await self._open_conns.decrement()
+                    counted = False
+                    await self._note_drop(_WRN_HTTP_REFUSED, "Connection refused at the ceiling")
+                    return
+                peer_gone = [False]
+                timed_out = [False]
+                head_refused = [False]
+                proxy_reader = _TimeoutStreamProxy(reader, self._per_call_timeout_ms, self.pr, peer_gone, timed_out, head_refused, self._chunk_bytes, self._read_traced)
+                proxy_writer = _TimeoutStreamProxy(writer, self._per_call_timeout_ms, self.pr, peer_gone, timed_out)
+                try:
+                    # The stub types the streams as CPython's StreamReader/StreamWriter; MicroPython's one duck-typed Stream, which the
+                    # proxy stands in for, is neither - removal trigger: SPECIFICATION.md B.15.
+                    await asyncio.wait_for_ms(self._app.handle_request(proxy_reader, proxy_writer), self._outer_cap_ms)  # type: ignore[arg-type]
+                except asyncio.CancelledError:
+                    raise  # never swallow a genuine task cancellation
+                except asyncio.TimeoutError as e:
+                    # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
+                    # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
+                    # read-phase one logged inside the proxy, and microdot swallowed it.
+                    await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)
+                except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
+                    # write); the resets it mutes end in peer_gone instead, traced below.
+                    await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
+                except Exception as e:  # a fault the request raised (SPECIFICATION.md A.5)
+                    report_if_fatal(e)
+                    await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
+                else:  # no arm persisted this connection's one entry, so a drop trace may (C.7)
+                    if head_refused[0]:
+                        await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
+                    elif peer_gone[0]:
+                        await self._note_drop(_WRN_HTTP_PEER_RESET, "Connection reset by the peer before or during its response")
+                finally:
+                    proxy_writer.release()  # a held static stream closes once, whatever ended the response
             except asyncio.CancelledError:
                 raise  # never swallow a genuine task cancellation
-            except asyncio.TimeoutError as e:
-                # Either the outer wait_for_ms() above (bounds a Slowloris-paced client no per-call
-                # timeout alone would catch) or a write-phase proxy timeout, logged only here - a
-                # read-phase one logged inside the proxy, and microdot swallowed it.
-                await self.pr.wrn_s("Connection reclaimed (timed out):", e, wrnno=_WRN_HTTP_CALL_TIMEOUT if timed_out[0] else _WRN_HTTP_REQUEST_CAP)
-                logged = True
-            except OSError as e:  # a socket error Microdot does not mute (e.g. EHOSTUNREACH on a response
-                # write); the resets it mutes end in peer_gone instead, traced below.
-                await self.pr.wrn_s("Connection reclaimed (socket error):", e, wrnno=_WRN_HTTP_SOCKET_ERROR)
-                logged = True
-            except Exception as e:  # never raises out of this task (SPECIFICATION.md A.5)
+            except Exception as e:  # the connection task's top: its creator logs what escaped the request (the count, a
+                # proxy, a release, a trace); the task raises out only via a failing logging call (SPECIFICATION.md A.5, G.2)
+                # or the finally's own calls on an exhausted heap: _close_writer() catches every Exception, decrement() cannot raise
                 report_if_fatal(e)
-                await self.pr.err_s("Unexpected error serving connection:", e, errno=_ERR_UNEXPECTED)
-                logged = True
-            finally:
-                proxy_writer.release()  # a held static stream closes once, whatever ended the response
-            if not logged:
-                if head_refused[0]:
-                    await self._note_drop(_WRN_HTTP_BAD_HEAD, "Request head refused")
-                elif peer_gone[0]:
-                    await self._note_drop(_WRN_HTTP_PEER_RESET, "Connection reset by the peer before or during its response")
+                await self.pr.err_s("Connection task failed:", e, errno=_ERR_UNEXPECTED)
         finally:
             try:  # _close_writer()'s own logging can raise MemoryError on an exhausted heap,
                 await self._close_writer(writer)
             finally:  # and a slot skipped here would be lost until reboot
-                await self._open_conns.decrement()
+                if counted:
+                    await self._open_conns.decrement()
 
     async def _serve_loop(self) -> None:
         # backlog is explicit, never MicroPython's own default of 5 (extmod/asyncio/stream.py):

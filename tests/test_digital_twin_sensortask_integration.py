@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
     from launch import _Plan
 
-    from asy_base_classes import TaskStarter
+    from asy_base_classes import TaskStarter, TickSeconds
     from asy_fram_manager import FRAMChunkTimestampedBuffer
     from asy_neopixel_driver import NeopixelDriver
     from asy_sgp40_driver import SGP40_Reader
@@ -373,9 +373,15 @@ class _ReportTap:
 
 
 class _StatusFault:
-    # Stands in for SystemService._uptime: every read raises, so the status task dies at its next wake-up.
+    # Stands in for SystemService._uptime: a read from the status task raises, so it dies at its next wake-up; any
+    # other reader (the supervisor's task-end record) reads the real count.
+    def __init__(self, real: "TickSeconds", status_task: "Callable[[], asyncio.Task[None] | None]") -> None:
+        self._real, self._status_task = real, status_task
+
     def read(self) -> int:
-        raise RuntimeError("injected status fault")
+        if asyncio.current_task() is self._status_task():
+            raise RuntimeError("injected status fault")
+        return self._real.read()
 
 
 class _SteppedWifiAsyncio:
@@ -455,7 +461,7 @@ def test_the_supervisor_restarts_a_real_dead_task() -> None:
         asy_system_service.SystemService._start_task = _tracking_start_task  # type: ignore[method-assign]
         supervisor: asyncio.Task[None] | None = None
         try:
-            await sysfunct.start_tasks(task_starters)
+            await sysfunct.start_tasks(task_starters, task_names=module._collect_task_names())
             supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             target = task_starters.index(sysfunct.start_asy_status)  # any task: the supervisor reads only task.done()
             assert await _wait_until(lambda: target in started, timeout_s=_WAIT_TIMEOUT_S), "the real task was never started by the real supervisor at all"
@@ -510,12 +516,12 @@ def test_a_supervised_task_death_reaches_the_console_through_the_pc_report_at_le
         asy_system_service.asyncio = fast  # type: ignore[assignment, attr-defined]
         supervisor: asyncio.Task[None] | None = None
         try:
-            await sysfunct.start_tasks(task_starters)
+            await sysfunct.start_tasks(task_starters, task_names=module._collect_task_names())
             supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
             assert await _yield_until(lambda: all(starts)), starts
             assert await _wait_until(lambda: module.conn._conn_phase == _STA_ESTABLISHED, timeout_s=_WAIT_TIMEOUT_S), "the station never linked"
             assert asyncio.get_event_loop().get_exception_handler() is unix_port_unretrieved_report.report_unretrieved
-            sysfunct._uptime = _StatusFault()  # type: ignore[assignment]
+            sysfunct._uptime = _StatusFault(real_uptime, lambda: latest[status_idx])  # type: ignore[assignment]
             _fill_wire_logs()
             with tap:
                 for death in range(_STATUS_DEATHS):

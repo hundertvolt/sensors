@@ -35,6 +35,7 @@ from _shared_rest_roundtrip import (
 )
 from _src_const import src_const, src_int
 from _strict_json import strict_loads
+from _task_names import task_name
 from _tmp_scratch import TmpScratch
 from _twin_devices import generated_devices, wiring_plan
 from _write_counters import WriteCountingOpen, scd30_nvm_writes
@@ -472,7 +473,7 @@ def _scenario_main_forwards_web_host_port(device: str) -> None:
     real_force_sync = NTPClient.ntp_force_sync
     real_supervise = SystemService.supervise_tasks
 
-    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
+    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]", task_names: "list[str]") -> None:
         pass
 
     async def _fake_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> None:
@@ -667,8 +668,8 @@ async def _stop_supervising(sysfunct: "Any", sup: "asyncio.Task[None]") -> None:
     await asyncio.sleep(0)
 
 
-async def _supervise_until_the_reboot_is_armed(sysfunct: "Any", starters: "list[Any]") -> None:
-    await sysfunct.start_tasks(starters)
+async def _supervise_until_the_reboot_is_armed(sysfunct: "Any", starters: "list[Any]", names: "list[str]") -> None:
+    await sysfunct.start_tasks(starters, task_names=names)
     sup = asyncio.create_task(sysfunct.supervise_tasks())
     for _ in range(5000):
         if sysfunct._reset_armed or sup.done():
@@ -705,10 +706,11 @@ def _scenario_dead_fram_chip_escalates(device: str) -> None:
 
     # The manager's one supervised task ends at once, so the supervisor's restart budget arms the reboot.
     (watch,) = module.fram.get_task_starters()
-    assert watch in module._collect_task_starters()
+    starters = module._collect_task_starters()
+    assert watch in starters
     asy_system_service.asyncio = _AsyncioWaits()  # type: ignore[assignment]
     try:
-        run(_supervise_until_the_reboot_is_armed(module.sysfunct, [watch]))
+        run(_supervise_until_the_reboot_is_armed(module.sysfunct, [watch], [module._collect_task_names()[starters.index(watch)]]))
     finally:
         asy_system_service.asyncio = asyncio
     assert module.sysfunct._reset_armed is True
@@ -1050,7 +1052,7 @@ def _uncount(owners: "list[object]", method: str) -> None:
         delattr(owner, method)
 
 
-@_register("collect_task_starters_includes_every_constructed_module")
+@_register("collect_task_starters_and_their_names_include_every_constructed_module")
 def _scenario_collect_task_starters(device: str) -> None:
     module = build(device)
     owners = _sensor_reader_owners(module) + [module.webserver]
@@ -1059,6 +1061,8 @@ def _scenario_collect_task_starters(device: str) -> None:
         starters = module._collect_task_starters()
     finally:
         _uncount(owners, "get_task_starters")
+    names = module._collect_task_names()
+    assert len(names) == len(starters), (device, names)
     # Each owner asked exactly once: an owner returning [] proves nothing by membership below.
     assert counts == [1] * len(owners), [(getattr(owners[i], "name", owners[i]), counts[i]) for i in range(len(owners))]
     assert len(starters) > 0
@@ -1074,6 +1078,9 @@ def _scenario_collect_task_starters(device: str) -> None:
     for owner in owners:
         for expected in owner.get_task_starters():
             assert expected in starters, f"no task starter bound to {owner!r}"
+            # Names go by slot: the supervisor's lines and the task-end record read name n for starter n.
+            assert names[starters.index(expected)] == task_name(owner, expected), (device, names)
+    assert len(set(names)) == len(names), (device, names)  # no two tasks share a name
 
 
 @_register("collect_timer_starters_includes_every_constructed_module")
@@ -1290,7 +1297,7 @@ def _scenario_unfed_boot_stretch(device: str) -> None:
     task_starters = module._collect_task_starters()
 
     async def boot_tail() -> "list[int]":
-        await sysfunct.start_tasks([tracking(s) for s in task_starters])
+        await sysfunct.start_tasks([tracking(s) for s in task_starters], task_names=module._collect_task_names())
         timers = asyncio.create_task(sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters()))
         periods = await _fire_stagger_waits(sysfunct, timers, clock)
         await module.ntp.ntp_force_sync()
@@ -1354,7 +1361,7 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     waits = _AsyncioWaits(on_wait)
 
     async def boot_lists() -> None:
-        await sysfunct.start_tasks([dead_starter] * k)
+        await sysfunct.start_tasks([dead_starter] * k, task_names=module._collect_task_names())
         await sysfunct.supervise_tasks()
 
     async def one_pass() -> None:
@@ -1386,25 +1393,40 @@ def _scenario_supervisor_scan_budget(device: str) -> None:
     assert pass_waits[0] == _system_const("_TASK_CHECK_TIME") * 1000, waits.waits_ms  # the pass ends in one sleep, escalated or not
 
 
-@_register("every_task_starter_runs_under_the_real_supervisor")
+@_register("every_task_starter_runs_under_the_real_supervisor_and_a_killed_one_is_named_in_status")
 def _scenario_every_task_starter_runs_under_the_real_supervisor(device: str) -> None:
     # The collected starters handed to the real SystemService: start_tasks(), then the supervisor's first pass to its
-    # _TASK_CHECK_TIME sleep. Every constructed module's and the webserver's task is started and alive there: none
-    # ended or restarted, no reset armed - the real consumer, not a list membership.
+    # _TASK_CHECK_TIME sleep, where every module's and the webserver's task runs (none ended, no reset armed); then one
+    # killed task is restarted and /status names it by its slot's name - the real consumer, not a list membership.
     module, _watchdog = run(_boot(device, web_host="127.0.0.1", web_port=0))
     sysfunct = module.sysfunct
     starters = module._collect_task_starters()
+    names = module._collect_task_names()
+    killed = starters.index(module.fram.get_task_starters()[0])  # the chip watch: a FRAM chip on every device
     pass_end = _system_const("_TASK_CHECK_TIME") * 1000
     waits = _AsyncioWaits()
     dead: list[object] = []
+    ended: list[object] = []
+    after_kill: list[tuple[bool, bool, bool]] = []
 
     async def first_pass() -> None:
-        await sysfunct.start_tasks(starters)
+        await sysfunct.start_tasks(starters, task_names=names)
         started = list(sysfunct._tasks)
         sup = asyncio.create_task(sysfunct.supervise_tasks())
         await _until(lambda: pass_end in waits.waits_ms[len(starters) :] or sup.done(), "the supervisor never ended its first pass")
         # The task start_tasks() started, still in its slot (a pass restarts a missing or ended one) and running.
         dead.extend(n for n, task in enumerate(started) if task is None or task.done() or sysfunct._tasks[n] is not task)
+        ended.append(sysfunct.get_last_task_end())
+        # One task killed: a later pass records and logs its end, restarts it and sleeps, a safe point to stop at.
+        sysfunct._tasks[killed].cancel()
+        await _until(lambda: sysfunct.get_last_task_end() is not None or sup.done(), "the supervisor never recorded the killed task's end")
+        passes = waits.waits_ms.count(pass_end)
+        await _until(lambda: waits.waits_ms.count(pass_end) > passes or sup.done(), "the supervisor never ended the pass that logged it")
+        # One pass more: a supervisor that ends once it has recorded or restarted the end never gets there.
+        supervisor = sysfunct._supervisor_task
+        await _until(lambda: waits.waits_ms.count(pass_end) > passes + 1 or supervisor.done(), "the supervisor never ran a pass after the restart")
+        new = sysfunct._tasks[killed]
+        after_kill.append((not sup.done() and not supervisor.done(), new is not None and new is not started[killed], new is not None and not new.done()))
         await _stop_supervising(sysfunct, sup)
 
     asy_system_service.asyncio = waits  # type: ignore[assignment]
@@ -1414,10 +1436,15 @@ def _scenario_every_task_starter_runs_under_the_real_supervisor(device: str) -> 
         asy_system_service.asyncio = asyncio
     assert sysfunct._task_starters == starters and len(sysfunct._tasks) == len(starters), "start_tasks() took another list"
     assert dead == [], f"{device}: task(s) {dead} not running after the first supervisor pass"
+    assert ended == [None], ended  # no end recorded while every task runs
     assert sysfunct._reset_armed is False
     for owner in _sensor_reader_owners(module) + [module.webserver]:
         for starter in owner.get_task_starters():
             assert starter in starters, f"no task starter bound to {owner!r}"
+    end = _strict(status_body(_dispatch(module, "GET", "/status")))["system"]["LastTaskEnd"]
+    assert end is not None and set(end) == {"Task", "Uptime"} and end["Task"] == names[killed] and type(end["Uptime"]) is int, (device, end)
+    # The supervisor outlived the end it recorded, and the killed slot held a new task, still running.
+    assert after_kill == [(True, True, True)], f"{device}: (supervisor running, new task in the killed slot, it running) = {after_kill}"
 
 
 @_register("every_module_and_logger_reaches_the_fan_in_collectors_exactly_once")
@@ -1599,9 +1626,9 @@ def _scenario_main_call_order(device: str) -> None:
         calls.append("run_setups")
         passed.append(setups)
 
-    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]") -> None:
+    async def _fake_start_tasks(self: "SystemService", task_starters: "list[Callable[[], asyncio.Task[Any]]]", task_names: "list[str]") -> None:
         calls.append("start_tasks")
-        passed.append(task_starters)
+        passed.append((task_starters, task_names))
 
     async def _fake_start_timers(self: "SystemService", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> None:
         calls.append("start_timers")
@@ -1634,9 +1661,9 @@ def _scenario_main_call_order(device: str) -> None:
         SystemService.supervise_tasks = real_supervise  # type: ignore[method-assign]
 
     assert calls == ["run_setups", "start_tasks", "start_timers", "force_sync", "supervise_tasks"], calls
-    # The collected lists, each handed over whole: the setups in their fixed order, then the task starters, then the
-    # read triggers (staggered) beside the unstaggered timer starters.
-    expected = [module._collect_setups(), module._collect_task_starters(), (module._collect_trigger_starters(), module._collect_timer_starters())]
+    # The collected lists, each handed over whole: the setups in their fixed order, then the task starters beside their
+    # names, then the read triggers (staggered) beside the unstaggered timer starters.
+    expected = [module._collect_setups(), (module._collect_task_starters(), module._collect_task_names()), (module._collect_trigger_starters(), module._collect_timer_starters())]
     assert passed == expected, passed
     # build_system() itself already ran (construction succeeded) - main() reaches the task-starting
     # phase with every module in place, not just up to build_system().
@@ -1966,7 +1993,7 @@ async def _boot_supervised(device: str, gate: "_StepGate", **kwargs: "Any") -> "
     # main()'s state after its last step: every task started and the supervisor running, its first pass ended at the
     # gate, so a command sent now finds its first step waiting on the supervisor (in this file's one coroutine).
     module, _watchdog = await _boot(device, web_host="127.0.0.1", web_port=0, **kwargs)
-    await module.sysfunct.start_tasks(module._collect_task_starters())
+    await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
     sup = asyncio.create_task(module.sysfunct.supervise_tasks())
     await _until(gate.arrived.is_set, "the supervisor never ended its first pass")
     return module, sup
@@ -2151,7 +2178,7 @@ async def _scd30_cycles(module: "Any") -> "list[tuple[int, int, int]]":
         for _ in range(3):
             queue.extend((scd_register_frame(1), scd_data_frame(600.0, 21.5, 40.0)))
         queue.append(scd_register_frame(0))  # data-ready clear: a not-ready read
-    await sysfunct.start_tasks(module._collect_task_starters())
+    await sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
     timers = asyncio.create_task(sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters()))
 
     def stagger_done() -> bool:
@@ -2471,6 +2498,7 @@ def _scenario_status_get(device: str) -> None:
     for key in ("ResetReason", "ResetBits", "MemFree"):  # this boot's decoded reason, the chip's raw flags, the free heap
         assert type(system[key]) is int, (key, system[key])
     assert system["ConfigFaults"] == [] and system["ConfigUnpersisted"] == [], system  # a clean boot
+    assert system["LastTaskEnd"] is None, system  # no supervised task has ended
     assert "WifiUptime" in body["networking"] and "NTPSynced" in body["networking"] and "WifiTS" in body["networking"]
     assert body["networking"]["HTTPDropped"] == 0  # a clean boot has dropped no connection
     assert "Triggered" in body["notification"] and "PauseTime" in body["notification"]

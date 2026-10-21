@@ -1,0 +1,12 @@
+tests/test_digital_twin_sensortask_integration.py[arzi]@-1	119.08	0
+tests/test_digital_twin_sensortask_integration.py[arzi]@32768	118.64	0
+tests/test_digital_twin_sensortask_integration.py[dev]@-1	22.95	0
+tests/test_digital_twin_sensortask_integration.py[dev]@32768	23.65	0
+tests/test_digital_twin_sensortask_integration.py[grkizi]@-1	21.65	0
+tests/test_digital_twin_sensortask_integration.py[grkizi]@32768	22.05	0
+tests/test_digital_twin_sensortask_integration.py[klkizi]@-1	21.69	0
+tests/test_digital_twin_sensortask_integration.py[klkizi]@32768	21.89	0
+tests/test_digital_twin_sensortask_integration.py[schlafzi]@-1	21.64	0
+tests/test_digital_twin_sensortask_integration.py[schlafzi]@32768	21.66	0
+tests/test_digital_twin_sensortask_integration.py[wozi]@-1	22.14	0
+tests/test_digital_twin_sensortask_integration.py[wozi]@32768	22.31	0

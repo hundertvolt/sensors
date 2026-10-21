@@ -20,6 +20,7 @@ from _async_harness import cancel, run, run_timed
 from _error_codes import code
 from _fast_sleep import FastAsyncSleep, check_sleep_ms
 from _fram_chip_fake import FakeMB85RS64V
+from _recording_print import record_prints
 from _shared_rest_roundtrip import drain_json_response_body
 from _src_const import src_int
 from _src_schema import src_schema
@@ -1320,7 +1321,7 @@ def test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_ent
         return asyncio.create_task(ends())
 
     async def scenario() -> bool:
-        await bench.svc.start_tasks([dead_starter])
+        await bench.svc.start_tasks([dead_starter], task_names=["dead_starter"])
         sup = asyncio.create_task(bench.svc.supervise_tasks())
         for _ in range(_SEQUENCE_YIELDS):
             if bench.svc._reset_armed:
@@ -2695,6 +2696,49 @@ def test_serve_absorbs_an_unexpected_exception_raised_directly_by_handle_request
     entry = next(iter(log.values()))
     assert entry["ErrNum"][-1] == code("E", "UNEXPECTED")  # err_s, not wrn_s - a genuinely unexpected bug
     assert entry["ErrType"][-1] == "E"
+
+
+def test_a_fault_building_a_connection_proxy_is_logged_and_the_connection_closed() -> None:
+    # Raised before any request runs, so no request arm sees it: the connection task's own top logs it.
+    service, _app = _make_service(debug=_ERROR_LEVEL)
+
+    class _FaultingProxy(_TimeoutStreamProxy):
+        def __init__(self, *_args: object) -> None:
+            raise RuntimeError("injected for the proxy")
+
+    writer = _ScriptedWriter()
+    asy_webserver_service._TimeoutStreamProxy = _FaultingProxy  # type: ignore[assignment, misc]  # a stand-in class, restored below
+    try:
+        with record_prints(service.pr) as recorder:
+            run_timed(service._serve(_ScriptedReader([]), writer), _RUN_BOUND_S)
+    finally:
+        asy_webserver_service._TimeoutStreamProxy = _TimeoutStreamProxy  # type: ignore[misc]
+    assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1  # the connection's one entry
+    assert "injected for the proxy" in recorder.text(), recorder.text()
+    assert "Connection task failed:" in recorder.text(), recorder.text()  # the top's line, not the request arm's
+    assert writer.close_called and writer.wait_closed_called
+    assert run(service._open_conns.get_value()) == 0
+
+
+def test_a_fault_in_the_refusal_trace_is_logged_and_the_refused_connection_closed() -> None:
+    service, _app = _make_service(max_connections=1, debug=_ERROR_LEVEL)
+
+    async def _faulting_uptime() -> int:  # the drop window's clock, the refusal trace's first read
+        raise ValueError("injected for the refusal trace")
+
+    run(service._open_conns.set_value(1))  # a held connection fills the one slot
+    service._uptime_s = _faulting_uptime
+    writer = _ScriptedWriter()
+    with record_prints(service.pr) as recorder:
+        run_timed(service._serve(_ScriptedReader([(0, _request_bytes("GET", "/status"))]), writer), _RUN_BOUND_S)
+    service._uptime_s = _no_uptime
+    assert _newest_entry(service) == (code("E", "UNEXPECTED"), "E")
+    assert run(service.get_error_counter())["WEBSERVER"]["ErrCount"] == 1
+    assert "injected for the refusal trace" in recorder.text(), recorder.text()
+    assert "Connection task failed:" in recorder.text(), recorder.text()  # the top's line, not the request arm's
+    assert writer.written == b"" and writer.close_called and writer.wait_closed_called
+    assert run(service._open_conns.get_value()) == 1  # the refused connection's count released, the holder's kept
 
 
 # Connection lifecycle: adversarial and malformed input

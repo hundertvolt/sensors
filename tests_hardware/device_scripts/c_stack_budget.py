@@ -67,7 +67,7 @@ async def _main() -> None:
         for leaf in _FRAM_LEAVES if driver is not None else ():
             setattr(driver, leaf, _recording("fram." + leaf, getattr(driver, leaf)))
         await sysfunct.run_setups(device._collect_setups())
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         await sysfunct.start_timers(device._collect_trigger_starters(), device._collect_timer_starters())
         await fed_sleep_ms(wdt, _WINDOW_MS)
         webserver = device.webserver

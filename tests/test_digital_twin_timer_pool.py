@@ -34,6 +34,7 @@ from _error_codes import code  # noqa: E402 - imported after the prewarm and the
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _src_const import src_const  # noqa: E402 - imported after the prewarm and the UDP shim
+from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -54,13 +55,14 @@ if TYPE_CHECKING:
     from machine import WDT
 
     from asy_base_classes import TaskStarter, TimerStarter
-    from asy_print_log import ErrorLog
+    from asy_print_log import ErrorLog, PrintLogHistory
 
     T = TypeVar("T")
 
     class SensorReader(Protocol):
         # What a test here asks of a bus-attached reader: its starters, its timer's stop, its log and its sample.
         _datastruct: object
+        pr: "PrintLogHistory"
 
         def get_task_starters(self) -> "list[TaskStarter]": ...
         def get_timer_starters(self) -> "list[TimerStarter]": ...
@@ -176,10 +178,10 @@ async def _stop_graph(supervisor: "list[asyncio.Task[None]]") -> None:
         await cancel(conn._dns_server_task)
 
 
-async def _supervise(starters: "list[Callable[[], asyncio.Task[None]]]", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> "list[asyncio.Task[None]]":
+async def _supervise(starters: "list[Callable[[], asyncio.Task[None]]]", names: "list[str]", triggers: "list[Callable[[], None]]", timers: "list[Callable[[], None]]") -> "list[asyncio.Task[None]]":
     # The named tasks and timers under the real supervisor, as main() starts them; returns the supervisor's task.
     sysfunct = module.sysfunct
-    await sysfunct.start_tasks(starters)
+    await sysfunct.start_tasks(starters, task_names=names)
     await sysfunct.start_timers(triggers, timers)
     return [asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())]
 
@@ -202,7 +204,7 @@ def test_a_reader_whose_trigger_cannot_arm_ends_restarts_and_reads_once_the_pool
         for key, reader in _readers():
             feeding: list[asyncio.Task[None]] = []
             machine.set_alarm_pool_free(0)
-            supervisor = await _supervise(reader.get_task_starters(), reader.get_trigger_starters(), reader.get_timer_starters())
+            supervisor = await _supervise(reader.get_task_starters(), task_names_of(reader), reader.get_trigger_starters(), reader.get_timer_starters())
             try:
                 first = list(sysfunct._tasks)
                 await _until(key + "'s task never ended on its failed arm", _any_ended(first))
@@ -234,7 +236,7 @@ def test_the_tick_timers_degrade_in_place_and_rearm_once_the_pool_frees() -> Non
         sysfunct, ntp, conn = module.sysfunct, module.ntp, module.conn
         machine.set_alarm_pool_free(0)
         modules = (sysfunct, ntp, conn)
-        supervisor = await _supervise([s for m in modules for s in m.get_task_starters()], [], [s for m in modules for s in m.get_timer_starters()])
+        supervisor = await _supervise([s for m in modules for s in m.get_task_starters()], task_names_of(*modules), [], [s for m in modules for s in m.get_timer_starters()])
         await ntp.ntp_force_sync()  # main()'s first sync request: the sync loop's wake, where it retries its arms
         try:
             uptime = await sysfunct.get_uptime()
@@ -260,7 +262,7 @@ def test_a_reboot_whose_reset_timer_cannot_arm_starves_the_watchdog_instead() ->
     async def scenario() -> None:
         watchdog = await _boot(_POOL)
         sysfunct = module.sysfunct
-        supervisor = await _supervise(module._collect_task_starters(), module._collect_trigger_starters(), module._collect_timer_starters())
+        supervisor = await _supervise(module._collect_task_starters(), module._collect_task_names(), module._collect_trigger_starters(), module._collect_timer_starters())
         try:
             machine.set_alarm_pool_free(0)
             assert await sysfunct.reboot_system() is True

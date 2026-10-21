@@ -232,7 +232,7 @@ class UARTComm:
         self._blind_resyncs = 0  # resyncs that saw bytes but never a valid frame
         self._drain_bound_hit = False  # set by _drain(), read by the resync that called it
         self._cancel_unacked_seen = 0  # the driver's counter is cumulative; only a rise is news
-        self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _take_discarded()
+        self._discarded_seen = 0  # the driver's discarded_bytes at the last resync, read by _peek_discarded()
         self._init_errno = self._validate_config()
         # Re-checked locally, never the caller's raw values: `5 + "48"` raises, and __init__ is the
         # one entry point with no object yet to answer through a sentinel. _validate_config() stops
@@ -432,7 +432,10 @@ class UARTComm:
         return False
 
     async def _check_cap(self, size: int) -> bool:
-        if self._over_cap(self._chunk_count(size)):
+        # Counted past the one CHUNKS byte, so a size over the cap is the cap's refusal at every cap the build allows
+        # (254 payloads at most). Under a larger cap, which only a direct construction sets, a size past 254 payloads is
+        # _send_train()'s refusal (83) as a total, the answer's as a GET: 84 here, 81 at the peer, logged at both ends.
+        if self._over_cap(self._chunks_for(size)):
             await self._err(_ERR_UART_TRANSFER_CAP, "a train of", size, "bytes declares more than the cap", self._max_transfer_bytes)
             return False
         return True
@@ -459,12 +462,16 @@ class UARTComm:
         return False
 
     def _chunk_count(self, total: int) -> int | None:
-        # ceil(total / payload_size) + 1, floored at 2: even a payload-less command has one data
-        # chunk to acknowledge. -(-a // b) is the integer ceiling - no float division, no math import.
-        chunks = max(-(-total // self._payload_size) + 1, _MIN_CHUNKS)
+        # The train's CHUNKS, or None when it does not fit the one byte the header gives it.
+        chunks = self._chunks_for(total)
         if chunks > _CHUNKS_MAX:
             return None
         return chunks
+
+    def _chunks_for(self, total: int) -> int:
+        # ceil(total / payload_size) + 1, floored at 2: even a payload-less command has one data
+        # chunk to acknowledge. -(-a // b) is the integer ceiling - no float division, no math import.
+        return max(-(-total // self._payload_size) + 1, _MIN_CHUNKS)
 
     def _dest_size(self, chunks: int, exp_size: int) -> int | None:
         # The upper bound is known the moment CHUNKS is, and an exp_size the train
@@ -558,10 +565,10 @@ class UARTComm:
             backoff = min(backoff * _BACKOFF_MULT, self._backoff_max_ms)
 
     async def _listen_unlocked(self, device: "UART", get_cb: "_GetCallback", set_cb: "_SetCallback") -> ListenResult:
-        pending = device.discarded_bytes - self._discarded_seen
+        pending = self._peek_discarded(device)
         if not await self._read_frame(device, -1):  # the one legitimate unbounded wait
             # A frame dropped inside the read (its CRC, framing or length) is named apart from a silence or a cancel (J.6).
-            dropped = device.discarded_bytes - self._discarded_seen != pending
+            dropped = self._peek_discarded(device) != pending
             await self._fault(device, _ERR_TIMEOUT, "listen read dropped a corrupted or incomplete frame" if dropped else "listen read failed or was cancelled")
             return _LISTEN_FAILED
         rx = self._rx.get_buf()
@@ -624,10 +631,10 @@ class UARTComm:
             self._valid_frames += 1
         self._blind_resyncs = 0
 
-    def _over_cap(self, chunks: int | None) -> bool:
+    def _over_cap(self, chunks: int) -> bool:
         # The declared size, (CHUNKS - 1) x payload_size, is what both ends compare with the cap, so a
-        # sender refuses exactly the trains its peer would. None (too many chunks) is a different refusal.
-        return chunks is not None and (chunks - 1) * self._payload_size > self._max_transfer_bytes
+        # sender refuses exactly the trains its peer would, and every larger one.
+        return (chunks - 1) * self._payload_size > self._max_transfer_bytes
 
     @staticmethod
     def _pair(result: object) -> tuple[bool, object] | None:
@@ -645,6 +652,11 @@ class UARTComm:
         if not isinstance(valid, bool):
             return None
         return valid, payload
+
+    def _peek_discarded(self, device: "UART") -> int:
+        # Bytes the driver dropped since the last resync, a wrong-length frame _read_frame() counts included; a rise
+        # across a failed read names the drop apart from a silence (J.6).
+        return (device.discarded_bytes - self._discarded_seen) & COUNTER_CAP
 
     def _prepare_tx(self, uid: int, cmd: int, chunks: int, cur_chunk: int, data: "Readable | None", size: int) -> bool:
         # Written by index with an explicit range check, never struct.pack()'d: pack() truncates
@@ -690,8 +702,10 @@ class UARTComm:
         return written
 
     async def _read_answer_header(self, device: "UART", get_id: int) -> tuple[int, int] | None:
+        pending = self._peek_discarded(device)
         if not await self._read_frame(device, self._timeout):
-            await self._fault(device, _ERR_TIMEOUT, "no answer to GET", get_id)
+            dropped = self._peek_discarded(device) != pending
+            await self._fault(device, _ERR_TIMEOUT, "answer read dropped a corrupted or incomplete frame for GET" if dropped else "no answer to GET", get_id)
             return None
         rx = self._rx.get_buf()
         err = self._validate(rx, CMD_SET, 1, None, None)
@@ -734,8 +748,10 @@ class UARTComm:
         cur = 1
         while cur < chunks:
             cur += 1
+            pending = self._peek_discarded(device)
             if not await self._read_frame(device, self._timeout):
-                await self._fault(device, _ERR_TIMEOUT, "train stalled at chunk", cur)
+                dropped = self._peek_discarded(device) != pending
+                await self._fault(device, _ERR_TIMEOUT, "train read dropped a corrupted or incomplete frame at chunk" if dropped else "train stalled at chunk", cur)
                 return None
             rx = self._rx.get_buf()
             err = self._validate(rx, CMD_SET, cur, chunks, _next_uid(prev_uid))
@@ -884,7 +900,7 @@ class UARTComm:
         bus = self._uart
         if bus is None:
             return 0
-        n = (bus.discarded_bytes - self._discarded_seen) & COUNTER_CAP
+        n = self._peek_discarded(bus)
         self._discarded_seen = bus.discarded_bytes
         return n
 
@@ -994,8 +1010,10 @@ class UARTComm:
         if not await device.writefrom(buf, self._frame_size, timeout_ms=self._timeout):
             await self._fault(device, _ERR_UART_WRITE_FAILED, "frame write failed")
             return False
+        pending = self._peek_discarded(device)
         if not await self._read_frame(device, self._timeout):
-            await self._fault(device, _ERR_UART_NO_ACK, "no ACK for frame", cur_chunk)
+            dropped = self._peek_discarded(device) != pending
+            await self._fault(device, _ERR_UART_NO_ACK, "ACK read dropped a corrupted or incomplete frame after sending frame" if dropped else "no ACK for frame", cur_chunk)
             return False
         err = self._validate(self._rx.get_buf(), _CMD_ACK, 1, 1, uid)
         if err:

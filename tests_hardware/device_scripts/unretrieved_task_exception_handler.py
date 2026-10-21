@@ -143,7 +143,7 @@ def _genuine_memory_error() -> BaseException:
 
 async def _install(svc: SystemService) -> None:
     # The real install path: start_tasks() sets the report where nothing is set yet; no supervisor is needed.
-    await svc.start_tasks([_parked_starter])
+    await svc.start_tasks([_parked_starter], task_names=["parked"])
 
 
 def _locked_reports(svc: SystemService) -> "list[dict[str, object]]":

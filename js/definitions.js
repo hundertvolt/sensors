@@ -10,7 +10,7 @@
  *   description?: string, min?: number, max?: number, minLength?: number, maxLength?: number,
  *   mask?: boolean, options?: EnumOption[], specialValues?: SpecialValue[],
  *   subFields?: FieldDef[], onLabel?: string, offLabel?: string,
- *   format?: "gmtimestruct"|"epoch", float?: boolean, resolution?: number, dispatch?: boolean, alwaysExecuted?: boolean,
+ *   format?: "gmtimestruct"|"epoch"|"lasttaskend", float?: boolean, resolution?: number, dispatch?: boolean, alwaysExecuted?: boolean,
  *   path?: string[], statusPath?: string[], decimals?: number, byteLength?: boolean,
  *   shape?: "hostLabel"|"countryCode"|"hostName"|"ipv4List", clearable?: boolean, ignoredWhenSet?: string,
  *   codes?: Record<string, string>, codeTones?: Record<string, "good"|"neutral"|"warn">, confirm?: boolean,
@@ -79,7 +79,7 @@ const MAX_POLL_INTERVAL_MS = 2 ** 31 - 1;
 
 // The enumerated values the generator emits (buildgen/web_tag.py's _FORMATS and _SHAPES, the catalog's tones).
 const FIELD_KINDS = new Set(["readonly", "number", "string", "enum", "toggle", "composite"]);
-const FIELD_FORMATS = new Set(["gmtimestruct", "epoch"]);
+const FIELD_FORMATS = new Set(["gmtimestruct", "epoch", "lasttaskend"]);
 const STRING_SHAPES = new Set(["hostLabel", "countryCode", "hostName", "ipv4List"]);
 const CODE_TONES = new Set(["good", "neutral", "warn"]);
 const POLL_GROUPS = new Set(["live", "settings", "none"]);

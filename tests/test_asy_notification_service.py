@@ -685,6 +685,30 @@ def test_a_refused_signal_persists_one_drop_warning() -> None:
         assert run(service.get_error_counter())["NOTIFY"]["ErrCount"] == 0
 
 
+def test_a_drop_warning_whose_own_logging_call_raises_is_not_logged_as_the_callbacks_failure() -> None:
+    # The warning persisted, then its console line raised: the callback answered, so no CALLBACK entry
+    # blames it; the raise leaves the dispatch and ends the monitor task, for the supervisor to record.
+    cb = _FakeSignalCb()
+    cb.result = False  # the LED refuses the request
+    signal, _fv = _make_signal("WarnCO2", value=2000)
+    coordinator, _clock, _cb = _make_coordinator((signal,), signal_cb=cb)
+    run(coordinator.setup())
+    persist_wrn_s = coordinator.pr.wrn_s
+
+    async def wrn_s_then_raise(*args: object, wrnno: int = 0, sep: str = " ", end: str = "\n") -> None:
+        await persist_wrn_s(*args, wrnno=wrnno, sep=sep, end=end)
+        raise RuntimeError("injected console failure")
+
+    coordinator.pr.wrn_s = wrn_s_then_raise  # type: ignore[method-assign]
+    raised: list[str] = []
+    try:
+        run(coordinator._trigger_signal(signal, 200, 0.5))
+    except RuntimeError as e:
+        raised.append(str(e))
+    assert _newest_wrn(coordinator) == (1, code("W", "NOTIFY_SIGNAL_DROPPED")), f"one drop warning only, got {_newest_wrn(coordinator)}"
+    assert raised == ["injected console failure"], f"the warning's own raise must leave _trigger_signal(), got {raised}"
+
+
 def test_two_signals_failures_share_one_code_and_one_slot() -> None:
     a, fv_a = _make_signal("WarnCO2")
     b, fv_b = _make_signal("WarnVOC")

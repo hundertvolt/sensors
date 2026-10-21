@@ -33,7 +33,7 @@ _GROUP_KNOWN_KEYS = frozenset({"section", "submitGroup", "label", "submit", "sub
 _VALID_KINDS = frozenset({"readonly", "number", "string", "enum", "toggle"})
 # The values each enumerated key takes; format and codes describe a readonly value, bytes, shape and clearable a
 # string one, resolution a number (an inferred kind comes from the schema, so the generator checks that half).
-_FORMATS = frozenset({"epoch", "gmtimestruct"})
+_FORMATS = frozenset({"epoch", "gmtimestruct", "lasttaskend"})
 _SHAPES = frozenset({"hostLabel", "countryCode", "hostName", "ipv4List"})
 _READONLY_ONLY_KEYS = ("format", "codes")
 _STRING_ONLY_KEYS = ("bytes", "shape", "clearable")

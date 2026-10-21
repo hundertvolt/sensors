@@ -692,6 +692,10 @@ def _status_section(model: DeviceModel, have: "set[str]", cache: "dict[Path, _Dr
             "key": "ConfigUnpersisted", "label": "Config Unpersisted", "kind": "readonly",
             "description": "Modules whose last accepted config change could not be written to flash: it applies now but is lost at the next boot. Empty when none; cleared by the module's next successful write.",
         },
+        {
+            "key": "LastTaskEnd", "label": "Task Last Ended", "kind": "readonly", "format": "lasttaskend",
+            "description": "The supervised task whose end the supervisor recorded last since boot, and the system uptime in seconds at that record; empty until one ends. The supervisor restarts it unless a reboot follows. The reason is in that module's and SYSTEM's error history.",
+        },
         {"key": "LocalTime", "label": "Local Time", "kind": "readonly", "format": "gmtimestruct"},
         {"key": "UTCTime", "label": "UTC Time", "kind": "readonly", "format": "gmtimestruct"},
         {

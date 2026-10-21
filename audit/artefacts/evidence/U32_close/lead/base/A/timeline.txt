@@ -1,0 +1,11 @@
+08:00:23 rebuild rc=0
+08:06:54 tests/test_digital_twin_bus_hazard_concurrency.py@-1 rc=0
+08:07:49 tests/test_digital_twin_uart_link.py@-1 rc=0
+08:08:14 tests/test_asy_system_service.py@-1 rc=0
+08:08:40 tests/test_asy_system_service.py@32768 rc=0
+08:08:43 tests/test_asy_uart_link_driver.py@-1 rc=0
+08:08:45 tests/test_asy_uart_link_driver.py@32768 rc=0
+08:09:04 tests_scripts/test_buildgen_web_tag.py rc=0
+08:09:05 tests_scripts/test_uart_changelog.py rc=0
+mem markers: 0 files
+08:09:05 done

@@ -57,13 +57,29 @@ function json(body, status = 200) {
 
 /**
  * Answers /status with `status()`, /system with the build `builds()` names (or `system()` itself), /measurements empty
- * and every path in `routes` its own way; 404 otherwise.
+ * and every path in `routes` its own way; 404 otherwise. `read(path)` counts the /status and /system answers whose body
+ * the shell has read: a watch's next one is scheduled only once its /system answer is read.
  * @param {{
  *   status?: () => unknown, builds?: () => unknown, system?: () => Promise<Response>,
  *   routes?: Record<string, (init: RequestInit | undefined) => Promise<Response>>,
  * }} [options]
  */
 function installFetchStub({ status = () => ({ system: { UnixTime: 1_700_000_000 } }), builds = () => ({ version: "1.0.0" }), system, routes = {} } = {}) {
+    /** @type {Map<string, number>} */
+    const reads = new Map();
+    /**
+     * @param {string} path
+     * @param {Response} response
+     */
+    const counted = (path, response) => {
+        const text = response.text.bind(response);
+        response.text = () => {
+            const reading = text();
+            reading.then(() => reads.set(path, (reads.get(path) ?? 0) + 1), () => { /* a body never read is no answer */ });
+            return reading;
+        };
+        return response;
+    };
     const stub = vi.fn((/** @type {RequestInfo | URL} */ input, /** @type {RequestInit | undefined} */ init) => {
         const path = String(input);
         const route = routes[path];
@@ -71,10 +87,10 @@ function installFetchStub({ status = () => ({ system: { UnixTime: 1_700_000_000 
             return route(init);
         }
         if (path === "/status") {
-            return Promise.resolve(json(status()));
+            return Promise.resolve(counted(path, json(status())));
         }
         if (path === "/system") {
-            return system ? system() : Promise.resolve(json({ build: builds() }));
+            return system ? system() : Promise.resolve(counted(path, json({ build: builds() })));
         }
         if (path === "/measurements") {
             return Promise.resolve(json({}));
@@ -85,6 +101,8 @@ function installFetchStub({ status = () => ({ system: { UnixTime: 1_700_000_000 
     return {
         /** @param {string} path */
         count: (path) => stub.mock.calls.filter(([input]) => String(input) === path).length,
+        /** @param {string} path */
+        read: (path) => reads.get(path) ?? 0,
         total: () => stub.mock.calls.length,
     };
 }
@@ -294,6 +312,7 @@ describe("startShell", () => {
         const requests = installFetchStub({ builds: () => ({ version }) });
         const { reload } = start();
         await vi.waitFor(() => expect(requests.count("/system")).toBe(1));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
         version = "1.0.1";
 
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
@@ -312,11 +331,14 @@ describe("startShell", () => {
         let build = { version: "1.0.0" };
         const requests = installFetchStub({ builds: () => build });
         const { reload } = start();
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
         await vi.waitFor(() => expect(requests.count("/system")).toBe(2));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(2));
         build = undefined;
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
         await vi.waitFor(() => expect(requests.count("/system")).toBe(3));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(3));
 
         expect(reload).not.toHaveBeenCalled();
     });
@@ -326,6 +348,7 @@ describe("startShell", () => {
         const requests = installFetchStub();
         const { visibility } = start();
         await vi.waitFor(() => expect(requests.count("/system")).toBe(1));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
 
         visibility.setHidden(true);
         await vi.advanceTimersByTimeAsync(3 * WATCH_INTERVAL_MS);
@@ -369,6 +392,7 @@ describe("startShell", () => {
         const age = () => shown.mainEl.querySelector('.field-value[data-field-key="TS"]')?.textContent;
         const reopen = () => /** @type {HTMLElement} */ (shown.drawerEl.querySelector('[data-section-key="measurements"]')).click();
         await vi.waitFor(() => expect(age()).toBe("age unknown"));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
 
         unixTime = deviceNowS;
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
@@ -411,6 +435,7 @@ describe("startShell", () => {
         });
         const { elements: shown, reload } = start({ defs: APPLY_DEFS });
         await vi.waitFor(() => expect(requests.count("/system")).toBe(1));
+        await vi.waitFor(() => expect(requests.read("/system")).toBe(1));
         version = "2.0.0";
         await vi.advanceTimersByTimeAsync(WATCH_INTERVAL_MS);
         await vi.waitFor(() => expect(statusCalls).toBe(2));

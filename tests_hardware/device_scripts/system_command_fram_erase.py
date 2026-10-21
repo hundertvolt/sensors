@@ -117,7 +117,7 @@ async def _main() -> None:
         proxy = _RecordingWatchdog(wdt)
         sysfunct._watchdog = proxy  # type: ignore[assignment]  # a recording stand-in: every feed still reaches the WDT
         _wrap(sysfunct, fram, proxy, reset_after, loads, stop)
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))  # the shutdown's first step waits for it to park
         if state == "refusals":
             await _refusals(webserver, fram)

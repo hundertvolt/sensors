@@ -688,6 +688,7 @@ def _test_shutdown_hang(module: "ModuleType", chips: "dict[str, object]", step: 
     elif step == "S4":
         # a supervised task that swallows its cancel, which the task step awaits; not a runner task (it never ends)
         sysfunct._tasks.append(loop.create_task(_test_swallow_cancel()))
+        sysfunct._task_names.append("_test_swallow_cancel")  # the supervisor names each slot's lines
     elif step == "S5reset":
         started.append(loop.create_task(_test_hold(sysfunct._config_stores[0]._config_lock)))  # the reset's store lock
     elif step == "S5erase":

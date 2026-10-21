@@ -70,17 +70,16 @@ class _ProbeGc:
 
 
 async def _boot_lists(sysfunct: "SystemService", starter_gc: _ProbeGc, wdt: "machine.WDT", stages: "list[int]") -> "dict[str, int]":
-    # main()'s order after the setup batch: the task starts, then the timers, the supervisor never entered; the lists'
-    # readings and maps on the way, and their durations returned.
+    # main()'s order after the setup batch: the task lists at the task starts, the trigger and timer lists once
+    # start_tasks() returned, then the timers, the supervisor never entered; the readings and maps on the way, and
+    # their durations returned.
     task_starters = device._collect_task_starters()
-    timer_starters = device._collect_timer_starters()
-    trigger_starters = device._collect_trigger_starters()
-    fact("lists", {"starters": len(task_starters), "timers": len(timer_starters), "triggers": len(trigger_starters)})
+    task_names = device._collect_task_names()
     asy_system_service.gc = starter_gc  # type: ignore[assignment]
     t1 = time.ticks_ms()
     try:
         # start_tasks() returns right after its last collect, so the reading below is the loop's own end.
-        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters), _STARTER_LOOP_TIMEOUT_MS)
+        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters, task_names=task_names), _STARTER_LOOP_TIMEOUT_MS)
         fact("starter_loop_done", True)
     except asyncio.TimeoutError:
         fact("starter_loop_done", False)
@@ -88,6 +87,9 @@ async def _boot_lists(sysfunct: "SystemService", starter_gc: _ProbeGc, wdt: "mac
     free, largest = report_checked("after_starter_loop_end")
     fact("heap_after_starter_loop_end", {"free": free, "largest_block": largest})
     dump_map("after_starter_loop_end")
+    trigger_starters = device._collect_trigger_starters()
+    timer_starters = device._collect_timer_starters()
+    fact("lists", {"starters": len(task_starters), "timers": len(timer_starters), "triggers": len(trigger_starters)})
     t2 = time.ticks_ms()
     try:
         await asyncio.wait_for(sysfunct.start_timers(trigger_starters, timer_starters), _TIMERS_TIMEOUT_S)

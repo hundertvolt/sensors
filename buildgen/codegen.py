@@ -548,7 +548,7 @@ def _emit_main(lines: "list[str]") -> None:
     lines.append("    sysfunct.boot_phase(BOOT_SETUP)")
     lines.append("    await sysfunct.run_setups(_collect_setups())")
     lines.append("    sysfunct.boot_phase(BOOT_TASKS)")
-    lines.append("    await sysfunct.start_tasks(_collect_task_starters())")
+    lines.append("    await sysfunct.start_tasks(_collect_task_starters(), task_names=_collect_task_names())")
     lines.append("    sysfunct.boot_phase(BOOT_TIMERS)")
     lines.append("    await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())")
     lines.append("    sysfunct.boot_phase(BOOT_NTP)")
@@ -671,6 +671,7 @@ def _emit_callbacks(lines: "list[str]", have: "set[str]", construction_order: "l
         lines.append(f'        "MemPaused": {_singleton_var(ctx, "fram")}.get_pause(),')
     # Copied into the JSON value type: a list[str] is not a list of JSON values (lists are invariant).
     lines.append('        "ConfigFaults": list(sysfunct.get_config_faults()), "ConfigUnpersisted": list(sysfunct.get_config_unpersisted()),')
+    lines.append('        "LastTaskEnd": sysfunct.get_last_task_end(),')
     lines.append('        "LocalTime": _gmtimestruct_to_dict(local_time), "UTCTime": _gmtimestruct_to_dict(utc), "UnixTime": utc_now(),')
     lines.append("    }")
     lines.append("")
@@ -750,7 +751,7 @@ def _emit_webserver(lines: "list[str]", ctx: _Ctx, have: "set[str]", sensor_vars
 
 
 def _module_names(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "list[str]":
-    return ["conn", "ntp"] + [ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp")]
+    return ["conn", "ntp", *(ctx.instance_var(n) if isinstance(n, tuple) else n for n in construction_order if n not in ("conn", "ntp"))]
 
 
 def _setup_vars(construction_order: "list[str | tuple[str, str]]", ctx: _Ctx) -> "list[str]":
@@ -801,6 +802,13 @@ def _emit_collectors(lines: "list[str]", construction_order: "list[str | tuple[s
     lines.append(f"    for module in ({', '.join(modules)}, webserver):")
     lines.append("        starters.extend(module.get_task_starters())")
     lines.append("    return starters")
+    lines.append("")
+    # Named as the supervisor's log lines and LastTaskEnd show them: one per starter, the same module tuple.
+    lines.append("def _collect_task_names() -> list[str]:")
+    lines.append("    names: list[str] = []")
+    lines.append(f"    for module in ({', '.join(modules)}, webserver):")
+    lines.append('        names.extend(f"{module.pr.name}.{starter.__name__}" for starter in module.get_task_starters())')
+    lines.append("    return names")
     lines.append("")
     lines.append('def _collect_timer_starters() -> "list[TimerStarter]":')
     lines.append("    starters: list[TimerStarter] = []")

@@ -56,7 +56,7 @@ except ImportError:  # typing has no runtime presence on MicroPython, on-device 
     TYPE_CHECKING = False
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
     from typing import Any
 
 _SRC = "src/asy_uart_comm.py"
@@ -123,6 +123,15 @@ def persisted(comm: UARTComm) -> "list[str]":
     entry = run(comm.get_error_counter(), RUN_LIMIT_S)[comm.name]
     nums, kinds = entry["ErrNum"], entry["ErrType"]
     return [f"{kinds[i]}{nums[i]}" for i in range(len(nums)) if kinds[i] != "N"]
+
+
+def _crc16_pair_dropping(*, from_initiator: bool, frame: int) -> Pair:
+    # CRC16 at both ends, both consoles at the error level, and one payload byte flipped in the frame-th frame (from 0)
+    # one end sends, so the receiving driver drops exactly that frame.
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), crc_a=CRC16(), crc_b=CRC16(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+    sender = pair.fake_a if from_initiator else pair.fake_b
+    pair.link.direction_from(sender).corrupt_indices = {frame * (_FRAME + CRC16().length()) + _FRAME - 1: 0x01}
+    return pair
 
 
 def _e(name: str) -> str:  # persisted()'s form of a catalog errno
@@ -1300,13 +1309,73 @@ def test_a_frame_read_failing_on_a_receive_error_persists_the_overrun_warning() 
 def test_a_command_frame_the_crc_drops_ends_the_listen_under_its_own_message() -> None:
     # A corrupted frame and a silent or cancelled read share the listen's one code; the message names the dropped
     # frame, so the history's entry is not read as a peer that never spoke (J.6).
-    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), crc_a=CRC16(), crc_b=CRC16()), RUN_LIMIT_S)
-    pair.link.direction_from(pair.fake_a).corrupt_indices = {_FRAME - 1: 0x01}  # one payload byte of the GET frame
-    pair.responder.pr.set_level(1)
+    pair = _crc16_pair_dropping(from_initiator=True, frame=0)  # the GET frame
     with record_prints(pair.responder.pr) as recorder:
         assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
     assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
     assert "UART error: listen read dropped a corrupted or incomplete frame" in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_an_answer_the_crc_drops_is_named_apart_from_a_get_left_unanswered() -> None:
+    # The GET's reply wait names a dropped answer as the listen does; the responder, which heard nothing back, keeps
+    # its silent message (J.6).
+    pair = _crc16_pair_dropping(from_initiator=False, frame=1)  # the answer header, after the GET's ACK
+    with record_prints() as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
+    assert persisted(pair.initiator)[:1] == [_e("TIMEOUT")], persisted(pair.initiator)
+    assert "UART_A UART error: answer read dropped a corrupted or incomplete frame for GET 1" in recorder.text(), recorder.text()
+    assert "UART_B UART error: no ACK for frame 1" in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_a_get_left_unanswered_keeps_its_silent_message() -> None:
+    # The GET's ACK arrives and its answer never does: the reply wait names a silence, never a dropped frame (J.6).
+    pair = run(build_pair(timeout=_SHORT_REPLY_TIMEOUT_MS, get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+    pair.link.direction_from(pair.fake_b).truncate_after = _FRAME  # the GET's ACK only
+    with record_prints() as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_get(1)), _STEP_BOUND_S) is None
+    assert persisted(pair.initiator)[:1] == [_e("TIMEOUT")], persisted(pair.initiator)
+    assert "UART_A UART error: no answer to GET 1" in recorder.text(), recorder.text()
+    assert "answer read dropped" not in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_a_listen_cleared_before_any_frame_keeps_its_silent_message() -> None:
+    # A cancelled listen read no frame reached: its history entry reads as a silence, never as a dropped frame (J.6).
+    pair = run(build_pair(get_callback=echo_get(b""), set_callback=accept_set(), debug=ERROR_LEVEL), RUN_LIMIT_S)
+
+    async def scenario() -> None:
+        listener = asyncio.create_task(pair.responder.uart_listen())
+        await asyncio.sleep_ms(_LISTENER_PARK_MS)  # let it park in the unbounded read
+        await asyncio.wait_for(pair.responder.clear(), _STEP_BOUND_S)
+        await asyncio.wait_for(listener, _STEP_BOUND_S)
+
+    with record_prints() as recorder:
+        run(scenario(), _RUN_BOUND_S)
+    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
+    assert "UART_B UART error: listen read failed or was cancelled" in recorder.text(), recorder.text()
+    assert "listen read dropped" not in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_a_train_chunk_the_crc_drops_is_named_apart_from_a_stalled_train() -> None:
+    pair = _crc16_pair_dropping(from_initiator=True, frame=1)  # the SET's data chunk, after its header
+    with record_prints() as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), _STEP_BOUND_S) is False
+    assert persisted(pair.responder)[:1] == [_e("TIMEOUT")], persisted(pair.responder)
+    assert "UART_B UART error: train read dropped a corrupted or incomplete frame at chunk 2" in recorder.text(), recorder.text()
+    assert "UART_A UART error: no ACK for frame 2" in recorder.text(), recorder.text()
+
+
+@_on_poll_rounds
+def test_an_ack_the_crc_drops_is_named_apart_from_a_missing_ack() -> None:
+    pair = _crc16_pair_dropping(from_initiator=False, frame=0)  # the ACK of the SET's header
+    with record_prints() as recorder:
+        assert run(pair.with_listener(pair.initiator.uart_set(1, b"x")), _STEP_BOUND_S) is False
+    assert persisted(pair.initiator)[:1] == [_e("UART_NO_ACK")], persisted(pair.initiator)
+    assert "UART_A UART error: ACK read dropped a corrupted or incomplete frame after sending frame 1" in recorder.text(), recorder.text()
+    assert "UART_B UART error: train stalled at chunk 2" in recorder.text(), recorder.text()
 
 
 @_on_poll_rounds
@@ -2529,6 +2598,53 @@ def test_a_transfer_over_the_own_cap_is_refused_before_anything_is_sent() -> Non
     assert pair.wire_from_initiator() == b""
     assert persisted(pair.initiator) == [_e("UART_TRANSFER_CAP")], persisted(pair.initiator)
     assert run(pair.with_listener(pair.initiator.uart_set(2, bytes(cap))), _RUN_BOUND_S) is True
+
+
+def _over_cap_calls(comm: UARTComm, over: int) -> "tuple[tuple[str, Coroutine[object, object, object], object], ...]":
+    # Each initiator entry point given a size one past the cap, with the sentinel its refusal returns.
+    return (
+        ("uart_set", comm.uart_set(1, bytes(over)), False),
+        ("uart_set_into", comm.uart_set_into(1, bytearray(over), over), False),
+        ("uart_set_stream", comm.uart_set_stream(1, over, lambda chunk, buf: len(buf)), False),
+        ("uart_get", comm.uart_get(1, exp_size=over), None),
+        ("uart_get_into", comm.uart_get_into(1, bytearray(over), exp_size=over), None),
+        ("uart_get_stream", comm.uart_get_stream(1, lambda chunk, buf: True, exp_size=over), None),
+    )
+
+
+@_on_poll_rounds
+def test_a_transfer_over_the_own_cap_is_the_caps_refusal_at_every_cap() -> None:
+    # dev's cap is exactly 254 payloads, so every size over it also needs more than 255 chunks: still the
+    # cap's refusal, logged once per call with nothing sent, at that cap and above it; a train at it completes.
+    for cap in (254 * PAYLOAD_SIZE, 254 * PAYLOAD_SIZE + 1, 300 * PAYLOAD_SIZE):
+        pair = run(build_pair(limits=transfer_limits(max_transfer_bytes=cap), get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+        for name, work, refused in _over_cap_calls(pair.initiator, cap + 1):
+            before = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"]
+            assert run(work, RUN_LIMIT_S) is refused, f"{name} at a cap of {cap}"
+            assert persisted(pair.initiator) == [_e("UART_TRANSFER_CAP")], f"{name} at a cap of {cap}: {persisted(pair.initiator)}"
+            logged = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] - before
+            assert logged == 1, f"{name} at a cap of {cap} logged {logged} entries"
+            assert pair.wire_from_initiator() == b"", f"{name} at a cap of {cap} sent bytes"
+        if cap == 254 * PAYLOAD_SIZE:
+            assert run(pair.with_listener(pair.initiator.uart_set(2, bytes(cap))), _RUN_BOUND_S) is True
+
+
+@_on_poll_rounds
+def test_a_size_within_a_cap_above_the_largest_train_is_refused_as_too_many_chunks() -> None:
+    # A cap above 254 payloads holds sizes no CHUNKS byte can declare: those stay the train's own refusal.
+    cap = 300 * PAYLOAD_SIZE
+    total = 254 * PAYLOAD_SIZE + 1
+    pair = run(build_pair(limits=transfer_limits(max_transfer_bytes=cap), get_callback=echo_get(b""), set_callback=accept_set()), RUN_LIMIT_S)
+    for name, work in (
+        ("uart_set", pair.initiator.uart_set(1, bytes(total))),
+        ("uart_set_into", pair.initiator.uart_set_into(1, bytearray(total), total)),
+        ("uart_set_stream", pair.initiator.uart_set_stream(1, total, lambda chunk, buf: len(buf))),
+    ):
+        before = run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"]
+        assert run(work, RUN_LIMIT_S) is False, name
+        assert persisted(pair.initiator) == [_e("UART_PAYLOAD_TOO_LARGE")], f"{name}: {persisted(pair.initiator)}"
+        assert run(pair.initiator.get_error_counter(), RUN_LIMIT_S)[pair.initiator.name]["ErrCount"] == before + 1, name
+        assert pair.wire_from_initiator() == b"", f"{name} sent bytes"
 
 
 @_on_poll_rounds

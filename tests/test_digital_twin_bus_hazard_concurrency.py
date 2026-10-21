@@ -197,7 +197,7 @@ async def _ladder_run(device: str, faults: "dict[int, str]", until_recoveries: i
     chips = dict(fake.devices)
     feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
     try:
-        await module.sysfunct.start_tasks(module._collect_task_starters())
+        await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
         await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
         # Both readers set up and measuring first: the faults then hit read cycles, not setup.
         while (await module.sgp40.get_data()).VOC is None or (await module.bmp3xx.get_data()).Pres is None:
@@ -253,7 +253,7 @@ async def _run_real_task_graph_and_assert_healthy(module: "ModuleType", watchdog
     plan = wiring_plan(device)
     feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
     try:
-        await module.sysfunct.start_tasks(module._collect_task_starters())
+        await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
         await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
         await asyncio.sleep(run_seconds)
         assert watchdog.would_have_triggered_count == 0, device
@@ -488,7 +488,7 @@ def test_the_system_survives_concurrent_bus_load_and_a_real_established_wifi_dis
         feeder = asyncio.get_event_loop().create_task(_feed_watchdog_periodically(watchdog))
         flap_task = asyncio.get_event_loop().create_task(_wait_established_then_flap_once(module.conn))
         try:
-            await module.sysfunct.start_tasks(module._collect_task_starters())
+            await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
             await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
             await asyncio.sleep(_FLAP_WINDOW_S)
             assert watchdog.would_have_triggered_count == 0
@@ -874,7 +874,7 @@ _LADDER = [(d, o) for d, _b, o in _SHARED if "sgp40" in o and "bmp3xx" in o]
 
 async def _supervised_graph(module: "ModuleType") -> "asyncio.Task[None]":
     # The tasks, timers and supervisor main() starts: the shutdown sequence parks and cancels the supervisor first.
-    await module.sysfunct.start_tasks(module._collect_task_starters())
+    await module.sysfunct.start_tasks(module._collect_task_starters(), task_names=module._collect_task_names())
     await module.sysfunct.start_timers(module._collect_trigger_starters(), module._collect_timer_starters())
     return asyncio.get_event_loop().create_task(module.sysfunct.supervise_tasks())
 

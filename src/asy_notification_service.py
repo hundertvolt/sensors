@@ -330,11 +330,12 @@ class NotificationService(SensorReaderConfig):
         r, g, b = notif.color
         try:  # caller-supplied callback, could legitimately misbehave
             ok = await self._request_signal_cb(r * flash_bri, g * flash_bri, b * flash_bri, flash_dur)
-            if not ok and not self._sink_is_default:
-                await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
         except Exception as e:
             report_if_fatal(e)
             await self.pr.err_s(notif.name, "request_signal_cb failed:", e, errno=_ERR_CALLBACK)
+            return
+        if not ok and not self._sink_is_default:  # outside the try: a raise here is not the callback's failure
+            await self.pr.wrn_s(notif.name, "LED signal dropped: LED busy.", wrnno=_WRN_NOTIFY_SIGNAL_DROPPED)
 
     def get_task_starters(self) -> "list[TaskStarter]":
         return [self.start_asy_monitor, self.start_asy_pause]

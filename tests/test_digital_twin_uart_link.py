@@ -680,21 +680,19 @@ def test_many_back_to_back_transfers_do_not_degrade_or_leak() -> None:
     assert rate < _LEAK_RATE_BYTES_PER_TRANSFER, f"{rate:.1f} bytes retained per transfer after the warm-up - a per-transfer leak"
 
 
-def test_the_link_survives_sustained_allocation_pressure() -> None:
-    # Resource exhaustion rather than contention: a heap being churned hard underneath the link,
-    # which is what turns a latent one-big-allocation design into a failure (Part I). The link must
-    # either complete or degrade cleanly - never raise out, and never corrupt a payload.
+def test_every_train_crosses_intact_while_the_heap_churns() -> None:
+    # Heap churn beside the link, 1 KB blocks allocated and dropped, so at gc.threshold(32768) collections land
+    # mid-transfer. Every train arrives intact with nothing logged, and a failed allocation fails the test.
     build_linked_system()
-    initiator = _link(ROLE_INITIATOR)._comm
+    initiator, responder = _link(ROLE_INITIATOR)._comm, _link(ROLE_RESPONDER)._comm
     stop: list[bool] = []
+    churned = [0]
 
     async def churn() -> None:
         held: list[bytearray] = []
         while not stop:
-            try:
-                held.append(bytearray(1024))
-            except MemoryError:  # the pressure this test exists to create
-                held = []
+            held.append(bytearray(1024))
+            churned[0] += 1024
             if len(held) > 32:
                 held = held[16:]
             await asyncio.sleep_ms(_CHURN_STEP_MS)
@@ -703,19 +701,23 @@ def test_the_link_survives_sustained_allocation_pressure() -> None:
         background = asyncio.create_task(churn())
         try:
             out = []
-            for _ in range(_CHURN_TRANSFERS):
-                # The suppression below: MicroPython has no `await` inside a comprehension, so
-                # ruff's suggested rewrite does not compile on the target interpreter at all.
-                out.append(await exchange(initiator.uart_set(0x02, bytes(200))))
+            for i in range(_CHURN_TRANSFERS):
+                payload = bytes((i + j) & 0xFF for j in range(200))
+                listener = asyncio.create_task(responder.uart_listen())
+                sent = await initiator.uart_set(0x02, payload)
+                heard = await asyncio.wait_for(listener, _LISTENER_SETTLE_S)
+                out.append(sent is True and heard.cmd_id == 0x02 and heard.payload is not None and copied_out(heard.payload) == payload)
             return out
         finally:
             stop.append(True)
-            background.cancel()
-            await asyncio.sleep_ms(_CANCEL_SETTLE_MS)
+            await background  # ends at its next step; an exception it raised surfaces here
 
     results = _run(scenario(), limit=_CHURN_LIMIT_S)
-    assert all(isinstance(r, bool) for r in results), "a transfer returned something other than its documented bool"
-    assert any(results), "every transfer failed under allocation pressure - the link did not degrade, it stopped"
+    assert len(results) == _CHURN_TRANSFERS and all(results), f"a train failed or arrived altered under heap churn: {results}"
+    for comm in (initiator, responder):
+        assert _run(comm.get_error_counter())[comm.name]["ErrCount"] == 0, f"{comm.name} logged an error under heap churn"
+    stage = gc.threshold()
+    assert stage < 0 or churned[0] > stage, f"the churn allocated {churned[0]} bytes, short of one collection at gc.threshold({stage})"
 
 
 def test_hammering_the_link_beside_the_graph_holds() -> None:

@@ -1,0 +1,31 @@
+tests/test_asy_webserver_service.py: note: In function "test_reset_errors_is_refused_while_the_supervisors_escalation_writes_its_entry":
+tests/test_asy_webserver_service.py:1323:15: error: Missing positional argument
+"task_names" in call to "start_tasks" of "SystemService"  [call-arg]
+            await bench.svc.start_tasks([dead_starter])
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_asy_neopixel_driver.py: note: In function "test_the_supervisor_restarts_a_failed_signal_task_with_one_system_entry":
+tests/test_asy_neopixel_driver.py:884:15: error: Missing positional argument
+"task_names" in call to "start_tasks" of "SystemService"  [call-arg]
+            await svc.start_tasks(driver.get_task_starters())
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_forwards_web_host_port":
+tests/_sensortask_scenarios.py:487:33: error: Incompatible types in assignment
+(expression has type
+"Callable[[SystemService, list[Callable[[], Task[Any]]]], Coroutine[Any, Any, None]]",
+variable has type
+"Callable[[SystemService, list[Callable[[], Task[Any]]], list[str]], Coroutine[Any, Any, None]]")
+ [assignment]
+        SystemService.start_tasks = _fake_start_tasks  # type: ignore[meth...
+                                    ^~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:487:33: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+tests/_sensortask_scenarios.py: note: In function "_scenario_main_call_order":
+tests/_sensortask_scenarios.py:1619:33: error: Incompatible types in assignment
+(expression has type
+"Callable[[SystemService, list[Callable[[], Task[Any]]]], Coroutine[Any, Any, None]]",
+variable has type
+"Callable[[SystemService, list[Callable[[], Task[Any]]], list[str]], Coroutine[Any, Any, None]]")
+ [assignment]
+        SystemService.start_tasks = _fake_start_tasks  # type: ignore[meth...
+                                    ^~~~~~~~~~~~~~~~~
+tests/_sensortask_scenarios.py:1619:33: note: Error code "assignment" not covered by "type: ignore[method-assign]" comment
+Found 4 errors in 3 files (checked 261 source files)

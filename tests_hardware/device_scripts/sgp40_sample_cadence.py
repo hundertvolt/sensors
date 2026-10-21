@@ -76,7 +76,7 @@ async def _main() -> None:
 
         sgp40._read_sgp = counting_read  # type: ignore[assignment, method-assign]
         sysfunct.boot_phase(BOOT_TASKS)
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         sysfunct.boot_phase(BOOT_TIMERS)
         timers = asyncio.create_task(sysfunct.start_timers(device._collect_trigger_starters(), device._collect_timer_starters()))
         waited_ms = 0

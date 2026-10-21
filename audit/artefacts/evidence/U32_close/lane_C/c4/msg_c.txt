@@ -1,0 +1,8 @@
+U32 lane C: the supervisor's own tests pass the task names by keyword
+
+Every start_tasks() call in tests/test_asy_system_service.py (15) and
+tests/test_ntp_fram_system_integration.py (4) passes the names as task_names=, the form the
+generated main() and every other caller use. No meaning change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BWfjT6GSD7bxCP57j86vB8

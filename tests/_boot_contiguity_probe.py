@@ -128,11 +128,11 @@ async def _drive_timers(sysfunct: "SystemService", trigger_starters: "list[Calla
     return True
 
 
-async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]") -> bool:
+async def _run_starter_loop(sysfunct: "SystemService", task_starters: "list[_Starter]", task_names: "list[str]") -> bool:
     # main()'s step after the setup list. start_tasks() returns after its final collect, so the map follows at
     # once; the supervisor is never entered.
     try:
-        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters), _STARTER_LOOP_TIMEOUT_MS)
+        await asyncio.wait_for_ms(sysfunct.start_tasks(task_starters, task_names=task_names), _STARTER_LOOP_TIMEOUT_MS)
     except asyncio.TimeoutError:
         print(f"NOTE start_tasks did not return within {_STARTER_LOOP_TIMEOUT_MS} ms")
         return False
@@ -174,15 +174,16 @@ async def _main(device: str, arm: str, cfg_path: str, settle_ms: int) -> int:
     if sysfunct is None:
         print("RESULT: FAIL build_system() completed but left sysfunct unset")
         return 1
+    # main()'s order: the task lists at the task starts, the trigger and timer lists once start_tasks() returned, then
+    # the timers; the supervisor is never entered. So the starter loop's collects never see the later two lists.
     task_starters = module._collect_task_starters()
+    task_names = module._collect_task_names()
+    if not await _run_starter_loop(sysfunct, task_starters, task_names):
+        return 1
+    _rings("after_starter_loop_end", module)
     trigger_starters = module._collect_trigger_starters()
     timer_starters = module._collect_timer_starters()
     print(f"LISTS starters={len(task_starters)} triggers={len(trigger_starters)} timers={len(timer_starters)} batch_collects={probe_gc.calls['batch']}")
-
-    # main()'s order: the task starts, then the timers; the supervisor is never entered.
-    if not await _run_starter_loop(sysfunct, task_starters):
-        return 1
-    _rings("after_starter_loop_end", module)
     if not await _drive_timers(sysfunct, trigger_starters, timer_starters):
         return 1
     print(f"COUNTS batch_collects={probe_gc.calls['batch']} starter_collects={probe_gc.calls['starter']}")

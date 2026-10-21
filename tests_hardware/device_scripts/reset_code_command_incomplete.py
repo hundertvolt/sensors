@@ -69,7 +69,7 @@ async def _main() -> None:
             raise RuntimeError("the generated build constructed no SystemService, webserver or FRAM")
         await sysfunct.run_setups(device._collect_setups())
         _fail_unit(fram.fram)
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))  # the shutdown's first step waits for it to park
         answer = await webserver._dispatch_system_cmd("erasefram")
         fact("answer", answer)

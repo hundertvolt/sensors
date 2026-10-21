@@ -44,6 +44,15 @@ function isScalarList(value) {
     return Array.isArray(value) && value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
 }
 
+/**
+ * A field js/field-format.js renders from a JSON object through its own shape check (its RECORD_FORMATTERS).
+ * @param {FieldDef} field
+ * @returns {boolean}
+ */
+function isObjectFormat(field) {
+    return field.format === "gmtimestruct" || field.format === "lasttaskend";
+}
+
 // Which mockdata top-level object backs each definitions section, matching what js/mock-server.js
 // serves for that section's own GET.
 const SECTION_DATA_KEY = {
@@ -84,8 +93,8 @@ function unrenderableReadonlyFields(defs, data) {
                 }
                 // A `path` naming a GROUP rather than a leaf resolves to the sub-object, which
                 // renders as "[object Object]" - a value, so the check above cannot see it.
-                // gmtimestruct's struct and a list of scalars (ConfigFaults) are leaves.
-                if (field.format !== "gmtimestruct" && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
+                // The two object formats (gmtimestruct, lasttaskend) and a list of scalars (ConfigFaults) are leaves.
+                if (!isObjectFormat(field) && typeof resolved === "object" && resolved !== null && !isScalarList(resolved)) {
                     missing.push(`${section.key}/${group.key}/${field.key} (an object, not a leaf)`);
                 }
             }
@@ -139,5 +148,13 @@ describe("definitions and mockdata agree", () => {
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [] } } })).toEqual([]);
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: ["SCD30", "WIFI"] } } })).toEqual([]);
         expect(unrenderableReadonlyFields(defs, { status: { system: { ConfigFaults: [{ Module: "SCD30" }] } } })).toEqual(["status/system/ConfigFaults (an object, not a leaf)"]);
+    });
+
+    it("takes a task-end record as a leaf, as it takes a time struct", () => {
+        const defs = {
+            sections: [{ key: "status", groups: [{ key: "system", fields: [{ key: "LastTaskEnd", label: "Task Last Ended", kind: "readonly", format: "lasttaskend" }] }] }],
+        };
+        expect(unrenderableReadonlyFields(defs, { status: { system: { LastTaskEnd: null } } })).toEqual([]);
+        expect(unrenderableReadonlyFields(defs, { status: { system: { LastTaskEnd: { Task: "SCD30.start_asy_read", Uptime: 3600 } } } })).toEqual([]);
     });
 });

@@ -73,7 +73,7 @@ async def _main() -> None:
         fact("reader", label)
         _exhaust(getattr(device, label), deaths)
         _wrap_reboot(sysfunct, deaths)
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))
         for _ in range(_RESET_WAIT_MS // _WAIT_STEP_MS):  # the supervisor feeds until its escalation starves the watchdog
             await asyncio.sleep_ms(_WAIT_STEP_MS)

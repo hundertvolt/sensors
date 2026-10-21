@@ -10,6 +10,7 @@ import { GMTIME_KEYS } from "./api-contract.js";
 /** @typedef {{deviceNowS: number | null, defaultDecimals?: number | undefined}} FormatContext */
 
 const INVALID_TIME_TEXT = "invalid time value";
+const INVALID_VALUE_TEXT = "invalid value";
 // A timestamp up to this far ahead of the page's estimate of the device clock reads as now: the
 // estimate trails the device by a /status request's latency.
 // @tunable web.clock_mismatch_s = 5
@@ -43,6 +44,19 @@ function formatEpochAge(epochS, deviceNowS) {
 
 /**
  * @param {unknown} value
+ * @returns {string} `<Task> at uptime <Uptime> s` for a task-end record, or the invalid-value text.
+ */
+function formatTaskEnd(value) {
+    // Real shape: LastTaskEnd in the generated module's _system_status() (buildgen/codegen.py).
+    if (typeof value !== "object" || value === null) {
+        return INVALID_VALUE_TEXT;
+    }
+    const { Task: task, Uptime: uptime } = /** @type {Record<string, unknown>} */ (value);
+    return typeof task === "string" && Number.isInteger(uptime) ? `${task} at uptime ${String(uptime)} s` : INVALID_VALUE_TEXT;
+}
+
+/**
+ * @param {unknown} value
  * @returns {string} `Y-MM-DD hh:mm:ss` read through GMTIME_KEYS, or the invalid-time text.
  */
 function formatTimeStruct(value) {
@@ -57,6 +71,13 @@ function formatTimeStruct(value) {
     const [year, ...rest] = members.map((member) => String(member).padStart(2, "0"));
     return `${year}-${rest[0]}-${rest[1]} ${rest[2]}:${rest[3]}:${rest[4]}`;
 }
+
+// The formats whose value is a JSON object, each read through its own shape check.
+/** @type {Map<string | undefined, (value: unknown) => string>} */
+const RECORD_FORMATTERS = new Map([
+    ["gmtimestruct", formatTimeStruct],
+    ["lasttaskend", formatTaskEnd],
+]);
 
 /**
  * @param {FormattableField} field
@@ -79,8 +100,9 @@ export function formatFieldValue(field, value, context = { deviceNowS: null }) {
         const match = (field.options ?? []).find((option) => option.value === value);
         return match ? match.label : String(value);
     }
-    if (field.format === "gmtimestruct") {
-        return formatTimeStruct(value);
+    const formatRecord = RECORD_FORMATTERS.get(field.format);
+    if (formatRecord !== undefined) {
+        return formatRecord(value);
     }
     const finite = typeof value === "number" && Number.isFinite(value);
     if (field.format === "epoch" && finite) {

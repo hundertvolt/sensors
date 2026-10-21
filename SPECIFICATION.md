@@ -523,7 +523,9 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   catches `OSError`, muting a short allow-list of expected socket errors — anything else propagates
   out of `handle_request()`. By then the response is already in flight, so there's no hook left to
   convert the failure into a reply — the client hits a timeout, or a short read where the response
-  carries its `Content-Length`. `_serve()` catches what propagates and never raises out of its task:
+  carries its `Content-Length`. `_serve()` catches what propagates and never raises out of its task
+  but through its logging call itself (G.2's task-top caveat) or, on an exhausted heap, the calls in
+  its `finally` (calling a coroutine allocates its generator; the close catches every `Exception`):
   an `OSError` Microdot does not mute is traced as `wrnno` 51, anything else as `errno` 23.
   `Response.write()` also mutes a reset (ECONNRESET, EPIPE) from a response write; the stream proxy
   marks the peer gone when a write raises `OSError`, so such a client counts in `HTTPDropped` and no
@@ -580,7 +582,8 @@ annotates `get`/`put` (then `tests/test_setter_microdot_integration.py`'s decora
   leaves its trace, and the last persists it and ends the task. A `socket()` failure holds
   nothing; a `bind()`/`listen()` failure holds its pcb until a collection
   (`extmod/asyncio/stream.py:184-188` never closes it), up to two across the attempts. The task
-  supervisor, reboot and watchdog stay above it unchanged. `_serve()` never raises out of its task.
+  supervisor, reboot and watchdog stay above it unchanged. `_serve()` never raises out of its task
+  but through its logging call itself (above).
 - **Client traffic, a task that ends with an exception and an exception Microdot reports print
   nothing at the shipped `DebugLevel` 0**: the last two go through level-gated loggers (F.1, above);
   the CYW43 driver's own warnings still reach the console (F.1). At a raised level every console write
@@ -869,11 +872,14 @@ each unit's feed margin is Part N's `boot.setup_unit_stretch_ms`.
 wozi's answer applies everywhere (confirmed against `buildgen/codegen.py`).
 
 **Task, timer and trigger starter collection** (`_collect_task_starters()`/
-`_collect_timer_starters()`/`_collect_trigger_starters()`, from `main()`): every module's
-`get_task_starters()`/`get_timer_starters()` is called uniformly, `fram`'s included (its one task
-is the chip watch, A.4); `get_trigger_starters()` is
-called on each reader whose class declares one, in the order that puts instances sharing a bus
-furthest apart (C.9.1).
+`_collect_task_names()`/`_collect_timer_starters()`/`_collect_trigger_starters()`, from `main()`):
+every module's `get_task_starters()`/`get_timer_starters()` is called uniformly, `fram`'s included
+(its one task is the chip watch, A.4); `_collect_task_names()` walks the same modules in the same
+order and names each task starter `<logger name>.<starter name>` (`module.pr.name` and the
+starter's `__name__`), one name per starter, which `start_tasks()` takes as a required argument
+beside the starters and which the supervisor's log lines and `/status`'s `LastTaskEnd` show (A.8);
+`get_trigger_starters()` is called on each reader whose class declares one, in the order that puts
+instances sharing a bus furthest apart (C.9.1).
 
 **Error-source/debug-level fan-in** (`_collect_error_sources()`/`_collect_level_setters()`, Part
 C.14): generic, not hand-enumerated — every constructed module's own `get_error_sources()`/
@@ -972,24 +978,31 @@ settings.
   per boot (owner, 2026-10-01). `ConfigUnpersisted` — the modules whose last config write to flash
   failed (the absent file's defaults, the boot repair, or a PUT's deferred flush), so
   their current values apply now but are lost at the next boot; an empty list when there are none;
-  a module leaves the list at its next successful write (C.7.3). `UTCTime` — `null` until the
-  first NTP sync, like `LocalTime`, and again while `NTPSynced` is false. `UnixTime` — the device's
-  Unix seconds (an int) when the poll was answered, `null` until the first NTP sync; every age on
-  the website is computed against it. `networking`'s link
-  fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot, refreshed
-  each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8). `WifiTS` —
-  that snapshot's UTC time (the Wi-Fi task's `TS`), `null` until the first NTP sync, so a stale
-  value shows the Wi-Fi task stalled, judged against `UTCTime` (owner, 2026-09-29). `HTTPDropped` —
-  the web connections dropped in the last 24 hours, at hourly resolution: a refusal at the ceiling,
-  a refused head, or a peer reset before or during its response, which the error history alone shows
-  only as entries spending one slot per run of identical codes; held in 24 hourly bins allocated
-  once and advanced from the uptime seconds (the hourly window counter, G.2), each bin and the sum
-  capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it happened; no drop, read
-  or hour change allocates; `ResetErrors` clears it; each drop is also traced once (A.5; owner,
-  2026-10-01). A 413 is answered, so it is not a drop.
-  `BackupTS`/`RestoreTS` under each SGP40 source — `null` = none since boot,
-  `0` = no timestamp (owner, 2026-09-29). `errcount` — one entry per module plus one per
-  `ConfigManager` (`CFGMGR_<name>`).
+  a module leaves the list at its next successful write (C.7.3). `LastTaskEnd` — `null` until the
+  supervisor records a supervised task's end this boot, then the last recorded one's `{"Task":
+  "<logger name>.<starter name>", "Uptime": <SysUptime seconds at that record>}` (A.7's
+  `_collect_task_names()`), recorded at the supervisor's next scan (one every 2 s) after the end;
+  the supervisor restarts that task unless a reboot follows (its escalation, or a system command's
+  shutdown); RAM-only, the successor of legacy's "Task last error"; a starter that raised at start
+  ends no task; the reason is in that module's and SYSTEM's error history (owner, 2026-09-30: "(a)
+  Yes: publish it as `LastTaskEnd` in `/status`."; the question: "Keep showing which task ended last
+  on the API?"). `UTCTime` — `null` until the first NTP sync, like `LocalTime`, and again while
+  `NTPSynced` is false. `UnixTime` — the device's Unix seconds (an int) when the poll was answered,
+  `null` until the first NTP sync; every age on the website is computed against it. `networking`'s
+  link fields (`Mode`, `Connected`, `IPv4`, `Subnet`, `Gateway`, `DNS`, `RSSI`) — one snapshot,
+  refreshed each second, never a radio read per request; `RSSI` is `null` outside a STA link (C.8).
+  `WifiTS` — that snapshot's UTC time (the Wi-Fi task's `TS`), `null` until the first NTP sync, so a
+  stale value shows the Wi-Fi task stalled, judged against `UTCTime` (owner, 2026-09-29).
+  `HTTPDropped` — the web connections dropped in the last 24 hours, at hourly resolution: a refusal
+  at the ceiling, a refused head, or a peer reset before or during its response, which the error
+  history alone shows only as entries spending one slot per run of identical codes; held in 24
+  hourly bins allocated once and advanced from the uptime seconds (the hourly window counter, G.2),
+  each bin and the sum capped at `COUNTER_CAP`, so a drop leaves the count 23-24 hours after it
+  happened; no drop, read or hour change allocates; `ResetErrors` clears it; each drop is also
+  traced once (A.5; owner, 2026-10-01). A 413 is answered, so it is not a drop.
+  `BackupTS`/`RestoreTS` under each SGP40 source — `null` = none since boot, `0` = no timestamp
+  (owner, 2026-09-29). `errcount` — one entry per module plus one per `ConfigManager`
+  (`CFGMGR_<name>`).
 - **Code tables**: every `/status` code table — `ResetReason` here, `FRCState` (M.2), `VOCState`
   (M.3), `CalLight` (M.1.5), the notification's `State` (`NotifyState`, A.4) — has one source, the
   `status` section of `buildgen/error_catalog.json`, from which the website's labels are generated;
@@ -3975,10 +3988,13 @@ by C.9.1; empty unless the reader has one), even when trivially one-element — 
 `asy_system_service.py` discovers/supervises every module generically through these, never by name.
 **This is the boot-time-lifecycle mechanism, not the only legitimate way to start a task** — a task
 tied to a runtime mode transition (`asy_wifi_service.py`'s hotspot-mode DNS server task) is outside
-this generic supervision (agent, 2026-08-07). Every task created outside the starters is a row of
-this table, with its reason, lifetime, cancel path and the top that persists its failure; every
-`create_task(`/`start_server(` in `src/` is a starter or a row here, checked by
-`tests_scripts/test_task_inventory.py`. The FRAM manager's chip watch
+this generic supervision (agent, 2026-08-07). Every task created outside the task starters
+(`get_task_starters()`; a timer starter is no exemption) is a row of this table, with its reason,
+lifetime, cancel path and the top that persists its failure; every `create_task(`/`start_server(` in
+`src/` sits in a task starter or is a row here, checked by `tests_scripts/test_task_inventory.py`,
+and the generated modules create none. Each row's task ends in a top of its own that logs through
+its own object's logger (`self.pr`): the creator's, except Captive DNS, which keeps its own DNSSRV
+logger (G.2's task top), checked by `tests_scripts/test_task_tops.py`. The FRAM manager's chip watch
 (`FRAMManager.start_asy_watch_chip`, A.4) is a task starter, so it takes no row.
 
 <!-- tasks:begin -->
@@ -3989,8 +4005,8 @@ this table, with its reason, lifetime, cancel path and the top that persists its
 | LED flash | `WifiService._run_led_pattern()` (`asy_wifi_service.py`) | it exists only in the hotspot without a client, with a station on it, and with no readable Wi-Fi configuration — never in the silent mode, which is dark (A.4) | one task: a different pattern cancels it and starts its own; also cancelled by `_reset_wlan_connect_state()`, `_handle_reconnect_trigger()`, the window end (`_on_hotspot_window_end()`, which `reconnect_wifi()` runs too) and the entry into the silent mode; a cancel touches no LED | `_flash_led()`: persists `UNEXPECTED` and ends; the next request for the pattern restarts it |
 | Per-connection HTTP | `WebserverService._serve_loop()`'s `asyncio.start_server()`, one `_serve()` task per connection (`asy_webserver_service.py`) | one per accepted connection | one request, bounded by the outer cap (`outer_cap_s`) | `_serve()`: persists `UNEXPECTED` |
 | Supervisor | `SystemService.supervise_tasks()` (`asy_system_service.py`), which then waits for good | it supervises the starters' tasks, so it cannot be one of them | the program's life; a system command's shutdown sequence cancels it once it parked and awaits it (A.8); cancelling the call that spawned it cancels it too | `_supervise()`: one SYSTEM entry per task end, `TASK_BUDGET_REBOOT` or `STACK_EXHAUSTED` at the escalation, its write bounded by Part N's `system.escalation_entry_wait_ms`, a timeout or a `MemoryError` there still arming the reset; its own fault persists one `SUPERVISOR_RAISED` entry, then it ends unfed and the watchdog resets (`ResetReason` 2, A.8) |
-| Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | none of its own: each step's failure is persisted where it happens (a flush's `CALLBACK` entry) or printed once FRAM is paused, and the next boot's `ResetReason` carries the outcome |
-| Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush's failure reaches the console and the RAM ring only, FRAM being paused |
+| Shutdown | `SystemService._request_shutdown()` (`asy_system_service.py`), once per system command that passes the gate | it exists only from a system command's acceptance to its reset (A.8) | from acceptance until `_reboot()` arms the reset; never cancelled: a hung step is never fed, so the watchdog ends it | `_shutdown_sequence()`: a step's own failure is logged where it happens (a flush's `CALLBACK` entry), any other persists `UNEXPECTED`; past the quiesce FRAM is paused, so an entry from there on reaches the console and the RAM log only; no reset is armed and nothing feeds, so the watchdog resets with the record the sequence left, and the next boot's `ResetReason` carries the outcome |
+| Reset | `SystemService._reboot()` (`asy_system_service.py`), once per boot | it exists only between an armed reset and the reset itself | from the arm until the reset timer's flag wakes it `_RESET_DELAY` later and it resets the device; cancelled only when that timer cannot be armed | `_reset_when_due()`: its last flush logs a failing store's `CALLBACK` entry, any other failure `UNEXPECTED`; FRAM is paused by then, so either reaches the console and the RAM log only; nothing feeds after it, so the watchdog resets |
 <!-- tasks:end -->
 
 A task that ends raising with nobody awaiting it, a row's or a starter's that dies between two
@@ -5822,7 +5838,8 @@ array-bounds workaround (B.7.1).
 ## F.1 Core platform facts
 
 The owner's legacy units run **MicroPython 1.24.1** with the legacy firmware (`legacy/firmware/`)
-and stay on it until the owner reflashes one; no fact verified at the pin is extrapolated to 1.24.1.
+and stay on it until the owner reflashes one (README.md, "Moving a legacy unit to this firmware");
+no fact verified at the pin is extrapolated to 1.24.1.
 The refactor runs on **Pico W (RP2040)** from **frozen bytecode**, not loaded from a filesystem at
 runtime — CPython-only stdlib behaviour cannot be assumed. It pins **v1.29.0**
 (`toolchain/versions.toml`), which stays pinned to a chosen version that moves only on the owner's
@@ -6135,8 +6152,12 @@ exception (measured 3,040 B for a task holding a 2 KB local).
 start loop, only where no handler is set yet (owner, 2026-10-07: "Yes, build it that way. And test
 it thoroughly, hammering, extensively on the real system and add unit tests in our usual ways and
 layers enforcing it to be proven stable in the future and on all builds."): from DebugLevel 1 one
-line and the traceback, nothing at 0, and both dict entries cleared either way. It lives in
-`asy_print_log.py` because only the logger prints. Fixed-argument `print()` and
+line and the traceback, nothing at 0, and both dict entries cleared either way. At 0 a task's end
+therefore shows only in the error histories: the supervisor persists a supervised task's end, and a
+task outside it persists its own at its top (G.2's task top); a death no top logs, the logging call
+itself failing, leaves no trace at 0, and `/status` counts none (owner, 2026-10-21: "Keep as is, no
+added complexity."; the question: "Should `/status` count task deaths that are silent at log level
+0?"). It lives in `asy_print_log.py` because only the logger prints. Fixed-argument `print()` and
 `sys.print_exception()` allocate nothing (`py/modbuiltins.c`, `shared/runtime/sys_stdio_mphal.c`,
 rp2's `mp_hal_stdout_tx_strn()`, `shared/tinyusb/mp_usbd_cdc.c`); a frame above 11 slots borrows
 heap only when there is room and falls back to the C stack (`py/objfun.c:273-286`); and nothing
@@ -7232,6 +7253,21 @@ backend-only or frontend-only validation/coercion policy change in this project.
   `errorhandler(Exception)` registers and the one rebound over Microdot's `print_exception`; it sets a one-way flag only for a `RuntimeError` carrying the
   interpreter's C-stack text, allocating and printing nothing, and the supervisor's next pass reboots
   (C.7, F.1; `tests_scripts/test_fatal_report_sites.py`).
+- **Task top** — every task the supervisor does not watch, each `create_task()` target outside the
+  task starters (`get_task_starters()`) and each `asyncio.start_server()` callback (C.9's table, the
+  per-connection `_serve()` among them; the generated modules create none), ends in a top of its
+  own: a `try` with no `else:` or `finally:` whose `except Exception as e:` calls
+  `report_if_fatal(e)`, logs `e` through its own object's logger (`self.pr.err_s()`) and raises
+  nothing. That logger is the creator's, so the module that creates a task logs its failure (owner,
+  2026-10-21: "The task logs shall then be handled by their creators in general and the caveats are
+  okay as they are inevitable."; the question, paraphrase: whether a task's failure is logged by the
+  module creating it, with FRAM paused before a reset and the logging call itself as the two
+  caveats), except Captive DNS: `WifiService` creates it, and `CaptiveDNS.run()` logs through the
+  DNSSRV logger its object keeps (owner, 2026-08-07, `74cfa7f`, paraphrase: its own independent
+  "DNSSRV"-named logger, not `WifiService`'s `self.pr`; C.11). Both caveats are inherent: a top that
+  runs once FRAM is paused for a reset reaches the console and the RAM log only, and a failure of
+  the logging call itself reaches only the loop's exception handler (F.1). The check is
+  `tests_scripts/test_task_tops.py`.
 - **The error-log envelope type** — `asy_print_log.py`'s `ErrorLog` (`dict[str, ErrEntry]`, where
   `ErrEntry` is a `TypedDict` of `ErrCount: int`/`ErrNum: list[int]`/`ErrType: list[str]`), declared
   once under that module's `TYPE_CHECKING` block and imported by every module that returns one.
@@ -7383,7 +7419,10 @@ backend-only or frontend-only validation/coercion policy change in this project.
   code table (`tests_js/api-reference-agreement.test.js`). The website's copies of generator bounds
   (`js/definitions.js`'s `SUPPORTED_SCHEMA_MAJOR` and `MAX_DECIMALS`, and the shape rules of
   `validateDefinitions()`) against `buildgen/`, and its `MAX_POLL_INTERVAL_MS` (2**31 − 1,
-  `setTimeout()`'s ceiling) against the Python shape check's `_MAX_POLL_INTERVAL_MS`, pinned by
+  `setTimeout()`'s ceiling) against the Python shape check's `_MAX_POLL_INTERVAL_MS`, and its
+  `FIELD_FORMATS` against `buildgen/web_tag.py`'s `_FORMATS` and the shape check's `_FIELD_FORMATS`,
+  and `js/field-format.js`'s `RECORD_FORMATTERS` keys with its own format branches, and
+  `tests_js/definitions-mockdata-coverage.test.js`'s `isObjectFormat()`, pinned by
   `tests_scripts/test_definitions_js_mirrors.py` and the shape corpus
   `tests_scripts/definitions_shape_cases.json`, which the Python shape check and the JS validator
   both read; and the facts `buildgen/` restates from `src/` with the two owner-kept catalogs (K.3),
@@ -7669,13 +7708,13 @@ C.7.2, C.7.4; the page's hint: `hostLabel` "letters, digits and '-' only", `host
 (letters, digits, '-' and '.') or an IPv4 address", `ipv4List` "up to 3 IPv4 addresses,
 comma-separated, no spaces", its 3 read from `src/asy_ntp_client.py`'s `_DNS_FALLBACK_MAX` by
 `tests_js/templates.test.js`; `countryCode` none, its description states the form), `format`
-(`epoch`/`gmtimestruct`, readonly only), `codes` (a readonly code's descriptions), `codeTones` (a
-code's tone from the catalog: `good`, `neutral` or `warn`), `dispatch`, `alwaysExecuted`,
-`resolution` (a number's step the device rounds to), `ignoredWhenSet` (the sibling whose non-zero
-value overrides the field), `statusPath` (where `GET /status` carries the field's live value),
-`clearable` (a string the page may empty with its own Clear button), `confirm` (the page asks before
-it sends)). Every maintenance field of the Status section carries a `path` (`[source, field]`, set
-by the generator, A.8).
+(`epoch`/`gmtimestruct`/`lasttaskend`, readonly only), `codes` (a readonly code's descriptions),
+`codeTones` (a code's tone from the catalog: `good`, `neutral` or `warn`), `dispatch`,
+`alwaysExecuted`, `resolution` (a number's step the device rounds to), `ignoredWhenSet` (the
+sibling whose non-zero value overrides the field), `statusPath` (where `GET /status` carries the
+field's live value), `clearable` (a string the page may empty with its own Clear button), `confirm`
+(the page asks before it sends)). Every maintenance field of the Status section carries a `path`
+(`[source, field]`, set by the generator, A.8).
 `dispatch: true` marks a repeatable command field that must re-submit even when
 unchanged — **and it is only consulted for `kind: "toggle"` and `kind: "enum"`** (`js/render.js`'s
 `collectGroupBody()`, the two sites that compare a control against `resolveFieldValue()`). Every
@@ -7794,10 +7833,13 @@ one source file owns: the six-REST-endpoint section skeleton itself (pure routin
 H.4's "mirrors the 6 REST endpoints 1:1"); the dispatch-only, webserver-level fields with no natural
 owning file (`SystemCmd`, `PauseTime`, `LightCmdLED`, `ResetErrors`, the Status section's own
 live-readonly field lists — among them the Device Clock row (`UnixTime`, which every age on the site
-is computed against), the notification `TS` row "Last Cycle Time", and `ResetReason`'s description
-"Why the device last restarted, as a numeric code; click it for its meaning."); and the
-`warn_co2`/`warn_voc`/`warn_hum` UI metadata, read with the
-schema by codegen and definitions alike from `buildgen/signals.py`'s one catalog, `WARN_SIGNALS`.
+is computed against), the notification `TS` row "Last Cycle Time", the System Status group's
+"Task Last Ended" row (`LastTaskEnd`: the supervised task whose end the supervisor recorded last
+since boot and the uptime at that record, restarted unless a reboot follows, A.8; legacy's System
+Status showed "Task last error" there), and `ResetReason`'s description "Why the device last
+restarted, as a numeric code; click it for its meaning."); and the `warn_co2`/`warn_voc`/`warn_hum`
+UI metadata, read with the schema by codegen and definitions alike from `buildgen/signals.py`'s one
+catalog, `WARN_SIGNALS`.
 
 **Correctness proof**: for every device, each tagged field lands exactly once in its group with its
 label and unit, checked against the tags independently of the generator
@@ -8510,8 +8552,12 @@ passes the caller's buffer.
 
 **`asy_system_service.py`** — construction, long-lived, fixed: the supervisor's lists, events,
 timers, its `ConfigManager` and `TickSeconds`. Boot list: `run_setups()`'s list of faulted config
-stores and `start_tasks()`'s task slots, once per boot each; the supervisor's own task, started once. Per reset: the one reset task; per
-system command that passes the gate: the one shutdown task. Per config GET: its dict, bounded by the schema.
+stores and `start_tasks()`'s task slots, once per boot each, and the task names the generated
+`_collect_task_names()` builds once (one string per starter; the task-end record stores a reference
+to one and an int, allocating nothing); the supervisor's own task, started once. Per reset: the one
+reset task; per system command that passes the gate: the one shutdown task. Per config GET: its
+dict, bounded by the schema. Per `/status` poll: `get_last_task_end()`'s two-key dict, once a task
+has ended.
 
 **`asy_uart_comm.py`** — construction, long-lived, fixed: the TX and RX frame buffers, the ACK
 scratch, the zero padding and the command-id scratch (`_allocate()`), so no frame allocates after
@@ -9344,6 +9390,17 @@ The diagnostic needs a link that has not validated one frame since boot: `ResetE
 history and the resync streak but never the valid-frame count, so a reset cannot re-arm it on a link
 that has worked (agent, 2026-10-06).
 
+**A failed read names a frame it dropped apart from a silence.** The listen and the three bounded
+waits compare `discarded_bytes` across the read (`_peek_discarded()`), so a rise means a frame was
+dropped inside it (its CRC, framing or length): the listen logs "listen read dropped a corrupted or
+incomplete frame" against "listen read failed or was cancelled", the GET's answer wait "answer read
+dropped a corrupted or incomplete frame for GET" against "no answer to GET", a train's chunk wait
+"train read dropped a corrupted or incomplete frame at chunk" against "train stalled at chunk", and
+a frame's ACK wait "ACK read dropped a corrupted or incomplete frame after sending frame" against
+"no ACK for frame". The errnos stay (22 `TIMEOUT` for the first three, 81 `UART_NO_ACK` for the
+ACK), so only the text tells the two apart: a log-text change with no C impact
+(`UART_C_PORT_CHANGELOG.md` B78, B85).
+
 `payload_size` must be in `1 … 255` (`SIZE`/`CHUNKS` are single bytes; a zero-width payload has no
 room for the command ID). A mismatch desyncs the link outright, so an out-of-range value must never
 be silently clamped — C.13's readiness-gate treatment instead. A delimited frame codec must carry one
@@ -10108,8 +10165,9 @@ error ever can circumvent it').
   `_notification_pause_callback()` (adapts `set_override_led()`'s result to the webserver's bool
   contract), `_notification_led_callback()` and `_system_cmd_callback()` (validate and dispatch a
   REST command), `_gmtimestruct_to_dict()` (time tuple to JSON), the `_collect_*()` list builders
-  (each run once: the setup list, the config stores, the task, timer and trigger starters, the
-  error sources and the level setters), and the `signal_sink` bound method (`mode="attr"`, L.3);
+  (each run once: the setup list, the config stores, the task starters and their names, the timer
+  and trigger starters, the error sources and the level setters), and the `signal_sink` bound method
+  (`mode="attr"`, L.3);
   every instance is referenced through its own generated variable, never a bare driver name.
   `tests_scripts/test_buildgen_generate.py` fails on any other top-level function and on a read of a
   name nothing binds. Generated globals are declared by annotation only and assigned once by

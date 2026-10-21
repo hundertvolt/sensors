@@ -237,7 +237,7 @@ def test_real_device_main_runs_the_boot_sequence_with_its_phase_marks(device: st
         "sysfunct.boot_phase(BOOT_SETUP)",
         "await sysfunct.run_setups(_collect_setups())",
         "sysfunct.boot_phase(BOOT_TASKS)",
-        "await sysfunct.start_tasks(_collect_task_starters())",
+        "await sysfunct.start_tasks(_collect_task_starters(), task_names=_collect_task_names())",
         "sysfunct.boot_phase(BOOT_TIMERS)",
         "await sysfunct.start_timers(_collect_trigger_starters(), _collect_timer_starters())",
         "sysfunct.boot_phase(BOOT_NTP)",
@@ -339,8 +339,9 @@ def test_real_device_system_status_reports_every_system_key_in_order(device: str
     result = _real(device)
     entries = _status_entries(result.module_source, "_system_status")
     has_fram = any(k[0] == "fram" for k in result.model.instances)
-    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LocalTime", "UTCTime", "UnixTime"]
+    expected = ["SysUptime", "BootSignature", "ResetReason", "ResetBits", "MemFree", *(["MemPaused"] if has_fram else []), "ConfigFaults", "ConfigUnpersisted", "LastTaskEnd", "LocalTime", "UTCTime", "UnixTime"]
     assert list(entries) == expected
+    assert entries["LastTaskEnd"] == "sysfunct.get_last_task_end()"  # None until a supervised task ends this boot
     assert entries["UnixTime"] == "utc_now()"  # None until the first NTP sync, as UTCTime
     assert entries["ResetReason"] == "sysfunct.get_reset_reason()"
     assert entries["ResetBits"] == "sysfunct.get_reset_bits()"
@@ -376,13 +377,14 @@ def test_real_device_header_imports_the_boot_marks_and_the_watchdog_type_only(de
 def test_real_device_types_the_collectors_by_what_the_service_takes(device: str) -> None:
     source = _real(device).module_source
     returns = {}
-    for name in ("_collect_setups", "_collect_task_starters", "_collect_timer_starters", "_collect_trigger_starters", "_collect_error_sources", "_collect_level_setters", "_collect_config_stores"):
+    for name in ("_collect_setups", "_collect_task_starters", "_collect_task_names", "_collect_timer_starters", "_collect_trigger_starters", "_collect_error_sources", "_collect_level_setters", "_collect_config_stores"):
         fn = _function(source, name)
         assert fn.returns is not None
         returns[name] = ast.unparse(fn.returns)
     assert returns == {
         "_collect_setups": "'list[SetupFct]'",
         "_collect_task_starters": "'list[TaskStarter]'",
+        "_collect_task_names": "list[str]",
         "_collect_timer_starters": "'list[TimerStarter]'",
         "_collect_trigger_starters": "'list[TimerStarter]'",
         "_collect_error_sources": "'list[ErrorSource]'",
@@ -979,6 +981,28 @@ def test_real_device_collects_the_fram_managers_starters(device: str, collector:
     # A declared chip that fails setup escalates through its supervised task like any other chip.
     result = _real(device)
     assert _fram_var(result) in _collected_modules(result.module_source, collector)
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_names_each_task_starter_once_over_the_starters_own_module_tuple(device: str) -> None:
+    # One name per starter, so the two lists start_tasks() takes stay equal in length by construction.
+    source = _real(device).module_source
+    assert _collected_modules(source, "_collect_task_names") == _collected_modules(source, "_collect_task_starters")
+    (loop,) = [n for n in ast.walk(_function(source, "_collect_task_names")) if isinstance(n, ast.For)]
+    assert [ast.unparse(s) for s in loop.body] == [ast.unparse(ast.parse('names.extend(f"{module.pr.name}.{starter.__name__}" for starter in module.get_task_starters())'))]
+
+
+@pytest.mark.parametrize("device", DEVICE_NAMES)
+def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+    # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+    # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+    result = _real(device)
+    tree = ast.parse(result.module_source)
+    backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+    wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+    assert len(backups) == len(wired)
+    assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+    assert "_clock_was_set" not in {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)}
 
 
 @pytest.mark.parametrize("collector", ["_collect_task_starters", "_collect_timer_starters"])

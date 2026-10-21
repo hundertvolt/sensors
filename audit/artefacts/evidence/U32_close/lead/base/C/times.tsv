@@ -1,0 +1,17 @@
+tests/test_asy_uart_comm.py@-1	61.39	0
+tests/test_asy_uart_comm.py@32768	62.22	0
+tests_scripts/test_digital_twin_boot_contiguity.py	15.54	0
+tests/test_digital_twin_fram.py@-1	0.58	0
+tests/test_digital_twin_fram.py@32768	0.69	0
+tests/test_digital_twin_hot_replug.py@-1	70.77	0
+tests/test_digital_twin_hot_replug.py@32768	71.10	0
+tests/test_ntp_fram_system_integration.py@-1	7.63	0
+tests/test_ntp_fram_system_integration.py@32768	7.68	0
+tests/test_asy_neopixel_driver.py@-1	9.56	0
+tests/test_asy_neopixel_driver.py@32768	9.55	0
+tests/test_asy_webserver_service.py@-1	4.42	0
+tests/test_asy_webserver_service.py@32768	8.01	0
+tests/test_uart_comm_cancel_sweep.py@-1	40.17	0
+tests/test_uart_comm_cancel_sweep.py@32768	40.10	0
+tests/test_uart_comm_hazard.py@-1	104.88	0
+tests/test_uart_comm_hazard.py@32768	108.69	0

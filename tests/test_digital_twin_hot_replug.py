@@ -25,6 +25,7 @@ from _digital_twin_construction_scenarios import load_device  # noqa: E402 - imp
 from _error_codes import code  # noqa: E402 - imported after the prewarm and the UDP shim
 from _generated_module import ERROR_LEVEL, boot_entry_watchdog, write_error_level_config  # noqa: E402 - imported after the prewarm and the UDP shim
 from _offline_ntp_config import write_offline_ntp_config  # noqa: E402 - imported after the prewarm and the UDP shim
+from _task_names import task_names_of  # noqa: E402 - imported after the prewarm and the UDP shim
 from _tmp_scratch import TmpScratch  # noqa: E402 - imported after the prewarm and the UDP shim
 from _twin_devices import device_with, generated_devices, wiring_plan  # noqa: E402 - imported after the prewarm and the UDP shim
 
@@ -46,12 +47,14 @@ if TYPE_CHECKING:
     from machine import WDT
 
     from asy_base_classes import TaskStarter, TimerStarter
+    from asy_print_log import PrintLogHistory
 
     T = TypeVar("T")
 
     class SensorReader(Protocol):
-        # What a test here asks of a bus-attached reader: its starters and its sample.
+        # What a test here asks of a bus-attached reader: its starters, its log and its sample.
         _datastruct: object
+        pr: "PrintLogHistory"
 
         def get_task_starters(self) -> "list[TaskStarter]": ...
         def get_timer_starters(self) -> "list[TimerStarter]": ...
@@ -139,7 +142,7 @@ async def _supervised(module: "ModuleType", reader: "SensorReader", body: "Calla
     for source in sources:
         for starter in source.get_trigger_starters() + source.get_timer_starters():
             starter()
-    await sysfunct.start_tasks(reader.get_task_starters())
+    await sysfunct.start_tasks(reader.get_task_starters(), task_names=task_names_of(reader))
     await sysfunct.start_timers(reader.get_trigger_starters(), reader.get_timer_starters())
     supervisor = asyncio.get_event_loop().create_task(sysfunct.supervise_tasks())
     try:

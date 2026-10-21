@@ -1,0 +1,241 @@
+........................................................................ [ 18%]
+........................................................................ [ 37%]
+...............FFFFFFF.................................................. [ 56%]
+........................................................................ [ 75%]
+...........................FFFFFF....................................... [ 94%]
+....................                                                     [100%]
+=================================== FAILURES ===================================
+_______ test_generated_module_defines_only_the_functions_l2_lists[arzi] ________
+
+name = 'arzi'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+________ test_generated_module_defines_only_the_functions_l2_lists[dev] ________
+
+name = 'dev'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+______ test_generated_module_defines_only_the_functions_l2_lists[grkizi] _______
+
+name = 'grkizi'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+______ test_generated_module_defines_only_the_functions_l2_lists[klkizi] _______
+
+name = 'klkizi'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+_____ test_generated_module_defines_only_the_functions_l2_lists[schlafzi] ______
+
+name = 'schlafzi'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+_______ test_generated_module_defines_only_the_functions_l2_lists[wozi] ________
+
+name = 'wozi'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+____ test_generated_module_defines_only_the_functions_l2_lists[novel_combo] ____
+
+name = 'novel_combo'
+
+    @pytest.mark.parametrize("name", _GENERATED)
+    def test_generated_module_defines_only_the_functions_l2_lists(name: str) -> None:
+        tree = ast.parse(_all_sources(name)[0])
+        defined = [n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+>       assert [d for d in defined if d not in _EMITTED_FUNCTIONS and not d.startswith(("_sgp_maintenance_status_", "_collect_"))] == []
+E       AssertionError: assert ['_clock_was_set'] == []
+E         
+E         Left contains one more item: '_clock_was_set'
+E         Use -v to get more diff
+
+tests_scripts/test_buildgen_generate.py:506: AssertionError
+____ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[arzi] _____
+
+device = 'arzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81cce5e0>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+_____ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[dev] _____
+
+device = 'dev'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81cce340>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+___ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[grkizi] ____
+
+device = 'grkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81ccd1c0>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+___ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[klkizi] ____
+
+device = 'klkizi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81cce180>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+__ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[schlafzi] ___
+
+device = 'schlafzi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81cce260>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+____ test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[wozi] _____
+
+device = 'wozi'
+
+    @pytest.mark.parametrize("device", DEVICE_NAMES)
+    def test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync(device: str) -> None:
+        # Legacy's gate (conn.ntp_issynced), cleared at the stale bound and on a force sync: a backup is
+        # stamped only while a sync vouches for the clock, never through a generated gate of its own.
+        result = _real(device)
+        tree = ast.parse(result.module_source)
+        backups = [ast.unparse(k.value) for n in ast.walk(tree) if isinstance(n, ast.Call) for k in n.keywords if k.arg == "backup"]
+        wired = [spec for spec in result.model.instances.values() if spec.driver == "sgp40" and "fram_target" in spec.wiring]
+        assert len(backups) == len(wired)
+>       assert all(re.fullmatch(r"SgpBackup\(\w+, ntp\.ntp_issynced\)", b) for b in backups), backups
+E       AssertionError: ['SgpBackup(fram, _clock_was_set)']
+E       assert False
+E        +  where False = all(<generator object test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync.<locals>.<genexpr> at 0x7f5b81cce500>)
+
+tests_scripts/test_buildgen_generate.py:1004: AssertionError
+=========================== short test summary info ============================
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[wozi]
+FAILED tests_scripts/test_buildgen_generate.py::test_generated_module_defines_only_the_functions_l2_lists[novel_combo]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[arzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[dev]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[grkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[klkizi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[schlafzi]
+FAILED tests_scripts/test_buildgen_generate.py::test_real_device_gates_the_voc_backup_timestamp_on_the_ntp_sync[wozi]
+13 failed, 367 passed in 6.59s

@@ -112,7 +112,7 @@ async def _main() -> None:
         bus_counts = [0, 0]  # reads, faults
         stop = [False]
         _wrap_reboot(sysfunct, recorder, written, bus_counts, stop)
-        await sysfunct.start_tasks(device._collect_task_starters())
+        await sysfunct.start_tasks(device._collect_task_starters(), task_names=device._collect_task_names())
         running.append(asyncio.create_task(sysfunct.supervise_tasks()))  # the shutdown's first step waits for it to park
         running.append(asyncio.create_task(_loads(sysfunct, written, bus_counts, stop)))
         await asyncio.sleep_ms(10 * _LOAD_STEP_MS)

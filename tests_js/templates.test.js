@@ -98,6 +98,8 @@ const BACKUP_TS_FIELD = {
     ],
 };
 /** @type {FieldDef} */
+const LAST_TASK_END_FIELD = { key: "LastTaskEnd", label: "Task Last Ended", kind: "readonly", format: "lasttaskend" };
+/** @type {FieldDef} */
 const RESET_REASON_FIELD = {
     key: "ResetReason",
     label: "Last Reset Reason",
@@ -147,6 +149,24 @@ describe("formatFieldValue", () => {
         expect(formatFieldValue(field, { Year: 2025, Month: 8, MDay: 2, Minute: 4, Second: 3 })).toBe("invalid time value");
         expect(formatFieldValue(field, { Year: 2025, Month: 8, MDay: 2, Hour: "8", Minute: 4, Second: 3 })).toBe("invalid time value");
         expect(formatFieldValue(field, "2025-08-02 08:04:03")).toBe("invalid time value");
+    });
+
+    it("leaves a time struct that is null at the em dash, never an invalid time value", () => {
+        const field = { key: "UTCTime", label: "UTC Time", kind: /** @type {const} */ ("readonly"), format: /** @type {const} */ ("gmtimestruct") };
+        expect(formatFieldValue(field, null)).toBe("—");
+    });
+
+    it("shows the last task end as its task name and the uptime it ended at, and an em dash before one", () => {
+        // Real shape: LastTaskEnd in the generated module's _system_status() (buildgen/codegen.py).
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 3600 })).toBe("SCD30.start_asy_read at uptime 3600 s");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, null)).toBe("—");
+    });
+
+    it("reads a task-end record of the wrong shape as an invalid value, never 'undefined'", () => {
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read" })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 1.5 })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, { Task: 7, Uptime: 3600 })).toBe("invalid value");
+        expect(formatFieldValue(LAST_TASK_END_FIELD, "SCD30.start_asy_read")).toBe("invalid value");
     });
 
     it.each([
@@ -241,6 +261,11 @@ describe("field markup, through a one-field buildFieldGroupCard()", () => {
         const el = fieldCard({ key: "CO2", label: "CO2", unit: "ppm", kind: "readonly" }, 612);
         expect(el.querySelector("input")).toBeNull();
         expect(mustQuery(el, '[data-field-key="CO2"]').textContent).toBe("612");
+    });
+
+    it("renders the last task end's record as its text in the card, never [object Object]", () => {
+        const el = fieldCard(LAST_TASK_END_FIELD, { Task: "SCD30.start_asy_read", Uptime: 3600 });
+        expect(mustQuery(el, '[data-field-key="LastTaskEnd"]').textContent).toBe("SCD30.start_asy_read at uptime 3600 s");
     });
 
     it("renders a nested readonly field's own value, not [object Object]", () => {

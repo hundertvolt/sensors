@@ -366,8 +366,8 @@ def test_a_fed_escalation_reset_fails(src_copy: Path) -> None:
 
 def test_an_own_feed_inside_a_while_loop_fails(src_copy: Path) -> None:
     # One feed per bounded step: a while loop in the sequence could feed for ever, the hung step the watchdog exists for.
-    anchor = '        self.pr.evt("Shutdown: supervised tasks stopped")\n'
-    _edit(src_copy / "asy_system_service.py", anchor, "        while self._storage is None:\n            self._own_feed()\n" + anchor)
+    anchor = '            self.pr.evt("Shutdown: supervised tasks stopped")\n'
+    _edit(src_copy / "asy_system_service.py", anchor, "            while self._storage is None:\n                self._own_feed()\n" + anchor)
     findings = src_findings(src_copy)
     assert len(findings) == 1 and findings[0].startswith("SystemService._shutdown_sequence():") and "uses _own_feed inside a while loop" in findings[0], findings
 
